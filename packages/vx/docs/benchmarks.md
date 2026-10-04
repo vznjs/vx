@@ -178,18 +178,18 @@ this machine (macOS arm64, Bun 1.4.0). The harness then gave Nx npm
 where Turbo had bun (§ Why Nx is slower), so the Nx row is slower than a
 fair one. Every runner runs as in CI (`CI=1`), so Nx's daemon is off:
 
-| Runner      | Version | Fresh (cold)            | Warm (no restore)        | Warm (restore)         |
-| ----------- | ------- | ----------------------- | ------------------------ | ---------------------- |
-| vx          | 0.0.0   | 10.45 s                 | 76 ms                    | 83 ms                  |
-| vx (frozen) | 0.0.0   | 10.49 s                 | 83 ms                    | 88 ms                  |
-| turbo       | 2.10.12 | 10.58 s (vx 1% faster)  | **71 ms** (vx 8% slower) | 97 ms (vx 14% faster)  |
-| nx          | 23.2.0  | 19.66 s (vx 46% faster) | 540 ms (vx 85% faster)   | 531 ms (vx 84% faster) |
+| Runner      | Version | Fresh (cold)              | Warm (no restore)          | Warm (restore)          |
+| ----------- | ------- | ------------------------- | -------------------------- | ----------------------- |
+| vx          | 0.0.0   | 10.45 s                   | 76 ms                      | 83 ms                   |
+| vx (frozen) | 0.0.0   | 10.49 s                   | 83 ms                      | 88 ms                   |
+| turbo       | 2.10.12 | 10.58 s (vx 1.01× faster) | **71 ms** (vx 1.1× slower) | 97 ms (vx 1.1× faster)  |
+| nx          | 23.2.0  | 19.66 s (vx 1.8× faster)  | 540 ms (vx 7.1× faster)    | 531 ms (vx 6.3× faster) |
 
 Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
 milliseconds of each other on a fully-cached run, and neither keeps a
 process between runs: Turbo 2.10 uses no daemon for `turbo run` (its docs
 say so from 2.9), so both work out what changed on every invocation. vx wins
-the restore case and ties the cold one; vx is 85% faster than Nx warm. The remaining
+the restore case and ties the cold one; vx is 7.1× faster than Nx warm. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
 The same 46-package run on the four-core Linux container (2026-09-24,
@@ -200,12 +200,12 @@ with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx
 system of the invocation and every child it waited for; a daemon that
 outlives the invocation would not be counted, and none runs here:
 
-| Runner      | Version | Fresh (cold)            | Warm (no restore)      | Warm (restore)         | CPU, cold               |
-| ----------- | ------- | ----------------------- | ---------------------- | ---------------------- | ----------------------- |
-| vx          | 0.0.0   | 10.29 s                 | 79 ms                  | 104 ms                 | 846 ms                  |
-| vx (frozen) | 0.0.0   | 10.27 s                 | **74 ms**              | **95 ms**              | 826 ms                  |
-| turbo       | 2.11.3  | 10.43 s (vx 1% faster)  | 86 ms (vx 8% faster)   | 136 ms (vx 23% faster) | 1.33 s (vx 36% faster)  |
-| nx          | 23.2.1  | 22.08 s (vx 53% faster) | 844 ms (vx 90% faster) | 862 ms (vx 87% faster) | 43.79 s (vx 98% faster) |
+| Runner      | Version | Fresh (cold)              | Warm (no restore)       | Warm (restore)          | CPU, cold               |
+| ----------- | ------- | ------------------------- | ----------------------- | ----------------------- | ----------------------- |
+| vx          | 0.0.0   | 10.29 s                   | 79 ms                   | 104 ms                  | 846 ms                  |
+| vx (frozen) | 0.0.0   | 10.27 s                   | **74 ms**               | **95 ms**               | 826 ms                  |
+| turbo       | 2.11.3  | 10.43 s (vx 1.01× faster) | 86 ms (vx 1.08× faster) | 136 ms (vx 1.3× faster) | 1.33 s (vx 1.5× faster) |
+| nx          | 23.2.1  | 22.08 s (vx 2.1× faster)  | 844 ms (vx 10× faster)  | 862 ms (vx 8.2× faster) | 43.79 s (vx 51× faster) |
 
 The ideal schedule is 10.00 s, so vx and Turbo both sit on the critical
 path cold, and warm they are within a few milliseconds at this size (the
@@ -216,22 +216,22 @@ The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
 point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run below):
 
-| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         |
-| ----------- | ---------------------- | ---------------------- | ---------------------- |
-| vx          | 1m 40s                 | **297 ms**             | **416 ms**             |
-| vx (frozen) | 1m 40s                 | 285 ms                 | 399 ms                 |
-| turbo       | 1m 40s (vx same)       | 342 ms (vx 13% faster) | 612 ms (vx 32% faster) |
-| nx          | 3m 23s (vx 50% faster) | 1.38 s (vx 78% faster) | 1.33 s (vx 68% faster) |
+| Runner      | Fresh (cold)          | Warm (no restore)       | Warm (restore)          |
+| ----------- | --------------------- | ----------------------- | ----------------------- |
+| vx          | 1m 40s                | **297 ms**              | **416 ms**              |
+| vx (frozen) | 1m 40s                | 285 ms                  | 399 ms                  |
+| turbo       | 1m 40s (vx same)      | 342 ms (vx 1.1× faster) | 612 ms (vx 1.4× faster) |
+| nx          | 3m 23s (vx 2× faster) | 1.38 s (vx 4.6× faster) | 1.33 s (vx 3.1× faster) |
 
 The same size on the four-core Linux container (2026-09-25, after items
 744, 753 and 754, the fixed harness, median of 1; ideal schedule 1m 36s):
 
-| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         | CPU, cold               |
-| ----------- | ---------------------- | ---------------------- | ---------------------- | ----------------------- |
-| vx          | 1m 37s                 | **225 ms**             | **367 ms**             | 7.06 s                  |
-| vx (frozen) | 1m 37s                 | 209 ms                 | 377 ms                 | 6.94 s                  |
-| turbo       | 1m 39s (vx 2% faster)  | 247 ms (vx 8% faster)  | 392 ms (vx 6% faster)  | 13.84 s (vx 48% faster) |
-| nx          | 2m 27s (vx 34% faster) | 1.84 s (vx 87% faster) | 1.89 s (vx 80% faster) | 7m 23s (vx 98% faster)  |
+| Runner      | Fresh (cold)             | Warm (no restore)        | Warm (restore)           | CPU, cold                |
+| ----------- | ------------------------ | ------------------------ | ------------------------ | ------------------------ |
+| vx          | 1m 37s                   | **225 ms**               | **367 ms**               | 7.06 s                   |
+| vx (frozen) | 1m 37s                   | 209 ms                   | 377 ms                   | 6.94 s                   |
+| turbo       | 1m 39s (vx 1.02× faster) | 247 ms (vx 1.09× faster) | 392 ms (vx 1.06× faster) | 13.84 s (vx 1.9× faster) |
+| nx          | 2m 27s (vx 1.5× faster)  | 1.84 s (vx 8.1× faster)  | 1.89 s (vx 5.1× faster)  | 7m 23s (vx 62× faster)   |
 
 Read it honestly: the 2026-09-24 run on this box had Turbo 2.11 winning
 both warm columns (303 and 446 ms against vx's 376 and 478). Item 744
@@ -292,12 +292,12 @@ columns are unaffected. Next 18 re-runs it. The whole 3,270-task shape
 on this box with the fixed harness (2026-09-25, after items 744, 753 and
 754, median of 1; ideal schedule 3m 38s):
 
-| Runner      | Fresh (cold)           | Warm (no restore)      | Warm (restore)         | CPU, cold               |
-| ----------- | ---------------------- | ---------------------- | ---------------------- | ----------------------- |
-| vx          | **3m 40s**             | **359 ms**             | **653 ms**             | **16.05 s**             |
-| vx (frozen) | 3m 41s                 | 292 ms                 | 651 ms                 | 16.46 s                 |
-| turbo       | 5m 4s (vx 27% faster)  | 431 ms (vx 16% faster) | 722 ms (vx 9% faster)  | 33.27 s (vx 51% faster) |
-| nx          | 6m 59s (vx 47% faster) | 4.50 s (vx 92% faster) | 4.60 s (vx 85% faster) | 20m 55s (vx 98% faster) |
+| Runner      | Fresh (cold)            | Warm (no restore)       | Warm (restore)          | CPU, cold               |
+| ----------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- |
+| vx          | **3m 40s**              | **359 ms**              | **653 ms**              | **16.05 s**             |
+| vx (frozen) | 3m 41s                  | 292 ms                  | 651 ms                  | 16.46 s                 |
+| turbo       | 5m 4s (vx 1.3× faster)  | 431 ms (vx 1.2× faster) | 722 ms (vx 1.1× faster) | 33.27 s (vx 2× faster)  |
+| nx          | 6m 59s (vx 1.9× faster) | 4.50 s (vx 12× faster)  | 4.60 s (vx 7× faster)   | 20m 55s (vx 78× faster) |
 
 The day before, Turbo 2.11 won both warm columns here (496 and 856 ms
 against vx's 678 and 971). Item 744 found why: vx's stable-key pass
@@ -329,19 +329,19 @@ as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
 The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
-|                                 | vx                                                         | vx, no lock | Turborepo              | Nx                       |
-| ------------------------------- | ---------------------------------------------------------- | ----------- | ---------------------- | ------------------------ |
-| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (vx 27% faster) | 34m 44s (vx 89% faster)  |
-| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (vx 37% faster)  | 3.59s (vx 86% faster)    |
-| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (vx 36% faster)  | 4.15s (vx 82% faster)    |
-| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (vx 53% faster) | 114m 06s (vx 99% faster) |
-| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (vx 69% faster)  | 5.54s (vx 75% faster)    |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —                      | —                        |
-| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —                      | —                        |
+|                                 | vx                                                         | vx, no lock | Turborepo               | Nx                        |
+| ------------------------------- | ---------------------------------------------------------- | ----------- | ----------------------- | ------------------------- |
+| **Cold** (nothing cached)       | **3m 47s**                                                 | 3m 46s      | 5m 13s (vx 1.3× faster) | 34m 44s (vx 9.2× faster)  |
+| **Warm**, nothing to rebuild    | **476ms**                                                  | 510ms       | 760ms (vx 1.5× faster)  | 3.59s (vx 7.5× faster)    |
+| **Warm**, restore outputs       | **743ms**                                                  | 777ms       | 1.17s (vx 1.5× faster)  | 4.15s (vx 5.5× faster)    |
+| **CPU burned**, cold (user+sys) | **34.33s**                                                 | 34.61s      | 1m 13s (vx 2.1× faster) | 114m 06s (vx 199× faster) |
+| **CPU burned**, warm (user+sys) | **1.33s**                                                  | 1.34s       | 4.40s (vx 3.2× faster)  | 5.54s (vx 4.1× faster)    |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —           | —                       | —                         |
+| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —           | —                       | —                         |
 
-vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).
+vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
 
-Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster).
+Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster).
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the

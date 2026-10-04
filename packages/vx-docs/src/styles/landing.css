@@ -557,6 +557,88 @@ body:has(.vx-landing) {
   color: var(--text-hi);
 }
 
+/* ---- the hero's three numbers ---- */
+.wins {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 760px;
+}
+.wins li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+.wins strong {
+  font: var(--fw-bold) 40px / 1 var(--font-display);
+  letter-spacing: var(--ls-tight);
+  color: var(--phosphor-bright);
+}
+.wins span {
+  font: var(--fw-regular) 14px / 1.4 var(--font-body);
+  color: var(--text-mut);
+}
+
+/* ---- vx vs Turborepo vs Nx ---- */
+.edge-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--fw-regular) 15px / 1.4 var(--font-body);
+}
+.edge-table th,
+.edge-table td {
+  padding: 14px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line-faint);
+  color: var(--text-mut);
+}
+.edge-table thead th {
+  font-weight: var(--fw-semibold);
+  color: var(--text-hi);
+}
+.edge-table thead .vx,
+.edge-table th[scope='row'] {
+  color: var(--text-hi);
+}
+.edge-table thead .vx {
+  color: var(--phosphor-bright);
+}
+.edge-table th[scope='row'] {
+  font-weight: var(--fw-semibold);
+}
+.edge-table .mark {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 999px;
+  font: var(--fw-bold) 12px / 1 var(--font-mono);
+  vertical-align: -3px;
+}
+.edge-table .yes .mark {
+  background: var(--phosphor-bright);
+  color: var(--text-on-accent);
+}
+.edge-table .no .mark {
+  background: var(--line);
+  color: var(--text-mut);
+}
+.edge-table .paid .mark {
+  background: color-mix(in srgb, var(--vx-warn) 22%, transparent);
+  color: var(--vx-warn);
+}
+.edge-table td[data-tool='vx'] {
+  color: var(--text-hi);
+}
+
 /* ---- try it ---- */
 .code {
   margin: 0 0 14px;
@@ -663,6 +745,47 @@ body:has(.vx-landing) {
   }
 }
 @media (max-width: 620px) {
+  .wins {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .wins strong {
+    font-size: 32px;
+  }
+  .edge-table thead {
+    display: none;
+  }
+  .edge-table tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px 10px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-faint);
+  }
+  .edge-table th,
+  .edge-table td {
+    padding: 0;
+    border: 0;
+    font-size: 13px;
+  }
+  .edge-table th[scope='row'] {
+    grid-column: 1 / -1;
+    margin-bottom: 4px;
+    font-size: 15px;
+  }
+  .edge-table td::before {
+    content: attr(data-tool);
+    display: block;
+    margin-bottom: 4px;
+    font: var(--fw-semibold) 12px / 1.3 var(--font-mono);
+    color: var(--text-faint);
+  }
+  .edge-table .mark {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    font-size: 10px;
+  }
   .btn-github {
     display: none;
   }

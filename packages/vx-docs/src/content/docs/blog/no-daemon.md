@@ -54,8 +54,8 @@ stopped mattering:
   what the tree should contain.
 
 The result is a fully cached run of 3,270 tasks in 476ms with no
-process left behind, against Turborepo's 760ms (vx 37% faster) and
-Nx's 3.59s (vx 86% faster). vx has
+process left behind, against Turborepo's 760ms (vx 1.5× faster) and
+Nx's 3.59s (vx 7.5× faster). vx has
 no daemon to turn on. Nx's figures ran every task through npm, a harness fault
 ([Benchmarks](../../benchmarks/) has the fixed run).
 

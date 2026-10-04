@@ -270,7 +270,8 @@ its own `ws-W<n>.md`.
 
 **Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
-competitor cell as `(vx N% faster|slower)`. Never say vx works in, runs
+competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how
+many X", replacing the percentage). Never say vx works in, runs
 or speeds up a Turbo or Nx repo: `@vzn/vx-migrate` / `vx init` is a
 temporary start toward native config. The real-repo rows measured
 `turbo()` / `nx()` and are off the README and site; they need a rerun

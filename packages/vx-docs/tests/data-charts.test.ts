@@ -14,11 +14,11 @@ describe('parseDuration', () => {
     ['14 181 ms (13 798–14 986)', 14_181],
     ['3.1 ms', 3.1],
     ['3.59 s', 3590],
-    ['1.17s (vx 36% faster)', 1170],
+    ['1.17s (vx 36× faster)', 1170],
     ['9 s', 9000],
     ['3m 47s', 227_000],
-    ['114m 06s (vx 99% faster)', 6_846_000],
-    ['1 min 35 s (vx 91% faster)', 95_000],
+    ['114m 06s (vx 99× faster)', 6_846_000],
+    ['1 min 35 s (vx 91× faster)', 95_000],
     ['31 min', 1_860_000],
     ['380–450 ms', 415],
   ])('%s → %d ms', (text, ms) => {
@@ -39,7 +39,7 @@ describe('groupsForTable', () => {
       ['Runner', 'Version', 'Fresh (cold)', 'Warm'],
       [
         ['vx', '0.0.0', '10.29 s', '79 ms'],
-        ['turbo', '2.11.3', '10.43 s (vx 1% faster)', '86 ms (vx 8% faster)'],
+        ['turbo', '2.11.3', '10.43 s (vx 1× faster)', '86 ms (vx 8× faster)'],
       ],
     )
     expect(groups).toEqual([
@@ -47,14 +47,14 @@ describe('groupsForTable', () => {
         title: 'Fresh (cold)',
         bars: [
           { name: 'vx', ms: 10_290, value: '10.29 s', hero: true },
-          { name: 'turbo', ms: 10_430, value: '10.43 s', note: 'vx 1% faster', hero: false },
+          { name: 'turbo', ms: 10_430, value: '10.43 s', note: 'vx 1× faster', hero: false },
         ],
       },
       {
         title: 'Warm',
         bars: [
           { name: 'vx', ms: 79, value: '79 ms', hero: true },
-          { name: 'turbo', ms: 86, value: '86 ms', note: 'vx 8% faster', hero: false },
+          { name: 'turbo', ms: 86, value: '86 ms', note: 'vx 8× faster', hero: false },
         ],
       },
     ])
@@ -63,14 +63,14 @@ describe('groupsForTable', () => {
   it('runners across the top: a group per row, a blank cell left out', () => {
     const groups = groupsForTable(
       ['', 'vx', 'vx, no lock', 'Nx'],
-      [['Warm', '476ms', '—', '3.59s (vx 86% faster)']],
+      [['Warm', '476ms', '—', '3.59s (vx 86× faster)']],
     )
     expect(groups).toEqual([
       {
         title: 'Warm',
         bars: [
           { name: 'vx', ms: 476, value: '476ms', hero: true },
-          { name: 'Nx', ms: 3590, value: '3.59s', note: 'vx 86% faster', hero: false },
+          { name: 'Nx', ms: 3590, value: '3.59s', note: 'vx 86× faster', hero: false },
         ],
       },
     ])
@@ -108,14 +108,14 @@ describe('renderBars', () => {
         title: 'a<b',
         bars: [
           { name: 'vx', ms: 25, value: '25 ms', hero: true },
-          { name: 'nx', ms: 100, value: '100 ms', note: 'vx 75% faster' },
+          { name: 'nx', ms: 100, value: '100 ms', note: 'vx 75× faster' },
         ],
       },
     ])
     expect([...html.matchAll(/--w:([\d.]+)%/g)].map((m) => m[1])).toEqual(['25', '100'])
     expect(html).toContain('<figcaption>a&lt;b</figcaption>')
     expect(html).toContain('<div class="vx-bar vx-bar-lead"')
-    expect(html).toContain('<span class="vx-bar-note">vx 75% faster</span>')
+    expect(html).toContain('<span class="vx-bar-note">vx 75× faster</span>')
   })
 })
 

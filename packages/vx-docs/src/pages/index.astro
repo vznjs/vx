@@ -66,15 +66,15 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '9 s', turbo: '1 min 35 s (vx 91% faster)', nx: '31 min (vx 99% faster)' },
-  { label: 'Cold build: CPU burned', vx: '34 s', turbo: '1 min 13 s (vx 53% faster)', nx: '114 min (vx 99% faster)' },
-  { label: 'Fully cached run', vx: '476 ms', turbo: '760 ms (vx 37% faster)', nx: '3.59 s (vx 86% faster)' },
-  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms (vx 91% faster)', nx: '1,712 ms (vx 99% faster)' },
+  { label: 'Cold build: time the runner adds', vx: '9 s', turbo: '1 min 35 s (vx 11× faster)', nx: '31 min (vx 218× faster)' },
+  { label: 'Cold build: CPU burned', vx: '34 s', turbo: '1 min 13 s (vx 2.1× faster)', nx: '114 min (vx 199× faster)' },
+  { label: 'Fully cached run', vx: '476 ms', turbo: '760 ms (vx 1.5× faster)', nx: '3.59 s (vx 7.5× faster)' },
+  { label: 'Overhead per package', vx: '8 ms', turbo: '88 ms (vx 11× faster)', nx: '1,712 ms (vx 218× faster)' },
 ]
-const benchFormula = 'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
-const benchNote = "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)."
+const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
+const benchNote = "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)."
 
-/** A competitor cell's value and its "vx N% faster". */
+/** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {
   const at = c.indexOf(' (')
   return [c.slice(0, at), c.slice(at + 2, -1)]
@@ -93,6 +93,56 @@ const benchBars = renderBars(
     ],
   })),
 )
+
+// The hero's three numbers, each the multiple a benchTable cell already
+// states, so a new run moves them with the chart. Only the columns that
+// flatter Nx least: its cold figures paid npm per task (benchNote); its
+// cached one did not gain from that fault (the fixed harness read 4.50 s).
+const timesOf = (cell: string): string => `${/^vx ([\d.]+)× faster$/.exec(vsOf(cell)[1])![1]}×`
+const [addsRow, cpuRow, cachedRow] = benchTable
+const wins = [
+  { n: timesOf(addsRow!.turbo), line: 'less time added to a cold build than Turborepo' },
+  { n: timesOf(cpuRow!.turbo), line: 'less CPU burned on a cold build than Turborepo' },
+  { n: timesOf(cachedRow!.nx), line: 'faster fully cached run than Nx' },
+]
+
+// Where vx differs from both, each cell as the choosing page's model says it
+// (src/components/demos/model/choosing.ts, checked against each tool's own
+// docs): yes, no, or only as a paid cloud service.
+type Edge = { kind: 'yes' | 'no' | 'paid'; text: string }
+const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
+  {
+    trait: 'A file sandbox for every task',
+    vx: { kind: 'yes', text: 'Local and free, Linux and macOS' },
+    turbo: { kind: 'no', text: 'None' },
+    nx: { kind: 'paid', text: 'Nx Cloud add-on' },
+  },
+  {
+    trait: 'Remote execution you host',
+    vx: { kind: 'yes', text: 'Bazel’s open REAPI protocol' },
+    turbo: { kind: 'no', text: 'None' },
+    nx: { kind: 'paid', text: 'Nx Agents on Nx Cloud' },
+  },
+  {
+    trait: 'A remote cache on any backend',
+    vx: { kind: 'yes', text: 'REAPI, Turborepo’s or Nx’s wire, by plugin' },
+    turbo: { kind: 'no', text: 'Its own HTTP API' },
+    nx: { kind: 'no', text: 'Nx Cloud or its own API' },
+  },
+  {
+    trait: 'Config is code',
+    vx: { kind: 'yes', text: 'TypeScript, evaluated and hashed' },
+    turbo: { kind: 'no', text: 'JSON' },
+    nx: { kind: 'no', text: 'JSON, merged with inferred tasks' },
+  },
+  {
+    trait: 'No background daemon',
+    vx: { kind: 'yes', text: 'None' },
+    turbo: { kind: 'yes', text: 'None for turbo run' },
+    nx: { kind: 'no', text: 'On by default' },
+  },
+]
+const mark = { yes: '✓', no: '✕', paid: '$' }
 
 // Why it is faster: three reasons, one short sentence each.
 const reasons = [
@@ -194,6 +244,16 @@ const footCols = {
         <div class="container">
           <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
           <p class="lede">Measured against Turborepo and Nx, each in its own native config.</p>
+          <ul class="wins">
+            {
+              wins.map((w) => (
+                <li>
+                  <strong>{w.n}</strong>
+                  <span>{w.line}</span>
+                </li>
+              ))
+            }
+          </ul>
           <div class="actions">
             <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
               <span class="dollar">$</span>
@@ -244,6 +304,51 @@ const footCols = {
           <div class="section-links">
             <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
             <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="edge">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// vx vs Turborepo vs Nx</p>
+            <h2>Built in, free, on your own machines.</h2>
+          </div>
+          <table class="edge-table">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col" class="vx">vx</th>
+                <th scope="col">Turborepo</th>
+                <th scope="col">Nx</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                edges.map((e) => (
+                  <tr>
+                    <th scope="row">{e.trait}</th>
+                    {(
+                      [
+                        ['vx', e.vx],
+                        ['Turborepo', e.turbo],
+                        ['Nx', e.nx],
+                      ] as const
+                    ).map(([tool, c]) => (
+                      <td class={c.kind} data-tool={tool}>
+                        <span class="mark" aria-hidden="true">
+                          {mark[c.kind]}
+                        </span>
+                        {c.text}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+          <div class="section-links">
+            <a class="section-link" href={href('compare/')}>Every choice, with sources, and when another tool fits better <span class="arr">→</span></a>
           </div>
         </div>
       </section>

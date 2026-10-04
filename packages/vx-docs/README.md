@@ -28,12 +28,13 @@ Hand-authored pages live only in the site and ARE tracked:
 page (its own nav, footer and theme; the docs stay Starlight). It is the
 whole story (design/site-short-2026-09.md): static, one script for the
 install command's copy button, no paragraph longer than one sentence.
-Sections, in order: the hero (one line, the install pill, Quickstart and
+Sections, in order: the hero (one line, three of the chart's multiples, the install pill, Quickstart and
 GitHub); `#one-run`, the one picture (`src/components/landing/one-run.ts`,
 drawn by the diagram kit with its phone layout) and its six numbered
 lines, each at the anchor an old Guide chapter redirects to (`#tasks`,
 `#parallel`, `#cache`, `#changed`, `#sandbox`, `#plugins`); `#bench`, the
-one benchmark; `#pillars`, four cards (correctness, sandbox,
+one benchmark; `#edge`, vx, Turborepo and Nx trait by trait (from the
+choosing page's model); `#pillars`, four cards (correctness, sandbox,
 extensibility, freedom), each an icon, a title, one sentence and its
 Docs page; the footer. `tests/landing.test.ts` holds the order, the
 hero's actions, the picture's data and lines against the design, the
@@ -43,8 +44,8 @@ pillars, the one-sentence rule and every internal link the page had.
   rewrites the `benchTable` and `benchFormula` blocks and the graph's
   size (the `#bench` kicker) from `results.json`; `check.site` fails
   when either drifted. Edit the generator or its source, not those
-  regions. Every competitor cell reads `(vx N% faster)` or
-  `(vx N% slower)` (owner, 2026-10-02), and the formula line under the
+  regions. Every competitor cell reads `(vx N× faster)` or
+  `(vx N× slower)` (owner, 2026-10-04), and the formula line under the
   table defines N. The page draws them as bars (`renderBars` in
   `src/plugins/data-charts.ts`), each as long as its time against the
   slowest tool's.

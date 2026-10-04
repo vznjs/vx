@@ -103,21 +103,27 @@ const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => str
     (r) => `${perPkg(r).toLocaleString('en-US')} ms`,
   ],
 ]
-// Every competitor cell says how vx compares, as a percentage of the other
-// tool's number (owner, 2026-10-02). Rounded against vx: down when vx is
-// faster, up when it is slower.
+// Every competitor cell says how vx compares, as how many times as long the
+// slower runner takes (owner, 2026-10-04: "say how many X", replacing the
+// 2026-10-02 percentage). Rounded against vx: down when vx is faster, up
+// when it is slower; whole from 10×, one decimal under it, two under
+// 1.1× so a small win never reads as a tie.
 function versus(ours: number, theirs: number): string {
-  if (ours < theirs) return `vx ${Math.floor(((theirs - ours) / theirs) * 100)}% faster`
-  if (ours > theirs) return `vx ${Math.ceil(((ours - theirs) / theirs) * 100)}% slower`
-  return 'vx same'
+  const faster = ours < theirs
+  const r = faster ? theirs / ours : ours / theirs
+  const round = faster ? Math.floor : Math.ceil
+  if (r === 1) return 'vx same'
+  const at = (k: number) => round(r * k) / k
+  const n = r >= 10 ? round(r) : at(10) > 1 ? at(10) : at(100)
+  return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
 const FORMULA =
-  'vx N% faster: vx takes N% less time than that tool (1 − vx ÷ theirs); N% slower: N% more (vx ÷ theirs − 1).'
+  'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
 // The committed run's harness ran every Nx task through `npm run`, where
 // Turbo ran `bun run` (benchmarks.md § Why Nx is slower). Until the run is
 // redone, every table built from it says so, with the fixed harness's read.
 const NX_NOTE =
-  "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 47% and 92% faster)."
+  "Nx's column ran every task through npm run (~200 ms of CPU each; Turbo ran bun run), a harness fault since fixed; with bun, on a 4-core Linux box, Nx took 6m 59s cold and 4.50 s fully cached (vx 1.9× and 12× faster)."
 const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string): string =>
   `${f(r)} (${versus(n(vx), n(r))})`
 const tableBlock =

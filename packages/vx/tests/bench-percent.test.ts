@@ -1,7 +1,7 @@
 // docs/benchmarks.md's hand-typed runner tables (rows named vx, turbo, nx)
-// give every competitor cell vx's % against the `vx` row of the same column.
+// give every competitor cell vx's multiple against the `vx` row of the same column.
 // update-site.ts --check holds only the generated table, so these are held
-// here: each % is recomputed from the two figures the row shows, with
+// here: each multiple is recomputed from the two figures the row shows, with
 // update-site.ts's rounding (down when vx is faster, up when slower).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -20,9 +20,13 @@ function ms(text: string): number {
 }
 
 function versus(ours: number, theirs: number): string {
-  if (ours < theirs) return `vx ${Math.floor(((theirs - ours) / theirs) * 100)}% faster`
-  if (ours > theirs) return `vx ${Math.ceil(((ours - theirs) / theirs) * 100)}% slower`
-  return 'vx same'
+  const faster = ours < theirs
+  const r = faster ? theirs / ours : ours / theirs
+  const round = faster ? Math.floor : Math.ceil
+  if (r === 1) return 'vx same'
+  const at = (k: number) => round(r * k) / k
+  const n = r >= 10 ? round(r) : at(10) > 1 ? at(10) : at(100)
+  return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
 
 /** Each table whose first column names runners: its rows' cells, by runner. */
@@ -46,15 +50,15 @@ function tables(): Map<string, string[]>[] {
   return out
 }
 
-describe('benchmarks.md: every vx % is the two figures its row shows', () => {
-  it('each competitor cell’s % matches the vx row of its column', () => {
+describe('benchmarks.md: every vx multiple is the two figures its row shows', () => {
+  it('each competitor cell’s multiple matches the vx row of its column', () => {
     const wrong: string[] = []
     let checked = 0
     for (const rows of tables()) {
       const vx = rows.get('vx')!
       for (const runner of ['turbo', 'nx']) {
         rows.get(runner)?.forEach((cell, i) => {
-          const m = /^(.+?) \((vx (?:\d+% (?:faster|slower)|same))\)$/.exec(
+          const m = /^(.+?) \((vx (?:[\d.]+× (?:faster|slower)|same))\)$/.exec(
             cell.replaceAll('*', ''),
           )
           if (!m) return
