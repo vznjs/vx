@@ -11,11 +11,14 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-/** A PATH of bun, sh and git alone: no `tsc` from the box. */
+/** A PATH of bun, the shells and git alone: no `tsc` from the box. */
 async function bareBin(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tool-bin-'))
   await symlink(process.execPath, path.join(dir, 'bun'))
   await symlink('/bin/sh', path.join(dir, 'sh'))
+  // macOS's task shell is dash when the PATH has it, as /bin does there.
+  const dash = Bun.which('dash')
+  if (dash !== null) await symlink(dash, path.join(dir, 'dash'))
   const git = Bun.which('git')
   if (git !== null) await symlink(git, path.join(dir, 'git'))
   return dir
