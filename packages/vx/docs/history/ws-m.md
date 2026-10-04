@@ -1045,7 +1045,7 @@ before it ran is `◌ not run <id>`. The tasks legend names both after
 the total (`not counted: 1 aborted, 2 not run`); the total stays the
 count history and telemetry share. A requested task the stop kept from starting no longer
 prints a frame close for a frame it never opened.
-M-82. The gate passes on a Mac with no npm and an M-series CPU. A write
+M-84. The gate passes on a Mac with no npm and an M-series CPU. A write
 glob covered only the directories it matched on macOS (SRT compiles a
 glob as an exact regex), so `/tmp/pnpm-store-operation-locks-*/` left
 pnpm 12's lock file refused; each wildcard write grant now adds
