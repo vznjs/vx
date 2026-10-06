@@ -206,7 +206,8 @@ export function taskGlob(pattern: string): Bun.Glob {
   // it by rules of its own (`src/**` takes `src/`, never `src`). `scan`
   // stays `Bun.Glob`'s. Set on the instance, not by a subclass, so the glob
   // is built by whatever `Bun.Glob` is at the call (the playground's port).
-  glob.match = (rel: string): boolean => (rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel))
+  glob.match = (rel: string): boolean =>
+    rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel)
   return glob
 }
 
