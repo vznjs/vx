@@ -1528,7 +1528,7 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   OTel, the GitHub job summary, a custom sink), `setup` and `teardown`
   around the run, and CLI `commands` (`{ verb: { description, run } }`,
   consulted for a verb core does not know). First-party plugins:
-  `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
+  `@vzn/vx-otel`, `@vzn/vx-ci`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
   `@vzn/vx-schedule-history`, `@vzn/vx-mcp`, `@vzn/vx-migrate`. A
   plugin that declines every capability (`otel()` with no OTLP endpoint
   configured) costs nothing — a run with no active plugin is

@@ -344,7 +344,7 @@ prune` policy at the end of every run,
   ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--download`, remote execution through `@vzn/vx-reapi`,
-  `@vzn/vx-github` (job summary + check run), `@vzn/vx-mcp` (an MCP
+  `@vzn/vx-ci` (job summary + check run), `@vzn/vx-mcp` (an MCP
   server as a plugin verb), the `schedule-history` plugin (critical-path
   priorities from recorded durations).
 - npm distribution as per-platform binary packages plus a launcher,
@@ -451,7 +451,7 @@ Things `@vzn/vx` does that the others don't:
 - **A versioned telemetry contract + plugin seam.** `TelemetryRecord`
   / `RunSummaryRecord` (TELEMETRY_SCHEMA_VERSION) is one neutral
   export shape every sink reads — OTel (`@vzn/vx-otel`), the GitHub
-  job summary and check run (`@vzn/vx-github`), or a custom sink —
+  job summary and check run (`@vzn/vx-ci`), or a custom sink —
   observe-only by construction, zero cost when unused.
 - **Bun-native everything, and none of it the user's concern.**
   `Bun.spawn` for child rusage capture, `bun:sqlite`, `Bun.YAML`,

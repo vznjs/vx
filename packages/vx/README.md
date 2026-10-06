@@ -18,5 +18,5 @@ caching on this machine (entries in `~/.vx/<id>/cache`, shared by every
 checkout of the repo) are its floor, so a workspace with no
 `vx.workspace.ts` runs. Scheduling by learned critical path:
 `@vzn/vx-schedule-history`. Remote caching and execution:
-`@vzn/vx-reapi`. Telemetry: `@vzn/vx-otel`, `@vzn/vx-github`. AI agents:
+`@vzn/vx-reapi`. Telemetry: `@vzn/vx-otel`, `@vzn/vx-ci`. AI agents:
 `@vzn/vx-mcp`.

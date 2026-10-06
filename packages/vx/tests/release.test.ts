@@ -65,17 +65,17 @@ describe('supportsTrustedPublishing', () => {
 
 describe('publishOrder', () => {
   it('publishes the linux binaries, then @vzn/vx, then every plugin, sorted', () => {
-    expect(publishOrder('linux', ['vx-reapi', 'vx-github'])).toEqual([
+    expect(publishOrder('linux', ['vx-reapi', 'vx-ci'])).toEqual([
       '@vzn/vx-linux-x64',
       '@vzn/vx-linux-arm64',
       'vx',
-      'plugins/vx-github',
+      'plugins/vx-ci',
       'plugins/vx-reapi',
     ])
   })
 
   it('publishes only the darwin binaries from the darwin job', () => {
-    expect(publishOrder('darwin', ['vx-github'])).toEqual([
+    expect(publishOrder('darwin', ['vx-ci'])).toEqual([
       '@vzn/vx-darwin-x64',
       '@vzn/vx-darwin-arm64',
     ])

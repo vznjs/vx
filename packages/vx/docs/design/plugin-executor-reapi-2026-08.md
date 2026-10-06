@@ -76,14 +76,14 @@ VxPlugin
   setup / teardown                                                (existing)
 ```
 
-| Plugin                            | cache                | executor                | telemetry   |
-| --------------------------------- | -------------------- | ----------------------- | ----------- |
-| `vx-reapi`                        | ✓                    | ✓                       | —           |
-| `vx-otel`                         | —                    | —                       | ✓           |
-| `vx-github` (summary + check run) | —                    | —                       | ✓           |
-| vx-cloud today                    | native wire          | `backend`               | ✓           |
-| a community cloud                 | their store          | their agents            | their DB/UI |
-| declared by every workspace       | `localCachePlugin()` | `localExecutorPlugin()` | —           |
+| Plugin                        | cache                | executor                | telemetry   |
+| ----------------------------- | -------------------- | ----------------------- | ----------- |
+| `vx-reapi`                    | ✓                    | ✓                       | —           |
+| `vx-otel`                     | —                    | —                       | ✓           |
+| `vx-ci` (summary + check run) | —                    | —                       | ✓           |
+| vx-cloud today                | native wire          | `backend`               | ✓           |
+| a community cloud             | their store          | their agents            | their DB/UI |
+| declared by every workspace   | `localCachePlugin()` | `localExecutorPlugin()` | —           |
 
 **No defaults.** Core applies no plugin on its own; `localExecutorPlugin()`
 (`@vzn/vx/plugins/local-executor`) and `localCachePlugin()`
@@ -338,7 +338,7 @@ the docs recommend before marking a task remote-eligible; a future
 
 Unchanged by construction: the scheduler is local, so every task outcome —
 including ones executed on a worker — reaches the bus, every `telemetry`
-sink, `otel()`, `vx-github`, and vx-cloud's own telemetry rung. `TaskOutcome.where`
+sink, `otel()`, `vx-ci`, and vx-cloud's own telemetry rung. `TaskOutcome.where`
 attributes the worker. REAPI has no analytics concept and needs none of
 this; a community cloud builds its analytics on exactly this seam.
 
@@ -373,7 +373,7 @@ nothing in it depends on a later phase.
    shape), with LPT ordering applied to the queue instead of a run scheduler.
    Telemetry blindness disappears because the scheduler never left. Then
    delete core's `backend` + protocol/wire, and salvage `github-summary`/
-   `github-check` into `@vzn/vx-github`. If the port is not worth doing, the
+   `github-check` into `@vzn/vx-ci`. If the port is not worth doing, the
    fallback is deleting cloud's dist half outright; the analytics half (OTLP
    receiver + Postgres + dashboard) remains a telemetry plugin either way.
 

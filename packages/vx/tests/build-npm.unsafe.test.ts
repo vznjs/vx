@@ -106,7 +106,7 @@ describe('the published plugin packages', async () => {
     // that emits nothing.
     expect(publicNames).toEqual(
       expect.arrayContaining([
-        '@vzn/vx-github',
+        '@vzn/vx-ci',
         '@vzn/vx-lockfile',
         '@vzn/vx-mcp',
         '@vzn/vx-migrate',

@@ -13,7 +13,7 @@ const PACKAGES = path.resolve(import.meta.dir, '../..')
 const SHIMS: ReadonlyArray<[pkg: string, shim: string, real: string]> = [
   ['vx', 'index.ts', 'src/index.ts'],
   ['vx-otel', 'index.ts', 'src/index.ts'],
-  ['vx-github', 'index.ts', 'src/index.ts'],
+  ['vx-ci', 'index.ts', 'src/index.ts'],
   ['vx-reapi', 'index.ts', 'src/index.ts'],
   ['vx-mcp', 'index.ts', 'src/index.ts'],
   ['vx-schedule-history', 'index.ts', 'src/index.ts'],
@@ -28,32 +28,27 @@ describe('root entry shims for compiled binaries', () => {
     for (const k of Object.keys(realMod)) expect(shimMod[k]).toBe(realMod[k])
   })
 
-  it.each([
-    'vx',
-    'vx-otel',
-    'vx-github',
-    'vx-reapi',
-    'vx-mcp',
-    'vx-schedule-history',
-    'vx-migrate',
-  ])('%s ships its shim (package.json files)', async (pkg) => {
-    const manifest = (await Bun.file(path.join(PACKAGES, pkg, 'package.json')).json()) as {
-      files: string[]
-      exports: Record<string, unknown>
-    }
-    expect(manifest.files).toContain('index.ts')
-    // Every subpath the exports map offers has a directory-convention twin,
-    // and the directory that twin lives in is shipped. Derived from the
-    // subpath, never a name: the one subpath dir core ever had (`plugins`)
-    // was still being published by name two days after it was deleted.
-    for (const sub of Object.keys(manifest.exports)) {
-      if (sub === '.') continue
-      const twin = path.join(PACKAGES, pkg, sub, 'index.ts')
-      expect({ sub, present: await Bun.file(twin).exists() }).toEqual({ sub, present: true })
-      expect({ sub, files: manifest.files }).toEqual({
-        sub,
-        files: expect.arrayContaining([sub.replace(/^\.\//, '').split('/')[0]!]),
-      })
-    }
-  })
+  it.each(['vx', 'vx-otel', 'vx-ci', 'vx-reapi', 'vx-mcp', 'vx-schedule-history', 'vx-migrate'])(
+    '%s ships its shim (package.json files)',
+    async (pkg) => {
+      const manifest = (await Bun.file(path.join(PACKAGES, pkg, 'package.json')).json()) as {
+        files: string[]
+        exports: Record<string, unknown>
+      }
+      expect(manifest.files).toContain('index.ts')
+      // Every subpath the exports map offers has a directory-convention twin,
+      // and the directory that twin lives in is shipped. Derived from the
+      // subpath, never a name: the one subpath dir core ever had (`plugins`)
+      // was still being published by name two days after it was deleted.
+      for (const sub of Object.keys(manifest.exports)) {
+        if (sub === '.') continue
+        const twin = path.join(PACKAGES, pkg, sub, 'index.ts')
+        expect({ sub, present: await Bun.file(twin).exists() }).toEqual({ sub, present: true })
+        expect({ sub, files: manifest.files }).toEqual({
+          sub,
+          files: expect.arrayContaining([sub.replace(/^\.\//, '').split('/')[0]!]),
+        })
+      }
+    },
+  )
 })

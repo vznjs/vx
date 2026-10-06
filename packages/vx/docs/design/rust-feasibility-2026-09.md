@@ -172,7 +172,7 @@ and they are TypeScript.
 
 The plugin seams are the product (`config` … `telemetry`, `commands`).
 Seven plugin packages are JS objects built with `definePlugin`:
-`vx-reapi`, `vx-otel`, `vx-github`, `vx-mcp`, `vx-migrate`,
+`vx-reapi`, `vx-otel`, `vx-ci`, `vx-mcp`, `vx-migrate`,
 `vx-lockfile` and `vx-schedule-history`. Together they are about 19k
 source lines and 31k test lines. Their hooks are called per task
 (`executor`, `cache`, `key`, `admit`, `telemetry`).
