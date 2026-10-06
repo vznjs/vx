@@ -38,6 +38,7 @@ import {
   type Lockfile,
   readLockfile,
   resolveCacheDir,
+  resolveStoreRoot,
   type ProjectEntry,
 } from '../workspace/index.js'
 import {
@@ -215,9 +216,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   mark('workspace config')
   // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
   // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  // A cache dir named anywhere holds everything; the default shares its
+  // entries through the user's store.
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
+  const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceConfig)
   const projectMetas =
     reused !== undefined
       ? reused.projects
@@ -278,6 +282,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     { read: policy.localRead, write: policy.localWrite },
     workspaceRoot,
     options.artifactCeiling,
+    'open',
+    storeRoot,
   )
   localCache.assertWritable()
   noteSchemaReset(localCache, (m) => log.status(m))

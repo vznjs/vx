@@ -3,7 +3,11 @@
 export interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the number of CPUs. */
   concurrency?: number
-  /** Cache directory, relative to the workspace root. Defaults to `.vx/cache`. */
+  /**
+   * Cache directory, relative to the workspace root. Named, it holds the whole
+   * cache and shares nothing; unset, the workspace keeps its index in
+   * `.vx/cache` and its entries in the user's shared store.
+   */
   cacheDir?: string
   /**
    * Default per-task timeout (ms) — the lowest-precedence fallback for a

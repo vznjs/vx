@@ -55,7 +55,7 @@ describe('the key fold (item 691)', () => {
       // @ts-expect-error: private member access for testing
       const db = cache.db as import('bun:sqlite').Database
       const salt = (
-        db.query("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+        db.query("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
           value: string
         }
       ).value

@@ -1091,8 +1091,34 @@ naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
 take it out of cache.inputs.files.` (A-50).
 
+By default the entries and their artifacts live in a **shared store**
+under the user's cache directory, and each workspace keeps only its own
+index there: every workspace of the user hits what another saved (a
+second clone, a worktree, a copy in CI's home), and none reads another's
+history. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
+
 ```
-<workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
+<user cache dir>/vx/store-v32/              the shared store; <user cache dir> is
+│                                           $XDG_CACHE_HOME, else ~/.cache (Linux)
+│                                           or ~/Library/Caches (macOS)
+├── store.db                                entries, entry_stdout, output_files,
+│                                           entry_inputs, store_meta
+└── <hash>.tar.zst                          the artifacts (below)
+
+<workspaceRoot>/.vx/cache/                  this workspace's own index
+└── cache.db                                run history, memos, output stamps;
+                                            attaches store.db as `store`
+```
+
+The store's directory is per index schema, so two vx versions on one
+machine never share one. A home this user cannot write keeps the store
+in `<workspaceRoot>/.vx/cache/store-v32/` instead, said once. Name a
+cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
+`VX_CACHE_DIR`, in that order of precedence, relative to the workspace
+root) and it holds everything, shared with no other workspace:
+
+```
+<cacheDir>/                                 (default .vx/cache when one is named)
 ├── .gitignore                              `*` — written when the dir is created, or into an
 │                                           existing dir that lacks one, so the cache is
 │                                           never committed and never enumerated as an
@@ -1284,10 +1310,13 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v31', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v32', in cache.ts)
+-- With a shared store, entries, entry_stdout, output_files, entry_inputs
+-- and store_meta live in its store.db, attached as `store`; the rest is
+-- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
@@ -1421,12 +1450,21 @@ CREATE TABLE output_files (
   size_bytes  INTEGER NOT NULL,
   mode        INTEGER NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  -- v28: inode + ctime after the save/restore that last wrote the file
-  -- (item 886); NULL until stamped, and a NULL row is never current.
-  ino         INTEGER,
-  ctime_ms    INTEGER,
   PRIMARY KEY (entry_hash, path),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+);
+
+-- v28, its own table since v32: inode + ctime THIS workspace saw after
+-- the save/restore that last wrote the file (item 886); no row is never
+-- current. Apart from the shared entry: two worktrees overwrote each
+-- other's stamps and every switch restored. No foreign key (the entry
+-- may be the store's); prune and re-save delete what they orphan.
+CREATE TABLE output_stamps (
+  entry_hash  TEXT NOT NULL,
+  path        TEXT NOT NULL,
+  ino         INTEGER NOT NULL,
+  ctime_ms    INTEGER NOT NULL,
+  PRIMARY KEY (entry_hash, path)
 );
 
 -- Each config's ORDERED import closure (the config first), so a warm
@@ -1446,8 +1484,7 @@ CREATE TABLE output_dirs (
   entry_hash  TEXT NOT NULL,
   path        TEXT NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path),
-  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+  PRIMARY KEY (entry_hash, path)       -- no foreign key since v32, as output_stamps
 );
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
@@ -1504,6 +1541,14 @@ CREATE TABLE entry_inputs (
   PRIMARY KEY (entry_hash, kind, name),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );
+
+-- v32: what belongs to the entries, not to one workspace: 'value_salt',
+-- the salt entry_inputs digests are taken under, so they compare with
+-- another workspace's run.
+CREATE TABLE store_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 ```
 
 WAL mode is on; readers don't block writers. `PRAGMA busy_timeout =
@@ -1515,7 +1560,7 @@ with `SQLITE_BUSY`.
 > and `plugin` rows hold `xxh3hex(salt + value)`, an unset env var the
 > literal `'unset'` — never the value, so a secret read as a cache input
 > does not land in `cache.db` as plaintext. The salt is 128 random bits
-> the store draws once (`schema_meta` key `value_salt`): `vx why` prints
+> the store draws once (`store_meta` key `value_salt`): `vx why` prints
 > these digests, and an unkeyed xxh3 in a public CI log let anyone
 > confirm or brute-force a short secret. The "why did this re-run?" diff
 > only needs to know a component changed, which the digest tells it.

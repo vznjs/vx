@@ -791,6 +791,13 @@ next?".
   `vx last` need stay in `metrics.ts`; the rest went.
 - **`vx why` / `vx last` stay.** Cache-miss explainability is a core
   promise; both read the local run history core already writes.
+- **Entries live in a store every workspace of the user shares (owner,
+  2026-10-05; schema v32).** `~/.cache/vx/store-v32` (`~/Library/Caches`
+  on macOS) holds the entries and artifacts; each workspace keeps its
+  history and memos in `.vx/cache` and attaches the store. A named
+  `cacheDir` / `VX_CACHE_DIR` / `--cache-dir` holds everything and
+  shares nothing; the test tasks, the bench harness and CI name one.
+  `docs/design/shared-store-2026-10.md`.
 
 ## Legacy map (what the old memory called things)
 

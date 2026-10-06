@@ -217,7 +217,7 @@ import { reapi } from '@vzn/vx-reapi'
 export default defineWorkspace({
   plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
   concurrency: 8,            // default: the cores this process may use
-  cacheDir: '.vx/cache',     // default: .vx/cache (relative to root)
+  cacheDir: 'build/.vx',     // unset: entries shared by your workspaces in ~/.cache/vx
   timeout: 600_000,
   cacheRetention: { olderThan: '30d', maxSize: '10G' },
 })
@@ -227,7 +227,7 @@ export default defineWorkspace({
 | ---------------- | --------------------------------------------------------------------- |
 | `plugins`        | asked in order; this machine is always last ([Plugins](../plugins/)) |
 | `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
-| `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
+| `cacheDir`       | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.cache/vx` and every workspace of yours hits them |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |

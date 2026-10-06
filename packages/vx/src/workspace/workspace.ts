@@ -1,5 +1,6 @@
 import { constants, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
@@ -349,13 +350,37 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
 }
 
 /**
- * Resolve the cache directory for a workspace. Respects the user's
- * `defineWorkspace({ cacheDir })` override (relative to the workspace
- * root) and falls back to `.vx/cache` when no config is set.
+ * The workspace's own cache directory (index, history, memos): the
+ * workspace's `cacheDir`, else `VX_CACHE_DIR`, else `.vx/cache`, relative
+ * to the workspace root.
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
-  const rel = config?.cacheDir ?? path.join('.vx', 'cache')
+  const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
   return path.resolve(root, rel)
+}
+
+/**
+ * Where the shared store lives: `vx` under this user's cache directory,
+ * so every workspace of the user hits what another saved. Null when the
+ * workspace names its cache (`cacheDir`, `VX_CACHE_DIR`): that directory
+ * then holds everything, as one workspace's alone. Null with no home.
+ */
+export function resolveStoreRoot(config: WorkspaceConfig | null): string | null {
+  if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
+  const base = userCacheHome()
+  return base === undefined ? null : path.join(base, 'vx')
+}
+
+/** The platform's per-user cache directory: XDG on Linux, Library/Caches on macOS. */
+function userCacheHome(): string | undefined {
+  const xdg = process.env['XDG_CACHE_HOME']
+  if (xdg !== undefined && path.isAbsolute(xdg)) return xdg
+  // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
+  const home = process.env['HOME'] || homedir()
+  if (home === '') return undefined
+  return process.platform === 'darwin'
+    ? path.join(home, 'Library', 'Caches')
+    : path.join(home, '.cache')
 }
 
 /**

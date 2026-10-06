@@ -73,7 +73,12 @@ export default defineProject({
         // FORCE_COLOR=0: the suite reads vx's and its tasks' output as text.
         env: {
           passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
-          define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', FORCE_COLOR: '0' },
+          define: {
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+            FORCE_COLOR: '0',
+            VX_CACHE_DIR: '.vx/cache',
+          },
         },
         sandbox: {
           allow: {

@@ -61,6 +61,7 @@ export {
   memberBaseDirs,
   PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
+  resolveStoreRoot,
   type ProjectEntry,
   type ProjectMeta,
   type Workspace,

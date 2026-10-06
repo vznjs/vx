@@ -99,7 +99,10 @@ jobs:
       # entry another run reads.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.cache/vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -161,7 +164,10 @@ jobs:
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.cache/vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # A cross-compile on a cold Bun cache, in bwrap: nothing warms
@@ -307,7 +313,10 @@ jobs:
       # vx's cache between runs, as in the linux job.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/Library/Caches/vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -328,7 +337,10 @@ jobs:
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/Library/Caches/vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on

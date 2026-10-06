@@ -94,6 +94,9 @@ class · `src/cache/cache.ts`
 ```ts
 export class Cache implements CacheLayer {
   readonly hasRemote
+  readonly storeDir: string | undefined
+  readonly storeFallback: string | null
+  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   static inspect(cacheDir: string): Cache
@@ -106,6 +109,7 @@ export class Cache implements CacheLayer {
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' = 'open',
+    storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
   getConfigClosures(configPaths: readonly string[]): Map<string, string[]>
@@ -775,6 +779,7 @@ export interface InfoFacts {
   }
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  cacheStore: string | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number

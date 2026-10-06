@@ -91,6 +91,7 @@ export function renderInfo(f: InfoFacts): string {
     ['workers', describeWorkers(f.workers)],
     ['memory', describeMemory(f.memory)],
     ['cache dir', f.cacheDir],
+    ['cache store', f.cacheStore ?? 'none: the cache dir holds the entries'],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', `${f.cacheEntries} (${formatBytes(f.cacheBytes)})`],
     // Only when there is something to say.

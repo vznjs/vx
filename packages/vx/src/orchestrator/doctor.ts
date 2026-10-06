@@ -7,7 +7,13 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
+import {
+  Cache,
+  CACHE_VERSION,
+  noteSchemaReset,
+  SCHEMA_VERSION,
+  storeDirOf,
+} from '../cache/index.js'
 import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -28,6 +34,7 @@ import {
   lockfilePath,
   type ProjectMeta,
   resolveCacheDir,
+  resolveStoreRoot,
 } from '../workspace/index.js'
 import { flakyTasks, type FlakyTask } from './failure-mode.js'
 import type { VxPlugin } from './plugin.js'
@@ -81,6 +88,8 @@ export interface InfoFacts {
    */
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  /** The shared store holding the entries, or null when `cacheDir` holds them. */
+  cacheStore: string | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number
@@ -149,6 +158,7 @@ async function collectWorkspaceInfo(
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
   const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
+  const storeRoot = opts.cacheDir === undefined ? resolveStoreRoot(workspaceConfig) : null
   const cache = Cache.inspect(cacheDir)
   noteSchemaReset(cache, warn)
   let stats
@@ -232,6 +242,8 @@ async function collectWorkspaceInfo(
     workers: workersFact(workspaceConfig?.concurrency),
     memory: memoryFact(),
     cacheDir,
+    // The store the index records, else the one a first run would open.
+    cacheStore: cache.storeDir ?? (storeRoot === null ? null : storeDirOf(storeRoot)),
     // The two versions a bug report needs and the reset notice names: the
     // key prefix (a bump orphans every entry) and the index schema (a
     // mismatch drops every table).

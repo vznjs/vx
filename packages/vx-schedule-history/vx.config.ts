@@ -63,7 +63,13 @@ export default defineProject({
       exec: {
         command: 'bun test --only-failures',
         // Fixture repos assume git's defaults; a global config may sign commits.
-        env: { define: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } },
+        env: {
+          define: {
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+            VX_CACHE_DIR: '.vx/cache',
+          },
+        },
         sandbox: {
           allow: {
             read: ['**/*'],

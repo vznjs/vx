@@ -1419,7 +1419,7 @@ export default defineWorkspace({
 interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the cores this process may use (the CPU count, capped by a cgroup quota). */
   concurrency?: number
-  /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
+  /** Cache directory, relative to workspace root. Named, it holds the whole cache; unset, entries live in the user's shared store. */
   cacheDir?: string
   /** Default per-task timeout (ms) for tasks without their own exec.timeout. */
   timeout?: number
@@ -1442,7 +1442,13 @@ interface WorkspaceConfig {
   `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task's
   process group is SIGTERMed and the task reported `failed`. Purely a safety net — never folded
   into a cache key (a timed-out task fails and is never cached).
-- **`cacheDir`** — relative paths are resolved against the workspace
+- **`cacheDir`** — unset, the workspace keeps its index and history in
+  `.vx/cache` and its entries and artifacts in the user's shared store
+  (`~/.cache/vx`, `~/Library/Caches/vx` on macOS), where every other
+  workspace of the user hits them (`docs/caching.md`). Named here, by
+  `VX_CACHE_DIR`, or by `--cache-dir`, the directory holds the whole
+  cache, shared with no other workspace.
+  Relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
