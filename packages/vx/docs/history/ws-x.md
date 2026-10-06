@@ -10,3 +10,8 @@ time (bugs, correctness, simplification, the plugin seams).
   each graph plugin, and the refusal names the plugin and the field.
   Row: `plugin-pipeline.test.ts` › "a task config a plugin breaks is
   refused, naming the plugin and the field".
+- **X-2.** A command ending in a newline (a template literal's closing
+  line) ran the args after `--` as a command of their own:
+  `--watch: not found`, exit 127. They now go on the last line, after
+  trailing blanks are dropped, unless an odd run of backslashes ends the
+  command. Rows: `runner.test.ts` › `withForwardArgs`.
