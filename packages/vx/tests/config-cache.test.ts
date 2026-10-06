@@ -377,13 +377,21 @@ describe('configEvalKey', () => {
   })
 
   it('an `import` the scan cannot place evaluates live rather than keying without it (item 952)', async () => {
-    // A property named `import` is no import, but the scan cannot tell it from
+    // A member named `import` is no import, but the scan cannot tell it from
     // one it failed to parse, so it fails closed.
     const cfg = await write(
       'packages/a/vx.config.mjs',
-      "export default { import: 1, tasks: { build: { exec: { command: 'echo hi' } } } }\n",
+      "const o = { x: 1 }\nexport default { x: o.import, tasks: { build: { exec: { command: 'echo hi' } } } }\n",
     )
     expect(await keyedOf(cfg)).toBeNull()
+    // A KEY named `import` (a task) is placed: nothing that imports puts a
+    // colon after the word. The vx-docs config declares one and evaluated
+    // live on every run.
+    const key = await write(
+      'packages/k/vx.config.mjs',
+      "export default { tasks: { import : { exec: { command: 'echo hi' } } } }\n",
+    )
+    expect((await keyedOf(key))?.closure).toEqual([key])
     const plain = await write(
       'packages/b/vx.config.mjs',
       "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
