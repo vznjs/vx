@@ -13,9 +13,8 @@ A workspace's cache splits in two:
   `entry_stdout`, `output_files`, `entry_inputs`, `store_meta` in
   `store.db`, and `<hash>.tar.zst` beside it. Content-addressed, so any
   workspace of the user may read it. Default:
-  `<user cache dir>/vx/store-v32` (`~/.cache` on
-  Linux, `~/Library/Caches` on macOS; an absolute `$XDG_CACHE_HOME` wins
-  on both).
+  `~/.vx/cache/store-v32` on every platform (owner, 2026-10-06; the
+  first cut used `~/.cache/vx` / `~/Library/Caches/vx`).
 - **The workspace index** — `<root>/.vx/cache/cache.db`: run history,
   the file-hash and blob memos, config evaluations, and what this
   checkout's disk looked like after a save or restore (`output_stamps`,

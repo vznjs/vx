@@ -2,7 +2,7 @@
 // and memos in its own `.vx/cache`, and the entries and artifacts live in
 // the user's shared store, so one workspace hits what another saved. The
 // suite runs with VX_CACHE_DIR set (vx.config.ts); every row here unsets
-// it and points XDG_CACHE_HOME at a temp directory of its own.
+// it and points HOME at a temp directory of its own.
 
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
@@ -32,14 +32,14 @@ const BUILD = `export default {
 `
 
 const saved = { ...process.env }
-let xdg: string
+let home: string
 const made: string[] = []
 
 beforeEach(async () => {
-  xdg = await mkdtemp(path.join(os.tmpdir(), 'vx-xdg-'))
-  made.push(xdg)
+  home = await mkdtemp(path.join(os.tmpdir(), 'vx-home-'))
+  made.push(home)
   delete process.env['VX_CACHE_DIR']
-  process.env['XDG_CACHE_HOME'] = xdg
+  process.env['HOME'] = home
 })
 
 afterEach(async () => {
@@ -47,7 +47,7 @@ afterEach(async () => {
   await Promise.all(made.splice(0).map((d) => rm(d, { recursive: true, force: true })))
 })
 
-const store = (): string => path.join(xdg, 'vx', `store-${SCHEMA_VERSION}`)
+const store = (): string => path.join(home, '.vx', 'cache', `store-${SCHEMA_VERSION}`)
 
 async function workspace(input = 'hi\n'): Promise<Fixture & { pkg: string }> {
   const f = await makeWorkspace('vx-shared-')
@@ -132,13 +132,13 @@ describe('the shared store', () => {
     const b = await workspace()
     await build(a)
     expect((await build(b)).status).toBe('success')
-    expect(existsSync(path.join(xdg, 'vx'))).toBe(false)
+    expect(existsSync(path.join(home, '.vx'))).toBe(false)
     expect(existsSync(path.join(a.root, '.vx', 'own', 'cache.db'))).toBe(true)
   })
 
   it('an unusable store keeps the entries in the workspace, said once', async () => {
     // A file where the store's root should be: mkdir fails as any user.
-    await writeFile(path.join(xdg, 'vx'), '')
+    await writeFile(path.join(home, '.vx'), '')
     const a = await workspace()
     expect((await build(a)).status).toBe('success')
     expect((await build(a)).status).toBe('cache-hit')
@@ -183,18 +183,9 @@ describe('the shared store', () => {
 })
 
 describe('resolveStoreRoot', () => {
-  it("is vx under the user's cache directory", () => {
-    expect(resolveStoreRoot(null)).toBe(path.join(xdg, 'vx'))
-  })
-
-  it('ignores a relative XDG_CACHE_HOME, as the spec says to', () => {
-    process.env['XDG_CACHE_HOME'] = 'rel'
-    process.env['HOME'] = '/home/someone'
-    const base =
-      process.platform === 'darwin'
-        ? path.join('/home/someone', 'Library', 'Caches')
-        : path.join('/home/someone', '.cache')
-    expect(resolveStoreRoot(null)).toBe(path.join(base, 'vx'))
+  it('is ~/.vx/cache on every platform', () => {
+    process.env['XDG_CACHE_HOME'] = '/elsewhere'
+    expect(resolveStoreRoot(null)).toBe(path.join(home, '.vx', 'cache'))
   })
 
   it('is null when the workspace names its cache dir', () => {

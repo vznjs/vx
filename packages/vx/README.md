@@ -14,7 +14,7 @@ vx run build --all
 - Source, benchmarks and the plugin packages: <https://github.com/vznjs/vx>
 
 Core applies no plugin by default and ships none; running here and
-caching on this machine (entries in `~/.cache/vx`, shared by every
+caching on this machine (entries in `~/.vx/cache`, shared by every
 workspace of the user) are its floor, so a workspace with no
 `vx.workspace.ts` runs. Scheduling by learned critical path:
 `@vzn/vx-schedule-history`. Remote caching and execution:

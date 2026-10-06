@@ -360,27 +360,16 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 }
 
 /**
- * Where the shared store lives: `vx` under this user's cache directory,
- * so every workspace of the user hits what another saved. Null when the
+ * Where the shared store lives: `~/.vx/cache` (owner, 2026-10-06), so
+ * every workspace of the user hits what another saved. Null when the
  * workspace names its cache (`cacheDir`, `VX_CACHE_DIR`): that directory
  * then holds everything, as one workspace's alone. Null with no home.
  */
 export function resolveStoreRoot(config: WorkspaceConfig | null): string | null {
   if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
-  const base = userCacheHome()
-  return base === undefined ? null : path.join(base, 'vx')
-}
-
-/** The platform's per-user cache directory: XDG on Linux, Library/Caches on macOS. */
-function userCacheHome(): string | undefined {
-  const xdg = process.env['XDG_CACHE_HOME']
-  if (xdg !== undefined && path.isAbsolute(xdg)) return xdg
   // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
   const home = process.env['HOME'] || homedir()
-  if (home === '') return undefined
-  return process.platform === 'darwin'
-    ? path.join(home, 'Library', 'Caches')
-    : path.join(home, '.cache')
+  return home === '' ? null : path.join(home, '.vx', 'cache')
 }
 
 /**

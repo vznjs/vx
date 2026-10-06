@@ -1092,15 +1092,13 @@ reads it to derive a cache key. Make it readable, or, for a task input,
 take it out of cache.inputs.files.` (A-50).
 
 By default the entries and their artifacts live in a **shared store**
-under the user's cache directory, and each workspace keeps only its own
-index there: every workspace of the user hits what another saved (a
+in `~/.vx/cache`, and each workspace keeps only its own
+index in its `.vx/cache`: every workspace of the user hits what another saved (a
 second clone, a worktree, a copy in CI's home), and none reads another's
 history. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```
-<user cache dir>/vx/store-v32/              the shared store; <user cache dir> is
-│                                           $XDG_CACHE_HOME, else ~/.cache (Linux)
-│                                           or ~/Library/Caches (macOS)
+~/.vx/cache/store-v32/                      the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, store_meta
 └── <hash>.tar.zst                          the artifacts (below)

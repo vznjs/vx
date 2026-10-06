@@ -237,9 +237,8 @@ Resolves the cache directory:
 
 ### `resolveStoreRoot(config)`
 
-Where the shared store lives: `vx` under the user's cache directory
-(an absolute `$XDG_CACHE_HOME`, else `~/.cache`, or
-`~/Library/Caches` on macOS; `$HOME` before the passwd entry). Null
+Where the shared store lives: `~/.vx/cache` on every platform
+(`$HOME` before the passwd entry). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
 which then holds everything, or with no home. `Cache` appends the
 schema (`storeDirOf`). A run given `--cache-dir` passes null itself.
