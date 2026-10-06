@@ -12,6 +12,7 @@
 // See docs/design/observability-architecture-2026-06.md §1, §3.
 
 import type { EventBus } from './events.js'
+import type { TaskNode } from '../graph/index.js'
 import type {
   RunContextRecord,
   RunSummaryRecord,
@@ -30,6 +31,8 @@ export interface TelemetryHandle {
   flush(): Promise<void>
   /** Remove the bus subscription. Idempotent. */
   dispose(): void
+  /** Sample a running task's process tree; see `TelemetrySource.track`. */
+  readonly track?: (taskId: string, pid: number) => () => void
 }
 
 /** Reject anything that is not sink-shaped, naming what arrived. */
@@ -68,6 +71,7 @@ export async function subscribeTelemetry(
   ctx: TelemetryContext,
   run: RunContextRecord,
   extraSinks?: readonly TelemetrySink[],
+  nodes?: ReadonlyMap<string, TaskNode>,
 ): Promise<TelemetryHandle | undefined> {
   const sinks: TelemetrySink[] = extraSinks === undefined ? [] : [...extraSinks]
   const owners = new Map<TelemetrySink, string>()
@@ -109,7 +113,13 @@ export async function subscribeTelemetry(
 
   if (sinks.length === 0) return undefined
 
-  const source = createTelemetrySource({ sinks, run, warn: (m) => ctx.warn(m), owners })
+  const source = createTelemetrySource({
+    sinks,
+    run,
+    warn: (m) => ctx.warn(m),
+    owners,
+    ...(nodes !== undefined ? { nodes } : {}),
+  })
   // The bus's unsubscribe is idempotent, so it is the handle's dispose as
   // is (a once-flag here survived item 654).
   const dispose = bus.subscribe(source.subscriber)
@@ -117,5 +127,6 @@ export async function subscribeTelemetry(
     emitSummary: (summary) => source.emitSummary(summary),
     flush: () => source.flush(),
     dispose,
+    ...(source.track !== undefined ? { track: source.track } : {}),
   }
 }

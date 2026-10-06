@@ -519,6 +519,7 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
 }
@@ -1918,6 +1919,7 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[]
 }
 ```
 
@@ -2180,6 +2182,7 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -2243,6 +2246,13 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  failedAttempts?: readonly FailedAttempt[]
+  flaky?: { passes: number; failures: number }
+  sandboxViolationLines?: readonly string[]
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -2320,6 +2330,7 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      dependsOn?: readonly string[]
       ts: number
     }
   | {
@@ -2330,6 +2341,15 @@ export type TelemetryRecord =
       stream: 'stdout' | 'stderr'
       chunk: string
       ts: number
+    }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      cpuMs: number
+      rssBytes: number
     }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }

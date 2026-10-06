@@ -808,6 +808,8 @@ export interface SandboxedRunArgs {
   onStderr?: (chunk: string) => void
   /** See `RunOptions.liveChildren` — same contract for sandboxed spawns. */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** See `RunOptions.onSpawn`. */
+  onSpawn?: (pid: number) => void
   /** `ExecuteRequest.signal`: once aborted, the tracer retry spawns nothing. */
   signal?: AbortSignal
   /** See `RunOptions.timeoutMs` — SIGTERM the child after this many ms. */
@@ -1836,6 +1838,7 @@ async function runSandboxedOnce(
   }
 
   args.liveChildren?.add(proc)
+  args.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, args.timeoutMs)
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.

@@ -328,17 +328,37 @@ export default defineWorkspace({
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
 | `timeoutMs`       | `OTEL_EXPORTER_OTLP_TIMEOUT`           | `15000`                 |
 | `compression`     | `OTEL_EXPORTER_OTLP_COMPRESSION` (and `_<SIGNAL>_`) | `'none'`   |
+| `live`            | none: send each task as it ends        | `false`                 |
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
-| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
-| metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`                          |
-| a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |
+| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready`, `vx.task.command`, `vx.task.flaky.*`, `vx.cache.stored_*` (on a hit), `vx.task.admission_held_ms`; links to the tasks it waited on; `vx.task.retry`, `vx.task.timeout` and `vx.sandbox.violation` events |
+| a span per stage  | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_TIMING` stages), with `vx.stage.name` |
+| metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`, `vx.run.time_saved_ms` |
+| metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory`, `vx.task.time_saved`, `vx.task.admission_held` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs; each point names its span as an exemplar |
+| a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |
+| every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`: one key joins a run's traces, metrics and logs |
+
+With `live: true` (say, `otel({ live: process.env.CI === 'true' })`) each
+task is sent as it ends, and a log record as the run and each task start,
+so a dashboard follows a CI run while it runs; the run span follows at
+the end.
 
 A failed task sets its span status to `ERROR`. A failed export warns once
 and names the reply; a slow collector is cut off after `timeoutMs`, and
 the run still exits green.
+
+To see it on your machine, run
+[otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer), a
+single binary that shows traces, metrics and logs:
+
+```sh
+brew tap ctrlspice/otel-desktop-viewer
+brew install --cask otel-desktop-viewer
+otel-desktop-viewer
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
+```
 
 ## vx mcp
 

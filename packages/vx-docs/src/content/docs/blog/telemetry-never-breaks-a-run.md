@@ -22,7 +22,7 @@ vx's `telemetry` capability makes it a structure instead.
 ```ts
 interface TelemetrySink {
   readonly name?: string
-  readonly wants?: ReadonlyArray<'run.start' | 'task.start' | 'task.end' | 'task.log' | 'run.end'>
+  readonly wants?: ReadonlyArray<'run.start' | 'task.start' | 'task.end' | 'task.log' | 'task.sample' | 'run.end'>
   onRecord?(record: TelemetryRecord): void          // must return promptly; buffer here
   onRunSummary?(summary: RunSummaryRecord): void    // one per run, at the end
   flush?(signal: AbortSignal): Promise<void>        // awaited at end of run, time-bounded;

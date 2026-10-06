@@ -1,10 +1,10 @@
 // The OTLP telemetry sink — accumulates a run's records into OTLP trace +
-// metric payloads and ships them over HTTP/JSON. Observe-only: it implements
+// metric payloads and ships them over HTTP/JSON, at the run's end or, live,
+// as each task ends. Observe-only: it implements
 // core's TelemetrySink (records in, nothing out). Never-fail: every network
 // error is swallowed, the POST is time-bounded, and the upload is idempotent —
 // a down collector can never affect a run.
 
-import { randomBytes } from 'node:crypto'
 import { TaskLogBuffer } from '@vzn/vx'
 import type {
   RunContextRecord,
@@ -13,13 +13,22 @@ import type {
   TelemetryRecord,
   TelemetrySink,
 } from '@vzn/vx'
+import type { TaskLogEntry } from '@vzn/vx'
 import {
+  buildEventLogsRequest,
   buildLogsRequest,
   buildMetricsRequest,
+  buildTaskMetricsRequest,
   buildTraceRequest,
+  type LiveEvent,
   type OtlpSpan,
+  type TaskMetricPoint,
+  runResource,
   runSpanAttributes,
   SPAN_KIND_INTERNAL,
+  dependencyLink,
+  stageSpan,
+  taskSpanEvents,
   runStatusCode,
   taskSpanAttributes,
   taskStatusCode,
@@ -60,6 +69,8 @@ export interface OtelSinkConfig {
   gzip?: readonly OtelSignal[]
   /** Per signal: a collector's CA, and a client certificate for mutual TLS. */
   tls?: Partial<Record<OtelSignal, OtlpTls>>
+  /** Send each task's span, metrics and log as it ends, not all at the run's end. */
+  live?: boolean
   /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
   tracesEnabled?: boolean
   metricsEnabled: boolean
@@ -245,7 +256,7 @@ function partialSuccess(body: string): string | undefined {
 }
 
 function genId(bytes: number): string {
-  return randomBytes(bytes).toString('hex')
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString('hex')
 }
 
 /** ms → unix-nano decimal string (OTLP int64-as-string). */
@@ -269,8 +280,21 @@ export class OtelSink implements TelemetrySink {
   private rootStartNano = '0'
   private rootEndNano = '0'
   private readonly spans: OtlpSpan[] = []
+  private readonly taskPoints: TaskMetricPoint[] = []
+  private readonly taskNames = new Map<string, { project: string; task: string; startMs: number }>()
+  private readonly lastSample = new Map<string, { ts: number; cpuMs: number }>()
   private readonly taskSpanId = new Map<string, string>()
   private readonly taskStartNano = new Map<string, string>()
+  private readonly taskDeps = new Map<string, readonly string[]>()
+  private readonly taskCommand = new Map<string, string>()
+  private readonly taskEndNano = new Map<string, string>()
+  /** Resource attributes: the run's, under `OTEL_RESOURCE_ATTRIBUTES`. */
+  private resource: Readonly<Record<string, string>> = {}
+  // Live mode: what ended since the last send; one send in flight at a time.
+  private readonly liveLogs: TaskLogEntry[] = []
+  private readonly liveEvents: LiveEvent[] = []
+  private pumping: Promise<void> | undefined
+  private readonly warnedLive = new Set<OtelSignal>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
   // Core's own bounded capture buffer, so which task's output survives a
@@ -293,6 +317,7 @@ export class OtelSink implements TelemetrySink {
       tls: config.tls ?? {},
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
+      live: config.live === true,
       tracesEnabled: config.tracesEnabled !== false,
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
@@ -301,9 +326,14 @@ export class OtelSink implements TelemetrySink {
       post: config.post ?? defaultPost(config.timeoutMs),
       ...(config.warn ? { warn: config.warn } : {}),
     }
-    this.wants = config.logsEnabled
-      ? ['run.start', 'task.start', 'task.log', 'task.end', 'run.end']
-      : ['run.start', 'task.start', 'task.end', 'run.end']
+    this.wants = [
+      'run.start',
+      'task.start',
+      ...(config.logsEnabled ? (['task.log'] as const) : []),
+      ...(config.metricsEnabled ? (['task.sample'] as const) : []),
+      'task.end',
+      'run.end',
+    ]
   }
 
   onRecord(record: TelemetryRecord): void {
@@ -317,16 +347,73 @@ export class OtelSink implements TelemetrySink {
         // it is what the summary reports and what a receiver stores.
         this.rootStartNano = nanos(record.startedAt)
         this.runStartedAt = record.startedAt
+        this.resource = { ...runResource(record.run), ...this.cfg.resource }
+        this.liveEvent({
+          name: 'vx.run.start',
+          timeUnixNano: this.rootStartNano,
+          body: `${record.run.command}: ${record.total} tasks`,
+        })
         return
-      case 'task.start':
-        this.taskSpanId.set(record.taskId, genId(8))
+      case 'task.start': {
+        const spanId = genId(8)
+        this.taskSpanId.set(record.taskId, spanId)
         this.taskStartNano.set(record.taskId, nanos(record.ts))
+        if (record.command !== undefined) this.taskCommand.set(record.taskId, record.command)
+        if (record.dependsOn !== undefined) this.taskDeps.set(record.taskId, record.dependsOn)
+        this.liveEvent({
+          name: 'vx.task.start',
+          timeUnixNano: nanos(record.ts),
+          body:
+            record.command === undefined ? record.taskId : `${record.taskId}: ${record.command}`,
+          taskId: record.taskId,
+          spanId,
+        })
+        this.taskNames.set(record.taskId, {
+          project: record.project,
+          task: record.task,
+          startMs: record.ts,
+        })
         return
+      }
+      case 'task.sample': {
+        // Usage is the CPU the tree spent since the last look, over the
+        // wall time between: the first look counts from the task's start.
+        const names = this.taskNames.get(record.taskId)
+        if (names === undefined) return
+        const prev = this.lastSample.get(record.taskId) ?? { ts: names.startMs, cpuMs: 0 }
+        const wallMs = record.ts - prev.ts
+        // A descendant that exited takes its CPU out of the sum: no negative usage.
+        const cpuUsage = wallMs > 0 ? Math.max(0, record.cpuMs - prev.cpuMs) / wallMs : 0
+        this.lastSample.set(record.taskId, { ts: record.ts, cpuMs: record.cpuMs })
+        this.taskPoints.push({
+          kind: 'sample',
+          taskId: record.taskId,
+          project: names.project,
+          task: names.task,
+          timeUnixNano: nanos(record.ts),
+          cpuUsage,
+          rssBytes: record.rssBytes,
+          ...this.spanOf(record.taskId),
+        })
+        this.kick()
+        return
+      }
       case 'task.log':
         this.logs.append(record.taskId, record.chunk)
         return
       case 'task.end': {
-        const spanId = this.taskSpanId.get(record.taskId) ?? genId(8)
+        // A task that never started (a skip) still gets a span, and a later
+        // task that waited on it links to it.
+        let spanId = this.taskSpanId.get(record.taskId)
+        if (spanId === undefined) {
+          spanId = genId(8)
+          this.taskSpanId.set(record.taskId, spanId)
+        }
+        const links = (this.taskDeps.get(record.taskId) ?? []).flatMap((dep) => {
+          const depSpan = this.taskSpanId.get(dep)
+          return depSpan === undefined ? [] : [dependencyLink(this.traceId, depSpan, dep)]
+        })
+        const events = taskSpanEvents(record, nanos(record.ts))
         const startNano =
           this.taskStartNano.get(record.taskId) ?? nanos(record.ts - record.durationMs)
         const t: TaskTelemetry = record
@@ -342,14 +429,36 @@ export class OtelSink implements TelemetrySink {
             runId: this.runId,
             workspaceId: this.run?.workspaceId ?? '',
             startedAt: this.runStartedAt,
+            ...(this.taskCommand.has(record.taskId)
+              ? { command: this.taskCommand.get(record.taskId)! }
+              : {}),
           }),
           status: { code: taskStatusCode(t) },
+          ...(events.length > 0 ? { events } : {}),
+          ...(links.length > 0 ? { links } : {}),
         })
+        // A skipped task never ran: a zero duration would read as a fast one.
+        if (record.status !== 'skipped') {
+          this.taskPoints.push({
+            kind: 'end',
+            task: t,
+            startUnixNano: startNano,
+            endUnixNano: nanos(record.ts),
+            ...this.spanOf(record.taskId),
+          })
+        }
+        this.lastSample.delete(record.taskId)
+        this.taskEndNano.set(record.taskId, nanos(record.ts))
         // Decides retention: a cache hit's bytes belong to the run that
         // executed them, so only an executed success/failure keeps a tail.
         if (this.cfg.logsEnabled) {
           this.logs.finish(record.taskId, record.status, record.cacheSource, record.hash)
+          if (this.cfg.live) {
+            const entry = this.logs.takeEntry(record.taskId)
+            if (entry !== undefined) this.liveLogs.push(entry)
+          }
         }
+        this.kick()
         return
       }
       case 'run.end':
@@ -361,6 +470,79 @@ export class OtelSink implements TelemetrySink {
   /** Core's flush deadline, passed to every POST. */
   private deadline: AbortSignal | undefined
 
+  /** The task's span, for its metric points' exemplars; none with traces off. */
+  private spanOf(taskId: string): { span?: { traceId: string; spanId: string } } {
+    const spanId = this.taskSpanId.get(taskId)
+    return this.cfg.tracesEnabled && this.traceId && spanId !== undefined
+      ? { span: { traceId: this.traceId, spanId } }
+      : {}
+  }
+
+  private liveEvent(event: LiveEvent): void {
+    if (this.cfg.live && this.cfg.logsEnabled) this.liveEvents.push(event)
+  }
+
+  /** Live mode: send what is waiting, unless a send is already on its way (it takes it next). */
+  private kick(): void {
+    if (!this.cfg.live || this.pumping !== undefined || this.uploaded) return
+    this.pumping = Promise.resolve()
+      .then(() => this.pump())
+      .finally(() => {
+        this.pumping = undefined
+      })
+  }
+
+  private async pump(): Promise<void> {
+    while (
+      this.spans.length + this.taskPoints.length + this.liveLogs.length + this.liveEvents.length >
+      0
+    ) {
+      const spans = this.spans.splice(0)
+      const points = this.taskPoints.splice(0)
+      const logs = this.liveLogs.splice(0)
+      const events = this.liveEvents.splice(0)
+      await Promise.all([
+        this.shipSpans(spans, true),
+        this.shipPoints(points),
+        this.shipLiveLogs(logs, events),
+      ])
+    }
+  }
+
+  private async shipPoints(points: TaskMetricPoint[]): Promise<void> {
+    if (!this.cfg.metricsEnabled || points.length === 0) return
+    const vxVersion = this.run?.vxVersion ?? '0.0.0'
+    const bodies = requestBodies(points, (group) =>
+      JSON.stringify(
+        buildTaskMetricsRequest(this.cfg.serviceName, vxVersion, group, this.resource),
+      ),
+    )
+    await this.send('metrics', this.cfg.metricsUrl, bodies, true)
+  }
+
+  private async shipLiveLogs(logs: TaskLogEntry[], events: LiveEvent[]): Promise<void> {
+    if (!this.cfg.logsEnabled) return
+    const bodies = [
+      ...(logs.length > 0 ? this.logBodies(logs) : []),
+      ...(events.length > 0
+        ? requestBodies(events, (group) =>
+            JSON.stringify(
+              buildEventLogsRequest({
+                serviceName: this.cfg.serviceName,
+                vxVersion: this.run?.vxVersion ?? '0.0.0',
+                runId: this.runId,
+                workspaceId: this.run?.workspaceId ?? '',
+                events: group,
+                resource: this.resource,
+                ...(this.cfg.tracesEnabled && this.traceId ? { traceId: this.traceId } : {}),
+              }),
+            ),
+          )
+        : []),
+    ]
+    if (bodies.length > 0) await this.send('logs', this.cfg.logsUrl, bodies, true)
+  }
+
   onRunSummary(summary: RunSummaryRecord): void {
     this.summary = summary
   }
@@ -369,6 +551,11 @@ export class OtelSink implements TelemetrySink {
     if (this.uploaded) return
     this.uploaded = true
     this.deadline = signal
+    // Live: what is on its way lands before the rest, which the run's end sends.
+    if (this.cfg.live) {
+      await this.pumping
+      await this.pump()
+    }
     // Finalize the root span now that the run is over (run.end set the end).
     if (this.run !== undefined && this.traceId) {
       // Prefer the summary's own start/end: they are the run's canonical
@@ -391,48 +578,79 @@ export class OtelSink implements TelemetrySink {
         attributes: runSpanAttributes(this.run, this.summary),
         status: { code: runStatusCode(this.summary) },
       })
+      const stages = (this.summary?.stages ?? []).map((stage) =>
+        stageSpan(this.traceId, this.rootSpanId, stage, genId(8)),
+      )
+      this.spans.splice(1, 0, ...stages)
     }
-    const vxVersion = this.run?.vxVersion ?? '0.0.0'
-    await Promise.all([this.shipTraces(vxVersion), this.shipMetrics(), this.shipLogs(vxVersion)])
+    await Promise.all([this.shipTraces(), this.shipMetrics(), this.shipLogs()])
   }
 
-  private async shipTraces(vxVersion: string): Promise<void> {
-    if (this.cfg.tracesEnabled === false || this.spans.length === 0) return
-    const bodies = requestBodies(this.spans, (spans) =>
-      JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, spans, this.cfg.resource)),
+  private async shipTraces(): Promise<void> {
+    await this.shipSpans(this.spans, false)
+  }
+
+  private async shipSpans(spans: OtlpSpan[], live: boolean): Promise<void> {
+    if (this.cfg.tracesEnabled === false || spans.length === 0) return
+    const vxVersion = this.run?.vxVersion ?? '0.0.0'
+    const bodies = requestBodies(spans, (group) =>
+      JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, group, this.resource)),
     )
-    await this.send('traces', this.cfg.tracesUrl, bodies)
+    await this.send('traces', this.cfg.tracesUrl, bodies, live)
   }
 
   private async shipMetrics(): Promise<void> {
     if (!this.cfg.metricsEnabled || this.summary === undefined) return
-    const body = JSON.stringify(
-      buildMetricsRequest(
-        this.cfg.serviceName,
-        this.summary,
-        nanos(this.summary.endedAt),
-        nanos(this.summary.startedAt),
-        this.cfg.resource,
-      ),
-    )
-    await this.send('metrics', this.cfg.metricsUrl, [body])
+    const summary = this.summary
+    const vxVersion = this.run?.vxVersion ?? '0.0.0'
+    const first = this.taskPoints[0]
+    // The run's own metrics ride with the first batch of per-task points.
+    const bodies =
+      first === undefined
+        ? [this.runMetricsBody(summary, [])]
+        : requestBodies(this.taskPoints, (points) =>
+            points[0] === first
+              ? this.runMetricsBody(summary, points)
+              : JSON.stringify(
+                  buildTaskMetricsRequest(this.cfg.serviceName, vxVersion, points, this.resource),
+                ),
+          )
+    await this.send('metrics', this.cfg.metricsUrl, bodies)
   }
 
-  private async shipLogs(vxVersion: string): Promise<void> {
+  private runMetricsBody(summary: RunSummaryRecord, points: TaskMetricPoint[]): string {
+    return JSON.stringify(
+      buildMetricsRequest(
+        this.cfg.serviceName,
+        summary,
+        nanos(summary.endedAt),
+        nanos(summary.startedAt),
+        this.resource,
+        points,
+      ),
+    )
+  }
+
+  private async shipLogs(): Promise<void> {
     if (!this.cfg.logsEnabled) return
-    const workspaceId = this.run?.workspaceId ?? ''
-    const bundle = this.logs.drain(this.runId, workspaceId)
+    const bundle = this.logs.drain(this.runId, this.run?.workspaceId ?? '')
     if (bundle.tasks.length === 0) return
-    const bodies = requestBodies(bundle.tasks, (entries) =>
+    await this.send('logs', this.cfg.logsUrl, this.logBodies(bundle.tasks))
+  }
+
+  private logBodies(tasks: readonly TaskLogEntry[]): string[] {
+    const now = nanos(this.summary?.endedAt ?? Date.now())
+    return requestBodies(tasks, (entries) =>
       JSON.stringify(
         buildLogsRequest({
           serviceName: this.cfg.serviceName,
-          resource: this.cfg.resource,
-          vxVersion,
+          resource: this.resource,
+          vxVersion: this.run?.vxVersion ?? '0.0.0',
           runId: this.runId,
-          workspaceId,
+          workspaceId: this.run?.workspaceId ?? '',
           entries,
-          timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
+          timeUnixNano: now,
+          timeFor: (taskId) => this.taskEndNano.get(taskId),
           // Traces off: the trace and its spans are never exported, and a
           // record naming them links nowhere (F-49).
           ...(this.cfg.tracesEnabled && this.traceId
@@ -441,7 +659,6 @@ export class OtelSink implements TelemetrySink {
         }),
       ),
     )
-    await this.send('logs', this.cfg.logsUrl, bodies)
   }
 
   /** The transport, under the signal's own timeout when it has one (F-49). */
@@ -450,8 +667,16 @@ export class OtelSink implements TelemetrySink {
     return own === undefined || this.injected ? this.cfg.post : defaultPost(own)
   }
 
-  /** POSTs every body at once; one warning per signal, however many fail. */
-  private async send(signal: OtelSignal, url: string, bodies: readonly string[]): Promise<void> {
+  /**
+   * POSTs every body at once; one warning per signal, however many fail, and
+   * live sends (`once`) one per signal for the whole run.
+   */
+  private async send(
+    signal: OtelSignal,
+    url: string,
+    bodies: readonly string[],
+    once = false,
+  ): Promise<void> {
     const gzip = this.cfg.gzip.includes(signal)
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -476,6 +701,10 @@ export class OtelSink implements TelemetrySink {
     ).filter((m) => m !== undefined)
     // export is fully optional — a down collector never affects a run
     if (failed.length === 0) return
+    if (once) {
+      if (this.warnedLive.has(signal)) return
+      this.warnedLive.add(signal)
+    }
     // Name the URL: three signals ship concurrently and each is caught
     // here on its own, so a bare "export failed" cannot tell a down
     // collector from one misconfigured signal endpoint.

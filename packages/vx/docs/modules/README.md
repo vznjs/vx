@@ -149,6 +149,7 @@ here, itself or in a brace group.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
 | [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
+| [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.           |
 | [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition + essential allowlist.                                                      |
 | [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.              |
 |                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |

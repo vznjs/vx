@@ -26,6 +26,7 @@ export interface ExecuteArgs {
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
+  track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
   // … and the optional run-scoped fields (timeout, preProbed, download,
   // deferSave, taintedUpstream, fingerprintWatch, noDependants, …)
 }

@@ -201,6 +201,7 @@ export interface SandboxedRunArgs {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  onSpawn?: (pid: number) => void // RunOptions.onSpawn
   signal?: AbortSignal // ExecuteRequest.signal: once aborted, no tracer retry (B-36)
   timeoutMs?: number
   capture?: CaptureConfig

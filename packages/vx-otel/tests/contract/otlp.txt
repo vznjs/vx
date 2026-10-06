@@ -1,7 +1,15 @@
+logs.resourceLogs[].resource.attributes.cicd.pipeline.run.id: stringValue
+logs.resourceLogs[].resource.attributes.host.arch: stringValue
+logs.resourceLogs[].resource.attributes.host.name: stringValue
+logs.resourceLogs[].resource.attributes.os.type: stringValue
+logs.resourceLogs[].resource.attributes.service.instance.id: stringValue
 logs.resourceLogs[].resource.attributes.service.name: stringValue
 logs.resourceLogs[].resource.attributes.service.version: stringValue
+logs.resourceLogs[].resource.attributes.vcs.ref.head.name: stringValue
+logs.resourceLogs[].resource.attributes.vcs.ref.head.revision: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.cicd.pipeline.run.id: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.cicd.pipeline.task.name: stringValue
+logs.resourceLogs[].scopeLogs[].logRecords[].attributes.event.name: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.vx.log.chars_full: intValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.vx.log.status: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.vx.log.truncated_head: intValue
@@ -10,16 +18,107 @@ logs.resourceLogs[].scopeLogs[].logRecords[].attributes.vx.workspace.id: stringV
 logs.resourceLogs[].scopeLogs[].logRecords[].body.stringValue: string
 logs.resourceLogs[].scopeLogs[].logRecords[].observedTimeUnixNano: string
 logs.resourceLogs[].scopeLogs[].logRecords[].severityNumber = 17
+logs.resourceLogs[].scopeLogs[].logRecords[].severityNumber = 9
 logs.resourceLogs[].scopeLogs[].logRecords[].severityText = "ERROR"
+logs.resourceLogs[].scopeLogs[].logRecords[].severityText = "INFO"
 logs.resourceLogs[].scopeLogs[].logRecords[].spanId: string
 logs.resourceLogs[].scopeLogs[].logRecords[].timeUnixNano: string
 logs.resourceLogs[].scopeLogs[].logRecords[].traceId: string
 logs.resourceLogs[].scopeLogs[].scope.name: string
 logs.resourceLogs[].scopeLogs[].scope.version: string
+metrics.resourceMetrics[].resource.attributes.cicd.pipeline.run.id: stringValue
+metrics.resourceMetrics[].resource.attributes.host.arch: stringValue
+metrics.resourceMetrics[].resource.attributes.host.name: stringValue
+metrics.resourceMetrics[].resource.attributes.os.type: stringValue
+metrics.resourceMetrics[].resource.attributes.service.instance.id: stringValue
 metrics.resourceMetrics[].resource.attributes.service.name: stringValue
 metrics.resourceMetrics[].resource.attributes.service.version: stringValue
+metrics.resourceMetrics[].resource.attributes.vcs.ref.head.name: stringValue
+metrics.resourceMetrics[].resource.attributes.vcs.ref.head.revision: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.time_saved_ms].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.time_saved_ms].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.admission_held].unit = "ms"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_time].unit = "ms"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.cpu_usage].unit = "1"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.duration].unit = "ms"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.memory].unit = "By"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].unit = "By"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].unit = "ms"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.aggregationTemporality = 1
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].asInt: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.cache_hits].sum.dataPoints[].attributes.source: stringValue
@@ -49,10 +148,25 @@ metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.dataPoints[
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.isMonotonic = true
 metrics.resourceMetrics[].scopeMetrics[].scope.name: string
 metrics.resourceMetrics[].scopeMetrics[].scope.version: string
+traces.resourceSpans[].resource.attributes.cicd.pipeline.run.id: stringValue
+traces.resourceSpans[].resource.attributes.host.arch: stringValue
+traces.resourceSpans[].resource.attributes.host.name: stringValue
+traces.resourceSpans[].resource.attributes.os.type: stringValue
+traces.resourceSpans[].resource.attributes.service.instance.id: stringValue
 traces.resourceSpans[].resource.attributes.service.name: stringValue
 traces.resourceSpans[].resource.attributes.service.version: stringValue
+traces.resourceSpans[].resource.attributes.vcs.ref.head.name: stringValue
+traces.resourceSpans[].resource.attributes.vcs.ref.head.revision: stringValue
 traces.resourceSpans[].scopeSpans[].scope.name: string
 traces.resourceSpans[].scopeSpans[].scope.version: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].attributes.vx.stage.name: stringValue
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].endTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].kind = 1
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].parentSpanId: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].spanId: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].startTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].status.code: number
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.result: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.run.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.ref.head.name: stringValue
@@ -98,12 +212,19 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task.run.result: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.restored: boolValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.source: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.stored_cpu_ms: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.stored_duration_ms: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.stored_peak_rss_bytes: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cpu_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.peak_rss_bytes: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.admission_held_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.attempts: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.blocked_by: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.command: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.duration_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.exit_code: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.flaky.failures: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.flaky.passes: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.hash: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.not_ready: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.outputs: stringValue
@@ -118,7 +239,17 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.wallclock_
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.where: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.workspace.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].endTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.sandbox.violation].attributes.vx.sandbox.violation: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.sandbox.violation].timeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.attempt: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.exit_code: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.timed_out: boolValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].timeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.timeout].timeUnixNano: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].kind = 1
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].attributes.cicd.pipeline.task.name: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].spanId: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].parentSpanId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].spanId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].startTimeUnixNano: string

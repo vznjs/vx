@@ -145,6 +145,8 @@ export interface ExecuteArgs {
    * SIGTERMs whatever is in here.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** Sample a spawned task's process tree (`TelemetrySource.track`); absent when nobody samples. */
+  track?: (taskId: string, pid: number) => () => void
   /**
    * Run-level retry default (`--retry <n>` / `RunOptions.retries`).
    * Explicit `exec.retries` wins, including an explicit 0. Threaded as
@@ -376,6 +378,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     onStdout: serverOut ? (chunk) => serverOut.push(chunk) : (chunk) => log.taskStdout(node, chunk),
     onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+    ...(args.track !== undefined
+      ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
+      : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
   }
@@ -953,6 +958,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         unlistenStop?.()
         unlistenStop = undefined
         flushMasked()
+        untrack?.()
+        untrack = undefined
       })
     endExec()
     if (secrets !== null)
@@ -1076,6 +1083,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
+  const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
+  // The sampling of the attempt's process tree, stopped once it settles.
+  let untrack: (() => void) | undefined
   // The entry's command is shown by `vx why` and sent with the entry to a
   // remote cache: a value a config interpolated stays out of both.
   const storedCommand = secrets?.mask(step.command) ?? step.command
@@ -1130,6 +1140,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
 
     if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    failedAttempts.push({
+      endedAt: Date.now(),
+      exitCode: effectiveExitCode,
+      ...(result.timedOut === true ? { timedOut: true as const } : {}),
+    })
     log.taskStderr(
       node,
       `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1155,6 +1170,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: out ? (chunk) => out.push(chunk) : (chunk) => log.taskStdout(node, chunk),
       onStderr: err ? (chunk) => err.push(chunk) : (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+      ...(args.track !== undefined
+        ? {
+            onSpawn: (pid: number) => {
+              untrack?.()
+              untrack = args.track!(node.id, pid)
+            },
+          }
+        : {}),
       signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
@@ -1337,6 +1360,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
+    ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),

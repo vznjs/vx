@@ -26,6 +26,7 @@ import {
 } from '../graph/index.js'
 import {
   mark,
+  stageTimes,
   killGraceMs,
   MAX_TIMEOUT_MS,
   parseDuration,
@@ -755,6 +756,7 @@ async function runOnBus(
         { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
         runContextRecord,
         options.telemetrySinks,
+        nodes,
       )
     }
 
@@ -938,6 +940,7 @@ async function runOnBus(
         runStartHrTimeNs,
         persistentRegistry,
         liveChildren,
+        ...(telemetry?.track !== undefined ? { track: telemetry.track } : {}),
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
@@ -1201,6 +1204,7 @@ async function runOnBus(
         totalDurationMs: Math.round(totalMs),
         exitOk: ok,
         abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+        stages: stageTimes(),
       })
       telemetry.emitSummary(summary)
       await telemetry.flush()

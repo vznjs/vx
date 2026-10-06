@@ -13,6 +13,7 @@ export interface TelemetryHandle {
   emitSummary(summary: RunSummaryRecord): void // to every sink, crash-isolated
   flush(): Promise<void> // every sink's flush, crash-isolated, time-bounded; each sink's signal aborts at the deadline
   dispose(): void // remove the bus subscription; idempotent
+  readonly track?: (taskId: string, pid: number) => () => void // TelemetrySource.track, when a sink wants task.sample
 }
 
 export async function subscribeTelemetry(
@@ -21,6 +22,7 @@ export async function subscribeTelemetry(
   ctx: TelemetryContext,
   run: RunContextRecord,
   extraSinks?: readonly TelemetrySink[], // an embedder's own sinks, ahead of the plugins'
+  nodes?: ReadonlyMap<string, TaskNode>, // the task graph, for task.start's dependsOn through a group
 ): Promise<TelemetryHandle | undefined>
 ```
 
