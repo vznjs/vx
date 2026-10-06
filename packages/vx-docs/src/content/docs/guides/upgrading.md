@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: share cache entries across workspaces
+
+SCHEMA_VERSION v32; existing entries miss once.
+
 ## cache: count restored and up-to-date hits everywhere
 
 SCHEMA_VERSION v30 -> v31; an older index is dropped on first open and its artifacts are left for `vx cache prune`. WhyDidThisRerun's thisRun / previousRun, RunSummaryRow, InvocationDetail, RunSummaryRecord and CacheStats gain fields.
