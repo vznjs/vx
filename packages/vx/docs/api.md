@@ -604,7 +604,9 @@ make a run from inside a package treat that package as the whole workspace:
 `^task` edges vanish, upstream hashes drop out of the cache key (stale
 hits), and a second cache dir appears under the member. Claiming is decided
 with the same globs `loadWorkspace` applies, so "the root that claims me"
-and "the root that lists me as a project" cannot diverge.
+and "the root that lists me as a project" cannot diverge. An outer root
+that lists both the claimer and the claimed member outranks the claimer:
+from the claimer's own directory the walk reaches the outer root too.
 
 When no candidate claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins (the root itself IS
