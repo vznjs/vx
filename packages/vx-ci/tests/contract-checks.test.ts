@@ -16,7 +16,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
-import { github, type GithubSummarySink } from '../src/plugin.js'
+import { github } from '../src/plugin.js'
+import type { GithubSummarySink } from '../src/sink.js'
 
 const RECORD = path.join(import.meta.dir, 'contract', 'checks.txt')
 const ENV = {
