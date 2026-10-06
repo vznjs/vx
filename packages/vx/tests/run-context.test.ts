@@ -273,6 +273,84 @@ describe('detectCi', () => {
     expect(detectCi({ CIRCLECI: 'true' })).toEqual({ ci: true, provider: 'circleci' })
   })
 
+  it('names the run page, the pull request, the workflow, the job and the attempt', () => {
+    expect([
+      detectCi({
+        GITHUB_ACTIONS: 'true',
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_REPOSITORY: 'vznjs/vx',
+        GITHUB_RUN_ID: '42',
+        GITHUB_REF: 'refs/pull/2787/merge',
+        GITHUB_WORKFLOW: 'CI',
+        GITHUB_JOB: 'test',
+        GITHUB_RUN_ATTEMPT: '2',
+      }),
+      detectCi({
+        GITLAB_CI: 'true',
+        CI_PIPELINE_URL: 'https://gitlab.com/o/r/-/pipelines/9',
+        CI_MERGE_REQUEST_IID: '7',
+        CI_PIPELINE_NAME: 'mr',
+        CI_JOB_NAME: 'lint',
+      }),
+      detectCi({
+        BUILDKITE: 'true',
+        BUILDKITE_BUILD_URL: 'https://buildkite.com/o/p/builds/3',
+        BUILDKITE_PULL_REQUEST: '12',
+        BUILDKITE_PIPELINE_SLUG: 'p',
+        BUILDKITE_LABEL: ':test: unit',
+        BUILDKITE_RETRY_COUNT: '0',
+      }),
+      detectCi({
+        CIRCLECI: 'true',
+        CIRCLE_BUILD_URL: 'https://circleci.com/gh/o/r/5',
+        CIRCLE_PULL_REQUEST: 'https://github.com/o/r/pull/31',
+        CIRCLE_JOB: 'build',
+      }),
+    ]).toEqual([
+      {
+        ci: true,
+        provider: 'github',
+        runUrl: 'https://github.com/vznjs/vx/actions/runs/42',
+        change: '2787',
+        pipeline: 'CI',
+        job: 'test',
+        attempt: 2,
+      },
+      {
+        ci: true,
+        provider: 'gitlab',
+        runUrl: 'https://gitlab.com/o/r/-/pipelines/9',
+        change: '7',
+        pipeline: 'mr',
+        job: 'lint',
+      },
+      {
+        ci: true,
+        provider: 'buildkite',
+        runUrl: 'https://buildkite.com/o/p/builds/3',
+        change: '12',
+        pipeline: 'p',
+        job: ':test: unit',
+        attempt: 1,
+      },
+      {
+        ci: true,
+        provider: 'circleci',
+        runUrl: 'https://circleci.com/gh/o/r/5',
+        change: '31',
+        job: 'build',
+      },
+    ])
+  })
+
+  it('names no pull request on a push build', () => {
+    expect([
+      detectCi({ GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/heads/main' }).change,
+      detectCi({ BUILDKITE: 'true', BUILDKITE_PULL_REQUEST: 'false' }).change,
+      detectCi({ GITHUB_ACTIONS: 'true', GITHUB_RUN_ATTEMPT: 'x' }).attempt,
+    ]).toEqual([undefined, undefined, undefined])
+  })
+
   it('prefers the specific provider over a generic CI flag', () => {
     expect(detectCi({ CI: 'true', GITHUB_ACTIONS: 'true' })).toEqual({
       ci: true,

@@ -404,7 +404,7 @@ describe('createTelemetrySource — projection', () => {
     ])
   })
 
-  it('task.end carries what a hit saved, a flaky verdict, the violations and the admission wait', () => {
+  it('task.end carries what a hit saved, a flaky verdict, the violations, the waits and the input count', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })
     const node = mkNode('a#build', 'tsc')
@@ -417,6 +417,8 @@ describe('createTelemetrySource — projection', () => {
         storedCpuMs: 800,
         storedPeakRssBytes: 700,
         admissionHeldMs: 60,
+        queuedMs: 75,
+        inputFiles: 9,
         flaky: { passes: 2, failures: 1 },
         sandboxViolationLines: ['deny file-write /x'],
       }),
@@ -435,13 +437,15 @@ describe('createTelemetrySource — projection', () => {
             r.storedCpuMs,
             r.storedPeakRssBytes,
             r.admissionHeldMs,
+            r.queuedMs,
+            r.inputFiles,
             r.flaky,
             r.sandboxViolationLines,
           ]
         : 'not-task-end'
     expect(records.map(pick)).toEqual([
-      [900, 800, 700, 60, { passes: 2, failures: 1 }, ['deny file-write /x']],
-      [undefined, undefined, undefined, undefined, undefined, undefined],
+      [900, 800, 700, 60, 75, 9, { passes: 2, failures: 1 }, ['deny file-write /x']],
+      [undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined],
     ])
   })
 

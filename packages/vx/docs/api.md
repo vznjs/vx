@@ -324,6 +324,11 @@ type · `src/orchestrator/run-context.ts`
 export interface CiContext {
   ci: boolean
   provider: string | null
+  runUrl?: string
+  change?: string
+  pipeline?: string
+  job?: string
+  attempt?: number
 }
 ```
 
@@ -1220,6 +1225,9 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   blockedBy?: string
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1771,6 +1779,11 @@ export interface RunContextRecord {
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  ciRunUrl?: string
+  ciChange?: string
+  ciPipeline?: string
+  ciJob?: string
+  ciAttempt?: number
   host: string | null
   os: string
   arch: string
@@ -2173,6 +2186,9 @@ export interface TaskOutcome {
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
@@ -2257,6 +2273,9 @@ export interface TaskTelemetry {
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string

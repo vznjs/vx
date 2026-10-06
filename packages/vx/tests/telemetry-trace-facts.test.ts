@@ -1,6 +1,7 @@
 // What a trace is drawn from: which tasks a task waited on (a group seen
 // through) and the run's stages, as a telemetry sink receives them.
 import { rm } from 'node:fs/promises'
+import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { RunSummaryRecord, TelemetryRecord } from '../src/orchestrator/index.js'
@@ -72,4 +73,91 @@ it('a task names the tasks with a command it waited on, through a group, and the
   expect(runGraph.startedAt).toBeGreaterThanOrEqual(first.startedAt)
   // `endedAt` is Date.now(), whole ms truncated: the stage's fraction may pass it.
   expect(runGraph.endedAt).toBeLessThan(first.endedAt + 1)
+}, 20_000)
+
+it('a cacheable task that ran counts the files its key read; a hit and an uncached task count none', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-trace-' })
+  roots.push(root)
+  const dir = await addProject(
+    root,
+    'p',
+    `export default {
+      tasks: {
+        build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        },
+        plain: { exec: { command: 'true' } },
+      },
+    }
+    `,
+  )
+  for (const f of ['a.ts', 'b.ts', 'c.ts']) await Bun.write(path.join(dir, 'src', f), f)
+  const counts = async () => {
+    const records: TelemetryRecord[] = []
+    await run({
+      cwd: root,
+      tasks: ['build', 'plain'],
+      projects: ['p'],
+      log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} },
+      telemetrySinks: [{ onRecord: (rec) => void records.push(rec) }],
+    })
+    return records
+      .flatMap((r) => (r.kind === 'task.end' ? [[r.taskId, r.inputFiles] as const] : []))
+      .sort(([a], [b]) => a.localeCompare(b))
+  }
+  expect(await counts()).toEqual([
+    ['p#build', 3],
+    ['p#plain', undefined],
+  ])
+  expect(await counts()).toEqual([
+    ['p#build', undefined],
+    ['p#plain', undefined],
+  ])
+}, 20_000)
+
+it('a miss names what its key changed since the last entry saved for it', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-trace-' })
+  roots.push(root)
+  const dir = await addProject(
+    root,
+    'p',
+    `export default {
+      tasks: {
+        build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        },
+      },
+    }
+    `,
+  )
+  for (const f of ['a.ts', 'b.ts']) await Bun.write(path.join(dir, 'src', f), f)
+  const changes = async () => {
+    const records: TelemetryRecord[] = []
+    await run({
+      cwd: root,
+      tasks: ['build'],
+      projects: ['p'],
+      log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} },
+      telemetrySinks: [{ onRecord: (rec) => void records.push(rec) }],
+    })
+    const end = records.find((r) => r.kind === 'task.end')
+    return end?.kind === 'task.end' ? end.inputChanges : 'no task.end'
+  }
+  // Nothing saved yet: nothing to compare with.
+  expect(await changes()).toBeUndefined()
+  await Bun.write(path.join(dir, 'src', 'a.ts'), 'a2')
+  await Bun.write(path.join(dir, 'src', 'c.ts'), 'c')
+  await rm(path.join(dir, 'src', 'b.ts'))
+  expect(await changes()).toEqual({
+    count: 3,
+    first: [
+      { kind: 'file', name: 'packages/p/src/a.ts', change: 'changed' },
+      { kind: 'file', name: 'packages/p/src/b.ts', change: 'removed' },
+      { kind: 'file', name: 'packages/p/src/c.ts', change: 'added' },
+    ],
+  })
+  // A hit ran nothing and names nothing.
+  expect(await changes()).toBeUndefined()
 }, 20_000)

@@ -36,6 +36,14 @@ export type TaskStatus =
   // are partial.
   | 'aborted'
 
+/** What moved in a missed task's key since the last entry saved for it. */
+export interface InputChanges {
+  /** How many components changed, appeared or went. 0: the same key, its entry gone. */
+  count: number
+  /** The first of them, by kind then name. */
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -69,6 +77,20 @@ export interface TaskOutcome {
    * stream and the summary footer show it.
    */
   admissionHeldMs?: number
+  /**
+   * How long this task waited ready (its deps done, or none to wait on)
+   * before it was dispatched: a full worker pool's wait, plus any
+   * `admissionHeldMs`. Absent when it started within the millisecond and
+   * on a task that never ran.
+   */
+  queuedMs?: number
+  /** On a cacheable task that ran: how many files its key read. */
+  inputFiles?: number
+  /**
+   * On a cacheable task that ran: what its key changed since the last entry
+   * saved for it. Only when a telemetry sink asked, and the cache holds one.
+   */
+  inputChanges?: InputChanges
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
@@ -439,9 +461,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // decrements still happen (in finishOne) but never re-enqueue it.
   // Everything else enqueues on the exec-tier the moment its deps
   // complete.
+  // When each queued id became ready; dispatch takes it out.
+  const readyAt = new Map<string, number>()
+  const startedAt = Date.now()
   for (const node of nodes.values()) {
     if (restoreTier?.has(node.id)) restoreReady.push(node.id)
     else if (node.deps.length === 0) execReady.push(node.id)
+    else continue
+    readyAt.set(node.id, startedAt)
   }
 
   let active = 0
@@ -603,7 +630,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // don't wait on deps); one that finished early releases its own
         // dependents now. Only an exec-tier dependent is enqueued.
         if (heldRelease.delete(d)) release(d)
-        else if (!inRestoreTier(d)) execReady.push(d)
+        else if (!inRestoreTier(d)) {
+          execReady.push(d)
+          readyAt.set(d, Date.now())
+        }
       }
     }
 
@@ -741,6 +771,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         }
 
+        const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
+        readyAt.delete(id)
         const leave = admit(id)
         // Listed as running on dispatch, so the policy's next ask in this
         // tick sees it; the completion callbacks unlist it.
@@ -749,7 +781,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         const heldMs = since === undefined ? 0 : Math.max(1, Date.now() - since)
         if (since !== undefined) heldSince.delete(id)
         const withHold = (o: TaskOutcome): TaskOutcome =>
-          heldMs > 0 ? { ...o, admissionHeldMs: heldMs } : o
+          heldMs === 0 && queuedMs === 0
+            ? o
+            : {
+                ...o,
+                ...(heldMs > 0 ? { admissionHeldMs: heldMs } : {}),
+                ...(queuedMs > 0 ? { queuedMs } : {}),
+              }
         // Crash-isolated observer hook — a throwing onStart must not abort
         // the dispatch loop (it would strand the tick with the slot held).
         // A demoted task's second dispatch is the same task, already started.
@@ -799,7 +837,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               leave()
               untrack()
               demoted.add(id)
-              if (pending.get(id) === 0) execReady.push(id)
+              if (pending.get(id) === 0) {
+                execReady.push(id)
+                readyAt.set(id, Date.now())
+              }
               tick()
               return
             }

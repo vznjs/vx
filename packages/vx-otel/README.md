@@ -107,8 +107,13 @@ otel({
   command (`vx.task.command`, secrets masked), on a flaky one its record
   (`vx.task.flaky.passes`, `vx.task.flaky.failures`), on a hit what the
   stored run took (`vx.cache.stored_duration_ms`, `vx.cache.stored_cpu_ms`,
-  `vx.cache.stored_peak_rss_bytes`), and how long an `admit` policy held it
-  (`vx.task.admission_held_ms`). A
+  `vx.cache.stored_peak_rss_bytes`), how long an `admit` policy held it
+  (`vx.task.admission_held_ms`), how long it waited ready for a worker
+  (`vx.task.queued_ms`, the hold included), and on a cacheable task that
+  ran how many files its key read (`vx.task.input_files`) and what its key
+  changed since the last entry the cache saved for it
+  (`vx.cache.miss.change_count`, and `vx.cache.miss.changes`, the first ten
+  as `changed file packages/a/src/x.ts`). A
   failed task sets span status
   `ERROR`. A task span links to the spans of the tasks it waited on (a
   group seen through to the tasks behind it), and carries an event per
@@ -138,8 +143,9 @@ backend adds runs rather than reading each as the series' new total.
 `vx.task.project` and `vx.task.task`: at each task's end
 `vx.task.duration` (ms, with `vx.cache.source`), and for a task the runner
 measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes), on a
-hit `vx.task.time_saved` (ms), and `vx.task.admission_held` (ms) when an
-`admit` policy held it; a skipped task sends none. While a task runs, its process tree is sampled
+hit `vx.task.time_saved` (ms), `vx.task.admission_held` (ms) when an
+`admit` policy held it, and `vx.task.queued` (ms) when it waited for a
+worker; a skipped task sends none. While a task runs, its process tree is sampled
 each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
 one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.
@@ -155,7 +161,10 @@ secrets, and this sends it to the collector; `logs: false` or
 (`host.name`, `host.arch`, `os.type`), the commit (`vcs.ref.head.*`) and
 the repository (`vcs.repository.url.full`, `vcs.repository.name`,
 `vcs.owner.name`, `vcs.provider.name`, from the `origin` remote) with
-`vx.workspace.path`, the workspace root inside it (`.` at the top), under `OTEL_RESOURCE_ATTRIBUTES`, which wins. Each task metric point carries
+`vx.workspace.path`, the workspace root inside it (`.` at the top), and on
+CI the run (`cicd.pipeline.run.url.full`, `cicd.pipeline.name`,
+`vx.ci.job`, `vx.ci.attempt`) and the pull request it builds
+(`vcs.change.id`; GitHub Actions, GitLab, Buildkite, CircleCI), under `OTEL_RESOURCE_ATTRIBUTES`, which wins. Each task metric point carries
 its task's span as an exemplar, and each log record its span, so a chart
 opens the trace and a span opens its output.
 

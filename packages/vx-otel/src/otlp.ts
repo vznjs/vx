@@ -24,6 +24,7 @@ type AnyValue =
   | { intValue: string }
   | { boolValue: boolean }
   | { doubleValue: number }
+  | { arrayValue: { values: AnyValue[] } }
 
 export interface KeyValue {
   key: string
@@ -32,6 +33,9 @@ export interface KeyValue {
 
 function strAttr(key: string, v: string): KeyValue {
   return { key, value: { stringValue: v } }
+}
+function strArrayAttr(key: string, v: readonly string[]): KeyValue {
+  return { key, value: { arrayValue: { values: v.map((stringValue) => ({ stringValue })) } } }
 }
 function intAttr(key: string, v: number): KeyValue {
   return { key, value: { intValue: String(Math.trunc(v)) } }
@@ -50,6 +54,9 @@ function int64Attr(key: string, v: string): KeyValue {
 
 const SEMCONV = {
   pipelineRunId: 'cicd.pipeline.run.id',
+  pipelineRunUrl: 'cicd.pipeline.run.url.full',
+  pipelineName: 'cicd.pipeline.name',
+  vcsChangeId: 'vcs.change.id',
   pipelineResult: 'cicd.pipeline.result',
   taskName: 'cicd.pipeline.task.name',
   taskRunResult: 'cicd.pipeline.task.run.result',
@@ -141,6 +148,12 @@ const VX_ATTR = {
   taskFlakyPasses: 'vx.task.flaky.passes',
   taskFlakyFailures: 'vx.task.flaky.failures',
   taskAdmissionHeldMs: 'vx.task.admission_held_ms',
+  taskQueuedMs: 'vx.task.queued_ms',
+  taskInputFiles: 'vx.task.input_files',
+  missChangeCount: 'vx.cache.miss.change_count',
+  missChanges: 'vx.cache.miss.changes',
+  ciJob: 'vx.ci.job',
+  ciAttempt: 'vx.ci.attempt',
   storedDurationMs: 'vx.cache.stored_duration_ms',
   storedCpuMs: 'vx.cache.stored_cpu_ms',
   storedPeakRssBytes: 'vx.cache.stored_peak_rss_bytes',
@@ -299,7 +312,7 @@ export function runResource(run: RunContextRecord): Record<string, string> {
     [SEMCONV.hostArch]: run.arch === 'x64' ? 'amd64' : run.arch,
   }
   if (run.host !== null) r[SEMCONV.hostName] = run.host
-  for (const [k, v] of repositoryFields(run)) r[k] = v
+  for (const [k, v] of originFields(run)) r[k] = v
   if (run.commitSha !== null) r[SEMCONV.vcsHeadRevision] = run.commitSha
   if (run.branch !== null) r[SEMCONV.vcsHeadName] = run.branch
   return r
@@ -313,10 +326,11 @@ const VCS_PROVIDERS: Readonly<Record<string, string>> = {
 }
 
 /**
- * The repository (from the normalized origin remote, `host/owner/name`) as
- * the VCS conventions name it, and where in it the workspace sits.
+ * Where the run came from: the repository (from the normalized origin remote,
+ * `host/owner/name`) as the VCS conventions name it, where in it the
+ * workspace sits, and the CI run, pull request, workflow and job.
  */
-function repositoryFields(run: RunContextRecord): [key: string, value: string][] {
+function originFields(run: RunContextRecord): [key: string, value: string][] {
   const fields: [string, string][] = []
   if (run.repository !== undefined) {
     const parts = run.repository.split('/')
@@ -329,6 +343,11 @@ function repositoryFields(run: RunContextRecord): [key: string, value: string][]
     if (provider !== undefined) fields.push([SEMCONV.vcsProviderName, provider])
   }
   if (run.workspacePath !== undefined) fields.push([VX_ATTR.workspacePath, run.workspacePath])
+  if (run.ciRunUrl !== undefined) fields.push([SEMCONV.pipelineRunUrl, run.ciRunUrl])
+  if (run.ciChange !== undefined) fields.push([SEMCONV.vcsChangeId, run.ciChange])
+  if (run.ciPipeline !== undefined) fields.push([SEMCONV.pipelineName, run.ciPipeline])
+  if (run.ciJob !== undefined) fields.push([VX_ATTR.ciJob, run.ciJob])
+  if (run.ciAttempt !== undefined) fields.push([VX_ATTR.ciAttempt, String(run.ciAttempt)])
   return fields
 }
 
@@ -352,7 +371,7 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
     intAttr(VX_ATTR.schema, TELEMETRY_SCHEMA_VERSION),
     strAttr(VX_ATTR.workspaceId, run.workspaceId),
     strAttr(VX_ATTR.workspaceName, run.workspaceName),
-    ...repositoryFields(run).map(([k, v]) => strAttr(k, v)),
+    ...originFields(run).map(([k, v]) => strAttr(k, v)),
     strAttr(VX_ATTR.command, run.command),
     strAttr(VX_ATTR.requestedTasks, run.requestedTasks.join(',')),
     strAttr(VX_ATTR.cachePolicy, run.cachePolicy),
@@ -499,6 +518,18 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     attrs.push(intAttr(VX_ATTR.storedPeakRssBytes, t.storedPeakRssBytes))
   if (t.admissionHeldMs !== undefined)
     attrs.push(intAttr(VX_ATTR.taskAdmissionHeldMs, t.admissionHeldMs))
+  if (t.queuedMs !== undefined) attrs.push(intAttr(VX_ATTR.taskQueuedMs, t.queuedMs))
+  if (t.inputFiles !== undefined) attrs.push(intAttr(VX_ATTR.taskInputFiles, t.inputFiles))
+  if (t.inputChanges !== undefined) {
+    // `changed file src/a.ts`: what moved the key since the last saved entry.
+    attrs.push(
+      intAttr(VX_ATTR.missChangeCount, t.inputChanges.count),
+      strArrayAttr(
+        VX_ATTR.missChanges,
+        t.inputChanges.first.map((c) => `${c.change} ${c.kind} ${c.name}`),
+      ),
+    )
+  }
   if (t.wallclockStartNs !== undefined)
     attrs.push(int64Attr(VX_ATTR.wallclockStartNs, t.wallclockStartNs))
   if (t.wallclockEndNs !== undefined)
@@ -693,6 +724,7 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
     if (t.peakRssBytes !== undefined) add('vx.task.peak_memory', 'By', at(t.peakRssBytes))
     if (t.storedDurationMs !== undefined) add('vx.task.time_saved', 'ms', at(t.storedDurationMs))
     if (t.admissionHeldMs !== undefined) add('vx.task.admission_held', 'ms', at(t.admissionHeldMs))
+    if (t.queuedMs !== undefined) add('vx.task.queued', 'ms', at(t.queuedMs))
   }
   return [...series].map(([name, { unit, dataPoints }]) => ({ name, unit, gauge: { dataPoints } }))
 }
