@@ -26,9 +26,12 @@ A cache dir the workspace names (`cacheDir`, `--cache-dir`,
 `VX_CACHE_DIR`) holds both, in one `cache.db`, as before: naming one is
 how a workspace opts out of sharing.
 
-Nx, for the record: its default is `.nx/cache` inside the workspace;
-sharing across workspaces there means pointing `cacheDirectory` (or
-`NX_CACHE_DIRECTORY`) at one directory. vx shares by default instead.
+Nx 23.2 shares by default too, per repository: `~/.nx/<id>/cache`, the
+id 16 hex of a sha256 of the git remote and the workspace's path in it
+(`utils/cache-directory.js`). vx keeps one store for every repository:
+a file is named by its key, so two repositories share one only when
+they produced the same thing, and a per-repository split would buy
+housekeeping for a git read per run.
 
 ## Why split, not move
 
