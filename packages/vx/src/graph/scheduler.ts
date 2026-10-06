@@ -36,6 +36,14 @@ export type TaskStatus =
   // are partial.
   | 'aborted'
 
+/** What moved in a missed task's key since the last entry saved for it. */
+export interface InputChanges {
+  /** How many components changed, appeared or went. 0: the same key, its entry gone. */
+  count: number
+  /** The first of them, by kind then name. */
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -78,6 +86,11 @@ export interface TaskOutcome {
   queuedMs?: number
   /** On a cacheable task that ran: how many files its key read. */
   inputFiles?: number
+  /**
+   * On a cacheable task that ran: what its key changed since the last entry
+   * saved for it. Only when a telemetry sink asked, and the cache holds one.
+   */
+  inputChanges?: InputChanges
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number

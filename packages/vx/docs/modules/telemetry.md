@@ -114,6 +114,7 @@ interface TaskTelemetry {
   admissionHeldMs?: number // how long an `admit` policy held it once ready
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
+  inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string

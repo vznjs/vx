@@ -110,7 +110,10 @@ otel({
   `vx.cache.stored_peak_rss_bytes`), how long an `admit` policy held it
   (`vx.task.admission_held_ms`), how long it waited ready for a worker
   (`vx.task.queued_ms`, the hold included), and on a cacheable task that
-  ran how many files its key read (`vx.task.input_files`). A
+  ran how many files its key read (`vx.task.input_files`) and what its key
+  changed since the last entry the cache saved for it
+  (`vx.cache.miss.change_count`, and `vx.cache.miss.changes`, the first ten
+  as `changed file packages/a/src/x.ts`). A
   failed task sets span status
   `ERROR`. A task span links to the spans of the tasks it waited on (a
   group seen through to the tasks behind it), and carries an event per

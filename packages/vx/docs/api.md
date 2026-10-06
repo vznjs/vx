@@ -1225,6 +1225,7 @@ export interface OutcomeView {
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
+  inputChanges?: InputChanges
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -2185,6 +2186,7 @@ export interface TaskOutcome {
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
+  inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
@@ -2271,6 +2273,7 @@ export interface TaskTelemetry {
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
+  inputChanges?: InputChanges
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string

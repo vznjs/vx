@@ -115,3 +115,49 @@ it('a cacheable task that ran counts the files its key read; a hit and an uncach
     ['p#plain', undefined],
   ])
 }, 20_000)
+
+it('a miss names what its key changed since the last entry saved for it', async () => {
+  const root = await makeWorkspace({ prefix: 'vx-trace-' })
+  roots.push(root)
+  const dir = await addProject(
+    root,
+    'p',
+    `export default {
+      tasks: {
+        build: {
+          exec: { command: 'true' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        },
+      },
+    }
+    `,
+  )
+  for (const f of ['a.ts', 'b.ts']) await Bun.write(path.join(dir, 'src', f), f)
+  const changes = async () => {
+    const records: TelemetryRecord[] = []
+    await run({
+      cwd: root,
+      tasks: ['build'],
+      projects: ['p'],
+      log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} },
+      telemetrySinks: [{ onRecord: (rec) => void records.push(rec) }],
+    })
+    const end = records.find((r) => r.kind === 'task.end')
+    return end?.kind === 'task.end' ? end.inputChanges : 'no task.end'
+  }
+  // Nothing saved yet: nothing to compare with.
+  expect(await changes()).toBeUndefined()
+  await Bun.write(path.join(dir, 'src', 'a.ts'), 'a2')
+  await Bun.write(path.join(dir, 'src', 'c.ts'), 'c')
+  await rm(path.join(dir, 'src', 'b.ts'))
+  expect(await changes()).toEqual({
+    count: 3,
+    first: [
+      { kind: 'file', name: 'packages/p/src/a.ts', change: 'changed' },
+      { kind: 'file', name: 'packages/p/src/b.ts', change: 'removed' },
+      { kind: 'file', name: 'packages/p/src/c.ts', change: 'added' },
+    ],
+  })
+  // A hit ran nothing and names nothing.
+  expect(await changes()).toBeUndefined()
+}, 20_000)

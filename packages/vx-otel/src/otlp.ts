@@ -24,6 +24,7 @@ type AnyValue =
   | { intValue: string }
   | { boolValue: boolean }
   | { doubleValue: number }
+  | { arrayValue: { values: AnyValue[] } }
 
 export interface KeyValue {
   key: string
@@ -32,6 +33,9 @@ export interface KeyValue {
 
 function strAttr(key: string, v: string): KeyValue {
   return { key, value: { stringValue: v } }
+}
+function strArrayAttr(key: string, v: readonly string[]): KeyValue {
+  return { key, value: { arrayValue: { values: v.map((stringValue) => ({ stringValue })) } } }
 }
 function intAttr(key: string, v: number): KeyValue {
   return { key, value: { intValue: String(Math.trunc(v)) } }
@@ -146,6 +150,8 @@ const VX_ATTR = {
   taskAdmissionHeldMs: 'vx.task.admission_held_ms',
   taskQueuedMs: 'vx.task.queued_ms',
   taskInputFiles: 'vx.task.input_files',
+  missChangeCount: 'vx.cache.miss.change_count',
+  missChanges: 'vx.cache.miss.changes',
   ciJob: 'vx.ci.job',
   ciAttempt: 'vx.ci.attempt',
   storedDurationMs: 'vx.cache.stored_duration_ms',
@@ -514,6 +520,16 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     attrs.push(intAttr(VX_ATTR.taskAdmissionHeldMs, t.admissionHeldMs))
   if (t.queuedMs !== undefined) attrs.push(intAttr(VX_ATTR.taskQueuedMs, t.queuedMs))
   if (t.inputFiles !== undefined) attrs.push(intAttr(VX_ATTR.taskInputFiles, t.inputFiles))
+  if (t.inputChanges !== undefined) {
+    // `changed file src/a.ts`: what moved the key since the last saved entry.
+    attrs.push(
+      intAttr(VX_ATTR.missChangeCount, t.inputChanges.count),
+      strArrayAttr(
+        VX_ATTR.missChanges,
+        t.inputChanges.first.map((c) => `${c.change} ${c.kind} ${c.name}`),
+      ),
+    )
+  }
   if (t.wallclockStartNs !== undefined)
     attrs.push(int64Attr(VX_ATTR.wallclockStartNs, t.wallclockStartNs))
   if (t.wallclockEndNs !== undefined)

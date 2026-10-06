@@ -92,6 +92,7 @@ import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
+import { createMissExplainer } from './miss-reason.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -921,6 +922,10 @@ async function runOnBus(
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
+    // Why a task missed, for a sink: a read of the history per miss, so only
+    // when a sink exists.
+    const explainMiss =
+      telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
@@ -952,6 +957,7 @@ async function runOnBus(
         persistentRegistry,
         liveChildren,
         ...(telemetry?.track !== undefined ? { track: telemetry.track } : {}),
+        ...(explainMiss !== undefined ? { explainMiss } : {}),
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),

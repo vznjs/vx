@@ -110,6 +110,7 @@ const TASK: Required<TaskTelemetry> = {
   admissionHeldMs: 5,
   queuedMs: 6,
   inputFiles: 3,
+  inputChanges: { count: 1, first: [{ kind: 'env', name: 'NODE_ENV', change: 'added' }] },
   // Every field, so each one's path is recorded; a hit alone carries it.
   restored: false,
   wallclockStartNs: '1000000000',

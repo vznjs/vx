@@ -19,6 +19,11 @@ the slot at the outcome and unblocks the dependents at the settle.
 export type TaskStatus =
   'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped' | 'aborted' // child killed by a shutdown signal (Ctrl-C teardown)
 
+export interface InputChanges {
+  count: number // components changed, added or removed; 0: the same key, its entry gone
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[] // the first ten, by kind then name
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -31,6 +36,7 @@ export interface TaskOutcome {
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
+  inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded

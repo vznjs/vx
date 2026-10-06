@@ -68,6 +68,7 @@ import {
 import { markUnsaved, saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
+import type { MissExplainer } from './miss-reason.js'
 import { shellVerdict } from './shell-verdict.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
@@ -147,6 +148,8 @@ export interface ExecuteArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /** Sample a spawned task's process tree (`TelemetrySource.track`); absent when nobody samples. */
   track?: (taskId: string, pid: number) => () => void
+  /** Name what a missed key changed (`createMissExplainer`); absent when nobody listens. */
+  explainMiss?: MissExplainer
   /**
    * Run-level retry default (`--retry <n>` / `RunOptions.retries`).
    * Explicit `exec.retries` wins, including an explicit 0. Threaded as
@@ -819,6 +822,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
         c.hash = MASKED + c.hash
   const inputs: TaskInputs | undefined = described?.inputs
+  const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
   if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
@@ -1364,6 +1368,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(described !== undefined
       ? { inputFiles: captured.reduce((n, c) => (c.kind === 'file' ? n + 1 : n), 0) }
       : {}),
+    ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),

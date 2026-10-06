@@ -7,7 +7,7 @@
 // stall task exec. See docs/design/event-stream-2026-06.md.
 
 import { exitSignal } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
 import { maskedCommand, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
@@ -254,6 +254,8 @@ export interface OutcomeView {
   queuedMs?: number
   /** How many files a cacheable task's key read when it ran (see `TaskOutcome`). */
   inputFiles?: number
+  /** What a missed task's key changed since its last saved entry (see `TaskOutcome`). */
+  inputChanges?: InputChanges
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -375,6 +377,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
   if (outcome.queuedMs !== undefined) view.queuedMs = outcome.queuedMs
   if (outcome.inputFiles !== undefined) view.inputFiles = outcome.inputFiles
+  if (outcome.inputChanges !== undefined) view.inputChanges = outcome.inputChanges
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy

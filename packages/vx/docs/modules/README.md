@@ -66,6 +66,7 @@ here, itself or in a brace group.
 | [`keyed-projects.md`](./keyed-projects.md)         | `src/orchestrator/keyed-projects.ts` — the projects a task's key answers for, which bound a cached task's linked-package grant.                               |
 | [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 126, 127 and 128 + n: the PATH rule, the file, the signal.                                      |
 | [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                                                 |
+| [`miss-reason.md`](./miss-reason.md)               | `src/orchestrator/miss-reason.ts` — what a miss's key changed since the last saved entry, for a telemetry sink.                                               |
 | [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                                                     |
 | [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                                        |
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.                                       |

@@ -11,6 +11,7 @@ export {
 export {
   type ContinueMode,
   deadServerBehind,
+  type InputChanges,
   RestoreDemoted,
   runGraph,
   type TaskOutcome,

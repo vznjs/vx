@@ -877,6 +877,13 @@ const FULL_TASK: Required<TaskTelemetry> = {
   admissionHeldMs: 30,
   queuedMs: 40,
   inputFiles: 12,
+  inputChanges: {
+    count: 3,
+    first: [
+      { kind: 'file', name: 'src/a.ts', change: 'changed' },
+      { kind: 'upstream', name: 'lib#build', change: 'changed' },
+    ],
+  },
   restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
@@ -955,6 +962,7 @@ describe('OTLP losslessness', () => {
       'failedAttempts',
       'flaky',
       'hash',
+      'inputChanges',
       'inputFiles',
       'notReady',
       'outputs',
@@ -1093,6 +1101,13 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.admission_held_ms']).toBe('30')
     expect(a['vx.task.queued_ms']).toBe('40')
     expect(a['vx.task.input_files']).toBe('12')
+    expect(a['vx.cache.miss.change_count']).toBe('3')
+    expect(a['vx.cache.miss.changes']).toEqual({
+      values: [
+        { stringValue: 'changed file src/a.ts' },
+        { stringValue: 'changed upstream lib#build' },
+      ],
+    })
     expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.outputs']).toBe('deferred')
     expect(a['vx.task.blocked_by']).toBe('lib#build')

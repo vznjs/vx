@@ -262,6 +262,8 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.run.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task.name: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.cicd.pipeline.task.run.result: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.miss.change_count: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.miss.changes: arrayValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.restored: boolValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.source: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.cache.stored_cpu_ms: intValue

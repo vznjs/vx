@@ -68,3 +68,13 @@ and traces should use span events, links and more objects.
   `run-context.test.ts` › "names the run page"; `scheduler.test.ts` ›
   "waited ready for a worker"; `telemetry-trace-facts.test.ts` › "counts
   the files its key read".
+
+- U-6 — OTel says why a task missed. Before a missed task's command
+  spawns, its key's components are joined with the last entry the cache
+  saved for the task (`diffKeyComponents`, `vx why`'s rule; new
+  `miss-reason.ts`), and the outcome carries `inputChanges`: the count
+  and the first ten (`vx.cache.miss.change_count`,
+  `vx.cache.miss.changes`, as `changed file packages/a/src/x.ts`; no
+  hashes, so no secret). Only with a sink: one `GROUP BY` over `entries`
+  per run, then a primary-key read per miss. Row:
+  `telemetry-trace-facts.test.ts` › "a miss names what its key changed".
