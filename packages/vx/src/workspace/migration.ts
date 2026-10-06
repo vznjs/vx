@@ -302,7 +302,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const hasWorkspaceFile = (
     await Promise.all(WORKSPACE_CONFIG_FILENAMES.map((n) => Bun.file(path.join(root, n)).exists()))
   ).some(Boolean)
-  if (!hasWorkspaceFile) {
+  // A plan may bring its own (vx-migrate declares the plugins it detects).
+  if (!hasWorkspaceFile && !plan.extraFiles.some((f) => f.relPath === workspaceName)) {
     const abs = path.join(root, workspaceName)
     files.push({ relPath: relPosix(root, abs), abs, contents: workspaceFile(format) })
   }

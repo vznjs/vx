@@ -18,6 +18,12 @@ const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
   ['yarn.lock', 'yarn'],
 ]
 
+/** The lockfile at `root` and the `@vzn/vx-lockfile` factory that claims it. */
+export function lockfilePlugin(root: string): { file: string; factory: string } | undefined {
+  const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
+  return lock === undefined ? undefined : { file: lock[0], factory: lock[1] }
+}
+
 export interface AdoptedTool {
   /** The adoption plugin `vx init` declares: `turbo`, `nx`. */
   readonly plugin: string
@@ -43,11 +49,11 @@ export async function adoptedToolNotes(root: string, tool: AdoptedTool): Promise
       )
     break
   }
-  const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
+  const lock = lockfilePlugin(root)
   if (lock !== undefined && !declared.includes('@vzn/vx-lockfile'))
     notes.push(
-      `${tool.keys(lock[0])}; vx keys every task on the whole ` +
-        `file, so a dependency bump re-runs them all. Declare ${lock[1]}() from @vzn/vx-lockfile ` +
+      `${tool.keys(lock.file)}; vx keys every task on the whole ` +
+        `file, so a dependency bump re-runs them all. Declare ${lock.factory}() from @vzn/vx-lockfile ` +
         "in vx.workspace.ts to key each task on its package's dependency closure",
     )
   return notes

@@ -323,14 +323,18 @@ describe('vx migrate (turbo)', () => {
     TIMEOUT,
   )
 
-  it('emits vx.workspace.ts declaring the local plugins when none exists', async () => {
+  it('emits vx.workspace.ts declaring the plugins the repo calls for when none exists', async () => {
     expect(result.out).toContain('vx.workspace.ts')
     const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
     // Type-only: the runtime `defineWorkspace` import loaded a second copy
     // of core into every run (~17 ms on a two-package workspace).
     expect(ws).toContain("import type { WorkspaceConfig } from '@vzn/vx/config'")
     expect(ws).not.toContain('defineWorkspace')
-    expect(ws).toContain('export default { plugins: [] } satisfies WorkspaceConfig')
+    // No lockfile and no .github/workflows here: the history plugin alone.
+    expect([...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1])).toEqual([
+      'scheduleHistoryPlugin',
+    ])
+    expect(ws).toContain('} satisfies WorkspaceConfig')
   })
 
   it('does not emit vx.workspace.ts when one already exists', async () => {

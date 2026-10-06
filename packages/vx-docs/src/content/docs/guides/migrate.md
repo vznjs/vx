@@ -20,7 +20,10 @@ Turbo or Nx repo. It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
 without a terminal it is native. It installs vx with the repo's own package
-manager and leaves your `package.json` scripts as they are. The steps below
+manager and declares the plugins the repo calls for in `vx.workspace.ts`:
+the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
+and `github()` when `.github/workflows` exists. Your `package.json` scripts
+stay as they are. The steps below
 are the same adoption one stage at a time.
 
 ## Turborepo

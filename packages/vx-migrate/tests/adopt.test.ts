@@ -94,23 +94,47 @@ describe('the package manager', () => {
     }
   })
 
-  it('a package listed or installed is not missing; keep wants the plugin too', async () => {
+  it('a package listed or installed is not missing', async () => {
     const root = await tmp('vx-adopt-missing-')
+    const wanted = ['@vzn/vx', '@vzn/vx-migrate']
     try {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
-      const none = [missingPackages(root, 'native'), missingPackages(root, 'keep')]
+      const none = missingPackages(root, wanted)
       await writeFile(
         path.join(root, 'package.json'),
         JSON.stringify({ devDependencies: { '@vzn/vx': '*' } }),
       )
-      const listed = missingPackages(root, 'keep')
+      const listed = missingPackages(root, wanted)
       await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-migrate'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json'), '{}')
-      expect([...none, listed, missingPackages(root, 'keep')]).toEqual([
-        ['@vzn/vx'],
+      expect([none, listed, missingPackages(root, wanted)]).toEqual([
         ['@vzn/vx', '@vzn/vx-migrate'],
         ['@vzn/vx-migrate'],
+        ['@vzn/vx'],
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('given its own version, one installed at another is missing too', async () => {
+    const root = await tmp('vx-adopt-skew-')
+    try {
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
+      for (const [p, v] of [
+        ['vx', '0.0.511'],
+        ['vx-lockfile', '0.0.512'],
+      ]) {
+        await mkdir(path.join(root, 'node_modules', '@vzn', p!), { recursive: true })
+        await writeFile(
+          path.join(root, 'node_modules', '@vzn', p!, 'package.json'),
+          JSON.stringify({ version: v }),
+        )
+      }
+      const wanted = ['@vzn/vx', '@vzn/vx-lockfile']
+      expect([missingPackages(root, wanted), missingPackages(root, wanted, '0.0.512')]).toEqual([
+        [],
         ['@vzn/vx'],
       ])
     } finally {
@@ -175,7 +199,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 
 describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   it(
-    'no terminal: native, vx installed with pnpm, the root scripts untouched, no dummy build',
+    'no terminal: native, vx and its plugins installed with pnpm, scripts untouched',
     async () => {
       const { root, env } = await solidShaped()
       try {
@@ -183,14 +207,25 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         const pj = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {
           scripts: Record<string, string>
         }
+        const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
         expect([
           r.code,
           await calls(root),
           pj.scripts,
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
           await Bun.file(path.join(root, 'packages', 'ssr', 'vx.config.ts')).exists(),
-        ]).toEqual([0, 'add -D -w @vzn/vx\n', { build: 'turbo run build' }, true, false])
-        expect(r.out).toContain('note: installed @vzn/vx (pnpm add -D -w @vzn/vx)')
+          [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
+          r.out.includes('Declare pnpm()'),
+        ]).toEqual([
+          0,
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n',
+          { build: 'turbo run build' },
+          true,
+          false,
+          ['pnpm', 'scheduleHistoryPlugin'],
+          false,
+        ])
+        expect(r.out).toContain('note: installed @vzn/vx @vzn/vx-lockfile')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -199,18 +234,26 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   )
 
   it(
-    '--keep installs the plugin too and writes the workspace file vx init writes',
+    '--keep installs the plugins and adds them to the workspace file vx init writes',
     async () => {
       const { root, env } = await solidShaped()
       try {
+        await mkdir(path.join(root, '.github', 'workflows'), { recursive: true })
         const r = await migrate(root, env, ['--keep'])
         const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
         expect([
           r.code,
           await calls(root),
           ws.includes("import { turbo } from '@vzn/vx-migrate'"),
+          [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
-        ]).toEqual([0, 'add -D -w @vzn/vx @vzn/vx-migrate\n', true, false])
+        ]).toEqual([
+          0,
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-github\n',
+          true,
+          ['turbo', 'pnpm', 'scheduleHistoryPlugin', 'github'],
+          false,
+        ])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -230,7 +273,9 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           dry.code,
           noInstall.code,
           await calls(root),
-          dry.out.includes('note: would install @vzn/vx (dry run)'),
+          dry.out.includes(
+            'note: would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
+          ),
         ]).toEqual([0, 0, '', true])
         expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {
