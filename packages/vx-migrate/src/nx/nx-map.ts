@@ -23,6 +23,7 @@ import {
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
+import { withoutTakenBack } from '../glob-grammar.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -937,8 +938,8 @@ function buildTask(
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
-    const cacheInputs: Record<string, unknown> = { files: inputs.files }
-    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
+    const cacheInputs: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
+    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = withoutTakenBack(inputs.wsFiles)
     if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
     // The `.env` files the task loads are inputs, and gitignored ones
     // (`.env.local`) are invisible to a glob: their bytes, read per run.

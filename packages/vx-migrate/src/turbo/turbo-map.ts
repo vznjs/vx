@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
-import { minimatchToVx } from '../glob-grammar.js'
+import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -1956,8 +1956,9 @@ function buildTask(
       wsFiles.unshift(...files.splice(0))
       wsOutFiles.unshift(...outFiles.splice(0))
     }
-    const inputs: Record<string, unknown> = { files }
-    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles, hidden('inputs'))
+    const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
+    if (wsFiles.length > 0)
+      inputs.workspaceFiles = withoutTakenBack(uniq(wsFiles, hidden('inputs')))
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]

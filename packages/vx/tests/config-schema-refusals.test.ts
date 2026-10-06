@@ -406,6 +406,33 @@ function cacheRefusal(inputs: object, outputs: object = { files: [] }, dependsOn
   return taskRefusal({ exec: { command: 'x' }, dependsOn, cache: { inputs, outputs } })
 }
 
+// A `!` entry subtracts wherever it sits: a literal named after it never
+// entered the key, and an edit to it replayed the old output.
+describe('a literal input a negation takes back (X-31)', () => {
+  const refused = (g: string, by: string, where = 'tasks.t.cache.inputs.files') =>
+    `${CFG}: ${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+    `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`
+  it('is refused in files and workspaceFiles', () => {
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/gen/keep.ts'] })).toBe(
+      refused('src/gen/keep.ts', 'src/gen/**'),
+    )
+    expect(cacheRefusal({ files: ['src/**', '!src/gen', './src/gen/keep.ts'] })).toBe(
+      refused('./src/gen/keep.ts', 'src/gen'),
+    )
+    expect(cacheRefusal({ files: ['package.json', '!*.json'] })).toBe(
+      refused('package.json', '*.json'),
+    )
+    expect(cacheRefusal({ files: [], workspaceFiles: ['tsconfig.json', '!tsconfig.json'] })).toBe(
+      refused('tsconfig.json', 'tsconfig.json', 'tasks.t.cache.inputs.workspaceFiles'),
+    )
+  })
+  it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
+    expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**/*.ts', '!src/gen/**'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/gen/keep.ts', '!src/gen/other.ts'] })).toBeNull()
+  })
+})
+
 describe('glob and filter refusals the sweep found unheld (item 653)', () => {
   it('"!/" in inputs.files names the project directory — the "/" arm of namesDirItself', () => {
     // A bare "/" is refused as absolute first, and "./" normalizes to "";

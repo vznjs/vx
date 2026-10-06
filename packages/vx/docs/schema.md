@@ -692,7 +692,10 @@ interface CacheInputs {
 Project-relative globs. `!`-prefix negates. A **literal** entry (no
 glob character) names a file or a whole directory tree — `src` and
 `src/` both mean everything under `src`, as in Turbo and `.gitignore`;
-`!src` subtracts the tree. Spellings a matcher would otherwise turn into
+`!src` subtracts the tree. A `!` entry subtracts wherever it sits in the
+list, so a literal file it covers (`['src/**', '!src/gen/**',
+'src/gen/keep.ts']`) would never be an input: that is refused at load.
+Spellings a matcher would otherwise turn into
 nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
 is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
 a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
@@ -1830,6 +1833,7 @@ lists the messages a user meets most:
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
+| `cache.inputs.files: "<file>" is taken back by "!<glob>"`                                                                             | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's `package.json` or its own `vx.config.*` (`**`, `*.json`): the clean before a run would delete them. A `!` entry that takes the file back (`!package.json`) lets it load.             |
 | `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |

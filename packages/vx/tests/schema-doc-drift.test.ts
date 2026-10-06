@@ -349,6 +349,21 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    'cache.inputs.files: "<file>" is taken back by "!<glob>"',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: ['src/**', '!src/gen/**', 'src/gen/keep.ts'] },
+              outputs: { files: [] },
+            },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs.files: every entry is a negation, which selects NOTHING',
     () =>
       validated({

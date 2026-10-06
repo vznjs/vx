@@ -24,6 +24,9 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  anyTaskGlob,
+  asTrees,
+  isLiteralPattern,
 } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
@@ -722,6 +725,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       // error for the same reason. Refusing costs nothing: such a config was
       // already silently broken, so no working key changes.
       assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
+      assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
       // The only CacheInputs field that reached the run unvalidated: a
       // non-string entry crashes deep in `filterUpstreamHashes` /
       // `parseDependencySpec` with a raw TypeError naming neither the task
@@ -1339,6 +1343,28 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
 }
 
 /**
+ * A `!` entry subtracts wherever it sits in the list, so a file named
+ * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
+ * entered the key, and an edit to it replayed the old output. Refusing is
+ * free: the literal already selected nothing.
+ */
+function assertNoLiteralTakenBack(globs: readonly string[], where: string): void {
+  const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+  if (negative.length === 0) return
+  const taken = anyTaskGlob(asTrees(negative))
+  for (const g of globs) {
+    if (g.startsWith('!')) continue
+    const lit = normalizeGlob(g).replace(/\/+$/, '')
+    if (!isLiteralPattern(lit) || !taken(lit)) continue
+    const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
+    throw new UserError(
+      `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+        `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`,
+    )
+  }
+}
+
+/**
  * `negation: false` for OUTPUT globs: a `!` entry takes a path back (A-44),
  * and a list of only negations selects nothing and is refused.
  */
@@ -1370,8 +1396,10 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     }
     assertNotDoubleNegated(g, where)
   }
-  if (negation) assertNotNegationOnly(v as string[], where)
-  else assertOutputsNotNegationOnly(v as string[], where)
+  if (negation) {
+    assertNotNegationOnly(v as string[], where)
+    assertNoLiteralTakenBack(v as string[], where)
+  } else assertOutputsNotNegationOnly(v as string[], where)
 }
 
 /**
