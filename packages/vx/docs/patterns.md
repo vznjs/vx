@@ -100,12 +100,12 @@ parser's docblock marks them (`src/graph/dependency-spec.ts`).
 
 ### Cache topology
 
-| Layer                                    | Turbo                              | Nx                 | vx                                               | vx source                                                            |
-| ---------------------------------------- | ---------------------------------- | ------------------ | ------------------------------------------------ | -------------------------------------------------------------------- |
-| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst` in `.vx/cache/`  | `src/cache/cache.ts`                                                 |
-| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date | `src/cache/output-index.ts`                                          |
-| Read-through then write-through layering | yes                                | yes                | yes                                              | `src/cache/layered-cache.ts`                                         |
-| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`      | `src/cache/run-history.ts` (tables created in `src/cache/schema.ts`) |
+| Layer                                    | Turbo                              | Nx                 | vx                                                             | vx source                                                            |
+| ---------------------------------------- | ---------------------------------- | ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Local: content-addressed artifacts       | tarball-per-hash in `.turbo/cache` | `.nx/cache` SQLite | SQLite index + `<hash>.tar.zst`, shared in `~/.vx/<id>/cache/` | `src/cache/cache.ts`                                                 |
+| Local: skip-restore when tree is current | yes (fingerprint check)            | yes                | yes — `isOutputsCurrent` stat check → up-to-date               | `src/cache/output-index.ts`                                          |
+| Read-through then write-through layering | yes                                | yes                | yes                                                            | `src/cache/layered-cache.ts`                                         |
+| Run-history table for analytics          | (no — `--summarize` JSON)          | (Nx Cloud)         | `runs` + `invocations` tables in `cache.db`                    | `src/cache/run-history.ts` (tables created in `src/cache/schema.ts`) |
 
 ### Remote cache wire
 

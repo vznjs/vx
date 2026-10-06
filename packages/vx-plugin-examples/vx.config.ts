@@ -48,6 +48,7 @@ export default defineProject({
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures',
+        env: { define: { VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: ['**/*'],

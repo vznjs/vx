@@ -19,12 +19,15 @@ import {
   type ProjectMeta,
   readLockfile,
   resolveCacheDir,
+  resolveStoreRoot,
 } from '../workspace/index.js'
 
 export interface CliWorkspace {
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
   cacheDir: string
+  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`). */
+  storeRoot: string | null
 }
 
 export const warnToStderr = (message: string): void => {
@@ -33,7 +36,12 @@ export const warnToStderr = (message: string): void => {
 
 export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnToStderr)
-  return { workspaceConfig, plugins, cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig) }
+  return {
+    workspaceConfig,
+    plugins,
+    cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
+    storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
+  }
 }
 
 /**
@@ -131,7 +139,14 @@ export async function loadCliProjects(
   const cache =
     opts.noCreate === true && !existsSync(cacheDir)
       ? null
-      : new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
+      : new Cache(
+          cacheDir,
+          { read: true, write: true },
+          workspaceRoot,
+          undefined,
+          'open',
+          opts.cacheDir === undefined ? ws.storeRoot : null,
+        )
   if (cache !== null) noteSchemaReset(cache, warnToStderr)
   try {
     const loaded = await loadProjects({

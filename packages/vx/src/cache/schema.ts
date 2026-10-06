@@ -19,12 +19,21 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
   } as unknown as ReturnType<Database['prepare']>
 }
 
-export function createTables(db: Database): void {
+/**
+ * Create every table. `store` names the schema holding the ENTRY tables
+ * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`):
+ * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
+ * they live in the shared store attached beside it (v32). The rest is the
+ * workspace's own: its history, its memos, and what its disk looked like
+ * after a save or restore. A store table is never named with its schema in
+ * a statement; SQLite finds it in `main` or in `store`, whichever has it.
+ */
+export function createTables(db: Database, store: 'main' | 'store' = 'main'): void {
   // Cached config evaluations (workspace/config-cache.ts): the validated
   // config as JSON, keyed by everything the evaluation could observe. A
   // separate exec so the artifact schema stays byte-identical.
   db.exec(`
-    CREATE TABLE IF NOT EXISTS config_evals (
+    CREATE TABLE IF NOT EXISTS main.config_evals (
       key        TEXT PRIMARY KEY,
       json       TEXT NOT NULL,
       created_at INTEGER NOT NULL
@@ -34,7 +43,7 @@ export function createTables(db: Database): void {
   db.exec(`
     -- The queryable index: command, exit_code, duration, size and
     -- timestamps; stdout in entry_stdout below.
-    CREATE TABLE IF NOT EXISTS entries (
+    CREATE TABLE IF NOT EXISTS ${store}.entries (
       hash         TEXT PRIMARY KEY,
       project      TEXT NOT NULL,
       task         TEXT NOT NULL,
@@ -52,12 +61,12 @@ export function createTables(db: Database): void {
     -- carries so it survives a remote round trip; a local hit replays it
     -- from here. Its own table: an UPDATE rewrites a whole record, and the
     -- accessed_at bump rewrote up to 16 MB a hit. No row: empty stdout.
-    CREATE TABLE IF NOT EXISTS entry_stdout (
+    CREATE TABLE IF NOT EXISTS ${store}.entry_stdout (
       hash   TEXT PRIMARY KEY,
       stdout TEXT NOT NULL,
       FOREIGN KEY (hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
-    CREATE TABLE IF NOT EXISTS runs (
+    CREATE TABLE IF NOT EXISTS main.runs (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
       -- '' when the outcome derived no cache key (skipped / persistent).
       -- Every reader that must not mistake it for a key guards hash != ''.
@@ -113,23 +122,23 @@ export function createTables(db: Database): void {
     --   runs_ended (2026-09-09) served only the retention DELETE, which
     --     prunes on started_at now (a row ends after it starts, so the
     --     30-day window moves by at most one task's duration).
-    DROP INDEX IF EXISTS runs_hash;
-    DROP INDEX IF EXISTS runs_project;
-    DROP INDEX IF EXISTS runs_ended;
-    CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
-    CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
+    DROP INDEX IF EXISTS main.runs_hash;
+    DROP INDEX IF EXISTS main.runs_project;
+    DROP INDEX IF EXISTS main.runs_ended;
+    CREATE INDEX IF NOT EXISTS main.runs_started_at ON runs(started_at);
+    CREATE INDEX IF NOT EXISTS main.runs_run_id     ON runs(run_id);
     -- The one keyed index, PARTIAL over failed rows: a green run's
     -- inserts only evaluate its predicate, so the append-only cost above
     -- holds, and the flakiness probe after a miss (failure-mode.ts,
     -- "did this key ever fail?") reads a handful of leaves instead of
     -- scanning the table (2026-09-10: 10–95 ms at 170k rows without it).
-    CREATE INDEX IF NOT EXISTS runs_failed ON runs(hash) WHERE status = 'failed';
+    CREATE INDEX IF NOT EXISTS main.runs_failed ON runs(hash) WHERE status = 'failed';
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
     -- skip the content-hash on inputs whose stat hasn't changed
     -- since the last run. Pure performance optimization; the stored
     -- hash is the exact same one content-hashing would compute now,
     -- so the cache key derivation is unchanged.
-    CREATE TABLE IF NOT EXISTS file_hashes (
+    CREATE TABLE IF NOT EXISTS main.file_hashes (
       path         TEXT PRIMARY KEY,
       mtime_ms     INTEGER NOT NULL,
       size_bytes   INTEGER NOT NULL,
@@ -142,14 +151,14 @@ export function createTables(db: Database): void {
     -- worktree size git recorded (A-60). Fixed for its OID, so a warm
     -- run asks git for none; swept with file_hashes by seen_at, the
     -- time the row was written.
-    CREATE TABLE IF NOT EXISTS blob_sizes (
+    CREATE TABLE IF NOT EXISTS main.blob_sizes (
       oid     TEXT PRIMARY KEY,
       size    INTEGER NOT NULL,
       seen_at INTEGER NOT NULL
     );
     -- v30: the paths an index distrusts, by a hash of the index file and the
     -- pathspecs (A-60): a warm run reads one row, not one per blob.
-    CREATE TABLE IF NOT EXISTS blob_verdicts (
+    CREATE TABLE IF NOT EXISTS main.blob_verdicts (
       digest  TEXT PRIMARY KEY,
       paths   TEXT NOT NULL,
       seen_at INTEGER NOT NULL
@@ -163,24 +172,34 @@ export function createTables(db: Database): void {
     -- ON DELETE CASCADE keeps these rows in sync with entries:
     -- a cache prune that drops an entry sweeps its output rows
     -- automatically.
-    CREATE TABLE IF NOT EXISTS output_files (
+    CREATE TABLE IF NOT EXISTS ${store}.output_files (
       entry_hash  TEXT NOT NULL,
       path        TEXT NOT NULL,
       size_bytes  INTEGER NOT NULL,
       mode        INTEGER NOT NULL,
       mtime_ms    INTEGER NOT NULL,
-      -- v28: the inode and ctime this machine saw after the save or
-      -- restore that left the file equal to the entry; NULL until then.
-      ino         INTEGER,
-      ctime_ms    INTEGER,
       PRIMARY KEY (entry_hash, path),
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+    );
+    -- v28, its own table since v32: the inode and ctime THIS workspace saw
+    -- after the save or restore that left the file equal to the entry. No
+    -- row: never current. Apart from output_files because the entry is
+    -- shared and the disk is not: two worktrees on one store overwrote each
+    -- other's stamps, and every switch between them restored. No foreign
+    -- key (the entry may live in another database); a prune and a re-save
+    -- delete what they orphan.
+    CREATE TABLE IF NOT EXISTS main.output_stamps (
+      entry_hash  TEXT NOT NULL,
+      path        TEXT NOT NULL,
+      ino         INTEGER NOT NULL,
+      ctime_ms    INTEGER NOT NULL,
+      PRIMARY KEY (entry_hash, path)
     );
     -- Each config's ORDERED import closure (the config first), so a warm
     -- load keys it by stat-hashing the list (the file_hashes memo) instead
     -- of reading and scanning every file. Machine-local; pruned with
     -- config_evals (2026-09-03).
-    CREATE TABLE IF NOT EXISTS config_closures (
+    CREATE TABLE IF NOT EXISTS main.config_closures (
       config_path TEXT PRIMARY KEY,
       files_json  TEXT NOT NULL,
       created_at  INTEGER NOT NULL
@@ -190,19 +209,18 @@ export function createTables(db: Database): void {
     -- hit, unchanged mtimes prove the output SET is unchanged, replacing
     -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
     -- ingest writes none, and the first hit after it walks and records.
-    CREATE TABLE IF NOT EXISTS output_dirs (
+    CREATE TABLE IF NOT EXISTS main.output_dirs (
       entry_hash  TEXT NOT NULL,
       path        TEXT NOT NULL,
       mtime_ms    INTEGER NOT NULL,
-      PRIMARY KEY (entry_hash, path),
-      FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+      PRIMARY KEY (entry_hash, path)
     );
     -- v22 (Tier 3): one header row per vx-run invocation. The runs
     -- table is per-task; this is the per-invocation record that
     -- carries git/CI/host context, the command, tags, and run-level
     -- counts so the dashboard never reconstructs a header with a
     -- lossy GROUP BY over runs.
-    CREATE TABLE IF NOT EXISTS invocations (
+    CREATE TABLE IF NOT EXISTS main.invocations (
       run_id            TEXT PRIMARY KEY,
       command           TEXT NOT NULL,
       requested_tasks   TEXT NOT NULL,
@@ -233,9 +251,9 @@ export function createTables(db: Database): void {
       vx_version        TEXT NOT NULL,
       tags              TEXT NOT NULL DEFAULT '{}'
     );
-    CREATE INDEX IF NOT EXISTS invocations_started ON invocations(started_at);
-    CREATE INDEX IF NOT EXISTS invocations_branch  ON invocations(branch);
-    CREATE INDEX IF NOT EXISTS invocations_ci      ON invocations(ci);
+    CREATE INDEX IF NOT EXISTS main.invocations_started ON invocations(started_at);
+    CREATE INDEX IF NOT EXISTS main.invocations_branch  ON invocations(branch);
+    CREATE INDEX IF NOT EXISTS main.invocations_ci      ON invocations(ci);
     -- v22 (Tier 3): the input-fingerprint moat. One row per cache-key
     -- component, keyed by the cache-ENTRY hash it belongs to (NOT a
     -- run id). Written inside the entry-save transaction — only on a
@@ -246,13 +264,20 @@ export function createTables(db: Database): void {
     -- SQL over (kind,name,hash); a JSON blob would force an app-side
     -- parse + compare on every probe. ON DELETE CASCADE keeps these
     -- rows in sync with entries (a prune sweeps them automatically).
-    CREATE TABLE IF NOT EXISTS entry_inputs (
+    CREATE TABLE IF NOT EXISTS ${store}.entry_inputs (
       entry_hash TEXT NOT NULL,
       kind       TEXT NOT NULL,
       name       TEXT NOT NULL,
       hash       TEXT NOT NULL,
       PRIMARY KEY (entry_hash, kind, name),
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+    );
+    -- v32: what belongs to the entries rather than to one workspace: the
+    -- salt their value digests are taken under, so a digest an entry_inputs
+    -- row holds compares with the one another workspace's run takes.
+    CREATE TABLE IF NOT EXISTS ${store}.store_meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
   `)
 }

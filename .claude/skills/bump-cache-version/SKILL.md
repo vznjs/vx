@@ -60,6 +60,6 @@ you will read it to understand cache invalidation history.
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
 was retired 2026-09-02). Current: `vx-cache-v39`, core `SCHEMA_VERSION`
-`v31` (bumped 2026-10-04 for the hit restore columns; a
+`v32` (bumped 2026-10-06 for the shared store; a
 `SCHEMA_VERSION` bump drops the whole index, so it is taken only when a
 stored shape changes).

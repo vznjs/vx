@@ -20,6 +20,12 @@
 // for the user to see — but on a cache hit there's nothing to replay
 // (the original run was successful and stderr typically empty).
 //
+// With a shared store (v32, the default: `docs/design/shared-store-2026-10.md`)
+// the entries and their artifacts live in `<store>/store.db` and
+// `<store>/<hash>.tar.zst`, attached to the workspace's own `cache.db`,
+// which keeps the history and the memos: every workspace of one user hits
+// what another saved, and none reads another's runs.
+//
 // This is core's FLOOR, not a module to replace: remote storage is a
 // `RemoteCacheLayer` (has / get / put) that `LayeredCache` wraps around
 // this handle, declared by a plugin's `cache` hook. The contract every
@@ -31,6 +37,7 @@ import {
   closeSync,
   constants,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -163,6 +170,17 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 
 /** Say once, on the channel the opener has, that an upgrade emptied the index. */
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
+  if (cache.storeFallback !== null) {
+    warn(
+      `[vx] shared cache store ${cache.storeFallback} is not usable; entries stay in ${cache.storeDir ?? 'this workspace'}, where no other workspace hits them`,
+    )
+  }
+  if (cache.storeMoved !== null) {
+    const { from, to } = cache.storeMoved
+    warn(
+      `[vx] cache entries now live in the shared store ${to}; the ones in ${from} miss once, and \`vx cache prune\` reclaims their artifacts`,
+    )
+  }
   if (cache.formatChange !== null) {
     const { from, to } = cache.formatChange
     warn(
@@ -237,7 +255,15 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        restored_remote counts — a hit that restored outputs apart from
 //        one that found them in place, for every reader after the run.
 //        The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v31'
+//   v32: the entry tables (entries, entry_stdout, output_files,
+//        entry_inputs) may live in a shared store attached as `store`;
+//        output_files' ino + ctime_ms moved to the workspace's own
+//        output_stamps, output_dirs lost its foreign key, and the value
+//        salt moved to store_meta. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v32'
+
+/** The tables a store holds: dropped from a workspace index that held them itself. */
+const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
@@ -403,6 +429,39 @@ function openCacheDir(cacheDir: string): string | null {
   return null
 }
 
+/** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
+function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
+  try {
+    if (storeRoot !== null) {
+      // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
+      // made alone and re-checked, as Nx makes `~/.nx/<id>`. Artifacts are
+      // replayed into the workspace, so nobody else may write them.
+      const vxHome = path.dirname(path.dirname(storeRoot))
+      for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
+        const refused = ensurePrivateDir(dir)
+        if (refused !== null) return refused
+      }
+    }
+    return openCacheDir(storeDir)
+  } catch (err) {
+    return errorText(err)
+  }
+}
+
+function ensurePrivateDir(dir: string): string | null {
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+  }
+  const st = lstatSync(dir)
+  if (!st.isDirectory()) return `${dir} is not a directory`
+  const uid = process.getuid?.()
+  if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`
+  if ((st.mode & 0o077) !== 0) return `${dir} is open to other users (chmod 700 it)`
+  return null
+}
+
 // Make the cache dir invisible to git, every time it is created: a `*`
 // .gitignore inside it (the Cargo / Nx convention). Two reasons, both
 // measured. A cache nobody ignored gets COMMITTED by the next `git add -A`;
@@ -482,6 +541,21 @@ export class Cache implements CacheLayer {
   /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
   private readonly writeBlocked: string | null
   private readonly dbFile: string
+  /** Where the artifacts live: the shared store, or `cacheDir` itself. */
+  private readonly artifactDir: string
+
+  /** The shared store this index attached, or undefined when it holds its entries itself. */
+  readonly storeDir: string | undefined
+
+  /**
+   * The store this open was asked for and could not use, with why: the
+   * entries went to a store inside `cacheDir` instead. Said once by
+   * `noteSchemaReset`.
+   */
+  readonly storeFallback: string | null = null
+
+  /** Set when this open moved a workspace index's own entries out for a shared store. */
+  readonly storeMoved: { from: string; to: string } | null = null
 
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
@@ -557,6 +631,15 @@ export class Cache implements CacheLayer {
      * and left as it was.
      */
     mode: 'open' | 'inspect' = 'open',
+    /**
+     * The shared store's directory, unversioned: every key is seeded with
+     * `CACHE_VERSION`, so two vx versions never read each other's entries,
+     * and a store table only ever gains columns (owner, 2026-10-06). Or
+     * `null` for an index that holds its entries itself (a `cacheDir`).
+     * Undefined follows the layout the index records: a reading verb, a
+     * plugin's handle.
+     */
+    storeRoot?: string | null,
   ) {
     this.inspecting = mode === 'inspect'
     this.read = localPolicy.read
@@ -693,8 +776,11 @@ export class Cache implements CacheLayer {
               return null
             }
             if (found === SCHEMA_VERSION) return null
+            // `main.` on every name: unqualified, a table the index lacks
+            // resolves to an attached store's (none is attached yet; this
+            // keeps it so).
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS blob_verdicts; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
+              'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -712,7 +798,71 @@ export class Cache implements CacheLayer {
       }
     }
 
-    createTables(this.db)
+    // Where the entry tables live (v32): `store_dir` names the shared store
+    // this index was last opened with; absent, the index holds them itself.
+    const recorded = readable(
+      () =>
+        (
+          this.db.prepare("SELECT value FROM schema_meta WHERE key = 'store_dir'").get() as {
+            value: string
+          } | null
+        )?.value,
+    )
+    let storeDir =
+      mode === 'inspect' || storeRoot === undefined
+        ? recorded
+        : storeRoot === null
+          ? undefined
+          : storeRoot
+    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
+      const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
+      if (blocked !== null) {
+        // A home this user cannot write (a container, a read-only mount):
+        // the entries stay in this workspace rather than fail the run.
+        const fallback = cacheDir
+        if (fallback !== storeDir) {
+          // Said by the open that falls back; the ones after it find it recorded.
+          if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
+          storeDir = fallback
+          openCacheDir(fallback)
+        }
+      }
+    }
+    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
+      // An index that held its entries itself would shadow the store's:
+      // SQLite resolves an unqualified name in `main` first. Its history
+      // and memos stay; its entries' artifacts are orphans `prune` reaps.
+      const holds = readable(
+        () =>
+          this.db
+            .prepare("SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = 'entries'")
+            .get() != null,
+      )
+      if (holds) {
+        const had = this.db.prepare('SELECT 1 FROM main.entries LIMIT 1').get() != null
+        this.db
+          .transaction(() => {
+            for (const t of STORE_TABLES) this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
+          })
+          .immediate()
+        if (had) this.storeMoved = { from: cacheDir, to: storeDir }
+      }
+    }
+    this.storeDir = storeDir
+    this.artifactDir = storeDir ?? cacheDir
+    if (storeDir !== undefined) this.attachStore(storeDir, mode === 'inspect')
+
+    createTables(this.db, storeDir === undefined ? 'main' : 'store')
+    if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
+      if (storeDir === undefined)
+        this.db.prepare("DELETE FROM schema_meta WHERE key = 'store_dir'").run()
+      else
+        this.db
+          .prepare(
+            "INSERT INTO schema_meta(key, value) VALUES ('store_dir', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          )
+          .run(storeDir)
+    }
 
     this.deleteEntryRow = lazyStatement(this.db, 'DELETE FROM entries WHERE hash = ?')
     this.insertEntry = lazyStatement(
@@ -797,6 +947,33 @@ export class Cache implements CacheLayer {
       return (out instanceof Promise ? out.catch(refuse) : out) as T
     } catch (err) {
       return refuse(err)
+    }
+  }
+
+  /**
+   * Attach the shared store as `store`, with the pragmas the index takes:
+   * WAL for both, so a workspace's run and another's share the store as
+   * two runs on one `--cache-dir` share an index. A reading verb over a
+   * store with no file yet reads an empty one in memory.
+   */
+  private attachStore(storeDir: string, inspecting: boolean): void {
+    const storeFile = path.join(storeDir, 'store.db')
+    const absent = inspecting && !existsSync(storeFile)
+    try {
+      this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+      this.db.exec('PRAGMA store.journal_mode = WAL')
+      if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
+      this.db.exec('PRAGMA store.journal_size_limit = 67108864')
+      this.db.exec('PRAGMA store.synchronous = NORMAL')
+    } catch (err) {
+      try {
+        closeDb(this.db)
+      } catch {
+        // The refusal below is the error worth reporting.
+      }
+      throw unreadableIndex(err)
+        ? unreadableIndexError(storeFile, err)
+        : (outOfFdsAtOpen(storeFile, err) ?? err)
     }
   }
 
@@ -908,7 +1085,7 @@ export class Cache implements CacheLayer {
   private loadValueSalt(): string {
     const read = (): string | undefined =>
       (
-        this.db.prepare("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+        this.db.prepare("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
           value: string
         } | null
       )?.value
@@ -921,7 +1098,7 @@ export class Cache implements CacheLayer {
     // Two processes opening one new store: the first salt stands.
     this.db
       .prepare(
-        "INSERT INTO schema_meta(key, value) VALUES ('value_salt', ?) ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO store_meta(key, value) VALUES ('value_salt', ?) ON CONFLICT(key) DO NOTHING",
       )
       .run(salt)
     return read() ?? salt
@@ -1079,11 +1256,15 @@ export class Cache implements CacheLayer {
   /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
   private async dropEntry(hash: string): Promise<void> {
     await rm(this.tarPath(hash), { force: true })
-    try {
+    const drop = this.db.transaction(() => {
       this.deleteEntryRow.run(hash)
+      this.outputs.forget([hash])
+    })
+    try {
+      drop()
     } catch (err) {
       if (!isIndexFull(err)) throw err
-      this.deleteEntryRow.run(hash)
+      drop()
     }
   }
 
@@ -1921,6 +2102,7 @@ export class Cache implements CacheLayer {
       const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
         this.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
+        this.outputs.forget(rows)
       })
       try {
         deleteRows()
@@ -1930,6 +2112,13 @@ export class Cache implements CacheLayer {
       }
     }
 
+    // This workspace's rows for entries another workspace pruned from a
+    // shared store: never read (a lookup starts at the entry), only kept.
+    try {
+      this.outputs.forgetGone()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
     const orphans = await this.reapOrphans()
     return { evicted: victims.size, bytesFreed, ...orphans }
   }
@@ -1994,7 +2183,7 @@ export class Cache implements CacheLayer {
     }>
     let names: string[]
     try {
-      names = await readdir(this.cacheDir)
+      names = await readdir(this.artifactDir)
     } catch {
       return { phantoms: new Map(), stale: [] }
     }
@@ -2019,8 +2208,8 @@ export class Cache implements CacheLayer {
 
   /** Row-less artifacts and temps past the in-flight grace window: one readdir, one stat per candidate. */
   private async scanOrphans(): Promise<Array<{ file: string; size: number }>> {
-    return scanOrphanFiles(
-      this.cacheDir,
+    const found = await scanOrphanFiles(
+      this.artifactDir,
       () =>
         new Set(
           (this.db.prepare('SELECT hash FROM entries').all() as Array<{ hash: string }>).map(
@@ -2028,6 +2217,10 @@ export class Cache implements CacheLayer {
           ),
         ),
     )
+    // With a shared store, no artifact in `cacheDir` is indexed: they are
+    // what this workspace saved before its entries moved out.
+    if (this.artifactDir === this.cacheDir) return found
+    return [...found, ...(await scanOrphanFiles(this.cacheDir, () => new Set()))]
   }
 
   close(): void {
@@ -2070,7 +2263,7 @@ export class Cache implements CacheLayer {
   }
 
   private tarPath(hash: string): string {
-    return path.join(this.cacheDir, `${hash}.tar.zst`)
+    return path.join(this.artifactDir, `${hash}.tar.zst`)
   }
 }
 

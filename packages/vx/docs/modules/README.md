@@ -109,7 +109,7 @@ here, itself or in a brace group.
 
 | File                                       | Topic                                                                                                                                           |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads}.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir; the root files a load reads once.                    |
+| [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads,repo-id}.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir, store id; the root files a load reads once.  |
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                                |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |

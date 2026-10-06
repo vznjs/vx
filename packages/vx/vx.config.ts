@@ -16,7 +16,10 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // vx forces colour on a task unless it sees FORCE_COLOR. The suite spawns
 // vx and its tasks and reads their output as text, so it runs with colour
 // off, as a host that sets none ran it before vx forced it.
-const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0' }
+// VX_CACHE_DIR: every fixture keeps its whole cache in its own .vx/cache; the
+// default shares entries through the user's store, and one fixture would hit
+// what another saved.
+const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0', VX_CACHE_DIR: '.vx/cache' }
 // `bun build --compile --target=bun-<t>` for a target other than the
 // running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts
 // it into `<cwd>/.<hash>-00000000.tmp/` and moves the runtime into

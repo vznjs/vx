@@ -153,4 +153,5 @@ src/workspace/migration.ts
 src/workspace/nested-dirs.ts
 src/workspace/package-graph.ts
 src/workspace/project-loader.ts
+src/workspace/repo-id.ts
 src/workspace/workspace.ts

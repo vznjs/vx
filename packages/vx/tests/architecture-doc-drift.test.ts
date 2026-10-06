@@ -55,7 +55,7 @@ describe('architecture.md follows the source it describes', () => {
 
   it('the runs-column table lists every column of the runs table (rowid aside)', () => {
     const src = readFileSync(path.join(pkg, 'src', 'cache', 'schema.ts'), 'utf8')
-    const block = /CREATE TABLE IF NOT EXISTS runs \(([\s\S]*?)\n\s*\)/.exec(src)
+    const block = /CREATE TABLE IF NOT EXISTS (?:main\.)?runs \(([\s\S]*?)\n\s*\)/.exec(src)
     expect(block).not.toBeNull()
     const columns = block![1]!
       .split('\n')

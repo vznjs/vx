@@ -152,6 +152,7 @@ export default defineProject({
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test --only-failures',
+        env: { define: { VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: [

@@ -2393,10 +2393,12 @@ describe('the pages say where an entry stdout lives', () => {
   it('the schema keeps stdout apart, and each page says so', () => {
     const core = path.resolve(import.meta.dir, '..')
     const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
-    const entries = /CREATE TABLE IF NOT EXISTS entries \(([^;]*?)\n {4}\);/.exec(schema)?.[1]
+    const entries = /CREATE TABLE IF NOT EXISTS \$\{store\}\.entries \(([^;]*?)\n {4}\);/.exec(
+      schema,
+    )?.[1]
     expect(entries).toBeDefined()
     expect(entries).not.toMatch(/^\s*stdout\b/m)
-    expect(schema).toContain('CREATE TABLE IF NOT EXISTS entry_stdout (')
+    expect(schema).toContain('CREATE TABLE IF NOT EXISTS ${store}.entry_stdout (')
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(core, 'docs', 'modules', 'cache.md'))).toContain(
       'Pure SQL: stdout from its `entry_stdout` row',

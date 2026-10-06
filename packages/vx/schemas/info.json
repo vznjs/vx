@@ -17,6 +17,7 @@
     "workers",
     "memory",
     "cacheDir",
+    "cacheStore",
     "cacheVersion",
     "schemaVersion",
     "cacheEntries",
@@ -86,6 +87,7 @@
       }
     },
     "cacheDir": { "type": "string" },
+    "cacheStore": { "type": ["string", "null"] },
     "cacheVersion": { "type": "string" },
     "schemaVersion": { "type": "string" },
     "cacheEntries": { "type": "integer" },

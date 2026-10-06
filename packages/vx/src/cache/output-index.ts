@@ -1,5 +1,6 @@
 // The output fingerprint index: per-entry `output_files` rows (size, mode,
-// millisecond mtime) and `output_dirs` rows (directory mtimes), and the two
+// millisecond mtime), this workspace's `output_stamps` (inode and ctime) and
+// `output_dirs` rows (directory mtimes), and the two
 // proofs a cache hit runs against the tree before deciding not to restore.
 // Owns its statements over the store's handle; `Cache` delegates, and
 // writes the file rows through `replaceFileRows` inside its own save
@@ -30,6 +31,7 @@ export class OutputIndex {
   private readonly deleteOutputDirs: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly stampOutputFile: ReturnType<Database['prepare']>
+  private readonly deleteStamps: ReturnType<Database['prepare']>
   /**
    * Snapshots taken and not yet written, the last per hash. A snapshot is
    * read by the NEXT run's hit check, never by the task that took it, so
@@ -63,8 +65,34 @@ export class OutputIndex {
     this.entryExists = lazyStatement(this.db, 'SELECT 1 FROM entries WHERE hash = ?')
     this.stampOutputFile = lazyStatement(
       this.db,
-      'UPDATE output_files SET ino = ?, ctime_ms = ? WHERE entry_hash = ? AND path = ?',
+      'INSERT INTO output_stamps(entry_hash, path, ino, ctime_ms) VALUES (?, ?, ?, ?) ON CONFLICT(entry_hash, path) DO UPDATE SET ino = excluded.ino, ctime_ms = excluded.ctime_ms',
     )
+    this.deleteStamps = lazyStatement(this.db, 'DELETE FROM output_stamps WHERE entry_hash = ?')
+  }
+
+  /**
+   * Drop this workspace's stamps and snapshots of `hashes`, whose entries
+   * are gone: they live apart from the entry (it may be another database's),
+   * so no cascade takes them.
+   */
+  forget(hashes: readonly string[]): void {
+    if (hashes.length === 0) return
+    for (const h of hashes) {
+      this.pendingStamps.delete(h)
+      this.pendingDirs.delete(h)
+    }
+    const { test, params } = inHashes(hashes)
+    this.db.prepare(`DELETE FROM output_stamps WHERE entry_hash ${test}`).run(...params)
+    this.db.prepare(`DELETE FROM output_dirs WHERE entry_hash ${test}`).run(...params)
+  }
+
+  /** `forget` every entry no longer stored: another workspace's prune of a shared store. */
+  forgetGone(): void {
+    this.db.transaction(() => {
+      this.db.exec(
+        'DELETE FROM output_stamps WHERE entry_hash NOT IN (SELECT hash FROM entries); DELETE FROM output_dirs WHERE entry_hash NOT IN (SELECT hash FROM entries)',
+      )
+    })()
   }
 
   /**
@@ -76,6 +104,7 @@ export class OutputIndex {
     // A stamp taken for the rows this replaces describes their files, not these.
     this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
+    this.deleteStamps.run(hash)
     for (const [rel, size, mode, mtime] of rows) {
       this.insertOutputFile.run(hash, rel, size, mode, mtime)
     }
@@ -93,7 +122,7 @@ export class OutputIndex {
     // reads its rows twice.
     const { test, params } = inHashes(hashes)
     const stmt = this.db.query(
-      `SELECT entry_hash, path, size_bytes, mode, mtime_ms, ino, ctime_ms FROM output_files WHERE entry_hash ${test}`,
+      `SELECT f.entry_hash, f.path, f.size_bytes, f.mode, f.mtime_ms, s.ino, s.ctime_ms FROM output_files f LEFT JOIN output_stamps s ON s.entry_hash = f.entry_hash AND s.path = f.path WHERE f.entry_hash ${test}`,
     )
     const rows = stmt.all(...params) as Array<{
       entry_hash: string
@@ -296,7 +325,9 @@ export class OutputIndex {
       this.pendingStamps.clear()
       this.db.transaction(() => {
         for (const [hash, rows] of stamps) {
-          for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(ino, ctime, hash, rel)
+          // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
+          if (this.entryExists.get(hash) === null) continue
+          for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
         }
       })()
     }
@@ -306,9 +337,8 @@ export class OutputIndex {
     this.db.transaction(() => {
       for (const [hash, rows] of pending) {
         this.deleteOutputDirs.run(hash)
-        // The rows reference the entry: one pruned by another process
-        // between the snapshot and this flush has nothing to describe,
-        // and its insert would fail the whole transaction on the FK.
+        // The rows describe the entry: one pruned by another process
+        // between the snapshot and this flush has nothing to describe.
         if (rows === null || this.entryExists.get(hash) === null) continue
         for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, rel, mtime)
       }
