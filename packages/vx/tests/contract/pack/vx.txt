@@ -87,6 +87,7 @@ src/orchestrator/local-shortcircuit.ts
 src/orchestrator/lockfile-claim.ts
 src/orchestrator/logger.ts
 src/orchestrator/metrics.ts
+src/orchestrator/miss-reason.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/persistent.ts
