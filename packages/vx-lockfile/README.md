@@ -7,13 +7,13 @@ Without a plugin, core folds the whole lockfile into the workspace fingerprint t
 ## Usage
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-lockfile   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+npm install -D @vzn/vx   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d; the plugin ships with it
 ```
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
+import { pnpm } from '@vzn/vx/plugins' // or bun, npm, yarn
 
 export default defineWorkspace({
   plugins: [pnpm()],

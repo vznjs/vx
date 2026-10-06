@@ -340,9 +340,19 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   // npm / release.yml). Comparing TS-source startup against Turbo's
   // and Nx's precompiled binaries would handicap vx unfairly.
   const vxBin = path.join(dir, '.vx-runner')
-  const target = `${process.platform}-${process.arch === 'x64' ? 'x64' : process.arch}`
+  const target = `bun-${process.platform}-${process.arch === 'x64' ? 'x64' : process.arch}`
   const compiled = await sh(
-    ['bun', path.join(vxRoot, 'packages', 'vx', 'scripts', 'compile.ts'), target, vxBin],
+    [
+      'bun',
+      'build',
+      '--compile',
+      '--minify',
+      '--bytecode',
+      `--target=${target}`,
+      path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'),
+      '--outfile',
+      vxBin,
+    ],
     vxRoot,
   )
   // Bun 1.4.0's compiled binary carries a signature this macOS rejects

@@ -4,6 +4,7 @@ config/index.ts
 index.ts
 launcher.cjs
 package.json
+plugins/index.ts
 src/bin.ts
 src/cache/archive.ts
 src/cache/cache.ts

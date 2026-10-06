@@ -15,7 +15,7 @@ Every plugin is a package a workspace declares:
 
 ```ts
 // vx.workspace.ts
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { scheduleHistoryPlugin } from '@vzn/vx/plugins'
 
 export default { plugins: [scheduleHistoryPlugin()] }
 ```

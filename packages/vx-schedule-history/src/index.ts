@@ -27,6 +27,8 @@ import {
 import type { CommandContext } from '@vzn/vx'
 import { criticalPathPriorities } from './critical-path.js'
 import { renderHistory, type HistoryRow } from './history-view.js'
+// Names the plugin: the vx binary bundles it, and no package.json sits beside import.meta there.
+import pkg from '../package.json'
 
 export { criticalPathPriorities } from './critical-path.js'
 
@@ -244,7 +246,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         },
       )
   }
-  return definePlugin(import.meta, hooks)
+  return definePlugin(pkg, hooks)
 }
 
 /** Default multiplier over the largest peak RSS seen — the asymmetry: over-reserving costs some parallelism, under-reserving meets the OOM killer. */

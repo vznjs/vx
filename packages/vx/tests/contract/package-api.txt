@@ -960,6 +960,7 @@ export type PluginOptionKinds<T> = {
 export interface PluginOrigin {
   readonly dir?: string
   readonly url?: string
+  readonly name?: unknown
 }
 == type PluginSetupContext (src/orchestrator/plugin.ts)
 export interface PluginSetupContext extends BaseContext {}

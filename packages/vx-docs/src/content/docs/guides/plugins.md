@@ -113,7 +113,7 @@ export function oneDatabase(): VxPlugin {
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { scheduleHistoryPlugin } from '@vzn/vx/plugins'
 
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
@@ -301,15 +301,15 @@ One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 ## OpenTelemetry
 
 `@vzn/vx-otel` exports every run as OTLP traces, metrics and logs, with no
-OpenTelemetry SDK: one trace per run, one span per task. Install it
-(`bun add -d @vzn/vx-otel`) and point it at your collector
+OpenTelemetry SDK: one trace per run, one span per task. It ships with
+vx; declare it and point it at your collector
 (`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`). Without any
 endpoint it declines; a signal's own endpoint alone exports that signal.
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { otel } from '@vzn/vx-otel'
+import { otel } from '@vzn/vx/plugins'
 
 export default defineWorkspace({
   plugins: [otel({ serviceName: 'my-monorepo', headers: { authorization: 'Bearer …' } })],
@@ -343,15 +343,15 @@ the run still exits green.
 ## vx mcp
 
 `@vzn/vx-mcp` lets Claude Code, Cursor, Continue.dev or Copilot ask your
-workspace why a task re-ran, read-only, over stdio. Install it
-(`npm install -D @vzn/vx-mcp`) and declare it; `vx help` then lists
+workspace why a task re-ran, read-only, over stdio. It ships with vx;
+declare it and `vx help` then lists
 `vx mcp`. Point your agent at it (`claude mcp add vx -- vx mcp`) and start
 the agent inside the workspace; restart it if it lists no vx tools.
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
+import { mcp } from '@vzn/vx/plugins'
 
 export default defineWorkspace({ plugins: [mcp()] })
 ```

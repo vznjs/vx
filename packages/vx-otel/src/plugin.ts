@@ -18,6 +18,8 @@ import {
 } from '@vzn/vx'
 import { readFileSync } from 'node:fs'
 import { OtelSink, type OtlpTls, type PostFn } from './sink.js'
+// Names the plugin: the vx binary bundles it, and no package.json sits beside import.meta there.
+import pkg from '../package.json'
 
 export interface OtelPluginOptions {
   /** OTLP base endpoint. Falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`. */
@@ -391,7 +393,7 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
-  return definePlugin(import.meta, {
+  return definePlugin(pkg, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))
       if (config === undefined) return undefined

@@ -87,7 +87,7 @@ jobs:
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { github } from '@vzn/vx-github'
+import { github } from '@vzn/vx/plugins'
 
 export default defineWorkspace({ plugins: [github()] })
 ```

@@ -28,6 +28,10 @@
     "./config": {
       "types": "./src/config.ts",
       "import": "./src/config.ts"
+    },
+    "./plugins": {
+      "types": "./plugins/index.ts",
+      "import": "./plugins/index.ts"
     }
   },
   "bin": {
@@ -37,6 +41,7 @@
     "npm-launcher.cjs",
     "index.ts",
     "config",
+    "plugins",
     "src",
     "schemas",
     "README.md"

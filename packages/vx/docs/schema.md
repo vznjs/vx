@@ -1410,7 +1410,7 @@ default.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { otel } from '@vzn/vx-otel'
+import { otel } from '@vzn/vx/plugins'
 
 export default defineWorkspace({
   concurrency: 8,

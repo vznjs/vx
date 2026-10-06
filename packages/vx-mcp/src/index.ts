@@ -1,7 +1,7 @@
 // `@vzn/vx-mcp` — a Model Context Protocol server as a vx plugin.
 //
 //   import { defineWorkspace } from '@vzn/vx'
-//   import { mcp } from '@vzn/vx-mcp'
+//   import { mcp } from '@vzn/vx/plugins'
 //   export default defineWorkspace({ plugins: [mcp(), …] })
 //
 // Declaring it adds `vx mcp` (the `commands` seam): a JSON-RPC 2.0 server
@@ -19,9 +19,11 @@
 
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { serveStdio } from './server.js'
+// Names the plugin: the vx binary bundles it, and no package.json sits beside import.meta there.
+import pkg from '../package.json'
 
 export function mcp(): VxPlugin {
-  return definePlugin(import.meta, {
+  return definePlugin(pkg, {
     commands: {
       mcp: {
         description: 'serve cache stats + run history to AI agents (MCP over stdio)',

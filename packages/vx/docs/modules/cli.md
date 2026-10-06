@@ -13,6 +13,7 @@ sibling `src/cli/<name>.ts`.
 export async function run(argv: readonly string[]): Promise<number>
 export { registerBakedPlugins, registerCoreAlias } from './core-alias.js'
 export { BAKED_PLUGINS } from './baked.js'
+export { isCompiledBinary } from './upgrade.js'
 ```
 
 Every verb's module, `run` included, and the plugin-verb lookup are

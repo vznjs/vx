@@ -25,30 +25,22 @@ export function registerCoreAlias(load: () => Promise<Record<string, unknown>>):
 }
 
 /**
- * The plugin packages compiled into the binary (`baked.ts`, filled by
- * scripts/compile.ts): a workspace imports them by their package names
- * with nothing installed, and gets the binary's own copy whatever
- * `node_modules` holds, as with core. Served from the binary's bytecode,
- * not resolved and transpiled per process: 5 packages, `vx show`
- * 37 → 31 ms (2026-10-06).
+ * The first-party plugins the compiled binary carries (`baked.ts`): a
+ * workspace imports them from `@vzn/vx/plugins` with nothing installed,
+ * and gets the binary's own copy whatever `node_modules` holds, as with
+ * core. Served from the binary's bytecode, not resolved and transpiled per
+ * process: 5 packages, `vx show` 41 → 31 ms (2026-10-06). The binary only:
+ * from source the loader's own import of the specifier would come back
+ * through this module.
  */
-export async function registerBakedPlugins(
+export function registerBakedPlugins(
   baked: Readonly<Record<string, () => Promise<Record<string, unknown>>>>,
-): Promise<void> {
-  const specifiers = Object.keys(baked)
-  if (specifiers.length === 0) return
-  // Nothing installed provides them, and the config loader refuses a bare
-  // import no node_modules provides before it evaluates.
-  const { provideFromHost } = await import('../workspace/index.js')
-  for (const specifier of specifiers) provideFromHost(specifier)
+): void {
   Bun.plugin({
     name: 'vx-baked-plugins',
     setup(build) {
-      for (const specifier of specifiers) {
-        build.module(specifier, async () => ({
-          exports: await baked[specifier]!(),
-          loader: 'object',
-        }))
+      for (const [specifier, load] of Object.entries(baked)) {
+        build.module(specifier, async () => ({ exports: await load(), loader: 'object' }))
       }
     },
   })

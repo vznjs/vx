@@ -45,32 +45,33 @@ compiled binary no second copy of core transpiled from `node_modules`
 `tests/core-alias.test.ts` pins it differentially against a fake
 `node_modules/@vzn/vx`.
 
-The compiled binary also carries the plugin packages
-`scripts/baked-plugins.ts` lists (vx-github, vx-lockfile, vx-mcp,
-vx-otel, vx-schedule-history) compiled in (owner, 2026-10-06: nothing to
-install, they are right there). bin.ts registers each as a virtual
-module too (`registerBakedPlugins`), so `import { bun } from
-'@vzn/vx-lockfile'` works with nothing installed and gets the binary's
-copy over any installed one, as `@vzn/vx` does; the config loader's
-refusal of an unprovided bare import exempts them (`provideFromHost`).
-`scripts/compile.ts` rewrites each one's `definePlugin(import.meta, …)`
-to name its package, since a bundled module's `import.meta.dir` is
-`/$bunfs/root`. A workspace using all five: `vx show` 37 → 31 ms
-(2026-10-06). vx-reapi and vx-migrate are not baked: each reads files
-beside its source at run time. In source `baked.ts` is an empty table;
-`scripts/check-binary.ts` runs a baked plugin with nothing installed and
-over a fake installed copy.
+The compiled binary also carries the first-party plugins (owner,
+2026-10-06: nothing to install, they are right there): `cli/baked.ts`
+imports `@vzn/vx/plugins` (`plugins/index.ts`, re-exporting vx-github,
+vx-lockfile, vx-mcp, vx-otel and vx-schedule-history), so
+`bun build --compile` bundles them. In the binary bin.ts registers the
+specifier as a virtual module too (`registerBakedPlugins`), so
+`import { bun } from '@vzn/vx/plugins'` works with nothing installed and
+gets the binary's copy over any installed one, as `@vzn/vx` does. From
+source it resolves as a package subpath, and the published `@vzn/vx`
+depends on the five packages (`scripts/build-npm.ts`), so an editor has
+their types. Each plugin names itself with its imported manifest,
+`definePlugin(pkg, …)`: a bundled module's `import.meta.dir` is
+`/$bunfs/root`, where no package.json names it. A workspace using all
+five: `vx show` 41 → 31 ms (min of 25, interleaved, 2026-10-06).
+vx-reapi and vx-migrate are not baked: each reads files beside its
+source at run time. `scripts/check-binary.ts` runs `@vzn/vx/plugins`
+with nothing installed and over a fake installed `@vzn/vx`.
 
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,
    shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
    TypeScript directly.
-2. **As a standalone binary** — `bun scripts/compile.ts <target>
-dist/vx-<target>`: `Bun.build` with the flags of `bun build --compile
+2. **As a standalone binary** — `bun build --compile
 --no-compile-autoload-dotenv --compile-autoload-package-json --minify
---bytecode --target=bun-<target> src/bin.ts`, plus the baked plugins
-   below. The cross-target binaries are published on each GitHub release.
+--bytecode --target=bun-<target> src/bin.ts --outfile dist/vx-<target>`.
+   The cross-target binaries are published on each GitHub release.
 
 Both switches keep Bun from loading `.env`, `.env.local` and
 `.env.<NODE_ENV>` from the working directory into vx's own environment,

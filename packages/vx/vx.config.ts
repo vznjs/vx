@@ -33,7 +33,7 @@ const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0', VX_CACHE_DIR: '.vx/cache'
 const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
 const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
 const BUN_VERSION = ['bun --version']
-// The plugin packages a compiled binary carries (scripts/compile.ts): a
+// The plugin packages a compiled binary carries (`@vzn/vx/plugins`): a
 // read across the project boundary, declared here and made an input so an
 // edit to one re-keys every binary.
 const BAKED_READS = BAKED_PLUGINS.flatMap((d) => [`../${d}/src/**`, `../${d}/package.json`])
@@ -332,7 +332,6 @@ export default defineProject({
             'package.json',
             'scripts/check-binary.ts',
             'scripts/binary-launch.ts',
-            'scripts/compile.ts',
             'scripts/baked-plugins.ts',
           ],
           workspaceFiles: ['packages/vx-schedule-history/**', ...BAKED_INPUTS],
@@ -474,7 +473,8 @@ export default defineProject({
       description: 'compile standalone binary (linux x64)',
       dependsOn: ['install'],
       exec: {
-        command: 'bun scripts/compile.ts linux-x64 dist/vx-linux-x64',
+        command:
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -497,7 +497,8 @@ export default defineProject({
       description: 'compile standalone binary (linux arm64)',
       dependsOn: ['install'],
       exec: {
-        command: 'bun scripts/compile.ts linux-arm64 dist/vx-linux-arm64',
+        command:
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -520,7 +521,8 @@ export default defineProject({
       description: 'compile standalone binary (darwin x64)',
       dependsOn: ['install'],
       exec: {
-        command: 'bun scripts/compile.ts darwin-x64 dist/vx-darwin-x64',
+        command:
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
@@ -543,7 +545,8 @@ export default defineProject({
       description: 'compile standalone binary (darwin arm64)',
       dependsOn: ['install'],
       exec: {
-        command: 'bun scripts/compile.ts darwin-arm64 dist/vx-darwin-arm64',
+        command:
+          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],

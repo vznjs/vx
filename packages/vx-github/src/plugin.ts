@@ -21,6 +21,8 @@ import {
 } from './checks.js'
 import { githubCacheScope } from './cache-scope.js'
 import { clampJobSummary, MAX_JOB_SUMMARY_BYTES, renderJobSummary } from './summary.js'
+// Names the plugin: the vx binary bundles it, and no package.json sits beside import.meta there.
+import pkg from '../package.json'
 
 export interface GithubPluginOptions {
   /**
@@ -156,7 +158,7 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
-  return definePlugin(import.meta, {
+  return definePlugin(pkg, {
     async config(workspace) {
       if (options.cacheScope === false || workspace.cacheScope !== undefined) return
       const scope = await githubCacheScope(process.env)

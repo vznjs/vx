@@ -748,9 +748,10 @@ next?".
   runtime, as any host does. Item 77.
 - **The binary bakes its own plugins (owner, 2026-10-06).** The
   compiled binary carries vx-github, vx-lockfile, vx-mcp, vx-otel and
-  vx-schedule-history: a workspace imports them by package name with
-  nothing installed, and gets the binary's copy over any installed one
-  (`vx show` 37 → 31 ms on this repo's workspace). Groundwork for Bun's
+  vx-schedule-history: a workspace imports them from `@vzn/vx/plugins`
+  (owner's pick) with nothing installed, and gets the binary's copy over
+  any installed one
+  (`vx show` 41 → 31 ms on this repo's workspace). Groundwork for Bun's
   AOT compile, where code loaded from disk runs interpreted.
   `docs/modules/bin.md`.
 - **The façade names only what has a consumer (2026-09-10).** An

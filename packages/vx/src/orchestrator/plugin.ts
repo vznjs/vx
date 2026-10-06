@@ -423,22 +423,18 @@ export interface Plugin {
 export type PluginHooks = Omit<VxPlugin, 'name'>
 
 /**
- * Where a plugin is defined — `import.meta` of its module. `dir` is Bun's
- * field; `url` is the standard one, for a module evaluated elsewhere.
+ * Where a plugin is defined: `import.meta` of its module (`dir` is Bun's
+ * field, `url` the standard one, for a module evaluated elsewhere), or its
+ * package's own manifest (`import pkg from '../package.json'`), which a
+ * bundle carries along: a plugin compiled into the binary sits under
+ * `/$bunfs/root`, where no package.json names it.
  */
 export interface PluginOrigin {
   readonly dir?: string
   readonly url?: string
-  /** A plugin compiled into the binary: its package name, set by scripts/compile.ts. */
-  readonly [BAKED_PACKAGE]?: string
+  /** The manifest's `name`, when the origin is the package.json itself. */
+  readonly name?: unknown
 }
-
-/**
- * The origin key scripts/compile.ts writes in place of a baked plugin's
- * `import.meta`: a bundled module's `dir` is the bundle's (`/$bunfs/root`),
- * where no package.json names it.
- */
-const BAKED_PACKAGE: unique symbol = Symbol.for('vx.baked-package')
 
 const packageNameByDir = new Map<string, string>()
 
@@ -474,21 +470,26 @@ function pluginPackageName(dir: string): string {
 }
 
 /**
- * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
- * The name is read from the package the calling module belongs to — the
- * nearest `package.json` above it — and stamped where the workspace loader
- * checks for it, so a plugin cannot be named anything but its package.
+ * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`,
+ * or `definePlugin(pkg, …)` with the package's own imported manifest. The
+ * name is read from the package the calling module belongs to — the
+ * nearest `package.json` above it, or that manifest — and stamped where the
+ * workspace loader checks for it, so a plugin cannot be named anything but
+ * its package.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
   if ('name' in hooks) {
     throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
   }
-  const baked = origin[BAKED_PACKAGE]
-  if (baked !== undefined) return { ...hooks, name: baked, [PLUGIN_PACKAGE]: baked } as VxPlugin
+  if (typeof origin.name === 'string' && origin.name.length > 0) {
+    return { ...hooks, name: origin.name, [PLUGIN_PACKAGE]: origin.name } as VxPlugin
+  }
   const dir =
     origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
   if (dir === undefined) {
-    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
+    throw new UserError(
+      `definePlugin: the first argument must be the plugin module's import.meta or its package.json`,
+    )
   }
   const name = pluginPackageName(dir)
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin

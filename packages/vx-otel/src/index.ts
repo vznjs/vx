@@ -2,7 +2,7 @@
 //
 // Usage in vx.workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
-//   import { otel } from '@vzn/vx-otel'
+//   import { otel } from '@vzn/vx/plugins'
 //   export default defineWorkspace({ plugins: [otel()] })
 //
 // Zero-config via the standard OTel env vars (OTEL_EXPORTER_OTLP_ENDPOINT,

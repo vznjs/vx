@@ -38,7 +38,7 @@ export function isBunfsPath(p: string): boolean {
  * upgrade` refused with "running from source". `Bun.main` stays the
  * bunfs path under every compile-flag combination.
  */
-function isCompiledBinary(): boolean {
+export function isCompiledBinary(): boolean {
   return (
     isBunfsPath(Bun.main) || isBunfsPath(process.argv[1] ?? '') || isBunfsPath(import.meta.path)
   )

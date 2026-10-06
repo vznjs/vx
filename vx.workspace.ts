@@ -1,9 +1,5 @@
 import { defineWorkspace } from '@vzn/vx'
-import { otel } from '@vzn/vx-otel'
-import { github } from '@vzn/vx-github'
-import { mcp } from '@vzn/vx-mcp'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
-import { bun } from '@vzn/vx-lockfile'
+import { bun, github, mcp, otel, scheduleHistoryPlugin } from '@vzn/vx/plugins'
 
 // Core applies no plugin by default; running here and caching here are
 // its floor and need no declaring. Order is precedence: a plugin listed

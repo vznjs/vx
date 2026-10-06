@@ -366,10 +366,12 @@ export interface CommandContext extends BaseContext {
 
 function · `src/orchestrator/plugin.ts`
 
-The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
-The name is read from the package the calling module belongs to — the
-nearest `package.json` above it — and stamped where the workspace loader
-checks for it, so a plugin cannot be named anything but its package.
+The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`,
+or `definePlugin(pkg, …)` with the package's own imported manifest. The
+name is read from the package the calling module belongs to — the
+nearest `package.json` above it, or that manifest — and stamped where the
+workspace loader checks for it, so a plugin cannot be named anything but
+its package.
 
 ```ts
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
@@ -1439,13 +1441,17 @@ export type PluginOptionKinds<T> = {
 
 type · `src/orchestrator/plugin.ts`
 
-Where a plugin is defined — `import.meta` of its module. `dir` is Bun's
-field; `url` is the standard one, for a module evaluated elsewhere.
+Where a plugin is defined: `import.meta` of its module (`dir` is Bun's
+field, `url` the standard one, for a module evaluated elsewhere), or its
+package's own manifest (`import pkg from '../package.json'`), which a
+bundle carries along: a plugin compiled into the binary sits under
+`/$bunfs/root`, where no package.json names it.
 
 ```ts
 export interface PluginOrigin {
   readonly dir?: string
   readonly url?: string
+  readonly name?: unknown
 }
 ```
 

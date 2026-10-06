@@ -242,13 +242,13 @@ cache key. There is no `globalInputs`: import a shared array instead.
 ## Lockfiles
 
 Without a plugin, the lockfile is in every task's key, so one install
-re-runs everything. With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`),
+re-runs everything. With `@vzn/vx-lockfile`, which ships with vx,
 each package is keyed on its own dependencies, and `--affected` follows.
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
+import { pnpm } from '@vzn/vx/plugins' // or bun, npm, yarn
 
 export default defineWorkspace({
   plugins: [pnpm()], // pnpm({ scope: 'workspace' }) keys the whole file instead

@@ -7,13 +7,13 @@ and run history that Claude Code, Cursor, Continue.dev, GitHub Copilot and
 any other MCP client can call.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-mcp   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+npm install -D @vzn/vx   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d; the plugin ships with it
 ```
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
+import { mcp } from '@vzn/vx/plugins'
 
 export default defineWorkspace({
   plugins: [mcp()],

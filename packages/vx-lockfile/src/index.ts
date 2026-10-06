@@ -27,6 +27,8 @@ import * as bunLock from './bun.js'
 import * as npmLock from './npm.js'
 import * as yarnLock from './yarn.js'
 import { pruneCommand } from './prune.js'
+// Names the plugin: the vx binary bundles it, and no package.json sits beside import.meta there.
+import pkg from '../package.json'
 
 export interface LockfileOptions {
   /**
@@ -94,7 +96,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     return new Error(`${named} — regenerate it with \`${manager.name} install\``)
   }
   const extraFiles = manager.extraFiles
-  return definePlugin(import.meta, {
+  return definePlugin(pkg, {
     commands: { prune: pruneCommand },
     ...lockfileClaim({
       file: manager.file,

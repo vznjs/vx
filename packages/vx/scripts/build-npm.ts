@@ -24,6 +24,7 @@
 import { existsSync } from 'node:fs'
 import { chmod, cp, mkdir, readdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { BAKED_PLUGINS } from './baked-plugins.ts'
 
 interface Target {
   target: string
@@ -189,8 +190,15 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     engines: { node: '>=18' },
     optionalDependencies: allOptional('@vzn/vx', version),
     // Runtime deps the library source needs when imported (the binary embeds
-    // its own copy). Mirrors the workspace root so versions never drift.
-    dependencies: corePkg.dependencies ?? {},
+    // its own copy). Mirrors the workspace root so versions never drift. The
+    // baked plugins too, at this release: `@vzn/vx/plugins` re-exports them
+    // from source, and their types reach an editor through it. Not in the
+    // workspace manifest: there core → plugin would close a cycle with each
+    // plugin's peer on core, and the package graph drops such a peer edge.
+    dependencies: {
+      ...corePkg.dependencies,
+      ...Object.fromEntries(BAKED_PLUGINS.map((d) => [`@vzn/${d}`, version])),
+    },
     files: [...entries, 'launcher.cjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: corePkg.homepage,

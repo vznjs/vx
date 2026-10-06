@@ -26,6 +26,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { BAKED_PLUGINS } from '../scripts/baked-plugins.ts'
 import { emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
 import { withNpm } from './helpers/npm.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
@@ -143,7 +144,10 @@ describe('the npm tarballs', () => {
   it('installed from the tarballs with npm, turbo() builds a Turbo repo, then hits', () => {
     const tgz = path.join(root, 'tgz')
     mkdirSync(tgz)
-    for (const name of ['@vzn/vx', '@vzn/vx-migrate']) {
+    // @vzn/vx depends on the baked plugins at its own version, which no
+    // registry holds at 9.9.9: their tarballs install beside it.
+    const baked = BAKED_PLUGINS.map((d) => `@vzn/${d}`)
+    for (const name of ['@vzn/vx', '@vzn/vx-migrate', ...baked]) {
       const { dir } = packages.find((p) => p.name === name)!
       expect(npm(dir, ['pack', '--pack-destination', tgz]).code).toBe(0)
     }
@@ -185,7 +189,11 @@ describe('the npm tarballs', () => {
     gitInit(repo)
     gitIn(repo)('add', '-A')
     gitIn(repo)('commit', '-q', '-m', 'init')
-    const tarballs = ['vzn-vx-9.9.9.tgz', 'vzn-vx-migrate-9.9.9.tgz'].map((f) => path.join(tgz, f))
+    const tarballs = [
+      'vzn-vx-9.9.9.tgz',
+      'vzn-vx-migrate-9.9.9.tgz',
+      ...BAKED_PLUGINS.map((d) => `vzn-${d}-9.9.9.tgz`),
+    ].map((f) => path.join(tgz, f))
     const install = npm(repo, ['install', '-D', '--no-audit', '--no-fund', ...tarballs])
     expect([install.code, install.code === 0 ? '' : install.out]).toEqual([0, ''])
     const statuses = (): Record<string, string> => {

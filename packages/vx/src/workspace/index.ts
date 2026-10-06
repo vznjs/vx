@@ -10,7 +10,6 @@ export {
   refIsHead,
   workspaceGlobsMatch,
 } from './affected.js'
-export { provideFromHost } from './config-imports.js'
 export { applyFilters, parseFilter } from './filter.js'
 export {
   computeWorkspaceFingerprint,

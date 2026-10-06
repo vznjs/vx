@@ -17,16 +17,15 @@ async function main(): Promise<void> {
       return
     }
     listenForReadersGone()
-    const { BAKED_PLUGINS, registerBakedPlugins, registerCoreAlias, run } =
+    const { BAKED_PLUGINS, isCompiledBinary, registerBakedPlugins, registerCoreAlias, run } =
       await import('./cli/index.js')
     // Every `import … from '@vzn/vx'` this process evaluates — a plugin
     // package, a workspace or project config — resolves to THIS core, not to
     // a second copy from node_modules (core-alias.ts says why and what it
     // costs). Registered before any verb runs; the façade loads on first use.
     registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
-    // The compiled binary's own plugin packages, installed or not
-    // (core-alias.ts). Nothing in source.
-    await registerBakedPlugins(BAKED_PLUGINS)
+    // The compiled binary's own plugins, installed or not (core-alias.ts).
+    if (isCompiledBinary()) registerBakedPlugins(BAKED_PLUGINS)
     const code = await run(argv)
     // NOTHING calls `process.exit` here, and that is the fix rather than a
     // simplification. Bun drops what a pipe has not yet taken when

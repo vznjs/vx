@@ -31,6 +31,18 @@ const AMBIENT = [
   '@vzn/vx-schedule-history',
 ]
 
+/** What `@vzn/vx/plugins` exports, so a page's misspelt import fails. */
+const PLUGIN_EXPORTS = [
+  'bun',
+  'npm',
+  'pnpm',
+  'yarn',
+  'github',
+  'mcp',
+  'otel',
+  'scheduleHistoryPlugin',
+]
+
 async function pages(dir: string): Promise<string[]> {
   const out: string[] = []
   for (const e of await readdir(dir, { withFileTypes: true })) {
@@ -72,7 +84,18 @@ it('every config block on the site type-checks against @vzn/vx', async () => {
     for (const e of await readdir(path.join(ROOT, 'node_modules'))) {
       if (e !== '@vzn') await symlink(path.join(ROOT, 'node_modules', e), path.join(nm, e))
     }
-    await symlink(path.join(ROOT, 'node_modules/@vzn/vx'), path.join(nm, '@vzn/vx'), 'dir')
+    // Core linked entry by entry, its `plugins` re-exports stubbed with the
+    // names it ships: the real file reads the plugin packages.
+    const core = path.join(ROOT, 'node_modules/@vzn/vx')
+    const vx = path.join(nm, '@vzn/vx')
+    await mkdir(path.join(vx, 'plugins'), { recursive: true })
+    for (const e of await readdir(core)) {
+      if (e !== 'plugins') await symlink(path.join(core, e), path.join(vx, e))
+    }
+    await writeFile(
+      path.join(vx, 'plugins/index.ts'),
+      PLUGIN_EXPORTS.map((n) => `export const ${n}: any = undefined`).join('\n') + '\n',
+    )
     await writeFile(
       path.join(dir, 'tsconfig.json'),
       JSON.stringify({

@@ -30,15 +30,38 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
-import { compile } from './compile.ts'
 
 const root = path.resolve(import.meta.dir, '..')
 const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
 const out = path.join(root, 'dist', `vx-${host}`)
 
 const text = (b: Uint8Array): string => new TextDecoder().decode(b)
+const run = (cmd: string[], label: string): void => {
+  const r = Bun.spawnSync({ cmd, cwd: root, stdout: 'pipe', stderr: 'pipe' })
+  if (r.exitCode !== 0) {
+    process.stderr.write(
+      `${label} failed (exit ${r.exitCode}):\n${text(r.stdout)}${text(r.stderr)}`,
+    )
+    process.exit(1)
+  }
+}
 
-await compile(host, out)
+run(
+  [
+    'bun',
+    'build',
+    '--compile',
+    '--no-compile-autoload-dotenv',
+    '--compile-autoload-package-json',
+    '--minify',
+    '--bytecode',
+    `--target=bun-${host}`,
+    'src/bin.ts',
+    '--outfile',
+    out,
+  ],
+  'compile',
+)
 
 const want = `vx ${((await Bun.file(path.join(root, 'package.json')).json()) as { version: string }).version}`
 const got = launchVersion(out)
@@ -251,21 +274,21 @@ if (
 }
 console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)
 
-// The baked plugins (scripts/compile.ts): a workspace imports one with
-// nothing installed, and an installed copy does not replace it. The
-// installed one here is a FAKE whose factory throws.
+// The baked plugins (`@vzn/vx/plugins`): a workspace imports them with
+// nothing installed, and an installed copy does not replace the binary's.
+// The installed one here is a FAKE `@vzn/vx` whose plugins throw.
 const bakedRun = (installed: boolean): { exitCode: number; output: string } => {
   const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-check-baked-'))
   mkdirSync(path.join(ws, 'packages', 'a'), { recursive: true })
   if (installed) {
-    const fake = path.join(ws, 'node_modules', '@vzn', 'vx-schedule-history')
-    mkdirSync(fake, { recursive: true })
+    const fake = path.join(ws, 'node_modules', '@vzn', 'vx')
+    mkdirSync(path.join(fake, 'plugins'), { recursive: true })
     writeFileSync(
       path.join(fake, 'package.json'),
-      JSON.stringify({ name: '@vzn/vx-schedule-history', version: '0.0.1', main: 'index.js' }),
+      JSON.stringify({ name: '@vzn/vx', exports: { './plugins': './plugins/index.js' } }),
     )
     writeFileSync(
-      path.join(fake, 'index.js'),
+      path.join(fake, 'plugins', 'index.js'),
       "export function scheduleHistoryPlugin() { throw new Error('the disk copy loaded') }\n",
     )
   }
@@ -280,7 +303,7 @@ const bakedRun = (installed: boolean): { exitCode: number; output: string } => {
   )
   writeFileSync(
     path.join(ws, 'vx.workspace.mjs'),
-    `import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+    `import { scheduleHistoryPlugin } from '@vzn/vx/plugins'
 export default { plugins: [scheduleHistoryPlugin()] }
 `,
   )
@@ -293,9 +316,9 @@ for (const installed of [false, true]) {
   const r = bakedRun(installed)
   if (r.exitCode !== 0 || !r.output.includes('probe-ran')) {
     process.stderr.write(
-      `baked plugin (${installed ? 'a fake installed' : 'none installed'}): exit ${r.exitCode}, expected the binary's copy and 0\n${r.output}\n`,
+      `@vzn/vx/plugins (${installed ? 'a fake installed' : 'none installed'}): exit ${r.exitCode}, expected the binary's copy and 0\n${r.output}\n`,
     )
     process.exit(1)
   }
 }
-console.log(`${path.relative(root, out)} serves its baked plugins, installed or not`)
+console.log(`${path.relative(root, out)} serves @vzn/vx/plugins, installed or not`)

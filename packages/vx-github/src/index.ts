@@ -2,7 +2,7 @@
 //
 // Usage in vx.workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
-//   import { github } from '@vzn/vx-github'
+//   import { github } from '@vzn/vx/plugins'
 //   export default defineWorkspace({ plugins: [github()] })
 //
 // On a GitHub Actions runner (GITHUB_STEP_SUMMARY set) every `vx run`
