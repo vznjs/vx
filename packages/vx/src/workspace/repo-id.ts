@@ -5,7 +5,6 @@
 // Cloud id. Read from the `.git` files; git is asked only when they cannot
 // settle it (no parseable remote, an `include`, an `insteadOf`).
 
-import { createHash } from 'node:crypto'
 import {
   closeSync,
   constants,
@@ -35,7 +34,7 @@ export function repoIdOf(root: string): string | null {
   return sha256(key).slice(0, 16)
 }
 
-const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
+const sha256 = (s: string): string => new Bun.CryptoHasher('sha256').update(s).digest('hex')
 
 interface GitDir {
   gitRoot: string
