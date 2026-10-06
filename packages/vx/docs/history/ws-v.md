@@ -59,10 +59,9 @@ the rounds run with `GIT_CONFIG_GLOBAL=/dev/null`.
   workspace that declares one manager. A parser loads (`require`, the
   digest seam is sync) when its manager first digests, `prune` when the
   verb runs. Row: `vx-lockfile/tests/lazy-load.test.ts`.
-- **V-8.** `@vzn/vx-ci` loaded its sink, summary renderer and Checks API
-  client at import; they load where a summary file is set (`require`:
-  the telemetry hook is sync), and `renderJobSummary` loads its module on
-  first call. `@vzn/vx-schedule-history` loads `vx history`'s table with
+- **V-8.** `@vzn/vx-ci` loaded its sink and Checks API client at import;
+  they load where a summary file is set (`require`: the telemetry hook is
+  sync). The renderer stays eager: `renderJobSummary` is a frozen export. `@vzn/vx-schedule-history` loads `vx history`'s table with
   the verb. Rows: each package's `tests/lazy-load.test.ts`.
 
 Left: `workspace config` is mostly the plugin packages' transpile, half of

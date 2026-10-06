@@ -1,6 +1,6 @@
 // Every run evaluates `vx.workspace.ts`, so what this package loads at
-// import is paid by every run: the sink, the renderer and the Checks API
-// client load only where a summary file is set.
+// import is paid by every run: the sink and the Checks API client load
+// only where a summary file is set.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 
@@ -39,7 +39,7 @@ it('a run with no summary file loads no sink, renderer or Checks API client', as
   expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
   const line = out.split('\n').find((l) => l.startsWith('SEEN ')) ?? 'SEEN {}'
   const { before, after } = JSON.parse(line.slice(5)) as { before: string[]; after: string[] }
-  expect(before).toEqual(['cache-scope.ts', 'index.ts', 'plugin.ts'])
+  expect(before).toEqual(['cache-scope.ts', 'index.ts', 'plugin.ts', 'summary.ts'])
   // The control: a summary file does load the sink, so the probe sees a load.
-  expect(after).toEqual([...before, 'checks.ts', 'sink.ts', 'summary.ts'].sort())
+  expect(after).toEqual([...before, 'checks.ts', 'sink.ts'].sort())
 })
