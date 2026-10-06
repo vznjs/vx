@@ -22,6 +22,7 @@ export async function subscribeTelemetry(
   ctx: TelemetryContext,
   run: RunContextRecord,
   extraSinks?: readonly TelemetrySink[], // an embedder's own sinks, ahead of the plugins'
+  nodes?: ReadonlyMap<string, TaskNode>, // the task graph, for task.start's dependsOn through a group
 ): Promise<TelemetryHandle | undefined>
 ```
 

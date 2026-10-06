@@ -1083,6 +1083,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
+  const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => void) | undefined
   // The entry's command is shown by `vx why` and sent with the entry to a
@@ -1139,6 +1140,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
 
     if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    failedAttempts.push({
+      endedAt: Date.now(),
+      exitCode: effectiveExitCode,
+      ...(result.timedOut === true ? { timedOut: true as const } : {}),
+    })
     log.taskStderr(
       node,
       `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1354,6 +1360,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
+    ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),

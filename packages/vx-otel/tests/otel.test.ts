@@ -587,6 +587,87 @@ describe('OtelSink end-to-end', () => {
     ])
   })
 
+  it('links a task to the spans it waited on, marks retries and a timeout, and draws the stages', async () => {
+    const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    const end = (taskId: string, extra: Record<string, unknown>) =>
+      rec({
+        kind: 'task.end',
+        taskId,
+        project: taskId.split('#')[0],
+        task: taskId.split('#')[1],
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+        ...extra,
+      })
+    rec({ kind: 'run.start', run: RUN, total: 3, ts: 0, startedAt: 0 })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 1 })
+    end('a#build', { status: 'success', ts: 2 })
+    // Never started: still a span, and still linked to.
+    end('c#build', { status: 'skipped', cacheSource: 'none', ts: 2 })
+    rec({
+      kind: 'task.start',
+      taskId: 'b#test',
+      project: 'b',
+      task: 'test',
+      dependsOn: ['a#build', 'c#build', 'gone#build'],
+      ts: 3,
+    })
+    end('b#test', {
+      status: 'failed',
+      exitCode: 143,
+      timedOut: true,
+      attempts: 2,
+      failedAttempts: [{ endedAt: 5, exitCode: 1 }],
+      ts: 9,
+    })
+    rec({ kind: 'run.end', ts: 10 })
+    sink.onRunSummary({
+      ...summaryFor(RUN, []),
+      stages: [{ name: 'classify + probe', startedAt: 0.5, endedAt: 2.25 }],
+    })
+    await sink.flush()
+    type Span = {
+      spanId: string
+      parentSpanId?: string
+      name: string
+      startTimeUnixNano: string
+      endTimeUnixNano: string
+      attributes: { key: string; value: { stringValue?: string } }[]
+      events?: { name: string; timeUnixNano: string; attributes: { key: string }[] }[]
+      links?: { spanId: string; attributes: { value: { stringValue?: string } }[] }[]
+    }
+    const spans = (
+      calls.find((c) => c.url === 'http://c/v1/traces')!.body as {
+        resourceSpans: { scopeSpans: { spans: Span[] }[] }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans
+    const task = (id: string) =>
+      spans.find((x) =>
+        x.attributes.some((a) => a.value.stringValue === id && a.key === 'cicd.pipeline.task.name'),
+      )!
+    const b = task('b#test')
+    expect(b.links!.map((l) => [l.spanId, l.attributes[0]!.value.stringValue])).toEqual([
+      [task('a#build').spanId, 'a#build'],
+      [task('c#build').spanId, 'c#build'],
+    ])
+    expect(b.events!.map((e) => [e.name, e.timeUnixNano, e.attributes.map((a) => a.key)])).toEqual([
+      ['vx.task.retry', '5000000', ['vx.task.attempt', 'vx.task.exit_code']],
+      ['vx.task.timeout', '9000000', []],
+    ])
+    expect([task('a#build').events, task('a#build').links]).toEqual([undefined, undefined])
+    const root = spans.find((x) => x.name === 'vx.run')!
+    const stage = spans.find((x) => x.name === 'classify + probe')!
+    expect([stage.parentSpanId, stage.startTimeUnixNano, stage.endTimeUnixNano]).toEqual([
+      root.spanId,
+      '500000',
+      '2250000',
+    ])
+  })
+
   it('skips metrics when disabled', async () => {
     const { cfg, calls } = mkConfig({ metricsEnabled: false })
     const sink = new OtelSink(cfg)
@@ -745,6 +826,8 @@ const FULL_TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 2,
   notReady: 'timeout',
+  // Rides as `vx.task.retry` span events ("links a task …" above).
+  failedAttempts: [{ endedAt: 5, exitCode: 1 }],
   restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
@@ -791,6 +874,7 @@ describe('OTLP losslessness', () => {
       'cpuMs',
       'durationMs',
       'exitCode',
+      'failedAttempts',
       'hash',
       'notReady',
       'outputs',

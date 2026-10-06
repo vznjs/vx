@@ -139,6 +139,8 @@ export interface TaskOutcome {
    * flaky detection reads it off the outcome stream.
    */
   attempts?: number
+  /** The attempts that failed and were run again, in order: when each ended (epoch ms) and how. */
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
   /**
    * Set when this run proved the task flaky: its key holds both outcomes on
    * record (this run's included) or it needed a retry. Its row carries it.

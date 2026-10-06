@@ -624,6 +624,12 @@ export interface ExecuteSandbox {
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
 }
+== type FailedAttempt (src/orchestrator/telemetry.ts)
+export interface FailedAttempt {
+  endedAt: number
+  exitCode: number
+  timedOut?: true
+}
 == type FailureMode (src/orchestrator/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 == type FingerprintChange (src/orchestrator/plugin.ts)
@@ -1208,6 +1214,12 @@ export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
 }
+== type RunStage (src/orchestrator/telemetry.ts)
+export interface RunStage {
+  name: string
+  startedAt: number
+  endedAt: number
+}
 == type RunStartInfo (src/orchestrator/events.ts)
 export interface RunStartInfo {
   total: number
@@ -1241,6 +1253,7 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[]
 }
 == type SandboxConfig (src/config.ts)
 export interface SandboxConfig {
@@ -1403,6 +1416,7 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1443,6 +1457,7 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  failedAttempts?: readonly FailedAttempt[]
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -1482,6 +1497,7 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      dependsOn?: readonly string[]
       ts: number
     }
   | {

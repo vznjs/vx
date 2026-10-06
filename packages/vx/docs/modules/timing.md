@@ -16,6 +16,15 @@ run against.
 `vx watch` calls `restartTimings()` as each cycle starts, so a cycle's
 table holds its own stages alone, timed from its start rather than
 across the idle wait before it (`tests/watch-timing.test.ts`).
+`prepareRun` calls `beginRun()` first: a process's first run keeps
+its stages from this module's load, and a later one (an embedder's
+second `run()`) restarts the table the same way.
+
+The stage marks are kept whether or not the table prints, and
+`stageTimes()` hands them to the run's telemetry summary as wall
+windows in epoch ms (`StageTime`: `name`, `startedAt`, `endedAt`), which
+vx-otel draws as child spans of the run
+(`tests/telemetry-trace-facts.test.ts`).
 
 A span's total is WALL summed per call, and the calls run under the
 scheduler's concurrency, so a span that overlaps other work reads far
@@ -78,8 +87,9 @@ Spans, accumulated per call:
 
 ## Invariants
 
-- Off by default and free when off: `mark` is one boolean check;
-  `span` returns a shared no-op so the hot path allocates nothing.
+- The table is off by default. `mark` is a push per stage (~15 a run)
+  either way; `span` returns a shared no-op when off, so the hot path
+  allocates nothing.
 - Spans run under the scheduler's concurrency, so they over-count (a
   span's wall includes time yielded to other tasks). Compare spans to
   each other, never to the stage total — see `docs/benchmarks.md`

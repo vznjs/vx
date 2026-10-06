@@ -105,7 +105,17 @@ otel({
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
   persistent one that never became ready why (`vx.task.not_ready`). A
   failed task sets span status
-  `ERROR`.
+  `ERROR`. A task span links to the spans of the tasks it waited on (a
+  group seen through to the tasks behind it), and carries an event per
+  attempt that failed and was run again (`vx.task.retry`, with
+  `vx.task.attempt` and `vx.task.exit_code`) and one when vx's own
+  timeout killed it (`vx.task.timeout`);
+- a child span per stage of the run, named by the stage (`startup`,
+  `load configs`, `git enumeration`, `classify + probe`, `run graph`,
+  `record history`, …, the stages `VX_TIMING` prints), with
+  `vx.stage.name`: where the time before the first task and after the
+  last went. The stages ahead of the run lock end before the `vx.run`
+  span starts.
 
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as

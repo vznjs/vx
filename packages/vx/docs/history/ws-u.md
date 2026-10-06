@@ -15,3 +15,14 @@ and traces should use span events, links and more objects.
   and no read. The run's metrics ride the first metrics request beside
   the first batch of task points. Rows: `proc-sample.unsafe.test.ts`,
   `vx-otel/tests/otel.test.ts` › "charts each task".
+- **U-2.** 2026-10-06 (owner: "use Events, Links and other objects") —
+  traces show the graph and the run's stages. A task span links to the
+  spans of the tasks it waited on (`task.start`'s new `dependsOn`, a
+  group seen through) and carries `vx.task.retry` events (the new
+  `TaskTelemetry.failedAttempts`) and a `vx.task.timeout` event. The
+  run summary's new `stages` are `VX_TIMING`'s marks, now kept whether
+  or not the table prints (`stageTimes`; `beginRun` restarts them for an
+  embedder's later run), drawn as child spans of `vx.run`: the 23 ms
+  before the first task of an all-cached run reads as `classify + probe`.
+  Rows: `telemetry-trace-facts.test.ts`, `retries.test.ts`,
+  `vx-otel/tests/otel.test.ts` › "links a task".

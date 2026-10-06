@@ -2,18 +2,50 @@
 //
 // The CPU profiler attributes a tight loop's cost unreliably and hides
 // where an `await` waited; a stage table answers "where did the warm run
-// go?" directly, and costs one boolean check per mark when off. Marks are
-// cumulative from this module's load — process start and the imports ahead
-// of it sit outside the table; the table shows each stage's own share.
+// go?" directly. Marks are cumulative from this module's load — process
+// start and the imports ahead of it sit outside the table; the table shows
+// each stage's own share. Stage marks are kept whether or not the table
+// prints (a push per stage, ~15 a run): a telemetry sink draws them as
+// spans (`stageTimes`). The per-call `span`s stay off unless enabled.
 
 const enabled = process.env.VX_TIMING !== undefined && process.env.VX_TIMING !== ''
 let t0 = Bun.nanoseconds()
 const marks: Array<[label: string, ns: number]> = []
 
-/** Record the end of a stage. No-op unless `VX_TIMING` is set. */
+let begun = false
+
+/**
+ * A run begins. The process's first counts from this module's load, so
+ * `startup` holds the imports; a later one in the same process (an
+ * embedder's second `run()`) starts a table of its own, or its stages
+ * would follow the last run's and its `startup` would hold the idle between.
+ */
+export function beginRun(): void {
+  if (begun) restartTimings()
+  begun = true
+}
+
+/** Record the end of a stage. */
 export function mark(label: string): void {
-  if (!enabled) return
   marks.push([label, Bun.nanoseconds() - t0])
+}
+
+/** One stage's wall window, in epoch ms. */
+export interface StageTime {
+  name: string
+  startedAt: number
+  endedAt: number
+}
+
+/** The stages marked so far, each from the previous mark's end (the first from this module's load). */
+export function stageTimes(): StageTime[] {
+  const origin = performance.timeOrigin + Number(t0) / 1e6
+  let prev = 0
+  return marks.map(([name, ns]) => {
+    const stage = { name, startedAt: origin + prev / 1e6, endedAt: origin + ns / 1e6 }
+    prev = ns
+    return stage
+  })
 }
 
 const spans = new Map<string, [count: number, ns: number]>()
@@ -25,7 +57,6 @@ const noop = (): void => {}
  * its first stage counted the idle wait before it.
  */
 export function restartTimings(): void {
-  if (!enabled) return
   t0 = Bun.nanoseconds()
   marks.length = 0
   spans.clear()

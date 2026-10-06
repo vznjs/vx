@@ -1919,6 +1919,7 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[]
 }
 ```
 
@@ -2181,6 +2182,7 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -2244,6 +2246,7 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  failedAttempts?: readonly FailedAttempt[]
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -2321,6 +2324,7 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      dependsOn?: readonly string[]
       ts: number
     }
   | {

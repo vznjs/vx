@@ -22,6 +22,9 @@ import {
   type TaskMetricPoint,
   runSpanAttributes,
   SPAN_KIND_INTERNAL,
+  dependencyLink,
+  stageSpan,
+  taskSpanEvents,
   runStatusCode,
   taskSpanAttributes,
   taskStatusCode,
@@ -276,6 +279,7 @@ export class OtelSink implements TelemetrySink {
   private readonly lastSample = new Map<string, { ts: number; cpuMs: number }>()
   private readonly taskSpanId = new Map<string, string>()
   private readonly taskStartNano = new Map<string, string>()
+  private readonly taskDeps = new Map<string, readonly string[]>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
   // Core's own bounded capture buffer, so which task's output survives a
@@ -331,6 +335,7 @@ export class OtelSink implements TelemetrySink {
       case 'task.start':
         this.taskSpanId.set(record.taskId, genId(8))
         this.taskStartNano.set(record.taskId, nanos(record.ts))
+        if (record.dependsOn !== undefined) this.taskDeps.set(record.taskId, record.dependsOn)
         this.taskNames.set(record.taskId, {
           project: record.project,
           task: record.task,
@@ -362,7 +367,18 @@ export class OtelSink implements TelemetrySink {
         this.logs.append(record.taskId, record.chunk)
         return
       case 'task.end': {
-        const spanId = this.taskSpanId.get(record.taskId) ?? genId(8)
+        // A task that never started (a skip) still gets a span, and a later
+        // task that waited on it links to it.
+        let spanId = this.taskSpanId.get(record.taskId)
+        if (spanId === undefined) {
+          spanId = genId(8)
+          this.taskSpanId.set(record.taskId, spanId)
+        }
+        const links = (this.taskDeps.get(record.taskId) ?? []).flatMap((dep) => {
+          const depSpan = this.taskSpanId.get(dep)
+          return depSpan === undefined ? [] : [dependencyLink(this.traceId, depSpan, dep)]
+        })
+        const events = taskSpanEvents(record, nanos(record.ts))
         const startNano =
           this.taskStartNano.get(record.taskId) ?? nanos(record.ts - record.durationMs)
         const t: TaskTelemetry = record
@@ -380,6 +396,8 @@ export class OtelSink implements TelemetrySink {
             startedAt: this.runStartedAt,
           }),
           status: { code: taskStatusCode(t) },
+          ...(events.length > 0 ? { events } : {}),
+          ...(links.length > 0 ? { links } : {}),
         })
         // A skipped task never ran: a zero duration would read as a fast one.
         if (record.status !== 'skipped') {
@@ -437,6 +455,10 @@ export class OtelSink implements TelemetrySink {
         attributes: runSpanAttributes(this.run, this.summary),
         status: { code: runStatusCode(this.summary) },
       })
+      const stages = (this.summary?.stages ?? []).map((stage) =>
+        stageSpan(this.traceId, this.rootSpanId, stage, genId(8)),
+      )
+      this.spans.splice(1, 0, ...stages)
     }
     const vxVersion = this.run?.vxVersion ?? '0.0.0'
     await Promise.all([this.shipTraces(vxVersion), this.shipMetrics(), this.shipLogs(vxVersion)])
