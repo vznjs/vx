@@ -15,3 +15,9 @@ time (bugs, correctness, simplification, the plugin seams).
   `--watch: not found`, exit 127. They now go on the last line, after
   trailing blanks are dropped, unless an odd run of backslashes ends the
   command. Rows: `runner.test.ts` › `withForwardArgs`.
+- **X-3.** With `packages/**` listing `packages/inner` (its own
+  `workspaces: ['sub']`) and `packages/inner/sub`, a run from `sub`
+  resolved to `inner` while one from `inner` resolved to the outer root:
+  two roots, two caches, and `sub`'s `^` edges into the outer workspace
+  dropped from its key. An outer root that lists both the claimer and
+  the member now owns it. Rows: `workspace-nested-root.test.ts`.

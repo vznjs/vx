@@ -74,7 +74,9 @@ const decoder = new TextDecoder()
  * `^task` edges vanish, upstream hashes drop out of the cache key (stale
  * hits), and a second cache dir appears under the member. Claiming is decided
  * with the same globs `loadWorkspace` applies, so "the root that claims me"
- * and "the root that lists me as a project" cannot diverge.
+ * and "the root that lists me as a project" cannot diverge. An outer root
+ * that lists both the claimer and the claimed member outranks the claimer:
+ * from the claimer's own directory the walk reaches the outer root too.
  *
  * When no candidate claims `start` — a standalone package, or a subdirectory
  * of a single-project repo — the nearest candidate wins (the root itself IS
@@ -92,6 +94,9 @@ export async function findWorkspaceRoot(
   // The nearest manifest with workspace globs of its own, once passed: an
   // outer root claims the tree only by listing this directory itself.
   let inner: string | null = null
+  // The root that claims `start`, and the members it claimed it through.
+  let claimed: string | null = null
+  let members: string[] = []
   while (true) {
     let globs: string[] | null
     try {
@@ -105,12 +110,23 @@ export async function findWorkspaceRoot(
     }
     if (globs !== null) {
       nearest ??= dir
-      if (claimsMember(dir, inner === null ? below : [inner], globs)) return dir
+      if (claimed !== null) {
+        // An outer root that lists both the claimer and the member owns
+        // them: `packages/**` holding `packages/inner` (with `workspaces:
+        // ['sub']`) and `packages/inner/sub` resolved `sub` to `inner` and
+        // `inner` to the outer root, two roots and two keys for one tree.
+        if (claimsMember(dir, [claimed], globs) && claimsMember(dir, members, globs)) claimed = dir
+      } else if (claimsMember(dir, inner === null ? below : [inner], globs)) {
+        claimed = dir
+        members = inner === null ? [...below] : [inner]
+      }
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
       // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
       // two caches for one tree (item 990). Already read: `reads` holds it.
-      if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) return dir
+      if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) {
+        return claimed ?? dir
+      }
     }
     const parent = path.dirname(dir)
     if (parent === dir) break
@@ -126,6 +142,7 @@ export async function findWorkspaceRoot(
     if (inner === null && globs !== null && globs.length > 0) inner = dir
     dir = parent
   }
+  if (claimed !== null) return claimed
   if (nearest !== null) return nearest
   throw new UserError(
     `Could not find a workspace root in any parent of ${start} ` +

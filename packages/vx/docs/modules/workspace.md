@@ -159,7 +159,11 @@ A `package.json` with `workspaces` of its own is a root the same way
 unless the outer root lists that directory itself, as npm reads it: a
 nested workspace inside a member (`apps/tool/ws` under `apps/*`) was
 claimed through `apps/tool`, and its members ran in a workspace that does
-not list them (D-137).
+not list them (D-137). The converse holds too: an outer root that lists
+both the nested root and the claimed member (`packages/**` over
+`packages/inner` and `packages/inner/sub`) owns the member, since the
+walk from `packages/inner` itself reaches it; `sub` resolved to `inner`
+with its `^` edges into the outer workspace dropped until X-3.
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
