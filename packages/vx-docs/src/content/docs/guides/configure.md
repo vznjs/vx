@@ -169,7 +169,9 @@ work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
 `NO_COLOR`, `CI`, `NODE_OPTIONS`. vx sets
 `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
-`project#task` running) on every task. The package's `node_modules/.bin`
+`project#task` running) on every task, and `npm_execpath` to the
+workspace's package manager, as `pnpm run` does, so npm-run-all needs
+no global npm. The package's `node_modules/.bin`
 is first on `PATH`. What vx itself reads:
 [the CLI reference](../../cli/#environment-variables-vx-reads).
 

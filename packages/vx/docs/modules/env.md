@@ -21,6 +21,8 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
 export const ESSENTIAL_ENV: readonly string[] // the allowlist below
 export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
 export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
+export const PM_EXEC_ENV = 'npm_execpath' // set by execute-task unless a layer gives it
+export function packageManagerPath(root: string): string | null // the root's manager binary, memoized per root
 ```
 
 ## Composition

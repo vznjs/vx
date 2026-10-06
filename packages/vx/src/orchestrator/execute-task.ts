@@ -17,6 +17,8 @@ import {
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
+  packageManagerPath,
+  PM_EXEC_ENV,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
   runPersistent,
@@ -1411,6 +1413,11 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   })
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
+  // A task's own passThrough or define wins.
+  if (env[PM_EXEC_ENV] === undefined) {
+    const manager = packageManagerPath(workspaceRoot)
+    if (manager !== null) env[PM_EXEC_ENV] = manager
+  }
   return env
 }
 
