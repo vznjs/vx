@@ -9,8 +9,6 @@ import { lockfilePlugin } from './workspace-notes.js'
 export interface WorkspacePlugin {
   readonly pkg: string
   readonly factory: string
-  /** The comment above its entry. */
-  readonly why: string
 }
 
 export function workspacePlugins(root: string): WorkspacePlugin[] {
@@ -20,19 +18,16 @@ export function workspacePlugins(root: string): WorkspacePlugin[] {
     out.push({
       pkg: '@vzn/vx-lockfile',
       factory: lock.factory,
-      why: `keys each package's tasks on its own dependency closure in ${lock.file}`,
     })
   }
   out.push({
     pkg: '@vzn/vx-schedule-history',
     factory: 'scheduleHistoryPlugin',
-    why: 'starts the longest path first, learned from past runs',
   })
   if (existsSync(path.join(root, '.github', 'workflows'))) {
     out.push({
       pkg: '@vzn/vx-github',
       factory: 'github',
-      why: 'a job summary per run on GitHub Actions; inert elsewhere',
     })
   }
   return out
@@ -48,7 +43,7 @@ function importLines(plugins: readonly WorkspacePlugin[]): string[] {
 }
 
 function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] {
-  return plugins.flatMap((p) => [`${indent}// ${p.why}`, `${indent}${p.factory}(),`])
+  return plugins.map((p) => `${indent}${p.factory}(),`)
 }
 
 /** `vx.workspace.<format>` declaring `plugins`. */
@@ -60,7 +55,6 @@ export function renderWorkspaceFile(
     ...(format === 'ts' ? ["import type { WorkspaceConfig } from '@vzn/vx/config'"] : []),
     ...importLines(plugins),
     '',
-    '// Running here and caching in .vx/cache are the floor under every plugin.',
     'export default {',
     '  plugins: [',
     ...entries(plugins, '    '),
