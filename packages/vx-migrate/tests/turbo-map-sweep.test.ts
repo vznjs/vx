@@ -1452,8 +1452,9 @@ describe('turbo-map: `with`', () => {
       // `web#build` is web's own: the group stays there, so no package
       // gains a task edge to web that core's reach would follow.
       { build: ['^build'], ci: ['build'], deploy: ['build'] },
-      // lib's `build` is Turbo's no-op node over lib's files (G-117).
-      { build: ['^build'], lint: undefined, ci: ['lint', 'build'] },
+      // lib's `build` is Turbo's no-op node over lib's files (G-117), which
+      // core supplies to a project with no `build`.
+      { lint: undefined, ci: ['lint', 'build'] },
     ])
   })
 
@@ -1540,7 +1541,8 @@ describe('turbo-map: a transit node', () => {
       (transit.task!['exec'] as { command: string }).command,
       transit.task?.['dependsOn'],
       transit.task?.['cache'] !== undefined,
-    ]).toEqual([['build', 'transit'], ['build', 'test', 'transit'], 'true', ['^transit'], true])
+      // cfg's `build` is core's default, not a written one.
+    ]).toEqual([['build', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
   })
 })
 

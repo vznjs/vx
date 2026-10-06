@@ -145,20 +145,30 @@ async function makeTurboWorkspace(): Promise<string> {
 // script gets a key-only `true` (J-97). The README states it.
 describe("vx migrate (turbo): a package without a ^ task's script", () => {
   it(
-    'gets a cached `true` with no outputs, as the README says',
+    'gets a cached `true` with no outputs, as the README says; `build` is left to core',
     async () => {
       const root = await makeRoot('vx-migrate-noop-')
       try {
         await writeFile(
           path.join(root, 'turbo.json'),
-          JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
+          JSON.stringify({
+            tasks: {
+              build: { dependsOn: ['^build'], outputs: ['dist/**'] },
+              types: { dependsOn: ['^types'], outputs: ['types/**'] },
+            },
+          }),
         )
         await addPackage(root, 'ui', {})
-        await addPackage(root, 'web', { build: 'tsc -b' }, { ui: 'workspace:*' })
+        await addPackage(root, 'web', { build: 'tsc -b', types: 'tsc' }, { ui: 'workspace:*' })
         expect((await vx(root, [])).code).toBe(0)
         const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.config.ts'))
-        const build = (ui.tasks as Record<string, TaskConfig>).build!
-        expect([build.exec?.command, build.cache?.outputs?.files]).toEqual(['true', []])
+        const tasks = ui.tasks as Record<string, TaskConfig>
+        // Core gives a project with no `build` this node itself (projects.ts).
+        expect(Object.keys(tasks)).toEqual(['types'])
+        expect([tasks.types!.exec?.command, tasks.types!.cache?.outputs?.files]).toEqual([
+          'true',
+          [],
+        ])
         const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
         expect(readme).toContain(
           'A package without the script of a `^` task others run gets the same key-only task',
@@ -1321,7 +1331,8 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 // ─── Item 817's sweep: each row fails with one line of the writer undone ──
 
 describe('the writer: what the sweep found unheld', () => {
-  const USAGE = 'usage: vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]'
+  const USAGE =
+    'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({

@@ -2,6 +2,7 @@ LICENSE
 README.md
 index.ts
 package.json
+src/adopt.ts
 src/adoption-plugin.ts
 src/bin.ts
 src/dotenv-probe.ts
