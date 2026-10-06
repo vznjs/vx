@@ -8,6 +8,12 @@
 
 /** `mtime_ms` of a recorded output prefix that did not exist when the snapshot was taken. */
 const ABSENT_DIR_MTIME = -1
+/**
+ * `mtime_ms` of a recorded output prefix that was a regular file: a literal
+ * output naming one (`public/app.js`). The set under it is the file alone
+ * while it stays a regular file; its bytes are the per-file check's.
+ */
+const FILE_PREFIX_MTIME = -2
 
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
@@ -244,7 +250,14 @@ export class OutputIndex {
         }
         return false
       }
-      if (!st.isDirectory()) return false
+      if (!st.isDirectory()) {
+        // A literal output naming a file walked its glob on every hit: two
+        // of this repo's site tasks, ~6 ms of each warm run (U-5).
+        if (!isPrefix || !st.isFile()) return false
+        rows.push([rel, FILE_PREFIX_MTIME])
+        files.push(rel)
+        return true
+      }
       rows.push([rel, st.mtimeMs])
       if (rows.length > OUTPUT_DIRS_CAP) return false
       let entries
@@ -379,6 +392,7 @@ export class OutputIndex {
         return r.mtimeMs === ABSENT_DIR_MTIME
       }
       if (r.mtimeMs === ABSENT_DIR_MTIME) return false
+      if (r.mtimeMs === FILE_PREFIX_MTIME) return st.isFile()
       return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
     })
     return results.every(Boolean)
