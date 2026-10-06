@@ -14,6 +14,7 @@ import {
   normalizeBunGlob,
 } from '../util/index.js'
 import { type LoadReads, readOnce, unreadable } from './load-reads.js'
+import { repoIdOf } from './repo-id.js'
 
 export interface PackageJson {
   name: string
@@ -360,17 +361,24 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 }
 
 /**
- * Where the shared store lives: `~/.vx/cache` (owner, 2026-10-06), so
- * every workspace of the user hits what another saved. Null when the
- * workspace names its cache (`cacheDir`, `VX_CACHE_DIR`): that directory
- * then holds everything, as one workspace's alone. Null with no home.
+ * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
+ * Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06), so every checkout of
+ * the repository hits what another saved and no other repository shares
+ * it (`repoIdOf`). Null when the workspace names its cache (`cacheDir`,
+ * `VX_CACHE_DIR`): that directory then holds everything, as one
+ * workspace's alone. Null with no repository identity or no home.
  */
-export function resolveStoreRoot(config: WorkspaceConfig | null): string | null {
+export function resolveStoreRoot(root: string, config: WorkspaceConfig | null): string | null {
   if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
   // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
   const home = process.env['HOME'] || homedir()
-  return home === '' ? null : path.join(home, '.vx', 'cache')
+  if (!path.isAbsolute(home)) return null
+  let id = repoIds.get(root)
+  if (id === undefined) repoIds.set(root, (id = repoIdOf(root)))
+  return id === null ? null : path.join(home, '.vx', id, 'cache')
 }
+
+const repoIds = new Map<string, string | null>()
 
 /**
  * Read the workspace's package-glob list, supporting all common

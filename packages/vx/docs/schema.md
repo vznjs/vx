@@ -1443,9 +1443,9 @@ interface WorkspaceConfig {
   process group is SIGTERMed and the task reported `failed`. Purely a safety net — never folded
   into a cache key (a timed-out task fails and is never cached).
 - **`cacheDir`** — unset, the workspace keeps its index and history in
-  `.vx/cache` and its entries and artifacts in the user's shared store
-  (`~/.vx/cache`), where every other
-  workspace of the user hits them (`docs/caching.md`). Named here, by
+  `.vx/cache` and its entries and artifacts in its repository's shared
+  store (`~/.vx/<id>/cache`), where every other checkout of the
+  repository hits them (`docs/caching.md`). Named here, by
   `VX_CACHE_DIR`, or by `--cache-dir`, the directory holds the whole
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace

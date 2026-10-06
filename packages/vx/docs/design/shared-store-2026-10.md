@@ -11,10 +11,11 @@ A workspace's cache splits in two:
 
 - **The store** — the entries and their artifacts: `entries`,
   `entry_stdout`, `output_files`, `entry_inputs`, `store_meta` in
-  `store.db`, and `<hash>.tar.zst` beside it. Content-addressed, so any
-  workspace of the user may read it. Default:
-  `~/.vx/cache/store-v32` on every platform (owner, 2026-10-06; the
-  first cut used `~/.cache/vx` / `~/Library/Caches/vx`).
+  `store.db`, and `<hash>.tar.zst` beside it. Content-addressed.
+  Default: `~/.vx/<id>/cache/store-v32` on every platform, one per
+  repository, as Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06:
+  "do exactly like nx"; the first cut used `~/.cache/vx`, one for every
+  repository).
 - **The workspace index** — `<root>/.vx/cache/cache.db`: run history,
   the file-hash and blob memos, config evaluations, and what this
   checkout's disk looked like after a save or restore (`output_stamps`,
@@ -26,12 +27,29 @@ A cache dir the workspace names (`cacheDir`, `--cache-dir`,
 `VX_CACHE_DIR`) holds both, in one `cache.db`, as before: naming one is
 how a workspace opts out of sharing.
 
-Nx 23.2 shares by default too, per repository: `~/.nx/<id>/cache`, the
-id 16 hex of a sha256 of the git remote and the workspace's path in it
-(`utils/cache-directory.js`). vx keeps one store for every repository:
-a file is named by its key, so two repositories share one only when
-they produced the same thing, and a per-repository split would buy
-housekeeping for a git read per run.
+## The repository id, as Nx 23.2
+
+Nx 23.2 shares by default at `~/.nx/<id>/{cache,databases}`
+(`utils/cache-directory.js`, `utils/git-utils.js`); `repo-id.ts` ports
+its rules, without the Nx Cloud id:
+
+- id: 16 hex of sha256(sha256(`<identity>#<workspace path in the repo>`)).
+- identity: the remote, `origin`, then `upstream`, `base`, the first;
+  four url shapes (scp `git@`, `https://user@`, `https://`,
+  `ssh://user@host[:port]`) to `host/owner/repo`, lower case. Read from
+  the common dir's `config`; an `include`, a `url "…"` rewrite or a value
+  with `#`, `;`, `\` or a quote is left to `git remote -v`.
+- no remote: the sorted-first root commit; a shallow clone or a
+  repository with no commit has no id and shares nothing (the workspace
+  holds everything, as with a named cache dir).
+- the walk to `.git` stops at one not ours (owner, `HEAD`, `objects`),
+  reads files with `O_NOFOLLOW`, and `~/.vx`, `~/.vx/<id>` and its
+  `cache` are made 0700 one level at a time; a level open to other users
+  or not ours sends the store to the workspace, said once.
+
+Entries are content-addressed, so one store for every repository would
+be as correct; the split is housekeeping (delete a repository's cache as
+one directory, no lock shared with an unrelated repository's run).
 
 ## Why split, not move
 

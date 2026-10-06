@@ -40,7 +40,7 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
     workspaceConfig,
     plugins,
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
-    storeRoot: resolveStoreRoot(workspaceConfig),
+    storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
   }
 }
 

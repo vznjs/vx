@@ -83,7 +83,7 @@ export function namedProject(
   by: string,
 ): Promise<ProjectMeta | null>
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
-export function resolveStoreRoot(config: WorkspaceConfig | null): string | null
+export function resolveStoreRoot(root: string, config: WorkspaceConfig | null): string | null
 
 // A loaded project: its canonical name, directory and evaluated config.
 // `ProjectMeta` is what discovery finds; this is what a run reads.
@@ -235,12 +235,14 @@ Resolves the cache directory:
   paths pass through.
 - Default: `<root>/.vx/cache`.
 
-### `resolveStoreRoot(config)`
+### `resolveStoreRoot(root, config)`
 
-Where the shared store lives: `~/.vx/cache` on every platform
-(`$HOME` before the passwd entry). Null
+Where the repository's shared store lives: `~/.vx/<id>/cache` on every
+platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
+(`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
+git is spawned only for a repository with no parseable remote). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
-which then holds everything, or with no home. `Cache` appends the
+which then holds everything, with no repository id, or with no home. `Cache` appends the
 schema (`storeDirOf`). A run given `--cache-dir` passes null itself.
 
 Used by `prepareRun` (so `run` and `planRun`), the doctor, and every

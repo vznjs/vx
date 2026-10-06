@@ -158,7 +158,7 @@ async function collectWorkspaceInfo(
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
   const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
-  const storeRoot = opts.cacheDir === undefined ? resolveStoreRoot(workspaceConfig) : null
+  const storeRoot = opts.cacheDir === undefined ? resolveStoreRoot(root, workspaceConfig) : null
   const cache = Cache.inspect(cacheDir)
   noteSchemaReset(cache, warn)
   let stats

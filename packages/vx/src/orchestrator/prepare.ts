@@ -221,7 +221,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
-  const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceConfig)
+  const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
   const projectMetas =
     reused !== undefined
       ? reused.projects

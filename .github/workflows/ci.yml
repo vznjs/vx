@@ -102,7 +102,7 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            ~/.vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -167,7 +167,7 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            ~/.vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # A cross-compile on a cold Bun cache, in bwrap: nothing warms
@@ -316,7 +316,7 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            ~/.vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -340,7 +340,7 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            ~/.vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
