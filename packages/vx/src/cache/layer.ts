@@ -565,9 +565,12 @@ export interface CacheLayer {
   /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
-   * is probed hash by hash.
+   * is probed hash by hash. `ctx` is each hash's `get` context.
    */
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   /**
    * Lightweight existence probe. `'local'` / `'remote'` names the layer
    * that holds the artifact; `null` is a miss. NEVER moves bytes: no

@@ -1425,12 +1425,10 @@ the end of every run when `vx.workspace.ts` declares
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
-drops every table and leaves the artifacts behind — the first run
-after the upgrade says `cache index reset: schema v24 → v25` and names
-this verb; a deleted `cache.db` does the same) and a `<hash>.tar.zst.tmp-*` a save that
-crashed never renamed. Nothing else reclaims them — a lookup starts at
-the row, so an orphan is never a hit, and only a save of the same key
-overwrites it. Files younger than one hour are left alone: a save
+drops every table and leaves the artifacts behind, as a deleted
+`cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
+renamed. A run that asks for an orphan's key indexes it again from its
+bytes and hits; one no task asks for again is only reclaimed here. Files younger than one hour are left alone: a save
 renames its artifact into place before the row commits, so a fresh
 row-less file is a save in flight. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
@@ -2269,8 +2267,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
 - `orphans` appears only when the cache directory holds artifacts or
   save temps the index has no row for, older than an hour (what a
   `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
-  flight). They are never a hit and nothing but `vx cache prune`
-  reclaims them, so the doctor says so.
+  flight). A task that asks for one's key again indexes it and hits;
+  the rest only `vx cache prune` reclaims, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
   script or a bug-report template: `vx`, `bun`, `bunSupported` (false
   below Bun 1.4.0), `git` (null when not

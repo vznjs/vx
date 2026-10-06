@@ -121,7 +121,7 @@ describe('a schema reset says so once', () => {
     const notices = await runOnce()
     expect(notices).toHaveLength(1)
     expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/)
-    expect(notices[0]).toContain('vx cache prune')
+    expect(notices[0]).toContain('each artifact is indexed again when its task next hits')
     // Control: the version now matches, so the next run says nothing.
     expect(await runOnce()).toEqual([])
   })

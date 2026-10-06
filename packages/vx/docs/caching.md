@@ -1113,9 +1113,13 @@ owner-only; one open to other users is not used. Design: [`design/shared-store-2
                                             attaches store.db as `store`
 ```
 
-The store carries no version: every key is seeded with `CACHE_VERSION`,
-so two vx versions never read each other's entries, and a store table
-only ever gains columns. A home this user cannot write keeps the store
+The store's directory carries no version: every key is seeded with
+`CACHE_VERSION`, which moves when hashing or the artifact layout does, so
+two vx versions never read each other's artifacts. `store.db` is the
+artifacts' inventory and records its schema (`store_meta.schema`): a vx
+of another `SCHEMA_VERSION` drops its tables, says `shared cache store
+… re-indexed` once, and keeps every artifact, each indexed again when
+its task next hits. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
@@ -1283,11 +1287,14 @@ pruned (`tests/archive-security.test.ts`).
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +
 remote layers transport the exact same tar.zst bytes end-to-end.
-The index is authoritative: a lookup reads the row first and only then
-checks the file, so an artifact without a row (a `SCHEMA_VERSION` drop,
-a deleted `cache.db`) or a `.tmp-*` a crashed save left is never a hit
-and is never touched by a run's lookups — `vx cache prune` sweeps
-them, and so does a run whose workspace declares `cacheRetention`, at
+The artifact is the record and the index its inventory (owner,
+2026-10-06): a lookup reads the row first, and a key with no row whose
+`<hash>.tar.zst` is on disk (a `SCHEMA_VERSION` drop, a deleted
+`cache.db` or `store.db`) has the artifact indexed again from its own
+bytes, checked as a remote's are (its recorded key, its names against
+the task's declared outputs), and hits; one that fails the check is a
+miss, and the save that follows replaces it. A `.tmp-*` a crashed save
+left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due), once
 they are older than an hour (a save renames the artifact into place
@@ -1309,9 +1316,9 @@ Two openers leave it untouched and say why (item 896): a reading verb
 schema. That one is another vx's index and history, and an older binary
 beside a newer one used to drop it.
 That open says so once, on the run's status line or the verb's stderr
-(`[vx] cache index reset: schema v24 → v25 (vx upgraded); …`), so the
-all-miss run that follows is explained; the artifacts it orphaned are
-`vx cache prune`'s to reap.
+(`[vx] cache index reset: schema v24 → v25 (vx upgraded); …`). The
+artifacts stay: each is indexed again from its own bytes when its task
+next asks for its key (below).
 
 ```sql
 -- src/cache/schema.ts (SCHEMA_VERSION = 'v32', in cache.ts)

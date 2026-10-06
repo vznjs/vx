@@ -59,7 +59,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext, // each hash's get context: an unindexed artifact is adopted
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -582,9 +585,9 @@ through `guard` (A-8). Before, every task of a run failed on it as an
 "internal error" and `vx cache prune` printed a stack. The open that drops them says
 so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
-status line, or a verb's stderr — ``[vx] cache index reset: schema v24 →
-v25 (vx upgraded); every cached task misses once and re-saves, and
-`vx cache prune` reclaims the old artifacts``. An upgrade's all-miss
+status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
+v25 (vx upgraded); run history starts over, and each artifact is indexed
+again when its task next hits`. An upgrade's all-miss
 run, and the `vx last` with nothing to show after it, are explained
 rather than silent (`tests/schema-reset-notice.test.ts`). A
 `CACHE_VERSION` bump alone keeps the index, so `Cache.formatChange`
