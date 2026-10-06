@@ -1,20 +1,25 @@
 // The plugins a migrated workspace declares, from what the repo shows
 // (owner, 2026-10-06: "install and migrate fully … use the plugins"). Each
 // is inert where it does not apply, so declaring one costs a run nothing,
-// and each is built into the vx binary, so none is installed (owner: "not
-// have to install any native plugins").
+// and each is installed beside vx at vx-migrate's own version (plugins
+// pin their core peer to the release they shipped with).
 
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { lockfilePlugin } from './workspace-notes.js'
 
-/** The factory names, in declaration order, all from `@vzn/vx/plugins`. */
-export function workspacePlugins(root: string): string[] {
-  const out: string[] = []
+export interface WorkspacePlugin {
+  readonly pkg: string
+  readonly factory: string
+}
+
+export function workspacePlugins(root: string): WorkspacePlugin[] {
+  const out: WorkspacePlugin[] = []
   const lock = lockfilePlugin(root)
-  if (lock !== undefined) out.push(lock.factory)
-  out.push('scheduleHistoryPlugin')
-  if (existsSync(path.join(root, '.github', 'workflows'))) out.push('github')
+  if (lock !== undefined) out.push({ pkg: '@vzn/vx-lockfile', factory: lock.factory })
+  out.push({ pkg: '@vzn/vx-schedule-history', factory: 'scheduleHistoryPlugin' })
+  if (existsSync(path.join(root, '.github', 'workflows')))
+    out.push({ pkg: '@vzn/vx-github', factory: 'github' })
   return out
 }
 
@@ -24,23 +29,26 @@ export function workspaceFileAt(root: string): string | undefined {
 }
 
 /** `plugins` that `text` does not already call. */
-export function undeclared(text: string, plugins: readonly string[]): string[] {
-  return plugins.filter((p) => !new RegExp(`\\b${p}\\s*\\(`).test(text))
+export function undeclared(text: string, plugins: readonly WorkspacePlugin[]): WorkspacePlugin[] {
+  return plugins.filter((p) => !new RegExp(`\\b${p.factory}\\s*\\(`).test(text))
 }
 
-function importLine(plugins: readonly string[]): string {
-  return `import { ${plugins.join(', ')} } from '@vzn/vx/plugins'`
+function importLines(plugins: readonly WorkspacePlugin[]): string[] {
+  return plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'`)
 }
 
-function entries(plugins: readonly string[], indent: string): string[] {
-  return plugins.map((p) => `${indent}${p}(),`)
+function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] {
+  return plugins.map((p) => `${indent}${p.factory}(),`)
 }
 
 /** `vx.workspace.<format>` declaring `plugins`. */
-export function renderWorkspaceFile(plugins: readonly string[], format: 'ts' | 'mjs'): string {
+export function renderWorkspaceFile(
+  plugins: readonly WorkspacePlugin[],
+  format: 'ts' | 'mjs',
+): string {
   return [
     ...(format === 'ts' ? ["import type { WorkspaceConfig } from '@vzn/vx/config'"] : []),
-    importLine(plugins),
+    ...importLines(plugins),
     '',
     'export default {',
     '  plugins: [',
@@ -56,7 +64,10 @@ export function renderWorkspaceFile(plugins: readonly string[], format: 'ts' | '
  * [turbo()] }`); null for any other shape, which is left alone. A plugin
  * the file already calls is not added twice.
  */
-export function extendWorkspaceFile(text: string, plugins: readonly string[]): string | null {
+export function extendWorkspaceFile(
+  text: string,
+  plugins: readonly WorkspacePlugin[],
+): string | null {
   const m = /^export default \{ plugins: \[([^\]\n]*)\] \}/m.exec(text)
   if (m === null) return null
   const added = undeclared(text, plugins)
@@ -66,7 +77,7 @@ export function extendWorkspaceFile(text: string, plugins: readonly string[]): s
   const kept = m[1]!.trim()
   return [
     head,
-    importLine(added),
+    ...importLines(added),
     '',
     'export default {',
     '  plugins: [',

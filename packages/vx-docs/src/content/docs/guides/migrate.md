@@ -21,9 +21,9 @@ package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
 without a terminal it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
-the lockfile's plugin (`pnpm()`, …), `scheduleHistoryPlugin()`, and
-`github()` when `.github/workflows` exists, all imported from `@vzn/vx/plugins`; these are built into vx, so
-nothing more is installed. Your `package.json` scripts
+the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
+and `github()` when `.github/workflows` exists, installing each beside vx at
+the same version. Your `package.json` scripts
 stay as they are. The steps below
 are the same adoption one stage at a time.
 
@@ -84,7 +84,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 $ bunx @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what turbo did, remove turbo() (and its import), then turbo.json
-note: Turbo keys each package on its own package-lock.json entries; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx/plugins in vx.workspace.ts to key each task on its package's dependency closure
+note: Turbo keys each package on its own package-lock.json entries; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
 
 3 tasks migrated clean, 0 TODOs
 files written:
@@ -227,7 +227,7 @@ $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
-note: Nx keys each project on the npm packages it depends on in package-lock.json; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx/plugins in vx.workspace.ts to key each task on its package's dependency closure
+note: Nx keys each project on the npm packages it depends on in package-lock.json; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
 
 2 tasks migrated clean, 0 TODOs
 files written:

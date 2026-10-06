@@ -34,7 +34,7 @@ it('names the plugin for the lockfile present, unless vx.workspace declares one'
   expect(
     await notes({
       'vx.workspace.ts':
-        "import { pnpm } from '@vzn/vx/plugins'\nexport default { plugins: [pnpm()] }\n",
+        "import { pnpm } from '@vzn/vx-lockfile'\nexport default { plugins: [pnpm()] }\n",
     }),
   ).toEqual([])
   expect(

@@ -219,11 +219,11 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
           await Bun.file(path.join(root, 'packages', 'ssr', 'vx.config.ts')).exists(),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          ws.includes("import { pnpm, scheduleHistoryPlugin } from '@vzn/vx/plugins'"),
+          ws.includes("import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'"),
           r.out.includes('Declare pnpm()'),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx\n',
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n',
           { build: 'turbo run build' },
           true,
           false,
@@ -231,7 +231,9 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           true,
           false,
         ])
-        expect(r.out).toContain('note: installed @vzn/vx (pnpm add -D -w @vzn/vx)')
+        expect(r.out).toContain(
+          'note: installed @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (pnpm add -D -w',
+        )
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -240,7 +242,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   )
 
   it(
-    '--keep installs the plugin package and adds the built-in plugins to the file vx init writes',
+    '--keep installs the plugin packages and adds the plugins to the file vx init writes',
     async () => {
       const { root, env } = await solidShaped()
       try {
@@ -252,11 +254,11 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await calls(root),
           ws.includes("import { turbo } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          ws.includes("import { pnpm, scheduleHistoryPlugin, github } from '@vzn/vx/plugins'"),
+          ws.includes("import { github } from '@vzn/vx-github'"),
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-migrate\n',
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-github\n',
           true,
           ['turbo', 'pnpm', 'scheduleHistoryPlugin', 'github'],
           true,
@@ -281,7 +283,9 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           dry.code,
           noInstall.code,
           await calls(root),
-          dry.out.includes('note: would install @vzn/vx (dry run)'),
+          dry.out.includes(
+            'note: would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
+          ),
         ]).toEqual([0, 0, '', true])
         expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {

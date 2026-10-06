@@ -207,14 +207,16 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   if (plugins.length > 0) {
     plan = {
       ...plan,
-      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx/plugins')),
+      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
       extraFiles: [
         ...plan.extraFiles,
         { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
       ],
     }
   }
-  const headerNotes = refused ? [] : await prepareRepo(root, ['@vzn/vx'], parsed)
+  const headerNotes = refused
+    ? []
+    : await prepareRepo(root, ['@vzn/vx', ...plugins.map((p) => p.pkg)], parsed)
   return applyMigration({
     root,
     metas,
@@ -282,7 +284,11 @@ async function keep(
     extendWorkspaceFile(readFileSync(path.join(root, existing), 'utf8'), []) !== null
       ? workspacePlugins(root)
       : []
-  for (const note of await prepareRepo(root, ['@vzn/vx', '@vzn/vx-migrate'], args)) {
+  for (const note of await prepareRepo(
+    root,
+    ['@vzn/vx', '@vzn/vx-migrate', ...plugins.map((p) => p.pkg)],
+    args,
+  )) {
     process.stdout.write(`vx-migrate: ${note}\n`)
   }
   // A resolve that misses from a directory with no node_modules is an
@@ -305,7 +311,7 @@ async function keep(
   const extended = extendWorkspaceFile(text, plugins)
   if (extended !== null && extended !== text) {
     await Bun.write(file, extended)
-    const names = undeclared(text, plugins).map((p) => `${p}()`)
+    const names = undeclared(text, plugins).map((p) => `${p.factory}()`)
     process.stdout.write(`vx-migrate: declared ${names.join(', ')} in ${written}\n`)
   }
   return code
