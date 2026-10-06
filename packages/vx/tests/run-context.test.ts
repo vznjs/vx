@@ -211,7 +211,7 @@ describe('captureDefaultBranch', () => {
     git(main, ['config', 'user.name', 'Test'])
     git(main, ['commit', '-q', '--allow-empty', '-m', 'c'])
     git(main, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
-    let got: string | null = null
+    let got = null as string | null
     expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, main)))).toBe(0)
     expect(got).toBe('trunk')
     const linked = path.join(dir, 'linked')
@@ -229,7 +229,7 @@ describe('captureDefaultBranch', () => {
     git(dir, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
     const sub = path.join(dir, 'ws')
     await Bun.write(path.join(sub, 'package.json'), '{}')
-    let got: string | null = null
+    let got = null as string | null
     expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, sub)))).toBe(1)
     expect(got).toBe('trunk')
   })
