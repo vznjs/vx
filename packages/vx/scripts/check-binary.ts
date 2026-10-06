@@ -251,24 +251,24 @@ if (
 }
 console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)
 
-// The baked plugins (scripts/compile.ts): the binary serves its own copy
-// of a plugin package only when the installed one is the version it baked.
-// The installed package here is a FAKE whose factory throws: at the
-// binary's version the run never reaches it, at any other it does.
-const manifestVersion = want.slice('vx '.length)
-const bakedRun = (version: string): { exitCode: number; output: string } => {
+// The baked plugins (scripts/compile.ts): a workspace imports one with
+// nothing installed, and an installed copy does not replace it. The
+// installed one here is a FAKE whose factory throws.
+const bakedRun = (installed: boolean): { exitCode: number; output: string } => {
   const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-check-baked-'))
-  const fake = path.join(ws, 'node_modules', '@vzn', 'vx-schedule-history')
-  mkdirSync(fake, { recursive: true })
   mkdirSync(path.join(ws, 'packages', 'a'), { recursive: true })
-  writeFileSync(
-    path.join(fake, 'package.json'),
-    JSON.stringify({ name: '@vzn/vx-schedule-history', version, main: 'index.js' }),
-  )
-  writeFileSync(
-    path.join(fake, 'index.js'),
-    "export function scheduleHistoryPlugin() { throw new Error('the disk copy loaded') }\n",
-  )
+  if (installed) {
+    const fake = path.join(ws, 'node_modules', '@vzn', 'vx-schedule-history')
+    mkdirSync(fake, { recursive: true })
+    writeFileSync(
+      path.join(fake, 'package.json'),
+      JSON.stringify({ name: '@vzn/vx-schedule-history', version: '0.0.1', main: 'index.js' }),
+    )
+    writeFileSync(
+      path.join(fake, 'index.js'),
+      "export function scheduleHistoryPlugin() { throw new Error('the disk copy loaded') }\n",
+    )
+  }
   writeFileSync(
     path.join(ws, 'package.json'),
     JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
@@ -289,20 +289,13 @@ export default { plugins: [scheduleHistoryPlugin()] }
   rmSync(ws, { recursive: true, force: true })
   return { exitCode: r.exitCode, output: text(r.stdout) + text(r.stderr) }
 }
-const same = bakedRun(manifestVersion)
-const other = bakedRun(`${manifestVersion}-other`)
-if (
-  same.exitCode !== 0 ||
-  !same.output.includes('probe-ran') ||
-  other.exitCode === 0 ||
-  !other.output.includes('the disk copy loaded')
-) {
-  process.stderr.write(
-    `baked plugin: at ${manifestVersion} exit ${same.exitCode}, expected the baked copy and 0\n${same.output}\n` +
-      `at another version exit ${other.exitCode}, expected the disk copy's throw\n${other.output}\n`,
-  )
-  process.exit(1)
+for (const installed of [false, true]) {
+  const r = bakedRun(installed)
+  if (r.exitCode !== 0 || !r.output.includes('probe-ran')) {
+    process.stderr.write(
+      `baked plugin (${installed ? 'a fake installed' : 'none installed'}): exit ${r.exitCode}, expected the binary's copy and 0\n${r.output}\n`,
+    )
+    process.exit(1)
+  }
 }
-console.log(
-  `${path.relative(root, out)} serves a baked plugin at its own version and the disk copy at another`,
-)
+console.log(`${path.relative(root, out)} serves its baked plugins, installed or not`)

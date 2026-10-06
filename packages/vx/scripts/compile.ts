@@ -6,9 +6,9 @@
 // The CLI's `bun build --compile` flags, plus the plugin packages in
 // baked-plugins.ts compiled in: `src/cli/baked.ts`, empty in source, is
 // replaced by a table of their entries, and each one's
-// `definePlugin(import.meta, …)` reads the origin `registerBakedPlugins`
-// sets, because a bundled module's `import.meta.dir` is the bundle's
-// (`/$bunfs/root`), where no package.json names it.
+// `definePlugin(import.meta, …)` names its package outright, because a
+// bundled module's `import.meta.dir` is the bundle's (`/$bunfs/root`),
+// where no package.json names it.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { BAKED_PLUGINS } from './baked-plugins.ts'
@@ -35,7 +35,7 @@ function baked(): Baked[] {
 
 const ORIGIN = 'definePlugin(import.meta,'
 
-/** `source` with its `definePlugin(import.meta, …)` reading `specifier`'s baked origin. */
+/** `source` with its `definePlugin(import.meta, …)` naming `specifier`. */
 function rewriteOrigin(source: string, specifier: string, file: string): string {
   const uses = source.split('import.meta').length - 1
   const origins = source.split(ORIGIN).length - 1
@@ -46,7 +46,7 @@ function rewriteOrigin(source: string, specifier: string, file: string): string 
   }
   return source.replaceAll(
     ORIGIN,
-    `definePlugin(globalThis[Symbol.for('vx.baked-origin')].get(${JSON.stringify(specifier)}),`,
+    `definePlugin({ [Symbol.for('vx.baked-package')]: ${JSON.stringify(specifier)} },`,
   )
 }
 

@@ -24,9 +24,9 @@ async function main(): Promise<void> {
     // a second copy from node_modules (core-alias.ts says why and what it
     // costs). Registered before any verb runs; the façade loads on first use.
     registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
-    // The compiled binary's own plugin packages, when the installed one is
-    // the version baked (core-alias.ts). Nothing in source.
-    registerBakedPlugins(BAKED_PLUGINS, (await import('./version.js')).VERSION)
+    // The compiled binary's own plugin packages, installed or not
+    // (core-alias.ts). Nothing in source.
+    await registerBakedPlugins(BAKED_PLUGINS)
     const code = await run(argv)
     // NOTHING calls `process.exit` here, and that is the fix rather than a
     // simplification. Bun drops what a pipe has not yet taken when

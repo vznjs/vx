@@ -17,7 +17,7 @@ DECLARED. A config import is neither.
 
 ```ts
 /** The bare specifiers in `source` no `node_modules/<package>` above `fromDir` provides
- *  (what Bun would auto-install); builtins and `@vzn/vx` never count. */
+ *  (what Bun would auto-install); builtins, `@vzn/vx` and host packages never count. */
 export function unprovidedBareImports(
   source: string,
   fromDir: string,
@@ -27,6 +27,10 @@ export function unprovidedBareImports(
 // Whether Bun's parser finds an ESM `export` in `source` — the loader
 // serves only such a config from the bytes it read (project-loader.md).
 export function hasEsmExport(source: string, loader: 'ts' | 'js'): boolean
+
+// A package the host serves itself: the compiled binary's baked plugins
+// (bin.md), which no node_modules need provide.
+export function provideFromHost(specifier: string): void
 
 export interface ConfigImportOwnersArgs {
   workspaceRoot: string

@@ -106,27 +106,31 @@ describe('registerCoreAlias', () => {
   })
 })
 
-// The binary's baked plugins: the same specifier served from a table when
-// the installed package is the version baked, from disk otherwise, and a
-// baked module's origin is the installed package's directory.
+// The binary's baked plugins: a specifier served from the table whether
+// or not node_modules holds the package, and over whatever it holds.
 describe('registerBakedPlugins', () => {
-  async function served(installed: string): Promise<{ where: string; origin: string | null }> {
+  async function served(installed: boolean, baked: boolean): Promise<string> {
     const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-baked-'))
     try {
-      const pkg = path.join(ws, 'node_modules', '@fixture', 'plugin')
-      await mkdir(pkg, { recursive: true })
-      await writeFile(
-        path.join(pkg, 'package.json'),
-        JSON.stringify({ name: '@fixture/plugin', version: installed, main: 'index.js' }),
-      )
-      await writeFile(path.join(pkg, 'index.js'), "export const where = 'disk'\n")
+      if (installed) {
+        const pkg = path.join(ws, 'node_modules', '@fixture', 'plugin')
+        await mkdir(pkg, { recursive: true })
+        await writeFile(
+          path.join(pkg, 'package.json'),
+          JSON.stringify({ name: '@fixture/plugin', main: 'index.js' }),
+        )
+        await writeFile(path.join(pkg, 'index.js'), "export const where = 'disk'\n")
+      }
+      const table = baked ? `{ '@fixture/plugin': async () => ({ where: 'baked' }) }` : '{}'
       await writeFile(
         path.join(ws, 'entry.ts'),
         `import { registerBakedPlugins } from ${JSON.stringify(CORE_ALIAS)}\n` +
-          `registerBakedPlugins({ '@fixture/plugin': async () => ({ where: 'baked' }) }, '1.0.0')\n` +
-          `const { where } = await import('@fixture/plugin')\n` +
-          `const origin = globalThis[Symbol.for('vx.baked-origin')].get('@fixture/plugin')\n` +
-          `console.log(JSON.stringify({ where, origin: origin?.dir ?? null }))\n`,
+          `await registerBakedPlugins(${table})\n` +
+          `try {\n` +
+          `  console.log((await import('@fixture/plugin')).where)\n` +
+          `} catch {\n` +
+          `  console.log('unresolved')\n` +
+          `}\n`,
       )
       const proc = Bun.spawn({ cmd: ['bun', 'entry.ts'], cwd: ws, stdout: 'pipe', stderr: 'pipe' })
       const [out, err, code] = await Promise.all([
@@ -135,21 +139,22 @@ describe('registerBakedPlugins', () => {
         proc.exited,
       ])
       expect(code, err).toBe(0)
-      const seen = JSON.parse(out.trim()) as { where: string; origin: string | null }
-      return { ...seen, origin: seen.origin && path.relative(ws, seen.origin) }
+      return out.trim()
     } finally {
       await rm(ws, { recursive: true, force: true })
     }
   }
 
-  it('serves the baked copy when the installed package is the version baked', async () => {
-    expect(await served('1.0.0')).toEqual({
-      where: 'baked',
-      origin: path.join('node_modules', '@fixture', 'plugin'),
-    })
+  it('serves the baked copy with nothing installed', async () => {
+    expect(await served(false, true)).toBe('baked')
   })
 
-  it('loads the installed copy at any other version', async () => {
-    expect(await served('1.0.1')).toEqual({ where: 'disk', origin: null })
+  it('serves the baked copy over an installed one', async () => {
+    expect(await served(true, true)).toBe('baked')
+  })
+
+  it('control: unbaked, the import resolves through node_modules or not at all', async () => {
+    expect(await served(true, false)).toBe('disk')
+    expect(await served(false, false)).toBe('unresolved')
   })
 })

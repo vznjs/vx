@@ -71,12 +71,21 @@ function packageOf(spec: string): string {
 const SPECIFIER =
   /\b(?:from|import)\s*\(?\s*["']([^"'./][^"']*)["']|\brequire\s*\(\s*["']([^"'./][^"']*)["']/g
 
+/** Packages the host serves itself: the binary's baked plugins (`cli/core-alias.ts`). */
+const hostPackages = new Set<string>()
+
+/** Mark `specifier` as served by the host, so no `node_modules` need provide it. */
+export function provideFromHost(specifier: string): void {
+  hostPackages.add(specifier)
+}
+
 /** Whether a specifier is one the walk would have to look up at all. */
 function needsLookup(spec: string): boolean {
   // `#x` is a package.json `imports` entry: Bun maps it inside the
   // package and never asks the registry, as no npm name opens with `#`
   // (D-28).
   if (spec.startsWith('#') || spec.includes(':') || BUILTINS.has(spec)) return false
+  if (hostPackages.has(spec)) return false
   return !(spec === '@vzn/vx' || spec.startsWith('@vzn/vx/'))
 }
 

@@ -1,5 +1,3 @@
-import path from 'node:path'
-
 /**
  * One core per process. A plugin package, a `vx.workspace.ts`, a
  * `vx.config.ts` all `import … from '@vzn/vx'`, and that specifier
@@ -26,48 +24,31 @@ export function registerCoreAlias(load: () => Promise<Record<string, unknown>>):
   })
 }
 
-/** Where a baked plugin's transformed `import.meta` reads its origin (scripts/compile.ts). */
-const BAKED_ORIGIN = Symbol.for('vx.baked-origin')
-
 /**
- * Plugin packages compiled into the binary (`baked.ts`, filled by
- * scripts/compile.ts), served from the binary's own bytecode instead of
- * resolved, read and transpiled from `node_modules` per process: 5
- * packages, `vx show` 37 → 31 ms (2026-10-06).
- *
- * Only when the installed package is the one baked: resolved from the
- * working directory as an import would be, and its `version` equal to
- * this binary's (the plugins ship on vx's release train, so equal
- * versions are equal sources). Any other version loads from disk as
- * before, and a package that is not installed fails to resolve as
- * before. Like the core alias, a specifier is one module per process.
- *
- * A baked plugin's `definePlugin(import.meta, …)` is rewritten at compile
- * time to read its origin here: the installed package's directory, so its
- * name is read from the installed `package.json`, as it is from disk.
+ * The plugin packages compiled into the binary (`baked.ts`, filled by
+ * scripts/compile.ts): a workspace imports them by their package names
+ * with nothing installed, and gets the binary's own copy whatever
+ * `node_modules` holds, as with core. Served from the binary's bytecode,
+ * not resolved and transpiled per process: 5 packages, `vx show`
+ * 37 → 31 ms (2026-10-06).
  */
-export function registerBakedPlugins(
+export async function registerBakedPlugins(
   baked: Readonly<Record<string, () => Promise<Record<string, unknown>>>>,
-  version: string,
-): void {
+): Promise<void> {
   const specifiers = Object.keys(baked)
   if (specifiers.length === 0) return
-  const origins = new Map<string, { dir: string }>()
-  ;(globalThis as Record<symbol, unknown>)[BAKED_ORIGIN] = origins
+  // Nothing installed provides them, and the config loader refuses a bare
+  // import no node_modules provides before it evaluates.
+  const { provideFromHost } = await import('../workspace/index.js')
+  for (const specifier of specifiers) provideFromHost(specifier)
   Bun.plugin({
     name: 'vx-baked-plugins',
     setup(build) {
       for (const specifier of specifiers) {
-        build.module(specifier, async () => {
-          const entry = Bun.resolveSync(specifier, process.cwd())
-          const dir = path.dirname(entry)
-          const { pluginPackage } = await import('../orchestrator/index.js')
-          if (pluginPackage(dir).version !== version) {
-            return { exports: (await import(entry)) as Record<string, unknown>, loader: 'object' }
-          }
-          origins.set(specifier, { dir })
-          return { exports: await baked[specifier]!(), loader: 'object' }
-        })
+        build.module(specifier, async () => ({
+          exports: await baked[specifier]!(),
+          loader: 'object',
+        }))
       }
     },
   })

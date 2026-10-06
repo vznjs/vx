@@ -47,17 +47,19 @@ compiled binary no second copy of core transpiled from `node_modules`
 
 The compiled binary also carries the plugin packages
 `scripts/baked-plugins.ts` lists (vx-github, vx-lockfile, vx-mcp,
-vx-otel, vx-schedule-history) compiled in, and bin.ts registers each as
-a virtual module too (`registerBakedPlugins`). It serves the baked copy
-only when the installed package, resolved from the working directory,
-has the binary's own `version` (the plugins ship on vx's release train,
-so equal versions are equal sources); any other version loads from
-disk, and a package that is not installed fails as before. The
-installed directory is the plugin's origin, so its name still comes
-from its own `package.json`. A workspace using all five: `vx show`
-37 → 31 ms (2026-10-06). vx-reapi and vx-migrate are not baked: each
-reads files beside its source at run time. In source `baked.ts` is an
-empty table; `scripts/check-binary.ts` holds the version rule both ways.
+vx-otel, vx-schedule-history) compiled in (owner, 2026-10-06: nothing to
+install, they are right there). bin.ts registers each as a virtual
+module too (`registerBakedPlugins`), so `import { bun } from
+'@vzn/vx-lockfile'` works with nothing installed and gets the binary's
+copy over any installed one, as `@vzn/vx` does; the config loader's
+refusal of an unprovided bare import exempts them (`provideFromHost`).
+`scripts/compile.ts` rewrites each one's `definePlugin(import.meta, …)`
+to name its package, since a bundled module's `import.meta.dir` is
+`/$bunfs/root`. A workspace using all five: `vx show` 37 → 31 ms
+(2026-10-06). vx-reapi and vx-migrate are not baked: each reads files
+beside its source at run time. In source `baked.ts` is an empty table;
+`scripts/check-binary.ts` runs a baked plugin with nothing installed and
+over a fake installed copy.
 
 `vx` is shipped two ways:
 
