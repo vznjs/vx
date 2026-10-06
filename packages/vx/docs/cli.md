@@ -1425,9 +1425,8 @@ the end of every run when `vx.workspace.ts` declares
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
-drops every table and leaves the artifacts behind — the first run
-after the upgrade says `cache index reset: schema v24 → v25` and names
-this verb; a deleted `cache.db` does the same) and a `<hash>.tar.zst.tmp-*` a save that
+drops every table and leaves the artifacts behind; a deleted
+`cache.db` does the same) and a `<hash>.tar.zst.tmp-*` a save that
 crashed never renamed. Nothing else reclaims them — a lookup starts at
 the row, so an orphan is never a hit, and only a save of the same key
 overwrites it. Files younger than one hour are left alone: a save

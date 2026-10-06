@@ -44,8 +44,9 @@ its rules, without the Nx Cloud id:
   holds everything, as with a named cache dir).
 - the walk to `.git` stops at one not ours (owner, `HEAD`, `objects`),
   reads files with `O_NOFOLLOW`, and `~/.vx`, `~/.vx/<id>` and its
-  `cache` are made 0700 one level at a time; a level open to other users
-  or not ours sends the store to the workspace, said once.
+  `cache` are made 0700 one level at a time; a level of ours open to
+  other users is chmodded 0700 (owner, 2026-10-06), and one not ours, or
+  one the chmod fails on, sends the store to the workspace, said once.
 
 Entries are content-addressed, so one store for every repository would
 be as correct; the split is housekeeping (delete a repository's cache as

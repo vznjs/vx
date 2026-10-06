@@ -6,7 +6,7 @@
 // no config evaluation, no re-hash.
 
 import path from 'node:path'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
 import { flagHint, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
 import {
@@ -18,7 +18,7 @@ import {
 } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -185,7 +185,6 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
   const root = await findWorkspaceRoot(process.cwd())
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
-  noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
     const taskId = resolveTarget(cache, await rootSpelled(root, parsed.target))

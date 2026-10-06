@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
@@ -147,7 +147,6 @@ export async function loadCliProjects(
           'open',
           opts.cacheDir === undefined ? ws.storeRoot : null,
         )
-  if (cache !== null) noteSchemaReset(cache, warnToStderr)
   try {
     const loaded = await loadProjects({
       workspaceRoot,

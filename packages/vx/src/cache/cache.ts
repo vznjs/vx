@@ -34,6 +34,7 @@
 import { Database } from 'bun:sqlite'
 import {
   accessSync,
+  chmodSync,
   closeSync,
   constants,
   existsSync,
@@ -168,32 +169,6 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
   }
 }
 
-/** Say once, on the channel the opener has, that an upgrade emptied the index. */
-export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
-  if (cache.storeFallback !== null) {
-    warn(
-      `[vx] shared cache store ${cache.storeFallback} is not usable; entries stay in ${cache.storeDir ?? 'this workspace'}, where no other workspace hits them`,
-    )
-  }
-  if (cache.storeMoved !== null) {
-    const { from, to } = cache.storeMoved
-    warn(
-      `[vx] cache entries now live in the shared store ${to}; the ones in ${from} miss once, and \`vx cache prune\` reclaims their artifacts`,
-    )
-  }
-  if (cache.formatChange !== null) {
-    const { from, to } = cache.formatChange
-    warn(
-      `[vx] cache format changed: ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
-    )
-    return
-  }
-  if (cache.schemaReset === null) return
-  const { from, to } = cache.schemaReset
-  warn(
-    `[vx] cache index reset: schema ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and \`vx cache prune\` reclaims the old artifacts`,
-  )
-}
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
 //   v20: file_hashes.content_hash (git blob OIDs).
 //   v21: dropped the unused outputs_hash column (pure-input hashing).
@@ -458,7 +433,16 @@ function ensurePrivateDir(dir: string): string | null {
   if (!st.isDirectory()) return `${dir} is not a directory`
   const uid = process.getuid?.()
   if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`
-  if ((st.mode & 0o077) !== 0) return `${dir} is open to other users (chmod 700 it)`
+  // The user's own directory open to others (a `~/.vx` made at the
+  // default umask, 0755) is vx's to close: refusing it left the store
+  // unused on a stock macOS home (owner, 2026-10-06: "you should own it").
+  if ((st.mode & 0o077) !== 0) {
+    try {
+      chmodSync(dir, 0o700)
+    } catch (err) {
+      return `${dir} is open to other users and chmod 700 failed (${errorText(err)})`
+    }
+  }
   return null
 }
 
@@ -549,8 +533,7 @@ export class Cache implements CacheLayer {
 
   /**
    * The store this open was asked for and could not use, with why: the
-   * entries went to a store inside `cacheDir` instead. Said once by
-   * `noteSchemaReset`.
+   * entries went to a store inside `cacheDir` instead.
    */
   readonly storeFallback: string | null = null
 
@@ -560,17 +543,15 @@ export class Cache implements CacheLayer {
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
-   * reports null, so whoever opened first is the one that can say so —
-   * `noteSchemaReset` is that one line, at every opener that has a
-   * channel. Without it an upgrade empties the cache and the history in
-   * silence, and the all-miss run that follows looks like a bug.
+   * reports null. vx prints nothing for it: the cache is vx's to keep
+   * (owner, 2026-10-06).
    */
   readonly schemaReset: SchemaReset | null = null
 
   /**
    * Set when THIS open found entries written under another
    * `CACHE_VERSION`: the index survives, but no old key is derived again,
-   * so every cached task misses once. Reported by `noteSchemaReset`.
+   * so every cached task misses once. Not printed, like `schemaReset`.
    */
   readonly formatChange: SchemaReset | null = null
 

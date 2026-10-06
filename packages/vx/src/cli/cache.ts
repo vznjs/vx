@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
 import { flagHint, refusedWord, seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
@@ -189,7 +189,6 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
   // run only reads, and reads a read-only cache fine.
   if (!parsed.dryRun) cache.assertWritable()
-  noteSchemaReset(cache, warnToStderr)
   // A prune beside a run on this workspace evicts what the run has just
   // probed as hits, whose `accessed_at` bumps it has not flushed yet; the
   // run then re-runs those tasks (upstream survey, nx#36688). So a prune

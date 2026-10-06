@@ -25,7 +25,6 @@ export {
   FILE_HASH_RACY_MS,
   OUTPUT_DIRS_RACY_MS,
   racyWindowMs,
-  noteSchemaReset,
   type SchemaReset,
   SCHEMA_VERSION,
 } from './cache.js'

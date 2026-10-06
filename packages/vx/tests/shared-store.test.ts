@@ -157,7 +157,7 @@ describe('the shared store', () => {
     expect(existsSync(path.join(a.root, '.vx', 'own', 'cache.db'))).toBe(true)
   })
 
-  it('an unusable store keeps the entries in the workspace, said once', async () => {
+  it('an unusable store keeps the entries in the workspace, in silence', async () => {
     // A file where the store's root should be: mkdir fails as any user.
     await writeFile(path.join(home, '.vx'), '')
     const a = await workspace()
@@ -165,22 +165,19 @@ describe('the shared store', () => {
     expect((await build(a)).status).toBe('cache-hit')
     const fallback = path.join(a.root, '.vx', 'cache')
     expect(existsSync(path.join(fallback, 'store.db'))).toBe(true)
-    const said = a.log.filter((l) => l.includes('shared cache store'))
-    expect(said).toHaveLength(1)
-    const wanted = path.join(home, '.vx', repoIdOf(a.root)!, 'cache')
-    expect(said[0]).toStartWith(`[vx] shared cache store ${wanted} (`)
-    expect(said[0]).toEndWith(
-      `is not usable; entries stay in ${fallback}, where no other workspace hits them`,
-    )
+    expect(a.log.filter((l) => l.includes('shared cache store'))).toEqual([])
   })
 
-  it('a ~/.vx open to other users is not used', async () => {
+  it('a ~/.vx of ours open to other users is closed to 700 and used', async () => {
     await mkdir(path.join(home, '.vx'), { mode: 0o755 })
     await chmod(path.join(home, '.vx'), 0o755)
     const a = await workspace()
     expect((await build(a)).status).toBe('success')
-    expect(a.log.filter((l) => l.includes('is open to other users'))).toHaveLength(1)
-    expect(await stores()).toEqual([])
+    expect([
+      (statSync(path.join(home, '.vx')).mode & 0o777).toString(8),
+      a.log.filter((l) => l.includes('shared cache store')),
+      (await stores()).length,
+    ]).toEqual(['700', [], 1])
   })
 
   it('makes each level of the store owner-only', async () => {
@@ -199,14 +196,14 @@ describe('the shared store', () => {
     delete process.env['VX_CACHE_DIR']
     // The index held `entries`: left in place, it would shadow the store's.
     expect((await build(a)).status).toBe('success')
-    expect(a.log.filter((l) => l.includes('now live in the shared store'))).toHaveLength(1)
     expect((await build(a)).status).toBe('cache-hit')
     expect(rows(a, 'SELECT status FROM runs ORDER BY id')).toEqual([
       { status: 'success' },
       { status: 'success' },
       { status: 'cache-hit' },
     ])
-    expect(a.log.filter((l) => l.includes('now live in the shared store'))).toHaveLength(1)
+    // The move is vx's own upkeep: nothing printed (owner, 2026-10-06).
+    expect(a.log.filter((l) => l.includes('shared store'))).toEqual([])
   })
 
   it('another repository keeps its own store', async () => {
