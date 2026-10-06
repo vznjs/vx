@@ -1259,6 +1259,11 @@ export async function mapTurboWorkspace(
       if (override === null) continue
       const script = scripts[name]
       const noop = keyOnly.get(meta.name)?.has(name) === true
+      // Core gives a project with no `build` this very node (a group behind
+      // `^build`, keyed on the project's files), so writing it is noise:
+      // solid's three script-less packages each got a `build` running `true`.
+      if (noop && name === 'build' && (defFor(name)!.dependsOn ?? []).every((d) => d === '^build'))
+        continue
       if (
         override === undefined &&
         script === undefined &&

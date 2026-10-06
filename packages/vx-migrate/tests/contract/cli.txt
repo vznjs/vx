@@ -1,6 +1,9 @@
 vx-migrate --help: exit 0
 vx-migrate argv starts: (a flag)
 vx-migrate --from
+vx-migrate --native
+vx-migrate --keep
+vx-migrate --no-install
 vx-migrate --dry
 vx-migrate --force
 vx-migrate --mjs
