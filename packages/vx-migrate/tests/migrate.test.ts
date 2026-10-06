@@ -336,6 +336,7 @@ describe('vx migrate (turbo)', () => {
     expect([...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1])).toEqual([
       'scheduleHistoryPlugin',
     ])
+    expect(ws).toContain("import { scheduleHistoryPlugin } from '@vzn/vx/plugins'")
     expect(ws).toContain('} satisfies WorkspaceConfig')
   })
 

@@ -8,7 +8,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
-/** Each lockfile and the `@vzn/vx-lockfile` plugin that claims it. */
+/** Each lockfile and the `@vzn/vx/plugins` lockfile factory that claims it. */
 const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
   ['pnpm-lock.yaml', 'pnpm'],
   ['bun.lock', 'bun'],
@@ -18,7 +18,7 @@ const LOCKFILES: ReadonlyArray<readonly [file: string, plugin: string]> = [
   ['yarn.lock', 'yarn'],
 ]
 
-/** The lockfile at `root` and the `@vzn/vx-lockfile` factory that claims it. */
+/** The lockfile at `root` and the `@vzn/vx/plugins` factory that claims it. */
 export function lockfilePlugin(root: string): { file: string; factory: string } | undefined {
   const lock = LOCKFILES.find(([file]) => existsSync(path.join(root, file)))
   return lock === undefined ? undefined : { file: lock[0], factory: lock[1] }
@@ -50,10 +50,10 @@ export async function adoptedToolNotes(root: string, tool: AdoptedTool): Promise
     break
   }
   const lock = lockfilePlugin(root)
-  if (lock !== undefined && !declared.includes('@vzn/vx-lockfile'))
+  if (lock !== undefined && !new RegExp(`\\b${lock.factory}\\s*\\(`).test(declared))
     notes.push(
       `${tool.keys(lock.file)}; vx keys every task on the whole ` +
-        `file, so a dependency bump re-runs them all. Declare ${lock.factory}() from @vzn/vx-lockfile ` +
+        `file, so a dependency bump re-runs them all. Declare ${lock.factory}() from @vzn/vx/plugins ` +
         "in vx.workspace.ts to key each task on its package's dependency closure",
     )
   return notes

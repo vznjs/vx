@@ -37,6 +37,7 @@ import { migrateTurbo } from './migrate-turbo.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
 import {
   extendWorkspaceFile,
+  undeclared,
   renderWorkspaceFile,
   workspaceFileAt,
   workspacePlugins,
@@ -206,7 +207,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   if (plugins.length > 0) {
     plan = {
       ...plan,
-      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
+      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx/plugins')),
       extraFiles: [
         ...plan.extraFiles,
         { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
@@ -304,9 +305,7 @@ async function keep(
   const extended = extendWorkspaceFile(text, plugins)
   if (extended !== null && extended !== text) {
     await Bun.write(file, extended)
-    const names = plugins
-      .filter((p) => !text.includes(`from '${p.pkg}'`))
-      .map((p) => `${p.factory}()`)
+    const names = undeclared(text, plugins).map((p) => `${p}()`)
     process.stdout.write(`vx-migrate: declared ${names.join(', ')} in ${written}\n`)
   }
   return code

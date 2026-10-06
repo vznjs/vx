@@ -24,7 +24,7 @@ const NX =
 const LOCK =
   'Nx keys each project on the npm packages it depends on in pnpm-lock.yaml; vx keys every ' +
   'task on the whole file, so a dependency bump re-runs them all. Declare pnpm() from ' +
-  "@vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure"
+  "@vzn/vx/plugins in vx.workspace.ts to key each task on its package's dependency closure"
 
 async function headerNotes(files: Record<string, string>): Promise<string[]> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-adopted-'))
@@ -62,7 +62,9 @@ describe('migrateNx: what vx.workspace.ts still holds', () => {
   it('a lockfile plugin declared: no lockfile note', async () => {
     expect(
       await headerNotes({
-        'vx.workspace.ts': `import { pnpm } from '@vzn/vx-lockfile'\n${NX_WORKSPACE}`,
+        'vx.workspace.ts':
+          "import { nx } from '@vzn/vx-migrate'\nimport { pnpm } from '@vzn/vx/plugins'\n" +
+          'export default { plugins: [nx(), pnpm()] }\n',
         'pnpm-lock.yaml': 'lockfileVersion: 9\n',
       }),
     ).toEqual([NX])
