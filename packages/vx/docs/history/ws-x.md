@@ -28,3 +28,11 @@ time (bugs, correctness, simplification, the plugin seams).
   ignored or not) and keys a tracked one; `--affected` reads the same
   rule. Rows: `inputs-resolution.test.ts` › "node_modules: untracked is
   an install, tracked is a source", `affected.test.ts`.
+- **X-5.** An output directory that is a symlink to another directory in
+  the same project (`public -> static`, `outputs.files: ['public/**']`)
+  had the clean before every run and restore delete the tracked
+  `static/*` through it: containment only asked that the real directory
+  be inside the project. The clean now removes nothing whose directory
+  is reached through a link; the save still follows one
+  (turborepo#13042). Row: `inputs-resolution.test.ts` › "a clean never
+  deletes through a symlinked output dir".
