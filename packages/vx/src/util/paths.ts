@@ -366,6 +366,16 @@ export function slashBraceExpansions(pattern: string): string[] {
   return [pattern]
 }
 
+/**
+ * Whether a path git lists as UNTRACKED is an installed dependency: it sits
+ * under a `node_modules` directory. Such a file is never an input, and the
+ * enumeration drops it. A TRACKED file there (a committed test fixture) is
+ * a source like any other: dropped by path, an edit to it was a stale hit.
+ */
+export function isInstalledPath(rel: string): boolean {
+  return rel.startsWith('node_modules/') || rel.includes('/node_modules/')
+}
+
 // oxlint-disable-next-line no-control-regex
 const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
 

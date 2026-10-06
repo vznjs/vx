@@ -43,6 +43,7 @@ export {
   splitNegations,
   staticPrefix,
   anyTaskGlob,
+  isInstalledPath,
   taskGlob,
   wholeSubtreePrefixes,
   slashBraceExpansions,

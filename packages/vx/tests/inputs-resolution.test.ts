@@ -339,7 +339,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
 
   // Each entry: the path to plant, relative to the project dir.
   const IGNORED_TOP = [
-    'node_modules/dep/index.js',
     '.git/HEAD',
     '.vx/cache/log',
     'tsconfig.tsbuildinfo',
@@ -348,7 +347,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.cd5e87e3246b0795-00000000.tmp/bun',
   ]
   const IGNORED_NESTED = [
-    'a/b/node_modules/dep/index.js',
     'a/b/.git/HEAD',
     'a/b/.vx/cache/log',
     'a/b/tsconfig.tsbuildinfo',
@@ -458,10 +456,11 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     // The two resolvers each build their own exclude list. A fix or a
     // regression applied to one does not reach the other, so the guarantee is
     // asserted on both paths.
-    await write(path.join(root, 'node_modules', 'dep', 'index.js'))
     await write(path.join(root, 'vx-lock.json'), '{}')
     await write(path.join(root, 'tsconfig.json'), '{}')
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    // Untracked and not ignored: an install the enumeration drops.
+    await write(path.join(root, 'node_modules', 'dep', 'index.js'))
 
     const got = await resolveInputs({
       projectDir,
@@ -475,6 +474,68 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('node_modules', 'dep', 'index.js'))
     expect(seen).not.toContain('vx-lock.json')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// node_modules: an install is never an input, a committed file always is.
+// A committed fixture under `tests/fixtures/node_modules/` was dropped by
+// path, and an edit to it replayed the old output.
+// ─────────────────────────────────────────────────────────────────────────
+describe('node_modules: untracked is an install, tracked is a source', () => {
+  let root: string
+  let projectDir: string
+  const AT = ['node_modules/dep/index.js', 'a/b/node_modules/dep/index.js']
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-nm-'))
+    projectDir = path.join(root, 'pkg')
+    await mkdir(projectDir, { recursive: true })
+    gitInit(root)
+    await write(path.join(projectDir, 'src', 'keep.ts'), 'keep')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const resolve = async (inputs: { files: string[]; workspaceFiles?: string[] }) => {
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs,
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    return got.files.map((f) => relPosix(projectDir, f))
+  }
+
+  it('a tracked file under node_modules, top-level or nested, is an input', async () => {
+    for (const rel of AT) await write(path.join(projectDir, rel))
+    Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    expect(await resolve({ files: ['**/*'] })).toEqual([
+      path.join('a', 'b', 'node_modules', 'dep', 'index.js'),
+      path.join('node_modules', 'dep', 'index.js'),
+      path.join('src', 'keep.ts'),
+    ])
+    expect(await resolve({ files: [], workspaceFiles: ['pkg/a/**'] })).toEqual([
+      path.join('a', 'b', 'node_modules', 'dep', 'index.js'),
+    ])
+  })
+
+  it('CONTROL: an untracked one, not ignored, is an install and stays out', async () => {
+    Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    for (const rel of AT) await write(path.join(projectDir, rel))
+    await write(path.join(projectDir, 'src', 'new.ts'), 'new')
+    expect(await resolve({ files: ['**/*'] })).toEqual([
+      path.join('src', 'keep.ts'),
+      path.join('src', 'new.ts'),
+    ])
+    expect(await resolve({ files: [], workspaceFiles: ['pkg/**'] })).toEqual([
+      path.join('src', 'keep.ts'),
+      path.join('src', 'new.ts'),
+    ])
   })
 })
 

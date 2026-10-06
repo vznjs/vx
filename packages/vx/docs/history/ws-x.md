@@ -21,3 +21,10 @@ time (bugs, correctness, simplification, the plugin seams).
   two roots, two caches, and `sub`'s `^` edges into the outer workspace
   dropped from its key. An outer root that lists both the claimer and
   the member now owns it. Rows: `workspace-nested-root.test.ts`.
+- **X-4.** Every path under any `node_modules` left the input set, so a
+  committed fixture (`tests/fixtures/node_modules/dep/index.js` under
+  `tests/**`) never entered the key and an edit to it replayed the old
+  output. The enumeration now drops an UNTRACKED file there (an install,
+  ignored or not) and keys a tracked one; `--affected` reads the same
+  rule. Rows: `inputs-resolution.test.ts` › "node_modules: untracked is
+  an install, tracked is a source", `affected.test.ts`.

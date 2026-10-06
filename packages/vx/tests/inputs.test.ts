@@ -696,13 +696,10 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(got.files.map((p) => relPosix(projectDir, p))).toEqual([path.join('src', 'keep.ts')])
   })
 
-  it('node_modules under a project is always excluded (defense in depth)', async () => {
-    // git would already exclude node_modules if it's in .gitignore;
-    // we also have ALWAYS_IGNORE as a belt-and-suspenders guard.
+  it('an untracked node_modules under a project is excluded even when not ignored', async () => {
+    // git would already exclude node_modules if it's in .gitignore; an
+    // untracked file there is an install either way (`isInstalledPath`).
     await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    // Force git to track node_modules to verify our own filter wins.
-    await git(root, 'add', '-f', 'pkg/node_modules/dep/index.js')
     await write(path.join(projectDir, 'src', 'index.ts'))
 
     const got = await resolveInputs({

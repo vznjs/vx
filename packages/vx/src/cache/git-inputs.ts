@@ -7,7 +7,13 @@
 
 import path from 'node:path'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { UserError, executablePath, gitSpawnRefusal, xxh3hex } from '../util/index.js'
+import {
+  UserError,
+  executablePath,
+  gitSpawnRefusal,
+  isInstalledPath,
+  xxh3hex,
+} from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 /** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
@@ -517,7 +523,8 @@ function walkFiles(dir: string, rel = ''): string[] {
   }
   const out: string[] = []
   for (const e of entries) {
-    if (e.name === '.git') continue
+    // Nothing tracks a vendored tree's files; an install there is not one.
+    if (e.name === '.git' || e.name === 'node_modules') continue
     const r = rel === '' ? e.name : `${rel}/${e.name}`
     if (e.isDirectory()) out.push(...walkFiles(dir, r))
     else out.push(r)
@@ -562,6 +569,7 @@ function parseLsFilesOutput(
     if (record.length === 0) continue
     const m = LS_FILES_STAGE_RE.exec(record)
     const filePath = m === null ? record : record.slice(m[0].length) // --others: bare path
+    if (m === null && isInstalledPath(filePath)) continue
     files.push(filePath)
     if (undecodableRecords.size > 0 && undecodableRecords.has(record)) undecodable.push(filePath)
     if (m === null) continue
@@ -1376,7 +1384,11 @@ export async function startGitEnumeration(
   // is). They come from the status walk, repo-root-relative like the dirty
   // set. Without a status answer the enumeration is the index alone.
   const untracked =
-    parsedStatus === null ? [] : [...stripPrefixFromSet(new Set(parsedStatus.untracked), gitPrefix)]
+    parsedStatus === null
+      ? []
+      : [...stripPrefixFromSet(new Set(parsedStatus.untracked), gitPrefix)].filter(
+          (rel) => !isInstalledPath(rel),
+        )
   const listed = untracked.length === 0 ? tracked : tracked.concat(untracked)
   const nested = expandNestedRepos(workspaceRoot, listed, gitlinks)
   const all = nested.files
