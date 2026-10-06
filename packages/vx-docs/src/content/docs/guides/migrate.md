@@ -20,9 +20,8 @@ Turbo or Nx repo. It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
 without a terminal it is native. It installs vx with the repo's own package
-manager and points root scripts like `"build": "turbo run build"` at
-`vx run build --all`, so `pnpm run build` runs vx. The steps below are the
-same adoption one stage at a time.
+manager and leaves your `package.json` scripts as they are. The steps below
+are the same adoption one stage at a time.
 
 ## Turborepo
 
