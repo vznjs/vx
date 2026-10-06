@@ -521,8 +521,14 @@ environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
 child split at its `=` or not at all.
 
-Anything outside these three layers, and the two variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`), is invisible to the child:
+vx also sets `npm_execpath` to the workspace's package manager (the root
+`package.json`'s `packageManager`, else its lockfile, found on the root's
+`node_modules/.bin` or `PATH`) unless a layer gives one, as `pnpm run`
+does: npm-run-all calls that manager back and falls back to a global `npm`
+without it. It names a binary on this machine, so it is not in the key.
+
+Anything outside these three layers, the two variables vx sets for
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to the child:
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own

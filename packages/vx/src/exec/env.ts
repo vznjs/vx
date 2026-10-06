@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 // Build the environment exposed to a task.
@@ -90,4 +91,56 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
   }
 
   return out
+}
+
+/**
+ * `npm_execpath`, as the workspace's package manager sets it for a script.
+ * A tool that runs other scripts reads it to call the same manager back
+ * (npm-run-all's `run-s`, `run-p`) and falls back to `npm` without it:
+ * solidjs/solid's `npm-run-all -nl build:*` needed a global npm under vx,
+ * where `pnpm run build` passed (owner, 2026-10-06). It names a binary on
+ * this machine, so it is not in the key, as PATH is not.
+ */
+export const PM_EXEC_ENV = 'npm_execpath'
+
+const MANAGERS = ['pnpm', 'yarn', 'bun', 'npm'] as const
+const LOCKFILES: ReadonlyArray<readonly [string, (typeof MANAGERS)[number]]> = [
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+  ['package-lock.json', 'npm'],
+]
+
+const managerPaths = new Map<string, string | null>()
+
+/**
+ * The executable of the workspace's package manager: the root
+ * package.json's `packageManager`, else its lockfile, found on the root's
+ * `node_modules/.bin` and PATH. Learned once per root; null when the root
+ * names none or this machine has none.
+ */
+export function packageManagerPath(root: string): string | null {
+  const known = managerPaths.get(root)
+  if (known !== undefined) return known
+  let name: string | undefined
+  try {
+    const field = (
+      JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+        packageManager?: unknown
+      }
+    ).packageManager
+    if (typeof field === 'string') name = MANAGERS.find((m) => field.startsWith(`${m}@`))
+  } catch {}
+  name ??= LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
+  const found =
+    name === undefined
+      ? null
+      : Bun.which(name, {
+          PATH: [path.join(root, 'node_modules', '.bin'), process.env['PATH'] ?? ''].join(
+            path.delimiter,
+          ),
+        })
+  managerPaths.set(root, found)
+  return found
 }
