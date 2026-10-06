@@ -234,6 +234,21 @@ describe('the shared store', () => {
     ).toEqual([{ name: 'entries' }])
   })
 
+  it('a store of another schema loses its inventory, not its artifacts', async () => {
+    const a = await workspace()
+    await build(a)
+    const db = new Database(path.join(await store(), 'store.db'))
+    // Another vx's tables: this one could not read them.
+    db.exec("UPDATE store_meta SET value = 'v0' WHERE key = 'schema'")
+    db.exec('DROP TABLE entries; CREATE TABLE entries (hash TEXT PRIMARY KEY, other TEXT)')
+    db.close()
+    await rm(path.join(a.pkg, 'out.txt'))
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
+    expect(a.log.filter((l) => l.includes('re-indexed: schema v0 →'))).toHaveLength(1)
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
+    expect(a.log.filter((l) => l.includes('re-indexed'))).toHaveLength(1)
+  })
+
   it("a reading verb's handle follows the store the index records", async () => {
     const a = await workspace()
     await build(a)
