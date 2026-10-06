@@ -720,9 +720,13 @@ async function runOnBus(
     // but declines still pays — its answer is only knowable by asking.
     const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)
     if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
-      // Workspace identity (telemetry v2): one git spawn, paid only when a
-      // telemetry consumer can exist — a plain run never reaches here.
-      const wsIdentity = captureWorkspaceIdentity(workspaceRoot)
+      // Workspace identity (telemetry v2), paid only when a telemetry
+      // consumer can exist — a plain run never reaches here. The remote URL
+      // is the enumeration's `git var -l`: a spawn here cost ~4 ms.
+      const wsIdentity = captureWorkspaceIdentity(
+        workspaceRoot,
+        gitFilesCache.configValue('remote.origin.url'),
+      )
       runContextRecord = {
         runId,
         vxVersion: VERSION,

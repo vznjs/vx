@@ -101,6 +101,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setWorkspaceRoot(root: string): void
   get worktreeDirty(): boolean | null
   setWorktreeDirty(dirty: boolean | null): void
+  setGitVars(listing: string | null): void
+  configValue(key: string): string | null | undefined
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void

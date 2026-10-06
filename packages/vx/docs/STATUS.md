@@ -274,6 +274,13 @@ of CPU against Vite Task's 12.46. Q-1 cut vx's own CPU by a sixth. The
 rest of the gap is mostly the shell: vx runs every task as `sh -c`,
 one exec more per task than Vite Task, which execs `a && b` itself.
 
+**All-cached run (owner, 2026-10-06: "optimize these";
+`docs/history/ws-v.md`).** This repo's `vx run build --all` with every
+task cached: 136 → 107 ms (median, compiled, Linux). Two configs no
+longer evaluate on every run, check-attr overlaps git status, the
+telemetry context reads files instead of spawning git, and a literal
+file output no longer walks its glob on each hit.
+
 **Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
 competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how

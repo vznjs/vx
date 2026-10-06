@@ -65,7 +65,7 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check',
         sandbox: {
           allow: {
-            read: ['**/*', ...PLAYGROUND.map((p) => p.replace(/^packages\//, '../'))],
+            read: ['**/*', ...PLAYGROUND.map((p) => p.replace('packages/', '../'))],
             systemInfo: ['vfs.disk-space'],
           },
         },

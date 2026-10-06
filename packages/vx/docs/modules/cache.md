@@ -546,7 +546,7 @@ Surfaced by `vx info`.
   every hit; `restore
 Outputs` additionally refuses when the archive cannot produce an output
   the `output_files` index recorded — and, for `<dir>/**` globs and bare
-  literals that name a directory, the
+  literals (a directory, or a file recorded as one), the
   `output_dirs` rows that let a warm hit prove the set unchanged without a
   walk (`docs/caching.md` § A current tree) — (a restore that materializes nothing
   must never be reported as a hit — the caller has already wiped the

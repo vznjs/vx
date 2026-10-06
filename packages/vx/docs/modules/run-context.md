@@ -38,7 +38,10 @@ export function captureDefaultBranch(env: NodeJS.ProcessEnv, workspaceRoot: stri
 export function detectCi(env: NodeJS.ProcessEnv): CiContext
 export function captureHostContext(): HostContext
 export function normalizeRemoteUrl(raw: string): string
-export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdentity
+export function captureWorkspaceIdentity(
+  workspaceRoot: string,
+  originUrl?: string | null, // the enumeration's `git var -l` answer; undefined asks git
+): WorkspaceIdentity
 ```
 
 - `captureGitContext(root, dirty, env)` — reads `HEAD` from the `.git`
@@ -57,21 +60,23 @@ export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdenti
   shared scheduling baseline (an experiment on a branch must not count
   into main). Ladder: GitLab's `CI_DEFAULT_BRANCH`; GitHub Actions'
   event payload (`repository.default_branch`, one best-effort JSON
-  read); else `git symbolic-ref --short refs/remotes/origin/HEAD` with
-  the `origin/` prefix stripped. Null when none resolve — the consumer
+  read); else `refs/remotes/origin/HEAD` read from its ref file, or
+  `git symbolic-ref --short refs/remotes/origin/HEAD` when the file
+  cannot answer (packed, reftable), with the `origin/` prefix stripped. Null when none resolve — the consumer
   then counts every run. Never throws.
 - `detectCi(env)` — the provider matrix, first truthy variable wins
   (present and not `0` / `false`): `github`, `gitlab`, `buildkite`,
   `circleci`, and a bare `CI` as `generic`.
 - `captureHostContext()` — hostname/os/arch.
-- `captureWorkspaceIdentity(root)` — the same id from any machine's
+- `captureWorkspaceIdentity(root, originUrl?)` — the same id from any machine's
   checkout of the same repo: the `origin` remote URL normalized
   (`normalizeRemoteUrl`: `git@github.com:o/r.git`,
   `ssh://git@github.com/o/r` and `https://github.com/o/r.git` all
   reduce to `github.com/o/r`) and hashed; no remote → a salt persisted
   at `<root>/.vx/workspace-id`; an unwritable `.vx/` → the root path
-  itself. One `git` spawn behind try/catch, called only when telemetry
-  is active. Never throws.
+  itself. The URL comes from the enumeration's `git var -l` when given,
+  else one `git` spawn behind try/catch; called only when telemetry is
+  active. Never throws.
 
 ## Invariants
 
