@@ -1,13 +1,12 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { formatTaskAbortedLine } from '../src/orchestrator/framed-output.js'
 import {
-  formatDuration,
-  formatFlakySection,
-  formatRunSummary,
-  formatSkippedSection,
-} from '../src/orchestrator/summary.js'
+  flakyNote,
+  formatTaskAbortedLine,
+  formatTaskExecutedLine,
+} from '../src/orchestrator/framed-output.js'
+import { formatDuration, formatRunSummary } from '../src/orchestrator/summary.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -289,138 +288,54 @@ describe('aborted and not-run tasks', () => {
   })
 })
 
-describe('formatFlakySection', () => {
-  const finding = (
-    taskId: string,
+describe('a flaky task says so on its own row', () => {
+  // Nothing prints below the footer (owner, 2026-10-06): the Flaky section
+  // under it became a dim note on the task's row and frame.
+  const node = (id: string): TaskNode => {
+    const [projectName, taskName] = id.split('#') as [string, string]
+    return {
+      id,
+      projectName,
+      taskName,
+      config: { exec: { command: 'noop' }, cache: {} },
+    } as TaskNode
+  }
+  const flaky = (
+    id: string,
     status: 'success' | 'failed',
     passes: number,
     failures: number,
-    attempts = 1,
-  ) => {
-    const [project, task] = taskId.split('#') as [string, string]
-    return { taskId, project, task, hash: 'k', status, passes, failures, attempts }
-  }
-
-  it('is empty when the run proved nothing flaky', () => {
-    expect(formatFlakySection([])).toEqual([])
+    attempts?: number,
+  ): TaskOutcome => ({
+    ...outcome(id, status, status === 'failed' ? 1 : 0),
+    node: node(id),
+    flaky: { passes, failures },
+    ...(attempts !== undefined && { attempts }),
   })
 
-  it('names each task with what this run did against what the key did before', () => {
-    expect(
-      formatFlakySection([
-        finding('app#test', 'failed', 3, 1),
-        finding('api#e2e', 'success', 1, 2, 2),
-        finding('web#build', 'success', 1, 0, 2),
-      ]),
-    ).toEqual([
-      '',
-      '  Flaky:    3 tasks with the same inputs both passing and failing on record',
-      '    ✗ app#test — failed on inputs that passed 3× before',
-      '    ✓ api#e2e — passed on inputs that failed 2× before · 2 attempts this run',
-      '    ✓ web#build — passed · 2 attempts this run',
-    ])
-    expect(formatFlakySection([finding('app#test', 'failed', 1, 1)])[1]).toBe(
-      '  Flaky:    1 task with the same inputs both passing and failing on record',
+  it('a pass names the failures before it, a failure the passes, a retry its attempts', () => {
+    expect(flakyNote(flaky('a#types', 'success', 1, 1))).toBe(' flaky - failed 1× before')
+    expect(flakyNote(flaky('a#test', 'failed', 3, 1))).toBe(' flaky - passed 3× before')
+    expect(flakyNote(flaky('a#e2e', 'success', 1, 2, 2))).toBe(
+      ' flaky - failed 2× before · 2 attempts',
     )
-  })
-})
-
-describe('formatSkippedSection', () => {
-  // `blockedBy` is what the scheduler records on a skip: the root of the block.
-  const dep = (id: string, status: TaskOutcome['status'], blockedBy?: string): TaskOutcome => ({
-    ...outcome(id, status, status === 'failed' ? 3 : 0),
-    ...(blockedBy !== undefined ? { blockedBy } : {}),
+    expect(flakyNote(flaky('a#lint', 'success', 1, 0, 2))).toBe(' flaky - 2 attempts')
   })
 
-  it('is empty when nothing was skipped', () => {
-    expect(formatSkippedSection([dep('lib#build', 'failed'), dep('a#b', 'success')])).toEqual([])
-  })
-
-  it('names each skipped task under the failure at the root of its chain', () => {
+  it('a task the run did not prove flaky carries nothing', () => {
+    expect(flakyNote(outcome('a#x', 'success'))).toBe('')
     expect(
-      formatSkippedSection([
-        dep('lib#build', 'failed'),
-        dep('app#build', 'skipped', 'lib#build'),
-        dep('web#build', 'skipped', 'lib#build'),
-        dep('api#build', 'success'),
-      ]),
-    ).toEqual([
-      '',
-      '  Skipped:  2 tasks never started — blocked upstream',
-      '    ⊘ after lib#build failed: app#build, web#build',
-    ])
+      formatTaskExecutedLine(node('a#x'), { ...outcome('a#x', 'success'), node: node('a#x') }),
+    ).toBe(' ⏺︎   100ms success miss     a#x')
   })
 
-  it('names fail-fast when no upstream failed, and an aborted upstream as such', () => {
-    expect(
-      formatSkippedSection([
-        dep('x#build', 'failed'),
-        dep('y#build', 'skipped'),
-        dep('z#build', 'aborted'),
-        dep('w#build', 'skipped', 'z#build'),
-      ]),
-    ).toEqual([
-      '',
-      '  Skipped:  2 tasks never started',
-      '    ⊘ after the run stopped (fail-fast): y#build',
-      '    ⊘ after z#build was aborted: w#build',
-    ])
-  })
-
-  // C-55: fail-fast's skips had no upstream to be blocked by, and the
-  // header said they were, over the cause line beneath it.
-  it('does not call a fail-fast skip blocked upstream', () => {
-    expect(formatSkippedSection([dep('x#build', 'failed'), dep('y#build', 'skipped')])).toEqual([
-      '',
-      '  Skipped:  1 task never started',
-      '    ⊘ after the run stopped (fail-fast): y#build',
-    ])
-  })
-
-  it('leaves a blocked group out, as every other counter does', () => {
-    // The tasks legend excludes groups; a section that named them beside it
-    // said "3 tasks never started" against "997 total, none skipped".
-    const group: TaskOutcome = {
-      node: { id: 'app#install', config: {} } as TaskNode,
-      status: 'skipped',
-      exitCode: 0,
-      durationMs: 0,
-      blockedBy: 'lib#build',
-    }
-    expect(formatSkippedSection([dep('lib#build', 'failed'), group])).toEqual([])
-    // Control: the same skip on a task with a command is listed.
-    expect(
-      formatSkippedSection([dep('lib#build', 'failed'), dep('app#build', 'skipped', 'lib#build')]),
-    ).toEqual([
-      '',
-      '  Skipped:  1 task never started — blocked upstream',
-      '    ⊘ after lib#build failed: app#build',
-    ])
-  })
-
-  it('caps the names on one line and counts the rest', () => {
-    const many = Array.from({ length: 11 }, (_, i) => dep(`p${i}#build`, 'skipped', 'lib#build'))
-    const lines = formatSkippedSection([dep('lib#build', 'failed'), ...many])
-    expect(lines[1]).toBe('  Skipped:  11 tasks never started — blocked upstream')
-    expect(lines[2]).toBe(
-      '    ⊘ after lib#build failed: p0#build, p1#build, p10#build, p2#build, p3#build, p4#build, p5#build, p6#build … +3 more',
+  it('the note rides the row, dim', () => {
+    const o = flaky('solid-js#types', 'success', 1, 1)
+    expect(formatTaskExecutedLine(o.node, o)).toBe(
+      ' ⏺︎   100ms success miss     solid-js#types flaky - failed 1× before',
     )
-  })
-
-  it('groups the causes by SIZE, so the biggest block reads first', () => {
-    // A run can stop for more than one reason, and the reader wants the
-    // one that cost the most first. Insertion order is the order the
-    // scheduler happened to finish tasks in, which is not an order.
-    const lines = formatSkippedSection([
-      dep('small#root', 'failed'),
-      dep('big#root', 'failed'),
-      dep('one#a', 'skipped', 'small#root'),
-      dep('two#a', 'skipped', 'big#root'),
-      dep('two#b', 'skipped', 'big#root'),
-      dep('two#c', 'skipped', 'big#root'),
-    ])
-    expect(lines[2]).toContain('after big#root failed')
-    expect(lines[3]).toContain('after small#root failed')
+    const colored = formatTaskExecutedLine(o.node, o, { enabled: true })
+    expect(colored).toContain('\x1b[2mflaky - failed 1× before')
   })
 })
 

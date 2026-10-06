@@ -1,5 +1,5 @@
 // Local flaky-task detection, end to end through the real CLI: a task that
-// fails and then passes on the SAME cache key is named in the footer, typed
+// fails and then passes on the SAME cache key is named on its row, typed
 // in `--summarize`, and listed by `vx info` — from the run history alone,
 // no service. The controls are the two things that look like a flake and
 // are not: a hit (nothing executed) and a failure on a changed key (a
@@ -57,6 +57,8 @@ async function vx(root: string, args: string[]) {
   return { code, text: out + err }
 }
 
+const lastLine = (text: string): string => text.trimEnd().split('\n').at(-1)!
+
 describe('flaky-task detection (e2e)', () => {
   let root: string
   beforeAll(async () => {
@@ -68,22 +70,21 @@ describe('flaky-task detection (e2e)', () => {
   })
 
   it(
-    'a failure, then a pass on the same key: footer, --summarize and vx info all say so',
+    'a failure, then a pass on the same key: its row, --summarize and vx info all say so',
     async () => {
       const red = await vx(root, ['run', 'test', '--all', '--summarize=red.json'])
       expect(red.code).toBe(1)
       // The first failure on a key is a break until the key passes.
-      expect(red.text).not.toContain('Flaky:')
+      expect(red.text).not.toContain('flaky -')
       const redSummary = JSON.parse(await readFile(path.join(root, 'red.json'), 'utf8'))
       expect(redSummary.tasks[0].flaky).toBeUndefined()
 
       await writeFile(path.join(root, 'green'), '')
       const green = await vx(root, ['run', 'test', '--all', '--summarize=green.json'])
       expect(green.code).toBe(0)
-      expect(green.text).toContain(
-        'Flaky:    1 task with the same inputs both passing and failing on record',
-      )
-      expect(green.text).toContain('✓ app#test — passed on inputs that failed 1× before')
+      expect(green.text).toContain('app#test flaky - failed 1× before')
+      // Nothing prints below the footer: its result line is the last word.
+      expect(lastLine(green.text)).toMatch(/^ {2}result {4}1 task · /)
       const greenSummary = JSON.parse(await readFile(path.join(root, 'green.json'), 'utf8'))
       expect(greenSummary.tasks[0].id).toBe('app#test')
       expect(greenSummary.tasks[0].flaky).toEqual({ passes: 1, failures: 1, attempts: 1 })
@@ -93,14 +94,14 @@ describe('flaky-task detection (e2e)', () => {
       // Control: a hit executed nothing, so it proves nothing.
       const hit = await vx(root, ['run', 'test', '--all'])
       expect(hit.code).toBe(0)
-      expect(hit.text).not.toContain('Flaky:')
+      expect(hit.text).not.toContain('flaky -')
 
       // Control: a failure on a CHANGED key is a break, not a flake.
       await unlink(path.join(root, 'green'))
       await writeFile(path.join(root, 'packages', 'app', 'src', 'input.txt'), 'v2\n')
       const broken = await vx(root, ['run', 'test', '--all', '--summarize=broken.json'])
       expect(broken.code).toBe(1)
-      expect(broken.text).not.toContain('Flaky:')
+      expect(broken.text).not.toContain('flaky -')
       const brokenSummary = JSON.parse(await readFile(path.join(root, 'broken.json'), 'utf8'))
       expect(brokenSummary.tasks[0].flaky).toBeUndefined()
       expect(brokenSummary.tasks[0].hash).not.toBe(redSummary.tasks[0].hash)
@@ -126,7 +127,8 @@ describe('flaky-task detection (e2e)', () => {
       await addProject(root, 'retry', RETRY_CONFIG)
       const r = await vx(root, ['run', 'build', '--filter', 'retry', '--summarize=retry.json'])
       expect(r.code).toBe(0)
-      expect(r.text).toContain('✓ retry#build — passed · 2 attempts this run')
+      expect(r.text).toContain('retry#build flaky - 2 attempts')
+      expect(lastLine(r.text)).toMatch(/^ {2}result {4}1 task · /)
       const summary = JSON.parse(await readFile(path.join(root, 'retry.json'), 'utf8'))
       expect(summary.tasks[0].flaky).toEqual({ passes: 1, failures: 0, attempts: 2 })
     },

@@ -623,9 +623,8 @@ What the shapes mean in each column:
   and it produced nothing a frame could hold. The one-liner says
   everything, the blocker included (`⊘ skipped app#deploy • blocked by
 lib#build`; a fail-fast skip, which nothing blocked, carries no
-  suffix), and where the flow prints none (broad, a dependency) the
-  footer's Skipped section names the task under the failure that
-  blocked it. `--report` reads the same fact into the status cell,
+  suffix). Every view that lists tasks prints it, a dependency's
+  included: nothing prints below the footer. `--report` reads the same fact into the status cell,
   `skipped (blocked by lib#build)`.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
   worth a frame (the output is the point); a hit with nothing to replay
@@ -994,11 +993,11 @@ violations)`.
 
 **`blockedBy`** is present only on a `skipped` row: the id of the failed
 (or aborted) task at the root of what blocked it, through any chain of
-skips between — what the footer's Skipped section prints, for a script.
+skips between — what the skipped row prints, for a script.
 A fail-fast skip has none.
 
 **`flaky: { passes, failures, attempts }`** is present only on a task
-this run proved flaky (the footer's Flaky section, typed): `passes` and
+this run proved flaky (its row's `flaky` note, typed): `passes` and
 `failures` count the outcomes on record for this exact `hash`, this run
 included, and `attempts` is what this run took. A consumer gating on
 `status: "failed"` can tell a break (no `flaky` key) from a flake
@@ -2249,7 +2248,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   (`@vzn/vx-schedule-history`): the machine's total, capped by the
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
-- `flaky tasks` is the standing list a run's Flaky section adds to:
+- `flaky tasks` is the standing list a run's flaky notes add to:
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
@@ -2667,24 +2666,24 @@ checks it against this page, byte for byte.
 Group tasks emit no framed block by design (they aren't real tasks);
 running a group focused surfaces its real member tasks instead.
 
-**Skipped section.** After the footer, a red run names every task
-that never started, under the failure that blocked it — the footer's
-`1 skipped` names no task, and the broad flow prints no row for one:
+**Nothing below the footer.** The footer is the run's last word.
+What a run has to say about one task rides that task's row; what it
+says about the run (a server that died, outputs left remote, a file
+`--summarize` / `--profile` wrote) prints above the footer.
+
+**Skipped rows.** A red run lists every task that never started as a
+row naming the failure that blocked it, so the footer's `1 skipped`
+always has a name above it:
 
 ```
-  Skipped:  2 tasks never started — blocked upstream
-    ⊘ after lib#build failed: app#build, web#build
+ ⊘         skipped          app#build • blocked by lib#build
+ ⊘         skipped          web#build • blocked by lib#build
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
-its root; a skip with no failed upstream is fail-fast's ("after the run
-stopped (fail-fast)"), and one behind a task killed by a signal names
-it as aborted. The header says `blocked upstream` only when every skip
-was. Eight names per cause, then `… +N more`. A blocked
-group (a task with no command) is not listed — it never starts by
-definition and no counter counts it, so the section and the tasks
-legend agree. Absent when nothing was skipped (`--continue=always`
-skips nothing).
+its root; a skip with no failed upstream is fail-fast's and carries no
+suffix. A blocked group (a task with no command) has no row: it never
+starts by definition and no counter counts it.
 
 **Aborted and not-run rows.** After a stop (a shutdown signal), the
 task list names what it cut short (`aborted`, with its time so far) and
@@ -2701,26 +2700,25 @@ telemetry share: `2 success · 2 total · not counted: 1 aborted, 2 not
 run`. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
 
-**Flaky section.** After the footer, a run names the tasks it just
-proved nondeterministic — from the local run history alone, no
-service:
+**Flaky rows.** A task the run just proved nondeterministic says so
+in a dim note on its own row (and its frame's footer) — from the local
+run history alone, no service:
 
 ```
-  Flaky:    2 tasks with the same inputs both passing and failing on record
-    ✗ app#test — failed on inputs that passed 3× before
-    ✓ api#e2e — passed on inputs that failed 1× before · 2 attempts this run
+ ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
+ ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
 A task is flaky when its exact cache key has BOTH passed and failed on
 record (this run counted; a cache hit is a pass, it replayed one), or
 when it needed a retry (`exec.retries` / `--retry`) this run. A failure
-on a key that never passed is a break and is not listed — a changed
+on a key that never passed is a break and carries no note — a changed
 input that fails is what a red run usually means. Only tasks with a
 `cache` block are judged: "same inputs, different outcome" is a claim
 only declared inputs can back, and a task without them keys on its
-config alone. The section is empty (not printed) when nothing was
-flaky. Zero cost on a run that executed nothing; a green miss costs one
-probe of the failed-row index; `vx info` keeps the standing list.
+config alone. It is judged as the task finishes, so the row carries
+it: zero cost for a hit or a skip, one probe of the failed-row index
+for a green miss; `vx info` keeps the standing list.
 
 ### Colors
 

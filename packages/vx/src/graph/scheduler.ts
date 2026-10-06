@@ -140,6 +140,11 @@ export interface TaskOutcome {
    */
   attempts?: number
   /**
+   * Set when this run proved the task flaky: its key holds both outcomes on
+   * record (this run's included) or it needed a retry. Its row carries it.
+   */
+  flaky?: { passes: number; failures: number }
+  /**
    * Count of sandbox violations captured during this task's exec (a task
    * declaring `exec.sandbox`). Non-zero means the task touched something
    * it did not declare; execute-task fails the task on any violation, so

@@ -34,6 +34,9 @@ export function formatTaskHitLine(node, outcome, colors?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
+// ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
+// frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
+export function flakyNote(outcome, colors?): string
 // ` ⊘ <blank> skipped <id> • blocked by <id>` — a skip never ran
 export function formatTaskSkippedLine(node, colors?, blockedBy?): string
 // ` ✗ <time> aborted <id>` — killed by a shutdown signal;

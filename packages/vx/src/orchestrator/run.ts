@@ -90,8 +90,8 @@ import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import { formatFlakySection, formatRunSummary, formatSkippedSection } from './summary.js'
-import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
+import { formatRunSummary } from './summary.js'
+import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -973,6 +973,24 @@ async function runOnBus(
     })
 
     mark('classify + probe')
+    // Judged as each task finishes, against the history BEFORE this run's
+    // rows land, so the row that prints next carries the verdict: nothing
+    // prints below the footer. A hit or a skip asks nothing; a green miss
+    // is one probe of the failed-row index.
+    const flaky: FlakyFinding[] = []
+    const historyDb = prepared.localCache.dbHandle()
+    const judgeFlaky = (o: TaskOutcome): void => {
+      const candidates = flakyCandidates([o])
+      if (candidates.length === 0) return
+      try {
+        const found = detectFlaky(historyDb, candidates)[0]
+        if (found === undefined) return
+        flaky.push(found)
+        o.flaky = { passes: found.passes, failures: found.failures }
+      } catch {
+        // History is observability: an unreadable one judges nothing.
+      }
+    }
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -988,6 +1006,7 @@ async function runOnBus(
       },
       onFinish: (o) => {
         taint.settled(o)
+        judgeFlaky(o)
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
@@ -1069,9 +1088,8 @@ async function runOnBus(
     if (stillUp.length > 0) {
       for (const line of formatPersistentList(stillUp, colors)) log.status(line)
     }
-    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
     // A dependency-only server that died before the end of the graph
-    // stopped it: the footer counts it failed, this says why.
+    // stopped it: the footer below counts it failed, this says why.
     // A signal death is named as its exit code, as the keep-alive wait
     // names it: `code SIGTERM` read beside `code 143` for one event (item
     // 1102).
@@ -1079,20 +1097,11 @@ async function runOnBus(
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
       log.status(`vx: ${c.id} exited with code ${code} before the run stopped it`)
     }
-    // The footer's "N skipped" names no task; this names each under the
-    // failure that blocked it.
-    for (const line of formatSkippedSection(list)) log.status(line)
-    // Judged against the history BEFORE this run's rows land, so the query
-    // is one scan over the executed tasks' keys and nothing at all on a run
-    // that executed none (every hit, every skip).
-    const flaky = detectFlaky(prepared.localCache.dbHandle(), flakyCandidates(list))
-    for (const line of formatFlakySection(flaky)) log.status(line)
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
     // still remote.
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
-      log.status('')
       log.status(
         `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
       )
@@ -1104,6 +1113,9 @@ async function runOnBus(
     // Ctrl-C there is the process's exit, and the first write said ok.
     const summarize = async (runOk: boolean, final = list): Promise<void> => {
       if (options.summarize === undefined) return
+      // The rewrite after the keep-alive wait says nothing: the footer is
+      // the run's last word.
+      const quiet = final !== list
       try {
         const wrote = await writeRunSummary({
           target: options.summarize,
@@ -1118,7 +1130,7 @@ async function runOnBus(
           outcomes: final,
           flaky,
         })
-        log.status(`vx: summary written to ${wrote}`)
+        if (!quiet) log.status(`vx: summary written to ${wrote}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         log.status(`vx: failed to write summary: ${msg}`)
@@ -1138,6 +1150,9 @@ async function runOnBus(
         log.status(`vx: failed to write profile: ${msg}`)
       }
     }
+    // The footer is the run's last word: every line above, nothing below
+    // (owner, 2026-10-06). A task's own facts (flaky, blocked) ride its row.
+    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Record each task to the run history in a single SQLite transaction
     // (one fsync instead of N), with the invocation header row alongside,

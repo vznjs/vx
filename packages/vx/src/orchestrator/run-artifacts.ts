@@ -33,7 +33,7 @@ export interface SummarizeArgs {
   /** The process's exit code where it is not `ok ? 0 : 1`: a stopping signal's. */
   exitCode?: number
   outcomes: readonly TaskOutcome[]
-  /** What `detectFlaky` found this run; the footer's Flaky section, typed. */
+  /** What `detectFlaky` found this run; each row's flaky note, typed. */
   flaky?: readonly FlakyFinding[]
 }
 
