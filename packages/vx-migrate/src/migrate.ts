@@ -1,8 +1,8 @@
 // `vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry]
 // [--force] [--mjs]` — one vx.config.ts per workspace package from an
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
-// live instead, as `vx init` writes it), vx installed with the repo's
-// manager, and the root scripts that called the runner pointed at vx.
+// live instead, as `vx init` writes it), and vx installed with the repo's
+// manager.
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json or nx.json → Nx (the resolved graph, exported by nx if absent);
 // The mappers return a plan; core's migration seam
@@ -31,7 +31,6 @@ import {
   missingPackages,
   MODE_QUESTION,
   parseModeAnswer,
-  rewriteRootScripts,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
@@ -219,9 +218,8 @@ async function askMode(runner: 'turbo' | 'nx', dry: boolean): Promise<AdoptionMo
 }
 
 /**
- * Install what the written files import and point the root scripts at vx.
- * Returns the report's lines for both; does neither under `--dry` (the
- * script lines say what would change).
+ * Install what the written files import. Returns the report's line;
+ * installs nothing under `--dry`.
  */
 async function prepareRepo(root: string, mode: AdoptionMode, args: MigrateArgs): Promise<string[]> {
   const notes: string[] = []
@@ -229,12 +227,6 @@ async function prepareRepo(root: string, mode: AdoptionMode, args: MigrateArgs):
   if (missing.length > 0) {
     if (args.dry) notes.push(`would install ${missing.join(' ')} (dry run)`)
     else notes.push(`installed ${missing.join(' ')} (${await install(root, missing)})`)
-  }
-  const scripts = await rewriteRootScripts(root, args.dry)
-  if (scripts.length > 0) {
-    notes.push(
-      `${args.dry ? 'would point' : 'pointed'} root package.json scripts at vx: ${scripts.join('; ')}`,
-    )
   }
   return notes
 }

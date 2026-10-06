@@ -1,20 +1,13 @@
 // What vx-migrate does around the mapping (src/adopt.ts): the native/keep
-// choice, installing vx with the repo's manager, and the root scripts that
-// called the runner pointed at vx. solidjs/solid, 2026-10-04: configs were
-// written, nothing installed vx, and `pnpm run build` still ran turbo.
+// choice and installing vx with the repo's manager. solidjs/solid,
+// 2026-10-04: configs were written and nothing installed vx. The repo's
+// own scripts are never edited (owner, 2026-10-06).
 
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import {
-  installArgv,
-  missingPackages,
-  packageManagerOf,
-  parseModeAnswer,
-  rewriteRootScripts,
-  vxScript,
-} from '../src/adopt.js'
+import { installArgv, missingPackages, packageManagerOf, parseModeAnswer } from '../src/adopt.js'
 import { parseMigrateArgs } from '../src/migrate.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -126,74 +119,6 @@ describe('the package manager', () => {
   })
 })
 
-describe('the root scripts', () => {
-  it('only a bare runner invocation of task names moves to vx', () => {
-    expect(
-      [
-        'turbo run build',
-        'turbo run test test-types',
-        'turbo build',
-        'turbo watch dev',
-        'turbo run build --filter=web',
-        'turbo run build && echo done',
-        'nx run-many -t build,test',
-        'nx run-many --targets=lint',
-        'nx run-many -t build --parallel=3',
-        'tsc -b',
-      ].map(vxScript),
-    ).toEqual([
-      'vx run build --all',
-      'vx run test test-types --all',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'vx run build test --all',
-      'vx run lint --all',
-      undefined,
-      undefined,
-    ])
-  })
-
-  it('the edit keeps the rest of the file byte for byte; --dry writes nothing', async () => {
-    const root = await tmp('vx-adopt-scripts-')
-    try {
-      const text = `{
-    "name": "r",
-    "scripts": {
-        "build": "turbo run build",
-        "lint": "eslint .",
-        "test":"turbo run test test-types"
-    },
-    "turbo-note": "turbo run build"
-}
-`
-      await writeFile(path.join(root, 'package.json'), text)
-      const dry = await rewriteRootScripts(root, true)
-      const untouched = await readFile(path.join(root, 'package.json'), 'utf8')
-      const wrote = await rewriteRootScripts(root, false)
-      expect([
-        dry,
-        untouched,
-        wrote,
-        await readFile(path.join(root, 'package.json'), 'utf8'),
-      ]).toEqual([
-        wrote,
-        text,
-        [
-          'build: turbo run build → vx run build --all',
-          'test: turbo run test test-types → vx run test test-types --all',
-        ],
-        text
-          .replace('"build": "turbo run build"', '"build": "vx run build --all"')
-          .replace('"test":"turbo run test test-types"', '"test":"vx run test test-types --all"'),
-      ])
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-})
-
 /**
  * A pnpm Turbo repo with no vx installed, and a fake `pnpm` first on PATH
  * that records its argv: the install is the repo's manager, not a download.
@@ -250,7 +175,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 
 describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   it(
-    'no terminal: native, vx installed with pnpm, the root build pointed at vx, no dummy build',
+    'no terminal: native, vx installed with pnpm, the root scripts untouched, no dummy build',
     async () => {
       const { root, env } = await solidShaped()
       try {
@@ -264,7 +189,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           pj.scripts,
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
           await Bun.file(path.join(root, 'packages', 'ssr', 'vx.config.ts')).exists(),
-        ]).toEqual([0, 'add -D -w @vzn/vx\n', { build: 'vx run build --all' }, true, false])
+        ]).toEqual([0, 'add -D -w @vzn/vx\n', { build: 'turbo run build' }, true, false])
         expect(r.out).toContain('note: installed @vzn/vx (pnpm add -D -w @vzn/vx)')
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -307,15 +232,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await calls(root),
           dry.out.includes('note: would install @vzn/vx (dry run)'),
         ]).toEqual([0, 0, '', true])
-        // --no-install still points the scripts at vx; only --dry leaves them.
-        expect(
-          (
-            JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {
-              scripts: unknown
-            }
-          ).scripts,
-        ).toEqual({ build: 'vx run build --all' })
-        expect(before).toContain('turbo run build')
+        expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {
         await rm(root, { recursive: true, force: true })
       }

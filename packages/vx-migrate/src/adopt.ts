@@ -1,9 +1,8 @@
 // What `vx-migrate` does around the mapping so the repo runs vx after it:
 // which kind of adoption (native configs, or the runner's config read live),
-// installing vx with the repo's own package manager, and pointing the root
-// scripts that called the runner at vx (solidjs/solid, 2026-10-04: the
-// configs were written, and `pnpm run build` still ran turbo, with no vx
-// installed to run them).
+// and installing vx with the repo's own package manager (solidjs/solid,
+// 2026-10-04: the configs were written with no vx installed to run them).
+// The repo's own scripts are never edited (owner, 2026-10-06).
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -121,56 +120,4 @@ export async function install(root: string, packages: readonly string[]): Promis
     )
   }
   return line
-}
-
-/**
- * A root script that is only `turbo run <tasks>`, or
- * Nx's `nx run-many -t <tasks>`, as the same run under vx. Flags, a chain or
- * anything else is left alone: only what reads the same both ways is moved.
- */
-export function vxScript(command: string): string | undefined {
-  const words = command.trim().split(/\s+/)
-  let tasks: string[] | undefined
-  // `turbo <tasks>` is left: `turbo watch dev` is a verb, not a task.
-  if (words[0] === 'turbo' && words[1] === 'run') {
-    const rest = words.slice(2)
-    if (rest.length > 0 && rest.every((w) => /^[\w:.@/-]+$/.test(w) && !w.startsWith('-')))
-      tasks = rest
-  } else if (words[0] === 'nx' && words[1] === 'run-many') {
-    const rest = words.slice(2)
-    if (
-      (rest[0] === '-t' || rest[0] === '--target' || rest[0] === '--targets') &&
-      rest.length === 2
-    )
-      tasks = rest[1]!.split(',')
-    else if (rest.length === 1 && /^--targets?=/.test(rest[0]!))
-      tasks = rest[0]!.replace(/^--targets?=/, '').split(',')
-    if (tasks?.some((t) => !/^[\w:.@/-]+$/.test(t))) tasks = undefined
-  }
-  return tasks === undefined ? undefined : `vx run ${tasks.join(' ')} --all`
-}
-
-/**
- * Point the root package.json scripts that call the runner at vx, editing
- * the text in place (key order, indent and the rest kept). Returns each
- * `name: old → new`; writes nothing under `dry`.
- */
-export async function rewriteRootScripts(root: string, dry: boolean): Promise<string[]> {
-  const file = path.join(root, 'package.json')
-  let text = readText(file)
-  const scripts = (JSON.parse(text || '{}') as { scripts?: Record<string, unknown> }).scripts ?? {}
-  const changed: string[] = []
-  for (const [name, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string') continue
-    const next = vxScript(value)
-    if (next === undefined) continue
-    const key = JSON.stringify(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const old = JSON.stringify(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const re = new RegExp(`(${key}\\s*:\\s*)${old}`)
-    if (!re.test(text)) continue
-    text = text.replace(re, (_, lead: string) => `${lead}${JSON.stringify(next)}`)
-    changed.push(`${name}: ${value} → ${next}`)
-  }
-  if (!dry && changed.length > 0) await Bun.write(file, text)
-  return changed
 }

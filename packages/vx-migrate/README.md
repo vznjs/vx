@@ -213,9 +213,8 @@ It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works 
 
 - In a terminal it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (the workspace file `vx init` writes, declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native.
 - It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, plus `@vzn/vx-migrate` for keep (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package already listed or installed is left alone; `--no-install` skips it.
-- A root `package.json` script that is only `turbo run <tasks>` or `nx run-many -t <tasks>` becomes `vx run <tasks> --all`, so `pnpm run build` runs vx. A script with flags or a chain is left as it is.
 
-`--dry` does none of the three, and says what it would install and change.
+Your `package.json` scripts are never edited. `--dry` installs nothing and says what it would install.
 
 `--dry` prints the files instead of writing them; `--force` overwrites existing ones; `--mjs` writes `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts` — the same objects with no type import and no `satisfies`, for a package whose own `tsconfig` includes every `.ts` under it and would compile the config into its dist (TanStack/query, 2026-09-11).
 
