@@ -158,13 +158,20 @@ function trailingCommentStart(command: string): number {
 /**
  * The command a task runs with the args after `--` appended, shell-quoted.
  * They go before a trailing comment: appended after it, `echo args: # show`
- * ran without them and said nothing (item 1060).
+ * ran without them and said nothing (item 1060). Trailing blanks go first.
  */
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
   if (!args || args.length === 0) return command
   const quoted = args.map(shellQuote).join(' ')
   let comment = trailingCommentStart(command)
-  if (comment < 0) return `${command} ${quoted}`
+  if (comment < 0) {
+    // A command that ends in a newline (a template literal's closing line)
+    // ran the args as a command of their own: `--watch: not found`. Kept
+    // when an odd run of backslashes ends it: that escapes what follows.
+    const body = command.trimEnd()
+    const escaped = (/\\+$/.exec(body)?.[0].length ?? 0) % 2 === 1
+    return `${escaped ? command : body} ${quoted}`
+  }
   // A comment-only last line after a commented line: the args go before
   // the earliest comment, or they land inside it (`echo one # c\n# two`).
   for (let c = comment; c >= 0; c = trailingCommentStart(command.slice(0, c).trimEnd())) comment = c

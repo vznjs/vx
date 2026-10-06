@@ -732,6 +732,11 @@ describe('withForwardArgs', () => {
     ['a trailing comment after a single-quoted word', `echo 'a' # c`, 'a --fix a b\n'],
     ['a trailing comment after a double-quoted word', 'echo "a" # c', 'a --fix a b\n'],
     ['control: # right after a closing quote', `echo 'a'#b`, 'a#b --fix a b\n'],
+    ['a trailing newline', '\n  echo args:\n', 'args: --fix a b\n'],
+    ['trailing blank lines', 'echo args: \n\t\n', 'args: --fix a b\n'],
+    ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
+    ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
+    ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
   ])('%s', (_name, command, printed) => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
