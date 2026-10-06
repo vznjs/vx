@@ -758,6 +758,21 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(existsSync(path.join(projectDir, 'dist'))).toBe(true)
   })
 
+  it('a clean never deletes through a symlinked output dir that points INSIDE the project', async () => {
+    // `public -> static` stays in the project, so containment passed it,
+    // and the clean before every run deleted the tracked `static/logo.svg`
+    // through `public/**` (X-5). The save still follows the link
+    // (output-shape.test.ts, turborepo#13042); the delete does not.
+    await write(path.join(projectDir, 'static/logo.svg'), 'LOGO')
+    await write(path.join(projectDir, 'out/own.js'), 'own')
+    await symlink('static', path.join(projectDir, 'public'))
+    await cleanOutputs({ projectDir, outputs: ['public/**', 'out/**'], nestedProjectDirs: [] })
+    // Control: the real output dir in the same clean is still cleared.
+    expect(existsSync(path.join(projectDir, 'out/own.js'))).toBe(false)
+    await cleanOutputs({ projectDir, outputs: ['public/**'], nestedProjectDirs: [] })
+    expect(await readFile(path.join(projectDir, 'static/logo.svg'), 'utf8')).toBe('LOGO')
+  })
+
   it('a path reached from OUTSIDE the project resolves to nothing even when it really lives inside', async () => {
     // The lexical half of containment. Every escape above is caught by the
     // real-path half too (an outside directory resolves outside), so

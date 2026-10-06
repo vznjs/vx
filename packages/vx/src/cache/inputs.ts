@@ -666,10 +666,10 @@ export async function cleanOutputs(args: {
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
-  await removeAll(files, args.projectDir)
+  const removed = await removeAll(files, args.projectDir)
   await pruneEmptiedDirs(
     args.projectDir,
-    files,
+    removed,
     args.keepGlobRoots === true ? globRoots(args.projectDir, args.outputs) : undefined,
   )
   // Project-relative posix paths of what was removed — the caller
@@ -689,8 +689,7 @@ export async function cleanOutputPaths(args: {
   rels: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await removeAll(files, args.projectDir)
-  await pruneEmptiedDirs(args.projectDir, files)
+  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
 }
 
 /** A file's identity for the additive diff: what the hit path's fingerprint trusts too. */
@@ -791,7 +790,8 @@ const SYNC_CLEAN_MAX = 128
  * the scheduler prints any other error as an "internal error", which
  * sends the reader to file a bug against a permission bit.
  */
-async function removeAll(files: readonly string[], root: string): Promise<void> {
+async function removeAll(all: readonly string[], root: string): Promise<string[]> {
+  const files = notThroughLink(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = path.relative(root, f).split(path.sep).join('/')
     return new UserError(
@@ -808,7 +808,7 @@ async function removeAll(files: readonly string[], root: string): Promise<void> 
         throw refused(f, err as NodeJS.ErrnoException)
       }
     }
-    return
+    return files
   }
   await Promise.all(
     files.map((f) =>
@@ -817,6 +817,39 @@ async function removeAll(files: readonly string[], root: string): Promise<void> 
       }),
     ),
   )
+  return files
+}
+
+/**
+ * The paths whose directory is really where it sits, not reached through a
+ * symlinked directory. A save follows `dist -> real-out` on purpose
+ * (turborepo#13042), but a clean through a link deletes the target's
+ * files: `public -> static` in the same project took the tracked
+ * `static/logo.svg` before every run (X-5). The link is a declared
+ * output's own entry; what it leads to is not.
+ */
+function notThroughLink(files: readonly string[], root: string): string[] {
+  const real = (p: string): string | null => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return null
+    }
+  }
+  const realRoot = real(root) ?? root
+  const own = new Map<string, boolean>()
+  return files.filter((f) => {
+    const dir = path.dirname(f)
+    let ok = own.get(dir)
+    if (ok === undefined) {
+      // A directory already gone has nothing to delete through; its path
+      // stays so the prune still reaches the parents it emptied.
+      const r = real(dir)
+      ok = r === null || r === path.join(realRoot, path.relative(root, dir))
+      own.set(dir, ok)
+    }
+    return ok
+  })
 }
 
 /**
@@ -922,8 +955,7 @@ export async function cleanWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await removeAll(files, args.workspaceRoot)
-  await pruneEmptiedDirs(args.workspaceRoot, files)
+  await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
 
