@@ -938,6 +938,7 @@ async function runOnBus(
         runStartHrTimeNs,
         persistentRegistry,
         liveChildren,
+        ...(telemetry?.track !== undefined ? { track: telemetry.track } : {}),
         gitFilesCache,
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),

@@ -482,6 +482,111 @@ describe('OtelSink end-to-end', () => {
     expect([point.startTimeUnixNano, point.timeUnixNano]).toEqual(['0', '100000000'])
   })
 
+  it("charts each task: its totals at the end, and its tree's CPU usage and memory as it ran", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 2, ts: 0, startedAt: 0 })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 0 })
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 1000, cpuMs: 500, rssBytes: 4096 })
+    // A descendant exited and took its CPU out of the sum: zero, not negative.
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 2000, cpuMs: 400, rssBytes: 2048 })
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 3000, cpuMs: 2400, rssBytes: 8192 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      cacheSource: 'miss',
+      exitCode: 0,
+      ts: 3500,
+      ...extra,
+    })
+    rec(end('a#build', { status: 'success', durationMs: 3500, cpuMs: 2600, peakRssBytes: 9000 }))
+    // Never ran: no point, or it would chart as the fastest run there is.
+    rec(end('a#lint', { status: 'skipped', durationMs: 0 }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const bodies = calls.filter((c) => c.url === 'http://c/v1/metrics')
+    expect(bodies).toHaveLength(1)
+    type Metric = {
+      name: string
+      unit?: string
+      gauge?: { dataPoints: { asDouble: number; attributes: { key: string }[] }[] }
+    }
+    const metrics = (
+      bodies[0]!.body as { resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[] }
+    ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const of = (name: string) => {
+      const m = metrics.find((x) => x.name === name)!
+      return [m.unit, m.gauge!.dataPoints.map((p) => p.asDouble)]
+    }
+    expect([
+      of('vx.task.cpu_usage'),
+      of('vx.task.memory'),
+      of('vx.task.duration'),
+      of('vx.task.cpu_time'),
+      of('vx.task.peak_memory'),
+    ]).toEqual([
+      ['1', [0.5, 0, 2]],
+      ['By', [4096, 2048, 8192]],
+      ['ms', [3500]],
+      ['ms', [2600]],
+      ['By', [9000]],
+    ])
+    const keys = (name: string) =>
+      metrics.find((x) => x.name === name)!.gauge!.dataPoints[0]!.attributes.map((a) => a.key)
+    expect([keys('vx.task.memory'), keys('vx.task.duration')]).toEqual([
+      ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task'],
+      ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task', 'vx.cache.source'],
+    ])
+  })
+
+  it("splits a large run's task points across requests, the run's own metrics in the first only", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 2500,
+      ts: 0,
+      startedAt: 0,
+    } as TelemetryRecord)
+    for (let i = 0; i < 2500; i++) {
+      sink.onRecord({
+        v: 3,
+        kind: 'task.end',
+        runId: 'r',
+        ts: 10,
+        taskId: `p${i}#build`,
+        project: `p${i}`,
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 10,
+      } as TelemetryRecord)
+    }
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const names = calls
+      .filter((c) => c.url === 'http://c/v1/metrics')
+      .map((c) =>
+        (
+          c.body as { resourceMetrics: { scopeMetrics: { metrics: { name: string }[] }[] }[] }
+        ).resourceMetrics[0]!.scopeMetrics[0]!.metrics.map((m) => m.name),
+      )
+    expect(
+      names.map((n) => [n.includes('vx.tasks.total'), n.includes('vx.task.duration')]),
+    ).toEqual([
+      [true, true],
+      [false, true],
+      [false, true],
+    ])
+  })
+
   it('skips metrics when disabled', async () => {
     const { cfg, calls } = mkConfig({ metricsEnabled: false })
     const sink = new OtelSink(cfg)
@@ -2032,12 +2137,14 @@ describe('the sink, past its sweep', () => {
     ]).toEqual([true, true, true, '1000000000', 2, ['run-1', RUN.workspaceId, '900']])
   })
 
-  it('what the sink asks core for, with logs on and off', () => {
+  it('what the sink asks core for, with logs and metrics on and off', () => {
     const on = new OtelSink(mkConfig().cfg)
-    const off = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
-    expect([on.wants, off.wants]).toEqual([
+    const noLogs = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
+    const noMetrics = new OtelSink(mkConfig({ metricsEnabled: false }).cfg)
+    expect([on.wants, noLogs.wants, noMetrics.wants]).toEqual([
+      ['run.start', 'task.start', 'task.log', 'task.sample', 'task.end', 'run.end'],
+      ['run.start', 'task.start', 'task.sample', 'task.end', 'run.end'],
       ['run.start', 'task.start', 'task.log', 'task.end', 'run.end'],
-      ['run.start', 'task.start', 'task.end', 'run.end'],
     ])
   })
 

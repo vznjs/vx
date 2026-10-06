@@ -54,6 +54,7 @@ src/exec/executor.ts
 src/exec/index.ts
 src/exec/kill-tree.ts
 src/exec/local-executor.ts
+src/exec/proc-sample.ts
 src/exec/runner.ts
 src/exec/sandbox-binds.ts
 src/exec/sandbox-deny-scan.ts

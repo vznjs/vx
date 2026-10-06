@@ -11,7 +11,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
 ## Public surface
 
 - `TelemetryRecord` — per-event union: `run.start` / `task.start` /
-  `task.log` / `task.end` / `run.end`.
+  `task.log` / `task.sample` / `task.end` / `run.end`.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
   end of run. `abortedCount` (v3, item 851) counts the tasks a
@@ -125,13 +125,14 @@ interface RunSummaryRecord {
 
 Each streaming record carries `v` and `kind`, and:
 
-| `kind`       | Fields                                                |
-| ------------ | ----------------------------------------------------- |
-| `run.start`  | `run`, `total`, `ts`, `startedAt`                     |
-| `task.start` | `runId`, `taskId`, `project`, `task`, `command`, `ts` |
-| `task.log`   | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)   |
-| `task.end`   | `runId`, `ts`, every `TaskTelemetry` field            |
-| `run.end`    | `runId`, `ts`                                         |
+| `kind`        | Fields                                                |
+| ------------- | ----------------------------------------------------- |
+| `run.start`   | `run`, `total`, `ts`, `startedAt`                     |
+| `task.start`  | `runId`, `taskId`, `project`, `task`, `command`, `ts` |
+| `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)   |
+| `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in) |
+| `task.end`    | `runId`, `ts`, every `TaskTelemetry` field            |
+| `run.end`     | `runId`, `ts`                                         |
 
 ## Invariants
 
@@ -142,6 +143,14 @@ Each streaming record carries `v` and `kind`, and:
   propagates, and so is an `async` hook that rejects; it is said once,
   however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
+- `task.sample` is opt-in the same way. Only when a sink wants it does the
+  source offer `track(taskId, pid)`, which run.ts hands each task's
+  executor as `ExecuteRequest.onSpawn`: one timer for the run samples each
+  tracked task's live process tree every second (`sampleTrees`,
+  `exec/proc-sample.ts`) and stops when nothing is tracked or the run
+  ends. `cpuMs` is the tree's CPU so far (a descendant that exited leaves
+  the sum), `rssBytes` its resident memory now. No sink wanting it: no
+  timer, no read (`proc-sample.unsafe.test.ts`).
 - Version bumps are additive-or-bump: a record whose shape changes bumps
   `TELEMETRY_SCHEMA_VERSION`, an integer, which a receiver may check to
   refuse what it cannot read; no first-party sink checks it.

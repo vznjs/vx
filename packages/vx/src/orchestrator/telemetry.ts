@@ -16,6 +16,7 @@
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
+import { sampleTrees } from '../exec/index.js'
 import type { TaskOutcome, TaskStatus } from '../graph/index.js'
 import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
@@ -227,6 +228,17 @@ export type TelemetryRecord =
       chunk: string
       ts: number
     }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      /** CPU time of the task's live process tree so far, in ms. */
+      cpuMs: number
+      /** Resident memory of the task's live process tree, in bytes. */
+      rssBytes: number
+    }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }
 
@@ -370,7 +382,16 @@ export interface TelemetrySource {
   emitSummary(summary: RunSummaryRecord): void
   /** Await every sink's `flush()` (each crash-isolated, all time-bounded). */
   flush(): Promise<void>
+  /**
+   * Sample this task's process tree every `SAMPLE_MS` until the returned
+   * function is called, the root exits, or the run ends. Present only when
+   * a sink wants `task.sample`: nobody asking costs no timer and no read.
+   */
+  readonly track?: (taskId: string, pid: number) => () => void
 }
+
+/** How often a running task's process tree is sampled. */
+const SAMPLE_MS = 1000
 
 const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
   'run.start',
@@ -426,6 +447,62 @@ export function createTelemetrySource(args: {
   // Precompute which sinks want each kind, so per-event fan-out is a plain
   // array walk with no per-record `wants` scanning.
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
+  const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
+
+  // taskId → the pid of its running root. One timer for every task, alive
+  // only while one runs; a tick still reading when the next is due is not
+  // doubled.
+  const tracked = new Map<string, number>()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let sampling = false
+  let ended = false
+  const stopTimer = (): void => {
+    if (timer !== undefined) clearInterval(timer)
+    timer = undefined
+  }
+  const untrack = (taskId: string, pid: number): void => {
+    if (tracked.get(taskId) === pid) tracked.delete(taskId)
+    if (tracked.size === 0) stopTimer()
+  }
+  const tick = async (): Promise<void> => {
+    if (sampling) return
+    sampling = true
+    try {
+      const entries = [...tracked]
+      const usage = await sampleTrees(entries.map(([, pid]) => pid))
+      const ts = Date.now()
+      for (const [taskId, pid] of entries) {
+        if (ended || tracked.get(taskId) !== pid) continue
+        const u = usage.get(pid)
+        if (u === undefined) {
+          untrack(taskId, pid)
+          continue
+        }
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.sample',
+          runId,
+          taskId,
+          ts,
+          cpuMs: u.cpuMs,
+          rssBytes: u.rssBytes,
+        })
+      }
+    } catch {
+      // A failed look is a missing point, never a broken run.
+    } finally {
+      sampling = false
+    }
+  }
+  const track = (taskId: string, pid: number): (() => void) => {
+    if (ended) return () => {}
+    tracked.set(taskId, pid)
+    if (timer === undefined) {
+      timer = setInterval(() => void tick(), SAMPLE_MS)
+      timer.unref()
+    }
+    return () => untrack(taskId, pid)
+  }
 
   function deliver(record: TelemetryRecord): void {
     for (const sink of sinks) {
@@ -502,6 +579,9 @@ export function createTelemetrySource(args: {
       case 'run:status':
         return // status lines are terminal-rendering noise, not telemetry
       case 'run:end':
+        ended = true
+        tracked.clear()
+        stopTimer()
         deliver({ v: TELEMETRY_SCHEMA_VERSION, kind: 'run.end', runId, ts })
         return
     }
@@ -509,6 +589,7 @@ export function createTelemetrySource(args: {
 
   return {
     subscriber,
+    ...(wantsSample ? { track } : {}),
     emitSummary(summary: RunSummaryRecord): void {
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue

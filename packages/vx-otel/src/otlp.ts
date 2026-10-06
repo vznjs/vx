@@ -6,7 +6,9 @@
 // of SDK-version drift. Maps a vx run to:
 //   - a TRACE: one root `vx.run` span + one child `vx.task` span per task,
 //     with CI/CD + VCS semantic-convention attributes;
-//   - METRICS: task/run counters + a run-duration gauge;
+//   - METRICS: task/run counters + a run-duration gauge; per task its
+//     duration, CPU time and peak memory, and while it runs its process
+//     tree's CPU usage and memory, sampled each second;
 //   - LOGS: one record per executed task carrying its captured output tail.
 //
 // References: OpenTelemetry CI/CD + VCS semantic conventions; OTLP/JSON
@@ -367,6 +369,7 @@ export function buildMetricsRequest(
   nowUnixNano: string,
   startUnixNano: string,
   resource?: Readonly<Record<string, string>>,
+  points: readonly TaskMetricPoint[] = [],
 ): unknown {
   const point = (value: number, attrs: KeyValue[] = []) => ({
     asInt: String(value),
@@ -408,12 +411,97 @@ export function buildMetricsRequest(
               ]),
               sum('vx.tasks.cache_up_to_date', [point(summary.upToDateCount)]),
               gauge('vx.run.duration_ms', summary.totalDurationMs),
+              ...taskMetrics(points),
             ],
           },
         ],
       },
     ],
   }
+}
+
+/**
+ * A per-task metric point: a task's totals at its end, or one live sample
+ * of its process tree while it runs.
+ */
+export type TaskMetricPoint =
+  | { kind: 'end'; task: TaskTelemetry; startUnixNano: string; endUnixNano: string }
+  | {
+      kind: 'sample'
+      taskId: string
+      project: string
+      task: string
+      timeUnixNano: string
+      /** CPU cores busy since the previous sample (1 = one core). */
+      cpuUsage: number
+      rssBytes: number
+    }
+
+/**
+ * An ExportMetricsServiceRequest of per-task gauges alone: the points past
+ * what fit beside the run's own metrics (`buildMetricsRequest`).
+ */
+export function buildTaskMetricsRequest(
+  serviceName: string,
+  vxVersion: string,
+  points: readonly TaskMetricPoint[],
+  resource?: Readonly<Record<string, string>>,
+): unknown {
+  return {
+    resourceMetrics: [
+      {
+        resource: { attributes: resourceAttributes(serviceName, vxVersion, resource) },
+        scopeMetrics: [{ scope: { name: 'vx', version: vxVersion }, metrics: taskMetrics(points) }],
+      },
+    ],
+  }
+}
+
+/**
+ * Per-task gauges, keyed by task. At each task's end: its duration, CPU time and peak memory (CPU and memory as
+ * the runner measured them at exit; a task it did not measure, a cache hit or
+ * a remote run, sends no point for them). While a task runs: its process
+ * tree's CPU usage and memory, once per sample. A task's numbers otherwise
+ * live only on its span, which no metrics backend charts.
+ */
+function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
+  const series = new Map<string, { unit: string; dataPoints: unknown[] }>()
+  const add = (name: string, unit: string, point: unknown): void => {
+    const s = series.get(name)
+    if (s === undefined) series.set(name, { unit, dataPoints: [point] })
+    else s.dataPoints.push(point)
+  }
+  const taskAttrs = (taskId: string, project: string, task: string): KeyValue[] => [
+    strAttr(SEMCONV.taskName, taskId),
+    strAttr(VX_ATTR.taskProject, project),
+    strAttr(VX_ATTR.taskTask, task),
+  ]
+  for (const p of points) {
+    if (p.kind === 'sample') {
+      const at = (value: number) => ({
+        asDouble: value,
+        timeUnixNano: p.timeUnixNano,
+        attributes: taskAttrs(p.taskId, p.project, p.task),
+      })
+      add('vx.task.cpu_usage', '1', at(p.cpuUsage))
+      add('vx.task.memory', 'By', at(p.rssBytes))
+      continue
+    }
+    const t = p.task
+    const at = (value: number) => ({
+      asDouble: value,
+      startTimeUnixNano: p.startUnixNano,
+      timeUnixNano: p.endUnixNano,
+      attributes: [
+        ...taskAttrs(t.taskId, t.project, t.task),
+        strAttr(VX_ATTR.cacheSource, t.cacheSource),
+      ],
+    })
+    add('vx.task.duration', 'ms', at(t.durationMs))
+    if (t.cpuMs !== undefined) add('vx.task.cpu_time', 'ms', at(t.cpuMs))
+    if (t.peakRssBytes !== undefined) add('vx.task.peak_memory', 'By', at(t.peakRssBytes))
+  }
+  return [...series].map(([name, { unit, dataPoints }]) => ({ name, unit, gauge: { dataPoints } }))
 }
 
 // --- logs ---------------------------------------------------------------

@@ -77,7 +77,7 @@ Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
   `setup`, `commands`, `teardown`. A plugin is
   `definePlugin(import.meta, hooks)`, and its name is its package's.
 - **Telemetry records**, schema version 3. The kinds are `run.start`,
-  `task.start`, `task.log`, `task.end` and `run.end`; each record
+  `task.start`, `task.log`, `task.sample`, `task.end` and `run.end`; each record
   carries the version as `v`.
 - **Types.** Every type `@vzn/vx` exports is frozen with every type it
   names, whether that one is exported or not. `VxPlugin` and its hook

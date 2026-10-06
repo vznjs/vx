@@ -519,6 +519,7 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
 }
@@ -2330,6 +2331,15 @@ export type TelemetryRecord =
       stream: 'stdout' | 'stderr'
       chunk: string
       ts: number
+    }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      cpuMs: number
+      rssBytes: number
     }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }

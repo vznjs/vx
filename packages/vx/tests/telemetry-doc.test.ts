@@ -65,6 +65,7 @@ describe('telemetry.md § Records is the source, both ways', () => {
       'run.start',
       'task.end',
       'task.log',
+      'task.sample',
       'task.start',
     ])
   })

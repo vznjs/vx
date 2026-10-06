@@ -334,11 +334,23 @@ export default defineWorkspace({
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
 | `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`                          |
+| metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs |
 | a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |
 
 A failed task sets its span status to `ERROR`. A failed export warns once
 and names the reply; a slow collector is cut off after `timeoutMs`, and
 the run still exits green.
+
+To see it on your machine, run
+[otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer), a
+single binary that shows traces, metrics and logs:
+
+```sh
+brew tap ctrlspice/otel-desktop-viewer
+brew install --cask otel-desktop-viewer
+otel-desktop-viewer
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
+```
 
 ## vx mcp
 

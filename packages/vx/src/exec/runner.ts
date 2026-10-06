@@ -87,6 +87,8 @@ export interface RunOptions {
    * handler can SIGTERM everything still alive mid-run.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** Told the child's pid once it is spawned (telemetry samples its tree). */
+  onSpawn?: (pid: number) => void
   /**
    * Hand the child vx's own stdin, stdout and stderr (`exec.interactive` on
    * a TTY). Nothing passes through vx: the callbacks hear nothing and the
@@ -632,6 +634,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   void consumeChunks(child.stderr, true)
 
   opts.liveChildren?.add(child)
+  opts.onSpawn?.(child.pid)
 
   // Readiness deadline. Reject FIRST so the failure reads as a
   // timeout, then SIGTERM — the exit handler's later reject is a
@@ -738,6 +741,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   }
 
   opts.liveChildren?.add(proc)
+  opts.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
   const streams = Promise.all([

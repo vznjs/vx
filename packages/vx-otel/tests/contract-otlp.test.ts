@@ -101,7 +101,7 @@ const TASK: Required<TaskTelemetry> = {
 }
 
 it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract/otlp.txt records', async () => {
-  const bodies: Record<string, unknown> = {}
+  const bodies: Record<string, unknown[]> = {}
   const sink = new OtelSink({
     tracesUrl: 'traces',
     metricsUrl: 'metrics',
@@ -112,7 +112,7 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     logsEnabled: true,
     timeoutMs: 1000,
     post: async (url, body) => {
-      bodies[url] = JSON.parse(body)
+      ;(bodies[url] ??= []).push(JSON.parse(body))
     },
   })
   const records: TelemetryRecord[] = [
@@ -126,6 +126,15 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
       task: 'build',
       command: 'tsc',
       ts: 1010,
+    },
+    {
+      v: 3,
+      kind: 'task.sample',
+      runId: 'r',
+      taskId: 'a#build',
+      ts: 1030,
+      cpuMs: 15,
+      rssBytes: 2048,
     },
     {
       v: 3,
@@ -162,7 +171,7 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
   expect(Object.keys(bodies).sort()).toEqual(['logs', 'metrics', 'traces'])
 
   const lines = new Set<string>()
-  for (const [signal, body] of Object.entries(bodies)) shape(body, signal, lines)
+  for (const [signal, list] of Object.entries(bodies)) for (const b of list) shape(b, signal, lines)
   const text = [...lines].sort().join('\n') + '\n'
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
     writeFileSync(RECORD, text)

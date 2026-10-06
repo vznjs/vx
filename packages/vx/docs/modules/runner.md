@@ -39,6 +39,7 @@ export interface RunOptions {
   capture?: CaptureConfig // omitted → both retained
   timeoutMs?: number // SIGTERM the child when it elapses; result flagged `timedOut`
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
+  onSpawn?: (pid: number) => void // told the child's pid once spawned (telemetry samples its tree)
   terminal?: boolean // inherit vx's stdin, stdout and stderr (exec.interactive on a TTY)
 }
 
