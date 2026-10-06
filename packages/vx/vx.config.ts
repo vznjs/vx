@@ -210,6 +210,9 @@ const releaseTasks = {
               read: ['.'],
               network: ['api.github.com', 'uploads.github.com'],
               machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+              // Bun on Apple Silicon reads it here; the denial failed
+              // release.yml's sign-darwin job after the release published.
+              systemInfo: ['hw.optional.neon'],
             },
           },
         },
