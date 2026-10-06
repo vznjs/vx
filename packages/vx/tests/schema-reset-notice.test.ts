@@ -143,7 +143,7 @@ describe('an upgrade resets the cache in silence', () => {
         // opens the index to store configs and resets it: the message
         // speaks for the verb that printed it (item 1042).
         threw: expect.stringContaining(
-          `holds index schema v0 from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
+          `holds index schema v0 from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         ) as unknown as string,
         stderr: '',
         after: before,
@@ -183,7 +183,7 @@ describe('an upgrade resets the cache in silence', () => {
     expect({ ...dry, after: index() }).toEqual({
       threw: null,
       stderr:
-        "[vx] the cache index is schema v0 from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
+        "[vx] the cache index is schema v0 from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
       stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
       after: before,
     })
@@ -194,20 +194,17 @@ describe('an upgrade resets the cache in silence', () => {
     })
   })
 
-  it('every opener, a run too, refuses a NEWER schema and leaves it untouched', async () => {
+  it('a run resets a NEWER schema too; a reading verb leaves it untouched', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v999')
     const before = index()
-    let threw: unknown
-    try {
-      await runOnce()
-    } catch (err) {
-      threw = err
-    }
-    expect((threw as Error).message).toContain('holds index schema v999, written by a newer vx')
-    expect((await verb(['last'])).threw).toContain('written by a newer vx')
+    expect((await verb(['last'])).threw).toContain(
+      'holds index schema v999 from another vx version',
+    )
     expect(index()).toEqual(before)
     expect(before).toEqual({ version: 'v999', entries: 1, runs: 1 })
+    expect(await runOnce()).toEqual([])
+    expect(index().version).toBe(SCHEMA_VERSION)
   })
 
   it('`vx show` says nothing either, from the staged load the reading verbs share', async () => {

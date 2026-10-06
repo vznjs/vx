@@ -54,29 +54,20 @@ export function formatRunSummary(
 ): string[]
 
 export function neverStarted(o: TaskOutcome): boolean
-export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[]
-export function formatFlakySection(findings: readonly FlakyFinding[]): string[]
 
 export function formatDuration(ms: number): string
 ```
 
-`formatSkippedSection` names each skipped task under the failure (or
-aborted task) at the root of its chain — `blockedBy` — with fail-fast's
-skips under their own heading; a blocked group is left out, as every
-counter leaves it out, and a long list is capped on one line with the
-rest counted. An aborted task has no section: the logger lists it as a
-row (`formatTaskAbortedLine`, framed-output.md), and the tasks legend
-names it after the total — `not counted: N aborted, N not run` — since
-`total` is the count history and telemetry share. `aborted` is killed
-by a shutdown signal; `not run` is reached by the stop before it ran.
-`neverStarted` tells them apart: an aborted outcome with no
-`wallclockStartNs`, which only a started task carries.
-
-`formatFlakySection` is the post-footer section naming the tasks this
-run proved flaky (`detectFlaky`, history.md): `✗ id — failed on inputs
-that passed N× before`, `✓ id — passed on inputs that failed N× before`,
-with ` · N attempts this run` when the run retried; empty when nothing
-was. It prints after the footer, beside the Skipped section.
+Nothing prints below the footer (owner, 2026-10-06): a task's own facts
+ride its row. A skip is a row naming its blocker
+(`formatTaskSkippedLine`), a flaky task a dim note on its row and frame
+(`flakyNote`, framed-output.md). An aborted task is a row too
+(`formatTaskAbortedLine`), and the tasks legend names it after the
+total — `not counted: N aborted, N not run` — since `total` is the
+count history and telemetry share. `aborted` is killed by a shutdown
+signal; `not run` is reached by the stop before it ran. `neverStarted`
+tells them apart: an aborted outcome with no `wallclockStartNs`, which
+only a started task carries.
 
 `formatRunSummary` returns an array of lines (caller writes one per
 `log.status`). Leading blank line is included so the summary stands
@@ -143,11 +134,8 @@ Duration:
 - Aborted and not-run tasks: named apart after the total on the tasks
   legend (under `0 tasks` too), a group in neither; their rows
   (`formatTaskAbortedLine`) byte for byte.
-- The Skipped section: each skipped task under the failure at the root
-  of its chain, fail-fast and an aborted upstream named as such, a
-  blocked group left out, the names capped on one line.
 - Time row: blank line above, total + dim 'max / avg / min' per-task spread (skipped excluded).
 - Duration formatting (sub-second vs second+).
-- The Flaky section: exact lines for a failure that passed before, a
-  pass that failed before with a retry, and a retry with no history;
-  empty for no findings.
+- A flaky task's note: exact text for a pass that failed before, a
+  failure that passed before, a retry with and without history; none
+  for a task the run did not prove flaky; the row it rides, dim.

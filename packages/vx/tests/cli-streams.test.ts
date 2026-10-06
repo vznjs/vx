@@ -105,7 +105,7 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
       ]) {
         aged()
         const [code, out, err] = vx(...args)
-        expect({ args, code, out, refused: err.includes('from an earlier vx') }).toEqual({
+        expect({ args, code, out, refused: err.includes('from another vx version') }).toEqual({
           args,
           code: 1,
           out: '',

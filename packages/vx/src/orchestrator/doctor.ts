@@ -244,9 +244,9 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
-    // The index is authoritative, so a row-less artifact is bytes nothing
-    // will ever hit — and only `vx cache prune` reclaims them (after an
-    // upgrade's schema reset, most often).
+    // A row-less artifact is indexed again only when its task asks for its
+    // key; the rest only `vx cache prune` reclaims (after an upgrade's
+    // schema reset, most often).
     orphans: { artifacts: orphans.orphans, bytes: orphans.orphanBytes },
     runs24h: stats.runCountLast24h,
     hits24h: stats.hitCountLast24h,

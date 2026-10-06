@@ -99,6 +99,7 @@ export class Cache implements CacheLayer {
   readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
+  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   static async orphansBeforeReset(
     cacheDir: string,
@@ -126,9 +127,12 @@ export class Cache implements CacheLayer {
   blobVerdict(digest: string): string[] | undefined
   rememberBlobVerdict(digest: string, paths: readonly string[]): void
   key(input: CacheKeyInput): Promise<string>
-  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
-  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  async getMany(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -228,7 +232,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -2173,6 +2180,7 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }

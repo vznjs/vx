@@ -798,6 +798,9 @@ next?".
   history and memos in `.vx/cache` and attaches the store. A named
   `cacheDir` / `VX_CACHE_DIR` / `--cache-dir` holds everything and
   shares nothing; the test tasks, the bench harness and CI name one.
+  The artifact is the record, the index its inventory: a reset index
+  re-indexes each artifact from its bytes on its next hit, the batched
+  short-circuit probe included (`getMany` takes each hash's get context).
   `docs/design/shared-store-2026-10.md`.
 
 ## Legacy map (what the old memory called things)

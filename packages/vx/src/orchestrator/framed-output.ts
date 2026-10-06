@@ -344,22 +344,42 @@ function formatOutcomeRow(
 ): string {
   const st = statusOf(o)
   const ca = cacheOf(o)
-  return formatTaskRow(
-    taskGlyph(o, colors),
-    ms,
-    st.word,
-    st.color,
-    ca.word,
-    ca.color,
-    paintedId,
-    colors,
+  return (
+    formatTaskRow(
+      taskGlyph(o, colors),
+      ms,
+      st.word,
+      st.color,
+      ca.word,
+      ca.color,
+      paintedId,
+      colors,
+    ) + flakyNote(o, colors)
   )
 }
 
 /**
+ * The dim note a flaky task's row and frame carry (`flaky - failed 1×
+ * before`): nothing prints below the footer, so the task's own line is
+ * where the reader learns it. '' when the run did not prove it flaky.
+ */
+export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
+  if (o.flaky === undefined) return ''
+  const said: string[] = []
+  if (o.status === 'failed' && o.flaky.passes > 0)
+    said.push(`passed ${o.flaky.passes}\u00d7 before`)
+  if (o.status !== 'failed' && o.flaky.failures > 0) {
+    said.push(`failed ${o.flaky.failures}\u00d7 before`)
+  }
+  if ((o.attempts ?? 1) > 1) said.push(`${o.attempts} attempts`)
+  const text = said.length === 0 ? 'flaky' : `flaky - ${said.join(' \u00b7 ')}`
+  return ` ${paint('', text, colors, { dim: true })}`
+}
+
+/**
  * Compact one-liner for a skipped task — it never ran (blank time). The
- * blocker rides the row (`• blocked by lib#build`): the footer's Skipped
- * section groups the same fact, but the row is where the reader's eye is.
+ * blocker rides the row (`• blocked by lib#build`): nothing prints below
+ * the footer, so the row is where the reader learns what blocked it.
  */
 export function formatTaskSkippedLine(
   node: TaskNode,
@@ -564,7 +584,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // formatStatusTag.
   const dur = paint('', `(${formatDuration(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
-  return ` ${dur} ${tag}`
+  return ` ${dur} ${tag}${flakyNote(o, colors)}`
 }
 
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {

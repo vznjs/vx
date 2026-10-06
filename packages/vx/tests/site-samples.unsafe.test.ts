@@ -8,8 +8,12 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
-import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
-import { formatFlakySection } from '../src/orchestrator/summary.js'
+import {
+  flakyNote,
+  formatTaskExecutedLine,
+  formatTaskHitLine,
+} from '../src/orchestrator/framed-output.js'
+import { formatFailureLine } from '../src/orchestrator/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
@@ -397,48 +401,50 @@ describe("the quickstart's known limits are still limits", () => {
   })
 })
 
-describe('the flaky-tasks post shows the section the footer prints', () => {
-  it('its sample is formatFlakySection on the two findings it describes', () => {
-    const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
-    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
-    const finding = (
-      taskId: string,
-      status: 'success' | 'failed',
-      passes: number,
-      failures: number,
-      attempts = 1,
-    ) => {
-      const [project, task] = taskId.split('#') as [string, string]
-      return { taskId, project, task, hash: 'k', status, passes, failures, attempts }
+describe('the flaky-tasks post shows the rows a run prints', () => {
+  // A flaky verdict rides the task's row (nothing prints below the footer,
+  // owner 2026-10-06): a failure as the ◼ row, a pass as the executed row.
+  const row = (
+    id: string,
+    status: 'success' | 'failed',
+    durationMs: number,
+    passes: number,
+    failures: number,
+    attempts?: number,
+  ): string => {
+    const [projectName, taskName] = id.split('#') as [string, string]
+    const node = {
+      id,
+      projectName,
+      taskName,
+      config: { exec: { command: 'noop' }, cache: {} },
+    } as TaskNode
+    const o: TaskOutcome = {
+      node,
+      status,
+      exitCode: status === 'failed' ? 1 : 0,
+      durationMs,
+      flaky: { passes, failures },
+      ...(attempts !== undefined && { attempts }),
     }
-    expect(sample.split('\n')).toEqual(
-      formatFlakySection([
-        finding('app#test', 'failed', 3, 1),
-        finding('api#e2e', 'success', 1, 1, 2),
-      ]).slice(1),
-    )
+    return status === 'failed'
+      ? formatFailureLine(id, durationMs) + flakyNote(o)
+      : formatTaskExecutedLine(node, o)
+  }
+
+  it('its sample is the two rows of the findings it describes', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
+    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    expect(sample.split('\n')).toEqual([
+      row('app#test', 'failed', 4210, 3, 1),
+      row('api#e2e', 'success', 12840, 1, 1, 2),
+    ])
   })
 
-  it("the CI guide's copy of that footer is the same formatter's output", () => {
-    // The post was pinned and the guide, which prints the same block for one
-    // finding, was not — the same one-copy-of-two as the sandbox grants
-    // (item 378, 2026-09-19).
+  it("the CI guide's copy is the same row", () => {
     const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')
-    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
-    expect(sample.split('\n')).toEqual(
-      formatFlakySection([
-        {
-          taskId: 'web#test',
-          project: 'web',
-          task: 'test',
-          hash: 'k',
-          status: 'failed',
-          passes: 3,
-          failures: 1,
-          attempts: 1,
-        },
-      ]).slice(1),
-    )
+    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    expect(sample.split('\n')).toEqual([row('web#test', 'failed', 4210, 3, 1)])
   })
 })
 

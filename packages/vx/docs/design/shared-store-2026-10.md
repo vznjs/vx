@@ -74,12 +74,16 @@ keyed by the workspace, not the cache dir, so the entries share as is.
 
 ## Decisions
 
-- **No store version (owner, 2026-10-06).** Every key is seeded with
-  `CACHE_VERSION`, so an artifact one vx wrote is never a hit for
-  another, and the store lives as long as the user keeps it. The cost
-  is a rule: a store table only ever gains columns (with defaults), so
-  an older vx still reads a store a newer one wrote. The first cut kept
-  `store-<SCHEMA_VERSION>` directories.
+- **The artifact is the record; the index its inventory (owner,
+  2026-10-06).** Every key is seeded with `CACHE_VERSION`, bumped when
+  hashing or the artifact layout changes, so an artifact one vx wrote is
+  never a hit for another and the store needs no versioned directory.
+  `store.db` records its own schema (`store_meta.schema`); a vx of
+  another `SCHEMA_VERSION` drops its tables and keeps the artifacts.
+  A lookup that finds no row but finds `<hash>.tar.zst` indexes it from
+  its bytes (`Cache.adopt`: key and names checked as a remote's are) and
+  hits. Two vx versions on one repository each reset the other's
+  inventory; the artifacts survive both.
 - **A home that cannot hold the store does not fail the run.** The
   store goes to `<cacheDir>` instead, said once per fallback.
 - **An index that held its entries itself loses them** when it next

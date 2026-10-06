@@ -59,7 +59,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext, // each hash's get context: an unindexed artifact is adopted
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -562,11 +565,11 @@ Outputs` additionally refuses when the archive cannot produce an output
   modes lost at pack time, long entry names dropped at parse time).
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
-tables) when the SQLite schema changes. Only an earlier schema is
-dropped, and only by a writing opener: `Cache.inspect(dir)` (a reading
-verb) refuses any schema it cannot read, and every opener refuses a
-newer one, each with a `UserError` that names the directory and both
-versions and leaves the index as it was (item 896). Over a directory
+tables) when the SQLite schema changes. Any other schema, earlier or
+newer, is dropped by a writing opener (owner, 2026-10-06: the index is
+an inventory the artifacts rebuild); `Cache.inspect(dir)` (a reading
+verb) refuses a schema it cannot read with a `UserError` that names the
+directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
 (item 900). A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,

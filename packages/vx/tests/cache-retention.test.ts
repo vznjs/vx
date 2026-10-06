@@ -370,7 +370,7 @@ describe('a run applies the workspace retention at its end', () => {
     return rows.map((r) => r.project)
   }
 
-  it("evicts what is due and says so; a run that did not touch it can't keep it", async () => {
+  it("evicts what is due, silently; a run that did not touch it can't keep it", async () => {
     const cacheDir = await setup("cacheRetention: { olderThan: '1d' }")
     const log = logger()
     const summary = await run({
@@ -382,9 +382,8 @@ describe('a run applies the workspace retention at its end', () => {
     })
     expect(summary.ok).toBe(true)
     expect(projects(cacheDir)).toEqual(['b'])
-    expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([
-      expect.stringMatching(/^vx: cache retention evicted 1 entry \(\d/),
-    ])
+    // Housekeeping says nothing (owner, 2026-10-06).
+    expect(log.lines.filter((l) => l.includes('retention'))).toEqual([])
   })
 
   // A stopped run is not a run that finished its work. A Ctrl-C while one
@@ -409,7 +408,7 @@ describe('a run applies the workspace retention at its end', () => {
     expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([])
   })
 
-  it('reaps row-less artifacts a deleted index left, and says so', async () => {
+  it('reaps row-less artifacts a deleted index left, silently', async () => {
     const cacheDir = await setup("cacheRetention: { maxSize: '1MB' }")
     // The index goes (deleted by hand, or dropped by a schema reset); its
     // artifacts stay behind, and they are old.
@@ -429,9 +428,7 @@ describe('a run applies the workspace retention at its end', () => {
     const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
     expect(summary.ok).toBe(true)
     expect(left.filter((f) => existsSync(f))).toEqual([])
-    expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([
-      'vx: cache retention reaped 3 orphaned artifacts (9.0 MB)',
-    ])
+    expect(log.lines.filter((l) => l.includes('retention'))).toEqual([])
   })
 
   // nx#35329: a cache moved outside the workspace was never evicted.
@@ -474,7 +471,7 @@ describe('a run applies the workspace retention at its end', () => {
         })
         evicted[via] = {
           left: projects(outside),
-          said: log.lines.filter((l) => l.includes('cache retention')).length,
+          said: log.lines.filter((l) => l.includes('retention')).length,
         }
       } finally {
         await rm(outside, { recursive: true, force: true })
@@ -482,8 +479,8 @@ describe('a run applies the workspace retention at its end', () => {
       }
     }
     expect(evicted).toEqual({
-      cacheDir: { left: ['b'], said: 1 },
-      '--cache-dir': { left: ['b'], said: 1 },
+      cacheDir: { left: ['b'], said: 0 },
+      '--cache-dir': { left: ['b'], said: 0 },
     })
   })
 

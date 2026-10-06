@@ -46,6 +46,7 @@ import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { deriveStableKeys, workspaceInputsReach } from './stable-keys.js'
 import type { HashCache } from './task-hash.js'
+import { getContext } from './remote-prefetch.js'
 
 export interface ShortCircuitArgs {
   nodes: Map<string, TaskNode>
@@ -138,7 +139,14 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   if (args.cache.getMany !== undefined) {
     try {
       const endProbe = span('probe')
-      const hits = await args.cache.getMany(candidates.map((c) => c.hash))
+      const byHash = new Map(candidates.map((c) => [c.hash, c.node]))
+      const hits = await args.cache.getMany(
+        candidates.map((c) => c.hash),
+        (hash) => {
+          const node = byHash.get(hash)!
+          return getContext(node, node.config.exec?.command ?? '')
+        },
+      )
       endProbe()
       for (const { hash, node } of candidates) {
         const hit = hits.get(hash) ?? null
@@ -157,8 +165,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
     while (next < candidates.length) {
       const { hash, node } = candidates[next++]!
       try {
-        const command = node.config.exec?.command ?? ''
-        const hit = await args.cache.get(hash, { taskId: node.id, command })
+        const hit = await args.cache.get(hash, getContext(node, node.config.exec?.command ?? ''))
         preProbed.set(node.id, { hash, hit })
         if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       } catch {
