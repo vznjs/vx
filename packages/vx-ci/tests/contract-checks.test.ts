@@ -1,4 +1,4 @@
-// The check run vx-github posts is a 1.0 contract surface (docs/design/
+// The check run vx-ci posts is a 1.0 contract surface (docs/design/
 // versioning-1.0.md): a branch protection rule requires a check BY NAME,
 // and automation reads its conclusion, so a renamed check or a changed
 // conclusion breaks a repo's merges as surely as a renamed export. The
@@ -82,7 +82,7 @@ function shape(v: unknown, at: string, out: string[], values: ReadonlySet<string
   } else out.push(values.has(at) ? `${at} = ${JSON.stringify(v)}` : `${at}: ${typeof v}`)
 }
 
-it('the check run vx-github posts is shaped as tests/contract/checks.txt records', async () => {
+it('the check run vx-ci posts is shaped as tests/contract/checks.txt records', async () => {
   const lines: string[] = []
   for (const [name, record] of OUTCOMES) {
     const posts: {

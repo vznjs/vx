@@ -18,7 +18,7 @@ const FACTORIES: Record<string, string[]> = {
   'vx-lockfile': ['pnpm', 'bun', 'npm', 'yarn'],
   'vx-schedule-history': ['scheduleHistoryPlugin'],
   'vx-otel': ['otel'],
-  'vx-github': ['github'],
+  'vx-ci': ['github'],
   'vx-mcp': ['mcp'],
 }
 const LIFECYCLE = new Set(['name', 'setup', 'teardown'])

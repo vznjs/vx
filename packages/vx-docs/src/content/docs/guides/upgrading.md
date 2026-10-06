@@ -61,9 +61,9 @@ reapi() no longer accepts onWarn, tlsCaPem, tlsClientCertPem or tlsClientKeyPem;
 
 @vzn/vx-otel no longer exports buildLogsRequest, buildMetricsRequest, buildTraceRequest, resourceAttributes, runSpanAttributes, taskSpanAttributes, taskStatusCode, SEMCONV, VX_ATTR or the KeyValue, OtlpLogRecord and OtlpSpan types.
 
-## vx-github: stop exporting the Checks API helpers
+## vx-ci: stop exporting the Checks API helpers
 
-@vzn/vx-github no longer exports buildCheckRunPayload, clampSummary, postCheckRun, resolveCheckRunEnv or the CheckRunEnv type.
+@vzn/vx-ci no longer exports buildCheckRunPayload, clampSummary, postCheckRun, resolveCheckRunEnv or the CheckRunEnv type.
 
 ## plugins: refuse a plugin option value of the wrong kind
 

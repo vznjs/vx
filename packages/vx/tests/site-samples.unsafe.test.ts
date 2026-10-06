@@ -2481,7 +2481,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
 })
 
 describe('every plugin README names each option its factory takes', () => {
-  // vx-otel's README showed five of its options, vx-github's had no
+  // vx-otel's README showed five of its options, vx-ci's had no
   // `checkName`, and vx-reapi's no `instanceName`, `headers` (where a hosted
   // server's API key goes) or `tls` (J2-33). Read from each options
   // interface; a field documented as a test seam is not the user's.
@@ -2506,7 +2506,7 @@ describe('every plugin README names each option its factory takes', () => {
   }
   const cases: [string, string, string, readonly string[]][] = [
     ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
-    ['vx-github', 'vx-github/src/plugin.ts', 'GithubPluginOptions', []],
+    ['vx-ci', 'vx-ci/src/plugin.ts', 'GithubPluginOptions', []],
     ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
     ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
     ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],

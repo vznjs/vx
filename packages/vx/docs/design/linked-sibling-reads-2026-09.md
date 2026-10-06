@@ -46,7 +46,7 @@ any npm or Yarn workspace.
 - **How often the grant is computed:** once per executed sandboxed task.
   Cache hits never compute it (`armSandbox` and `sandboxRequestFor` run
   only on the execution path). Measured today on this checkout:
-  `sandboxRequestFor` for `@vzn/vx-github`, which yields 9 read entries,
+  `sandboxRequestFor` for `@vzn/vx-ci`, which yields 9 read entries,
   takes **0.57 ms min / 0.74 ms median of 30**.
 - **Who lays out the links:** the installer (probe P6). npm 10 and Yarn
   1.22 link every workspace package at the root. pnpm 12 and Bun 1.4.2

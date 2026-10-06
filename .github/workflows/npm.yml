@@ -11,7 +11,7 @@ name: npm publish
 # exchanges it for a short-lived, package-scoped credential + provenance.
 # Configure a Trusted Publisher on npmjs.com for EACH of the TWELVE package
 # names (@vzn/vx, the four @vzn/vx-<target>, and the seven plugins the
-# assemble step emits: vx-github, vx-lockfile, vx-mcp, vx-migrate, vx-otel,
+# assemble step emits: vx-ci, vx-lockfile, vx-mcp, vx-migrate, vx-otel,
 # vx-reapi, vx-schedule-history), linking this repo + this workflow.
 #
 # Every step past the setup is a `release.*` vx task (packages/vx/

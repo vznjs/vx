@@ -5,7 +5,7 @@
 The single entry point for `import x from '@vzn/vx'`. Everything in
 this file is the public API; everything else under `src/` is
 internal. This is the **cross-package contract**: the plugin packages
-(`@vzn/vx-reapi`, `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-mcp`,
+(`@vzn/vx-reapi`, `@vzn/vx-otel`, `@vzn/vx-ci`, `@vzn/vx-mcp`,
 `@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-schedule-history`) and
 any third-party plugin import everything they need from here via the
 bare `'@vzn/vx'` specifier — never a deep `src/...` path

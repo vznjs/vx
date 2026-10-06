@@ -1,7 +1,7 @@
 // The break law: a change since the last release that breaks any contract
 // record — tests/contract/ (the vendored upstream schemas aside), the
 // `--format json` schemas in schemas/, vx-mcp's tools record, vx-otel's
-// OTLP wire, vx-migrate's command lines and vx-github's check run, each
+// OTLP wire, vx-migrate's command lines and vx-ci's check run, each
 // read as `contractBreaks` reads it — fails
 // here unless
 // a commit since that tag says so (`type!:` or a `BREAKING CHANGE:`
@@ -34,7 +34,7 @@ const EXTRA_RECORDS = [
   '../vx-mcp/tests/contract/tools.json',
   '../vx-otel/tests/contract/otlp.txt',
   '../vx-migrate/tests/contract/cli.txt',
-  '../vx-github/tests/contract/checks.txt',
+  '../vx-ci/tests/contract/checks.txt',
 ]
 const isRecord = (f: string): boolean => f !== '' && !f.startsWith(`${CONTRACT_DIR}turbo-nx/`)
 

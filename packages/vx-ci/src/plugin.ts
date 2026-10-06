@@ -100,14 +100,14 @@ export class GithubSummarySink implements TelemetrySink {
       const page = clampJobSummary(markdown, MAX_JOB_SUMMARY_BYTES - used - lead.length)
       if (page === '') {
         this.warn(
-          `vx-github: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+          `vx-ci: ${this.file} already holds ${used} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
         )
       } else {
         await this.append(this.file, lead + page)
       }
     } catch (err) {
       this.warn(
-        `vx-github: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
+        `vx-ci: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
     if (this.check !== undefined) {
@@ -174,7 +174,7 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
         const fault = env === null ? null : headerValueFault(env.token)
         if (fault !== null) {
           ctx.warn(
-            `vx-github: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
+            `vx-ci: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
           )
         } else if (env !== null) {
           check = {
@@ -184,7 +184,7 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
           }
         } else if (options.checks === true) {
           ctx.warn(
-            'vx-github: checks requested but GITHUB_TOKEN / GITHUB_REPOSITORY / GITHUB_SHA are not all set — no check-run will be created',
+            'vx-ci: checks requested but GITHUB_TOKEN / GITHUB_REPOSITORY / GITHUB_SHA are not all set — no check-run will be created',
           )
         }
       }

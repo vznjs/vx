@@ -1645,7 +1645,7 @@ One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
 workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
-`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-github`,
+`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-ci`,
 `@vzn/vx-lockfile`, `@vzn/vx-mcp`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
 `@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
 

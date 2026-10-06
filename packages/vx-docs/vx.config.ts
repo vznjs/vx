@@ -144,7 +144,7 @@ export default defineProject({
     // Two rows read across project boundaries through packages this one
     // links (package.json), whose keys arrive through `install`
     // (`^build` folds each linked package's `source`, item 687): the CI
-    // guide's job summary is rendered by `@vzn/vx-github`, and the plugins
+    // guide's job summary is rendered by `@vzn/vx-ci`, and the plugins
     // guide's snippets type-check against `@vzn/vx-schedule-history`.
     test: {
       description:
@@ -158,7 +158,7 @@ export default defineProject({
             read: [
               '**/*',
               '../vx/src/**',
-              '../vx-github/src/**',
+              '../vx-ci/src/**',
               '../vx-schedule-history/src/**',
               ...PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],

@@ -307,7 +307,7 @@ since item 586 (Decisions below), not an open item.
 and v0.0.23 (f7096cea) were tagged, released with generated notes, their
 four binaries attached by the dispatched `release.yml`, and `@vzn/vx`
 with its four platform packages published by the dispatched `npm.yml`.
-That `npm.yml` run is still red at its first plugin: `@vzn/vx-github`
+That `npm.yml` run is still red at its first plugin: `@vzn/vx-ci`
 answers the OIDC publish with `E404 Not Found - PUT`, because none of
 the seven plugin names has ever been published and a trusted publisher
 cannot be bound to a name that does not exist. OWNER ACTION, once:
@@ -671,6 +671,9 @@ next?".
 
 ## Decisions (this arc)
 
+- **`@vzn/vx-github` is `@vzn/vx-ci` (owner, 2026-10-06).** Package and
+  directory renamed; the `github()` export is unchanged. A new npm
+  name needs the owner's placeholder publish and `npm trust` first.
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
   1.4.2 (`docs/design/rust-feasibility-2026-09.md`): Rust starts in
   3.3 ms against the compiled vx's 19 ms, but it is only 1.2× faster on

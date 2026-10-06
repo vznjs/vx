@@ -131,7 +131,7 @@ Three rules, each with a reason:
    relationship and `--filter '...[base]'` is its documented answer.
    Following bare specifiers would also make selection depend on
    node_modules layout and install state — measured: in this repo
-   `Bun.resolveSync('@vzn/vx', 'packages/vx-github')` realpaths through the
+   `Bun.resolveSync('@vzn/vx', 'packages/vx-ci')` realpaths through the
    self-link to `<root>/src/index.ts`, so resolving them would quietly turn
    `--affected` into partial dependent semantics, which it deliberately is
    not (`docs/cli.md:133`).

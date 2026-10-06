@@ -128,7 +128,7 @@ plugin verbs after core's when a workspace is present.
 ## What does NOT change
 
 - The three existing seams keep their contracts; `@vzn/vx-reapi`,
-  `@vzn/vx-otel`, `@vzn/vx-github` run unmodified.
+  `@vzn/vx-otel`, `@vzn/vx-ci` run unmodified.
 - `eventSink` (deprecated) is removed; `setup(ctx)` with the bus is the
   raw-event path, `telemetry` is the export path.
 - Config evaluation caching is unaffected: the cache stores the config as
