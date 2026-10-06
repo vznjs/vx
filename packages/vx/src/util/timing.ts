@@ -10,6 +10,10 @@
 
 const enabled = process.env.VX_TIMING !== undefined && process.env.VX_TIMING !== ''
 let t0 = Bun.nanoseconds()
+// The wall clock at t0, read then: `performance.timeOrigin` plus the
+// monotonic clock drifted 34 ms from `Date.now()` on macOS CI, so stages
+// drawn from it sat outside the run they belong to.
+let wall0 = Date.now()
 const marks: Array<[label: string, ns: number]> = []
 
 let begun = false
@@ -39,10 +43,9 @@ export interface StageTime {
 
 /** The stages marked so far, each from the previous mark's end (the first from this module's load). */
 export function stageTimes(): StageTime[] {
-  const origin = performance.timeOrigin + Number(t0) / 1e6
   let prev = 0
   return marks.map(([name, ns]) => {
-    const stage = { name, startedAt: origin + prev / 1e6, endedAt: origin + ns / 1e6 }
+    const stage = { name, startedAt: wall0 + prev / 1e6, endedAt: wall0 + ns / 1e6 }
     prev = ns
     return stage
   })
@@ -58,6 +61,7 @@ const noop = (): void => {}
  */
 export function restartTimings(): void {
   t0 = Bun.nanoseconds()
+  wall0 = Date.now()
   marks.length = 0
   spans.clear()
 }

@@ -22,7 +22,9 @@ second `run()`) restarts the table the same way.
 
 The stage marks are kept whether or not the table prints, and
 `stageTimes()` hands them to the run's telemetry summary as wall
-windows in epoch ms (`StageTime`: `name`, `startedAt`, `endedAt`), which
+windows in epoch ms (`StageTime`: `name`, `startedAt`, `endedAt`),
+anchored to `Date.now()` read when the table starts, the clock task
+times use (`performance.timeOrigin` drifted 34 ms from it on macOS), which
 vx-otel draws as child spans of the run
 (`tests/telemetry-trace-facts.test.ts`).
 
