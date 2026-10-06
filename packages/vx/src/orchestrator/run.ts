@@ -752,6 +752,8 @@ async function runOnBus(
         arch: hostContext.arch,
         workspaceId: wsIdentity.id,
         workspaceName: wsIdentity.name,
+        ...(wsIdentity.repository !== undefined ? { repository: wsIdentity.repository } : {}),
+        ...(wsIdentity.path !== undefined ? { workspacePath: wsIdentity.path } : {}),
         tags: maskTags(options.tags ?? {}),
       }
       telemetry = await subscribeTelemetry(

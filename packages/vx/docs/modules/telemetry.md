@@ -68,6 +68,8 @@ interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string // from the normalized git remote (v2)
   workspaceName: string
+  repository?: string // the origin remote, normalized: `github.com/org/repo`
+  workspacePath?: string // the workspace root inside its git work tree, `.` at the top
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null // a trunk run: branch === defaultBranch (v2)

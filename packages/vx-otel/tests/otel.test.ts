@@ -14,6 +14,7 @@ import type {
 import {
   buildMetricsRequest,
   buildTraceRequest,
+  runResource,
   runSpanAttributes,
   taskSpanAttributes,
   taskSpanEvents,
@@ -42,6 +43,13 @@ const RUN: RunContextRecord = {
   os: 'linux',
   arch: 'x64',
   tags: { env: 'prod' },
+}
+
+/** Every field: a new one is a type error here until the pin below names it. */
+const FULL_RUN: Required<RunContextRecord> = {
+  ...RUN,
+  repository: 'github.com/vznjs/vx',
+  workspacePath: 'tools/ws',
 }
 
 /** Run context every task span carries so it is readable on its own. */
@@ -861,7 +869,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
 describe('OTLP losslessness', () => {
   it('pins the RunContextRecord field set the run span must carry', () => {
     // A new field here fails until it is mapped below.
-    expect(Object.keys(RUN).sort()).toEqual([
+    expect(Object.keys(FULL_RUN).sort()).toEqual([
       'arch',
       'branch',
       'cachePolicy',
@@ -875,13 +883,31 @@ describe('OTLP losslessness', () => {
       'flow',
       'host',
       'os',
+      'repository',
       'requestedTasks',
       'runId',
       'tags',
       'vxVersion',
       'workspaceId',
       'workspaceName',
+      'workspacePath',
     ])
+  })
+
+  it('names the repository and the workspace path in it, on the span and every resource', () => {
+    const want = {
+      'vcs.repository.url.full': 'https://github.com/vznjs/vx',
+      'vcs.repository.name': 'vx',
+      'vcs.owner.name': 'vznjs',
+      'vcs.provider.name': 'github',
+      'vx.workspace.path': 'tools/ws',
+    }
+    const a = attrMap(runSpanAttributes(FULL_RUN) as never)
+    const pick = (m: Record<string, unknown>) =>
+      Object.fromEntries(Object.keys(want).map((k) => [k, m[k]]))
+    expect([pick(a), pick(runResource(FULL_RUN))]).toEqual([want, want])
+    // Absent ones send nothing, not an empty string.
+    expect(Object.keys(runResource(RUN)).filter((k) => k.startsWith('vcs.repository'))).toEqual([])
   })
 
   it('pins the TaskTelemetry field set the task span must carry', () => {
@@ -1727,6 +1753,8 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
         a: 'traces only',
         'x-top': 'opt',
       },
+      // Live (the default) sent the task's metrics as it ended: the shared `a`.
+      'http://c/v1/metrics': { 'content-type': 'application/json', a: 'shared', 'x-top': 'opt' },
     })
   })
 })
@@ -2475,7 +2503,7 @@ describe('live mode', () => {
   }
 
   it('sends each task as it ends, before the run does', async () => {
-    const { cfg, calls } = mkConfig({ live: true })
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 20 })
     const sink = new OtelSink(cfg)
     sink.onRecord({
       v: 3,
@@ -2486,7 +2514,7 @@ describe('live mode', () => {
       startedAt: 1000,
     } as TelemetryRecord)
     drive(sink, 'a#build', 1001)
-    await Bun.sleep(0)
+    await Bun.sleep(80)
     // Mid-run: the task's span, its metrics, its tail and both starts are out.
     expect([spanNames(calls), eventNames(calls).sort()]).toEqual([
       ['vx.task'],
@@ -2497,9 +2525,34 @@ describe('live mode', () => {
     sink.onRecord({ v: 3, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
     sink.onRunSummary(summaryFor(RUN, [task('a#build'), task('b#build')]))
     await sink.flush()
-    // Each span once; the root last, with the run's end.
-    expect(spanNames(calls)).toEqual(['vx.task', 'vx.task', 'vx.run'])
+    // Each span once: the first task's mid-run, the rest (root included) at the end.
+    expect(spanNames(calls).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'vx.run',
+      'vx.task',
+      'vx.task',
+    ])
     expect(eventNames(calls).filter((n) => n === 'tail')).toHaveLength(2)
+  })
+
+  it('what ends within one window goes in one send, and nothing before it', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 50 })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 3,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    for (const [i, id] of ['a#build', 'b#build', 'c#build'].entries()) drive(sink, id, 1001 + i)
+    await Bun.sleep(10)
+    expect(calls).toEqual([])
+    await Bun.sleep(120)
+    expect([calls.filter((c) => c.url.endsWith('/v1/traces')).length, spanNames(calls)]).toEqual([
+      1,
+      ['vx.task', 'vx.task', 'vx.task'],
+    ])
   })
 
   it('without it, nothing leaves before the run ends', async () => {
@@ -2525,6 +2578,7 @@ describe('live mode', () => {
     const warns: string[] = []
     const { cfg } = mkConfig({
       live: true,
+      liveBatchMs: 5,
       post: async () => {
         throw new Error('refused')
       },
@@ -2541,7 +2595,7 @@ describe('live mode', () => {
     } as TelemetryRecord)
     for (const [i, id] of ['a#build', 'b#build', 'c#build'].entries()) {
       drive(sink, id, 1001 + i * 20)
-      await Bun.sleep(0)
+      await Bun.sleep(40)
     }
     // Three sends refused per signal; one word of each.
     expect(
@@ -2676,4 +2730,83 @@ describe('signals link to each other', () => {
       attributes: [{ key: 'vx.sandbox.violations_dropped', value: { intValue: '3' } }],
     })
   })
+})
+
+describe('a slow collector never holds the run', () => {
+  it('a live send hanging when the run ends is cut at the flush deadline, not left open', async () => {
+    const held: Request[] = []
+    let release = (): void => undefined
+    const hanging = new Promise<Response>((resolve) => {
+      release = () => resolve(new Response('late'))
+    })
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        held.push(req)
+        return hanging
+      },
+    })
+    try {
+      const base = `http://localhost:${server.port}`
+      const sink = new OtelSink({
+        tracesUrl: `${base}/v1/traces`,
+        metricsUrl: `${base}/v1/metrics`,
+        logsUrl: `${base}/v1/logs`,
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        live: true,
+        liveBatchMs: 10,
+        // The transport's own timeout is far past the test: only the deadline can end it.
+        timeoutMs: 60_000,
+      })
+      const t0 = performance.now()
+      sink.onRecord({
+        v: 3,
+        kind: 'run.start',
+        run: RUN,
+        total: 1,
+        ts: 0,
+        startedAt: 0,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 3,
+        kind: 'task.start',
+        runId: 'run-1',
+        taskId: 'a#build',
+        project: 'a',
+        task: 'build',
+        ts: 1,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 3,
+        kind: 'task.end',
+        runId: 'run-1',
+        ts: 2,
+        taskId: 'a#build',
+        project: 'a',
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+      } as TelemetryRecord)
+      // Handing records over never waits on the network.
+      expect(performance.now() - t0).toBeLessThan(50)
+      while (held.length === 0) await Bun.sleep(5)
+      const deadline = new AbortController()
+      setTimeout(() => deadline.abort(new Error('deadline')), 100)
+      const started = Date.now()
+      await sink.flush(deadline.signal)
+      expect(Date.now() - started).toBeLessThan(2_000)
+      // The live request itself was aborted: nothing keeps the process alive.
+      // The server hears the client's close a turn later.
+      for (let i = 0; i < 100 && !held.every((r) => r.signal.aborted); i++) await Bun.sleep(10)
+      expect([held.length > 0, held.every((r) => r.signal.aborted)]).toEqual([true, true])
+    } finally {
+      release()
+      await server.stop(true)
+    }
+  }, 10_000)
 })

@@ -55,6 +55,10 @@ const SEMCONV = {
   taskRunResult: 'cicd.pipeline.task.run.result',
   vcsHeadRevision: 'vcs.ref.head.revision',
   vcsHeadName: 'vcs.ref.head.name',
+  vcsRepositoryUrl: 'vcs.repository.url.full',
+  vcsRepositoryName: 'vcs.repository.name',
+  vcsOwnerName: 'vcs.owner.name',
+  vcsProviderName: 'vcs.provider.name',
   serviceName: 'service.name',
   serviceVersion: 'service.version',
   serviceInstanceId: 'service.instance.id',
@@ -84,6 +88,7 @@ const VX_ATTR = {
   schema: 'vx.telemetry.schema',
   workspaceId: 'vx.workspace.id',
   workspaceName: 'vx.workspace.name',
+  workspacePath: 'vx.workspace.path',
   command: 'vx.command',
   requestedTasks: 'vx.requested_tasks',
   cachePolicy: 'vx.cache_policy',
@@ -282,8 +287,9 @@ function resourceAttributes(
 
 /**
  * The run as resource attributes, so every signal it sends (spans, metric
- * points, log records) names the same run and host: a backend joins them on
- * `service.instance.id`. Under `OTEL_RESOURCE_ATTRIBUTES`, which wins.
+ * points, log records) names the same run, host, repository and workspace: a
+ * backend joins them on `service.instance.id`. Under `OTEL_RESOURCE_ATTRIBUTES`,
+ * which wins.
  */
 export function runResource(run: RunContextRecord): Record<string, string> {
   const r: Record<string, string> = {
@@ -293,9 +299,37 @@ export function runResource(run: RunContextRecord): Record<string, string> {
     [SEMCONV.hostArch]: run.arch === 'x64' ? 'amd64' : run.arch,
   }
   if (run.host !== null) r[SEMCONV.hostName] = run.host
+  for (const [k, v] of repositoryFields(run)) r[k] = v
   if (run.commitSha !== null) r[SEMCONV.vcsHeadRevision] = run.commitSha
   if (run.branch !== null) r[SEMCONV.vcsHeadName] = run.branch
   return r
+}
+
+const VCS_PROVIDERS: Readonly<Record<string, string>> = {
+  'github.com': 'github',
+  'gitlab.com': 'gitlab',
+  'bitbucket.org': 'bitbucket',
+  'codeberg.org': 'gitea',
+}
+
+/**
+ * The repository (from the normalized origin remote, `host/owner/name`) as
+ * the VCS conventions name it, and where in it the workspace sits.
+ */
+function repositoryFields(run: RunContextRecord): [key: string, value: string][] {
+  const fields: [string, string][] = []
+  if (run.repository !== undefined) {
+    const parts = run.repository.split('/')
+    fields.push(
+      [SEMCONV.vcsRepositoryUrl, `https://${run.repository}`],
+      [SEMCONV.vcsRepositoryName, parts.at(-1)!],
+    )
+    if (parts.length >= 3) fields.push([SEMCONV.vcsOwnerName, parts.at(-2)!])
+    const provider = VCS_PROVIDERS[parts[0]!]
+    if (provider !== undefined) fields.push([SEMCONV.vcsProviderName, provider])
+  }
+  if (run.workspacePath !== undefined) fields.push([VX_ATTR.workspacePath, run.workspacePath])
+  return fields
 }
 
 /**
@@ -318,6 +352,7 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
     intAttr(VX_ATTR.schema, TELEMETRY_SCHEMA_VERSION),
     strAttr(VX_ATTR.workspaceId, run.workspaceId),
     strAttr(VX_ATTR.workspaceName, run.workspaceName),
+    ...repositoryFields(run).map(([k, v]) => strAttr(k, v)),
     strAttr(VX_ATTR.command, run.command),
     strAttr(VX_ATTR.requestedTasks, run.requestedTasks.join(',')),
     strAttr(VX_ATTR.cachePolicy, run.cachePolicy),

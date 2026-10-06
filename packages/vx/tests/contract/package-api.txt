@@ -1106,6 +1106,8 @@ export interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string
   workspaceName: string
+  repository?: string
+  workspacePath?: string
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null
@@ -1626,6 +1628,8 @@ export interface WorkspaceHookContext {
 export interface WorkspaceIdentity {
   id: string
   name: string
+  repository?: string
+  path?: string
 }
 == runtime values
 LOG_WIRE_VERSION = 1

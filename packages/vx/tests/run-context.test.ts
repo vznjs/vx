@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -369,6 +369,30 @@ describe('captureWorkspaceIdentity', () => {
     const identity = captureWorkspaceIdentity(dir)
     expect(identity.id).toMatch(/^[0-9a-f]{16}$/)
     expect(identity.name).toBe(path.basename(dir))
+    expect([identity.repository, identity.path]).toEqual([undefined, undefined])
+  })
+
+  it('names the repository and where in it the workspace sits', async () => {
+    git('init', '-q')
+    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    const nested = path.join(dir, 'tools', 'ws')
+    await mkdir(nested, { recursive: true })
+    const top = captureWorkspaceIdentity(dir)
+    const sub = captureWorkspaceIdentity(nested)
+    expect([top.repository, top.path, sub.repository, sub.path]).toEqual([
+      'github.com/vznjs/vx',
+      '.',
+      'github.com/vznjs/vx',
+      'tools/ws',
+    ])
+  })
+
+  it('finds the work tree through a `.git` file, as a worktree has', async () => {
+    // A linked worktree or submodule holds `.git` as a FILE naming the git dir.
+    const nested = path.join(dir, 'apps')
+    await mkdir(nested, { recursive: true })
+    await Bun.write(path.join(dir, '.git'), 'gitdir: /elsewhere\n')
+    expect(captureWorkspaceIdentity(nested).path).toBe('apps')
   })
 })
 

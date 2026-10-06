@@ -328,7 +328,7 @@ export default defineWorkspace({
 | `logs`            | `OTEL_LOGS_EXPORTER=none` turns it off | `true`                  |
 | `timeoutMs`       | `OTEL_EXPORTER_OTLP_TIMEOUT`           | `15000`                 |
 | `compression`     | `OTEL_EXPORTER_OTLP_COMPRESSION` (and `_<SIGNAL>_`) | `'none'`   |
-| `live`            | none: send each task as it ends        | `false`                 |
+| `live`            | none: send each task as it ends        | `true`                  |
 
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
@@ -338,12 +338,13 @@ export default defineWorkspace({
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`, `vx.run.time_saved_ms` |
 | metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory`, `vx.task.time_saved`, `vx.task.admission_held` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs; each point names its span as an exemplar |
 | a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |
-| every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`: one key joins a run's traces, metrics and logs |
+| every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`, `vcs.repository.*`, `vx.workspace.path` (the workspace root in its repository): one key joins a run's traces, metrics and logs |
 
-With `live: true` (say, `otel({ live: process.env.CI === 'true' })`) each
-task is sent as it ends, and a log record as the run and each task start,
-so a dashboard follows a CI run while it runs; the run span follows at
-the end.
+By default each task is sent as it ends (batched, at most one send a
+second), and a log record as the run and each task start, so a dashboard
+follows a CI run while it runs; the run span follows at the end.
+`live: false` sends it all at the end. A send never holds a task, and one
+a collector never answers is cut at the end-of-run deadline.
 
 A failed task sets its span status to `ERROR`. A failed export warns once
 and names the reply; a slow collector is cut off after `timeoutMs`, and

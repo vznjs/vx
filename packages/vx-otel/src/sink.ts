@@ -71,6 +71,8 @@ export interface OtelSinkConfig {
   tls?: Partial<Record<OtelSignal, OtlpTls>>
   /** Send each task's span, metrics and log as it ends, not all at the run's end. */
   live?: boolean
+  /** Live mode's batch window (ms): what ends within it goes in one send. Default 1000. */
+  liveBatchMs?: number
   /** False under `OTEL_TRACES_EXPORTER=none`; absent is true. */
   tracesEnabled?: boolean
   metricsEnabled: boolean
@@ -119,6 +121,7 @@ function isCertificateRefusal(err: unknown): boolean {
 }
 
 const RETRY_DELAYS_MS = [200, 800] as const
+const LIVE_BATCH_MS = 1000
 const MAX_TIMER_MS = 2 ** 31 - 1
 const MAX_RETRY_AFTER_MS = 2000
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
@@ -294,7 +297,8 @@ export class OtelSink implements TelemetrySink {
   private readonly liveLogs: TaskLogEntry[] = []
   private readonly liveEvents: LiveEvent[] = []
   private pumping: Promise<void> | undefined
-  private readonly warnedLive = new Set<OtelSignal>()
+  private window: ReturnType<typeof setTimeout> | undefined
+  private readonly warned = new Set<OtelSignal>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
   // Core's own bounded capture buffer, so which task's output survives a
@@ -318,6 +322,7 @@ export class OtelSink implements TelemetrySink {
       headers: config.headers,
       signalHeaders: config.signalHeaders ?? {},
       live: config.live === true,
+      liveBatchMs: config.liveBatchMs ?? LIVE_BATCH_MS,
       tracesEnabled: config.tracesEnabled !== false,
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
@@ -467,8 +472,13 @@ export class OtelSink implements TelemetrySink {
     }
   }
 
-  /** Core's flush deadline, passed to every POST. */
-  private deadline: AbortSignal | undefined
+  /**
+   * Every POST's signal, live ones included: core's flush deadline aborts
+   * it, so a send still hanging on a slow collector when the run ends is
+   * cut there, not left holding the process open (item 1055).
+   */
+  private readonly lifetime = new AbortController()
+  private readonly deadline = this.lifetime.signal
 
   /** The task's span, for its metric points' exemplars; none with traces off. */
   private spanOf(taskId: string): { span?: { traceId: string; spanId: string } } {
@@ -482,31 +492,42 @@ export class OtelSink implements TelemetrySink {
     if (this.cfg.live && this.cfg.logsEnabled) this.liveEvents.push(event)
   }
 
-  /** Live mode: send what is waiting, unless a send is already on its way (it takes it next). */
+  /**
+   * Live mode: send what is waiting once the batch window has passed, unless
+   * a window or a send is already open (it takes this too). A request per
+   * task cost the run a millisecond of CPU each; a window holds them to a
+   * few a second.
+   */
   private kick(): void {
-    if (!this.cfg.live || this.pumping !== undefined || this.uploaded) return
-    this.pumping = Promise.resolve()
-      .then(() => this.pump())
-      .finally(() => {
+    if (!this.cfg.live || this.uploaded || this.window !== undefined) return
+    if (this.pumping !== undefined) return
+    this.window = setTimeout(() => {
+      this.window = undefined
+      this.pumping = this.pump().finally(() => {
         this.pumping = undefined
+        if (this.waiting()) this.kick()
       })
+    }, this.cfg.liveBatchMs)
+    this.window.unref()
   }
 
+  private waiting(): boolean {
+    return (
+      this.spans.length + this.taskPoints.length + this.liveLogs.length + this.liveEvents.length > 0
+    )
+  }
+
+  /** Sends everything waiting now, as one request per signal (or a few, when large). */
   private async pump(): Promise<void> {
-    while (
-      this.spans.length + this.taskPoints.length + this.liveLogs.length + this.liveEvents.length >
-      0
-    ) {
-      const spans = this.spans.splice(0)
-      const points = this.taskPoints.splice(0)
-      const logs = this.liveLogs.splice(0)
-      const events = this.liveEvents.splice(0)
-      await Promise.all([
-        this.shipSpans(spans, true),
-        this.shipPoints(points),
-        this.shipLiveLogs(logs, events),
-      ])
-    }
+    const spans = this.spans.splice(0)
+    const points = this.taskPoints.splice(0)
+    const logs = this.liveLogs.splice(0)
+    const events = this.liveEvents.splice(0)
+    await Promise.all([
+      this.shipSpans(spans),
+      this.shipPoints(points),
+      this.shipLiveLogs(logs, events),
+    ])
   }
 
   private async shipPoints(points: TaskMetricPoint[]): Promise<void> {
@@ -517,7 +538,7 @@ export class OtelSink implements TelemetrySink {
         buildTaskMetricsRequest(this.cfg.serviceName, vxVersion, group, this.resource),
       ),
     )
-    await this.send('metrics', this.cfg.metricsUrl, bodies, true)
+    await this.send('metrics', this.cfg.metricsUrl, bodies)
   }
 
   private async shipLiveLogs(logs: TaskLogEntry[], events: LiveEvent[]): Promise<void> {
@@ -540,7 +561,7 @@ export class OtelSink implements TelemetrySink {
           )
         : []),
     ]
-    if (bodies.length > 0) await this.send('logs', this.cfg.logsUrl, bodies, true)
+    if (bodies.length > 0) await this.send('logs', this.cfg.logsUrl, bodies)
   }
 
   onRunSummary(summary: RunSummaryRecord): void {
@@ -550,11 +571,11 @@ export class OtelSink implements TelemetrySink {
   async flush(signal?: AbortSignal): Promise<void> {
     if (this.uploaded) return
     this.uploaded = true
-    this.deadline = signal
-    // Live: what is on its way lands before the rest, which the run's end sends.
-    if (this.cfg.live) {
-      await this.pumping
-      await this.pump()
+    clearTimeout(this.window)
+    if (signal !== undefined) {
+      if (signal.aborted) this.lifetime.abort(signal.reason)
+      else
+        signal.addEventListener('abort', () => this.lifetime.abort(signal.reason), { once: true })
     }
     // Finalize the root span now that the run is over (run.end set the end).
     if (this.run !== undefined && this.traceId) {
@@ -583,20 +604,29 @@ export class OtelSink implements TelemetrySink {
       )
       this.spans.splice(1, 0, ...stages)
     }
-    await Promise.all([this.shipTraces(), this.shipMetrics(), this.shipLogs()])
+    // Live: a send still on its way is not waited for before the rest; the
+    // pump takes what is left (the root span included) beside it, and the
+    // run's metrics go with no task point left to carry.
+    await Promise.all([
+      this.pumping,
+      this.cfg.live ? this.pump() : undefined,
+      this.shipTraces(),
+      this.shipMetrics(),
+      this.shipLogs(),
+    ])
   }
 
   private async shipTraces(): Promise<void> {
-    await this.shipSpans(this.spans, false)
+    await this.shipSpans(this.spans)
   }
 
-  private async shipSpans(spans: OtlpSpan[], live: boolean): Promise<void> {
+  private async shipSpans(spans: OtlpSpan[]): Promise<void> {
     if (this.cfg.tracesEnabled === false || spans.length === 0) return
     const vxVersion = this.run?.vxVersion ?? '0.0.0'
     const bodies = requestBodies(spans, (group) =>
       JSON.stringify(buildTraceRequest(this.cfg.serviceName, vxVersion, group, this.resource)),
     )
-    await this.send('traces', this.cfg.tracesUrl, bodies, live)
+    await this.send('traces', this.cfg.tracesUrl, bodies)
   }
 
   private async shipMetrics(): Promise<void> {
@@ -667,16 +697,8 @@ export class OtelSink implements TelemetrySink {
     return own === undefined || this.injected ? this.cfg.post : defaultPost(own)
   }
 
-  /**
-   * POSTs every body at once; one warning per signal, however many fail, and
-   * live sends (`once`) one per signal for the whole run.
-   */
-  private async send(
-    signal: OtelSignal,
-    url: string,
-    bodies: readonly string[],
-    once = false,
-  ): Promise<void> {
+  /** POSTs every body at once; one warning per signal for the run, however many fail. */
+  private async send(signal: OtelSignal, url: string, bodies: readonly string[]): Promise<void> {
     const gzip = this.cfg.gzip.includes(signal)
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -700,11 +722,8 @@ export class OtelSink implements TelemetrySink {
       )
     ).filter((m) => m !== undefined)
     // export is fully optional — a down collector never affects a run
-    if (failed.length === 0) return
-    if (once) {
-      if (this.warnedLive.has(signal)) return
-      this.warnedLive.add(signal)
-    }
+    if (failed.length === 0 || this.warned.has(signal)) return
+    this.warned.add(signal)
     // Name the URL: three signals ship concurrently and each is caught
     // here on its own, so a bare "export failed" cannot tell a down
     // collector from one misconfigured signal endpoint.

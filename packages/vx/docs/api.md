@@ -1761,6 +1761,8 @@ export interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string
   workspaceName: string
+  repository?: string
+  workspacePath?: string
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null
@@ -2485,5 +2487,7 @@ type · `src/orchestrator/run-context.ts`
 export interface WorkspaceIdentity {
   id: string
   name: string
+  repository?: string
+  path?: string
 }
 ```

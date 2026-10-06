@@ -43,7 +43,8 @@ export interface OtelPluginOptions {
   /**
    * Send each task's span, metrics and log as it ends, and a log record as
    * the run and each task start, instead of everything at the run's end: a
-   * dashboard follows the run while it runs. Default: false.
+   * dashboard follows the run while it runs. Default: true; `false` sends
+   * everything at the run's end.
    */
   live?: boolean
   /** Per-request timeout (ms). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
@@ -360,7 +361,7 @@ export function resolveOtelConfig(
     ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
-    ...(opts.live === true ? { live: true } : {}),
+    live: opts.live !== false,
     timeoutMs,
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
     // shared one; it was not read (F-49). The option tops both.
