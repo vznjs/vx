@@ -21,6 +21,7 @@ import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs
 import { rm, rmdir } from 'node:fs/promises'
 import type { CacheConfig, CacheInputs } from '../config.js'
 import {
+  anyTaskGlob,
   asTrees,
   isExecutableMissing,
   isLiteralPattern,
@@ -249,10 +250,10 @@ async function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return []
 
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
+  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
   // A path the task's own outputs take back with `!` is no output, so it
   // stays an input (A-44).
-  const ownOutput = outputMatcher(args.ownWorkspaceOutputs, globFor)
+  const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
@@ -281,8 +282,8 @@ async function resolveWorkspaceFiles(args: {
     args,
     gitFiles,
     positive,
-    positiveGlobs,
-    (rel) => excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel),
+    anyTaskGlob(asTrees(positive)),
+    (rel) => isExcluded(rel) || ownOutput(rel),
     undecodable,
   )
   if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
@@ -293,7 +294,7 @@ async function resolveWorkspaceFilesOver(
   args: { workspaceRoot: string; gitFilesCache?: GitFilesCache },
   gitFiles: readonly string[],
   positive: readonly string[],
-  positiveGlobs: readonly Bun.Glob[],
+  isPositive: (rel: string) => boolean,
   excluded: (rel: string) => boolean,
   undecodable: ReadonlySet<string> | undefined,
 ): Promise<string[]> {
@@ -301,13 +302,13 @@ async function resolveWorkspaceFilesOver(
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = new Set(
+  const unmatchedLiterals = unanswered(
     positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+    gitFiles,
   )
   const candidates: string[] = []
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
-    if (!positiveGlobs.some((g) => g.match(rel))) continue
+    if (!isPositive(rel)) continue
     if (excluded(rel)) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
   }
@@ -935,11 +936,37 @@ function stripTrailingSlash(p: string): string {
 // unchanged.
 export { asTrees } from '../util/index.js'
 
-/** A literal is answered by the path itself or by anything under it. */
-function settleLiterals(unmatched: Set<string>, rel: string): void {
-  for (const lit of unmatched) {
-    if (rel === lit || rel.startsWith(`${lit}/`)) unmatched.delete(lit)
+/**
+ * The literals no path in `files` answers; a literal is answered by the
+ * path itself or by anything under it. Git lists in order, so a binary
+ * search finds the answer; a listing out of code-unit order (git sorts
+ * bytes) can hide one from it, so only a walk says a literal is
+ * unanswered. Testing every literal against every file was ~1.5 ms of a
+ * 1,800-file all-cached run (2026-10-06).
+ */
+function unanswered(literals: readonly string[], files: readonly string[]): Set<string> {
+  const left = new Set<string>()
+  for (const lit of literals) {
+    const under = `${lit}/`
+    const answered =
+      files[lowerBound(files, lit)] === lit ||
+      files[lowerBound(files, under)]?.startsWith(under) === true ||
+      files.some((rel) => rel === lit || rel.startsWith(under))
+    if (!answered) left.add(lit)
   }
+  return left
+}
+
+/** The first index whose path is not below `key`. */
+function lowerBound(files: readonly string[], key: string): number {
+  let lo = 0
+  let hi = files.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (files[mid]! < key) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 /**
@@ -1065,10 +1092,11 @@ function refuseOneAlternativeBrace(
 interface FilesPlan {
   positive: string[]
   negative: string[]
-  excludeGlobs: Bun.Glob[]
+  isExcluded: (rel: string) => boolean
   ownOutput: (rel: string) => boolean
   positiveGlobs: Bun.Glob[]
-  /** The literal entries, each naming one path (see `unmatchedLiterals`). */
+  isPositive: (rel: string) => boolean
+  /** The literal entries, each naming one path (see `unanswered`). */
   literals: string[]
   /**
    * Whether a project-relative path is an input by the declaration alone:
@@ -1112,11 +1140,12 @@ function filesPlan(
       : {
           positive,
           negative,
-          excludeGlobs: [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor),
+          isExcluded: anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]),
           // A path the task's own outputs take back with `!` is no output, so it
           // stays an input: a tracked file under `dist` the build reads (A-44).
-          ownOutput: outputMatcher(ownOutputs, globFor),
+          ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
+          isPositive: anyTaskGlob(asTrees(positive)),
           literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
           verdicts: new Map<string, boolean>(),
         }
@@ -1149,10 +1178,7 @@ export function declaresInput(
 function inPlan(plan: FilesPlan, rel: string): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {
-    input =
-      plan.positiveGlobs.some((g) => g.match(rel)) &&
-      !plan.excludeGlobs.some((g) => g.match(rel)) &&
-      !plan.ownOutput(rel)
+    input = plan.isPositive(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel)
     plan.verdicts.set(rel, input)
   }
   return input
@@ -1168,13 +1194,10 @@ function workspaceMatcher(
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
-  const positiveGlobs = asTrees(positive).map(globFor)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
-  const ownOutput = outputMatcher(ownOutputs, globFor)
-  m = (rel) =>
-    positiveGlobs.some((g) => g.match(rel)) &&
-    !excludeGlobs.some((g) => g.match(rel)) &&
-    !ownOutput(rel)
+  const isPositive = anyTaskGlob(asTrees(positive))
+  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
+  const ownOutput = outputMatcher(ownOutputs)
+  m = (rel) => isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
   workspaceMatchers.set(key, m)
   return m
 }
@@ -1182,7 +1205,7 @@ function workspaceMatcher(
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const plan = filesPlan(args.files, args.ownOutputs)
   if (plan === null) return []
-  const { positive, negative, excludeGlobs, ownOutput, positiveGlobs } = plan
+  const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
 
@@ -1233,7 +1256,6 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(plan.literals)
   // First pass: glob-filter to candidate absolute paths (no I/O). Git
   // prints normalized relative paths, so under an absolute, normalized
   // project dir a join is a concatenation: `path.resolve` per file was
@@ -1249,18 +1271,15 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const candidates: string[] = []
   const verdicts = plan.verdicts
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
     let input = verdicts.get(rel)
     if (input === undefined) {
-      input =
-        positiveGlobs.some((g) => g.match(rel)) &&
-        !excludeGlobs.some((g) => g.match(rel)) &&
-        !ownOutput(rel)
+      input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
     if (!input || nested(rel)) continue
     candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
+  const unmatchedLiterals = unanswered(plan.literals, gitFiles)
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
   }

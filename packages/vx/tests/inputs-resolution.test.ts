@@ -1268,6 +1268,16 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/a.ts', 'keep.ts'])
   })
 
+  it('a directory literal settles past a sibling that sorts between it and its tree', async () => {
+    // The listing is searched before it is walked: `gen-a.ts` sorts after
+    // `gen` and before `gen/x.ts` (`-` is below `/`), where a search for
+    // `gen` alone lands.
+    await write(path.join(projectDir, 'gen-a.ts'), 'a')
+    await write(path.join(projectDir, 'gen', 'x.ts'), 'x')
+
+    expect(await filesOf(['gen'])).toEqual(['gen/x.ts'])
+  })
+
   it('a sibling that merely SHARES A PREFIX does not settle it', async () => {
     // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
     // starts with `gen` and settles the literal `gen` — so a gitignored

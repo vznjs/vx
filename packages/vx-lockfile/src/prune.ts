@@ -22,7 +22,6 @@ import {
   loadWorkspace,
   UserError,
   type CommandContext,
-  type PluginCommand,
   type ProjectMeta,
 } from '@vzn/vx'
 import * as bunLock from './bun.js'
@@ -66,12 +65,6 @@ const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] a
 /** `from '…'`, `import '…'`, `import('…')`: static specifiers only. */
 const SPECIFIER_RE = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g
 
-/** One object for all four plugins, so a workspace declaring two still has one `prune`. */
-export const pruneCommand: PluginCommand = {
-  description: 'copy projects and their workspace deps, lockfile pruned, for a Docker build',
-  run: (argv, ctx) => prune(argv, ctx),
-}
-
 interface Args {
   readonly projects: readonly string[]
   readonly outDir: string
@@ -110,7 +103,7 @@ const posix = (p: string): string => p.split(path.sep).join('/')
 /** `a` within `dir`, or `dir` itself. */
 const within = (a: string, dir: string): boolean => a === dir || a.startsWith(dir + path.sep)
 
-async function prune(argv: readonly string[], ctx: CommandContext): Promise<number> {
+export async function prune(argv: readonly string[], ctx: CommandContext): Promise<number> {
   const args = parseArgs(argv)
   if (args === null) {
     process.stdout.write(`${USAGE}\n`)
