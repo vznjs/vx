@@ -1305,18 +1305,17 @@ hit replays it with pure SQL, never decompressing the artifact).
 
 ### SQLite tables
 
-`schema_meta.version` is the gate: an index written by an EARLIER
-`SCHEMA_VERSION` is reset on the first run after an upgrade (pre-alpha:
-no migrations): every table but `schema_meta` is dropped and recreated,
+`schema_meta.version` is the gate: an index written by any other
+`SCHEMA_VERSION`, earlier or newer, is reset by the first run that opens
+it (pre-alpha: no migrations; the index is an inventory, owner
+2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
 `output_dirs` kept an earlier vx's columns).
-Two openers leave it untouched and say why (item 896): a reading verb
-(`vx why`, `vx last`, `vx info`) refuses an index it cannot read
-(`vx cache prune --dry-run` previews the reset instead, item 1083), and every opener, a run too, refuses a NEWER
-schema. That one is another vx's index and history, and an older binary
-beside a newer one used to drop it.
+A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
+says why (item 896; `vx cache prune --dry-run` previews the reset
+instead, item 1083).
 That open says so once, on the run's status line or the verb's stderr
-(`[vx] cache index reset: schema v24 → v25 (vx upgraded); …`). The
+(`[vx] cache index reset: schema v24 → v25 (vx version changed); …`). The
 artifacts stay: each is indexed again from its own bytes when its task
 next asks for its key (below).
 
@@ -1682,7 +1681,7 @@ A bump is announced, never silent (roadmap 3.3, item 671): the cache
 records the version it was written under (`schema_meta.cache_version`),
 and the first open after an upgrade prints one line, on the run's
 status line or a verb's stderr: `[vx] cache format changed:
-vx-cache-v27 → vx-cache-v28 (vx upgraded); …`. The index survives, so
+vx-cache-v27 → vx-cache-v28 (vx version changed); …`. The index survives, so
 the old entries stay until they age out under `vx cache prune
 --older-than` or `cacheRetention`; no key derives to them again. A
 bump that lands with a `SCHEMA_VERSION` reset says the reset alone. A

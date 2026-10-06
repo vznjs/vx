@@ -120,7 +120,7 @@ describe('a schema reset says so once', () => {
     pokeVersion('v0')
     const notices = await runOnce()
     expect(notices).toHaveLength(1)
-    expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/)
+    expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/)
     expect(notices[0]).toContain('each artifact is indexed again when its task next hits')
     // Control: the version now matches, so the next run says nothing.
     expect(await runOnce()).toEqual([])
@@ -140,7 +140,7 @@ describe('a schema reset says so once', () => {
         // opens the index to store configs and resets it: the message
         // speaks for the verb that printed it (item 1042).
         threw: expect.stringContaining(
-          `holds index schema v0 from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
+          `holds index schema v0 from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         ) as unknown as string,
         stderr: '',
         after: before,
@@ -158,7 +158,7 @@ describe('a schema reset says so once', () => {
     pokeVersion('v0')
     const { threw, stderr } = await verb(['cache', 'prune', '--older-than', '1d'])
     expect(threw).toBeNull()
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/)
+    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/)
     expect(stderr.split('\n').filter((l) => l.includes('cache index reset'))).toHaveLength(1)
     expect(index().version).toBe(SCHEMA_VERSION)
   })
@@ -181,7 +181,7 @@ describe('a schema reset says so once', () => {
     expect({ ...dry, after: index() }).toEqual({
       threw: null,
       stderr:
-        "[vx] the cache index is schema v0 from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
+        "[vx] the cache index is schema v0 from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
       stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
       after: before,
     })
@@ -192,20 +192,21 @@ describe('a schema reset says so once', () => {
     })
   })
 
-  it('every opener, a run too, refuses a NEWER schema and leaves it untouched', async () => {
+  it('a run resets a NEWER schema too; a reading verb leaves it untouched', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v999')
     const before = index()
-    let threw: unknown
-    try {
-      await runOnce()
-    } catch (err) {
-      threw = err
-    }
-    expect((threw as Error).message).toContain('holds index schema v999, written by a newer vx')
-    expect((await verb(['last'])).threw).toContain('written by a newer vx')
+    expect((await verb(['last'])).threw).toContain(
+      'holds index schema v999 from another vx version',
+    )
     expect(index()).toEqual(before)
     expect(before).toEqual({ version: 'v999', entries: 1, runs: 1 })
+    const notices = await runOnce()
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatch(
+      /^\[vx\] cache index reset: schema v999 → v\d+ \(vx version changed\)/,
+    )
+    expect(index().version).not.toBe('v999')
   })
 
   it('`vx show` says it too, from the staged load the reading verbs share', async () => {
@@ -226,7 +227,7 @@ describe('a schema reset says so once', () => {
       process.stderr.write = origErr
       process.stdout.write = origOut
     }
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx upgraded\)/m)
+    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/m)
   })
 
   // Roadmap 3.3 (item 671): a CACHE_VERSION bump keeps the index but moves
@@ -242,7 +243,7 @@ describe('a schema reset says so once', () => {
     expect(await runOnce()).toEqual([])
     pokeFormat('vx-cache-v0')
     expect(await runOnce()).toEqual([
-      `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+      `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
     ])
     expect(await runOnce()).toEqual([])
   })
@@ -255,7 +256,7 @@ describe('a schema reset says so once', () => {
       pokeFormat('vx-cache-v0')
       expect((await verb(args)).threw).toBeNull()
       expect(await runOnce()).toEqual([
-        `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+        `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
       ])
     })
   }
@@ -264,7 +265,7 @@ describe('a schema reset says so once', () => {
     expect(await runOnce()).toEqual([])
     pokeFormat(null)
     expect(await runOnce()).toEqual([
-      `[vx] cache format changed: an earlier format → ${CACHE_VERSION} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+      `[vx] cache format changed: an earlier format → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
     ])
   })
 

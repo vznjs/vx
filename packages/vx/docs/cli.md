@@ -2083,7 +2083,7 @@ closes with those keys, each object the verb prints whole is shown, and
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
 script) writes that product alone there; a notice or warning it meets
-on the way (a cache index from an earlier vx, a plugin's warning) goes
+on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
 the tasks' output it carries. `tests/cli-streams.test.ts` holds each
 product verb to it under a notice.

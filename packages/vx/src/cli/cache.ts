@@ -176,7 +176,7 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     const earlier = await Cache.orphansBeforeReset(dir)
     if (earlier !== null) {
       warnToStderr(
-        `[vx] the cache index is schema ${earlier.found} from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
+        `[vx] the cache index is schema ${earlier.found} from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
       )
       printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true, json)
       return 0

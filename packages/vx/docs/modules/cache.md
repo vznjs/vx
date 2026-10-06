@@ -566,11 +566,11 @@ Outputs` additionally refuses when the archive cannot produce an output
   modes lost at pack time, long entry names dropped at parse time).
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
-tables) when the SQLite schema changes. Only an earlier schema is
-dropped, and only by a writing opener: `Cache.inspect(dir)` (a reading
-verb) refuses any schema it cannot read, and every opener refuses a
-newer one, each with a `UserError` that names the directory and both
-versions and leaves the index as it was (item 896). Over a directory
+tables) when the SQLite schema changes. Any other schema, earlier or
+newer, is dropped by a writing opener (owner, 2026-10-06: the index is
+an inventory the artifacts rebuild); `Cache.inspect(dir)` (a reading
+verb) refuses a schema it cannot read with a `UserError` that names the
+directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
 (item 900). A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
@@ -586,7 +586,7 @@ through `guard` (A-8). Before, every task of a run failed on it as an
 so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one), and `noteSchemaReset` prints one line — on the run's
 status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
-v25 (vx upgraded); run history starts over, and each artifact is indexed
+v25 (vx version changed); run history starts over, and each artifact is indexed
 again when its task next hits`. An upgrade's all-miss
 run, and the `vx last` with nothing to show after it, are explained
 rather than silent (`tests/schema-reset-notice.test.ts`). A

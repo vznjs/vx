@@ -185,20 +185,20 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
   if (cache.storeReset !== null) {
     const { from, to } = cache.storeReset
     warn(
-      `[vx] shared cache store ${cache.storeDir} re-indexed: schema ${from} → ${to} (vx upgraded); its artifacts stay and are indexed again as tasks hit them`,
+      `[vx] shared cache store ${cache.storeDir} re-indexed: schema ${from} → ${to} (vx version changed); its artifacts stay and are indexed again as tasks hit them`,
     )
   }
   if (cache.formatChange !== null) {
     const { from, to } = cache.formatChange
     warn(
-      `[vx] cache format changed: ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
+      `[vx] cache format changed: ${from} → ${to} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
     )
     return
   }
   if (cache.schemaReset === null) return
   const { from, to } = cache.schemaReset
   warn(
-    `[vx] cache index reset: schema ${from} → ${to} (vx upgraded); run history starts over, and each artifact is indexed again when its task next hits`,
+    `[vx] cache index reset: schema ${from} → ${to} (vx version changed); run history starts over, and each artifact is indexed again when its task next hits`,
   )
 }
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
@@ -275,12 +275,6 @@ const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_met
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
   "SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash"
-
-/** A schema version's number (`v28` → 28); one that is not `v<n>` is older than any. */
-function schemaOrdinal(version: string): number {
-  const m = /^v(\d+)$/.exec(version)
-  return m === null ? -1 : Number(m[1])
-}
 
 /**
  * Artifacts `indexed` does not hold, and temps, past the in-flight grace
@@ -621,7 +615,7 @@ export class Cache implements CacheLayer {
     } catch {
       return null
     }
-    if (found === undefined || schemaOrdinal(found) >= schemaOrdinal(SCHEMA_VERSION)) return null
+    if (found === undefined || found === SCHEMA_VERSION) return null
     const aged = await scanOrphanFiles(cacheDir, () => new Set())
     let orphanBytes = 0
     for (const o of aged) orphanBytes += o.size
@@ -758,20 +752,14 @@ export class Cache implements CacheLayer {
           | { value: string }
           | undefined
       )?.value
-    // Only an EARLIER schema is reset, and only by an opener that may write
-    // it. A newer one is another vx's index and history: an older binary
-    // (a global install beside a workspace's own) dropped every table of it
-    // and announced "vx upgraded", and so did a reading verb, a dry prune
-    // among them (item 896).
+    // Any other schema is reset by an opener that may write it: the index is
+    // an inventory the artifacts rebuild, whichever vx wrote it (owner,
+    // 2026-10-06; a newer one used to be refused, item 896). A reading verb
+    // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
-      if (schemaOrdinal(found) > schemaOrdinal(SCHEMA_VERSION)) {
-        throw new UserError(
-          `the cache at ${cacheDir} holds index schema ${found}, written by a newer vx; this vx reads ${SCHEMA_VERSION} and leaves it untouched. Run the newer vx, or give this one another --cache-dir`,
-        )
-      }
       if (mode === 'inspect') {
         throw new UserError(
-          `the cache at ${cacheDir} holds index schema ${found} from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
+          `the cache at ${cacheDir} holds index schema ${found} from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         )
       }
     }
