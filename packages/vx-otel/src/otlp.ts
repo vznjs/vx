@@ -57,6 +57,11 @@ const SEMCONV = {
   vcsHeadName: 'vcs.ref.head.name',
   serviceName: 'service.name',
   serviceVersion: 'service.version',
+  serviceInstanceId: 'service.instance.id',
+  hostName: 'host.name',
+  hostArch: 'host.arch',
+  osType: 'os.type',
+  eventName: 'event.name',
 } as const
 
 /**
@@ -127,6 +132,15 @@ const VX_ATTR = {
   peakRssBytes: 'vx.peak_rss_bytes',
   taskAttempts: 'vx.task.attempts',
   taskAttempt: 'vx.task.attempt',
+  taskCommand: 'vx.task.command',
+  taskFlakyPasses: 'vx.task.flaky.passes',
+  taskFlakyFailures: 'vx.task.flaky.failures',
+  taskAdmissionHeldMs: 'vx.task.admission_held_ms',
+  storedDurationMs: 'vx.cache.stored_duration_ms',
+  storedCpuMs: 'vx.cache.stored_cpu_ms',
+  storedPeakRssBytes: 'vx.cache.stored_peak_rss_bytes',
+  sandboxViolation: 'vx.sandbox.violation',
+  sandboxViolationsDropped: 'vx.sandbox.violations_dropped',
   stageName: 'vx.stage.name',
   wallclockStartNs: 'vx.task.wallclock_start_ns',
   wallclockEndNs: 'vx.task.wallclock_end_ns',
@@ -171,8 +185,9 @@ export interface OtlpSpanLink {
 
 /**
  * A task span's events: each attempt that failed and was run again
- * (`vx.task.retry`, at its end), and vx's own deadline killing the task
- * (`vx.task.timeout`, at the span's end).
+ * (`vx.task.retry`, at its end), vx's own deadline killing the task
+ * (`vx.task.timeout`, at the span's end), and each sandbox violation
+ * (`vx.sandbox.violation`, its line).
  */
 export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanEvent[] {
   const events: OtlpSpanEvent[] = (t.failedAttempts ?? []).map((a, i) => ({
@@ -187,8 +202,26 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
   if (t.timedOut === true) {
     events.push({ timeUnixNano: endUnixNano, name: 'vx.task.timeout', attributes: [] })
   }
+  const lines = t.sandboxViolationLines ?? []
+  for (const line of lines.slice(0, MAX_VIOLATION_EVENTS)) {
+    events.push({
+      timeUnixNano: endUnixNano,
+      name: VX_ATTR.sandboxViolation,
+      attributes: [strAttr(VX_ATTR.sandboxViolation, line)],
+    })
+  }
+  if (lines.length > MAX_VIOLATION_EVENTS) {
+    events.push({
+      timeUnixNano: endUnixNano,
+      name: VX_ATTR.sandboxViolationsDropped,
+      attributes: [intAttr(VX_ATTR.sandboxViolationsDropped, lines.length - MAX_VIOLATION_EVENTS)],
+    })
+  }
   return events
 }
+
+/** A collector keeps 128 events per span by default; the rest say how many they were. */
+const MAX_VIOLATION_EVENTS = 100
 
 /**
  * A child span of the run for one of its stages (`VX_TIMING`'s marks):
@@ -245,6 +278,24 @@ function resourceAttributes(
     strAttr(SEMCONV.serviceName, serviceName),
     strAttr(SEMCONV.serviceVersion, vxVersion),
   ]
+}
+
+/**
+ * The run as resource attributes, so every signal it sends (spans, metric
+ * points, log records) names the same run and host: a backend joins them on
+ * `service.instance.id`. Under `OTEL_RESOURCE_ATTRIBUTES`, which wins.
+ */
+export function runResource(run: RunContextRecord): Record<string, string> {
+  const r: Record<string, string> = {
+    [SEMCONV.serviceInstanceId]: run.runId,
+    [SEMCONV.pipelineRunId]: run.runId,
+    [SEMCONV.osType]: run.os === 'win32' ? 'windows' : run.os,
+    [SEMCONV.hostArch]: run.arch === 'x64' ? 'amd64' : run.arch,
+  }
+  if (run.host !== null) r[SEMCONV.hostName] = run.host
+  if (run.commitSha !== null) r[SEMCONV.vcsHeadRevision] = run.commitSha
+  if (run.branch !== null) r[SEMCONV.vcsHeadName] = run.branch
+  return r
 }
 
 /**
@@ -325,6 +376,8 @@ interface TaskSpanRunContext {
   workspaceId: string
   /** The run's canonical start (epoch ms) — the storage key's base. */
   startedAt: number
+  /** The task's command, from its start record; a task that never started has none. */
+  command?: string
 }
 
 /**
@@ -355,8 +408,8 @@ function runResult(t: TaskTelemetry): string {
  * `started_at` from them is computing a dedup key that must match the value
  * the native ingest path derives, to the millisecond.
  *
- * Nothing here is unbounded: every value is an id, an enum or a number, so a
- * collector's attribute-value limit cannot cut one. The largest thing this
+ * Nothing here is unbounded: every value is an id, an enum, a number or the
+ * task's command line, so a collector's attribute-value limit cannot cut one. The largest thing this
  * exporter ships is a task's captured tail, which travels as a LOG record
  * (`vx.log.*`) carrying its own full length, so a cut there is visible.
  */
@@ -397,6 +450,20 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   if (t.outputs !== undefined) attrs.push(strAttr(VX_ATTR.taskOutputs, t.outputs))
   if (t.peakRssBytes !== undefined) attrs.push(intAttr(VX_ATTR.peakRssBytes, t.peakRssBytes))
   if (t.attempts !== undefined) attrs.push(intAttr(VX_ATTR.taskAttempts, t.attempts))
+  if (run.command !== undefined) attrs.push(strAttr(VX_ATTR.taskCommand, run.command))
+  if (t.flaky !== undefined) {
+    attrs.push(
+      intAttr(VX_ATTR.taskFlakyPasses, t.flaky.passes),
+      intAttr(VX_ATTR.taskFlakyFailures, t.flaky.failures),
+    )
+  }
+  if (t.storedDurationMs !== undefined)
+    attrs.push(intAttr(VX_ATTR.storedDurationMs, t.storedDurationMs))
+  if (t.storedCpuMs !== undefined) attrs.push(intAttr(VX_ATTR.storedCpuMs, t.storedCpuMs))
+  if (t.storedPeakRssBytes !== undefined)
+    attrs.push(intAttr(VX_ATTR.storedPeakRssBytes, t.storedPeakRssBytes))
+  if (t.admissionHeldMs !== undefined)
+    attrs.push(intAttr(VX_ATTR.taskAdmissionHeldMs, t.admissionHeldMs))
   if (t.wallclockStartNs !== undefined)
     attrs.push(int64Attr(VX_ATTR.wallclockStartNs, t.wallclockStartNs))
   if (t.wallclockEndNs !== undefined)
@@ -483,6 +550,11 @@ export function buildMetricsRequest(
               ]),
               sum('vx.tasks.cache_up_to_date', [point(summary.upToDateCount)]),
               gauge('vx.run.duration_ms', summary.totalDurationMs),
+              // What the run's cache hits skipped: the stored runs' time.
+              gauge(
+                'vx.run.time_saved_ms',
+                summary.tasks.reduce((n, t) => n + (t.storedDurationMs ?? 0), 0),
+              ),
               ...taskMetrics(points),
             ],
           },
@@ -496,7 +568,7 @@ export function buildMetricsRequest(
  * A per-task metric point: a task's totals at its end, or one live sample
  * of its process tree while it runs.
  */
-export type TaskMetricPoint =
+export type TaskMetricPoint = (
   | { kind: 'end'; task: TaskTelemetry; startUnixNano: string; endUnixNano: string }
   | {
       kind: 'sample'
@@ -508,6 +580,10 @@ export type TaskMetricPoint =
       cpuUsage: number
       rssBytes: number
     }
+) & {
+  /** The task's span: each point carries it as an exemplar, a link from the chart to the trace. */
+  span?: { traceId: string; spanId: string }
+}
 
 /**
  * An ExportMetricsServiceRequest of per-task gauges alone: the points past
@@ -532,9 +608,11 @@ export function buildTaskMetricsRequest(
 /**
  * Per-task gauges, keyed by task. At each task's end: its duration, CPU time and peak memory (CPU and memory as
  * the runner measured them at exit; a task it did not measure, a cache hit or
- * a remote run, sends no point for them). While a task runs: its process
+ * a remote run, sends no point for them), on a hit the time it saved, and
+ * how long an `admit` policy held it. While a task runs: its process
  * tree's CPU usage and memory, once per sample. A task's numbers otherwise
- * live only on its span, which no metrics backend charts.
+ * live only on its span, which no metrics backend charts. Each point names
+ * the task's span as an exemplar.
  */
 function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
   const series = new Map<string, { unit: string; dataPoints: unknown[] }>()
@@ -548,12 +626,17 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
     strAttr(VX_ATTR.taskProject, project),
     strAttr(VX_ATTR.taskTask, task),
   ]
+  const exemplars = (p: TaskMetricPoint, value: number, timeUnixNano: string) =>
+    p.span === undefined
+      ? {}
+      : { exemplars: [{ timeUnixNano, asDouble: value, filteredAttributes: [], ...p.span }] }
   for (const p of points) {
     if (p.kind === 'sample') {
       const at = (value: number) => ({
         asDouble: value,
         timeUnixNano: p.timeUnixNano,
         attributes: taskAttrs(p.taskId, p.project, p.task),
+        ...exemplars(p, value, p.timeUnixNano),
       })
       add('vx.task.cpu_usage', '1', at(p.cpuUsage))
       add('vx.task.memory', 'By', at(p.rssBytes))
@@ -568,10 +651,13 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
         ...taskAttrs(t.taskId, t.project, t.task),
         strAttr(VX_ATTR.cacheSource, t.cacheSource),
       ],
+      ...exemplars(p, value, p.endUnixNano),
     })
     add('vx.task.duration', 'ms', at(t.durationMs))
     if (t.cpuMs !== undefined) add('vx.task.cpu_time', 'ms', at(t.cpuMs))
     if (t.peakRssBytes !== undefined) add('vx.task.peak_memory', 'By', at(t.peakRssBytes))
+    if (t.storedDurationMs !== undefined) add('vx.task.time_saved', 'ms', at(t.storedDurationMs))
+    if (t.admissionHeldMs !== undefined) add('vx.task.admission_held', 'ms', at(t.admissionHeldMs))
   }
   return [...series].map(([name, { unit, dataPoints }]) => ({ name, unit, gauge: { dataPoints } }))
 }
@@ -617,6 +703,8 @@ export function buildLogsRequest(args: {
   workspaceId: string
   entries: readonly TaskLogEntry[]
   timeUnixNano: string
+  /** When the task ended; `timeUnixNano` for one with no known end. */
+  timeFor?: (taskId: string) => string | undefined
   traceId?: string
   spanIdFor?: (taskId: string) => string | undefined
   resource?: Readonly<Record<string, string>>
@@ -633,8 +721,9 @@ export function buildLogsRequest(args: {
     ]
     if (e.hash !== undefined) attrs.push(strAttr(VX_ATTR.taskHash, e.hash))
     const spanId = args.spanIdFor?.(e.taskId)
+    const time = args.timeFor?.(e.taskId) ?? args.timeUnixNano
     return {
-      timeUnixNano: args.timeUnixNano,
+      timeUnixNano: time,
       observedTimeUnixNano: args.timeUnixNano,
       severityNumber: failed ? SEVERITY_ERROR : SEVERITY_INFO,
       severityText: failed ? 'ERROR' : 'INFO',
@@ -644,6 +733,56 @@ export function buildLogsRequest(args: {
       ...(spanId ? { spanId } : {}),
     }
   })
+  return {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: resourceAttributes(args.serviceName, args.vxVersion, args.resource),
+        },
+        scopeLogs: [{ scope: { name: 'vx', version: args.vxVersion }, logRecords }],
+      },
+    ],
+  }
+}
+
+/** A lifecycle moment, sent as it happens in live mode: a run or a task started. */
+export interface LiveEvent {
+  name: 'vx.run.start' | 'vx.task.start'
+  timeUnixNano: string
+  body: string
+  taskId?: string
+  spanId?: string
+}
+
+/**
+ * Live mode's lifecycle records, one log record each, linked to the run's
+ * trace (and the task's span): what a dashboard shows as running before any
+ * span, which is sent only once it ends, exists.
+ */
+export function buildEventLogsRequest(args: {
+  serviceName: string
+  vxVersion: string
+  runId: string
+  workspaceId: string
+  events: readonly LiveEvent[]
+  traceId?: string
+  resource?: Readonly<Record<string, string>>
+}): unknown {
+  const logRecords: OtlpLogRecord[] = args.events.map((e) => ({
+    timeUnixNano: e.timeUnixNano,
+    observedTimeUnixNano: e.timeUnixNano,
+    severityNumber: SEVERITY_INFO,
+    severityText: 'INFO',
+    body: { stringValue: e.body },
+    attributes: [
+      strAttr(SEMCONV.eventName, e.name),
+      strAttr(SEMCONV.pipelineRunId, args.runId),
+      strAttr(VX_ATTR.workspaceId, args.workspaceId),
+      ...(e.taskId !== undefined ? [strAttr(SEMCONV.taskName, e.taskId)] : []),
+    ],
+    ...(args.traceId ? { traceId: args.traceId } : {}),
+    ...(args.traceId && e.spanId ? { spanId: e.spanId } : {}),
+  }))
   return {
     resourceLogs: [
       {

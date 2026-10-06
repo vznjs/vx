@@ -95,6 +95,12 @@ const TASK: Required<TaskTelemetry> = {
   sandboxViolations: 1,
   notReady: 'timeout',
   failedAttempts: [{ endedAt: 1030, exitCode: 1, timedOut: true }],
+  flaky: { passes: 1, failures: 1 },
+  sandboxViolationLines: ['deny file-write /x'],
+  storedDurationMs: 900,
+  storedCpuMs: 800,
+  storedPeakRssBytes: 2048,
+  admissionHeldMs: 5,
   // Every field, so each one's path is recorded; a hit alone carries it.
   restored: false,
   wallclockStartNs: '1000000000',
@@ -111,6 +117,8 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     headers: {},
     metricsEnabled: true,
     logsEnabled: true,
+    // Live: its lifecycle records are a shape the run's-end export has not.
+    live: true,
     timeoutMs: 1000,
     post: async (url, body) => {
       ;(bodies[url] ??= []).push(JSON.parse(body))

@@ -604,7 +604,7 @@ describe('the plugin and transport, as the plugin sweep found them', () => {
     process.env['OTEL_EXPORTER_OTLP_COMPRESSION'] = 'zstd'
     try {
       const warns: string[] = []
-      const sink = otel().telemetry!({
+      const sink = await otel().telemetry!({
         workspaceRoot: '/w',
         cacheDir: '/c',
         warn: (m: string) => warns.push(m),

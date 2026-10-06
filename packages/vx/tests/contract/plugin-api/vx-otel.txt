@@ -10,6 +10,7 @@ export interface OtelPluginOptions {
   headers?: Record<string, string>
   metrics?: boolean
   logs?: boolean
+  live?: boolean
   timeoutMs?: number
   compression?: 'gzip' | 'none'
   post?: PostFn

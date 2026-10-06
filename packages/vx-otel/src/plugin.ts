@@ -17,7 +17,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import { readFileSync } from 'node:fs'
-import { OtelSink, type OtlpTls, type PostFn } from './sink.js'
+import type { OtelSinkConfig, OtlpTls, PostFn } from './sink.js'
 
 export interface OtelPluginOptions {
   /** OTLP base endpoint. Falls back to `OTEL_EXPORTER_OTLP_ENDPOINT`. */
@@ -40,6 +40,12 @@ export interface OtelPluginOptions {
    * Set false (or `OTEL_LOGS_EXPORTER=none`) to export traces + metrics only.
    */
   logs?: boolean
+  /**
+   * Send each task's span, metrics and log as it ends, and a log record as
+   * the run and each task start, instead of everything at the run's end: a
+   * dashboard follows the run while it runs. Default: false.
+   */
+  live?: boolean
   /** Per-request timeout (ms). Falls back to `OTEL_EXPORTER_OTLP_TIMEOUT`, else 15000. */
   timeoutMs?: number
   /**
@@ -166,7 +172,7 @@ export function resolveOtelConfig(
   opts: OtelPluginOptions,
   env: Record<string, string | undefined>,
   warn?: (m: string) => void,
-): ConstructorParameters<typeof OtelSink>[0] | undefined {
+): OtelSinkConfig | undefined {
   const base = present(opts.endpoint) ?? present(env['OTEL_EXPORTER_OTLP_ENDPOINT'])
   const tracesUrl =
     present(opts.tracesEndpoint) ??
@@ -354,6 +360,7 @@ export function resolveOtelConfig(
     ...(tracesWanted && tracesUrl !== undefined ? {} : { tracesEnabled: false }),
     metricsEnabled: metricsWanted && metricsUrl !== undefined,
     logsEnabled: logsWanted && logsUrl !== undefined,
+    ...(opts.live === true ? { live: true } : {}),
     timeoutMs,
     // A signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_TIMEOUT` wins over the
     // shared one; it was not read (F-49). The option tops both.
@@ -377,6 +384,7 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
   headers: 'object',
   metrics: 'boolean',
   logs: 'boolean',
+  live: 'boolean',
   timeoutMs: 'number',
   compression: 'string',
   post: 'function',
@@ -392,10 +400,12 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('otel()', opts, OTEL_PLUGIN_KEYS)
   return definePlugin(import.meta, {
-    telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
+    telemetry(ctx: TelemetryContext): Promise<TelemetrySink> | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))
       if (config === undefined) return undefined
-      return new OtelSink(config)
+      // The exporter loads only when it will export: a declined otel() is
+      // read by every run, and the sink was most of its import cost.
+      return import('./sink.js').then(({ OtelSink }) => new OtelSink(config))
     },
   })
 }

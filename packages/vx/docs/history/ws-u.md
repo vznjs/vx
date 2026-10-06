@@ -26,3 +26,20 @@ and traces should use span events, links and more objects.
   before the first task of an all-cached run reads as `classify + probe`.
   Rows: `telemetry-trace-facts.test.ts`, `retries.test.ts`,
   `vx-otel/tests/otel.test.ts` › "links a task".
+
+- U-3 — OTel gives everything vx knows, linked, and can send it live.
+  Each task span adds its command, its flaky record, on a hit what the
+  stored run took (`vx.cache.stored_*`, and `vx.task.time_saved` /
+  `vx.run.time_saved_ms`), the `admit` wait, and a `vx.sandbox.violation`
+  event per denial (core's `TaskTelemetry` gained the six fields). Every
+  signal's resource names the run (`service.instance.id`), host and
+  commit; each task metric point carries its span as an exemplar; a log
+  record is timed at its task's end. `otel({ live: true })` sends each
+  task as it ends, plus `vx.run.start` / `vx.task.start` log records,
+  one send in flight at a time; 60 tasks against a local collector ran
+  1,108 ms live against 1,101 ms (min of 6). And `otel()` imports its
+  exporter only once an endpoint is set (`crypto.getRandomValues` over
+  `node:crypto`): the plugin's import after core went from 9.6 ms to
+  1.4 ms. Rows: `vx-otel/tests/otel.test.ts` › "live mode", "signals
+  link to each other", "loads the exporter only when one is configured";
+  `telemetry.test.ts` › "task.end carries what a hit saved".

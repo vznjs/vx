@@ -404,6 +404,47 @@ describe('createTelemetrySource — projection', () => {
     ])
   })
 
+  it('task.end carries what a hit saved, a flaky verdict, the violations and the admission wait', () => {
+    const { sink, records } = recorder()
+    const src = createTelemetrySource({ sinks: [sink], run: RUN })
+    const node = mkNode('a#build', 'tsc')
+    src.subscriber({
+      kind: 'task:complete',
+      node,
+      outcome: mkOutcome(node, {
+        status: 'cache-hit',
+        storedDurationMs: 900,
+        storedCpuMs: 800,
+        storedPeakRssBytes: 700,
+        admissionHeldMs: 60,
+        flaky: { passes: 2, failures: 1 },
+        sandboxViolationLines: ['deny file-write /x'],
+      }),
+    })
+    const plain = mkNode('b#build', 'tsc')
+    // An empty list is no violation: the field stays off.
+    src.subscriber({
+      kind: 'task:complete',
+      node: plain,
+      outcome: mkOutcome(plain, { sandboxViolationLines: [] }),
+    })
+    const pick = (r: TelemetryRecord) =>
+      r.kind === 'task.end'
+        ? [
+            r.storedDurationMs,
+            r.storedCpuMs,
+            r.storedPeakRssBytes,
+            r.admissionHeldMs,
+            r.flaky,
+            r.sandboxViolationLines,
+          ]
+        : 'not-task-end'
+    expect(records.map(pick)).toEqual([
+      [900, 800, 700, 60, { passes: 2, failures: 1 }, ['deny file-write /x']],
+      [undefined, undefined, undefined, undefined, undefined, undefined],
+    ])
+  })
+
   it('skips group tasks (no exec) for task.start and task.end', () => {
     const { sink, records } = recorder()
     const src = createTelemetrySource({ sinks: [sink], run: RUN })

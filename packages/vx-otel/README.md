@@ -103,13 +103,20 @@ otel({
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
-  persistent one that never became ready why (`vx.task.not_ready`). A
+  persistent one that never became ready why (`vx.task.not_ready`), its
+  command (`vx.task.command`, secrets masked), on a flaky one its record
+  (`vx.task.flaky.passes`, `vx.task.flaky.failures`), on a hit what the
+  stored run took (`vx.cache.stored_duration_ms`, `vx.cache.stored_cpu_ms`,
+  `vx.cache.stored_peak_rss_bytes`), and how long an `admit` policy held it
+  (`vx.task.admission_held_ms`). A
   failed task sets span status
   `ERROR`. A task span links to the spans of the tasks it waited on (a
   group seen through to the tasks behind it), and carries an event per
   attempt that failed and was run again (`vx.task.retry`, with
-  `vx.task.attempt` and `vx.task.exit_code`) and one when vx's own
-  timeout killed it (`vx.task.timeout`);
+  `vx.task.attempt` and `vx.task.exit_code`), one when vx's own
+  timeout killed it (`vx.task.timeout`), and one per sandbox violation
+  (`vx.sandbox.violation`, its line; past 100, `vx.sandbox.violations_dropped`
+  says how many more);
 - a child span per stage of the run, named by the stage (`startup`,
   `load configs`, `git enumeration`, `classify + probe`, `run graph`,
   `record history`, …, the stages `VX_TIMING` prints), with
@@ -120,7 +127,8 @@ otel({
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as
 `vx.tasks.cache_restored{source=local|remote}` and `vx.tasks.cache_up_to_date`,
-and the `vx.run.duration_ms` gauge. The `vx.run` span carries the same counts
+and the `vx.run.duration_ms` and `vx.run.time_saved_ms` (what the hits'
+stored runs took) gauges. The `vx.run` span carries the same counts
 (`vx.run.hit_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`,
 `vx.run.restored_remote_count`).
 The counts are DELTA sums over the run's own interval (start to end), so a
@@ -129,17 +137,41 @@ backend adds runs rather than reading each as the series' new total.
 **Metrics per task**, as gauges keyed by `cicd.pipeline.task.name`,
 `vx.task.project` and `vx.task.task`: at each task's end
 `vx.task.duration` (ms, with `vx.cache.source`), and for a task the runner
-measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes); a
-skipped task sends none. While a task runs, its process tree is sampled
+measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes), on a
+hit `vx.task.time_saved` (ms), and `vx.task.admission_held` (ms) when an
+`admit` policy held it; a skipped task sends none. While a task runs, its process tree is sampled
 each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
 one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.
 
 **Logs per run** (on by default): the captured output tail of each executed
-task, as one log record linked to its task span (unlinked when traces are
-off: the span is never exported). Build output can hold
+task, as one log record at the task's end, linked to its task span (unlinked
+when traces are off: the span is never exported). Build output can hold
 secrets, and this sends it to the collector; `logs: false` or
 `OTEL_LOGS_EXPORTER=none` turns it off.
+
+**One run, three signals, linked.** Every request's resource names the run
+(`service.instance.id` and `cicd.pipeline.run.id`, its id), the host
+(`host.name`, `host.arch`, `os.type`) and the commit (`vcs.ref.head.*`),
+under `OTEL_RESOURCE_ATTRIBUTES`, which wins. Each task metric point carries
+its task's span as an exemplar, and each log record its span, so a chart
+opens the trace and a span opens its output.
+
+## Live export
+
+```ts
+otel({ live: process.env.CI === 'true' })
+```
+
+With `live: true` each task's span, metrics and output tail are sent as the
+task ends, its process samples as they are taken, and a log record
+(`event.name` `vx.run.start` or `vx.task.start`, linked to the trace) as the
+run and each task start; the `vx.run` span, the stage spans and the run's
+metrics follow at the end. A dashboard follows a CI run while it runs. One
+send is in flight at a time and takes everything that ended meanwhile; a
+refused send warns once per signal for the run. Cost on 60 tasks against a
+local collector: within the noise of run-to-run wall time (min of 6: 1,101 ms
+off, 1,108 ms on). Off by default.
 
 ## Behavior note
 

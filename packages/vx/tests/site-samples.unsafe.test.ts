@@ -1168,7 +1168,7 @@ describe('the otel guide tabulates every option the plugin takes', () => {
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)]
       .map((m) => m[1]!)
       .filter((f) => f !== 'post')
-    expect(fields.length).toBe(10)
+    expect(fields.length).toBe(11)
     const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'OpenTelemetry')
     const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...fields].sort())

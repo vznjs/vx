@@ -99,6 +99,12 @@ interface TaskTelemetry {
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
   failedAttempts?: readonly FailedAttempt[] // a retried task's attempts that failed, in order
+  flaky?: { passes: number; failures: number } // proved flaky this run: its key's record
+  sandboxViolationLines?: readonly string[] // one per sandbox denial
+  storedDurationMs?: number // on a hit: the stored run's time, what the hit saved
+  storedCpuMs?: number // on a hit: the stored run's CPU and peak memory
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number // how long an `admit` policy held it once ready
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string
