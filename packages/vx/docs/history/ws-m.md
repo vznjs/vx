@@ -1088,3 +1088,11 @@ npm, and a law required the note on every page that installs one; all
 seven have been published since 0.0.484. The notes are gone, and the law
 now holds the opposite: no page that installs, runs or imports a plugin
 says it is not on npm.
+
+M-89. Nothing prints below the end-of-run footer (owner). The Flaky
+section became a dim note on the task's row and frame footer
+(`flaky - failed 1× before`, `· 2 attempts`), judged as each task
+finishes; the Skipped section became a skipped row, blocker named, in
+every view that lists tasks. The crashed-server, Deferred and
+`--summarize` / `--profile` written lines print above the footer; the
+rewrite after a keep-alive wait is silent.

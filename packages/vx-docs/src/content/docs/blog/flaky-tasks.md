@@ -35,15 +35,15 @@ runs of it are not the same inputs in any meaningful sense.
 
 ## What you see
 
-After the footer, a run names the tasks it just proved nondeterministic:
+A flaky task says so on its own row in the run's task list, in a dim
+note after its name:
 
 ```
-  Flaky:    2 tasks with the same inputs both passing and failing on record
-    ✗ app#test — failed on inputs that passed 3× before
-    ✓ api#e2e — passed on inputs that failed 1× before · 2 attempts this run
+ ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
+ ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
-The section is not printed when nothing was flaky. `vx info` keeps the
+A task that was not flaky carries no note. `vx info` keeps the
 standing list across runs, `--summarize` carries it as typed data
 (`flaky: { passes, failures, attempts }` on the task, so a consumer can
 tell a break from a flake without parsing text), and the MCP server

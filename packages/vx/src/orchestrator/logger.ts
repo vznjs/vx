@@ -8,6 +8,7 @@ import {
   formatTaskAbortedLine,
   formatTaskBlock,
   formatTaskExecutedLine,
+  flakyNote,
   formatTaskHitLine,
   formatTaskSkippedLine,
 } from './framed-output.js'
@@ -431,6 +432,10 @@ export function defaultLogger(
     (framesTerminal && holdsTerminal(node)) ||
     (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
+  const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
+    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)) +
+    flakyNote(outcome, colors)
+
   return {
     settle() {
       // The bus delivers one `run:end`, so the CLI's last word reaches here.
@@ -697,25 +702,31 @@ export function defaultLogger(
           return
         }
         case 'errors-only':
+          if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            return
+          }
           if (outcome.status !== 'failed') return
-          emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+          emitLine(failureRow(node, outcome))
           deferredFailures.push(
             formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
           )
           return
         case 'broad':
-          // News only: executed work gets a one-liner, failures get
-          // the full frame. Hits (including up-to-date) are silent —
+          // News only: executed work and skips get a one-liner, failures
+          // get the full frame. Hits (including up-to-date) are silent —
           // their replay buffers are deliberately dropped; the counts
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
             // ◼ row now; the full frame replays at runEnd.
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+            emitLine(failureRow(node, outcome))
             deferredFailures.push(
               formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
             )
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
+          } else if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
           }
           return
         case 'focused':
@@ -745,7 +756,7 @@ export function defaultLogger(
             // to runEnd like everywhere else; everything else emits
             // ONE atomic block from the buffered output.
             if (outcome.status === 'failed') {
-              emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+              emitLine(failureRow(node, outcome))
               deferredFailures.push(
                 formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
               )
@@ -756,10 +767,12 @@ export function defaultLogger(
             emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
             return
           }
-          // Dependency-pulled nodes: silent on success; failures get
-          // the ◼ row now and their frame replayed at runEnd.
-          if (outcome.status === 'failed') {
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+          // Dependency-pulled nodes: silent on success; a skip gets its
+          // row, failures the ◼ row now and their frame replayed at runEnd.
+          if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+          } else if (outcome.status === 'failed') {
+            emitLine(failureRow(node, outcome))
             deferredFailures.push(
               formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
             )

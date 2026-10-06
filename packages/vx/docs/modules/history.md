@@ -105,8 +105,9 @@ The same rule, applied at the end of every run and by the doctor:
   group or a task with no `cache` block is not one), judged BEFORE the
   run's own rows land. A pass on a key that failed before, a failure on
   a key that passed before, or a within-run retry is a `FlakyFinding`
-  with the key's outcome counts, this run folded in. The footer prints
-  them (`formatFlakySection`) and `--summarize` types them (`flaky`).
+  with the key's outcome counts, this run folded in. `run.ts` judges each
+  task as it finishes, so its row carries the note (`flakyNote`), and
+  `--summarize` types them (`flaky`).
 - `flakyTasks(db)` — every task with a mixed-outcome key in the whole
   retained history, most failures first: the `vx info` row.
 - Cost follows the run's colour. No candidate: no query. A green miss:
@@ -117,7 +118,10 @@ The same rule, applied at the end of every run and by the doctor:
   that did fail before, or a task failing now, pays the projection scan
   over its own keys (~10 ms at 170k rows). Measured 2026-09-10, 170k
   rows: 1 / 12 / 1,000 green candidates 0.01 / 0.02 / 0.55 ms with the
-  index against 10.4 / 10.3 / 21.6 ms scanning.
+  index against 10.4 / 10.3 / 21.6 ms scanning. Judged one task at a time
+  as each finishes (2026-10-06, so the row carries it): 1,000 green
+  misses cost 3.0 ms in all against 0.4 batched, spread over the run
+  beside 1,000 spawns.
 - Every reader is a filter over one projection, `keyOutcomesSql`, so
   the definition of "mixed" cannot fork between the window, the
   all-time count, the run's findings and the doctor's list.

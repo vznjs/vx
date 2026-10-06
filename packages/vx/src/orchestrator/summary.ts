@@ -4,7 +4,6 @@
 // aren't real work and would inflate "N total" misleadingly.
 
 import type { TaskOutcome } from '../graph/index.js'
-import type { FlakyFinding } from './failure-mode.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
 import { isGroupTask } from '../graph/index.js'
@@ -384,84 +383,6 @@ export function formatRunSummary(
  */
 export function neverStarted(o: TaskOutcome): boolean {
   return o.status === 'aborted' && o.wallclockStartNs === undefined
-}
-
-/**
- * Post-summary section naming the tasks that never started, under the
- * failure that blocked them. The footer's "1 skipped" says a task was
- * blocked and nothing about which task or by what; the broad flow prints
- * no row for a skipped task on purpose (a wide red run would drown in
- * them), so this is where the reader learns what the failure cost
- * (item 266). The scheduler records the root of each block on the outcome
- * (`blockedBy`, item 267); a skip without one is fail-fast's. Empty when
- * nothing was skipped.
- */
-export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[] {
-  // A group (no `exec`) never starts by definition and is not a task the
-  // tally counts; listing a blocked one here named three "tasks" the legend
-  // beside it counted as none (item 281). Its members' rows say enough.
-  const skipped = outcomes.filter((o) => o.status === 'skipped' && !isGroupTask(o.node))
-  if (skipped.length === 0) return []
-  const byId = new Map(outcomes.map((o) => [o.node.id, o]))
-  const causeOf = (o: TaskOutcome): string => {
-    if (o.blockedBy === undefined) return 'after the run stopped (fail-fast)'
-    const root = byId.get(o.blockedBy)
-    return root?.status === 'aborted'
-      ? `after ${o.blockedBy} was aborted`
-      : `after ${o.blockedBy} failed`
-  }
-  const groups = new Map<string, string[]>()
-  for (const o of skipped) {
-    const cause = causeOf(o)
-    const list = groups.get(cause) ?? []
-    list.push(o.node.id)
-    groups.set(cause, list)
-  }
-  // "Blocked upstream" only when every skip was: a fail-fast skip had no
-  // blocker, and the header claimed one over its own cause line (C-55).
-  const blocked = skipped.every((o) => o.blockedBy !== undefined) ? ' \u2014 blocked upstream' : ''
-  const lines = [
-    '',
-    `  Skipped:  ${skipped.length} task${skipped.length === 1 ? '' : 's'} never started${blocked}`,
-  ]
-  const NAMES = 8
-  for (const [cause, ids] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
-    ids.sort()
-    const shown = ids.slice(0, NAMES).join(', ')
-    const more = ids.length > NAMES ? ` \u2026 +${ids.length - NAMES} more` : ''
-    lines.push(`    \u2298 ${cause}: ${shown}${more}`)
-  }
-  return lines
-}
-
-/**
- * Post-summary section naming the tasks this run proved flaky: identical
- * inputs, both outcomes on record (or a retry within the run). A red run
- * whose failure has passed on these exact inputs before is not a break to
- * bisect, and a green run that only passed on the second attempt is not
- * green — either way the footer's counts alone would say nothing. Empty
- * when nothing was.
- */
-export function formatFlakySection(findings: readonly FlakyFinding[]): string[] {
-  if (findings.length === 0) return []
-  const lines = [
-    '',
-    `  Flaky:    ${findings.length} task${findings.length === 1 ? '' : 's'} with the same inputs both passing and failing on record`,
-  ]
-  for (const f of findings) {
-    const times = (n: number): string => `${n}\u00d7`
-    const history =
-      f.status === 'failed'
-        ? `failed on inputs that passed ${times(f.passes)} before`
-        : f.failures > 0
-          ? `passed on inputs that failed ${times(f.failures)} before`
-          : 'passed'
-    const retried = f.attempts > 1 ? ` \u00b7 ${f.attempts} attempts this run` : ''
-    lines.push(
-      `    ${f.status === 'failed' ? '\u2717' : '\u2713'} ${f.taskId} \u2014 ${history}${retried}`,
-    )
-  }
-  return lines
 }
 
 export function formatDuration(ms: number): string {

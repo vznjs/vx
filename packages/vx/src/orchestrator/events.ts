@@ -291,8 +291,7 @@ export function outcomeLabel(
 
 /**
  * Why a task was skipped, one copy for every surface: `blocked by lib#build`
- * (the failed or aborted task at the root of the block, what the footer's
- * Skipped section groups by), or '' for fail-fast's skip — the run stopped,
+ * (the failed or aborted task at the root of the block), or '' for fail-fast's skip — the run stopped,
  * nothing blocked it, and a label claiming an upstream failure would lie.
  */
 export function skippedReason(blockedBy: string | undefined): string {

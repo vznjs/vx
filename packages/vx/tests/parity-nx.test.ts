@@ -341,7 +341,7 @@ describe('Nx parity — cache control and failure handling', () => {
         failures: 1,
         attempts: 1,
       })
-      expect(green.text).toContain('Flaky:')
+      expect(green.text).toContain('flaky - failed 1× before')
     },
     TIMEOUT,
   )

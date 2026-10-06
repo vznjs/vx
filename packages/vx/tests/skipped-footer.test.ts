@@ -1,7 +1,7 @@
 // A red run's footer said "1 skipped" and nothing about which task or by
-// what (item 266): the broad flow prints no row for a skipped task. The
-// Skipped section names each under the failure that blocked it; under
-// --continue=always nothing is skipped and the section is absent.
+// what (item 266). A Skipped section under the footer named each; since
+// nothing prints below the footer (owner, 2026-10-06), each skip is a row
+// in the task list naming its blocker, and the footer is the last line.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import path from 'node:path'
@@ -23,7 +23,7 @@ function vx(cwd: string, args: string[]): { code: number; text: string } {
   }
 }
 
-describe('the Skipped section', () => {
+describe('a skipped task', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-skipped-' })
@@ -44,13 +44,13 @@ describe('the Skipped section', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('names the skipped task under the failure that blocked it', () => {
+  it('is a row naming the failure that blocked it, above the footer', () => {
     const r = vx(root, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('1 failed · 1 skipped · 2 total')
-    expect(r.text).toContain(
-      '  Skipped:  1 task never started — blocked upstream\n    ⊘ after lib#build failed: app#build\n',
-    )
+    expect(r.text).toContain(' ⊘         skipped          app#build • blocked by lib#build\n')
+    expect(r.text).not.toContain('Skipped:')
+    expect(r.text.trimEnd().split('\n').at(-1)).toMatch(/^ {2}result {4}2 tasks · /)
   })
 
   it('the summarize row names the blocker; a failed row carries none', async () => {
@@ -63,10 +63,10 @@ describe('the Skipped section', () => {
     expect(byId.get('lib#build')?.['blockedBy']).toBeUndefined()
   })
 
-  // CONTROL: nothing skipped, no section.
-  it('prints no section when the run skipped nothing', () => {
+  // CONTROL: nothing skipped, no skipped row.
+  it('prints no skipped row when the run skipped nothing', () => {
     const r = vx(root, ['run', 'build', '--all', '--continue=always'])
     expect(r.code).toBe(1)
-    expect(r.text).not.toContain('Skipped:')
+    expect(r.text).not.toContain('skipped ')
   })
 })
