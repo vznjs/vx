@@ -1103,7 +1103,7 @@ shallow clone with no remote) shares nothing. Each level of `~/.vx` is
 owner-only; one open to other users is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```
-~/.vx/<id>/cache/store-v32/                 the shared store
+~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, store_meta
 └── <hash>.tar.zst                          the artifacts (below)
@@ -1113,9 +1113,10 @@ owner-only; one open to other users is not used. Design: [`design/shared-store-2
                                             attaches store.db as `store`
 ```
 
-The store's directory is per index schema, so two vx versions on one
-machine never share one. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/store-v32/` instead, said once. Name a
+The store carries no version: every key is seeded with `CACHE_VERSION`,
+so two vx versions never read each other's entries, and a store table
+only ever gains columns. A home this user cannot write keeps the store
+in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:

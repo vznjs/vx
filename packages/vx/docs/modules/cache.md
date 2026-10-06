@@ -302,8 +302,6 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
 export const SCHEMA_VERSION = 'v32'
-// The shared store's directory under its root, one per schema (v32).
-export function storeDirOf(storeRoot: string): string
 export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that

@@ -792,7 +792,7 @@ next?".
 - **`vx why` / `vx last` stay.** Cache-miss explainability is a core
   promise; both read the local run history core already writes.
 - **Entries live in a store every checkout of the repo shares (owner,
-  2026-10-05; schema v32).** `~/.vx/<id>/cache/store-v32` (owner,
+  2026-10-05; schema v32).** `~/.vx/<id>/cache` (owner,
   2026-10-06: "exactly like Nx", whose `~/.nx/<id>` the id ports) holds
   the entries and artifacts; each workspace keeps its
   history and memos in `.vx/cache` and attaches the store. A named

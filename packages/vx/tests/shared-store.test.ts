@@ -11,7 +11,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:f
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, SCHEMA_VERSION } from '../src/cache/index.js'
+import { Cache } from '../src/cache/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { resolveStoreRoot } from '../src/workspace/index.js'
 import { parseGitConfigRemotes, parseRemoteUrl, repoIdOf } from '../src/workspace/repo-id.js'
@@ -54,7 +54,7 @@ const ORIGIN = 'https://github.com/acme/app.git'
 
 /** The one store under the home, wherever its repository id put it. */
 async function stores(): Promise<string[]> {
-  const glob = new Bun.Glob(`*/cache/store-${SCHEMA_VERSION}/store.db`)
+  const glob = new Bun.Glob('*/cache/store.db')
   const found = await Array.fromAsync(glob.scan({ cwd: path.join(home, '.vx') }))
   return found.map((f) => path.join(home, '.vx', path.dirname(f))).sort()
 }
@@ -163,11 +163,11 @@ describe('the shared store', () => {
     const a = await workspace()
     expect((await build(a)).status).toBe('success')
     expect((await build(a)).status).toBe('cache-hit')
-    const fallback = path.join(a.root, '.vx', 'cache', `store-${SCHEMA_VERSION}`)
+    const fallback = path.join(a.root, '.vx', 'cache')
     expect(existsSync(path.join(fallback, 'store.db'))).toBe(true)
     const said = a.log.filter((l) => l.includes('shared cache store'))
     expect(said).toHaveLength(1)
-    const wanted = path.join(home, '.vx', repoIdOf(a.root)!, 'cache', `store-${SCHEMA_VERSION}`)
+    const wanted = path.join(home, '.vx', repoIdOf(a.root)!, 'cache')
     expect(said[0]).toStartWith(`[vx] shared cache store ${wanted} (`)
     expect(said[0]).toEndWith(
       `is not usable; entries stay in ${fallback}, where no other workspace hits them`,

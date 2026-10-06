@@ -242,8 +242,7 @@ platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
 (`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
 git is spawned only for a repository with no parseable remote). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
-which then holds everything, with no repository id, or with no home. `Cache` appends the
-schema (`storeDirOf`). A run given `--cache-dir` passes null itself.
+which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
 Used by `prepareRun` (so `run` and `planRun`), the doctor, and every
 reading verb through `cli/workspace-config.ts` — `vx cache prune`

@@ -12,7 +12,7 @@ A workspace's cache splits in two:
 - **The store** — the entries and their artifacts: `entries`,
   `entry_stdout`, `output_files`, `entry_inputs`, `store_meta` in
   `store.db`, and `<hash>.tar.zst` beside it. Content-addressed.
-  Default: `~/.vx/<id>/cache/store-v32` on every platform, one per
+  Default: `~/.vx/<id>/cache` on every platform, one per
   repository, as Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06:
   "do exactly like nx"; the first cut used `~/.cache/vx`, one for every
   repository).
@@ -73,12 +73,14 @@ keyed by the workspace, not the cache dir, so the entries share as is.
 
 ## Decisions
 
-- **Versioned store directory.** An older vx refuses an index of a newer
-  schema; with one store per machine, upgrading one repository's vx
-  would fail every other's runs. `store-<SCHEMA_VERSION>` keeps them
-  apart; an old store is left for the user to delete.
+- **No store version (owner, 2026-10-06).** Every key is seeded with
+  `CACHE_VERSION`, so an artifact one vx wrote is never a hit for
+  another, and the store lives as long as the user keeps it. The cost
+  is a rule: a store table only ever gains columns (with defaults), so
+  an older vx still reads a store a newer one wrote. The first cut kept
+  `store-<SCHEMA_VERSION>` directories.
 - **A home that cannot hold the store does not fail the run.** The
-  store goes to `<cacheDir>/store-v32` instead, said once per fallback.
+  store goes to `<cacheDir>` instead, said once per fallback.
 - **An index that held its entries itself loses them** when it next
   opens with a store (they would shadow the store's): its history
   stays, its entries miss once, `vx cache prune` reaps their artifacts.

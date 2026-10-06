@@ -7,13 +7,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import {
-  Cache,
-  CACHE_VERSION,
-  noteSchemaReset,
-  SCHEMA_VERSION,
-  storeDirOf,
-} from '../cache/index.js'
+import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
 import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -243,7 +237,7 @@ async function collectWorkspaceInfo(
     memory: memoryFact(),
     cacheDir,
     // The store the index records, else the one a first run would open.
-    cacheStore: cache.storeDir ?? (storeRoot === null ? null : storeDirOf(storeRoot)),
+    cacheStore: cache.storeDir ?? storeRoot,
     // The two versions a bug report needs and the reset notice names: the
     // key prefix (a bump orphans every entry) and the index schema (a
     // mismatch drops every table).

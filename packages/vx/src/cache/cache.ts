@@ -262,11 +262,6 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        salt moved to store_meta. The cache KEY is unchanged.
 export const SCHEMA_VERSION = 'v32'
 
-/** The shared store's directory under its root: one per schema, so two vx versions never share one. */
-export function storeDirOf(storeRoot: string): string {
-  return path.join(storeRoot, `store-${SCHEMA_VERSION}`)
-}
-
 /** The tables a store holds: dropped from a workspace index that held them itself. */
 const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
 
@@ -637,7 +632,9 @@ export class Cache implements CacheLayer {
      */
     mode: 'open' | 'inspect' = 'open',
     /**
-     * Where the shared store lives (`storeDirOf` appends the schema), or
+     * The shared store's directory, unversioned: every key is seeded with
+     * `CACHE_VERSION`, so two vx versions never read each other's entries,
+     * and a store table only ever gains columns (owner, 2026-10-06). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
      * plugin's handle.
@@ -816,13 +813,13 @@ export class Cache implements CacheLayer {
         ? recorded
         : storeRoot === null
           ? undefined
-          : storeDirOf(storeRoot)
+          : storeRoot
     if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
       const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
       if (blocked !== null) {
         // A home this user cannot write (a container, a read-only mount):
         // the entries stay in this workspace rather than fail the run.
-        const fallback = storeDirOf(cacheDir)
+        const fallback = cacheDir
         if (fallback !== storeDir) {
           // Said by the open that falls back; the ones after it find it recorded.
           if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
