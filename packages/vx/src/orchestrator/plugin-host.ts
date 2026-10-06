@@ -169,17 +169,21 @@ export async function applyProjectHooks(
  * deleting each other's outputs). A violation is reported
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
- * the later one, since nothing is checked between plugins.
+ * the later one, since the structure is not checked between plugins.
+ * Each node's task config is (`afterEach`), like the `project` stage's.
  */
 export async function applyGraphHooks(
   plugins: readonly VxPlugin[],
   nodes: Map<string, TaskNode>,
   ctx: GraphHookContext,
+  /** Runs after EACH plugin's edit, so a refused task config names the plugin that wrote it. */
+  afterEach?: (plugin: VxPlugin) => void,
 ): Promise<void> {
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
     await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    afterEach?.(plugin)
     last = plugin
   }
   if (last === undefined) return

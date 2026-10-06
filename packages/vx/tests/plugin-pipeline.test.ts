@@ -471,6 +471,32 @@ describe('graph stage', () => {
   )
 
   it(
+    'a task config a plugin breaks is refused, naming the plugin and the field',
+    async () => {
+      // Unchecked, the misspelled field left the task without a command:
+      // it failed with exit 1 and no reason.
+      await pkg('a', build)
+      await workspace([
+        pluginSource('org/first', `{ graph() {} }`),
+        pluginSource(
+          'org/typo',
+          `{ graph(nodes) { nodes.get('a#build').config.exec = { comand: 'echo x' } } }`,
+        ),
+      ])
+      const said = await planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+        () => 'planned',
+        (e: Error) => e.message,
+      )
+      expect(said).toBe(
+        `${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
+          'tasks.build.exec has unknown field "comand" (allowed: command, env, interactive, ' +
+          'persistent, remote, retries, sandbox, timeout) — did you mean command?',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'sees which tasks the user asked for',
     async () => {
       await pkg(

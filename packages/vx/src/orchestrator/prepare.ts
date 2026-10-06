@@ -39,6 +39,7 @@ import {
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
+  validateProjectConfig,
 } from '../workspace/index.js'
 import {
   buildTaskGraph,
@@ -61,6 +62,7 @@ import {
   discoverProjects,
   gitOfDiscovery,
   graphOfDiscovery,
+  isDefaultBuild,
   loadProjects,
   loadWorkspacePlugins,
   type LoadedProjects,
@@ -597,12 +599,30 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     )
     mark('git enumeration')
     if (hasHook(plugins, 'graph')) {
-      await applyGraphHooks(plugins, nodes, {
-        workspaceRoot,
-        cacheDir,
-        warn: (m) => log.status(m),
-        requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
-      })
+      // A hook edits each node's config in place, as `project` does, so the
+      // edit is held to what the loader accepts from a user: a misspelled
+      // `exec` field ran as an empty command and failed with no reason.
+      const configPaths = new Map(projectMetas.map((m) => [m.name, m.configPath]))
+      await applyGraphHooks(
+        plugins,
+        nodes,
+        {
+          workspaceRoot,
+          cacheDir,
+          warn: (m) => log.status(m),
+          requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
+        },
+        (plugin) => {
+          for (const n of nodes.values()) {
+            if (isDefaultBuild(n.config)) continue
+            const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
+            validateProjectConfig(
+              { tasks: { [n.taskName]: n.config } },
+              `${where} (after plugin '${plugin.name}')`,
+            )
+          }
+        },
+      )
     }
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
