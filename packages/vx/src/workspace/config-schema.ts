@@ -650,6 +650,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `name the directory the task writes, such as "dist/**"`,
           )
         }
+        // An artifact stores workspace outputs under `workspace-outputs/`,
+        // and its index read a project output there as one: every hit was
+        // a "corrupt artifact", dropped and run again.
+        if (!g.startsWith('!') && normalizeGlob(g).split('/')[0] === 'workspace-outputs') {
+          throw new UserError(
+            `${where}.cache.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
+              `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
+          )
+        }
         // A `!` entry takes a path back from the outputs (A-44): it is not
         // cleaned, saved or restored, and it stays an input.
         assertNotDoubleNegated(g, `${where}.cache.outputs.files`)

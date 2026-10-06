@@ -279,6 +279,26 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     }
   })
 
+  // A project output under `workspace-outputs/` read back as a workspace
+  // output: every hit was a corrupt artifact, dropped and run again.
+  it('an output glob under the reserved workspace-outputs/ is refused (X-30)', () => {
+    const out = (g: string) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        cache: { inputs: { files: [] }, outputs: { files: ['dist/**', g] } },
+      })
+    for (const g of ['workspace-outputs/**', './workspace-outputs/o', 'workspace-outputs']) {
+      expect(out(g)).toBe(
+        `${CFG}: tasks.t.cache.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
+          `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
+      )
+    }
+    // Controls: a neighbour's name, a nested one, and a take-back.
+    for (const g of ['workspace-outputs2/**', 'out/workspace-outputs/**', '!workspace-outputs/x']) {
+      expect(out(g)).toBeNull()
+    }
+  })
+
   // `outputs: ['**']` loaded, and the clean before the run deleted the
   // project's source, package.json and vx.config while the run reported
   // success; the message for '.' had suggested `**` (item 1002).

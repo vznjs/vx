@@ -182,3 +182,10 @@ time (bugs, correctness, simplification, the plugin seams).
   is refused as one, and a word beside `--list` no run id could be is an
   unexpected argument. Row: `last.test.ts` › "--list takes a bad count
   as its count, and an extra word is unexpected (X-29)".
+- **X-30.** A project output under a top-level `workspace-outputs/`
+  saved fine, but the artifact index read it back as a workspace
+  output, so every hit was a "corrupt artifact", dropped and run again.
+  The name is the artifact's namespace for `outputs.workspaceFiles`; a
+  project output glob under it is now refused at load. Row:
+  `config-schema-refusals.test.ts` › "an output glob under the reserved
+  workspace-outputs/ is refused (X-30)".
