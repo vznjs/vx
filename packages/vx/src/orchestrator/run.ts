@@ -25,7 +25,6 @@ import {
   type TaskOutcome,
 } from '../graph/index.js'
 import {
-  formatBytes,
   mark,
   killGraceMs,
   MAX_TIMEOUT_MS,
@@ -52,7 +51,7 @@ import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
+import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
@@ -1150,10 +1149,6 @@ async function runOnBus(
         log.status(`vx: failed to write profile: ${msg}`)
       }
     }
-    // The footer is the run's last word: every line above, nothing below
-    // (owner, 2026-10-06). A task's own facts (flaky, blocked) ride its row.
-    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
-
     // Record each task to the run history in a single SQLite transaction
     // (one fsync instead of N), with the invocation header row alongside,
     // atomically via recordRunBundle. The Tier-3 input-fingerprint rows
@@ -1264,7 +1259,7 @@ async function runOnBus(
     mark('output dir snapshots')
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
-    if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
+    if (!stopRun.signal.aborted) await applyCacheRetention(prepared)
     // A plugin hears the run until its teardown and nothing after: released
     // only in the finally, its handlers heard a kept server through the
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
@@ -1287,6 +1282,13 @@ async function runOnBus(
         log.status(`vx: sandbox cleanup failed: ${msg}`)
       }
     }
+
+    // The footer is the run's last word (owner, 2026-10-06): it prints once
+    // the run's own work is done, history, uploads, plugin teardown and the
+    // sandbox reset included, so any warning they raise lands above it. A
+    // task's own facts (flaky, blocked) ride its row. Only a kept server's
+    // own output follows.
+    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every
@@ -1392,10 +1394,10 @@ async function runOnBus(
 /**
  * The workspace's `cacheRetention`, after every save and upload of this run
  * has landed (so nothing this run wrote is mid-flight) and before the cache
- * closes. Housekeeping, not the run's work: a failure is one warning, never
+ * closes. Housekeeping, not the run's work: silent, and a failure is never
  * a failed run. Declared nowhere → one property read.
  */
-async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<void> {
+async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
   const retention = prepared.workspaceConfig?.cacheRetention
   if (retention === undefined) return
   // Validated at load (`validateRetention`), so both parse.
@@ -1403,26 +1405,12 @@ async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<
     retention.olderThan === undefined ? undefined : parseDuration(retention.olderThan)!
   const maxBytes = retention.maxSize === undefined ? undefined : parseSize(retention.maxSize)!
   try {
-    const result = await prepared.localCache.evictIfDue({
+    await prepared.localCache.evictIfDue({
       ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
       ...(maxBytes !== undefined ? { maxBytes } : {}),
     })
-    if (result !== null && (result.evicted > 0 || result.orphans > 0)) {
-      const said: string[] = []
-      if (result.evicted > 0) {
-        said.push(
-          `evicted ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)})`,
-        )
-      }
-      if (result.orphans > 0) {
-        said.push(
-          `reaped ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`,
-        )
-      }
-      log.status(`vx: cache retention ${said.join(', ')}`)
-    }
-  } catch (err) {
-    log.status(`vx: cache retention skipped: ${err instanceof Error ? err.message : String(err)}`)
+  } catch {
+    // Housekeeping says nothing (owner): the next due run tries again.
   }
 }
 
