@@ -2173,6 +2173,7 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }

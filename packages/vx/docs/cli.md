@@ -608,7 +608,7 @@ fixed:
 | restored-local/-remote | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
 | up-to-date             | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
 | failed                 | frame                    | one-liner + frame replays | one-liner + frame replays | frame                        |
-| skipped                | one-liner                | silent                    | silent                    | one-liner                    |
+| skipped                | one-liner                | one-liner                 | one-liner                 | one-liner                    |
 
 What the shapes mean in each column:
 
