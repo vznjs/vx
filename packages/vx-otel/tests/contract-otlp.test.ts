@@ -59,6 +59,8 @@ const RUN: Required<RunContextRecord> = {
   vxVersion: '1.0.0',
   workspaceId: 'w',
   workspaceName: 'ws',
+  repository: 'github.com/o/r',
+  workspacePath: '.',
   command: 'vx run build',
   requestedTasks: ['build'],
   cachePolicy: 'lR,lW',

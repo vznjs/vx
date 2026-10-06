@@ -152,26 +152,30 @@ secrets, and this sends it to the collector; `logs: false` or
 
 **One run, three signals, linked.** Every request's resource names the run
 (`service.instance.id` and `cicd.pipeline.run.id`, its id), the host
-(`host.name`, `host.arch`, `os.type`) and the commit (`vcs.ref.head.*`),
-under `OTEL_RESOURCE_ATTRIBUTES`, which wins. Each task metric point carries
+(`host.name`, `host.arch`, `os.type`), the commit (`vcs.ref.head.*`) and
+the repository (`vcs.repository.url.full`, `vcs.repository.name`,
+`vcs.owner.name`, `vcs.provider.name`, from the `origin` remote) with
+`vx.workspace.path`, the workspace root inside it (`.` at the top), under `OTEL_RESOURCE_ATTRIBUTES`, which wins. Each task metric point carries
 its task's span as an exemplar, and each log record its span, so a chart
 opens the trace and a span opens its output.
 
 ## Live export
 
-```ts
-otel({ live: process.env.CI === 'true' })
-```
-
-With `live: true` each task's span, metrics and output tail are sent as the
+On by default; `otel({ live: false })` sends everything at the end instead.
+Each task's span, metrics and output tail are sent as the
 task ends, its process samples as they are taken, and a log record
 (`event.name` `vx.run.start` or `vx.task.start`, linked to the trace) as the
 run and each task start; the `vx.run` span, the stage spans and the run's
-metrics follow at the end. A dashboard follows a CI run while it runs. One
-send is in flight at a time and takes everything that ended meanwhile; a
-refused send warns once per signal for the run. Cost on 60 tasks against a
-local collector: within the noise of run-to-run wall time (min of 6: 1,101 ms
-off, 1,108 ms on). Off by default.
+metrics follow at the end. A dashboard follows a CI run while it runs.
+Sends are batched: one per second at most, one in flight at a time, each
+taking everything that ended meanwhile; a refused send warns once per
+signal for the run. On 60 tasks against a local collector the run burns the
+same CPU live as with one send at the end (median of 10: 815 ms both).
+
+No send ever holds a task: a task's end only queues its records. A collector
+that never answers holds nothing either: at the end of the run every send
+still in flight is cut at core's teardown deadline (3 s,
+`VX_TEARDOWN_TIMEOUT_MS`), and the process exits.
 
 ## Behavior note
 

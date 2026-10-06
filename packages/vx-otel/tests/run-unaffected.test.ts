@@ -104,14 +104,14 @@ describe('a run whose collector fails', () => {
     {
       name: 'is down',
       endpoint: () => down(),
-      said: ['traces', 'metrics'].map((s) =>
+      said: ['traces', 'metrics', 'logs'].map((s) =>
         fail(s, 'Unable to connect. Is the computer able to access the url?'),
       ),
     },
     {
       name: 'answers 500',
       endpoint: () => collector('500'),
-      said: ['traces', 'metrics'].map((s) => fail(s, 'HTTP 500: collector broke')),
+      said: ['traces', 'metrics', 'logs'].map((s) => fail(s, 'HTTP 500: collector broke')),
     },
     {
       // The plugin's own timeout is a minute: core's flush deadline ends it.
@@ -119,7 +119,7 @@ describe('a run whose collector fails', () => {
       endpoint: () => collector('hang'),
       said: [
         '[vx] telemetry flush timed out after 1500ms; buffered records lost',
-        ...['traces', 'metrics'].map((s) => fail(s, 'The operation was aborted.')),
+        ...['traces', 'metrics', 'logs'].map((s) => fail(s, 'The operation was aborted.')),
       ],
     },
   ]
@@ -127,11 +127,14 @@ describe('a run whose collector fails', () => {
     it(`${c.name}: the run is green, bounded, and says so once a signal`, async () => {
       const r = await runWith(await c.endpoint())
       expect([r.ok, r.statuses, r.out]).toEqual([true, ['success'], 'built\n'])
+      // Live sends race each other: the order is the network's, the set is the claim.
+      const byText = (a: string, b: string) => a.localeCompare(b)
       expect(
         r.said
           .filter((l) => /vx-otel|telemetry/.test(l))
-          .map((l) => l.replace(/127\.0\.0\.1:\d+/, '127.0.0.1:PORT')),
-      ).toEqual(c.said)
+          .map((l) => l.replace(/127\.0\.0\.1:\d+/, '127.0.0.1:PORT'))
+          .toSorted(byText),
+      ).toEqual(c.said.toSorted(byText))
       expect(r.ms).toBeLessThan(5_000)
     }, 20_000)
   }

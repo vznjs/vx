@@ -123,6 +123,10 @@ export interface RunContextRecord {
    */
   workspaceId: string
   workspaceName: string
+  /** The origin remote, normalized (`github.com/org/repo`); absent without one. Additive. */
+  repository?: string
+  /** The workspace root relative to its git work tree, `.` at the top; absent outside git. Additive. */
+  workspacePath?: string
   // git / CI / host — straight from run-context.ts.
   commitSha: string | null
   branch: string | null

@@ -27,6 +27,8 @@ export interface HostContext {
 export interface WorkspaceIdentity {
   id: string // stable 16-hex id — the same for every checkout of the same repo
   name: string // the repo (or root dir) basename
+  repository?: string // the origin remote, normalized: `github.com/org/repo`
+  path?: string // the root inside its git work tree, `.` at the top; absent outside git
 }
 
 export function captureGitContext(

@@ -329,6 +329,23 @@ export interface WorkspaceIdentity {
   id: string
   /** Human name for switchers/badges: the repo (or root dir) basename. */
   name: string
+  /** The origin remote, normalized (`github.com/org/repo`); absent without one. */
+  repository?: string
+  /** The root inside its git work tree, POSIX, `.` at the top; absent outside git. */
+  path?: string
+}
+
+/** Where `root` sits in the work tree whose `.git` is nearest above it. */
+function workTreePath(root: string): string | undefined {
+  const abs = path.resolve(root)
+  for (let dir = abs; ;) {
+    if (fs.existsSync(path.join(dir, '.git'))) {
+      return path.relative(dir, abs).split(path.sep).join('/') || '.'
+    }
+    const up = path.dirname(dir)
+    if (up === dir) return undefined
+    dir = up
+  }
 }
 
 /**
@@ -375,6 +392,8 @@ export function captureWorkspaceIdentity(
   originUrl?: string | null,
 ): WorkspaceIdentity {
   const base = workspaceRoot.replace(/\/+$/, '').split('/').pop() || 'workspace'
+  const at = workTreePath(workspaceRoot)
+  const where = at === undefined ? {} : { path: at }
   try {
     let url = originUrl ?? ''
     if (originUrl === undefined) {
@@ -393,7 +412,7 @@ export function captureWorkspaceIdentity(
     if (url.length > 0) {
       const normalized = normalizeRemoteUrl(url)
       const name = normalized.split('/').pop() || base
-      return { id: xxh3hex(normalized), name }
+      return { id: xxh3hex(normalized), name, repository: normalized, ...where }
     }
   } catch {
     // git unavailable — fall through to the salt.
@@ -409,8 +428,8 @@ export function captureWorkspaceIdentity(
       fs.mkdirSync(path.dirname(saltPath), { recursive: true })
       fs.writeFileSync(saltPath, salt + '\n')
     }
-    return { id: xxh3hex(salt), name: base }
+    return { id: xxh3hex(salt), name: base, ...where }
   } catch {
-    return { id: xxh3hex(workspaceRoot), name: base }
+    return { id: xxh3hex(workspaceRoot), name: base, ...where }
   }
 }

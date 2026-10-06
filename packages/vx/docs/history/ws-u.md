@@ -43,3 +43,16 @@ and traces should use span events, links and more objects.
   1.4 ms. Rows: `vx-otel/tests/otel.test.ts` › "live mode", "signals
   link to each other", "loads the exporter only when one is configured";
   `telemetry.test.ts` › "task.end carries what a hit saved".
+
+- U-4 — OTel sends live by default and names the repository. Live sends
+  batch for 1 s, one in flight: 60 tasks burn the same CPU live as at
+  the end (median of 10: 815 ms both), so `live` defaults to `true`. A
+  task's end only queues; sends in flight are cut at the teardown
+  deadline, so a collector that never answers cannot hold the run.
+  `RunContextRecord` gained `repository` (normalized origin) and
+  `workspacePath` (root inside the work tree, from the nearest `.git`
+  above it); vx-otel sends them as `vcs.repository.*` and
+  `vx.workspace.path`. Rows: `run-context.test.ts` › "names the
+  repository and where in it the workspace sits";
+  `vx-otel/tests/otel.test.ts` › "a slow collector never holds the run",
+  "names the repository".
