@@ -211,9 +211,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
   it("a teardown's warning prints above the footer", async () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      localWorkspaceSource([
-        pluginSource('org/bad', `{ teardown() { throw new Error('boom') } }`),
-      ]),
+      localWorkspaceSource([pluginSource('org/bad', `{ teardown() { throw new Error('boom') } }`)]),
     )
     const lines: string[] = []
     const log = {
