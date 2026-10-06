@@ -774,6 +774,12 @@ async function dropFilteredOids(
     pathspecs: readonly string[]
     gitVars: string
     spawnGit: (a: string[], stdin?: string) => Promise<GitRun | null>
+    /**
+     * The same `check-attr`, already started over every listed index entry
+     * (a superset of `trusted`) because `attributesInIndex` fired before
+     * `status` was back.
+     */
+    early?: Promise<GitRun | null> | undefined
   },
 ): Promise<void> {
   if (trusted.size === 0) return
@@ -823,12 +829,46 @@ async function dropFilteredOids(
   // blob's OID keyed an edit git calls clean, and the run replayed the old
   // output (item 978). Git LFS is a `filter` as well: its files are hashed
   // from disk now, the one honest identity of what a task reads.
-  const res = await args.spawnGit(
-    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident', 'filter', 'working-tree-encoding'],
-    [...trusted.keys()].join('\0'),
-  )
+  const res = await (args.early ?? args.spawnGit(CHECK_ATTR, [...trusted.keys()].join('\0')))
   if (res === null || res.exitCode !== 0) return
   for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
+}
+
+const CHECK_ATTR = [
+  'check-attr',
+  '--stdin',
+  '-z',
+  'text',
+  'eol',
+  'ident',
+  'filter',
+  'working-tree-encoding',
+]
+
+/**
+ * The filter gate's half that needs only the index listing: an attributes
+ * file tracked in it, in `$GIT_DIR/info/attributes`, or above the scanned
+ * dirs. When it fires, `dropFilteredOids` is sure to ask `check-attr`, so the
+ * enumeration starts it beside `status` (~8 ms on this repo, U-3)
+ * instead of after it. When it does not, the whole gate decides later.
+ */
+function attributesInIndex(args: {
+  tracked: readonly string[]
+  workspaceRoot: string
+  gitDir: string
+  gitPrefix: string
+  pathspecs: readonly string[]
+}): boolean {
+  if (
+    args.gitDir !== '' &&
+    existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes'))
+  ) {
+    return true
+  }
+  for (const rel of args.tracked) {
+    if (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) return true
+  }
+  return attributesAbove(args)
 }
 
 /**
@@ -1259,7 +1299,20 @@ export async function startGitEnumeration(
     }
   }
   const indexKeyRead = readIndexKey()
-  const [ls, status, vars] = await running
+  const gitPrefix = facts?.prefix ?? ''
+  const gitDir = facts?.commonDir ?? ''
+  const ls = await listing
+  const parsedLs =
+    ls !== null && ls.exitCode === 0
+      ? parseLsFilesOutput(ls.stdout.length === 0 ? [] : ls.stdout.split('\0'), ls.undecodable)
+      : undefined
+  const early =
+    parsedLs !== undefined &&
+    parsedLs.oids.size > 0 &&
+    attributesInIndex({ tracked: parsedLs.files, workspaceRoot, gitDir, gitPrefix, pathspecs })
+      ? spawnGit(CHECK_ATTR, [...parsedLs.oids.keys()].join('\0'))
+      : undefined
+  const [, status, vars] = await running
   // The key stands for the index `ls-files` listed only when that index
   // was written before the enumeration began (git writes it by rename, so
   // the stamp moves with any write) and is still in place after it: a
@@ -1281,20 +1334,14 @@ export async function startGitEnumeration(
   if (ls === null) {
     throw gitSpawnRefusal(workspaceRoot)
   }
-  if (ls.exitCode !== 0) {
+  if (parsedLs === undefined) {
     const stderr = ls.stderr.trim()
     throw new UserError(
       `vx requires git: ${workspaceRoot} is not inside a git work tree. ` +
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  const {
-    files: tracked,
-    oids,
-    flagged,
-    gitlinks,
-    undecodable,
-  } = parseLsFilesOutput(ls.stdout.length === 0 ? [] : ls.stdout.split('\0'), ls.undecodable)
+  const { files: tracked, oids, flagged, gitlinks, undecodable } = parsedLs
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1302,8 +1349,6 @@ export async function startGitEnumeration(
   // a STALE cache hit serving old outputs. Empty prefix (workspace == git root,
   // the common case) is a zero-cost no-op. Paths above the workspace can't be
   // inputs, so they drop out of the set.
-  const gitPrefix = facts?.prefix ?? ''
-  const gitDir = facts?.commonDir ?? ''
   const parsedStatus =
     status !== null && status.exitCode === 0
       ? parseStatusOutput(status.stdout, status.undecodable)
@@ -1357,6 +1402,7 @@ export async function startGitEnumeration(
     pathspecs,
     gitVars: vars !== null && vars.exitCode === 0 ? vars.stdout : '',
     spawnGit,
+    early,
   })
   if (vars !== null && vars.exitCode === 0 && fileModeIgnored(vars.stdout)) {
     restampModes(trusted, workspaceRoot)

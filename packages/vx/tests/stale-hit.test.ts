@@ -1125,6 +1125,64 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a tracked .gitattributes starts check-attr before status has answered (U-3)',
+    async () => {
+      // check-attr waited for status, the one spawn that walks the tree, and
+      // ran after it: ~8 ms of a warm run on this repo, whose root
+      // `.gitattributes` sets a merge driver. The index listing alone proves
+      // the gate will fire. Status is held here until check-attr starts or a
+      // second passes, and only the first is the fix.
+      await write(path.join(root, '.gitattributes'), '*.txt text\n')
+      await write(path.join(root, 'pkg/src/a.txt'), 'a\n')
+      await write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      const origSpawn = Bun.spawn
+      const bunMut = Bun as unknown as { spawn: typeof Bun.spawn }
+      let attrStarted!: () => void
+      const attr = new Promise<'check-attr'>((r) => (attrStarted = () => r('check-attr')))
+      let released: string | undefined
+      bunMut.spawn = ((...a: Parameters<typeof Bun.spawn>) => {
+        const cmd = (a[0] as { cmd?: readonly string[] } | undefined)?.cmd ?? []
+        const proc = origSpawn(...a)
+        if (path.basename(cmd[0] ?? '') !== 'git') return proc
+        if (cmd.includes('check-attr')) attrStarted()
+        if (!cmd.includes('status')) return proc
+        const gate = Promise.race([attr, Bun.sleep(1000).then(() => 'timeout')])
+        return new Proxy(proc, {
+          get(target, key) {
+            if (key === 'exited') {
+              return gate.then((by) => {
+                released = by
+                return target.exited
+              })
+            }
+            const v = Reflect.get(target, key, target) as unknown
+            return typeof v === 'function' ? (v as () => unknown).bind(target) : v
+          },
+        })
+      }) as typeof Bun.spawn
+      const cache = new GitFilesCache()
+      try {
+        await populateGitFilesCache(root, [path.join(root, 'pkg')], cache)
+      } finally {
+        bunMut.spawn = origSpawn
+      }
+      expect(released).toBe('check-attr')
+      // And its answer still lands: the text file is hashed from disk, the
+      // other keeps its index OID.
+      const oids = cache.oidsFor(path.join(root, 'pkg'))
+      expect(oids?.has(path.join(root, 'pkg/src/a.txt'))).toBe(false)
+      expect(oids?.has(path.join(root, 'pkg/src/b.ts'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a workspace-anchored OUTPUT landing in the consumer project is not classified stable',
     async () => {
       // `cache.outputs.workspaceFiles` is root-anchored and deliberately
