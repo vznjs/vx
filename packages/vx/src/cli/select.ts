@@ -21,11 +21,11 @@ import {
   parseFilter,
   type ProjectMeta,
   readLockfile,
-  workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
+import { declaresInput } from '../cache/index.js'
 import { listed, maskedLine, nearest, UserError } from '../util/index.js'
 import {
   claimedAffected,
@@ -61,9 +61,9 @@ export async function workspaceGlobOwners(
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
-      const globs = task.cache?.inputs?.workspaceFiles
-      if (globs === undefined) continue
-      if (changed.some((rel) => workspaceGlobsMatch(globs, rel))) return true
+      const cache = task.cache
+      if (cache === undefined) continue
+      if (changed.some((rel) => declaresInput(cache, null, rel))) return true
     }
     return false
   }

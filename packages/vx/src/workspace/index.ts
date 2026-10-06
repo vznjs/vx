@@ -8,7 +8,6 @@ export {
   defaultAffectedBase,
   type FingerprintClaims,
   refIsHead,
-  workspaceGlobsMatch,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export {
