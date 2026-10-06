@@ -197,8 +197,17 @@ export const EXTGLOB = /[!@+*?]\(/
 export function taskGlob(pattern: string): Bun.Glob {
   // A `]` with no `[` before it is already literal to `Bun.Glob`.
   const source = pattern.includes('[') ? pattern.replace(/(?<!\\)[[\]]/g, '\\$&') : pattern
+  const glob = new Bun.Glob(source)
   const re = regExpSource(pattern)
-  return re === null ? new Bun.Glob(source) : new RegExpGlob(source, new RegExp(`^${re}$`, 'u'))
+  if (re === null) return glob
+  const compiled = new RegExp(`^${re}$`, 'u')
+  const native = Object.getPrototypeOf(glob) as Bun.Glob
+  // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
+  // it by rules of its own (`src/**` takes `src/`, never `src`). `scan`
+  // stays `Bun.Glob`'s. Set on the instance, not by a subclass, so the glob
+  // is built by whatever `Bun.Glob` is at the call (the playground's port).
+  glob.match = (rel: string): boolean => (rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel))
+  return glob
 }
 
 /**
@@ -249,22 +258,6 @@ function regExpSource(pattern: string): string | null {
     out += seg.replace(REGEXP_SYNTAX, (c) => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : `\\${c}`))
   }
   return out
-}
-
-/** A task glob that matches by its RegExp; `scan` stays `Bun.Glob`'s. */
-class RegExpGlob extends Bun.Glob {
-  constructor(
-    source: string,
-    private readonly re: RegExp,
-  ) {
-    super(source)
-  }
-
-  // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
-  // it by rules of its own (`src/**` takes `src/`, never `src`).
-  override match(rel: string): boolean {
-    return rel.endsWith('/') ? super.match(rel) : this.re.test(rel)
-  }
 }
 
 function stripTrailingSlash(p: string): string {
