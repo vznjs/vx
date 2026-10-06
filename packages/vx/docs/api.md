@@ -94,6 +94,7 @@ class · `src/cache/cache.ts`
 ```ts
 export class Cache implements CacheLayer {
   readonly hasRemote
+  readonly uploads: UploadTally
   readonly storeDir: string | undefined
   readonly storeFallback: string | null
   readonly storeMoved: { from: string; to: string } | null
@@ -1228,6 +1229,9 @@ export interface OutcomeView {
   queuedMs?: number
   inputFiles?: number
   inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1937,6 +1941,7 @@ export interface RunSummaryRecord {
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
   stages?: readonly RunStage[]
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
 }
 ```
 
@@ -2188,6 +2193,9 @@ export interface TaskOutcome {
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
@@ -2276,6 +2284,9 @@ export interface TaskTelemetry {
   queuedMs?: number
   inputFiles?: number
   inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string

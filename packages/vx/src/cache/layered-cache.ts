@@ -260,8 +260,9 @@ export class LayeredCache implements CacheLayer {
    * remote cache — so we flip `source` to `'remote'` and the
    * orchestrator reports `cache-hit-remote`. Without this, a prefetch
    * followed by a `get` would mislabel a genuine remote hit as local.
+   * Each maps to how long its download and ingest took.
    */
-  private readonly remoteSourced = new Set<string>()
+  private readonly remoteSourced = new Map<string, number>()
 
   /**
    * Background write-through uploads. `save()` returns after the local
@@ -364,7 +365,7 @@ export class LayeredCache implements CacheLayer {
       // A prefetch this run may have materialized this entry FROM
       // remote; the local row exists now, but the work was saved by
       // the remote cache, so the provenance stays 'remote'.
-      return this.remoteSourced.has(hash) ? { ...localHit, source: 'remote' } : localHit
+      return this.asRemote(hash, localHit)
     }
 
     // Remote reads disabled (e.g. `--cache=remote:`): a local miss is a
@@ -395,7 +396,12 @@ export class LayeredCache implements CacheLayer {
     // above and that skip's `local.has`, stamping 'remote' here reported a
     // purely-local hit as `cache-hit-remote` and inflated the remote
     // hit-rate. Whatever provenance the entry has is the truth.
-    return this.remoteSourced.has(hash) ? { ...materialized, source: 'remote' } : materialized
+    return this.asRemote(hash, materialized)
+  }
+
+  private asRemote(hash: string, entry: CacheEntry): CacheEntry {
+    const fetchMs = this.remoteSourced.get(hash)
+    return fetchMs === undefined ? entry : { ...entry, source: 'remote', fetchMs }
   }
 
   // Existence probe: local first, then a remote HEAD — no body
@@ -439,6 +445,7 @@ export class LayeredCache implements CacheLayer {
     // or remote if a concurrent prefetch set it).
     if ((await this.local.has(hash)) === 'local') return true
 
+    const fetchStart = performance.now()
     let remoteResult: unknown
     try {
       remoteResult = await this.wire.get(hash)
@@ -490,7 +497,7 @@ export class LayeredCache implements CacheLayer {
       this.reportRemoteError('download', hash, err)
       return false
     }
-    this.remoteSourced.add(hash)
+    this.remoteSourced.set(hash, Math.round(performance.now() - fetchStart))
     return true
   }
 
@@ -543,11 +550,17 @@ export class LayeredCache implements CacheLayer {
       }
     }
     this.enqueueUpload(async () => {
+      const tally = this.local.uploads
+      const start = performance.now()
       try {
         const body =
           packed !== undefined ? new Blob([packed]) : Bun.file(this.local.outputsPath(hash))
         await this.wire.put(hash, body, { durationMs })
+        tally.count++
+        tally.bytes += body.size
+        tally.ms += Math.round(performance.now() - start)
       } catch (err) {
+        tally.failed++
         this.reportRemoteError('upload', hash, err)
       }
     })

@@ -110,6 +110,9 @@ const TASK: Required<TaskTelemetry> = {
   admissionHeldMs: 5,
   queuedMs: 6,
   inputFiles: 3,
+  artifactBytes: 2048,
+  fetchMs: 4,
+  saveMs: 2,
   inputChanges: { count: 1, first: [{ kind: 'env', name: 'NODE_ENV', change: 'added' }] },
   // Every field, so each one's path is recorded; a hit alone carries it.
   restored: false,
@@ -209,6 +212,7 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     exitOk: false,
     tasks: [TASK],
     stages: [{ name: 'classify + probe', startedAt: 1000.25, endedAt: 1008.5 }],
+    uploads: { count: 1, bytes: 2048, ms: 30, failed: 0 },
   })
   await sink.flush()
   expect(Object.keys(bodies).sort()).toEqual(['logs', 'metrics', 'traces'])

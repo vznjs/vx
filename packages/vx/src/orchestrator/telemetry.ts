@@ -232,6 +232,12 @@ export interface TaskTelemetry {
    * it: what its key changed since, the first ten named. Additive.
    */
   inputChanges?: InputChanges
+  /** The artifact's compressed size: on a hit the entry's, on a miss the save's. Additive. */
+  artifactBytes?: number
+  /** On a remote hit this run pulled: the download and its ingest. Additive. */
+  fetchMs?: number
+  /** On a miss that saved: the save's own time (pack, write, index). Additive. */
+  saveMs?: number
   /**
    * On a cache hit: whether outputs were written this run (`true`) or the
    * disk already matched the entry and nothing was restored (`false`, an
@@ -339,6 +345,12 @@ export interface RunSummaryRecord {
    * stages ahead of the run lock end before `startedAt`. Additive.
    */
   stages?: readonly RunStage[]
+  /**
+   * The run's uploads to a remote cache, once they settled: how many landed,
+   * their bytes, their summed time (they overlap), and how many failed.
+   * Absent when nothing was uploaded or tried. Additive.
+   */
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
 }
 
 /** One stage of a run, a wall window in epoch ms. */
@@ -369,6 +381,7 @@ export function assembleRunSummary(
     exitOk: boolean
     abortedCount: number
     stages?: readonly RunStage[]
+    uploads?: { count: number; bytes: number; ms: number; failed: number }
   },
 ): RunSummaryRecord {
   let failedCount = 0
@@ -404,6 +417,9 @@ export function assembleRunSummary(
     exitOk: timing.exitOk,
     tasks,
     ...(timing.stages !== undefined && timing.stages.length > 0 ? { stages: timing.stages } : {}),
+    ...(timing.uploads !== undefined && timing.uploads.count + timing.uploads.failed > 0
+      ? { uploads: { ...timing.uploads } }
+      : {}),
   }
 }
 
@@ -769,6 +785,9 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.queuedMs !== undefined) t.queuedMs = o.queuedMs
   if (o.inputFiles !== undefined) t.inputFiles = o.inputFiles
   if (o.inputChanges !== undefined) t.inputChanges = o.inputChanges
+  if (o.artifactBytes !== undefined) t.artifactBytes = o.artifactBytes
+  if (o.fetchMs !== undefined) t.fetchMs = o.fetchMs
+  if (o.saveMs !== undefined) t.saveMs = o.saveMs
   if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()

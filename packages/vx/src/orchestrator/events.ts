@@ -256,6 +256,12 @@ export interface OutcomeView {
   inputFiles?: number
   /** What a missed task's key changed since its last saved entry (see `TaskOutcome`). */
   inputChanges?: InputChanges
+  /** The artifact's compressed size, a hit's or a measured save's (see `TaskOutcome`). */
+  artifactBytes?: number
+  /** A remote hit's download and ingest (see `TaskOutcome`). */
+  fetchMs?: number
+  /** A measured save's own time (see `TaskOutcome`). */
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -378,6 +384,9 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.queuedMs !== undefined) view.queuedMs = outcome.queuedMs
   if (outcome.inputFiles !== undefined) view.inputFiles = outcome.inputFiles
   if (outcome.inputChanges !== undefined) view.inputChanges = outcome.inputChanges
+  if (outcome.artifactBytes !== undefined) view.artifactBytes = outcome.artifactBytes
+  if (outcome.fetchMs !== undefined) view.fetchMs = outcome.fetchMs
+  if (outcome.saveMs !== undefined) view.saveMs = outcome.saveMs
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy

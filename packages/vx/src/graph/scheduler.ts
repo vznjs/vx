@@ -87,6 +87,15 @@ export interface TaskOutcome {
   /** On a cacheable task that ran: how many files its key read. */
   inputFiles?: number
   /**
+   * The artifact's compressed size: on a hit, the entry's; on a miss, the one
+   * its save wrote (measured only when a telemetry sink listens).
+   */
+  artifactBytes?: number
+  /** On a remote hit this run pulled: the download and its ingest. */
+  fetchMs?: number
+  /** On a miss that saved, with a sink listening: the save's own time. */
+  saveMs?: number
+  /**
    * On a cacheable task that ran: what its key changed since the last entry
    * saved for it. Only when a telemetry sink asked, and the cache holds one.
    */
@@ -234,7 +243,7 @@ export interface ScheduleOptions {
    * execute request), so it waits for the save to land, while the freed
    * slot admits other work at once. Undefined: nothing owed.
    */
-  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
+  settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /**
    * Optional priority override: callers pass their own per-node weight
    * (e.g. `computePredictedPriorities` from the orchestrator's history
@@ -826,11 +835,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               return
             }
             tick()
-            const done = (): void => {
-              finishOne(id, outcome)
+            // What the save cost rides the outcome it settles.
+            const done = (owed?: Partial<TaskOutcome> | void): void => {
+              finishOne(id, owed ? { ...outcome, ...owed } : outcome)
               tick()
             }
-            void settled.then(done, done)
+            void settled.then(done, () => done())
           },
           (err: unknown) => {
             if (err instanceof RestoreDemoted) {

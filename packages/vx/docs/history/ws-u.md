@@ -78,3 +78,17 @@ and traces should use span events, links and more objects.
   hashes, so no secret). Only with a sink: one `GROUP BY` over `entries`
   per run, then a primary-key read per miss. Row:
   `telemetry-trace-facts.test.ts` › "a miss names what its key changed".
+
+- U-7 — OTel says what the cache cost. A hit carries its artifact's
+  size from the index (`CacheEntry.sizeBytes`), and a remote hit this
+  run pulled its download and ingest (`fetchMs`, timed in
+  `LayeredCache`). With a sink listening, a miss's save is timed and
+  its artifact stat'd, and the lane's `landed` resolves with both; the
+  scheduler merges what `settledOf` resolves with into the outcome.
+  Uploads are tallied on the local `Cache` the `LayeredCache` wraps (so
+  a plugin's own layer reports with no seam method), and `run()` now
+  drains them before the telemetry summary, which carries `uploads`.
+  vx-otel sends `vx.cache.artifact_bytes`, `vx.cache.save_ms`,
+  `vx.cache.fetch_ms`, their task metrics, and `vx.cache.upload.*` on
+  the run span. Row: `orchestrator-remote.test.ts` › "a sink hears
+  each artifact's size".

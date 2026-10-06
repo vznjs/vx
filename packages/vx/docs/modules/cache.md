@@ -257,6 +257,8 @@ export interface CacheEntry {
   stdout: string // stderr is not cached
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
+  sizeBytes?: number // the artifact's compressed size, from the index
+  fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest
 }
 
 export interface RunRecord {

@@ -339,6 +339,7 @@ function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
     command: row.command,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
+    sizeBytes: row.size_bytes,
     ...(row.cpu_ms !== null ? { cpuMs: row.cpu_ms } : {}),
     ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
@@ -487,9 +488,24 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** What a run's background uploads moved: totals over the ones that landed. */
+export interface UploadTally {
+  count: number
+  bytes: number
+  /** Summed per-upload time; uploads overlap, so this exceeds the wall. */
+  ms: number
+  failed: number
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
+  /**
+   * The run's uploads to a remote behind this cache, tallied by the
+   * `LayeredCache` over it (a plugin's, constructed over `ctx.localCache`)
+   * so the run can report them without a method on the layer seam.
+   */
+  readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>

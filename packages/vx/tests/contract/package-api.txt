@@ -1,6 +1,7 @@
 == class Cache (src/cache/cache.ts)
 export class Cache implements CacheLayer {
   readonly hasRemote
+  readonly uploads: UploadTally
   readonly storeDir: string | undefined
   readonly storeFallback: string | null
   readonly storeMoved: { from: string; to: string } | null
@@ -384,6 +385,8 @@ export interface CacheEntry {
   stdout: string
   storedAt: string
   source?: 'local' | 'remote'
+  sizeBytes?: number
+  fetchMs?: number
 }
 == type CacheGetContext (src/cache/layer.ts)
 export interface CacheGetContext {
@@ -892,6 +895,9 @@ export interface OutcomeView {
   queuedMs?: number
   inputFiles?: number
   inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1276,6 +1282,7 @@ export interface RunSummaryRecord {
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
   stages?: readonly RunStage[]
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
 }
 == type SandboxConfig (src/config.ts)
 export interface SandboxConfig {
@@ -1427,6 +1434,9 @@ export interface TaskOutcome {
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
@@ -1492,6 +1502,9 @@ export interface TaskTelemetry {
   queuedMs?: number
   inputFiles?: number
   inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -1561,6 +1574,13 @@ export interface TelemetrySink {
   onRecord?(record: TelemetryRecord): void
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
+}
+== type UploadTally (src/cache/cache.ts)
+export interface UploadTally {
+  count: number
+  bytes: number
+  ms: number
+  failed: number
 }
 == type VxPlugin (src/orchestrator/plugin.ts)
 export interface VxPlugin {

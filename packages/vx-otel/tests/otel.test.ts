@@ -524,6 +524,9 @@ describe('OtelSink end-to-end', () => {
         cpuMs: 2600,
         peakRssBytes: 9000,
         queuedMs: 70,
+        artifactBytes: 512,
+        fetchMs: 9,
+        saveMs: 3,
       }),
     )
     // Never ran: no point, or it would chart as the fastest run there is.
@@ -551,6 +554,9 @@ describe('OtelSink end-to-end', () => {
       of('vx.task.cpu_time'),
       of('vx.task.peak_memory'),
       of('vx.task.queued'),
+      of('vx.task.artifact_size'),
+      of('vx.task.cache_fetch'),
+      of('vx.task.cache_save'),
     ]).toEqual([
       ['1', [0.5, 0, 2]],
       ['By', [4096, 2048, 8192]],
@@ -558,6 +564,9 @@ describe('OtelSink end-to-end', () => {
       ['ms', [2600]],
       ['By', [9000]],
       ['ms', [70]],
+      ['By', [512]],
+      ['ms', [9]],
+      ['ms', [3]],
     ])
     const keys = (name: string) =>
       metrics.find((x) => x.name === name)!.gauge!.dataPoints[0]!.attributes.map((a) => a.key)
@@ -884,6 +893,9 @@ const FULL_TASK: Required<TaskTelemetry> = {
       { kind: 'upstream', name: 'lib#build', change: 'changed' },
     ],
   },
+  artifactBytes: 4096,
+  fetchMs: 25,
+  saveMs: 7,
   restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
@@ -953,6 +965,7 @@ describe('OTLP losslessness', () => {
     // `probeField?: string`, 2026-09-19).
     expect(Object.keys(FULL_TASK).sort()).toEqual([
       'admissionHeldMs',
+      'artifactBytes',
       'attempts',
       'blockedBy',
       'cacheSource',
@@ -960,6 +973,7 @@ describe('OTLP losslessness', () => {
       'durationMs',
       'exitCode',
       'failedAttempts',
+      'fetchMs',
       'flaky',
       'hash',
       'inputChanges',
@@ -972,6 +986,7 @@ describe('OTLP losslessness', () => {
       'restored',
       'sandboxViolationLines',
       'sandboxViolations',
+      'saveMs',
       'status',
       'storedCpuMs',
       'storedDurationMs',
@@ -1028,8 +1043,15 @@ describe('OTLP losslessness', () => {
       restoredRemoteCount: 1,
       exitOk: false,
       tasks: [],
+      uploads: { count: 5, bytes: 9000, ms: 120, failed: 1 },
     }
     const a = attrMap(runSpanAttributes(RUN, summary) as never)
+    expect([
+      a['vx.cache.upload.count'],
+      a['vx.cache.upload.bytes'],
+      a['vx.cache.upload.ms'],
+      a['vx.cache.upload.failed'],
+    ]).toEqual(['5', '9000', '120', '1'])
     expect(a['vx.run.started_at']).toBe('1700000000000')
     expect(a['vx.run.ended_at']).toBe('1700000009000')
     expect(a['vx.run.duration_ms']).toBe('9000')
@@ -1102,6 +1124,9 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.queued_ms']).toBe('40')
     expect(a['vx.task.input_files']).toBe('12')
     expect(a['vx.cache.miss.change_count']).toBe('3')
+    expect(a['vx.cache.artifact_bytes']).toBe('4096')
+    expect(a['vx.cache.fetch_ms']).toBe('25')
+    expect(a['vx.cache.save_ms']).toBe('7')
     expect(a['vx.cache.miss.changes']).toEqual({
       values: [
         { stringValue: 'changed file src/a.ts' },
