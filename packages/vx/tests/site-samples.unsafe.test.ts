@@ -1270,13 +1270,13 @@ describe('the caching guide lists what the cache never reads', () => {
     const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     // Comment lines inside the array quote globs of their own, so drop them
-    // before reading the entries. `**/node_modules/**` → node_modules.
+    // before reading the entries. `**/.git/**` → .git.
     const entries = arr![1]!
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(7)
+    expect(names.length).toBe(6)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
