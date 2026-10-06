@@ -213,9 +213,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ],
     }
   }
-  const headerNotes = refused
-    ? []
-    : await prepareRepo(root, ['@vzn/vx', ...new Set(plugins.map((p) => p.pkg))], parsed)
+  const headerNotes = refused ? [] : await prepareRepo(root, ['@vzn/vx'], parsed)
   return applyMigration({
     root,
     metas,
@@ -283,8 +281,7 @@ async function keep(
     extendWorkspaceFile(readFileSync(path.join(root, existing), 'utf8'), []) !== null
       ? workspacePlugins(root)
       : []
-  const wanted = ['@vzn/vx', '@vzn/vx-migrate', ...plugins.map((p) => p.pkg)]
-  for (const note of await prepareRepo(root, wanted, args)) {
+  for (const note of await prepareRepo(root, ['@vzn/vx', '@vzn/vx-migrate'], args)) {
     process.stdout.write(`vx-migrate: ${note}\n`)
   }
   // A resolve that misses from a directory with no node_modules is an

@@ -203,7 +203,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 
 describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   it(
-    'no terminal: native, vx and its plugins installed with pnpm, scripts untouched',
+    'no terminal: native, vx installed with pnpm, its built-in plugins declared, scripts untouched',
     async () => {
       const { root, env } = await solidShaped()
       try {
@@ -222,14 +222,14 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           r.out.includes('Declare pnpm()'),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n',
+          'add -D -w @vzn/vx\n',
           { build: 'turbo run build' },
           true,
           false,
           ['pnpm', 'scheduleHistoryPlugin'],
           false,
         ])
-        expect(r.out).toContain('note: installed @vzn/vx @vzn/vx-lockfile')
+        expect(r.out).toContain('note: installed @vzn/vx (pnpm add -D -w @vzn/vx)')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -238,7 +238,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   )
 
   it(
-    '--keep installs the plugins and adds them to the workspace file vx init writes',
+    '--keep installs the plugin package and adds the built-in plugins to the file vx init writes',
     async () => {
       const { root, env } = await solidShaped()
       try {
@@ -253,7 +253,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-github\n',
+          'add -D -w @vzn/vx @vzn/vx-migrate\n',
           true,
           ['turbo', 'pnpm', 'scheduleHistoryPlugin', 'github'],
           false,
@@ -277,9 +277,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           dry.code,
           noInstall.code,
           await calls(root),
-          dry.out.includes(
-            'note: would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
-          ),
+          dry.out.includes('note: would install @vzn/vx (dry run)'),
         ]).toEqual([0, 0, '', true])
         expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {

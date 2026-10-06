@@ -22,7 +22,8 @@ package, the default) or keep `turbo.json` / `nx.json` as the source
 without a terminal it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
 the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
-and `github()` when `.github/workflows` exists. Your `package.json` scripts
+and `github()` when `.github/workflows` exists; these are built into vx, so
+nothing more is installed. Your `package.json` scripts
 stay as they are. The steps below
 are the same adoption one stage at a time.
 

@@ -1,6 +1,8 @@
 // The plugins a migrated workspace declares, from what the repo shows
 // (owner, 2026-10-06: "install and migrate fully … use the plugins"). Each
-// is inert where it does not apply, so declaring one costs a run nothing.
+// is inert where it does not apply, so declaring one costs a run nothing,
+// and each is built into the vx binary, so none is installed (owner: "not
+// have to install any native plugins").
 
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
