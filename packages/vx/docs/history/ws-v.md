@@ -44,6 +44,16 @@ the rounds run with `GIT_CONFIG_GLOBAL=/dev/null`.
   -2) and holds while a regular file stands there. Rows:
   `output-dirs.test.ts` (recorded and skipped; a tampered file and a
   directory in its place still restore).
+- **V-6.** Every input file was matched against its task's globs one
+  `Bun.Glob` call each (positives, seven always-ignored, negatives), and
+  each literal against every file: ~3.7 µs a file, 6.8 ms of CPU under
+  `stable keys` here. A task glob without a brace, escape or leading `!`
+  is a RegExp now, a side's list one RegExp, and a literal a binary
+  search with the walk as its fallback; CPU there 12.2 → ~6 ms. The wall
+  barely moved: what is left is cold code and GC. Rows: `util-paths.test.ts`
+  (RegExp and list agree with `Bun.Glob` on 50 patterns × 70 paths; no
+  native call), `inputs-resolution.test.ts` (a sibling sorting between a
+  directory literal and its tree).
 
 Left: `workspace config` is mostly the plugin packages' transpile, half of
 it `@vzn/vx-otel` (owned by another thread); `git enumeration` is now the

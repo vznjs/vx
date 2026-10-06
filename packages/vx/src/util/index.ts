@@ -42,6 +42,7 @@ export {
   relPosix,
   splitNegations,
   staticPrefix,
+  anyTaskGlob,
   taskGlob,
   wholeSubtreePrefixes,
   slashBraceExpansions,

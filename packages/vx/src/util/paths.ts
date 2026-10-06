@@ -196,8 +196,75 @@ export const EXTGLOB = /[!@+*?]\(/
  */
 export function taskGlob(pattern: string): Bun.Glob {
   // A `]` with no `[` before it is already literal to `Bun.Glob`.
-  if (!pattern.includes('[')) return new Bun.Glob(pattern)
-  return new Bun.Glob(pattern.replace(/(?<!\\)[[\]]/g, '\\$&'))
+  const source = pattern.includes('[') ? pattern.replace(/(?<!\\)[[\]]/g, '\\$&') : pattern
+  const re = regExpSource(pattern)
+  return re === null ? new Bun.Glob(source) : new RegExpGlob(source, new RegExp(`^${re}$`, 'u'))
+}
+
+/**
+ * Whether a path matches any of `patterns`, each a task glob: one compiled
+ * RegExp for the lot when every pattern has one, else a glob each. An input
+ * file was matched against a dozen globs (its positives, the always-ignored
+ * list, its negatives) one native call at a time.
+ */
+export function anyTaskGlob(patterns: readonly string[]): (rel: string) => boolean {
+  if (patterns.length === 0) return () => false
+  const sources = patterns.map(regExpSource)
+  const globs = patterns.map(taskGlob)
+  if (sources.every((r) => r !== null)) {
+    const re = new RegExp(`^(?:${sources.join('|')})$`, 'u')
+    return (rel) => (rel.endsWith('/') ? globs.some((g) => g.match(rel)) : re.test(rel))
+  }
+  return (rel) => globs.some((g) => g.match(rel))
+}
+
+const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
+
+/**
+ * The RegExp source of a task glob, matching what `Bun.Glob` matches
+ * (`tests/util-paths.test.ts` holds the two to the same verdict on every
+ * shape): `*` any run within a name, `?` one character, a `**` segment any
+ * number of directories, a bracket itself. Null for the syntax left to
+ * `Bun.Glob`: a brace, an escape, a leading `!`, an empty, `.` or `..`
+ * segment, a `**` inside a name, or two `**` segments in a row.
+ */
+function regExpSource(pattern: string): string | null {
+  if (/[\\{}]/.test(pattern) || pattern.startsWith('!')) return null
+  const segments = pattern.split('/')
+  let out = ''
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!
+    const last = i === segments.length - 1
+    if (seg === '**') {
+      if (segments[i - 1] === '**') return null
+      // A globstar is zero or more whole directories; at the end, one or
+      // more names (`src/**` does not match `src`).
+      if (segments.length === 1) out += '[^]*'
+      else if (last) out += '/[^]+'
+      else out += i === 0 ? '(?:[^]*/)?' : '/(?:[^]*/)?'
+      continue
+    }
+    if (seg === '' || seg === '.' || seg === '..' || seg.includes('**')) return null
+    if (i > 0 && segments[i - 1] !== '**') out += '/'
+    out += seg.replace(REGEXP_SYNTAX, (c) => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : `\\${c}`))
+  }
+  return out
+}
+
+/** A task glob that matches by its RegExp; `scan` stays `Bun.Glob`'s. */
+class RegExpGlob extends Bun.Glob {
+  constructor(
+    source: string,
+    private readonly re: RegExp,
+  ) {
+    super(source)
+  }
+
+  // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
+  // it by rules of its own (`src/**` takes `src/`, never `src`).
+  override match(rel: string): boolean {
+    return rel.endsWith('/') ? super.match(rel) : this.re.test(rel)
+  }
 }
 
 function stripTrailingSlash(p: string): string {
@@ -263,15 +330,12 @@ export function splitNegations(globs: readonly string[]): {
  * matcher as-is would be `Bun.Glob`'s own negation, true of every OTHER
  * path (A-44).
  */
-export function outputMatcher(
-  globs: readonly string[],
-  compile: (pattern: string) => Bun.Glob = taskGlob,
-): (rel: string) => boolean {
+export function outputMatcher(globs: readonly string[]): (rel: string) => boolean {
   const { positive, negative } = splitNegations(globs)
   if (positive.length === 0) return () => false
-  const pos = asTrees(positive).map(compile)
-  const neg = asTrees(negative).map(compile)
-  return (rel) => pos.some((g) => g.match(rel)) && !neg.some((g) => g.match(rel))
+  const pos = anyTaskGlob(asTrees(positive))
+  const neg = anyTaskGlob(asTrees(negative))
+  return (rel) => pos(rel) && !neg(rel)
 }
 
 /**

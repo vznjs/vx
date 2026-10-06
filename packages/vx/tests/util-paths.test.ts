@@ -25,7 +25,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import {
   asTrees,
   BUN_GLOB_WILDCARDS,
@@ -35,6 +35,7 @@ import {
   normalizeGlob,
   relPosix as relPosixViaBarrel,
   staticPrefix,
+  anyTaskGlob,
   taskGlob,
 } from '../src/util/index.js'
 import { relPosix, toPosix } from '../src/util/paths.js'
@@ -652,6 +653,163 @@ describe('a bracket is a literal in a task glob (item 667)', () => {
       taskGlob('dist/{a,b}.txt').match('dist/b.txt'),
       taskGlob('d/a?').match('d/ab'),
     ]).toEqual([true, true])
+  })
+
+  it("taskGlob's RegExp and anyTaskGlob agree with Bun.Glob on every pattern and path", () => {
+    // A task glob without a brace, escape or leading `!` matches by a RegExp,
+    // and a list of them by one; neither may answer otherwise than Bun.Glob.
+    const patterns = [
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/.vx/**',
+      '**/*.tsbuildinfo',
+      '**/vx-lock.json',
+      '**/*.bun-build',
+      '**/.????????????????-????????.tmp/**',
+      'src/**',
+      'src',
+      'src/**/*.ts',
+      'index.ts',
+      'a/**/b',
+      '**/*',
+      '**',
+      '*',
+      '*.ts',
+      '.*',
+      '**/.*',
+      'src/*',
+      '*/b',
+      'a/*',
+      '**/*/**',
+      'a/**/b/**',
+      'a?b',
+      '?',
+      'd/a?',
+      'a.b',
+      'a+b',
+      '(x)',
+      '$x',
+      '^x',
+      'a|b',
+      'x^$',
+      'dist/{a,b}.txt',
+      '!(a).ts',
+      'a!b',
+      'app/[id]/**',
+      '[ab]',
+      'x+y',
+      '@(a|b).ts',
+      'a/*/c/**/d.js',
+      '**/b/**',
+      'dist/**',
+      'a//b',
+      './a',
+      'a/../b',
+      '**/**',
+      'a**b',
+      'a\\*b',
+      '\u{1F600}?',
+      '*\n*',
+    ]
+    const paths = [
+      'node_modules',
+      'node_modules/x',
+      'a/node_modules/b',
+      'x/node_modules',
+      '.git/HEAD',
+      'a/.vx/c',
+      'b.tsbuildinfo',
+      'a/b.tsbuildinfo',
+      '.tsbuildinfo',
+      'a/.tsbuildinfo',
+      'vx-lock.json',
+      'p/vx-lock.json',
+      'z.bun-build',
+      '.0123456789abcdef-01234567.tmp/x',
+      'src',
+      'src/a.ts',
+      'src/.a.ts',
+      'src/x/y.ts',
+      'src/.d/a.ts',
+      'index.ts',
+      'a/b',
+      'a/x/y/b',
+      'a/b/c',
+      'b',
+      'a.ts',
+      '.a.ts',
+      '.ts',
+      'x/.ts',
+      'a.tsx',
+      'x.ts/y',
+      'dist/a.txt',
+      'b.ts',
+      'a!b',
+      'app/[id]/page.js',
+      'app/i/x',
+      'a',
+      'x+y',
+      'd/ab',
+      'q',
+      'a/z/c/d.js',
+      'a/z/c/k/d.js',
+      'b/c',
+      'dist',
+      'dist/x',
+      'a//b',
+      'axb',
+      'aab',
+      'a.b',
+      'a+b',
+      'aab',
+      '(x)',
+      'x',
+      '$x',
+      '^x',
+      'a|b',
+      'x^$',
+      '[ab]',
+      'ab',
+      '\u{1F600}x',
+      '\u{1F600}',
+      'a\nb',
+      '@(a|b).ts',
+      'a/x/b/y',
+      'src/',
+      'a/../b',
+      '../b',
+      './a',
+    ]
+    const native = (p: string): Bun.Glob =>
+      new Bun.Glob(p.includes('[') ? p.replace(/(?<!\\)[[\]]/g, '\\$&') : p)
+    const disagree: string[] = []
+    for (const p of patterns) {
+      const g = taskGlob(p)
+      const any = anyTaskGlob([p, 'zz/never'])
+      const raw = native(p)
+      for (const rel of paths) {
+        const want = raw.match(rel)
+        if (g.match(rel) !== want) disagree.push(`taskGlob ${p} ${rel}`)
+        if (any(rel) !== want) disagree.push(`anyTaskGlob ${p} ${rel}`)
+      }
+    }
+    expect(disagree).toEqual([])
+  })
+
+  it('a task glob without a brace, escape or leading ! matches without the native match', () => {
+    const native = spyOn(Bun.Glob.prototype, 'match')
+    try {
+      const g = taskGlob('**/node_modules/**')
+      const any = anyTaskGlob(['src/**', '*.json'])
+      expect([g.match('src/a.ts'), g.match('a/node_modules/b')]).toEqual([false, true])
+      expect([any('src/a.ts'), any('a.json'), any('lib/a.ts')]).toEqual([true, true, false])
+      expect(native).toHaveBeenCalledTimes(0)
+      // The control: a brace is Bun.Glob's to answer.
+      taskGlob('{a,b}').match('a')
+      expect(native).toHaveBeenCalledTimes(1)
+    } finally {
+      native.mockRestore()
+    }
   })
 
   it("the globs vx does not own keep Bun.Glob's own alphabet, the class included", () => {
