@@ -85,26 +85,57 @@ export function installArgv(
   }
 }
 
-/** The packages a mode's files import that the root neither lists nor has installed. */
-export function missingPackages(root: string, mode: AdoptionMode): string[] {
+/**
+ * This package's release version; null in the source tree (`0.0.0`), where
+ * nothing is pinned. Every @vzn package releases in lockstep, and each
+ * plugin's peer is `^<version>`, which on 0.0.x is that version alone.
+ */
+export function ownVersion(): string | null {
+  const v = (
+    JSON.parse(readText(path.join(import.meta.dir, '..', 'package.json')) || '{}') as {
+      version?: unknown
+    }
+  ).version
+  return typeof v === 'string' && v !== '0.0.0' ? v : null
+}
+
+/**
+ * The `wanted` packages the root does not both list and have installed
+ * (at `version`, given one). Either alone is not adopted: a reset
+ * package.json leaves node_modules behind, and a listing is not an
+ * install; on solidjs/solid vx-migrate 0.0.512 skipped @vzn/vx that
+ * package.json did not list (owner, 2026-10-06).
+ */
+export function missingPackages(
+  root: string,
+  wanted: readonly string[],
+  version: string | null = null,
+): string[] {
   const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
     string,
     Record<string, unknown> | undefined
   >
   const listed = (name: string) =>
     ['dependencies', 'devDependencies'].some((f) => pj[f]?.[name] !== undefined)
-  const wanted = mode === 'keep' ? ['@vzn/vx', '@vzn/vx-migrate'] : ['@vzn/vx']
-  return wanted.filter(
-    (p) => !listed(p) && !existsSync(path.join(root, 'node_modules', p, 'package.json')),
-  )
+  return wanted.filter((p) => {
+    if (!listed(p)) return true
+    const installed = readText(path.join(root, 'node_modules', p, 'package.json'))
+    if (installed === '') return true
+    if (version === null) return false
+    return (JSON.parse(installed) as { version?: unknown }).version !== version
+  })
 }
 
-/** Install `packages` with the repo's manager, its output on the terminal. */
-export async function install(root: string, packages: readonly string[]): Promise<string> {
+/** Install `packages` (at `version`, given one) with the repo's manager, its output on the terminal. */
+export async function install(
+  root: string,
+  packages: readonly string[],
+  version: string | null = null,
+): Promise<string> {
   const argv = installArgv(
     root,
     packageManagerOf(root, process.env['npm_config_user_agent']),
-    packages,
+    version === null ? packages : packages.map((p) => `${p}@${version}`),
   )
   const line = argv.join(' ')
   process.stdout.write(`vx-migrate: ${line}\n`)

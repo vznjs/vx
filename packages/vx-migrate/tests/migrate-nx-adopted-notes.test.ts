@@ -62,7 +62,9 @@ describe('migrateNx: what vx.workspace.ts still holds', () => {
   it('a lockfile plugin declared: no lockfile note', async () => {
     expect(
       await headerNotes({
-        'vx.workspace.ts': `import { pnpm } from '@vzn/vx-lockfile'\n${NX_WORKSPACE}`,
+        'vx.workspace.ts':
+          "import { nx } from '@vzn/vx-migrate'\nimport { pnpm } from '@vzn/vx-lockfile'\n" +
+          'export default { plugins: [nx(), pnpm()] }\n',
         'pnpm-lock.yaml': 'lockfileVersion: 9\n',
       }),
     ).toEqual([NX])

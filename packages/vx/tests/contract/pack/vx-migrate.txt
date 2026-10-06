@@ -37,3 +37,4 @@ src/turbo-cache/index.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts
 src/workspace-notes.ts
+src/workspace-plugins.ts

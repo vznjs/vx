@@ -305,7 +305,6 @@ export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
 export const SCHEMA_VERSION = 'v32'
-export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
 
 // The two WHERE fragments every history query shares, so "a run that
 // executed" and "a run with a key" mean one thing across metrics.ts,
@@ -582,19 +581,14 @@ the file, past the pages the open reads, surfaces where it is read, and
 there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
-"internal error" and `vx cache prune` printed a stack. The open that drops them says
-so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
-every later one), and `noteSchemaReset` prints one line — on the run's
-status line, or a verb's stderr — `[vx] cache index reset: schema v24 →
-v25 (vx version changed); run history starts over, and each artifact is indexed
-again when its task next hits`. An upgrade's all-miss
-run, and the `vx last` with nothing to show after it, are explained
-rather than silent (`tests/schema-reset-notice.test.ts`). A
-`CACHE_VERSION` bump alone keeps the index, so `Cache.formatChange`
-carries `{ from, to }` on the open that first sees the new version (from
-`schema_meta.cache_version`; a store with entries and no record reads
-`an earlier format`), and the same `noteSchemaReset` prints
-`[vx] cache format changed: …` instead (item 671). A new
+"internal error" and `vx cache prune` printed a stack. The open that drops them records it:
+`Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
+every later one). A `CACHE_VERSION` bump alone keeps the index, so
+`Cache.formatChange` carries `{ from, to }` on the open that first sees
+the new version (from `schema_meta.cache_version`; a store with entries
+and no record reads `an earlier format`). Neither is printed, nor is a
+shared store moved to or fallen back from: the cache is vx's to keep
+(owner, 2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like
 `captureInto` / `upstreamIds`) needs neither bump: the key is
 byte-identical. The Tier-3 tables (`invocations`, `entry_inputs`)

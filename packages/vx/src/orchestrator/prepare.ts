@@ -12,7 +12,6 @@ import type { WorkspaceConfig } from '../config.js'
 import { beginRun, mark, nearest, UserError } from '../util/index.js'
 import {
   Cache,
-  noteSchemaReset,
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
@@ -287,7 +286,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     storeRoot,
   )
   localCache.assertWritable()
-  noteSchemaReset(localCache, (m) => log.status(m))
   // Two digests from one read: the config-evaluation cache keys on every
   // file (a config may import a dependency), the task keys on the files no
   // plugin claims (`VxPlugin.fingerprint`).

@@ -7,7 +7,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
+import { Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
 import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -154,7 +154,6 @@ async function collectWorkspaceInfo(
   const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
   const storeRoot = opts.cacheDir === undefined ? resolveStoreRoot(root, workspaceConfig) : null
   const cache = Cache.inspect(cacheDir)
-  noteSchemaReset(cache, warn)
   let stats
   let orphans
   let flaky: FlakyTask[]

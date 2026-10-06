@@ -80,8 +80,7 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    specs that resolved to nothing).
 4. **Cache + fingerprint** — `new Cache(dir)` on `--cache-dir` or
    `resolveCacheDir(root, workspaceConfig)`, refused up front with the
-   directory named when this user cannot write it (`assertWritable`),
-   and an index reset by an upgrade said once (`noteSchemaReset`).
+   directory named when this user cannot write it (`assertWritable`).
    Then the layer resolution: an injected `RunOptions.remoteCache`
    composed into a `LayeredCache` wins; else `resolveCache` collects
    every `cache` capability in the declared plugin list in order — one

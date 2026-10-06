@@ -1101,7 +1101,7 @@ The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 and https agree) and the workspace's path in the repository; with no
 remote, the first commit. A repository with neither (no commit yet, a
 shallow clone with no remote) shares nothing. Each level of `~/.vx` is
-owner-only; one open to other users is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
+owner-only; vx closes one of yours that is open to other users (chmod 700), and one owned by another user is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
 
 ```
 ~/.vx/<id>/cache/                           the shared store
@@ -1315,10 +1315,9 @@ so each comes back in its current shape (A-54: `config_closures` and
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache prune --dry-run` previews the reset
 instead, item 1083).
-That open says so once, on the run's status line or the verb's stderr
-(`[vx] cache index reset: schema v24 → v25 (vx version changed); …`). The
-artifacts stay: each is indexed again from its own bytes when its task
-next asks for its key (below).
+That open prints nothing (owner, 2026-10-06: the cache is vx's to
+keep). The artifacts stay: each is indexed again from its own bytes
+when its task next asks for its key (below).
 
 ```sql
 -- src/cache/schema.ts (SCHEMA_VERSION = 'v32', in cache.ts)
@@ -1678,16 +1677,12 @@ built to defeat it can). Details and the deny-list:
 
 ## Bumping `CACHE_VERSION`
 
-A bump is announced, never silent (roadmap 3.3, item 671): the cache
-records the version it was written under (`schema_meta.cache_version`),
-and the first open after an upgrade prints one line, on the run's
-status line or a verb's stderr: `[vx] cache format changed:
-vx-cache-v27 → vx-cache-v28 (vx version changed); …`. The index survives, so
-the old entries stay until they age out under `vx cache prune
---older-than` or `cacheRetention`; no key derives to them again. A
-bump that lands with a `SCHEMA_VERSION` reset says the reset alone. A
-reading verb (`vx info`, `why`, `last`, `cache prune --dry-run`) records
-nothing, so the notice waits for the first open that writes (item 1080).
+The cache records the version it was written under
+(`schema_meta.cache_version`). After an upgrade every cached task
+misses once and re-saves, with nothing printed (owner, 2026-10-06: the
+cache is vx's to keep). The index survives, so the old entries stay
+until they age out under `vx cache prune --older-than` or
+`cacheRetention`; no key derives to them again.
 
 Required when:
 

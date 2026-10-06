@@ -83,6 +83,13 @@ function step(root: string, line: string): { code: number | null; out: string } 
         symlinkSync(path.join(PACKAGES, dir, rel), path.join(root, 'node_modules', '.bin', bin))
       }
     }
+    // npm -D lists what it installs; vx-migrate installs a package the
+    // manifest does not list.
+    const manifest = path.join(root, 'package.json')
+    const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as Record<string, unknown>
+    const dev = { ...(pkg.devDependencies as Record<string, string> | undefined) }
+    for (const name of install[1]!.trim().split(' ')) dev[name] = '*'
+    writeFileSync(manifest, JSON.stringify({ ...pkg, devDependencies: dev }, null, 2))
     // npm writes its lockfile on an install, and the migrator's report
     // names the lockfile plugin for it: a stand-in without one printed a
     // report no user sees.

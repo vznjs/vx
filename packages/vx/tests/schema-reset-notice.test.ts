@@ -1,7 +1,7 @@
 // An upgrade that moves SCHEMA_VERSION drops every table — cache entries
-// and run history — on the next open. Silently, the run after it is an
-// all-miss run that looks like a bug; so the opener that did the drop
-// says so once, on the run's status line and on a verb's stderr.
+// and run history — on the next open, and a CACHE_VERSION bump moves
+// every key. vx keeps its own cache: neither is printed (owner,
+// 2026-10-06, "no more comments like this").
 
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { run } from '../src/index.js'
 import { run as cli } from '../src/cli/index.js'
-import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatBytes } from '../src/util/index.js'
 
 let root: string
@@ -41,7 +41,14 @@ async function runOnce(): Promise<string[]> {
     handleSignals: false,
   })
   expect(summary.ok).toBe(true)
-  return lines.filter((l) => l.includes('cache index reset') || l.includes('cache format changed'))
+  return lines.filter(housekeeping)
+}
+
+/** Any line about the cache's own upkeep; the owner wants none. */
+function housekeeping(line: string): boolean {
+  return /cache index reset|cache format changed|shared cache store|shared store|vx upgraded/.test(
+    line,
+  )
 }
 
 /** The index as a reader finds it: the recorded schema and how many entries and runs it holds. */
@@ -93,7 +100,7 @@ function pokeVersion(value: string): void {
   db.close()
 }
 
-describe('a schema reset says so once', () => {
+describe('an upgrade resets the cache in silence', () => {
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-schema-reset-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -115,15 +122,11 @@ describe('a schema reset says so once', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('the run after an upgrade names both versions; the run after that is quiet', async () => {
+  it('the run after an upgrade resets the index and says nothing', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
-    const notices = await runOnce()
-    expect(notices).toHaveLength(1)
-    expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/)
-    expect(notices[0]).toContain('each artifact is indexed again when its task next hits')
-    // Control: the version now matches, so the next run says nothing.
     expect(await runOnce()).toEqual([])
+    expect(index().version).toBe(SCHEMA_VERSION)
   })
 
   // Item 896: a reading verb never resets the index. `vx last`, `vx why`,
@@ -153,13 +156,12 @@ describe('a schema reset says so once', () => {
   // is reset there as a run resets it, and says so once as a run does. The
   // notice is the one word the user gets that every entry just went; the
   // sweep of cli/cache.ts (E-9) deleted it with the suite green.
-  it('a prune that deletes resets an earlier schema and says so', async () => {
+  it('a prune that deletes resets an earlier schema in silence', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
     const { threw, stderr } = await verb(['cache', 'prune', '--older-than', '1d'])
     expect(threw).toBeNull()
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/)
-    expect(stderr.split('\n').filter((l) => l.includes('cache index reset'))).toHaveLength(1)
+    expect(stderr.split('\n').filter(housekeeping)).toEqual([])
     expect(index().version).toBe(SCHEMA_VERSION)
   })
 
@@ -201,15 +203,11 @@ describe('a schema reset says so once', () => {
     )
     expect(index()).toEqual(before)
     expect(before).toEqual({ version: 'v999', entries: 1, runs: 1 })
-    const notices = await runOnce()
-    expect(notices).toHaveLength(1)
-    expect(notices[0]).toMatch(
-      /^\[vx\] cache index reset: schema v999 → v\d+ \(vx version changed\)/,
-    )
-    expect(index().version).not.toBe('v999')
+    expect(await runOnce()).toEqual([])
+    expect(index().version).toBe(SCHEMA_VERSION)
   })
 
-  it('`vx show` says it too, from the staged load the reading verbs share', async () => {
+  it('`vx show` says nothing either, from the staged load the reading verbs share', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
     process.chdir(root)
@@ -227,7 +225,7 @@ describe('a schema reset says so once', () => {
       process.stderr.write = origErr
       process.stdout.write = origOut
     }
-    expect(stderr).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+ \(vx version changed\)/m)
+    expect(stderr.split('\n').filter(housekeeping)).toEqual([])
   })
 
   // Roadmap 3.3 (item 671): a CACHE_VERSION bump keeps the index but moves
@@ -239,42 +237,34 @@ describe('a schema reset says so once', () => {
     db.close()
   }
 
-  it('a cache-format bump names both versions once; the next run is quiet', async () => {
+  it('a cache-format bump says nothing', async () => {
     expect(await runOnce()).toEqual([])
     pokeFormat('vx-cache-v0')
-    expect(await runOnce()).toEqual([
-      `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
-    ])
+    expect(await runOnce()).toEqual([])
     expect(await runOnce()).toEqual([])
   })
 
   // A reading verb wrote the new format over the old one, so the run after
   // it missed everything with no word of why (item 1080).
   for (const args of [['info'], ['cache', 'prune', '--older-than', '30d', '--dry-run']]) {
-    it(`\`vx ${args.join(' ')}\` leaves the format notice to the next run`, async () => {
+    it(`\`vx ${args.join(' ')}\` and the run after it say nothing of a format bump`, async () => {
       expect(await runOnce()).toEqual([])
       pokeFormat('vx-cache-v0')
       expect((await verb(args)).threw).toBeNull()
-      expect(await runOnce()).toEqual([
-        `[vx] cache format changed: vx-cache-v0 → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
-      ])
+      expect(await runOnce()).toEqual([])
     })
   }
 
-  it('a store with entries and no recorded format predates the record, and says so', async () => {
+  it('a store with entries and no recorded format says nothing', async () => {
     expect(await runOnce()).toEqual([])
     pokeFormat(null)
-    expect(await runOnce()).toEqual([
-      `[vx] cache format changed: an earlier format → ${CACHE_VERSION} (vx version changed); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
-    ])
+    expect(await runOnce()).toEqual([])
   })
 
-  it('a schema reset and a format bump together say the reset alone', async () => {
+  it('a schema reset and a format bump together say nothing', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
     pokeFormat('vx-cache-v0')
-    const notices = await runOnce()
-    expect(notices).toHaveLength(1)
-    expect(notices[0]).toMatch(/^\[vx\] cache index reset: schema v0 → v\d+/)
+    expect(await runOnce()).toEqual([])
   })
 })

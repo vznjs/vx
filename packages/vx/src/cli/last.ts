@@ -5,7 +5,7 @@
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
 import type { Database } from 'bun:sqlite'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, seeHelp } from './help.js'
 import {
@@ -21,7 +21,7 @@ import {
 } from '../orchestrator/index.js'
 import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
@@ -232,7 +232,6 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
 
   const root = await findWorkspaceRoot(process.cwd())
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
-  noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
     // Nothing recorded at all is its own answer: `--failed` said "no

@@ -9,7 +9,7 @@
 // (`applyMigration`) renders, guards, writes and reports, so what this
 // package writes reads exactly like what `vx init` writes.
 
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -30,10 +30,18 @@ import {
   install,
   missingPackages,
   MODE_QUESTION,
+  ownVersion,
   parseModeAnswer,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
+import {
+  extendWorkspaceFile,
+  undeclared,
+  renderWorkspaceFile,
+  workspaceFileAt,
+  workspacePlugins,
+} from './workspace-plugins.js'
 
 export interface MigrateArgs {
   dry: boolean
@@ -193,7 +201,22 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           existsSync(path.join(p.dir, configName))),
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
-  const headerNotes = refused ? [] : await prepareRepo(root, 'native', parsed)
+  // No workspace file yet: write one declaring the plugins the repo calls
+  // for, and drop the note that told the user to declare the lockfile one.
+  const plugins = workspaceFileAt(root) === undefined ? workspacePlugins(root) : []
+  if (plugins.length > 0) {
+    plan = {
+      ...plan,
+      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
+      extraFiles: [
+        ...plan.extraFiles,
+        { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
+      ],
+    }
+  }
+  const headerNotes = refused
+    ? []
+    : await prepareRepo(root, ['@vzn/vx', ...plugins.map((p) => p.pkg)], parsed)
   return applyMigration({
     root,
     metas,
@@ -221,12 +244,17 @@ async function askMode(runner: 'turbo' | 'nx', dry: boolean): Promise<AdoptionMo
  * Install what the written files import. Returns the report's line;
  * installs nothing under `--dry`.
  */
-async function prepareRepo(root: string, mode: AdoptionMode, args: MigrateArgs): Promise<string[]> {
+async function prepareRepo(
+  root: string,
+  wanted: readonly string[],
+  args: MigrateArgs,
+): Promise<string[]> {
   const notes: string[] = []
-  const missing = args.noInstall === true ? [] : missingPackages(root, mode)
+  const version = ownVersion()
+  const missing = args.noInstall === true ? [] : missingPackages(root, wanted, version)
   if (missing.length > 0) {
     if (args.dry) notes.push(`would install ${missing.join(' ')} (dry run)`)
-    else notes.push(`installed ${missing.join(' ')} (${await install(root, missing)})`)
+    else notes.push(`installed ${missing.join(' ')} (${await install(root, missing, version)})`)
   }
   return notes
 }
@@ -248,7 +276,19 @@ async function keep(
       '--keep with --from nx: turbo.json is here too, and vx init adopts it first',
     )
   }
-  for (const note of await prepareRepo(root, 'keep', args)) {
+  // The plugins go into the file `vx init` writes, or into one already
+  // here in that shape; another shape is the user's, and left alone.
+  const existing = workspaceFileAt(root)
+  const plugins =
+    existing === undefined ||
+    extendWorkspaceFile(readFileSync(path.join(root, existing), 'utf8'), []) !== null
+      ? workspacePlugins(root)
+      : []
+  for (const note of await prepareRepo(
+    root,
+    ['@vzn/vx', '@vzn/vx-migrate', ...plugins.map((p) => p.pkg)],
+    args,
+  )) {
     process.stdout.write(`vx-migrate: ${note}\n`)
   }
   // A resolve that misses from a directory with no node_modules is an
@@ -260,8 +300,19 @@ async function keep(
   const flags = [args.dry && '--dry', args.force && '--force', args.mjs && '--mjs'].filter(
     (f): f is string => typeof f === 'string',
   )
-  return Bun.spawn(
+  const code = await Bun.spawn(
     [process.execPath, '--no-install', path.join(path.dirname(core), 'bin.ts'), 'init', ...flags],
     { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] },
   ).exited
+  const written = workspaceFileAt(root)
+  if (code !== 0 || args.dry || written === undefined || plugins.length === 0) return code
+  const file = path.join(root, written)
+  const text = readFileSync(file, 'utf8')
+  const extended = extendWorkspaceFile(text, plugins)
+  if (extended !== null && extended !== text) {
+    await Bun.write(file, extended)
+    const names = undeclared(text, plugins).map((p) => `${p.factory}()`)
+    process.stdout.write(`vx-migrate: declared ${names.join(', ')} in ${written}\n`)
+  }
+  return code
 }

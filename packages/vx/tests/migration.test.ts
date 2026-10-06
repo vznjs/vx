@@ -237,7 +237,7 @@ describe('applyMigration', () => {
     p.projects[0]!.importLines = ["import { cmd } from './cmd.mjs'"]
     await apply(p, { format: 'mjs' })
     const file = readFileSync(path.join(root, 'app', 'vx.config.mjs'), 'utf8')
-    expect(file).toContain("\nimport { cmd } from './cmd.mjs'\n")
+    expect(file.startsWith("import { cmd } from './cmd.mjs'\n")).toBe(true)
     expect(file).toContain('\n        command: cmd(),\n')
   })
 
