@@ -275,7 +275,7 @@ rest of the gap is mostly the shell: vx runs every task as `sh -c`,
 one exec more per task than Vite Task, which execs `a && b` itself.
 
 **All-cached run (owner, 2026-10-06: "optimize these";
-`docs/history/ws-u.md`).** This repo's `vx run build --all` with every
+`docs/history/ws-v.md`).** This repo's `vx run build --all` with every
 task cached: 136 → 107 ms (median, compiled, Linux). Two configs no
 longer evaluate on every run, check-attr overlaps git status, the
 telemetry context reads files instead of spawning git, and a literal
