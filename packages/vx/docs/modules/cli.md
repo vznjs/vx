@@ -11,7 +11,8 @@ sibling `src/cli/<name>.ts`.
 
 ```ts
 export async function run(argv: readonly string[]): Promise<number>
-export { registerCoreAlias } from './core-alias.js'
+export { registerBakedPlugins, registerCoreAlias } from './core-alias.js'
+export { BAKED_PLUGINS } from './baked.js'
 ```
 
 Every verb's module, `run` included, and the plugin-verb lookup are

@@ -30,38 +30,15 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
+import { compile } from './compile.ts'
 
 const root = path.resolve(import.meta.dir, '..')
 const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
 const out = path.join(root, 'dist', `vx-${host}`)
 
 const text = (b: Uint8Array): string => new TextDecoder().decode(b)
-const run = (cmd: string[], label: string): void => {
-  const r = Bun.spawnSync({ cmd, cwd: root, stdout: 'pipe', stderr: 'pipe' })
-  if (r.exitCode !== 0) {
-    process.stderr.write(
-      `${label} failed (exit ${r.exitCode}):\n${text(r.stdout)}${text(r.stderr)}`,
-    )
-    process.exit(1)
-  }
-}
 
-run(
-  [
-    'bun',
-    'build',
-    '--compile',
-    '--no-compile-autoload-dotenv',
-    '--compile-autoload-package-json',
-    '--minify',
-    '--bytecode',
-    `--target=bun-${host}`,
-    'src/bin.ts',
-    '--outfile',
-    out,
-  ],
-  'compile',
-)
+await compile(host, out)
 
 const want = `vx ${((await Bun.file(path.join(root, 'package.json')).json()) as { version: string }).version}`
 const got = launchVersion(out)
@@ -273,3 +250,59 @@ if (
   process.exit(1)
 }
 console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)
+
+// The baked plugins (scripts/compile.ts): the binary serves its own copy
+// of a plugin package only when the installed one is the version it baked.
+// The installed package here is a FAKE whose factory throws: at the
+// binary's version the run never reaches it, at any other it does.
+const manifestVersion = want.slice('vx '.length)
+const bakedRun = (version: string): { exitCode: number; output: string } => {
+  const ws = mkdtempSync(path.join(os.tmpdir(), 'vx-check-baked-'))
+  const fake = path.join(ws, 'node_modules', '@vzn', 'vx-schedule-history')
+  mkdirSync(fake, { recursive: true })
+  mkdirSync(path.join(ws, 'packages', 'a'), { recursive: true })
+  writeFileSync(
+    path.join(fake, 'package.json'),
+    JSON.stringify({ name: '@vzn/vx-schedule-history', version, main: 'index.js' }),
+  )
+  writeFileSync(
+    path.join(fake, 'index.js'),
+    "export function scheduleHistoryPlugin() { throw new Error('the disk copy loaded') }\n",
+  )
+  writeFileSync(
+    path.join(ws, 'package.json'),
+    JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
+  )
+  writeFileSync(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
+  writeFileSync(
+    path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+    `export default { tasks: { probe: { exec: { command: 'echo probe-ran' } } } }\n`,
+  )
+  writeFileSync(
+    path.join(ws, 'vx.workspace.mjs'),
+    `import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+export default { plugins: [scheduleHistoryPlugin()] }
+`,
+  )
+  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws })
+  const r = Bun.spawnSync({ cmd: [out, 'run', 'a#probe'], cwd: ws, stdout: 'pipe', stderr: 'pipe' })
+  rmSync(ws, { recursive: true, force: true })
+  return { exitCode: r.exitCode, output: text(r.stdout) + text(r.stderr) }
+}
+const same = bakedRun(manifestVersion)
+const other = bakedRun(`${manifestVersion}-other`)
+if (
+  same.exitCode !== 0 ||
+  !same.output.includes('probe-ran') ||
+  other.exitCode === 0 ||
+  !other.output.includes('the disk copy loaded')
+) {
+  process.stderr.write(
+    `baked plugin: at ${manifestVersion} exit ${same.exitCode}, expected the baked copy and 0\n${same.output}\n` +
+      `at another version exit ${other.exitCode}, expected the disk copy's throw\n${other.output}\n`,
+  )
+  process.exit(1)
+}
+console.log(
+  `${path.relative(root, out)} serves a baked plugin at its own version and the disk copy at another`,
+)

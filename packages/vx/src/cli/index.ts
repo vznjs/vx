@@ -222,7 +222,8 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 }
 
-export { registerCoreAlias } from './core-alias.js'
+export { registerBakedPlugins, registerCoreAlias } from './core-alias.js'
+export { BAKED_PLUGINS } from './baked.js'
 
 /**
  * Is this invocation asking for help rather than work? See the call site for

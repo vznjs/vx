@@ -45,15 +45,30 @@ compiled binary no second copy of core transpiled from `node_modules`
 `tests/core-alias.test.ts` pins it differentially against a fake
 `node_modules/@vzn/vx`.
 
+The compiled binary also carries the plugin packages
+`scripts/baked-plugins.ts` lists (vx-github, vx-lockfile, vx-mcp,
+vx-otel, vx-schedule-history) compiled in, and bin.ts registers each as
+a virtual module too (`registerBakedPlugins`). It serves the baked copy
+only when the installed package, resolved from the working directory,
+has the binary's own `version` (the plugins ship on vx's release train,
+so equal versions are equal sources); any other version loads from
+disk, and a package that is not installed fails as before. The
+installed directory is the plugin's origin, so its name still comes
+from its own `package.json`. A workspace using all five: `vx show`
+37 → 31 ms (2026-10-06). vx-reapi and vx-migrate are not baked: each
+reads files beside its source at run time. In source `baked.ts` is an
+empty table; `scripts/check-binary.ts` holds the version rule both ways.
+
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,
    shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
    TypeScript directly.
-2. **As a standalone binary** — `bun build --compile
+2. **As a standalone binary** — `bun scripts/compile.ts <target>
+dist/vx-<target>`: `Bun.build` with the flags of `bun build --compile
 --no-compile-autoload-dotenv --compile-autoload-package-json --minify
---bytecode --target=bun-<target> src/bin.ts --outfile dist/vx-<target>`.
-   The cross-target binaries are published on each GitHub release.
+--bytecode --target=bun-<target> src/bin.ts`, plus the baked plugins
+   below. The cross-target binaries are published on each GitHub release.
 
 Both switches keep Bun from loading `.env`, `.env.local` and
 `.env.<NODE_ENV>` from the working directory into vx's own environment,

@@ -431,11 +431,21 @@ export interface PluginOrigin {
   readonly url?: string
 }
 
-const packageNameByDir = new Map<string, string>()
+/** A plugin's package: its manifest's `name`, and its `version` as written. */
+export interface PluginPackage {
+  readonly name: string
+  readonly version: unknown
+}
 
-/** The name of the nearest `package.json` above `dir` — the one that owns it. */
-function pluginPackageName(dir: string): string {
-  const memo = packageNameByDir.get(dir)
+const packageByDir = new Map<string, PluginPackage>()
+
+/**
+ * The nearest `package.json` above `dir` — the package that owns it. Also
+ * the binary's version check on a baked plugin (`cli/core-alias.ts`), which
+ * hands `definePlugin` the same `dir`, so the manifest is read once.
+ */
+export function pluginPackage(dir: string): PluginPackage {
+  const memo = packageByDir.get(dir)
   if (memo !== undefined) return memo
   for (let d = dir; ;) {
     let text: string | undefined
@@ -445,14 +455,15 @@ function pluginPackageName(dir: string): string {
       /* not here; look one level up */
     }
     if (text !== undefined) {
-      const name = (JSON.parse(text) as { name?: unknown }).name
+      const { name, version } = JSON.parse(text) as { name?: unknown; version?: unknown }
       if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,
         )
       }
-      packageNameByDir.set(dir, name)
-      return name
+      const pkg = { name, version }
+      packageByDir.set(dir, pkg)
+      return pkg
     }
     const parent = path.dirname(d)
     if (parent === d) {
@@ -479,7 +490,7 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
   if (dir === undefined) {
     throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
   }
-  const name = pluginPackageName(dir)
+  const { name } = pluginPackage(dir)
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 

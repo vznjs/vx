@@ -1,4 +1,5 @@
 import { defineProject } from '@vzn/vx'
+import { BAKED_PLUGINS } from './scripts/baked-plugins.ts'
 
 // The core suite runs as this many parallel `bun test` processes, the files
 // dealt by recorded weight (scripts/test-shard.ts). Many processes is not
@@ -32,6 +33,14 @@ const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0', VX_CACHE_DIR: '.vx/cache'
 const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
 const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
 const BUN_VERSION = ['bun --version']
+// The plugin packages a compiled binary carries (scripts/compile.ts): a
+// read across the project boundary, declared here and made an input so an
+// edit to one re-keys every binary.
+const BAKED_READS = BAKED_PLUGINS.flatMap((d) => [`../${d}/src/**`, `../${d}/package.json`])
+const BAKED_INPUTS = BAKED_PLUGINS.flatMap((d) => [
+  `packages/${d}/src/**`,
+  `packages/${d}/package.json`,
+])
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
@@ -305,7 +314,7 @@ export default defineProject({
         sandbox: {
           allow: {
             // The bare-specifier workspace links the schedule plugin.
-            read: ['**/*', '../vx-schedule-history/**'],
+            read: ['**/*', '../vx-schedule-history/**', ...BAKED_READS],
             write: ['dist/**', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
             systemInfo: ['vfs.disk-space'],
@@ -323,8 +332,10 @@ export default defineProject({
             'package.json',
             'scripts/check-binary.ts',
             'scripts/binary-launch.ts',
+            'scripts/compile.ts',
+            'scripts/baked-plugins.ts',
           ],
-          workspaceFiles: ['packages/vx-schedule-history/**'],
+          workspaceFiles: ['packages/vx-schedule-history/**', ...BAKED_INPUTS],
           runtime: BUN_VERSION,
         },
         outputs: { files: [] },
@@ -463,12 +474,11 @@ export default defineProject({
       description: 'compile standalone binary (linux x64)',
       dependsOn: ['install'],
       exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
+        command: 'bun scripts/compile.ts linux-x64 dist/vx-linux-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
-            read: ['.'],
+            read: ['.', ...BAKED_READS],
             write: ['dist/vx-linux-x64', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
           },
@@ -478,7 +488,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: ['**/*'], workspaceFiles: BAKED_INPUTS, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
@@ -487,12 +497,11 @@ export default defineProject({
       description: 'compile standalone binary (linux arm64)',
       dependsOn: ['install'],
       exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
+        command: 'bun scripts/compile.ts linux-arm64 dist/vx-linux-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
-            read: ['.'],
+            read: ['.', ...BAKED_READS],
             write: ['dist/vx-linux-arm64', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
           },
@@ -502,7 +511,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: ['**/*'], workspaceFiles: BAKED_INPUTS, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
@@ -511,12 +520,11 @@ export default defineProject({
       description: 'compile standalone binary (darwin x64)',
       dependsOn: ['install'],
       exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
+        command: 'bun scripts/compile.ts darwin-x64 dist/vx-darwin-x64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
-            read: ['.'],
+            read: ['.', ...BAKED_READS],
             write: ['dist/vx-darwin-x64', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
           },
@@ -526,7 +534,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: ['**/*'], workspaceFiles: BAKED_INPUTS, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
@@ -535,12 +543,11 @@ export default defineProject({
       description: 'compile standalone binary (darwin arm64)',
       dependsOn: ['install'],
       exec: {
-        command:
-          'bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
+        command: 'bun scripts/compile.ts darwin-arm64 dist/vx-darwin-arm64',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
-            read: ['.'],
+            read: ['.', ...BAKED_READS],
             write: ['dist/vx-darwin-arm64', ...BUN_RUNTIME_WRITES],
             network: BUN_RUNTIME_NETWORK,
           },
@@ -550,7 +557,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: ['**/*'], workspaceFiles: BAKED_INPUTS, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },

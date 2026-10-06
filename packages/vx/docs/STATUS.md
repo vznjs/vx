@@ -746,6 +746,12 @@ next?".
   own façade to every `@vzn/vx` import it evaluates. A plugin package
   never carries its own copy of core into a run; the host decides the
   runtime, as any host does. Item 77.
+- **The binary bakes its own plugins (owner, 2026-10-06).** The
+  compiled binary carries vx-github, vx-lockfile, vx-mcp, vx-otel and
+  vx-schedule-history and serves them when the installed package has
+  the binary's version, from disk otherwise (`vx show` 37 → 31 ms on
+  this repo's workspace). Groundwork for Bun's AOT compile, where code
+  loaded from disk runs interpreted. `docs/modules/bin.md`.
 - **The façade names only what has a consumer (2026-09-10).** An
   export written for a consumer that no longer exists is a promise
   nobody collects and a surface nobody may change; item 78 took 41
