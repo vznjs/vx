@@ -22,8 +22,10 @@ interface VxResult {
   err: string
 }
 
+// --no-install: these rows are about what is written, and a sandboxed task
+// has no registry (`tests/adopt.test.ts` holds the install).
 async function vx(root: string, args: string[]): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
+  const proc = Bun.spawn([process.execPath, BIN, '--no-install', ...args], {
     cwd: root,
     env: { ...process.env },
     stdout: 'pipe',

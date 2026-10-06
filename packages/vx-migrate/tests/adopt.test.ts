@@ -94,23 +94,19 @@ describe('the package manager', () => {
     }
   })
 
-  it('a package listed or installed is not missing', async () => {
+  it('a package installed is not missing; one only listed is', async () => {
     const root = await tmp('vx-adopt-missing-')
     const wanted = ['@vzn/vx', '@vzn/vx-migrate']
     try {
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
-      const none = missingPackages(root, wanted)
       await writeFile(
         path.join(root, 'package.json'),
         JSON.stringify({ devDependencies: { '@vzn/vx': '*' } }),
       )
       const listed = missingPackages(root, wanted)
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-migrate'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json'), '{}')
-      expect([none, listed, missingPackages(root, wanted)]).toEqual([
+      expect([listed, missingPackages(root, wanted)]).toEqual([
         ['@vzn/vx', '@vzn/vx-migrate'],
-        ['@vzn/vx-migrate'],
         ['@vzn/vx'],
       ])
     } finally {

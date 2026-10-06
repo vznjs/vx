@@ -100,25 +100,19 @@ export function ownVersion(): string | null {
 }
 
 /**
- * The `wanted` packages the root neither lists nor has installed, and,
- * given `version`, any installed at another one: a repo left on @vzn/vx
- * 0.0.511 warned "incorrect peer dependency" under vx-migrate 0.0.512
- * (owner, 2026-10-06).
+ * The `wanted` packages not installed at the root, and, given `version`,
+ * any installed at another one. Listed is not installed: a repo whose
+ * package.json named @vzn/vx 0.0.511 was told nothing and warned
+ * "incorrect peer dependency" under vx-migrate 0.0.512 (owner, 2026-10-06).
  */
 export function missingPackages(
   root: string,
   wanted: readonly string[],
   version: string | null = null,
 ): string[] {
-  const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
-    string,
-    Record<string, unknown> | undefined
-  >
-  const listed = (name: string) =>
-    ['dependencies', 'devDependencies'].some((f) => pj[f]?.[name] !== undefined)
   return wanted.filter((p) => {
     const installed = readText(path.join(root, 'node_modules', p, 'package.json'))
-    if (installed === '') return !listed(p)
+    if (installed === '') return true
     if (version === null) return false
     return (JSON.parse(installed) as { version?: unknown }).version !== version
   })
