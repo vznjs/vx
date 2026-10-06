@@ -2247,6 +2247,12 @@ export interface TaskTelemetry {
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   failedAttempts?: readonly FailedAttempt[]
+  flaky?: { passes: number; failures: number }
+  sandboxViolationLines?: readonly string[]
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string

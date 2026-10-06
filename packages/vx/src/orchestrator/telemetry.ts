@@ -192,6 +192,17 @@ export interface TaskTelemetry {
   notReady?: 'timeout' | 'exited' | 'spawn'
   /** On a task that retried: each attempt that failed before the last, in order. Additive. */
   failedAttempts?: readonly FailedAttempt[]
+  /** On a task proved flaky this run: its key's passes and failures on record. Additive. */
+  flaky?: { passes: number; failures: number }
+  /** On a sandboxed task: the violation lines themselves, one per denial. Additive. */
+  sandboxViolationLines?: readonly string[]
+  /** On a cache hit: how long the run that stored the entry took — the time this hit saved. Additive. */
+  storedDurationMs?: number
+  /** On a cache hit: the CPU and peak memory of the run that stored it. Additive. */
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  /** How long an `admit` policy held the task once it was ready. Additive. */
+  admissionHeldMs?: number
   /**
    * On a cache hit: whether outputs were written this run (`true`) or the
    * disk already matched the entry and nothing was restored (`false`, an
@@ -718,6 +729,14 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.notReady !== undefined) t.notReady = o.notReady
   if (o.failedAttempts !== undefined) t.failedAttempts = o.failedAttempts
+  if (o.flaky !== undefined) t.flaky = o.flaky
+  if (o.sandboxViolationLines !== undefined && o.sandboxViolationLines.length > 0) {
+    t.sandboxViolationLines = o.sandboxViolationLines
+  }
+  if (o.storedDurationMs !== undefined) t.storedDurationMs = o.storedDurationMs
+  if (o.storedCpuMs !== undefined) t.storedCpuMs = o.storedCpuMs
+  if (o.storedPeakRssBytes !== undefined) t.storedPeakRssBytes = o.storedPeakRssBytes
+  if (o.admissionHeldMs !== undefined) t.admissionHeldMs = o.admissionHeldMs
   if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
