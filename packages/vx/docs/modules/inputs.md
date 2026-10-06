@@ -177,14 +177,18 @@ other walker: a project outside a git work tree is a `UserError`
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
-   (`**/node_modules/**`, `**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`,
+   (`**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`,
    `**/vx-lock.json`, `**/*.bun-build`,
    `**/.????????????????-????????.tmp/**`)
    — applied as a defense-in-depth even if git happens to track
    something there. The lock file is vx's own frozen-config metadata,
    never a task input; the `.bun-build` intermediate and the directory
    `bun build --compile` extracts a downloaded cross-compile runtime into
-   are transients a concurrent compile is mid-write.
+   are transients a concurrent compile is mid-write. `node_modules` is
+   not here: the enumeration drops an UNTRACKED file under one
+   (`isInstalledPath`, an install), and a tracked one is a source. By
+   path, a committed fixture under `tests/fixtures/node_modules/` left
+   the key and an edit to it replayed the old output (X-4).
 5. **Boundary ignores** — a path under a nested project's directory
    (relative to this project), by ancestor lookup, not a glob (A-11).
    Cross-project isolation contract.

@@ -58,8 +58,10 @@ export {
 // re-lock can't bust every cache key the way a tracked source file
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
 // cache is a leaf module and must not import from workspace.)
+//
+// `node_modules` is not here: the enumeration drops an untracked file
+// under one (`isInstalledPath`), and a tracked one is a source.
 const ALWAYS_IGNORE = [
-  '**/node_modules/**',
   // Defense in depth, and measured as exactly that (item 497): git never
   // reports a path under `.git`, so dropping this line changes NOTHING on
   // any route into the input set. Probed three ways with the pattern in

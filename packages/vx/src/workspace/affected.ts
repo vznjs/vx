@@ -15,6 +15,7 @@ import {
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
+  isInstalledPath,
   relPosix,
   taskGlob,
 } from '../util/index.js'
@@ -234,7 +235,11 @@ export async function affectedChanges(
 
   // vx-lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
-  const changed = [...diffed, ...untracked].filter((s) => s !== LOCKFILE_NAME)
+  // An untracked file under `node_modules` is an install, which the input
+  // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  const changed = [...diffed, ...untracked.filter((s) => !isInstalledPath(s))].filter(
+    (s) => s !== LOCKFILE_NAME,
+  )
 
   // A lockfile or workspace-definition change re-keys EVERY task, because the
   // workspace fingerprint folds those files into every cache key. Mapping

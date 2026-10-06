@@ -98,6 +98,22 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual(['a'])
   })
 
+  it('an untracked install under node_modules selects nothing; a tracked file there does', async () => {
+    await mkdir(path.join(root, 'packages/a/node_modules/dep'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/node_modules/dep/index.js'), 'x')
+    expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
+      [],
+    )
+    await mkdir(path.join(root, 'packages/b/fixtures/node_modules/dep'), { recursive: true })
+    await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v1')
+    await git(root, 'add', '-f', 'packages/b/fixtures')
+    await git(root, 'commit', '-q', '-m', 'fixture')
+    await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v2')
+    expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
+      ['b'],
+    )
+  })
+
   // Item 1079: a member linked in from elsewhere in the tree is indexed by
   // its link, and git reports its files at their real place, which owned
   // no project: an edit there selected nothing.

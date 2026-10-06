@@ -27,6 +27,9 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 export function isLiteralPattern(glob: string): boolean
 export function taskGlob(pattern: string): Bun.Glob
 export function anyTaskGlob(patterns: readonly string[]): (rel: string) => boolean
+// A path inside an install (`node_modules/` at any depth): untracked, it is
+// never an input; tracked, it is a source like any other (X-4).
+export function isInstalledPath(rel: string): boolean
 // A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):
 // workspace discovery and the output scan (A-10).
 export function slashBraceExpansions(pattern: string): string[]

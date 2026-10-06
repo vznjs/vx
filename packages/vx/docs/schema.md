@@ -744,9 +744,12 @@ package.json. A task with no _file_ inputs (e.g. a pure
 Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
-- **Always-ignored** — `node_modules/**`, `.git/**`, `.vx/**`,
-  `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, and Bun's cross-compile
-  extraction directory `.<16 hex>-<8 hex>.tmp/**`.
+- **Always-ignored** — `.git/**`, `.vx/**`, `*.tsbuildinfo`,
+  `vx-lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+  directory `.<16 hex>-<8 hex>.tmp/**`, at any depth.
+- **Installs** — an untracked file under any `node_modules/` (ignored or
+  not). A file git TRACKS there, such as a committed test fixture, is an
+  input like any other.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is
   no output, so it stays an input (A-44).
@@ -785,8 +788,9 @@ or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
 `{/etc,src}/*` are refused at load, where the glob engine would have
 matched nothing under that arm and said so nowhere.
 
-Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
-`.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`) and the task's own declared
+Still applied: the always-ignored set (`.git/**`, `.vx/**`,
+`*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
+untracked files under `node_modules/`, and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
