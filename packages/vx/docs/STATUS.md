@@ -801,6 +801,7 @@ next?".
   The artifact is the record, the index its inventory: a reset index
   re-indexes each artifact from its bytes on its next hit, the batched
   short-circuit probe included (`getMany` takes each hash's get context).
+  An existing `~/.vx` is used whatever its mode, as Nx uses `~/.nx`.
   `docs/design/shared-store-2026-10.md`.
 
 ## Legacy map (what the old memory called things)

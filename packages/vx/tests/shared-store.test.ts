@@ -174,16 +174,17 @@ describe('the shared store', () => {
     )
   })
 
-  it('a ~/.vx open to other users is not used', async () => {
+  it('an existing ~/.vx is used as it is, whatever its mode', async () => {
     await mkdir(path.join(home, '.vx'), { mode: 0o755 })
     await chmod(path.join(home, '.vx'), 0o755)
     const a = await workspace()
     expect((await build(a)).status).toBe('success')
-    expect(a.log.filter((l) => l.includes('is open to other users'))).toHaveLength(1)
-    expect(await stores()).toEqual([])
+    expect(a.log.filter((l) => l.includes('shared cache store'))).toEqual([])
+    expect(await stores()).toEqual([path.join(home, '.vx', repoIdOf(a.root)!, 'cache')])
+    expect((statSync(path.join(home, '.vx')).mode & 0o777).toString(8)).toBe('755')
   })
 
-  it('makes each level of the store owner-only', async () => {
+  it('makes each level of the store it creates owner-only', async () => {
     const a = await workspace()
     await build(a)
     const root = path.join(home, '.vx', repoIdOf(a.root)!)

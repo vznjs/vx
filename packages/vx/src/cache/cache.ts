@@ -38,7 +38,6 @@ import {
   constants,
   existsSync,
   linkSync,
-  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -433,34 +432,13 @@ function openCacheDir(cacheDir: string): string | null {
 /** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
 function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
   try {
-    if (storeRoot !== null) {
-      // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
-      // made alone and re-checked, as Nx makes `~/.nx/<id>`. Artifacts are
-      // replayed into the workspace, so nobody else may write them.
-      const vxHome = path.dirname(path.dirname(storeRoot))
-      for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
-        const refused = ensurePrivateDir(dir)
-        if (refused !== null) return refused
-      }
-    }
+    // `~/.vx/<id>/cache`: the levels vx makes are owner-only; one that
+    // exists is used as it is, as Nx uses `~/.nx` (owner, 2026-10-06).
+    if (storeRoot !== null) mkdirSync(storeRoot, { recursive: true, mode: 0o700 })
     return openCacheDir(storeDir)
   } catch (err) {
     return errorText(err)
   }
-}
-
-function ensurePrivateDir(dir: string): string | null {
-  try {
-    mkdirSync(dir, { mode: 0o700 })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
-  }
-  const st = lstatSync(dir)
-  if (!st.isDirectory()) return `${dir} is not a directory`
-  const uid = process.getuid?.()
-  if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`
-  if ((st.mode & 0o077) !== 0) return `${dir} is open to other users (chmod 700 it)`
-  return null
 }
 
 // Make the cache dir invisible to git, every time it is created: a `*`

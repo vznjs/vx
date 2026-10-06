@@ -43,9 +43,10 @@ its rules, without the Nx Cloud id:
   repository with no commit has no id and shares nothing (the workspace
   holds everything, as with a named cache dir).
 - the walk to `.git` stops at one not ours (owner, `HEAD`, `objects`),
-  reads files with `O_NOFOLLOW`, and `~/.vx`, `~/.vx/<id>` and its
-  `cache` are made 0700 one level at a time; a level open to other users
-  or not ours sends the store to the workspace, said once.
+  reads files with `O_NOFOLLOW`, and the levels of `~/.vx/<id>/cache` vx
+  creates are 0700. An existing level is used as it is, as Nx uses
+  `~/.nx` (owner, 2026-10-06): refusing a 0755 `~/.vx` sent a normal Mac's
+  entries back to the workspace.
 
 Entries are content-addressed, so one store for every repository would
 be as correct; the split is housekeeping (delete a repository's cache as
