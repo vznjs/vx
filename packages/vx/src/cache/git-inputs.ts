@@ -214,6 +214,22 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     this.dirty = dirty
   }
 
+  /** The populate's `git var -l`, for `configValue`. */
+  private vars: Map<string, string> | null = null
+
+  setGitVars(listing: string | null): void {
+    this.vars = listing === null ? null : gitVarList(listing)
+  }
+
+  /**
+   * A config key's value as `git config --get` answers it (the last one),
+   * from the populate's `git var -l`: null when the config has none,
+   * undefined when no listing was read.
+   */
+  configValue(key: string): string | null | undefined {
+    return this.vars === null ? undefined : (this.vars.get(key) ?? null)
+  }
+
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void {
     this.recordChanged(projectDir, relPaths)
     // The workspace-wide partition sees the same files under
@@ -1135,6 +1151,8 @@ export interface GitEnumeration {
   trusted: Map<string, string>
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
   dirty: boolean | null
+  /** `git var -l`'s listing (merged config, then git's variables); null when it failed. */
+  vars: string | null
   /**
    * What `git status` listed, workspace-relative: modified, staged or deleted
    * paths (both sides of a rename) and untracked files. Null when it failed.
@@ -1414,6 +1432,7 @@ export async function startGitEnumeration(
     all,
     trusted,
     dirty: worktreeDirty,
+    vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
     changed: dirty === null ? null : [...dirty, ...untracked],
     untracked: dirty === null ? null : untracked,
     undecodable,
@@ -1482,6 +1501,7 @@ export async function applyGitEnumeration(
   await dropResizedOids(enumeration, memo)
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
+  cache.setGitVars(enumeration.vars)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
   // Sort once, then each project's files are a contiguous range found
