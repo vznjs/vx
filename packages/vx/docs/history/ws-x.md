@@ -36,3 +36,8 @@ time (bugs, correctness, simplification, the plugin seams).
   is reached through a link; the save still follows one
   (turborepo#13042). Row: `inputs-resolution.test.ts` › "a clean never
   deletes through a symlinked output dir".
+- **X-6.** A config with two syntax errors (`export default {{`)
+  reached the user as an `AggregateError` stack with no position, and
+  `vx watch` leaked the internal `?vx-held=` query. The first error is
+  now reported like a single one, `file:line:col: message`. Row:
+  `project-loader.test.ts` › "two syntax errors name the first one".
