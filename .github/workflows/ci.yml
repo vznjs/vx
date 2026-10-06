@@ -59,7 +59,7 @@ jobs:
       # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
       # resolve from a raw shell.
       #
-      # The job summary comes from `@vzn/vx-github`, declared in
+      # The job summary comes from `@vzn/vx-ci`, declared in
       # vx.workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
       # verdict, stats, failures and the per-task table, so a red run says
       # WHICH task failed on the PR page instead of only in the log.
@@ -157,7 +157,7 @@ jobs:
           bun packages/vx/src/bin.ts run ci --all
           code=$?
           set -e
-          test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
+          test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 

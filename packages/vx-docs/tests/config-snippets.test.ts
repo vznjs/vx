@@ -27,7 +27,7 @@ const AMBIENT = [
   '@vzn/vx-lockfile',
   '@vzn/vx-migrate',
   '@vzn/vx-mcp',
-  '@vzn/vx-github',
+  '@vzn/vx-ci',
   '@vzn/vx-schedule-history',
 ]
 

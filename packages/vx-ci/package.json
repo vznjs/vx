@@ -1,5 +1,5 @@
 {
-  "name": "@vzn/vx-github",
+  "name": "@vzn/vx-ci",
   "version": "0.0.0",
   "license": "MIT",
   "description": "GitHub Actions integration for vx — a telemetry plugin that writes the run as a GitHub Actions job summary.",

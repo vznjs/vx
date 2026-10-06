@@ -23,7 +23,7 @@ adds to them, and only a major removes or changes one.
 | The environment variables the first-party plugins read (`VX_REAPI_*`, `OTEL_*`, `GITHUB_*`, `TURBO_*`, …)                                                              | each package's `src/`; recorded in `tests/contract/plugin-env.txt`                                                                                                                                                                                                                                                                                                                                                                               |
 | What `@vzn/vx-otel` sends: span and metric names, attribute keys and their OTLP value types                                                                            | `packages/vx-otel/src/otlp.ts`; recorded in `packages/vx-otel/tests/contract/otlp.txt`                                                                                                                                                                                                                                                                                                                                                           |
 | `vx-migrate`'s command lines, and those of `nx-exec` and `nx-env`, which the configs it writes call                                                                    | each bin's usage in `packages/vx-migrate/src/`; recorded in `packages/vx-migrate/tests/contract/cli.txt`                                                                                                                                                                                                                                                                                                                                         |
-| The check run `@vzn/vx-github` posts: its default name, conclusion per outcome, endpoint and body keys                                                                 | `packages/vx-github/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-github/tests/contract/checks.txt`                                                                                                                                                                                                                                                                                                                                  |
+| The check run `@vzn/vx-ci` posts: its default name, conclusion per outcome, endpoint and body keys                                                                     | `packages/vx-ci/src/checks.ts`, `src/plugin.ts`; recorded in `packages/vx-ci/tests/contract/checks.txt`                                                                                                                                                                                                                                                                                                                                          |
 | What each npm package ships: the files `npm publish` uploads for `@vzn/vx` and every plugin                                                                            | `scripts/build-npm.ts`; recorded in `tests/contract/pack/`                                                                                                                                                                                                                                                                                                                                                                                       |
 | Task-glob semantics: which paths a pattern selects (item 667 made `[` literal; that reading is now part of the contract)                                               | `docs/schema.md`, `docs/caching.md`                                                                                                                                                                                                                                                                                                                                                                                                              |
 
@@ -100,7 +100,7 @@ A break must also be declared. `tests/api-break.unsafe.test.ts` diffs
 every contract record — each file under `tests/contract/` but the
 vendored upstream schemas, the `--format json` schemas in `schemas/`,
 `vx-mcp`'s tools record, `vx-otel`'s OTLP wire, `vx-migrate`'s command
-lines and `vx-github`'s check run — against the same file at the last
+lines and `vx-ci`'s check run — against the same file at the last
 `v*` tag, each read its own way (`contractBreaks` in
 `scripts/api-break.ts`): the API records by section, a pack list or a
 record of leaves by what it lost (a changed value is lost too), the
@@ -226,12 +226,12 @@ on a PR, the same diff between its base and head needs the title marked
   names, and the sources `--from` takes, in
   `packages/vx-migrate/tests/contract/cli.txt`. A config written by
   vx-migrate 1.0 calls the helper bins, so their argv holds for all 1.x.
-- **The GitHub check run.** `vx-github`'s `tests/contract-checks.test.ts`
+- **The GitHub check run.** `vx-ci`'s `tests/contract-checks.test.ts`
   drives the plugin with its defaults on an Actions environment through a
   passing, a failing and a cancelled run, captures each POST, and records
   its endpoint, method, header names, body keys and the values a branch
   protection rule or script keys on (`name`, `status`, `conclusion`) in
-  `packages/vx-github/tests/contract/checks.txt`.
+  `packages/vx-ci/tests/contract/checks.txt`.
 - **Exit codes.** `tests/contract-exit-codes.test.ts` drives each
   documented outcome (a task failing, an unknown task, flag or verb,
   nothing affected, an unwritable `--graph`, `cache prune` without a

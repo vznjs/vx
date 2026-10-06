@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-ci: rename @vzn/vx-github to @vzn/vx-ci
+
+import github() from '@vzn/vx-ci' instead of '@vzn/vx-github'.
+
 ## cache: keep artifacts when the store schema changes
 
 Cache.getMany and CacheLayer.getMany take an optional per-hash get context; a layer that ignores it is unchanged.

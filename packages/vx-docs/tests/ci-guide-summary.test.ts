@@ -1,4 +1,4 @@
-// The CI guide shows what `@vzn/vx-github` writes to the job summary
+// The CI guide shows what `@vzn/vx-ci` writes to the job summary
 // "byte for byte". This renders the run the page describes with the real
 // renderer and checks every line of it is on the page, so a renderer
 // change turns the guide red before a reader compares it to their job
@@ -6,7 +6,7 @@
 // renderer never wrote, 2026-09-16, item 265).
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { renderJobSummary } from '@vzn/vx-github'
+import { renderJobSummary } from '@vzn/vx-ci'
 import type { RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 
 const GUIDE = path.resolve(import.meta.dir, '../src/content/docs/guides/ci.md')
