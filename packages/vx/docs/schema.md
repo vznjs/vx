@@ -1471,16 +1471,14 @@ interface WorkspaceConfig {
   run just saved (item 969). It runs after the run's saves
   and uploads have landed, never on a run a signal or an abort stopped
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
-  nothing to evict pays one scan of the index), and says what it
-  evicted in one line (`vx: cache retention evicted 3 entries
-(1.2 GB)`); under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
+  nothing to evict pays one scan of the index), and says nothing:
+  housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
   orphan sweep (artifacts no index row counts, older than an hour —
   see `vx cache prune`) also runs on its own clock, at most once an
-  hour, so their bytes go even when nothing the index holds is due
-  (`vx: cache retention reaped 3 orphaned artifacts (9.0 MB)`);
+  hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
   entries. Housekeeping,
-  not the run's work: a failure is a warning, never a failed run. Not
+  not the run's work: a failure is silent, never a failed run. Not
   folded into any cache key. Omitted → the cache grows until
   `vx cache prune`.
 - **`affectedBase`** — the git ref a bare `--affected` compares with

@@ -205,6 +205,36 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     const seen = (globalThis as unknown as { __vxLifecycle: string[] }).__vxLifecycle
     expect(seen).toEqual(['flush', 'teardown'])
   })
+
+  // Nothing prints below the footer (owner, 2026-10-06): a teardown's
+  // warning lands above it, so the footer's result line is the last word.
+  it("a teardown's warning prints above the footer", async () => {
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource('org/bad', `{ teardown() { throw new Error('boom') } }`),
+      ]),
+    )
+    const lines: string[] = []
+    const log = {
+      runStart: () => undefined,
+      taskStart: () => undefined,
+      taskStdout: () => undefined,
+      taskStderr: () => undefined,
+      taskComplete: () => undefined,
+      runStatus: () => undefined,
+      runEnd: () => undefined,
+      status: (line: string) => void lines.push(line),
+    }
+    await run({ cwd: root, projects: ['a'], tasks: ['boom'], log, handleSignals: false })
+    const warned = lines.indexOf("[vx] plugin 'org/bad' failed in teardown: boom")
+    const result = lines.findIndex((l) => l.startsWith('  result '))
+    expect({ warned: warned >= 0, last: result === lines.length - 1 }).toEqual({
+      warned: true,
+      last: true,
+    })
+    expect(warned).toBeLessThan(result)
+  })
 })
 
 // A signal exit is `process.exit`, which runs no `finally`: a Ctrl-C skipped

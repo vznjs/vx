@@ -1096,3 +1096,7 @@ finishes; the Skipped section became a skipped row, blocker named, in
 every view that lists tasks. The crashed-server, Deferred and
 `--summarize` / `--profile` written lines print above the footer; the
 rewrite after a keep-alive wait is silent.
+
+M-90. The footer prints after the run's closing work (history, uploads,
+plugin teardown, the sandbox reset), so their warnings land above it,
+and `cacheRetention` prints nothing (owner: no housekeeping lines).

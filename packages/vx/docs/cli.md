@@ -2667,7 +2667,11 @@ running a group focused surfaces its real member tasks instead.
 **Nothing below the footer.** The footer is the run's last word.
 What a run has to say about one task rides that task's row; what it
 says about the run (a server that died, outputs left remote, a file
-`--summarize` / `--profile` wrote) prints above the footer.
+`--summarize` / `--profile` wrote, a history, upload, plugin or sandbox
+warning) prints above the footer: it prints once the run's closing work
+is done, the `VX_TIMING=1` table included. Cache housekeeping
+(`cacheRetention`) prints nothing. Only a kept server's own output
+follows it.
 
 **Skipped rows.** A red run lists every task that never started as a
 row naming the failure that blocked it, so the footer's `1 skipped`
