@@ -63,11 +63,11 @@ export interface GitEnumeration {
   all: string[] // every path git listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
+  vars: string | null // `git var -l` output, read once for config lookups
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
-  vars: string | null // `git var -l` output, read once for config lookups
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
 }
