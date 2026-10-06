@@ -1,16 +1,21 @@
+logs.resourceLogs[].resource.attributes.cicd.pipeline.name: stringValue
 logs.resourceLogs[].resource.attributes.cicd.pipeline.run.id: stringValue
+logs.resourceLogs[].resource.attributes.cicd.pipeline.run.url.full: stringValue
 logs.resourceLogs[].resource.attributes.host.arch: stringValue
 logs.resourceLogs[].resource.attributes.host.name: stringValue
 logs.resourceLogs[].resource.attributes.os.type: stringValue
 logs.resourceLogs[].resource.attributes.service.instance.id: stringValue
 logs.resourceLogs[].resource.attributes.service.name: stringValue
 logs.resourceLogs[].resource.attributes.service.version: stringValue
+logs.resourceLogs[].resource.attributes.vcs.change.id: stringValue
 logs.resourceLogs[].resource.attributes.vcs.owner.name: stringValue
 logs.resourceLogs[].resource.attributes.vcs.provider.name: stringValue
 logs.resourceLogs[].resource.attributes.vcs.ref.head.name: stringValue
 logs.resourceLogs[].resource.attributes.vcs.ref.head.revision: stringValue
 logs.resourceLogs[].resource.attributes.vcs.repository.name: stringValue
 logs.resourceLogs[].resource.attributes.vcs.repository.url.full: stringValue
+logs.resourceLogs[].resource.attributes.vx.ci.attempt: stringValue
+logs.resourceLogs[].resource.attributes.vx.ci.job: stringValue
 logs.resourceLogs[].resource.attributes.vx.workspace.path: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.cicd.pipeline.run.id: stringValue
 logs.resourceLogs[].scopeLogs[].logRecords[].attributes.cicd.pipeline.task.name: stringValue
@@ -31,19 +36,24 @@ logs.resourceLogs[].scopeLogs[].logRecords[].timeUnixNano: string
 logs.resourceLogs[].scopeLogs[].logRecords[].traceId: string
 logs.resourceLogs[].scopeLogs[].scope.name: string
 logs.resourceLogs[].scopeLogs[].scope.version: string
+metrics.resourceMetrics[].resource.attributes.cicd.pipeline.name: stringValue
 metrics.resourceMetrics[].resource.attributes.cicd.pipeline.run.id: stringValue
+metrics.resourceMetrics[].resource.attributes.cicd.pipeline.run.url.full: stringValue
 metrics.resourceMetrics[].resource.attributes.host.arch: stringValue
 metrics.resourceMetrics[].resource.attributes.host.name: stringValue
 metrics.resourceMetrics[].resource.attributes.os.type: stringValue
 metrics.resourceMetrics[].resource.attributes.service.instance.id: stringValue
 metrics.resourceMetrics[].resource.attributes.service.name: stringValue
 metrics.resourceMetrics[].resource.attributes.service.version: stringValue
+metrics.resourceMetrics[].resource.attributes.vcs.change.id: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.owner.name: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.provider.name: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.ref.head.name: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.ref.head.revision: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.repository.name: stringValue
 metrics.resourceMetrics[].resource.attributes.vcs.repository.url.full: stringValue
+metrics.resourceMetrics[].resource.attributes.vx.ci.attempt: stringValue
+metrics.resourceMetrics[].resource.attributes.vx.ci.job: stringValue
 metrics.resourceMetrics[].resource.attributes.vx.workspace.path: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.run.duration_ms].gauge.dataPoints[].timeUnixNano: string
@@ -117,6 +127,18 @@ metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.data
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].startTimeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].gauge.dataPoints[].timeUnixNano: string
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.peak_memory].unit = "By"
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].attributes.vx.cache.source: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].attributes.vx.task.project: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].attributes.vx.task.task: stringValue
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].exemplars[].asDouble: number
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].exemplars[].spanId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].exemplars[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].exemplars[].traceId: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].startTimeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].gauge.dataPoints[].timeUnixNano: string
+metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.queued].unit = "ms"
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].asDouble: number
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.cicd.pipeline.task.name: stringValue
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.task.time_saved].gauge.dataPoints[].attributes.vx.cache.source: stringValue
@@ -158,19 +180,24 @@ metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.dataPoints[
 metrics.resourceMetrics[].scopeMetrics[].metrics[vx.tasks.total].sum.isMonotonic = true
 metrics.resourceMetrics[].scopeMetrics[].scope.name: string
 metrics.resourceMetrics[].scopeMetrics[].scope.version: string
+traces.resourceSpans[].resource.attributes.cicd.pipeline.name: stringValue
 traces.resourceSpans[].resource.attributes.cicd.pipeline.run.id: stringValue
+traces.resourceSpans[].resource.attributes.cicd.pipeline.run.url.full: stringValue
 traces.resourceSpans[].resource.attributes.host.arch: stringValue
 traces.resourceSpans[].resource.attributes.host.name: stringValue
 traces.resourceSpans[].resource.attributes.os.type: stringValue
 traces.resourceSpans[].resource.attributes.service.instance.id: stringValue
 traces.resourceSpans[].resource.attributes.service.name: stringValue
 traces.resourceSpans[].resource.attributes.service.version: stringValue
+traces.resourceSpans[].resource.attributes.vcs.change.id: stringValue
 traces.resourceSpans[].resource.attributes.vcs.owner.name: stringValue
 traces.resourceSpans[].resource.attributes.vcs.provider.name: stringValue
 traces.resourceSpans[].resource.attributes.vcs.ref.head.name: stringValue
 traces.resourceSpans[].resource.attributes.vcs.ref.head.revision: stringValue
 traces.resourceSpans[].resource.attributes.vcs.repository.name: stringValue
 traces.resourceSpans[].resource.attributes.vcs.repository.url.full: stringValue
+traces.resourceSpans[].resource.attributes.vx.ci.attempt: stringValue
+traces.resourceSpans[].resource.attributes.vx.ci.job: stringValue
 traces.resourceSpans[].resource.attributes.vx.workspace.path: stringValue
 traces.resourceSpans[].scopeSpans[].scope.name: string
 traces.resourceSpans[].scopeSpans[].scope.version: string
@@ -182,8 +209,11 @@ traces.resourceSpans[].scopeSpans[].spans[classify + probe].spanId: string
 traces.resourceSpans[].scopeSpans[].spans[classify + probe].startTimeUnixNano: string
 traces.resourceSpans[].scopeSpans[].spans[classify + probe].status.code: number
 traces.resourceSpans[].scopeSpans[].spans[classify + probe].traceId: string
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.name: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.result: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.run.id: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.run.url.full: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.change.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.owner.name: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.provider.name: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.ref.head.name: stringValue
@@ -192,6 +222,8 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.repository.name
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.repository.url.full: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.arch: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.cache_policy: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.ci.attempt: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.ci.job: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.ci.provider: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.ci: boolValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.command: stringValue
@@ -246,9 +278,11 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.exit_code:
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.flaky.failures: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.flaky.passes: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.hash: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.input_files: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.not_ready: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.outputs: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.project: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.queued_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.run_started_at: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.sandbox_violations: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.status: stringValue

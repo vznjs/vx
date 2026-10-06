@@ -1361,6 +1361,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
     ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
+    ...(described !== undefined
+      ? { inputFiles: captured.reduce((n, c) => (c.kind === 'file' ? n + 1 : n), 0) }
+      : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),

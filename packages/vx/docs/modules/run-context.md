@@ -18,6 +18,11 @@ export interface GitContext {
 export interface CiContext {
   ci: boolean
   provider: string | null // 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic' (bare `CI`), or null
+  runUrl?: string // the provider's page for this run
+  change?: string // the pull or merge request number
+  pipeline?: string // the workflow or pipeline name
+  job?: string // the job (or step) within it
+  attempt?: number // 1 on a first run, 2 on its first re-run
 }
 export interface HostContext {
   host: string | null

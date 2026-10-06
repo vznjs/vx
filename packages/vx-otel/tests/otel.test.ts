@@ -50,6 +50,11 @@ const FULL_RUN: Required<RunContextRecord> = {
   ...RUN,
   repository: 'github.com/vznjs/vx',
   workspacePath: 'tools/ws',
+  ciRunUrl: 'https://github.com/vznjs/vx/actions/runs/42',
+  ciChange: '2787',
+  ciPipeline: 'CI',
+  ciJob: 'test',
+  ciAttempt: 2,
 }
 
 /** Run context every task span carries so it is readable on its own. */
@@ -512,7 +517,15 @@ describe('OtelSink end-to-end', () => {
       ts: 3500,
       ...extra,
     })
-    rec(end('a#build', { status: 'success', durationMs: 3500, cpuMs: 2600, peakRssBytes: 9000 }))
+    rec(
+      end('a#build', {
+        status: 'success',
+        durationMs: 3500,
+        cpuMs: 2600,
+        peakRssBytes: 9000,
+        queuedMs: 70,
+      }),
+    )
     // Never ran: no point, or it would chart as the fastest run there is.
     rec(end('a#lint', { status: 'skipped', durationMs: 0 }))
     sink.onRunSummary(summaryFor(RUN, []))
@@ -537,12 +550,14 @@ describe('OtelSink end-to-end', () => {
       of('vx.task.duration'),
       of('vx.task.cpu_time'),
       of('vx.task.peak_memory'),
+      of('vx.task.queued'),
     ]).toEqual([
       ['1', [0.5, 0, 2]],
       ['By', [4096, 2048, 8192]],
       ['ms', [3500]],
       ['ms', [2600]],
       ['By', [9000]],
+      ['ms', [70]],
     ])
     const keys = (name: string) =>
       metrics.find((x) => x.name === name)!.gauge!.dataPoints[0]!.attributes.map((a) => a.key)
@@ -860,6 +875,8 @@ const FULL_TASK: Required<TaskTelemetry> = {
   storedCpuMs: 4000,
   storedPeakRssBytes: 2048,
   admissionHeldMs: 30,
+  queuedMs: 40,
+  inputFiles: 12,
   restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
@@ -874,7 +891,12 @@ describe('OTLP losslessness', () => {
       'branch',
       'cachePolicy',
       'ci',
+      'ciAttempt',
+      'ciChange',
+      'ciJob',
+      'ciPipeline',
       'ciProvider',
+      'ciRunUrl',
       'command',
       'commitSha',
       'concurrency',
@@ -894,13 +916,18 @@ describe('OTLP losslessness', () => {
     ])
   })
 
-  it('names the repository and the workspace path in it, on the span and every resource', () => {
+  it('names the repository, the workspace path in it and the CI run, on the span and every resource', () => {
     const want = {
       'vcs.repository.url.full': 'https://github.com/vznjs/vx',
       'vcs.repository.name': 'vx',
       'vcs.owner.name': 'vznjs',
       'vcs.provider.name': 'github',
       'vx.workspace.path': 'tools/ws',
+      'cicd.pipeline.run.url.full': 'https://github.com/vznjs/vx/actions/runs/42',
+      'vcs.change.id': '2787',
+      'cicd.pipeline.name': 'CI',
+      'vx.ci.job': 'test',
+      'vx.ci.attempt': '2',
     }
     const a = attrMap(runSpanAttributes(FULL_RUN) as never)
     const pick = (m: Record<string, unknown>) =>
@@ -928,10 +955,12 @@ describe('OTLP losslessness', () => {
       'failedAttempts',
       'flaky',
       'hash',
+      'inputFiles',
       'notReady',
       'outputs',
       'peakRssBytes',
       'project',
+      'queuedMs',
       'restored',
       'sandboxViolationLines',
       'sandboxViolations',
@@ -1062,6 +1091,8 @@ describe('OTLP losslessness', () => {
     expect(a['vx.cache.stored_cpu_ms']).toBe('4000')
     expect(a['vx.cache.stored_peak_rss_bytes']).toBe('2048')
     expect(a['vx.task.admission_held_ms']).toBe('30')
+    expect(a['vx.task.queued_ms']).toBe('40')
+    expect(a['vx.task.input_files']).toBe('12')
     expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.outputs']).toBe('deferred')
     expect(a['vx.task.blocked_by']).toBe('lib#build')

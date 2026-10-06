@@ -1437,6 +1437,29 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     for (const o of plain.values()) expect(o.admissionHeldMs).toBeUndefined()
   })
 
+  it('a task carries how long it waited ready for a worker, not for its deps', async () => {
+    const run = (concurrency: number) =>
+      runGraph({
+        nodes: nodes(node('a#run'), node('b#run'), node('c#run', ['a#run'])),
+        concurrency,
+        execute: async (n) => {
+          await new Promise((r) => setTimeout(r, 30))
+          return success(n)
+        },
+      })
+    // One worker: b waits out a, and c (ready when a ends) waits out b.
+    const serial = await run(1)
+    const waited = (id: string) => serial.get(id)!.queuedMs ?? 0
+    expect([waited('a#run') < 10, waited('b#run') >= 25, waited('c#run') >= 25]).toEqual([
+      true,
+      true,
+      true,
+    ])
+    // Workers to spare: c started 30 ms in, all of it its dep's, none queued.
+    const wide = await run(8)
+    expect((wide.get('c#run')!.queuedMs ?? 0) < 10).toBe(true)
+  })
+
   it('the policy sees a task dispatched earlier in the SAME tick', async () => {
     // Two ready tasks, one tick: the second ask must list the first as
     // running, or two tasks that must not share a machine would start

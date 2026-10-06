@@ -29,6 +29,16 @@ export interface CiContext {
   /** Which CI matched: 'github' | 'gitlab' | 'buildkite' | 'circleci'
    *  | 'generic' (bare `CI`), or null when no CI env is present. */
   provider: string | null
+  /** The provider's page for this run (a GitHub Actions run, a GitLab pipeline). */
+  runUrl?: string
+  /** The pull or merge request number this run builds. */
+  change?: string
+  /** The workflow or pipeline name. */
+  pipeline?: string
+  /** The job (or step) within it. */
+  job?: string
+  /** 1 on a first run, 2 on its first re-run. */
+  attempt?: number
 }
 
 export interface HostContext {
@@ -307,9 +317,69 @@ function isTruthy(v: string | undefined): boolean {
  */
 export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefined>): CiContext {
   for (const [varName, provider] of CI_PROVIDERS) {
-    if (isTruthy(env[varName])) return { ci: true, provider }
+    if (isTruthy(env[varName])) return { ci: true, provider, ...ciLinks(provider, env) }
   }
   return { ci: false, provider: null }
+}
+
+type CiLinks = Pick<CiContext, 'runUrl' | 'change' | 'pipeline' | 'job' | 'attempt'>
+
+/** Where a dashboard links back to: each provider's own documented variables. */
+function ciLinks(provider: string, env: Record<string, string | undefined>): CiLinks {
+  const v = (k: string): string | undefined => (env[k] === '' ? undefined : env[k])
+  const n = (raw: string | undefined, plus = 0): number | undefined => {
+    const x = raw === undefined ? NaN : Number(raw)
+    return Number.isInteger(x) && x >= 0 ? x + plus : undefined
+  }
+  let links: Record<string, string | number | undefined>
+  switch (provider) {
+    case 'github': {
+      const server = v('GITHUB_SERVER_URL') ?? 'https://github.com'
+      const repo = v('GITHUB_REPOSITORY')
+      const id = v('GITHUB_RUN_ID')
+      links = {
+        runUrl: repo && id ? `${server}/${repo}/actions/runs/${id}` : undefined,
+        // `refs/pull/<n>/merge` on a pull_request event.
+        change: /^refs\/pull\/(\d+)\//.exec(v('GITHUB_REF') ?? '')?.[1],
+        pipeline: v('GITHUB_WORKFLOW'),
+        job: v('GITHUB_JOB'),
+        attempt: n(v('GITHUB_RUN_ATTEMPT')),
+      }
+      break
+    }
+    case 'gitlab':
+      links = {
+        runUrl: v('CI_PIPELINE_URL'),
+        change: v('CI_MERGE_REQUEST_IID'),
+        pipeline: v('CI_PIPELINE_NAME'),
+        job: v('CI_JOB_NAME'),
+      }
+      break
+    case 'buildkite': {
+      const pr = v('BUILDKITE_PULL_REQUEST')
+      links = {
+        runUrl: v('BUILDKITE_BUILD_URL'),
+        // `false` when the build is not for one.
+        change: pr !== undefined && /^\d+$/.test(pr) ? pr : undefined,
+        pipeline: v('BUILDKITE_PIPELINE_SLUG'),
+        job: v('BUILDKITE_LABEL'),
+        // Counts re-runs from 0.
+        attempt: n(v('BUILDKITE_RETRY_COUNT'), 1),
+      }
+      break
+    }
+    case 'circleci':
+      links = {
+        runUrl: v('CIRCLE_BUILD_URL'),
+        // The PR's URL, ending in its number.
+        change: /\/(\d+)$/.exec(v('CIRCLE_PULL_REQUEST') ?? '')?.[1] ?? v('CIRCLE_PR_NUMBER'),
+        job: v('CIRCLE_JOB'),
+      }
+      break
+    default:
+      return {}
+  }
+  return Object.fromEntries(Object.entries(links).filter(([, x]) => x !== undefined)) as CiLinks
 }
 
 /** Host name (null on failure) + platform + arch. */

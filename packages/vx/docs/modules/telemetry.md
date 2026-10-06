@@ -76,6 +76,11 @@ interface RunContextRecord {
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  ciRunUrl?: string // the CI provider's page for this run
+  ciChange?: string // the pull or merge request number
+  ciPipeline?: string // the CI workflow or pipeline name
+  ciJob?: string // the CI job (or step)
+  ciAttempt?: number // 1 on a first run, 2 on its first re-run
   host: string | null
   os: string
   arch: string
@@ -107,6 +112,8 @@ interface TaskTelemetry {
   storedCpuMs?: number // on a hit: the stored run's CPU and peak memory
   storedPeakRssBytes?: number
   admissionHeldMs?: number // how long an `admit` policy held it once ready
+  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  inputFiles?: number // on a cacheable task that ran: the files its key read
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string

@@ -143,6 +143,16 @@ export interface RunContextRecord {
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  /** The CI provider's page for this run. */
+  ciRunUrl?: string
+  /** The pull or merge request number the run builds. */
+  ciChange?: string
+  /** The CI workflow or pipeline name. */
+  ciPipeline?: string
+  /** The CI job (or step) within it. */
+  ciJob?: string
+  /** 1 on a first run, 2 on its first re-run. */
+  ciAttempt?: number
   host: string | null
   os: string
   arch: string
@@ -207,6 +217,10 @@ export interface TaskTelemetry {
   storedPeakRssBytes?: number
   /** How long an `admit` policy held the task once it was ready. Additive. */
   admissionHeldMs?: number
+  /** How long the task waited ready for a worker, any admission hold included. Additive. */
+  queuedMs?: number
+  /** On a cacheable task that ran: how many files its key read. Additive. */
+  inputFiles?: number
   /**
    * On a cache hit: whether outputs were written this run (`true`) or the
    * disk already matched the entry and nothing was restored (`false`, an
@@ -741,6 +755,8 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.storedCpuMs !== undefined) t.storedCpuMs = o.storedCpuMs
   if (o.storedPeakRssBytes !== undefined) t.storedPeakRssBytes = o.storedPeakRssBytes
   if (o.admissionHeldMs !== undefined) t.admissionHeldMs = o.admissionHeldMs
+  if (o.queuedMs !== undefined) t.queuedMs = o.queuedMs
+  if (o.inputFiles !== undefined) t.inputFiles = o.inputFiles
   if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()

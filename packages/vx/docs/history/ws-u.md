@@ -56,3 +56,15 @@ and traces should use span events, links and more objects.
   repository and where in it the workspace sits";
   `vx-otel/tests/otel.test.ts` › "a slow collector never holds the run",
   "names the repository".
+
+- U-5 — OTel links a run to its CI page and says what a task waited
+  on. `CiContext` gained the run URL, pull or merge request number,
+  workflow, job and attempt from GitHub Actions', GitLab's, Buildkite's
+  and CircleCI's own variables (`cicd.pipeline.run.url.full`,
+  `vcs.change.id`, `cicd.pipeline.name`, `vx.ci.job`, `vx.ci.attempt`).
+  A task outcome gained `queuedMs`, ready to dispatch (`vx.task.queued_ms`
+  and the `vx.task.queued` metric), and on a cacheable task that ran
+  `inputFiles`, the files its key read (`vx.task.input_files`). Rows:
+  `run-context.test.ts` › "names the run page"; `scheduler.test.ts` ›
+  "waited ready for a worker"; `telemetry-trace-facts.test.ts` › "counts
+  the files its key read".

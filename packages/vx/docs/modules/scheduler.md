@@ -29,6 +29,8 @@ export interface TaskOutcome {
   storedCpuMs?: number // hits: what the producing execution used (rides the artifact)
   storedPeakRssBytes?: number
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
+  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  inputFiles?: number // on a cacheable task that ran: the files its key read
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
