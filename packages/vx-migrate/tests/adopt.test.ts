@@ -94,7 +94,7 @@ describe('the package manager', () => {
     }
   })
 
-  it('a package installed is not missing; one only listed is', async () => {
+  it('a package is adopted only listed AND installed', async () => {
     const root = await tmp('vx-adopt-missing-')
     const wanted = ['@vzn/vx', '@vzn/vx-migrate']
     try {
@@ -102,12 +102,17 @@ describe('the package manager', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ devDependencies: { '@vzn/vx': '*' } }),
       )
-      const listed = missingPackages(root, wanted)
+      const listedOnly = missingPackages(root, wanted)
+      // Installed but unlisted: a package.json reset after an earlier run.
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-migrate'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json'), '{}')
-      expect([listed, missingPackages(root, wanted)]).toEqual([
+      const installedOnly = missingPackages(root, wanted)
+      await mkdir(path.join(root, 'node_modules', '@vzn', 'vx'), { recursive: true })
+      await writeFile(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'), '{}')
+      expect([listedOnly, installedOnly, missingPackages(root, wanted)]).toEqual([
         ['@vzn/vx', '@vzn/vx-migrate'],
-        ['@vzn/vx'],
+        ['@vzn/vx', '@vzn/vx-migrate'],
+        ['@vzn/vx-migrate'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -117,7 +122,10 @@ describe('the package manager', () => {
   it('given its own version, one installed at another is missing too', async () => {
     const root = await tmp('vx-adopt-skew-')
     try {
-      await writeFile(path.join(root, 'package.json'), JSON.stringify({}))
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ devDependencies: { '@vzn/vx': '*', '@vzn/vx-lockfile': '*' } }),
+      )
       for (const [p, v] of [
         ['vx', '0.0.511'],
         ['vx-lockfile', '0.0.512'],

@@ -213,7 +213,7 @@ It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works 
 
 - In a terminal it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (the workspace file `vx init` writes, declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native.
 - With no `vx.workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists. Keep adds them to the file `vx init` writes, or to one already in that shape; any other workspace file is the user's and left alone.
-- It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx` and those plugins, plus `@vzn/vx-migrate` for keep (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package already installed at vx-migrate's own version is left alone; one missing or at another version is installed at that version. `--no-install` skips it.
+- It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx` and those plugins, plus `@vzn/vx-migrate` for keep (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. `--no-install` skips it.
 
 Your `package.json` scripts are never edited. `--dry` installs nothing and says what it would install.
 

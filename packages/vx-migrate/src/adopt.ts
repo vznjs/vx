@@ -100,17 +100,25 @@ export function ownVersion(): string | null {
 }
 
 /**
- * The `wanted` packages not installed at the root, and, given `version`,
- * any installed at another one. Listed is not installed: a repo whose
- * package.json named @vzn/vx 0.0.511 was told nothing and warned
- * "incorrect peer dependency" under vx-migrate 0.0.512 (owner, 2026-10-06).
+ * The `wanted` packages the root does not both list and have installed
+ * (at `version`, given one). Either alone is not adopted: a reset
+ * package.json leaves node_modules behind, and a listing is not an
+ * install; on solidjs/solid vx-migrate 0.0.512 skipped @vzn/vx that
+ * package.json did not list (owner, 2026-10-06).
  */
 export function missingPackages(
   root: string,
   wanted: readonly string[],
   version: string | null = null,
 ): string[] {
+  const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
+    string,
+    Record<string, unknown> | undefined
+  >
+  const listed = (name: string) =>
+    ['dependencies', 'devDependencies'].some((f) => pj[f]?.[name] !== undefined)
   return wanted.filter((p) => {
+    if (!listed(p)) return true
     const installed = readText(path.join(root, 'node_modules', p, 'package.json'))
     if (installed === '') return true
     if (version === null) return false
