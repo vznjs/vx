@@ -94,6 +94,7 @@ const TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 1,
   notReady: 'timeout',
+  failedAttempts: [{ endedAt: 1030, exitCode: 1, timedOut: true }],
   // Every field, so each one's path is recorded; a hit alone carries it.
   restored: false,
   wallclockStartNs: '1000000000',
@@ -116,7 +117,29 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     },
   })
   const records: TelemetryRecord[] = [
-    { v: 3, kind: 'run.start', run: RUN, total: 1, ts: 1000, startedAt: 1000 },
+    { v: 3, kind: 'run.start', run: RUN, total: 2, ts: 1000, startedAt: 1000 },
+    {
+      v: 3,
+      kind: 'task.start',
+      runId: 'r',
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      ts: 1001,
+    },
+    {
+      v: 3,
+      kind: 'task.end',
+      runId: 'r',
+      ts: 1005,
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 4,
+    },
     {
       v: 3,
       kind: 'task.start',
@@ -125,6 +148,7 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
       project: 'a',
       task: 'build',
       command: 'tsc',
+      dependsOn: ['b#build'],
       ts: 1010,
     },
     {
@@ -166,6 +190,7 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     restoredRemoteCount: 0,
     exitOk: false,
     tasks: [TASK],
+    stages: [{ name: 'classify + probe', startedAt: 1000.25, endedAt: 1008.5 }],
   })
   await sink.flush()
   expect(Object.keys(bodies).sort()).toEqual(['logs', 'metrics', 'traces'])

@@ -126,6 +126,8 @@ const VX_ATTR = {
   taskOutputs: 'vx.task.outputs',
   peakRssBytes: 'vx.peak_rss_bytes',
   taskAttempts: 'vx.task.attempts',
+  taskAttempt: 'vx.task.attempt',
+  stageName: 'vx.stage.name',
   wallclockStartNs: 'vx.task.wallclock_start_ns',
   wallclockEndNs: 'vx.task.wallclock_end_ns',
   // task log records (the OTel Logs signal)
@@ -151,6 +153,76 @@ export interface OtlpSpan {
   endTimeUnixNano: string
   attributes: KeyValue[]
   status: { code: number }
+  events?: OtlpSpanEvent[]
+  links?: OtlpSpanLink[]
+}
+
+export interface OtlpSpanEvent {
+  timeUnixNano: string
+  name: string
+  attributes: KeyValue[]
+}
+
+export interface OtlpSpanLink {
+  traceId: string
+  spanId: string
+  attributes: KeyValue[]
+}
+
+/**
+ * A task span's events: each attempt that failed and was run again
+ * (`vx.task.retry`, at its end), and vx's own deadline killing the task
+ * (`vx.task.timeout`, at the span's end).
+ */
+export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanEvent[] {
+  const events: OtlpSpanEvent[] = (t.failedAttempts ?? []).map((a, i) => ({
+    timeUnixNano: String(Math.trunc(a.endedAt) * 1_000_000),
+    name: 'vx.task.retry',
+    attributes: [
+      intAttr(VX_ATTR.taskAttempt, i + 1),
+      intAttr(VX_ATTR.taskExitCode, a.exitCode),
+      ...(a.timedOut === true ? [boolAttr(VX_ATTR.taskTimedOut, true)] : []),
+    ],
+  }))
+  if (t.timedOut === true) {
+    events.push({ timeUnixNano: endUnixNano, name: 'vx.task.timeout', attributes: [] })
+  }
+  return events
+}
+
+/**
+ * A child span of the run for one of its stages (`VX_TIMING`'s marks):
+ * where the time before the first task and after the last one went. Named
+ * by the stage, a fixed set. The stages ahead of the run lock end before
+ * the run span starts.
+ */
+export function stageSpan(
+  traceId: string,
+  parentSpanId: string,
+  stage: { name: string; startedAt: number; endedAt: number },
+  spanId: string,
+): OtlpSpan {
+  return {
+    traceId,
+    spanId,
+    parentSpanId,
+    name: stage.name,
+    kind: SPAN_KIND_INTERNAL,
+    startTimeUnixNano: exactNanos(stage.startedAt),
+    endTimeUnixNano: exactNanos(stage.endedAt),
+    attributes: [strAttr(VX_ATTR.stageName, stage.name)],
+    status: { code: STATUS_UNSET },
+  }
+}
+
+/** Epoch ms with a fraction, as OTLP's int64 nanoseconds: a stage can be under 1 ms. */
+function exactNanos(ms: number): string {
+  return String(BigInt(Math.round(ms * 1000)) * 1000n)
+}
+
+/** A link from a task span to the span of a task it waited on. */
+export function dependencyLink(traceId: string, spanId: string, taskId: string): OtlpSpanLink {
+  return { traceId, spanId, attributes: [strAttr(SEMCONV.taskName, taskId)] }
 }
 
 // --- attribute mapping (pure) ------------------------------------------

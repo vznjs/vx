@@ -89,6 +89,14 @@ traces.resourceSpans[].resource.attributes.service.name: stringValue
 traces.resourceSpans[].resource.attributes.service.version: stringValue
 traces.resourceSpans[].scopeSpans[].scope.name: string
 traces.resourceSpans[].scopeSpans[].scope.version: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].attributes.vx.stage.name: stringValue
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].endTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].kind = 1
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].parentSpanId: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].spanId: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].startTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].status.code: number
+traces.resourceSpans[].scopeSpans[].spans[classify + probe].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.result: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.cicd.pipeline.run.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vcs.ref.head.name: stringValue
@@ -154,7 +162,15 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.wallclock_
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.where: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.workspace.id: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].endTimeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.attempt: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.exit_code: intValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].attributes.vx.task.timed_out: boolValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.retry].timeUnixNano: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].events[vx.task.timeout].timeUnixNano: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].kind = 1
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].attributes.cicd.pipeline.task.name: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].spanId: string
+traces.resourceSpans[].scopeSpans[].spans[vx.task].links[].traceId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].parentSpanId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].spanId: string
 traces.resourceSpans[].scopeSpans[].spans[vx.task].startTimeUnixNano: string

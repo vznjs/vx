@@ -127,6 +127,7 @@ async function summarizeJson(): Promise<unknown> {
     wallclockEndNs: 2n,
     restored: false,
     attempts: 2,
+    failedAttempts: [{ endedAt: 1, exitCode: 1 }],
     flaky: { passes: 1, failures: 1 },
     sandboxViolations: 3,
     sandboxViolationLines: ['deny file-read /x'],

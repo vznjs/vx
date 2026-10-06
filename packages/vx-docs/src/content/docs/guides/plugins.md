@@ -332,7 +332,8 @@ export default defineWorkspace({
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
-| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready` |
+| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready`; links to the tasks it waited on; `vx.task.retry` and `vx.task.timeout` events |
+| a span per stage  | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_TIMING` stages), with `vx.stage.name` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`                          |
 | metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs |
 | a log per task    | the task's output, linked to its span; `vx.log.chars_full` says when it was cut                           |

@@ -17,7 +17,7 @@
 // core calls INTO; those are the behavior capabilities, kept separate.
 
 import { sampleTrees } from '../exec/index.js'
-import type { TaskOutcome, TaskStatus } from '../graph/index.js'
+import { isGroupTask, type TaskNode, type TaskOutcome, type TaskStatus } from '../graph/index.js'
 import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
@@ -146,6 +146,15 @@ export interface RunContextRecord {
   tags: Readonly<Record<string, string>>
 }
 
+/** One attempt of a retried task that failed and was run again. */
+export interface FailedAttempt {
+  /** When the attempt ended, epoch ms. */
+  endedAt: number
+  exitCode: number
+  /** vx's own `timeout` ended it. */
+  timedOut?: true
+}
+
 /** Denormalized per-task analytics — shared by the streaming `task.end`
  *  record and the per-run summary's `tasks[]`. */
 export interface TaskTelemetry {
@@ -181,6 +190,8 @@ export interface TaskTelemetry {
   sandboxViolations?: number
   /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /** On a task that retried: each attempt that failed before the last, in order. Additive. */
+  failedAttempts?: readonly FailedAttempt[]
   /**
    * On a cache hit: whether outputs were written this run (`true`) or the
    * disk already matched the entry and nothing was restored (`false`, an
@@ -217,6 +228,12 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      /**
+       * The tasks with a command this one waits on: its direct dependencies,
+       * a group's seen through to the tasks with a command behind it.
+       * Additive.
+       */
+      dependsOn?: readonly string[]
       ts: number
     }
   | {
@@ -276,6 +293,19 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  /**
+   * The run's stages as `VX_TIMING` marks them (startup, load configs,
+   * classify + probe, run graph, …), each a wall window in epoch ms. The
+   * stages ahead of the run lock end before `startedAt`. Additive.
+   */
+  stages?: readonly RunStage[]
+}
+
+/** One stage of a run, a wall window in epoch ms. */
+export interface RunStage {
+  name: string
+  startedAt: number
+  endedAt: number
 }
 
 /**
@@ -298,6 +328,7 @@ export function assembleRunSummary(
     totalDurationMs: number
     exitOk: boolean
     abortedCount: number
+    stages?: readonly RunStage[]
   },
 ): RunSummaryRecord {
   let failedCount = 0
@@ -332,6 +363,7 @@ export function assembleRunSummary(
     restoredRemoteCount,
     exitOk: timing.exitOk,
     tasks,
+    ...(timing.stages !== undefined && timing.stages.length > 0 ? { stages: timing.stages } : {}),
   }
 }
 
@@ -418,6 +450,8 @@ export function createTelemetrySource(args: {
   warn?: (message: string) => void
   /** What a sink with no `name` of its own is called: its plugin's (the host's map). */
   owners?: ReadonlyMap<TelemetrySink, string>
+  /** The run's task graph, to see a group dependency through to the tasks behind it. */
+  nodes?: ReadonlyMap<string, TaskNode>
 }): TelemetrySource {
   const { sinks, run, warn } = args
   const runId = run.runId
@@ -547,6 +581,8 @@ export function createTelemetrySource(args: {
         }
         if (node.config.exec.command !== undefined)
           rec.command = maskedCommand(node.config.exec.command, node.config.exec.env)
+        const deps = commandDeps(node, args.nodes)
+        if (deps.length > 0) rec.dependsOn = deps
         deliver(rec)
         return
       }
@@ -637,6 +673,23 @@ export function createTelemetrySource(args: {
   }
 }
 
+/** `node`'s dependencies with a command; a group is seen through, once each. */
+function commandDeps(node: TaskNode, nodes: ReadonlyMap<string, TaskNode> | undefined): string[] {
+  if (nodes === undefined) return node.deps
+  const out: string[] = []
+  const seen = new Set<string>()
+  const stack = [...node.deps].reverse()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const dep = nodes.get(id)
+    if (dep !== undefined && isGroupTask(dep)) stack.push(...[...dep.deps].reverse())
+    else out.push(id)
+  }
+  return out
+}
+
 /**
  * The one projection of an outcome into `TaskTelemetry`, for the streaming
  * `task.end` record and the summary's `tasks[]` alike. Two copies drifted:
@@ -664,6 +717,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.timedOut === true) t.timedOut = true
   if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.notReady !== undefined) t.notReady = o.notReady
+  if (o.failedAttempts !== undefined) t.failedAttempts = o.failedAttempts
   if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()

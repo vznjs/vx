@@ -9,7 +9,7 @@
 
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { mark, nearest, UserError } from '../util/index.js'
+import { beginRun, mark, nearest, UserError } from '../util/index.js'
 import {
   Cache,
   noteSchemaReset,
@@ -182,6 +182,7 @@ export interface PreparedRun {
  * empty plan).
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+  beginRun()
   mark('startup')
   // The root manifest is read once for the root, the globs and the
   // fingerprint. A watch cycle is a new run and reads it afresh.

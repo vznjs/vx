@@ -98,6 +98,7 @@ interface TaskTelemetry {
   timedOut?: true // on a failed task, vx's own timeout killed it
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
+  failedAttempts?: readonly FailedAttempt[] // a retried task's attempts that failed, in order
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string
@@ -120,19 +121,32 @@ interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[] // VX_TIMING's stages; those before the run lock end before startedAt
+}
+
+interface FailedAttempt {
+  endedAt: number // epoch ms
+  exitCode: number
+  timedOut?: true
+}
+
+interface RunStage {
+  name: string // a stage mark: startup, load configs, classify + probe, run graph, …
+  startedAt: number // epoch ms, with a fraction
+  endedAt: number
 }
 ```
 
 Each streaming record carries `v` and `kind`, and:
 
-| `kind`        | Fields                                                |
-| ------------- | ----------------------------------------------------- |
-| `run.start`   | `run`, `total`, `ts`, `startedAt`                     |
-| `task.start`  | `runId`, `taskId`, `project`, `task`, `command`, `ts` |
-| `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)   |
-| `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in) |
-| `task.end`    | `runId`, `ts`, every `TaskTelemetry` field            |
-| `run.end`     | `runId`, `ts`                                         |
+| `kind`        | Fields                                                             |
+| ------------- | ------------------------------------------------------------------ |
+| `run.start`   | `run`, `total`, `ts`, `startedAt`                                  |
+| `task.start`  | `runId`, `taskId`, `project`, `task`, `command`, `dependsOn`, `ts` |
+| `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
+| `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |
+| `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
+| `run.end`     | `runId`, `ts`                                                      |
 
 ## Invariants
 

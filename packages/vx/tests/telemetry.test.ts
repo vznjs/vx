@@ -39,6 +39,7 @@ function mkNode(id: string, command?: string): TaskNode {
     taskName,
     config: command === undefined ? {} : { exec: { command } },
     requested: false,
+    deps: [],
   } as unknown as TaskNode
 }
 
