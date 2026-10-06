@@ -5,13 +5,16 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 
 const PROBE = `
+const { readFileSync } = require('node:fs')
 const seen = []
+// A synchronous onLoad: an async one makes the module async, and
+// \`require\` refuses an async module.
 Bun.plugin({
   name: 'seen',
   setup(b) {
-    b.onLoad({ filter: /\\/vx-lockfile\\/src\\/[^/]+\\.ts$/ }, async (a) => {
+    b.onLoad({ filter: /\\/vx-lockfile\\/src\\/[^/]+\\.ts$/ }, (a) => {
       seen.push(a.path.split('/').pop())
-      return { contents: await Bun.file(a.path).text(), loader: 'ts' }
+      return { contents: readFileSync(a.path, 'utf8'), loader: 'ts' }
     })
   },
 })
