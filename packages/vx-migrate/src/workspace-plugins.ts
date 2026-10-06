@@ -19,7 +19,7 @@ export function workspacePlugins(root: string): WorkspacePlugin[] {
   if (lock !== undefined) out.push({ pkg: '@vzn/vx-lockfile', factory: lock.factory })
   out.push({ pkg: '@vzn/vx-schedule-history', factory: 'scheduleHistoryPlugin' })
   if (existsSync(path.join(root, '.github', 'workflows')))
-    out.push({ pkg: '@vzn/vx-github', factory: 'github' })
+    out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
   return out
 }
 

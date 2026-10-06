@@ -254,11 +254,11 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await calls(root),
           ws.includes("import { turbo } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          ws.includes("import { github } from '@vzn/vx-github'"),
+          ws.includes("import { github } from '@vzn/vx-ci'"),
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,
-          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-github\n',
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-ci\n',
           true,
           ['turbo', 'pnpm', 'scheduleHistoryPlugin', 'github'],
           true,
