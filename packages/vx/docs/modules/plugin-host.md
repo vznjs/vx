@@ -90,9 +90,10 @@ holds the list to the file.
   contract's methods, a `key` return that is not a record of strings
   or names a part with a NUL (the fold's delimiter, A-57),
   a `schedule` return that is not a `Map`. A stage's edit is
-  re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`
-  and `applyProjectHooks`), so the refusal names the plugin whose edit
-  broke the config (H-13).
+  re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`,
+  `applyProjectHooks` and `applyGraphHooks`, the last over each node's
+  task config), so the refusal names the plugin whose edit broke the
+  config (H-13).
 - A capability factory or stage that throws becomes a clean
   `UserError` naming the plugin and the hook: what a plugin does is
   load-bearing, never silently degraded (telemetry sinks are the
