@@ -152,6 +152,13 @@ export interface ExecuteRequest {
   readonly signal?: AbortSignal
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /**
+   * An executor that runs the command as a process on THIS machine calls
+   * this with its pid once spawned, so a telemetry plugin can sample the
+   * process tree's CPU and memory while it runs. Absent when nobody samples;
+   * an executor that runs elsewhere never calls it.
+   */
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   /**
    * The task holds vx's terminal (`exec.interactive` on a TTY): its stdin,

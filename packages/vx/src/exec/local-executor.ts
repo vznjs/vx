@@ -42,6 +42,7 @@ export function localExecutor(): TaskExecutor {
         onStderr: req.onStderr,
         capture: req.capture,
         ...(req.liveChildren !== undefined ? { liveChildren: req.liveChildren } : {}),
+        ...(req.onSpawn !== undefined ? { onSpawn: req.onSpawn } : {}),
         ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
       }
       if (req.sandbox === undefined) {

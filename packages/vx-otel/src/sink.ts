@@ -16,8 +16,10 @@ import type {
 import {
   buildLogsRequest,
   buildMetricsRequest,
+  buildTaskMetricsRequest,
   buildTraceRequest,
   type OtlpSpan,
+  type TaskMetricPoint,
   runSpanAttributes,
   SPAN_KIND_INTERNAL,
   runStatusCode,
@@ -269,6 +271,9 @@ export class OtelSink implements TelemetrySink {
   private rootStartNano = '0'
   private rootEndNano = '0'
   private readonly spans: OtlpSpan[] = []
+  private readonly taskPoints: TaskMetricPoint[] = []
+  private readonly taskNames = new Map<string, { project: string; task: string; startMs: number }>()
+  private readonly lastSample = new Map<string, { ts: number; cpuMs: number }>()
   private readonly taskSpanId = new Map<string, string>()
   private readonly taskStartNano = new Map<string, string>()
   private summary: RunSummaryRecord | undefined
@@ -301,9 +306,14 @@ export class OtelSink implements TelemetrySink {
       post: config.post ?? defaultPost(config.timeoutMs),
       ...(config.warn ? { warn: config.warn } : {}),
     }
-    this.wants = config.logsEnabled
-      ? ['run.start', 'task.start', 'task.log', 'task.end', 'run.end']
-      : ['run.start', 'task.start', 'task.end', 'run.end']
+    this.wants = [
+      'run.start',
+      'task.start',
+      ...(config.logsEnabled ? (['task.log'] as const) : []),
+      ...(config.metricsEnabled ? (['task.sample'] as const) : []),
+      'task.end',
+      'run.end',
+    ]
   }
 
   onRecord(record: TelemetryRecord): void {
@@ -321,7 +331,33 @@ export class OtelSink implements TelemetrySink {
       case 'task.start':
         this.taskSpanId.set(record.taskId, genId(8))
         this.taskStartNano.set(record.taskId, nanos(record.ts))
+        this.taskNames.set(record.taskId, {
+          project: record.project,
+          task: record.task,
+          startMs: record.ts,
+        })
         return
+      case 'task.sample': {
+        // Usage is the CPU the tree spent since the last look, over the
+        // wall time between: the first look counts from the task's start.
+        const names = this.taskNames.get(record.taskId)
+        if (names === undefined) return
+        const prev = this.lastSample.get(record.taskId) ?? { ts: names.startMs, cpuMs: 0 }
+        const wallMs = record.ts - prev.ts
+        // A descendant that exited takes its CPU out of the sum: no negative usage.
+        const cpuUsage = wallMs > 0 ? Math.max(0, record.cpuMs - prev.cpuMs) / wallMs : 0
+        this.lastSample.set(record.taskId, { ts: record.ts, cpuMs: record.cpuMs })
+        this.taskPoints.push({
+          kind: 'sample',
+          taskId: record.taskId,
+          project: names.project,
+          task: names.task,
+          timeUnixNano: nanos(record.ts),
+          cpuUsage,
+          rssBytes: record.rssBytes,
+        })
+        return
+      }
       case 'task.log':
         this.logs.append(record.taskId, record.chunk)
         return
@@ -345,6 +381,16 @@ export class OtelSink implements TelemetrySink {
           }),
           status: { code: taskStatusCode(t) },
         })
+        // A skipped task never ran: a zero duration would read as a fast one.
+        if (record.status !== 'skipped') {
+          this.taskPoints.push({
+            kind: 'end',
+            task: t,
+            startUnixNano: startNano,
+            endUnixNano: nanos(record.ts),
+          })
+        }
+        this.lastSample.delete(record.taskId)
         // Decides retention: a cache hit's bytes belong to the run that
         // executed them, so only an executed success/failure keeps a tail.
         if (this.cfg.logsEnabled) {
@@ -406,16 +452,39 @@ export class OtelSink implements TelemetrySink {
 
   private async shipMetrics(): Promise<void> {
     if (!this.cfg.metricsEnabled || this.summary === undefined) return
-    const body = JSON.stringify(
+    const summary = this.summary
+    const vxVersion = this.run?.vxVersion ?? '0.0.0'
+    const first = this.taskPoints[0]
+    // The run's own metrics ride with the first batch of per-task points.
+    const bodies =
+      first === undefined
+        ? [this.runMetricsBody(summary, [])]
+        : requestBodies(this.taskPoints, (points) =>
+            points[0] === first
+              ? this.runMetricsBody(summary, points)
+              : JSON.stringify(
+                  buildTaskMetricsRequest(
+                    this.cfg.serviceName,
+                    vxVersion,
+                    points,
+                    this.cfg.resource,
+                  ),
+                ),
+          )
+    await this.send('metrics', this.cfg.metricsUrl, bodies)
+  }
+
+  private runMetricsBody(summary: RunSummaryRecord, points: TaskMetricPoint[]): string {
+    return JSON.stringify(
       buildMetricsRequest(
         this.cfg.serviceName,
-        this.summary,
-        nanos(this.summary.endedAt),
-        nanos(this.summary.startedAt),
+        summary,
+        nanos(summary.endedAt),
+        nanos(summary.startedAt),
         this.cfg.resource,
+        points,
       ),
     )
-    await this.send('metrics', this.cfg.metricsUrl, [body])
   }
 
   private async shipLogs(vxVersion: string): Promise<void> {

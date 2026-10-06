@@ -116,6 +116,15 @@ and the `vx.run.duration_ms` gauge. The `vx.run` span carries the same counts
 The counts are DELTA sums over the run's own interval (start to end), so a
 backend adds runs rather than reading each as the series' new total.
 
+**Metrics per task**, as gauges keyed by `cicd.pipeline.task.name`,
+`vx.task.project` and `vx.task.task`: at each task's end
+`vx.task.duration` (ms, with `vx.cache.source`), and for a task the runner
+measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes); a
+skipped task sends none. While a task runs, its process tree is sampled
+each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
+one core) and `vx.task.memory` (resident bytes). Sampling runs only while
+metrics export; a remote task, or a task under 1 s, has no samples.
+
 **Logs per run** (on by default): the captured output tail of each executed
 task, as one log record linked to its task span (unlinked when traces are
 off: the span is never exported). Build output can hold

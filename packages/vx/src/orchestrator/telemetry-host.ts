@@ -30,6 +30,8 @@ export interface TelemetryHandle {
   flush(): Promise<void>
   /** Remove the bus subscription. Idempotent. */
   dispose(): void
+  /** Sample a running task's process tree; see `TelemetrySource.track`. */
+  readonly track?: (taskId: string, pid: number) => () => void
 }
 
 /** Reject anything that is not sink-shaped, naming what arrived. */
@@ -117,5 +119,6 @@ export async function subscribeTelemetry(
     emitSummary: (summary) => source.emitSummary(summary),
     flush: () => source.flush(),
     dispose,
+    ...(source.track !== undefined ? { track: source.track } : {}),
   }
 }
