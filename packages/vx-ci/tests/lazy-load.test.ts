@@ -19,7 +19,7 @@ Bun.plugin({
   },
 })
 const m = await import(process.argv[1])
-const p = m.github({ summaryFile: '' })
+const p = m.github({})
 p.telemetry({ warn() {} })
 const before = [...seen].sort()
 m.github({ summaryFile: '/dev/null', checks: false }).telemetry({ warn() {} })
@@ -27,9 +27,11 @@ console.log('SEEN ' + JSON.stringify({ before, after: [...seen].sort() }))
 `
 
 it('a run with no summary file loads no sink, renderer or Checks API client', async () => {
+  // On an Actions runner the variable is set: drop it so the probe declines.
+  const { GITHUB_STEP_SUMMARY: _, ...withoutSummary } = process.env
   const proc = Bun.spawn(
     [process.execPath, '-e', PROBE, path.join(import.meta.dir, '..', 'src', 'index.ts')],
-    { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
+    { env: withoutSummary, stdout: 'pipe', stderr: 'pipe' },
   )
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
