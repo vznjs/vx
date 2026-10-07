@@ -462,14 +462,27 @@ async function runRuntimeCommand(
     liveProbes.delete(proc)
     mine?.delete(proc)
   }
-  const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
+    const shown = `${stdout}${stderr}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
-        (output ? `\n${output}` : ''),
+        (shown ? `\n${shown}` : ''),
     )
   }
-  return output
+  return probeOutput(stdout, stderr)
+}
+
+/**
+ * The probe's output as the key folds it. Plain concatenation keyed stdout
+ * `ab` and stdout `a` + stderr `b` alike. A probe with no stderr and no NUL
+ * folds its trimmed stdout, as before; any other is framed with a leading
+ * NUL and stdout's length, a form no unframed output takes.
+ */
+function probeOutput(stdout: string, stderr: string): string {
+  const out = stdout.trim()
+  const err = stderr.trim()
+  if (err === '' && !out.includes('\0')) return out
+  return `\0${out.length}\0${out}${err}`
 }
 
 /**
