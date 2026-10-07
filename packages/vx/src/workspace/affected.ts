@@ -10,14 +10,12 @@ import { realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  asTrees,
   executablePath,
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
   isInstalledPath,
   relPosix,
-  taskGlob,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
@@ -574,36 +572,6 @@ async function workspaceConfigChanged(
     if (set.has(path.relative(root, file).split(path.sep).join('/'))) return true
   }
   return false
-}
-
-/**
- * Does any `cache.inputs.workspaceFiles` entry in `globs` match `rel`?
- *
- * Mirrors `resolveWorkspaceFiles`' partition: a leading `!` is an EXCLUDE, and
- * with no positive glob nothing matches. Paths are workspace-root-relative and
- * POSIX-separated, which is the form both git enumeration and the glob
- * resolver already speak.
- *
- * `asTrees` on BOTH sides, because the resolver runs it on both and this
- * has to answer the same question the KEY answers. It did not, and the
- * gap decided whether a changed file rebuilt anything: with
- * `workspaceFiles: ['./generated/**']` or the literal `['generated']` —
- * five spellings in all — the resolver folds `generated/x.txt` into the
- * project's key while a raw `Bun.Glob` matched none of them, so
- * `--affected` left the project out of a run its own key says is stale
- * (item 445). A mirror that normalizes differently from what it mirrors
- * is not a mirror.
- */
-export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean {
-  const positive: string[] = []
-  const negative: string[] = []
-  for (const entry of globs) {
-    if (entry.startsWith('!')) negative.push(entry.slice(1))
-    else positive.push(entry)
-  }
-  if (positive.length === 0) return false
-  if (!asTrees(positive).some((g) => taskGlob(g).match(rel))) return false
-  return !asTrees(negative).some((g) => taskGlob(g).match(rel))
 }
 
 /**

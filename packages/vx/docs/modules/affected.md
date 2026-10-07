@@ -53,9 +53,6 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
 }
 
-/** Does any `workspaceFiles` glob match this root-relative path? */
-export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean
-
 /** Is `ref` the current HEAD? A base that is already HEAD selects nothing,
  *  which is a clean exit rather than an empty run. */
 export function refIsHead(workspaceRoot: string, ref: string): boolean

@@ -46,3 +46,9 @@ time (bugs, correctness, simplification, the plugin seams).
   the code doubled (`EEXIST: EEXIST:`). The message now names the case
   the code means, once. Row: `artifact-roundtrip.test.ts` › "names a
   STRAY on disk as such".
+- **X-8.** `--affected` judged a changed root path against
+  `workspaceFiles` with its own copy of the key's matcher, which lacked
+  `ALWAYS_IGNORE` and the task's own `outputs.workspaceFiles`: a change
+  to either selected a project whose key it leaves unchanged. The copy
+  (`workspaceGlobsMatch`) is gone; selection asks `declaresInput`. Row:
+  `affected.test.ts` › "reads a glob as the key does".

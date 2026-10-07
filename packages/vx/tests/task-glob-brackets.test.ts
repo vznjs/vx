@@ -11,9 +11,11 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { run } from '../src/orchestrator/index.js'
-import { workspaceGlobsMatch } from '../src/workspace/index.js'
+import { declaresInput } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
+const workspaceGlobsMatch = (globs: string[], rel: string): boolean =>
+  declaresInput({ inputs: { files: [], workspaceFiles: globs }, outputs: { files: [] } }, null, rel)
 const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 const exists = async (p: string): Promise<boolean> =>
   (await stat(p).catch(() => undefined)) !== undefined
