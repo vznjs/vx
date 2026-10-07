@@ -99,3 +99,10 @@ time (bugs, correctness, simplification, the plugin seams).
   matched filter(s): one, !one", which reads as a typo of `one`. It now
   says the exclusion took back every match. Row: `cli.test.ts` › "an
   exclusion that takes back every match says so".
+- **X-17.** With `.vx/cache` deleted, `vx cache prune` and `vx info`
+  read no index and so no store: "0 entries" while every entry in
+  `~/.vx/<id>/cache` stayed restorable. And the zero-policy refusal told
+  the user to delete the cache directory, which leaves the store. Both
+  now open the store a run would; the refusal names the store. Row:
+  `shared-store.test.ts` › "prune and info reach the store with the
+  index deleted".
