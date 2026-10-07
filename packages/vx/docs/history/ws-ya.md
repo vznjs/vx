@@ -1,0 +1,3 @@
+# Workstream YA — Nx/Turbo parity (2026-10-07)
+
+- **YA-1.** vx-migrate had no path from Vite Task (vite-plus `vp run`). `bunx @vzn/vx-migrate` now detects `vite-plus` in the root package.json (after turbo.json and Nx; `--from vite-task`), loads each package's `vite.config` as `vp run` does (a function config in build mode) and maps `run.tasks` and package.json scripts: command arrays, `cwd`, `dependsOn` (`{ task, from }` → `^task` or explicit edges), `cache.input` / `cache.output` (`base: 'workspace'` → `workspaceFiles`), `env` / `untrackedEnv`, `run.cache`, `enablePrePostScripts`; traced (auto) files are a TODO. Rows: tests/migrate-vite-task.test.ts › "maps a task’s command, env, inputs and outputs".

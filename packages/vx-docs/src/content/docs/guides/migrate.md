@@ -302,6 +302,16 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 Generators, Nx Console and module-boundary rules have no vx equivalent;
 keep Nx for those.
 
+## Vite Task
+
+`npx @vzn/vx-migrate` in a repo whose root `package.json` lists
+`vite-plus` writes a `vx.config.ts` per package from each `vite.config`
+`run.tasks` and its `package.json` scripts (`--from vite-task` when
+turbo.json or Nx is there too). Vite Task traces the files a task reads
+and writes; vx declares them, so a task without explicit `cache.input`
+and `cache.output` runs uncached until its `TODO(vx-migrate)` is filled.
+The field-by-field mapping is in the `@vzn/vx-migrate` README.
+
 ## Common problems
 
 - **No workspace root.** vx finds projects through `pnpm-workspace.yaml` or `package.json` `workspaces`. `nx()` adds each Nx project the graph names that no package glob lists (a `project.json` library, the root project). `bunx @vzn/vx-migrate` writes a `package.json` for each such library that lacks one and prints the directories to add to the globs.
