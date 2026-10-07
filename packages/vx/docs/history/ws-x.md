@@ -259,3 +259,10 @@ time (bugs, correctness, simplification, the plugin seams).
   project or the project is reached whole. Row:
   `affected-workspace-files.test.ts` › "a root file one task reads does
   not seed its project's uncached task (X-40)".
+- **X-41.** With `-- args`, a frame's `$ <command>` line showed the
+  config's bare command though the task ran with the args, in `vx run`
+  and every `vx watch` cycle. The logger now gets the run's
+  `forwardArgs` and a requested task's line renders them shell-quoted
+  through `withForwardArgs`, as they ran; a dependency's line has none.
+  Row: `forward-args-frame.test.ts` › "the requested task's frame shows
+  the args it ran with (X-41)".

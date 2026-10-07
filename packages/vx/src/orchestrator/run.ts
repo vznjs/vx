@@ -297,6 +297,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
           coalesce: true,
           ...(options.tty === true ? { tty: true } : {}),
+          ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
         })
       : null
   const sink = options.log ?? terminal!
