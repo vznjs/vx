@@ -33,6 +33,7 @@ import {
   parseSize,
   printTimings,
   ulid,
+  isLiteralPattern,
   listed,
   nearest,
   UserError,
@@ -1586,7 +1587,7 @@ function didYouMean(
     }
     // `*` is one edit from any one-letter name and two from `ui`: `*#lint`
     // hinted `ui#lint`, though the user meant every project.
-    if (/[*?[{]/.test(proj) && !projects.has(proj)) {
+    if (!isLiteralPattern(proj) && !projects.has(proj)) {
       lists.add(
         `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
       )
