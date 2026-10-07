@@ -63,6 +63,8 @@ export interface JudgeContext {
   fenced?(ownDir: string, abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
+  /** The files git tracked at the arm; absent when git could not answer. */
+  trackedAtArm?: ReadonlySet<string>
 }
 
 export class ChangeJudge {
@@ -151,8 +153,10 @@ export class ChangeJudge {
     // writes land after the cycle ended, and with a closed window a dev
     // server that rewrites a log in its project restarted itself forever
     // with no word of it, 12 restarts in 8 s (item 948). The initial run's
-    // server is one too, from the arm on.
-    const open = openWhileHeld && this.ctx.held()
+    // server is one too, from the arm on. Not a tracked file: that is the
+    // user's edit, and three saves of one source file were told to
+    // .gitignore it as a server's write (WD-7).
+    const open = openWhileHeld && this.ctx.held() && this.ctx.trackedAtArm?.has(abs) !== true
     if (this.lastCycle === undefined && !open) return false
     try {
       const m = fs.statSync(abs).mtimeMs

@@ -342,14 +342,25 @@ const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FIL
  * ones aside, and every directory above one (git lists no directory, and
  * a project moved away whole is one event on its directory): what existed
  * when watch armed, so a path born and gone since is told from a deletion
- * (watch-judge.ts). Undefined when git cannot answer: no inventory, every
- * gone path is a deletion as before.
+ * (watch-judge.ts). `tracked` is the files git tracks: a user edits those,
+ * so a server cannot be blamed for one. Undefined when git cannot answer:
+ * no inventory, every gone path is a deletion as before.
  */
-export function gitFiles(workspaceRoot: string): Set<string> | undefined {
+export function gitFiles(
+  workspaceRoot: string,
+): { listed: Set<string>; tracked: Set<string> } | undefined {
   let proc: ReturnType<typeof Bun.spawnSync>
   try {
     proc = Bun.spawnSync({
-      cmd: [executablePath('git'), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+      cmd: [
+        executablePath('git'),
+        'ls-files',
+        '-z',
+        '-t',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+      ],
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',
@@ -359,13 +370,17 @@ export function gitFiles(workspaceRoot: string): Set<string> | undefined {
   }
   if (proc.exitCode !== 0) return undefined
   const files = new Set<string>()
-  for (const p of new TextDecoder().decode(proc.stdout).split('\0')) {
-    if (p.length === 0) continue
+  const tracked = new Set<string>()
+  for (const entry of new TextDecoder().decode(proc.stdout).split('\0')) {
+    if (entry.length === 0) continue
+    // `-t` prefixes a tag and a space; `?` is untracked.
+    const p = entry.slice(2)
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
     files.add(abs)
+    if (entry[0] !== '?') tracked.add(abs)
     for (abs = path.dirname(abs); abs !== workspaceRoot && !files.has(abs); abs = path.dirname(abs))
       files.add(abs)
   }
-  return files
+  return { listed: files, tracked }
 }
