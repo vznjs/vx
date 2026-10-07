@@ -5208,6 +5208,24 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // Listed for the exit hook alone, a `vx watch` kept one log per failed
+  // spawn until it quit.
+  it('a spawn that throws leaves neither its trace log nor its task directory', async () => {
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+    try {
+      const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
+      const { argv, tag } = traced(spy.mock.calls)
+      expect([
+        r.spawnFailed,
+        argv !== undefined,
+        existsSync(path.join(taskRoot(), `vx-strace-${tag}.log`)),
+        existsSync(path.join(taskRoot(), `vx-task-${process.pid}-${tag}`)),
+      ]).toEqual([true, true, false, false])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('hands the runtime back its per-command cleanup', async () => {
     const spy = spyOn(SandboxManager, 'cleanupAfterCommand')
     try {

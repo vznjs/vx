@@ -559,7 +559,9 @@ next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
 `vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
 tag (SRT keys violations by the first 100 characters), created before the
-spawn and removed with the task's bridges at its end, or at exit. A
+spawn and removed with the task's bridges at its end, or at exit; a wrap
+that throws (a held port) removes it at once, as a failed spawn does its
+strace log, or a `vx watch` kept one per refusal until it quit. A
 `kill -9` runs no exit hook and leaves it. A sweep of the directories whose
 owner's pid is gone was tried and refused: a nested vx (this repo's own
 test shards) sees another pid namespace, where the outer vx's pid reads as
