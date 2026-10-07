@@ -162,3 +162,10 @@ time (bugs, correctness, simplification, the plugin seams).
   the worker reports the first error. Row: `info-syntax-error.test.ts` ›
   "counts the other projects as vx run does and names the error vx run
   stops on".
+- **X-27.** A second `vx init` said the root it had mapped was left out
+  because "its scripts run the workspace", and its `kept` list omitted
+  the root's config: a root with a config never maps (D-45), so it fell
+  to the not-mapped note. Such a root is now listed as kept, with no
+  note when its scripts would map, and the note's reason is judged on
+  its own scripts. Row: `init.test.ts` › "a second vx init keeps the
+  root it mapped, with no note on it (X-27)".

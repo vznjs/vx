@@ -1890,7 +1890,9 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report names each script left out and why
+of its own; one already there, hand-written or from an earlier
+`vx init`, stays as written, `--force` included, and is listed under
+`kept`. The report names each script left out and why
 (a `pre` / `post` hook goes with its script, D-85), its examples of running
 the members spelled by the repo's manager (`--workspaces` under npm, `yarn
 workspaces foreach` under Yarn 2+), and says which;

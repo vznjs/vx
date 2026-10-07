@@ -137,6 +137,49 @@ describe('vx init source detection', () => {
   )
 
   it(
+    'a second vx init keeps the root it mapped, with no note on it (X-27)',
+    async () => {
+      const root = await makeRoot('vx-init-root-again-')
+      try {
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'fixture-root', private: true, scripts: { lint: 'oxlint .' } }),
+        )
+        await addPackage(root, 'a', { build: 'tsc -b', test: 'vitest run' })
+        await addPackage(root, 'b', { build: 'tsc', test: 'bun test' })
+        const first = await vx(root, ['init'])
+        expect(first.code).toBe(0)
+        const rootConfig = await Bun.file(path.join(root, 'vx.config.ts')).text()
+        const reported = async (args: string[]): Promise<string[]> => {
+          const r = await vx(root, args)
+          expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+          const lines = r.out.split('\n')
+          const from = lines.indexOf('kept (each already has a vx config):')
+          return [
+            ...lines.filter((l) => l.includes('(the workspace root)')),
+            ...lines.slice(from, lines.indexOf('', from)),
+          ]
+        }
+        expect(await reported(['init'])).toEqual([
+          'kept (each already has a vx config):',
+          '  packages/a/vx.config.ts',
+          '  packages/b/vx.config.ts',
+          '  vx.config.ts',
+        ])
+        // --force replaces the members' configs, never the root's (D-45).
+        expect(await reported(['init', '--force', '--dry'])).toEqual([
+          'kept (each already has a vx config):',
+          '  vx.config.ts',
+        ])
+        expect(await Bun.file(path.join(root, 'vx.config.ts')).text()).toBe(rootConfig)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the run init points at loads over a dependency cycle',
     async () => {
       const root = await makeRoot('vx-init-cycle-')
@@ -906,6 +949,13 @@ describe('migrateScripts', () => {
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
     expect(migrateScripts([configured, a]).projects.map((p) => p.name)).toEqual(['a'])
+    // A configured root's reason is judged on its own scripts (X-27).
+    const sharing = { ...meta('root', '/w', { lint: 'eslint .' }), configPath: '/w/vx.config.ts' }
+    expect(
+      migrateScripts([sharing, meta('a', '/w/packages/a', { lint: 'eslint src' })]).notes,
+    ).toEqual([
+      "root (the workspace root) not mapped: its scripts share a member's task name (lint); declare its own tasks in its vx.config by hand",
+    ])
     // CONTROL: nothing left to map keeps the old note.
     const runs = meta('root', '/w', { build: 'npm run build --workspaces' })
     expect(migrateScripts([runs, a]).notes).toEqual([
