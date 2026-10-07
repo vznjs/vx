@@ -536,3 +536,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
   project outputs from its workspaceFiles", "excludes the task’s own
   workspace outputs from its project files".
+- **X-80.** `lockfileClaim`'s in-process gate (a `vx watch` cycle, the MCP
+  server) re-read the lockfile and its extra files only when size or
+  mtime moved, so a same-size lockfile copied in with its mtime kept
+  (`cp -p`, `tar -x`) kept the old per-project digests and replayed the
+  old install's outputs. It now gates on size, mtime, ctime and inode,
+  as `Cache.hashFile` does, and stats each extra file before hashing it.
+  Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
+  kept is read again in the same process".
