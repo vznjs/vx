@@ -388,3 +388,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   own `!` inputs take back whole …", `local-shortcircuit.test.ts` ›
   "under rules.upfrontKeys a reader that takes the output back is
   restore-tier (X-54)", `contract/config-schema.json` (X-54).
+- **X-55.** A task whose input entry its own outputs took back whole
+  (a formatter declaring `src/**` as both) had its sources deleted by the
+  pre-run output clean, a misleading "matched no files" warning, and a
+  key that read nothing. The graph check now refuses it whatever the
+  rules, naming the entry and saying an in-place rewriter declares no
+  outputs. Rows: `input-overlap.test.ts` › "a task whose own outputs take
+  back an input entry whole is always refused".

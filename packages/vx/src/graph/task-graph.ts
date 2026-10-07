@@ -553,6 +553,7 @@ export function checkGraph(
     delete node.addsToOutputsOf
     delete node.outputsAddedToBy
   }
+  for (const node of nodes.values()) refuseSelfClean(node)
   detectCycle(nodes)
   detectOutputCollisions(nodes, workspaceRoot, rules?.exclusiveOutputs !== false)
   if (rules?.upfrontKeys !== false) detectInputOverlaps(nodes, workspaceRoot)
@@ -1121,6 +1122,44 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
   return asTrees([output]).every((t) =>
     neg.some((n) => n === t || covers(n, t) || (isLiteralPattern(t) && taskGlob(n).match(t))),
   )
+}
+
+/**
+ * A task whose input entry its own outputs take back whole cleans its own
+ * sources: vx removes a task's outputs before it runs, so a formatter
+ * declaring `src/**` as both deleted every committed file under `src`,
+ * and its key read nothing (hunt 8). Always refused, whatever the rules.
+ */
+function refuseSelfClean(node: TaskNode): void {
+  const cache = node.config.cache
+  if (cache === undefined) return
+  for (const field of ['files', 'workspaceFiles'] as const) {
+    const inputs = splitNegations(cache.inputs[field] ?? [])
+    const out = splitNegations(cache.outputs[field] ?? [])
+    const outputs = out.positive
+    if (outputs.length === 0) continue
+    const roots = outputs.map((g) => rootless(staticPrefix(g)))
+    for (const gi of inputs.positive) {
+      // Only an output rooted at or above the input's prefix can cover it;
+      // the prefix test keeps the glob matchers off the common disjoint pair.
+      const pi = rootless(staticPrefix(gi))
+      const near = outputs.filter((_, k) => {
+        const r = roots[k]!
+        return r === '' || pi === r || pi.startsWith(`${r}/`)
+      })
+      // Taken back by the task's own `!` inputs, or by an output `!` (no
+      // output, so never cleaned: A-44), the entry reads what it says.
+      if (near.length === 0 || outputTakenBack(gi, inputs.negative)) continue
+      if (outputTakenBack(gi, out.negative)) continue
+      if (!outputTakenBack(gi, near)) continue
+      throw new UserError(
+        `${node.id}: every file ${JSON.stringify(gi)} in cache.inputs.${field} selects is also ` +
+          `its own output — vx removes a task's outputs before it runs, so the task would ` +
+          `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
+          `no outputs.`,
+      )
+    }
+  }
 }
 
 /** One task's inputs (`reads`) or outputs in one namespace, for `detectInputOverlaps`. */

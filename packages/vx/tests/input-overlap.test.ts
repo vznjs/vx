@@ -258,3 +258,34 @@ describe('rules.upfrontKeys stays near-linear', () => {
     expect(best).toBeLessThan(250)
   }, 120_000)
 })
+
+describe('a task whose own outputs take back an input entry whole is always refused', () => {
+  const off = { exclusiveOutputs: false, upfrontKeys: false }
+  const said = (glob: string, field = 'files') =>
+    `app#fmt: every file ${JSON.stringify(glob)} in cache.inputs.${field} selects is also its ` +
+    "own output — vx removes a task's outputs before it runs, so the task would delete its " +
+    'own sources. A task that rewrites files in place (a formatter) declares no outputs.'
+
+  it('a formatter declaring its sources as outputs, whatever the rules', () => {
+    expect(refusal(app({ fmt: task(['src/**'], ['src/**']) }))).toBe(said('src/**'))
+    expect(refusal(app({ fmt: task(['src/**'], ['src/**']) }), off)).toBe(said('src/**'))
+  })
+
+  it('an input inside a wider output, and the workspaceFiles namespace', () => {
+    expect(refusal(app({ fmt: task(['src/*.ts'], ['src/**']) }), off)).toBe(said('src/*.ts'))
+    expect(refusal(app({ fmt: wsTask(['docs/**'], ['docs/**']) }), off)).toBe(
+      said('docs/**', 'workspaceFiles'),
+    )
+  })
+
+  it('CONTROL: an output that takes back only part of an input passes', () => {
+    expect(refusal(app({ gen: task(['src/**'], ['src/gen/**']) }), off)).toBeNull()
+    expect(refusal(app({ build: task(['**'], ['dist/**']) }), off)).toBeNull()
+  })
+
+  it('CONTROL: an input an output `!` entry takes back is no output, so it passes', () => {
+    expect(
+      refusal(app({ build: task(['dist/keep.txt'], ['dist/**', '!dist/keep.txt']) }), off),
+    ).toBeNull()
+  })
+})
