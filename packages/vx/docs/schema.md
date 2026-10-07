@@ -721,7 +721,9 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
+what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
+plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
