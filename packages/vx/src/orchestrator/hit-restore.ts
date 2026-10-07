@@ -303,6 +303,8 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     storedDurationMs: hit.durationMs,
     ...(hit.cpuMs !== undefined ? { storedCpuMs: hit.cpuMs } : {}),
     ...(hit.peakRssBytes !== undefined ? { storedPeakRssBytes: hit.peakRssBytes } : {}),
+    ...(hit.sizeBytes !== undefined ? { artifactBytes: hit.sizeBytes } : {}),
+    ...(hit.fetchMs !== undefined ? { fetchMs: hit.fetchMs } : {}),
     hash,
     restored,
     wallclockStartNs: taskStartNs,

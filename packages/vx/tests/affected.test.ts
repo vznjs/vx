@@ -3,17 +3,13 @@ import { mkdir, mkdtemp, writeFile, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  affectedProjects,
-  defaultAffectedBase,
-  refIsHead,
-  workspaceGlobsMatch,
-} from '../src/workspace/affected.js'
+import { affectedProjects, defaultAffectedBase, refIsHead } from '../src/workspace/affected.js'
 import {
   computeWorkspaceFingerprint,
   WORKSPACE_FINGERPRINT_FILES,
 } from '../src/workspace/fingerprint.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
+import type { ProjectEntry } from '../src/workspace/index.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
 import { loadCliProjects } from '../src/cli/workspace-config.js'
@@ -22,7 +18,7 @@ import { claimedAffected } from '../src/orchestrator/index.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
 import { UserError } from '../src/util/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
-import { startGitEnumeration } from '../src/cache/index.js'
+import { declaresInput, startGitEnumeration } from '../src/cache/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -96,6 +92,22 @@ describe('affectedProjects', () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual(['a'])
+  })
+
+  it('an untracked install under node_modules selects nothing; a tracked file there does', async () => {
+    await mkdir(path.join(root, 'packages/a/node_modules/dep'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/node_modules/dep/index.js'), 'x')
+    expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
+      [],
+    )
+    await mkdir(path.join(root, 'packages/b/fixtures/node_modules/dep'), { recursive: true })
+    await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v1')
+    await git(root, 'add', '-f', 'packages/b/fixtures')
+    await git(root, 'commit', '-q', '-m', 'fixture')
+    await writeFile(path.join(root, 'packages/b/fixtures/node_modules/dep/index.js'), 'v2')
+    expect([...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }))]).toEqual(
+      ['b'],
+    )
   })
 
   // Item 1079: a member linked in from elsewhere in the tree is indexed by
@@ -1522,7 +1534,12 @@ describe('defaultAffectedBase', () => {
 // path once something changed (a glob may name a file inside ANOTHER
 // project, item 954), and never when nothing did.
 
-describe('workspaceGlobsMatch', () => {
+// `--affected` asks the key's own question (`declaresInput`) of a
+// changed root path: a copy of it drifted twice (item 445, X-8).
+const workspaceGlobsMatch = (globs: string[], rel: string): boolean =>
+  declaresInput({ inputs: { files: [], workspaceFiles: globs }, outputs: { files: [] } }, null, rel)
+
+describe('a workspaceFiles glob read for --affected', () => {
   it('matches a positive glob', () => {
     expect(workspaceGlobsMatch(['shared/**'], 'shared/schema.txt')).toBe(true)
     expect(workspaceGlobsMatch(['shared/**'], 'other/schema.txt')).toBe(false)
@@ -2072,6 +2089,31 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     const metas = await listProjects(await loadWorkspace(root))
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
     expect(await workspaceGlobOwners(root, metas, ['docs/x.md'])).toEqual([])
+  })
+
+  it("reads a glob as the key does: the task's own outputs and vx's own files are not inputs", async () => {
+    // A drifted copy of the key's matcher answered here and lacked both
+    // takebacks, so a change to a task's own committed output, or to a
+    // `.vx/` file under a declared tree, selected a project whose key the
+    // change leaves unchanged (X-8).
+    const config = {
+      tasks: {
+        gen: {
+          exec: { command: 'true' },
+          cache: {
+            inputs: { files: [], workspaceFiles: ['shared/**'] },
+            outputs: { files: [], workspaceFiles: ['shared/gen/**'] },
+          },
+        },
+      },
+    }
+    const staged = async () => new Map([['p', { name: 'p', config } as unknown as ProjectEntry]])
+    const owners = (rel: string) => workspaceGlobOwners(root, [], [rel], {}, staged)
+    expect([
+      await owners('shared/src.txt'),
+      await owners('shared/gen/out.txt'),
+      await owners('shared/.vx/x'),
+    ]).toEqual([['p'], [], []])
   })
 })
 

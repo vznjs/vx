@@ -25,7 +25,9 @@ export default defineProject({
       description: 'compile TypeScript to dist/',
       dependsOn: ['codegen', '^build'],
       exec: { command: 'tsc -b' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      // codegen's output reaches this key through codegen's own key; a key
+      // that read it could not be known until codegen ran, so vx refuses it.
+      cache: { inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] } },
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
@@ -104,7 +106,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | `node_modules`, `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), files git ignores, the task's own outputs, a nested project's files |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
 Declared outputs are wiped before every run that writes the cache and every
@@ -147,7 +149,10 @@ app#build — run 019f5a02-…
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)` | the run's policy read no cache |
 | `cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached` | both runs went past a failure under `--continue` |
 | `cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one` | the entry was gone |
-| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | none of the above; vx cannot name the cause |
+| `cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit` | the previous run's save failed, or a prune took the entry |
+| `cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit` | the previous run's policy wrote no cache |
+| `cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause` | none of the above; vx cannot name the cause |
+| `cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)` | no invocation recorded this run's cache policy, so vx cannot rule the flags out |
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
 | `` this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
 | `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
@@ -169,7 +174,9 @@ work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
 `NO_COLOR`, `CI`, `NODE_OPTIONS`. vx sets
 `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
-`project#task` running) on every task. The package's `node_modules/.bin`
+`project#task` running) on every task, and `npm_execpath` to the
+workspace's package manager, as `pnpm run` does, so npm-run-all needs
+no global npm. The package's `node_modules/.bin`
 is first on `PATH`. What vx itself reads:
 [the CLI reference](../../cli/#environment-variables-vx-reads).
 
@@ -217,7 +224,7 @@ import { reapi } from '@vzn/vx-reapi'
 export default defineWorkspace({
   plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
   concurrency: 8,            // default: the cores this process may use
-  cacheDir: '.vx/cache',     // default: .vx/cache (relative to root)
+  cacheDir: 'build/.vx',     // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
   timeout: 600_000,
   cacheRetention: { olderThan: '30d', maxSize: '10G' },
 })
@@ -227,11 +234,12 @@ export default defineWorkspace({
 | ---------------- | --------------------------------------------------------------------- |
 | `plugins`        | asked in order; this machine is always last ([Plugins](../plugins/)) |
 | `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
-| `cacheDir`       | where the local cache lives; add it to `.gitignore`                   |
+| `cacheDir`       | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 | `cacheScope` | where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
+| `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the

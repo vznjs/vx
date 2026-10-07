@@ -29,6 +29,7 @@ export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
 
 export function isExecutableMissing(err: unknown): boolean // Bun's ENOENT for a spawn that could not run at all
 export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH
+export function notAWorkTree(cwd: string, stderr?: string): UserError // the one refusal for a directory git does not track
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints

@@ -59,7 +59,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext, // each hash's get context: an unindexed artifact is adopted
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -254,6 +257,8 @@ export interface CacheEntry {
   stdout: string // stderr is not cached
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
+  sizeBytes?: number // the artifact's compressed size, from the index
+  fetchMs?: number // (LayeredCache) a remote hit this run pulled: download + ingest
 }
 
 export interface RunRecord {
@@ -296,13 +301,12 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v39' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v40' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v31'
-export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
+export const SCHEMA_VERSION = 'v32'
 
 // The two WHERE fragments every history query shares, so "a run that
 // executed" and "a run with a key" mean one thing across metrics.ts,
@@ -543,7 +547,7 @@ Surfaced by `vx info`.
   every hit; `restore
 Outputs` additionally refuses when the archive cannot produce an output
   the `output_files` index recorded — and, for `<dir>/**` globs and bare
-  literals that name a directory, the
+  literals (a directory, or a file recorded as one), the
   `output_dirs` rows that let a warm hit prove the set unchanged without a
   walk (`docs/caching.md` § A current tree) — (a restore that materializes nothing
   must never be reported as a hit — the caller has already wiped the
@@ -551,8 +555,8 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v39'`; `SCHEMA_VERSION` is
-`'v31'`. Bump `CACHE_VERSION` when:
+`CACHE_VERSION` is currently `'vx-cache-v40'`; `SCHEMA_VERSION` is
+`'v32'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
@@ -563,11 +567,11 @@ Outputs` additionally refuses when the archive cannot produce an output
   modes lost at pack time, long entry names dropped at parse time).
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
-tables) when the SQLite schema changes. Only an earlier schema is
-dropped, and only by a writing opener: `Cache.inspect(dir)` (a reading
-verb) refuses any schema it cannot read, and every opener refuses a
-newer one, each with a `UserError` that names the directory and both
-versions and leaves the index as it was (item 896). Over a directory
+tables) when the SQLite schema changes. Any other schema, earlier or
+newer, is dropped by a writing opener (owner, 2026-10-06: the index is
+an inventory the artifacts rebuild); `Cache.inspect(dir)` (a reading
+verb) refuses a schema it cannot read with a `UserError` that names the
+directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
 (item 900). A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
@@ -579,19 +583,14 @@ the file, past the pages the open reads, surfaces where it is read, and
 there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
-"internal error" and `vx cache prune` printed a stack. The open that drops them says
-so: `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
-every later one), and `noteSchemaReset` prints one line — on the run's
-status line, or a verb's stderr — ``[vx] cache index reset: schema v24 →
-v25 (vx upgraded); every cached task misses once and re-saves, and
-`vx cache prune` reclaims the old artifacts``. An upgrade's all-miss
-run, and the `vx last` with nothing to show after it, are explained
-rather than silent (`tests/schema-reset-notice.test.ts`). A
-`CACHE_VERSION` bump alone keeps the index, so `Cache.formatChange`
-carries `{ from, to }` on the open that first sees the new version (from
-`schema_meta.cache_version`; a store with entries and no record reads
-`an earlier format`), and the same `noteSchemaReset` prints
-`[vx] cache format changed: …` instead (item 671). A new
+"internal error" and `vx cache prune` printed a stack. The open that drops them records it:
+`Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
+every later one). A `CACHE_VERSION` bump alone keeps the index, so
+`Cache.formatChange` carries `{ from, to }` on the open that first sees
+the new version (from `schema_meta.cache_version`; a store with entries
+and no record reads `an earlier format`). Neither is printed, nor is a
+shared store moved to or fallen back from: the cache is vx's to keep
+(owner, 2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like
 `captureInto` / `upstreamIds`) needs neither bump: the key is
 byte-identical. The Tier-3 tables (`invocations`, `entry_inputs`)

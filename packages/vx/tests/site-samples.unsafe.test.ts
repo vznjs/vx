@@ -8,8 +8,12 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
-import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
-import { formatFlakySection } from '../src/orchestrator/summary.js'
+import {
+  flakyNote,
+  formatTaskExecutedLine,
+  formatTaskHitLine,
+} from '../src/orchestrator/framed-output.js'
+import { formatFailureLine } from '../src/orchestrator/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
@@ -342,7 +346,7 @@ describe('the configure guide quotes what vx why says', () => {
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
     )
-    expect(notes.length).toBe(10)
+    expect(notes.length).toBe(13)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -397,48 +401,50 @@ describe("the quickstart's known limits are still limits", () => {
   })
 })
 
-describe('the flaky-tasks post shows the section the footer prints', () => {
-  it('its sample is formatFlakySection on the two findings it describes', () => {
-    const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
-    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
-    const finding = (
-      taskId: string,
-      status: 'success' | 'failed',
-      passes: number,
-      failures: number,
-      attempts = 1,
-    ) => {
-      const [project, task] = taskId.split('#') as [string, string]
-      return { taskId, project, task, hash: 'k', status, passes, failures, attempts }
+describe('the flaky-tasks post shows the rows a run prints', () => {
+  // A flaky verdict rides the task's row (nothing prints below the footer,
+  // owner 2026-10-06): a failure as the ◼ row, a pass as the executed row.
+  const row = (
+    id: string,
+    status: 'success' | 'failed',
+    durationMs: number,
+    passes: number,
+    failures: number,
+    attempts?: number,
+  ): string => {
+    const [projectName, taskName] = id.split('#') as [string, string]
+    const node = {
+      id,
+      projectName,
+      taskName,
+      config: { exec: { command: 'noop' }, cache: {} },
+    } as TaskNode
+    const o: TaskOutcome = {
+      node,
+      status,
+      exitCode: status === 'failed' ? 1 : 0,
+      durationMs,
+      flaky: { passes, failures },
+      ...(attempts !== undefined && { attempts }),
     }
-    expect(sample.split('\n')).toEqual(
-      formatFlakySection([
-        finding('app#test', 'failed', 3, 1),
-        finding('api#e2e', 'success', 1, 1, 2),
-      ]).slice(1),
-    )
+    return status === 'failed'
+      ? formatFailureLine(id, durationMs) + flakyNote(o)
+      : formatTaskExecutedLine(node, o)
+  }
+
+  it('its sample is the two rows of the findings it describes', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
+    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    expect(sample.split('\n')).toEqual([
+      row('app#test', 'failed', 4210, 3, 1),
+      row('api#e2e', 'success', 12840, 1, 1, 2),
+    ])
   })
 
-  it("the CI guide's copy of that footer is the same formatter's output", () => {
-    // The post was pinned and the guide, which prints the same block for one
-    // finding, was not — the same one-copy-of-two as the sandbox grants
-    // (item 378, 2026-09-19).
+  it("the CI guide's copy is the same row", () => {
     const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')
-    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
-    expect(sample.split('\n')).toEqual(
-      formatFlakySection([
-        {
-          taskId: 'web#test',
-          project: 'web',
-          task: 'test',
-          hash: 'k',
-          status: 'failed',
-          passes: 3,
-          failures: 1,
-          attempts: 1,
-        },
-      ]).slice(1),
-    )
+    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    expect(sample.split('\n')).toEqual([row('web#test', 'failed', 4210, 3, 1)])
   })
 })
 
@@ -1162,7 +1168,7 @@ describe('the otel guide tabulates every option the plugin takes', () => {
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)]
       .map((m) => m[1]!)
       .filter((f) => f !== 'post')
-    expect(fields.length).toBe(10)
+    expect(fields.length).toBe(11)
     const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'OpenTelemetry')
     const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...fields].sort())
@@ -1206,7 +1212,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(7)
+    expect(fields.length).toBe(8)
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Workspace config',
@@ -1264,13 +1270,13 @@ describe('the caching guide lists what the cache never reads', () => {
     const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     // Comment lines inside the array quote globs of their own, so drop them
-    // before reading the entries. `**/node_modules/**` → node_modules.
+    // before reading the entries. `**/.git/**` → .git.
     const entries = arr![1]!
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(7)
+    expect(names.length).toBe(6)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
@@ -2393,10 +2399,12 @@ describe('the pages say where an entry stdout lives', () => {
   it('the schema keeps stdout apart, and each page says so', () => {
     const core = path.resolve(import.meta.dir, '..')
     const schema = readFileSync(path.join(core, 'src', 'cache', 'schema.ts'), 'utf8')
-    const entries = /CREATE TABLE IF NOT EXISTS entries \(([^;]*?)\n {4}\);/.exec(schema)?.[1]
+    const entries = /CREATE TABLE IF NOT EXISTS \$\{store\}\.entries \(([^;]*?)\n {4}\);/.exec(
+      schema,
+    )?.[1]
     expect(entries).toBeDefined()
     expect(entries).not.toMatch(/^\s*stdout\b/m)
-    expect(schema).toContain('CREATE TABLE IF NOT EXISTS entry_stdout (')
+    expect(schema).toContain('CREATE TABLE IF NOT EXISTS ${store}.entry_stdout (')
     const flat = (p: string): string => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(core, 'docs', 'modules', 'cache.md'))).toContain(
       'Pure SQL: stdout from its `entry_stdout` row',
@@ -2473,7 +2481,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
 })
 
 describe('every plugin README names each option its factory takes', () => {
-  // vx-otel's README showed five of its options, vx-github's had no
+  // vx-otel's README showed five of its options, vx-ci's had no
   // `checkName`, and vx-reapi's no `instanceName`, `headers` (where a hosted
   // server's API key goes) or `tls` (J2-33). Read from each options
   // interface; a field documented as a test seam is not the user's.
@@ -2498,7 +2506,7 @@ describe('every plugin README names each option its factory takes', () => {
   }
   const cases: [string, string, string, readonly string[]][] = [
     ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
-    ['vx-github', 'vx-github/src/plugin.ts', 'GithubPluginOptions', []],
+    ['vx-ci', 'vx-ci/src/plugin.ts', 'GithubPluginOptions', []],
     ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
     ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
     ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],

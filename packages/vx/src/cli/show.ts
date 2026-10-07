@@ -9,7 +9,8 @@
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
-import { flagHint, seeHelp } from './help.js'
+import { isDefaultBuild } from '../orchestrator/index.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
@@ -46,10 +47,9 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else out.target = a
 
     if (format !== undefined) {
-      if (format !== 'pretty' && format !== 'json') {
-        return { ...out, error: '--format must be pretty or json' }
-      }
-      out.format = format
+      const fv = formatValue(format, 'show')
+      if (typeof fv === 'object') return { ...out, ...fv }
+      out.format = fv
     }
   }
   return out
@@ -103,7 +103,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const bareTask = projectName !== undefined && taskName === undefined && !byName.has(projectName)
   const scope = projectName === undefined || bareTask ? 'all' : [projectName]
 
-  const projects = await loadCliProjects(root, metas, scope, { noCreate: true })
+  const projects = await loadCliProjects(root, metas, scope, { noCreate: true, closure: true })
 
   if (parsed.target === undefined) {
     process.stdout.write(renderList(root, metas, projects, parsed.format))
@@ -221,13 +221,17 @@ function renderList(
   projects: ReadonlyMap<string, ProjectEntry>,
   format: 'pretty' | 'json',
 ): string {
-  const rows = metas.map((meta) => ({
-    name: meta.name,
-    dir: projectDir(root, meta),
-    tags: projects.get(meta.name)?.config.tags ?? [],
-    tasks: Object.keys(projects.get(meta.name)?.config.tasks ?? {}),
-    configured: meta.configPath !== null,
-  }))
+  const rows = metas.map((meta) => {
+    const tasks = projects.get(meta.name)?.config.tasks ?? {}
+    return {
+      name: meta.name,
+      dir: projectDir(root, meta),
+      tags: projects.get(meta.name)?.config.tags ?? [],
+      tasks: Object.keys(tasks),
+      onlyDefault: Object.values(tasks).every((t) => isDefaultBuild(t)),
+      configured: meta.configPath !== null,
+    }
+  })
   if (format === 'json') {
     return `${JSON.stringify(
       rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
@@ -240,12 +244,15 @@ function renderList(
   const lines = rows.map((r) => {
     const n = r.tasks.length
     const count = `${n} task${n === 1 ? '' : 's'}`
-    // A package with no config file only has tasks a plugin gave it.
+    // A package with no config file has only tasks a plugin gave it, or the
+    // default `build` a configured dependant's closure gave it.
     const tasks = r.configured
       ? count
-      : n > 0
-        ? `${count} (no vx config; from plugins)`
-        : '(no vx config)'
+      : n === 0
+        ? '(no vx config)'
+        : r.onlyDefault
+          ? `${count} (no vx config; default build)`
+          : `${count} (no vx config; from plugins)`
     const tags = r.tags.length > 0 ? `  [${r.tags.join(', ')}]` : ''
     return `${r.name.padEnd(nameW)}  ${r.dir.padEnd(dirW)}  ${tasks}${tags}`
   })
@@ -266,8 +273,11 @@ function renderProject(
     return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config: shown })), null, 2)}\n`
   }
   const tags = config?.tags ?? []
-  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}`
   const tasks = Object.entries(config?.tasks ?? {})
+  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}${
+    // A config-less package a dependant reaches has the default `build` (X-9).
+    hasConfigFile || tasks.length === 0 ? '' : '\n  (no vx config)'
+  }`
   if (tasks.length === 0)
     return `${head}\n  ${hasConfigFile ? '(no tasks declared)' : '(no vx config)'}\n`
   const blocks = tasks.map(([taskName, task]) => taskBlock(taskName, task))
@@ -335,6 +345,7 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
           .map(([k, v]) => `${k}=${v}`)
           .join(', '),
   )
+  add('env.secret', list(exec?.env?.secret))
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
@@ -344,6 +355,7 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
       persistent.readyWhen === undefined ? 'yes' : `readyWhen: ${persistent.readyWhen}`,
     )
   }
+  add('interactive', exec?.interactive === undefined ? undefined : exec.interactive ? 'yes' : 'no')
   const cache = task.cache
   if (cache !== undefined) {
     add('inputs.files', list(cache.inputs.files))

@@ -43,9 +43,12 @@ When B's declared outputs overlap a transitive upstream A's, and B
 depends on A:
 
 1. **B's own output set is what its run ADDED or CHANGED.** Snapshot the
-   overlap before B runs, diff it after. The proof is size + mtime — the
-   same proof the hit path already trusts for a current tree
+   overlap before B runs, diff it after. The proof is size, mtime, inode
+   and ctime — the same proof the hit path trusts for a current tree
    (`docs/caching.md` § A current tree), so no new trust is introduced.
+   It was size + mtime until X-33: a B that rewrote A's file to bytes of
+   the same length and stamped the mtime back (SOURCE_DATE_EPOCH) did not
+   own the rewrite, and its hit left A's restored bytes in place.
 2. **B's clean removes only that set**, leaving A's files where they are.
 3. **B's artifact holds only that set**, so restoring B into a tree A has
    already filled reproduces exactly what B's run produced.
@@ -53,6 +56,19 @@ depends on A:
    on disk.
 
 Cost: one stat walk of the overlap per B miss, none on a hit.
+
+**A removal is not an addition (X-32).** The diff as first built saw
+only what B added or changed. A B that deleted one of A's files (a
+bundler removing its intermediate) saved its additions, and every hit
+after left the deleted file: A's restore put it back and B's rows never
+took it away. Of the three answers — record deletions in the artifact,
+save B's whole tree when it deleted, or save nothing — the third is the
+only one that needs no new artifact shape and no new hit-path rule: a
+B whose run removed a file it found saves no entry and runs again, the
+way the rewrite-in-place shape costs A a restore. Recording deletions
+would make B's artifact a patch against A's tree, which is the
+"mixture of two runs" this note's clean exists to prevent; saving the
+whole tree would let B's hit restore A's files as B's.
 
 ## The invariant the sketch would break
 
@@ -115,8 +131,8 @@ green — which is why it is a row of its own (item 425).
 ## Why the rewrite stays refused
 
 refine's `types` ADDS nothing: it rewrites A's `.d.ts` files with the
-same bytes and new mtimes. Under the design above B's own set is empty
-(same size, same content), but the proof is size + mtime, so the next
+same bytes and new mtimes. Under the design above B owns those files
+(the stamp moved, though the content did not), so the next
 run finds A's outputs moved and restores them — a restore where there
 was nothing to restore, every run.
 
@@ -152,7 +168,7 @@ still one (refine) showing the rewrite; condition (1) below holds, and
 the rewrite stays refused. The shape in the wild is a SUBDIRECTORY
 (`dist/individual`, `<dir>/storybook-static`) or a sibling file set,
 never an interleaving of the same files — which is what makes the
-size + mtime diff of the design sufficient.
+stamp diff of the design sufficient.
 
 ## What had to be true to build it (all four held, item 588)
 

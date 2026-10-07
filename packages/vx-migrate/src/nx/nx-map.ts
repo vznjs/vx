@@ -23,10 +23,13 @@ import {
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
+import { withoutTakenBack } from '../glob-grammar.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileTakeBacks,
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   wildcardOutput,
@@ -556,11 +559,12 @@ export async function mapNxWorkspace(
       dir: meta.dir,
       importLines: [],
       ...(tags.length > 0 ? { tags } : {}),
-      tasks: resolveSharedOutputs(tasks),
+      tasks: excludeSiblingOutputs(resolveSharedOutputs(tasks)),
     })
   }
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
+  excludeWorkspaceOutputs(root, projects)
   // A migration leaves Nx behind, so `nx sync` is no advice there: what a
   // generator keeps (the TypeScript one's tsconfig `references`) is the
   // user's to keep. `nx()` runs with Nx installed.
@@ -937,8 +941,8 @@ function buildTask(
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
-    const cacheInputs: Record<string, unknown> = { files: inputs.files }
-    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
+    const cacheInputs: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
+    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = withoutTakenBack(inputs.wsFiles)
     if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
     // The `.env` files the task loads are inputs, and gitignored ones
     // (`.env.local`) are invisible to a glob: their bytes, read per run.

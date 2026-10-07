@@ -659,6 +659,10 @@ describe('shellQuote', () => {
     expect(shellQuote('a/b.c=1')).toBe('a/b.c=1')
   })
 
+  it('leaves a `#` past the first character bare; a leading one opens a comment (X-45)', () => {
+    expect([shellQuote('app#build'), shellQuote('#c')]).toEqual(['app#build', `'#c'`])
+  })
+
   it('wraps strings with spaces in single quotes', () => {
     expect(shellQuote('hello world')).toBe(`'hello world'`)
   })
@@ -688,6 +692,8 @@ describe('shellQuote', () => {
         `"hello" world`, // mixed quoting
         `a 'b' c`, // single quotes inside
         `a\\b`, // backslash literal
+        `a#b`, // mid-word hash
+        `#c`, // leading hash
         `multi
 line`, // embedded newline
       ]
@@ -732,8 +738,32 @@ describe('withForwardArgs', () => {
     ['a trailing comment after a single-quoted word', `echo 'a' # c`, 'a --fix a b\n'],
     ['a trailing comment after a double-quoted word', 'echo "a" # c', 'a --fix a b\n'],
     ['control: # right after a closing quote', `echo 'a'#b`, 'a#b --fix a b\n'],
+    ['a trailing newline', '\n  echo args:\n', 'args: --fix a b\n'],
+    ['trailing blank lines', 'echo args: \n\t\n', 'args: --fix a b\n'],
+    ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
+    ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
+    ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
   ])('%s', (_name, command, printed) => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  // X-12: appended to the terminator, the heredoc never closed. Compared as
+  // text: a shell writes a heredoc to a temp file, which macOS's sandboxed
+  // shard refuses, so running these printed nothing there.
+  it.each([
+    ['a command ending in a heredoc', 'xargs echo <<X\nhi\nX', "xargs echo <<X --fix 'a b'\nhi\nX"],
+    [
+      'a quoted, tab-stripped heredoc',
+      "xargs echo <<-'X'\n\thi\n\tX\n",
+      "xargs echo <<-'X' --fix 'a b'\n\thi\n\tX",
+    ],
+    [
+      'control: a command after a heredoc',
+      'xargs echo <<X\nhi\nX\necho done',
+      "xargs echo <<X\nhi\nX\necho done --fix 'a b'",
+    ],
+  ])('%s', (_name, command, forwarded) => {
+    expect(withForwardArgs(command, ['--fix', 'a b'])).toBe(forwarded)
   })
 
   it('a # after a separator opens a comment', () => {

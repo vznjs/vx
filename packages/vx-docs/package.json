@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@vzn/vx": "workspace:*",
-    "@vzn/vx-github": "workspace:*",
+    "@vzn/vx-ci": "workspace:*",
     "@vzn/vx-mcp": "workspace:*",
     "@vzn/vx-otel": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*"

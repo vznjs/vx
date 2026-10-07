@@ -68,7 +68,7 @@ them without a special case in core:
 - **`turboCache()` and `nxCache()`**, from the same package, are `cache`
   layers speaking Turbo's `/v8/artifacts` and Nx's `/v1/cache` wire
   formats, so an existing self-hosted cache server keeps working.
-- **`@vzn/vx-otel`** and **`@vzn/vx-github`** are `telemetry` sinks: an
+- **`@vzn/vx-otel`** and **`@vzn/vx-ci`** are `telemetry` sinks: an
   OTLP exporter with no OpenTelemetry SDK dependency, and a GitHub
   Actions job summary plus a check run on the built commit.
 - **`@vzn/vx-mcp`** is `commands`: a Model Context Protocol server for

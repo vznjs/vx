@@ -59,6 +59,8 @@ export interface JudgeContext {
   held(): boolean
   /** Projects whose uncached task may read a git-ignored file. */
   uncached(): ReadonlySet<string>
+  /** Whether `abs`, under the project at `ownDir`, lies in a project nested there (`makeFence`). */
+  fenced?(ownDir: string, abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
 }
@@ -176,10 +178,12 @@ export class ChangeJudge {
     // it reads what it likes, and its `.env.local` edit re-ran nothing
     // (item 947). Under such a project an ignored path is judged when the
     // user wrote it; one the last cycle wrote (the pid file an uncached
-    // task rewrites every run, the loop the filter exists for) stays out.
+    // task rewrites every run, the loop the filter exists for) stays out,
+    // as does one in a project nested under it, which it does not own.
     const editForUncached = (p: string): boolean =>
-      [...this.ctx.uncached()].some((dir) => p.startsWith(dir + path.sep)) &&
-      !this.writtenDuringLastCycle(p)
+      [...this.ctx.uncached()].some(
+        (dir) => p.startsWith(dir + path.sep) && this.ctx.fenced?.(dir, p) !== true,
+      ) && !this.writtenDuringLastCycle(p)
     // A path still there names the cycle before a gone one: an editor or
     // `sed -i` saving through a temporary file fires that file first, and
     // the cycle was announced by a name already renamed away.

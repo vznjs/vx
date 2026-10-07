@@ -11,6 +11,7 @@ export {
 export {
   type ContinueMode,
   deadServerBehind,
+  type InputChanges,
   RestoreDemoted,
   runGraph,
   type TaskOutcome,
@@ -25,6 +26,7 @@ export {
   isGroupTask,
   markSurfacedDeps,
   outputsOverlap,
+  outputTakenBack,
   splitTaskId,
   type TaskNode,
   undeclaredDepsError,

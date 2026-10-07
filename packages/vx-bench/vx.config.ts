@@ -65,7 +65,7 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check',
         sandbox: {
           allow: {
-            read: ['**/*', ...PLAYGROUND.map((p) => p.replace(/^packages\//, '../'))],
+            read: ['**/*', ...PLAYGROUND.map((p) => p.replace('packages/', '../'))],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -106,6 +106,7 @@ export default defineProject({
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures',
+        env: { define: { VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: ['**/*'],

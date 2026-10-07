@@ -71,7 +71,7 @@ export function clampSummary(markdown: string): string {
   if (markdown.length * 3 <= MAX) return markdown
   const bytes = new TextEncoder().encode(markdown)
   if (bytes.byteLength <= MAX) return markdown
-  const suffix = '\n\n…truncated by @vzn/vx-github (65535-char Checks API limit)'
+  const suffix = '\n\n…truncated by @vzn/vx-ci (65535-char Checks API limit)'
   let end = MAX - new TextEncoder().encode(suffix).byteLength
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
@@ -146,7 +146,7 @@ export async function postCheckRun(args: {
         accept: 'application/vnd.github+json',
         'content-type': 'application/json',
         'x-github-api-version': '2022-11-28',
-        'user-agent': 'vzn-vx-github',
+        'user-agent': 'vzn-vx-ci',
       },
       body: JSON.stringify(args.payload),
       ...(args.signal === undefined ? {} : { signal: args.signal }),
@@ -187,7 +187,7 @@ export async function postCheckRun(args: {
         : res.status === 403
           ? ' — does the workflow grant `permissions: checks: write`?'
           : ''
-      args.warn(`vx-github: check-run POST failed (${res.status})${hint}: ${body.slice(0, 200)}`)
+      args.warn(`vx-ci: check-run POST failed (${res.status})${hint}: ${body.slice(0, 200)}`)
     }
   } catch (err) {
     // A GHES host behind a private CA: Bun's fetch trusts a CA named there.
@@ -195,7 +195,7 @@ export async function postCheckRun(args: {
       ? " — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file"
       : ''
     args.warn(
-      `vx-github: check-run POST failed: ${err instanceof Error ? err.message : String(err)}${hint}`,
+      `vx-ci: check-run POST failed: ${err instanceof Error ? err.message : String(err)}${hint}`,
     )
   }
 }

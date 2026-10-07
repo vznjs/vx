@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v39'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -432,7 +432,8 @@ performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
 Stability gate (shared with remote prefetch via
 `stable-keys.ts:deriveStableKeys`): a task whose input globs could
 match a same-project upstream's declared `outputs.files` (compared by
-literal prefix; one with undeclared writes reaches every input), whose
+literal prefix, less what its own `!` inputs take back whole; one with
+undeclared writes reaches every input), whose
 own `outputs.files` meet another same-project task's (it would restore
 into that tree beside the producer's restore), or whose
 `inputs.workspaceFiles` could reach any upstream's outputs, has a
@@ -450,7 +451,13 @@ can reach out of the restore tier — edge or no edge, because a
 root-anchored output can land in any project's directory — and every
 transitive dependant of one with it (their up-front keys fold a
 preliminary key); a glob with no literal prefix reaches every project.
-Before item 584 one such declaration emptied the tier graph-wide. The
+Before item 584 one such declaration emptied the tier graph-wide.
+`rules.upfrontKeys` (on by default, X-54) refuses at load a task whose
+input globs can match another task's declared outputs, so the clauses
+on declared outputs fire only with the rule off; undeclared writes, an
+`outputs.workspaceFiles` producer upstream, a rewriter the key does not
+fold, and runtime probes after a writer still leave a key preliminary.
+The
 short-circuit never runs under a `LayeredCache` (remote prefetch owns
 those runs — an up-front `get` there would put remote GETs on the
 critical path), never fires with local reads off, and never throws —
@@ -496,7 +503,8 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
    1000-project run). Now, for globs of the shape `<dir>/**` or a bare
    literal `<dir>` (a whole subtree — `wholeSubtreePrefixes`; a literal
-   that names a file refuses the snapshot, so that task keeps the walk),
+   that names a file is recorded as a file, `mtime_ms` -2, and holds while
+   a regular file stands there, its bytes being the per-file check's),
    the cache records every directory
    under `<dir>` with its mtime after each save and restore; on the next
    hit, unchanged mtimes on all of them prove the set unchanged, since a
@@ -673,10 +681,18 @@ is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
 declare what it writes as an output, which the status line says when it
 names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). Not seen: a file ADDED under an input glob
-mid-run (the listing is not taken again; the next run's key holds the
-file, so a stale hit needs it to vanish again). Cost: one `lstat` per
-input on a miss that saves; a hit runs no command and checks nothing.
+`routeTree.gen.ts`, rewritten by every build). A file ADDED under an
+input glob since the listing the key filtered (`addedInput`) withholds
+the save the same way, named on the same line: the listing's
+directories a glob reaches are `lstat`ed, one whose ctime moved since
+the listing is read, and a new name the declaration matches (or an
+unlisted directory) is asked of git, which alone knows what is ignored;
+a literal input absent then and present now is asked too. Not seen: a
+file added inside a directory that held no listed file before (only
+ignored ones, or none) and was not itself created mid-run. Cost: one
+`lstat` per input and per reached directory on a miss that saves, a
+`readdir` per directory that changed, and a `git ls-files` only when a
+candidate turned up; a hit runs no command and checks nothing.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
@@ -792,19 +808,30 @@ function of the cache key.
 
 ### Additive outputs: two tasks, one tree, an edge between them
 
-Two cached tasks of one project whose declared outputs overlap are
-refused at graph build — unless one depends on the other (item 588).
-Then the order is fixed, and the dependant is **additive**: twenty's
+Two cached tasks whose declared outputs overlap are refused at graph
+build. By default that holds even when one depends on the other: the
+workspace rule `rules.exclusiveOutputs` (on unless set to `false` in
+`vx.workspace.ts`, X-53) keeps one path to one task, and its refusal says
+how to turn it off. The shape below is correct, only slower: a stamp
+before every run, a diff after, and a clean by rows. Give each task its
+own output path where you can (`dist-individual` beside `dist`).
+
+With the rule off, an edge fixes the order, and the dependant is
+**additive** (item 588): twenty's
 `build` fills `dist` and `build:individual` depends on it and writes
 `dist/individual`; strapi's `build:types` runs `tsc` into the same
 `dist` as `build`. For the dependant:
 
 - its **own output set** is what its run added or changed under its
-  declared outputs — the outputs are stamped (size, mtime) before the
+  declared outputs — the outputs are stamped (size, mtime, inode, ctime) before the
   run and diffed after, the same proof a hit's "already current" check
   trusts — and only that set is saved; `outputs.workspaceFiles` are
   stamped the same way (until A-43 its miss cleaned them by glob, deleting
   a same-tree upstream's root-anchored files before it read them);
+- a run that **removes** a file it found (a bundler deleting the
+  upstream's intermediate) saves nothing: an artifact holds what a run
+  wrote, never what it took away, and the upstream's restore puts the
+  file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only);
@@ -819,7 +846,8 @@ dependant restores or runs after — and its "already current" check
 ignores strays a dependant's glob could have added, so a warm run stays
 a no-op for both. A file the dependant rewrites in place (refine's
 `types` regenerating `build`'s `.d.ts`) counts as the dependant's own
-(the mtime moved), which is correct and costs the upstream a restore on
+(its ctime moved, even where a tool stamps the size and mtime back; X-33),
+which is correct and costs the upstream a restore on
 the next warm run; the design note keeps that shape out of scope.
 
 ## Invalidation paths
@@ -857,8 +885,12 @@ A project's `cache.inputs.files` globs **never** reach into another
 project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
-directories (projects rooted inside this one) once per `vx run`, and
-every glob pass drops a path under one of them (an ancestor lookup,
+directories (projects rooted inside this one) once per `vx run`. A
+workspace package counts whether or not it has a vx config: it is the
+project `--affected` gives its files to, and its default `build` keys
+them (X-57). The same set fences the output clean, so a root
+`outputs.files: ['**/*.js']` never removes a member's source. Every
+glob pass drops a path under one of them (an ancestor lookup,
 A-11). The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 10).
@@ -957,18 +989,22 @@ A runtime command executes **once per run, per project** (memoized by
 `projectDir + command`), at key-derivation time — which, with the
 up-front classify/prefetch pass, is before any task runs. It is a
 run-level reading of the ENVIRONMENT (toolchain versions, resolved
-config), not a per-task probe, and the contract is that no task in the
-run changes its answer: it is not asked again before a save, as input
-files are, because that would be one spawn per command per miss where a
-file costs one `lstat`. A command that reads another task's OUTPUT folds
-the pre-run state. When the reader's key folds that task's key, the
-upstream key covers it, and the cost is a spurious miss on the run after
-the output changes. When it does not (`tasks: []`), nothing covers it:
-the save files bytes built from the new state under the old answer, and
-a later run that starts from the old state hits them (item 750 pins
-exactly that, `tests/in-run-writes.test.ts`). So declare the producing
-task's output as an input (`dependsOn` + files) rather than sampling it
-from a runtime command: files are re-checked, answers are not.
+config), not a per-task probe: it is not asked again before a save, as
+input files are, because that would be one spawn per command per miss
+where a file costs one `lstat`. A command that reads another task's
+OUTPUT reads whatever is on disk when it is asked. When the reader's key
+folds that task's key, the upstream key covers it: an answer taken before
+the upstream ran costs a spurious miss on the run after the output
+changes, never a stale hit, and the answer stays shared. When it does
+not (`tasks: []`, a filter that leaves it out, transitively), nothing
+covered it until X-34: the save filed bytes built from the new state
+under the old answer, and a later run that started from the old state
+hit them. Now such a task (`probesAfterWrites`, stable-keys.ts) takes no
+key up front and is never restore-tier, and its probes run for it alone,
+after its upstream finished — one spawn per such task per run, not one
+per project (`tests/in-run-writes.test.ts`). Declaring the producing
+task's output as an input (`dependsOn` + files) is still the cheaper
+spelling: files are re-checked, answers are not.
 
 A probe runs in its own process group. One still running when vx exits
 — a Ctrl-C, or a refusal, while a hung `git` or `node -e …` answers — is
@@ -1091,8 +1127,42 @@ naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
 take it out of cache.inputs.files.` (A-50).
 
+By default the entries and their artifacts live in a **shared store**
+in `~/.vx/<id>/cache`, and each workspace keeps only its own index in
+its `.vx/cache`: every checkout of the repository hits what another
+saved (a second clone, a worktree), and none reads another's history.
+The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
+`upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
+and https agree) and the workspace's path in the repository; with no
+remote, the first commit. A repository with neither (no commit yet, a
+shallow clone with no remote) shares nothing. Each level of `~/.vx` is
+owner-only; vx closes one of yours that is open to other users (chmod 700), and one owned by another user is not used. Design: [`design/shared-store-2026-10.md`](./design/shared-store-2026-10.md).
+
 ```
-<workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
+~/.vx/<id>/cache/                           the shared store
+├── store.db                                entries, entry_stdout, output_files,
+│                                           entry_inputs, store_meta
+└── <hash>.tar.zst                          the artifacts (below)
+
+<workspaceRoot>/.vx/cache/                  this workspace's own index
+└── cache.db                                run history, memos, output stamps;
+                                            attaches store.db as `store`
+```
+
+The store's directory carries no version: every key is seeded with
+`CACHE_VERSION`, which moves when hashing or the artifact layout does, so
+two vx versions never read each other's artifacts. `store.db` is the
+artifacts' inventory and records its schema (`store_meta.schema`): a vx
+of another `SCHEMA_VERSION` drops its tables, says `shared cache store
+… re-indexed` once, and keeps every artifact, each indexed again when
+its task next hits. A home this user cannot write keeps the store
+in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
+cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
+`VX_CACHE_DIR`, in that order of precedence, relative to the workspace
+root) and it holds everything, shared with no other workspace:
+
+```
+<cacheDir>/                                 (default .vx/cache when one is named)
 ├── .gitignore                              `*` — written when the dir is created, or into an
 │                                           existing dir that lacks one, so the cache is
 │                                           never committed and never enumerated as an
@@ -1222,7 +1292,9 @@ project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). Each refusal names
 the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed) and prunes the directories it emptied (before a miss it keeps
+followed, and nothing is removed through a symlinked directory: a
+`public -> static` link in the project took the tracked `static/*`
+with it, X-5) and prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1248,16 +1320,21 @@ links is refused by name. (A link the output globs themselves cover,
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are
-pruned (`tests/archive-security.test.ts`).
+pruned (`tests/archive-security.test.ts`). A backslash in a name is a
+name character (vx runs on Linux and macOS; Windows through WSL), so an
+output like `dist/back\slash` caches and restores as written.
 
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +
 remote layers transport the exact same tar.zst bytes end-to-end.
-The index is authoritative: a lookup reads the row first and only then
-checks the file, so an artifact without a row (a `SCHEMA_VERSION` drop,
-a deleted `cache.db`) or a `.tmp-*` a crashed save left is never a hit
-and is never touched by a run's lookups — `vx cache prune` sweeps
-them, and so does a run whose workspace declares `cacheRetention`, at
+The artifact is the record and the index its inventory (owner,
+2026-10-06): a lookup reads the row first, and a key with no row whose
+`<hash>.tar.zst` is on disk (a `SCHEMA_VERSION` drop, a deleted
+`cache.db` or `store.db`) has the artifact indexed again from its own
+bytes, checked as a remote's are (its recorded key, its names against
+the task's declared outputs), and hits; one that fails the check is a
+miss, and the save that follows replaces it. A `.tmp-*` a crashed save
+left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due), once
 they are older than an hour (a save renames the artifact into place
@@ -1268,26 +1345,27 @@ hit replays it with pure SQL, never decompressing the artifact).
 
 ### SQLite tables
 
-`schema_meta.version` is the gate: an index written by an EARLIER
-`SCHEMA_VERSION` is reset on the first run after an upgrade (pre-alpha:
-no migrations): every table but `schema_meta` is dropped and recreated,
+`schema_meta.version` is the gate: an index written by any other
+`SCHEMA_VERSION`, earlier or newer, is reset by the first run that opens
+it (pre-alpha: no migrations; the index is an inventory, owner
+2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
 `output_dirs` kept an earlier vx's columns).
-Two openers leave it untouched and say why (item 896): a reading verb
-(`vx why`, `vx last`, `vx info`) refuses an index it cannot read
-(`vx cache prune --dry-run` previews the reset instead, item 1083), and every opener, a run too, refuses a NEWER
-schema. That one is another vx's index and history, and an older binary
-beside a newer one used to drop it.
-That open says so once, on the run's status line or the verb's stderr
-(`[vx] cache index reset: schema v24 → v25 (vx upgraded); …`), so the
-all-miss run that follows is explained; the artifacts it orphaned are
-`vx cache prune`'s to reap.
+A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
+says why (item 896; `vx cache prune --dry-run` previews the reset
+instead, item 1083).
+That open prints nothing (owner, 2026-10-06: the cache is vx's to
+keep). The artifacts stay: each is indexed again from its own bytes
+when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v31', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v32', in cache.ts)
+-- With a shared store, entries, entry_stdout, output_files, entry_inputs
+-- and store_meta live in its store.db, attached as `store`; the rest is
+-- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'value_salt'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
@@ -1421,12 +1499,21 @@ CREATE TABLE output_files (
   size_bytes  INTEGER NOT NULL,
   mode        INTEGER NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  -- v28: inode + ctime after the save/restore that last wrote the file
-  -- (item 886); NULL until stamped, and a NULL row is never current.
-  ino         INTEGER,
-  ctime_ms    INTEGER,
   PRIMARY KEY (entry_hash, path),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+);
+
+-- v28, its own table since v32: inode + ctime THIS workspace saw after
+-- the save/restore that last wrote the file (item 886); no row is never
+-- current. Apart from the shared entry: two worktrees overwrote each
+-- other's stamps and every switch restored. No foreign key (the entry
+-- may be the store's); prune and re-save delete what they orphan.
+CREATE TABLE output_stamps (
+  entry_hash  TEXT NOT NULL,
+  path        TEXT NOT NULL,
+  ino         INTEGER NOT NULL,
+  ctime_ms    INTEGER NOT NULL,
+  PRIMARY KEY (entry_hash, path)
 );
 
 -- Each config's ORDERED import closure (the config first), so a warm
@@ -1446,8 +1533,7 @@ CREATE TABLE output_dirs (
   entry_hash  TEXT NOT NULL,
   path        TEXT NOT NULL,
   mtime_ms    INTEGER NOT NULL,
-  PRIMARY KEY (entry_hash, path),
-  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+  PRIMARY KEY (entry_hash, path)       -- no foreign key since v32, as output_stamps
 );
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
@@ -1504,6 +1590,14 @@ CREATE TABLE entry_inputs (
   PRIMARY KEY (entry_hash, kind, name),
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );
+
+-- v32: what belongs to the entries, not to one workspace: 'value_salt',
+-- the salt entry_inputs digests are taken under, so they compare with
+-- another workspace's run.
+CREATE TABLE store_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 ```
 
 WAL mode is on; readers don't block writers. `PRAGMA busy_timeout =
@@ -1515,7 +1609,7 @@ with `SQLITE_BUSY`.
 > and `plugin` rows hold `xxh3hex(salt + value)`, an unset env var the
 > literal `'unset'` — never the value, so a secret read as a cache input
 > does not land in `cache.db` as plaintext. The salt is 128 random bits
-> the store draws once (`schema_meta` key `value_salt`): `vx why` prints
+> the store draws once (`store_meta` key `value_salt`): `vx why` prints
 > these digests, and an unkeyed xxh3 in a public CI log let anyone
 > confirm or brute-force a short secret. The "why did this re-run?" diff
 > only needs to know a component changed, which the digest tells it.
@@ -1622,16 +1716,12 @@ built to defeat it can). Details and the deny-list:
 
 ## Bumping `CACHE_VERSION`
 
-A bump is announced, never silent (roadmap 3.3, item 671): the cache
-records the version it was written under (`schema_meta.cache_version`),
-and the first open after an upgrade prints one line, on the run's
-status line or a verb's stderr: `[vx] cache format changed:
-vx-cache-v27 → vx-cache-v28 (vx upgraded); …`. The index survives, so
-the old entries stay until they age out under `vx cache prune
---older-than` or `cacheRetention`; no key derives to them again. A
-bump that lands with a `SCHEMA_VERSION` reset says the reset alone. A
-reading verb (`vx info`, `why`, `last`, `cache prune --dry-run`) records
-nothing, so the notice waits for the first open that writes (item 1080).
+The cache records the version it was written under
+(`schema_meta.cache_version`). After an upgrade every cached task
+misses once and re-saves, with nothing printed (owner, 2026-10-06: the
+cache is vx's to keep). The index survives, so the old entries stay
+until they age out under `vx cache prune --older-than` or
+`cacheRetention`; no key derives to them again.
 
 Required when:
 
@@ -1668,8 +1758,10 @@ this doc (history), `docs/modules/cache.md` (the quoted version, and the
 key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
 version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
-was not), the cache tests, and `tests/contract/stored-format.json`
-(regenerated, above).
+was not), the cache tests, `tests/contract/stored-format.json`
+(regenerated, above), and
+`packages/vx-docs/src/content/docs/guides/upgrading.md` (the bump's
+breaking footer).
 
 ### History
 

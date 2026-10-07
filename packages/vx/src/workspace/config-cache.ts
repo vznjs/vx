@@ -165,6 +165,10 @@ const IMPURE_LITERAL_RE = /constructor|__proto__|prototype/
 const IMPORT_RE =
   /\b(?:import|export)\b(?:(?!\b(?:import|export)\b)[^;])*?\bfrom\s*\0(\d+)\0|\bimport\s*\0(\d+)\0/g
 
+// `import` as a keyword. Followed by `:` it is a property key (a task named
+// `import`): no import form, static or dynamic, puts a colon after the word.
+const IMPORT_WORD_RE = /\bimport\b(?!\s*:)/g
+
 /**
  * Every static import in `source` as its specifier and statement, or `null`
  * when the source cannot be lexed or holds an `import` no form above
@@ -181,9 +185,9 @@ function staticImports(
   let seen = 0
   for (const m of code.matchAll(IMPORT_RE)) {
     imports.push({ spec: strings[Number(m[1] ?? m[2])]!, statement: m[0] })
-    seen += m[0].match(/\bimport\b/g)?.length ?? 0
+    seen += m[0].match(IMPORT_WORD_RE)?.length ?? 0
   }
-  if (seen !== (code.match(/\bimport\b/g)?.length ?? 0)) return null
+  if (seen !== (code.match(IMPORT_WORD_RE)?.length ?? 0)) return null
   return { code, strings, imports }
 }
 

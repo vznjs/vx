@@ -59,6 +59,13 @@ const RUN: Required<RunContextRecord> = {
   vxVersion: '1.0.0',
   workspaceId: 'w',
   workspaceName: 'ws',
+  repository: 'github.com/o/r',
+  workspacePath: '.',
+  ciRunUrl: 'https://ci.example/run/1',
+  ciChange: '7',
+  ciPipeline: 'ci',
+  ciJob: 'test',
+  ciAttempt: 1,
   command: 'vx run build',
   requestedTasks: ['build'],
   cachePolicy: 'lR,lW',
@@ -94,6 +101,19 @@ const TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 1,
   notReady: 'timeout',
+  failedAttempts: [{ endedAt: 1030, exitCode: 1, timedOut: true }],
+  flaky: { passes: 1, failures: 1 },
+  sandboxViolationLines: ['deny file-write /x'],
+  storedDurationMs: 900,
+  storedCpuMs: 800,
+  storedPeakRssBytes: 2048,
+  admissionHeldMs: 5,
+  queuedMs: 6,
+  inputFiles: 3,
+  artifactBytes: 2048,
+  fetchMs: 4,
+  saveMs: 2,
+  inputChanges: { count: 1, first: [{ kind: 'env', name: 'NODE_ENV', change: 'added' }] },
   // Every field, so each one's path is recorded; a hit alone carries it.
   restored: false,
   wallclockStartNs: '1000000000',
@@ -101,7 +121,7 @@ const TASK: Required<TaskTelemetry> = {
 }
 
 it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract/otlp.txt records', async () => {
-  const bodies: Record<string, unknown> = {}
+  const bodies: Record<string, unknown[]> = {}
   const sink = new OtelSink({
     tracesUrl: 'traces',
     metricsUrl: 'metrics',
@@ -110,13 +130,37 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     headers: {},
     metricsEnabled: true,
     logsEnabled: true,
+    // Live: its lifecycle records are a shape the run's-end export has not.
+    live: true,
     timeoutMs: 1000,
     post: async (url, body) => {
-      bodies[url] = JSON.parse(body)
+      ;(bodies[url] ??= []).push(JSON.parse(body))
     },
   })
   const records: TelemetryRecord[] = [
-    { v: 3, kind: 'run.start', run: RUN, total: 1, ts: 1000, startedAt: 1000 },
+    { v: 3, kind: 'run.start', run: RUN, total: 2, ts: 1000, startedAt: 1000 },
+    {
+      v: 3,
+      kind: 'task.start',
+      runId: 'r',
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      ts: 1001,
+    },
+    {
+      v: 3,
+      kind: 'task.end',
+      runId: 'r',
+      ts: 1005,
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 4,
+    },
     {
       v: 3,
       kind: 'task.start',
@@ -125,7 +169,17 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
       project: 'a',
       task: 'build',
       command: 'tsc',
+      dependsOn: ['b#build'],
       ts: 1010,
+    },
+    {
+      v: 3,
+      kind: 'task.sample',
+      runId: 'r',
+      taskId: 'a#build',
+      ts: 1030,
+      cpuMs: 15,
+      rssBytes: 2048,
     },
     {
       v: 3,
@@ -157,12 +211,14 @@ it('the OTLP traces, metrics and logs vx-otel sends are shaped as tests/contract
     restoredRemoteCount: 0,
     exitOk: false,
     tasks: [TASK],
+    stages: [{ name: 'classify + probe', startedAt: 1000.25, endedAt: 1008.5 }],
+    uploads: { count: 1, bytes: 2048, ms: 30, failed: 0 },
   })
   await sink.flush()
   expect(Object.keys(bodies).sort()).toEqual(['logs', 'metrics', 'traces'])
 
   const lines = new Set<string>()
-  for (const [signal, body] of Object.entries(bodies)) shape(body, signal, lines)
+  for (const [signal, list] of Object.entries(bodies)) for (const b of list) shape(b, signal, lines)
   const text = [...lines].sort().join('\n') + '\n'
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
     writeFileSync(RECORD, text)

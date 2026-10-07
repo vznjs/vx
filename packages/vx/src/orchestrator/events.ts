@@ -7,7 +7,7 @@
 // stall task exec. See docs/design/event-stream-2026-06.md.
 
 import { exitSignal } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import type { InputChanges, TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
 import { maskedCommand, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
@@ -250,6 +250,18 @@ export interface OutcomeView {
   blockedBy?: string
   /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
   admissionHeldMs?: number
+  /** How long the task waited ready for a worker (see `TaskOutcome`). */
+  queuedMs?: number
+  /** How many files a cacheable task's key read when it ran (see `TaskOutcome`). */
+  inputFiles?: number
+  /** What a missed task's key changed since its last saved entry (see `TaskOutcome`). */
+  inputChanges?: InputChanges
+  /** The artifact's compressed size, a hit's or a measured save's (see `TaskOutcome`). */
+  artifactBytes?: number
+  /** A remote hit's download and ingest (see `TaskOutcome`). */
+  fetchMs?: number
+  /** A measured save's own time (see `TaskOutcome`). */
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -291,8 +303,7 @@ export function outcomeLabel(
 
 /**
  * Why a task was skipped, one copy for every surface: `blocked by lib#build`
- * (the failed or aborted task at the root of the block, what the footer's
- * Skipped section groups by), or '' for fail-fast's skip — the run stopped,
+ * (the failed or aborted task at the root of the block), or '' for fail-fast's skip — the run stopped,
  * nothing blocked it, and a label claiming an upstream failure would lie.
  */
 export function skippedReason(blockedBy: string | undefined): string {
@@ -370,6 +381,12 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes
   if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
+  if (outcome.queuedMs !== undefined) view.queuedMs = outcome.queuedMs
+  if (outcome.inputFiles !== undefined) view.inputFiles = outcome.inputFiles
+  if (outcome.inputChanges !== undefined) view.inputChanges = outcome.inputChanges
+  if (outcome.artifactBytes !== undefined) view.artifactBytes = outcome.artifactBytes
+  if (outcome.fetchMs !== undefined) view.fetchMs = outcome.fetchMs
+  if (outcome.saveMs !== undefined) view.saveMs = outcome.saveMs
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy

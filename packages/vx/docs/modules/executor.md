@@ -48,7 +48,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   cannot reach a process it spawned; a non-zero exit after the timeout's
   abort is recorded `timedOut`; one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it),
-  `liveChildren?`, `sandbox?: ExecuteSandbox`, `terminal?: true` (the
+  `liveChildren?`, `onSpawn?` (an executor that runs the command as a
+  process on this machine calls it with the pid, so a telemetry sink can
+  sample the tree's CPU and memory; absent when nothing samples),
+  `sandbox?: ExecuteSandbox`, `terminal?: true` (the
   task holds vx's terminal, `exec.interactive` on a TTY: its stdio is
   vx's own and the callbacks hear nothing; placement hands such a task
   to core's local executor alone),
@@ -91,7 +94,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field
   ("returned an invalid result for <task>: exitCode is undefined (expected
-  a number) — a plugin bug, not a task failure"), in the task's frame,
+  a number) — a plugin bug, not a task failure"; an `exitCode` that is
+  no non-negative integer, or a `durationMs` that is no non-negative
+  finite number, the same, X-11), in the task's frame,
   never a TypeError inside core. `where` is the
   executor-reported placement label (a REAPI worker id); absent = this
   host. Rides `TaskOutcome.where` into telemetry only (OTel:

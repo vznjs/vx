@@ -73,10 +73,15 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
   })
 })
 
-/** `CREATE TABLE [IF NOT EXISTS] <name> (` blocks → name → column names. */
+/**
+ * `CREATE TABLE [IF NOT EXISTS] [<schema>.]<name> (` blocks → name → column
+ * names. The source names the schema (`main.runs`, `${store}.entries`, v32).
+ */
 function tables(sql: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
-  for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_]+) \(([\s\S]*?)\n\s*\);/g)) {
+  for (const m of sql.matchAll(
+    /CREATE TABLE (?:IF NOT EXISTS )?(?:(?:main|\$\{store\})\.)?([a-z_]+) \(([\s\S]*?)\n\s*\);/g,
+  )) {
     const columns = m[2]!
       .split('\n')
       .map((line) => line.trim())

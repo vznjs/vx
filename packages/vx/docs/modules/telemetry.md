@@ -11,7 +11,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
 ## Public surface
 
 - `TelemetryRecord` — per-event union: `run.start` / `task.start` /
-  `task.log` / `task.end` / `run.end`.
+  `task.log` / `task.sample` / `task.end` / `run.end`.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
   per-task `TaskTelemetry[]`. What every telemetry sink receives at
   end of run. `abortedCount` (v3, item 851) counts the tasks a
@@ -68,12 +68,19 @@ interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string // from the normalized git remote (v2)
   workspaceName: string
+  repository?: string // the origin remote, normalized: `github.com/org/repo`
+  workspacePath?: string // the workspace root inside its git work tree, `.` at the top
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null // a trunk run: branch === defaultBranch (v2)
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  ciRunUrl?: string // the CI provider's page for this run
+  ciChange?: string // the pull or merge request number
+  ciPipeline?: string // the CI workflow or pipeline name
+  ciJob?: string // the CI job (or step)
+  ciAttempt?: number // 1 on a first run, 2 on its first re-run
   host: string | null
   os: string
   arch: string
@@ -98,6 +105,19 @@ interface TaskTelemetry {
   timedOut?: true // on a failed task, vx's own timeout killed it
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
+  failedAttempts?: readonly FailedAttempt[] // a retried task's attempts that failed, in order
+  flaky?: { passes: number; failures: number } // proved flaky this run: its key's record
+  sandboxViolationLines?: readonly string[] // one per sandbox denial
+  storedDurationMs?: number // on a hit: the stored run's time, what the hit saved
+  storedCpuMs?: number // on a hit: the stored run's CPU and peak memory
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number // how long an `admit` policy held it once ready
+  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  inputFiles?: number // on a cacheable task that ran: the files its key read
+  inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
+  artifactBytes?: number // the artifact's compressed size: a hit's entry, or a miss's save
+  fetchMs?: number // a remote hit this run pulled: download + ingest
+  saveMs?: number // a miss that saved: the save's own time
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string
@@ -120,18 +140,33 @@ interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[] // VX_TIMING's stages; those before the run lock end before startedAt
+  uploads?: { count: number; bytes: number; ms: number; failed: number } // remote uploads once settled; ms summed
+}
+
+interface FailedAttempt {
+  endedAt: number // epoch ms
+  exitCode: number
+  timedOut?: true
+}
+
+interface RunStage {
+  name: string // a stage mark: startup, load configs, classify + probe, run graph, …
+  startedAt: number // epoch ms, with a fraction
+  endedAt: number
 }
 ```
 
 Each streaming record carries `v` and `kind`, and:
 
-| `kind`       | Fields                                                |
-| ------------ | ----------------------------------------------------- |
-| `run.start`  | `run`, `total`, `ts`, `startedAt`                     |
-| `task.start` | `runId`, `taskId`, `project`, `task`, `command`, `ts` |
-| `task.log`   | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)   |
-| `task.end`   | `runId`, `ts`, every `TaskTelemetry` field            |
-| `run.end`    | `runId`, `ts`                                         |
+| `kind`        | Fields                                                             |
+| ------------- | ------------------------------------------------------------------ |
+| `run.start`   | `run`, `total`, `ts`, `startedAt`                                  |
+| `task.start`  | `runId`, `taskId`, `project`, `task`, `command`, `dependsOn`, `ts` |
+| `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
+| `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |
+| `task.end`    | `runId`, `ts`, every `TaskTelemetry` field                         |
+| `run.end`     | `runId`, `ts`                                                      |
 
 ## Invariants
 
@@ -142,6 +177,14 @@ Each streaming record carries `v` and `kind`, and:
   propagates, and so is an `async` hook that rejects; it is said once,
   however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
+- `task.sample` is opt-in the same way. Only when a sink wants it does the
+  source offer `track(taskId, pid)`, which run.ts hands each task's
+  executor as `ExecuteRequest.onSpawn`: one timer for the run samples each
+  tracked task's live process tree every second (`sampleTrees`,
+  `exec/proc-sample.ts`) and stops when nothing is tracked or the run
+  ends. `cpuMs` is the tree's CPU so far (a descendant that exited leaves
+  the sum), `rssBytes` its resident memory now. No sink wanting it: no
+  timer, no read (`proc-sample.unsafe.test.ts`).
 - Version bumps are additive-or-bump: a record whose shape changes bumps
   `TELEMETRY_SCHEMA_VERSION`, an integer, which a receiver may check to
   refuse what it cannot read; no first-party sink checks it.

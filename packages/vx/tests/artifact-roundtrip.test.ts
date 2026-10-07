@@ -340,6 +340,9 @@ describe('artifact round-trip — odd names', () => {
 
       const cold = vx(root, 'run', 'build')
       expect(cold.exitCode).toBe(0)
+      // Until X-65 the save refused the backslash name, and the warm run
+      // re-ran the task, so the tree matched without a hit.
+      expect(cold.out).not.toContain('cache save failed')
       const produced = await snapshotTree(path.join(root, 'dist'))
       expect([...produced.keys()].sort()).toEqual(
         ['with spaces.js', 'café.js', 'quo"te.js', 'back\\slash.js'].sort(),
@@ -348,6 +351,7 @@ describe('artifact round-trip — odd names', () => {
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
       expect(warm.exitCode).toBe(0)
+      expect(warm.out).toContain('all cached')
       const restored = await snapshotTree(path.join(root, 'dist'))
       expect([...restored.keys()].sort()).toEqual([...produced.keys()].sort())
       for (const [rel, want] of produced) expect(restored.get(rel)).toEqual(want)
@@ -457,7 +461,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // Item 1094: `dist/**` covers this path, and the message said the globs
     // did not; what the clean leaves is a directory where a file goes.
     await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
-      /removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run\.$/,
+      /: a directory stands where the entry holds a file\. The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run\.$/,
     )
 
     // And a FILE standing where the entry needs a DIRECTORY — the same
@@ -470,9 +474,11 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await saveEntry('stray2')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     await write(path.join(projectDir, 'dist'), 'I AM A FILE')
-    await expect(cache.restoreOutputs('stray2', projectDir)).rejects.toThrow(
-      /was blocked by what is on disk \(EEXIST/,
-    )
+    const blocked = await cache.restoreOutputs('stray2', projectDir).catch((e: Error) => e.message)
+    expect(blocked).toMatch(/was blocked by what is on disk \(EEXIST/)
+    // X-7: the file case was described as its reverse, and the code doubled.
+    expect(blocked).toContain(': a file stands where the entry needs a directory.')
+    expect(blocked).not.toContain('EEXIST: EEXIST')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
   })
 

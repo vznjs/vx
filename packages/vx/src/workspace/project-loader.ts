@@ -294,7 +294,12 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
   // below are Bun's own and nothing else answers to them, so this is
   // narrower than it looks: every other throw still passes through (2026-09-20).
   if (err === null || typeof err !== 'object') return null
-  const { name, message } = err as { name?: unknown; message?: unknown }
+  const { name, message, errors } = err as { name?: unknown; message?: unknown; errors?: unknown }
+  // Two syntax errors arrive as one `AggregateError` of `BuildMessage`s,
+  // which printed a stack and no position (X-6). The first is where to look.
+  if (name === 'AggregateError' && Array.isArray(errors) && errors.length > 0) {
+    return configLoadError(errors[0], configPath, kind)
+  }
   if (typeof message !== 'string') return null
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]

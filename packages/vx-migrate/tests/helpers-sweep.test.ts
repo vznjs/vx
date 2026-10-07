@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { pruneOrphanPersistentNotes, type GeneratedTask } from '@vzn/vx'
+import { foldScriptHooks, pruneOrphanPersistentNotes, type GeneratedTask } from '@vzn/vx'
 import { scriptCommand } from '../src/script-command.js'
 import { resolveSharedOutputs } from '../src/shared-outputs.js'
 import { dotenvCandidates, listDotenv, ownerTargetOf } from '../src/nx/nx-dotenv.js'
@@ -17,7 +17,7 @@ describe('scriptCommand: the package manager’s own lifecycle hooks never ride 
 
   it('CONTROL: an ordinary task’s hooks are folded around it', () => {
     expect(scriptCommand('build', 'tsc', { prebuild: 'gen', postbuild: 'copy' })).toBe(
-      'vx_script() {\n(gen\n) && (tsc "$@"\n) && (copy\n)\n}\nvx_script',
+      foldScriptHooks('gen', 'tsc', 'copy'),
     )
   })
 })
@@ -50,7 +50,7 @@ describe('pruneOrphanPersistentNotes', () => {
   })
 })
 
-describe('resolveSharedOutputs: the edge orders a pair in either direction', () => {
+describe('resolveSharedOutputs: an edge keeps no pair cached (core default rules, X-53)', () => {
   function task(name: string, outputs: string[], dependsOn: string[] = []): GeneratedTask {
     return {
       name,
@@ -64,7 +64,7 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
   }
   const cached = (ts: GeneratedTask[]) => ts.map((t) => t.task!['cache'] !== undefined)
 
-  it('the keeper depending on the other task orders them too', () => {
+  it('the keeper depending on the other task does not keep both', () => {
     expect(
       cached(
         resolveSharedOutputs([
@@ -72,41 +72,28 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
           task('build', ['dist/**'], ['^build', 'gen']),
         ]),
       ),
-    ).toEqual([true, true])
+    ).toEqual([false, true])
   })
 
-  it('a third task must be ordered against EVERY kept task, not just the keeper', () => {
-    // a keeps (first declared); b depends on a and is kept; c depends on a
-    // but nothing orders it against b, so c cannot stay cached.
+  it('a dependant of the keeper is uncached, and names the keeper', () => {
     const ts = resolveSharedOutputs([
       task('a', ['dist/**']),
       task('b', ['dist/**'], ['a']),
       task('c', ['dist/**'], ['a']),
     ])
-    expect(cached(ts)).toEqual([true, true, false])
-    expect(ts[2]!.todos[0]).toContain('"b" also declares')
+    expect(cached(ts)).toEqual([true, false, false])
+    expect(ts[2]!.todos[0]).toContain('"a" also declares')
   })
 
-  it('with a ^-edge keeper, a third task is still checked against a kept sibling', () => {
-    // Later passes re-check a pair only against their own keeper; with the
-    // keeper holding the ^ edge they pick it again, so only the kept list
-    // sees b and c unordered.
+  it('a task is checked against every kept task, not just the first keeper', () => {
+    // b keeps (no overlap with a), c overlaps b alone.
     const ts = resolveSharedOutputs([
       task('a', ['dist/**'], ['^build']),
-      task('b', ['dist/**'], ['a']),
-      task('c', ['dist/**'], ['a']),
+      task('b', ['lib/**']),
+      task('c', ['lib/x'], ['b']),
     ])
     expect(cached(ts)).toEqual([true, true, false])
     expect(ts[2]!.todos[0]).toContain('"b" also declares')
-  })
-
-  it('a kept task it does not overlap needs no edge', () => {
-    const ts = resolveSharedOutputs([
-      task('a', ['dist/**'], ['^build']),
-      task('b', ['dist/x'], ['a']),
-      task('c', ['dist/y'], ['a']),
-    ])
-    expect(cached(ts)).toEqual([true, true, true])
   })
 
   it('a same-project edge is not a ^ edge: the first declared keeps', () => {
@@ -121,15 +108,6 @@ describe('resolveSharedOutputs: the edge orders a pair in either direction', () 
   it('a `!` output overlaps nothing: only positives say where outputs land', () => {
     const next = task('build', ['.next/**', '!.next/cache/**'])
     expect(cached(resolveSharedOutputs([next, task('export', ['out'])]))).toEqual([true, true])
-  })
-
-  it('a dependsOn cycle terminates', () => {
-    const ts = resolveSharedOutputs([
-      task('x', ['dist/**'], ['y']),
-      task('y', ['out/**'], ['x']),
-      task('z', ['dist/**']),
-    ])
-    expect(cached(ts)).toEqual([true, true, false])
   })
 })
 

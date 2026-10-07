@@ -4,7 +4,8 @@
 // code that reads refs from the files answers wrong or nothing. vx asks git
 // for every ref but one: the run context's HEAD reader, which reads `.git`
 // to save a spawn. Each row runs the same workspace twice, files and
-// reftable, and asks for the same answers. Unsafe: it needs the host's git
+// reftable, and asks for the same answers; the shared store's repository
+// id is read from `.git` too (`repo-id.ts`), and held the same way. Unsafe: it needs the host's git
 // (2.45 or later), which CI requires with VX_REQUIRE_REFTABLE.
 
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -14,6 +15,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { captureGitContext } from '../src/orchestrator/run-context.js'
+import { repoIdOf } from '../src/workspace/repo-id.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
@@ -137,6 +139,30 @@ describe.skipIf(!reftable)('a reftable repository', () => {
       expect(p.exitCode).toBe(0)
       expect(out).toContain('a#build')
       expect(out).not.toContain('b#build')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'names the shared store as the files repository does, and none when shallow',
+    async () => {
+      const files = await workspace('files')
+      const id = await repoIdOf(files)
+      const clone = path.join(os.tmpdir(), `vx-reftable-clone-${process.pid}-${Date.now()}`)
+      const shallow = `${clone}-shallow`
+      roots.push(clone, shallow)
+      const git = gitIn(os.tmpdir())
+      git('clone', '-q', '--ref-format=reftable', files, clone)
+      git('clone', '-q', '--ref-format=reftable', '--depth=1', `file://${files}`, shallow)
+      for (const dir of [clone, shallow]) gitIn(dir)('remote', 'remove', 'origin')
+      expect(await readFile(path.join(clone, '.git', 'HEAD'), 'utf8')).toBe(
+        'ref: refs/heads/.invalid\n',
+      )
+      expect([id, await repoIdOf(clone), await repoIdOf(shallow)]).toEqual([
+        expect.stringMatching(/^[0-9a-f]{16}$/),
+        id,
+        null,
+      ])
     },
     TIMEOUT,
   )

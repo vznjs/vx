@@ -187,6 +187,18 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(stamped()).toBeNull()
   })
 
+  it('a prefix recorded as a file is current while a regular file stands there', async () => {
+    const row = [{ path: 'dist/a.js', mtimeMs: -2 }]
+    expect(await cache.outputDirsCurrent(proj, row)).toBe(true)
+    rmSync(path.join(proj, 'dist/a.js'))
+    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+    symlinkSync(path.join(proj, 'dist/sub/b.js'), path.join(proj, 'dist/a.js'))
+    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+    rmSync(path.join(proj, 'dist/a.js'))
+    mkdirSync(path.join(proj, 'dist/a.js'))
+    expect(await cache.outputDirsCurrent(proj, row)).toBe(false)
+  })
+
   it('a directory recorded absent that now exists is not current', async () => {
     expect(await cache.outputDirsCurrent(proj, [{ path: 'gone', mtimeMs: -1 }])).toBe(true)
     mkdirSync(path.join(proj, 'gone'))
@@ -663,21 +675,35 @@ describe('warm hits through run() with the short-circuit', () => {
     expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
   })
 
-  it('a bare literal FILE output records nothing and is still restored when it changes', async () => {
+  it('a bare literal FILE output records the file, skips the walk, and is still restored when it changes (U-5)', async () => {
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
       "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/tool' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/tool'] } } } } }\n",
     )
+    const recorded = () => {
+      const c = db()
+      const r = c.dbHandle().query('SELECT path, mtime_ms FROM output_dirs').all()
+      c.close()
+      return r
+    }
     expect((await runBuild()).ok).toBe(true)
     await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
     expect((await runBuild()).ok).toBe(true)
-    const c = db()
-    const n = (c.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
-    c.close()
-    expect(n).toBe(0)
-    writeFileSync(path.join(dist(), 'tool'), 'tampered')
+    // Recorded as a file, so the next hit takes the stats and not the walk.
+    expect(recorded()).toEqual([{ path: 'dist/tool', mtime_ms: -2 }])
+    const tool = path.join(dist(), 'tool')
+    writeFileSync(tool, 'tampered')
     expect((await runBuild()).ok).toBe(true)
-    expect(readFileSync(path.join(dist(), 'tool'), 'utf8')).toBe('export const v = 1\n')
+    expect(readFileSync(tool, 'utf8')).toBe('export const v = 1\n')
+    // A directory where the file was: the set changed, so it is restored.
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    expect((await runBuild()).ok).toBe(true)
+    expect(recorded()).toEqual([{ path: 'dist/tool', mtime_ms: -2 }])
+    rmSync(tool)
+    mkdirSync(tool)
+    writeFileSync(path.join(tool, 'stray.js'), 'stale')
+    expect((await runBuild()).ok).toBe(true)
+    expect(readFileSync(tool, 'utf8')).toBe('export const v = 1\n')
   })
 
   it('a root-anchored glob records nothing and keeps the walk (control)', async () => {

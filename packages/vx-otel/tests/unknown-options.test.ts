@@ -15,7 +15,7 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => otel({ endpiont: 'x' } as never))).toBe(
-    'otel() has unknown option "endpiont" (allowed: compression, endpoint, headers, logs, logsEndpoint, metrics, metricsEndpoint, post, serviceName, timeoutMs, tracesEndpoint) \u2014 did you mean endpoint?',
+    'otel() has unknown option "endpiont" (allowed: compression, endpoint, headers, live, logs, logsEndpoint, metrics, metricsEndpoint, post, serviceName, timeoutMs, tracesEndpoint) \u2014 did you mean endpoint?',
   )
 })
 

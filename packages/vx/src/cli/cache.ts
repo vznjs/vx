@@ -1,10 +1,15 @@
 import { existsSync } from 'node:fs'
-import { Cache, noteSchemaReset } from '../cache/index.js'
-import { flagHint, refusedWord, seeHelp } from './help.js'
+import { Cache } from '../cache/index.js'
+import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import {
+  cliCacheDir,
+  loadCliWorkspace,
+  parseCacheDirFlag,
+  warnToStderr,
+} from './workspace-config.js'
 import { formatBytes } from './format.js'
 
 // parseSize moved to `util` (the orchestrator's resource resolver needs it
@@ -90,7 +95,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       // the deliberate way to do it.
       if (ms === 0) {
         return {
-          error: `--older-than 0 would evict every entry — delete the cache directory instead`,
+          error: `--older-than 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
         }
       }
       out.olderThanMs = Date.now() - ms
@@ -103,7 +108,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       if (bytes === null) return { error: `invalid size: ${v} (e.g. 500M, 1G)` }
       if (bytes === 0) {
         return {
-          error: `--max-size 0 would evict every entry — delete the cache directory instead`,
+          error: `--max-size 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
         }
       }
       // A bare number is bytes to `parseSize` (a computed size needs that),
@@ -120,10 +125,8 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
     } else if (a === '--dry-run') {
       out.dryRun = true
     } else if (a === '--format' || a?.startsWith('--format=')) {
-      const v = a === '--format' ? args[++i] : a.slice('--format='.length)
-      if (v !== 'pretty' && v !== 'json') {
-        return { error: `--format must be pretty or json${seeHelp('cache')}` }
-      }
+      const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
+      if (typeof v === 'object') return v
       out.format = v
     } else {
       const cd = parseCacheDirFlag(args, i)
@@ -161,14 +164,24 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // operate on the same directory or prune silently no-ops against the
   // wrong path.
   // A dry run only reads: it never resets the index (item 896).
-  const dir = await cliCacheDir(root, parsed.cacheDir)
+  // The store `vx run` keeps entries in (`~/.vx/<id>/cache`): with the
+  // index deleted, a prune followed nothing and said 0 while every entry
+  // stayed restorable (X-17).
+  let dir: string
+  let storeRoot: string | null = null
+  if (parsed.cacheDir !== undefined) dir = await cliCacheDir(root, parsed.cacheDir)
+  else {
+    const ws = await loadCliWorkspace(root)
+    dir = ws.cacheDir
+    storeRoot = await ws.storeRoot
+  }
   // A workspace that never ran has nothing to prune, and opening the cache
   // to find that out made it: `.vx/cache` with a database and a
   // `.gitignore`, where item 900 had held the dry run to making nothing
   // (and a read-only checkout was refused as unwritable instead).
   const dry = parsed.dryRun === true
   const json = parsed.format === 'json'
-  if (!existsSync(dir)) {
+  if (!existsSync(dir) && (storeRoot === null || !existsSync(storeRoot))) {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
@@ -176,20 +189,22 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     const earlier = await Cache.orphansBeforeReset(dir)
     if (earlier !== null) {
       warnToStderr(
-        `[vx] the cache index is schema ${earlier.found} from an earlier vx: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
+        `[vx] the cache index is schema ${earlier.found} from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
       )
       printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true, json)
       return 0
     }
   }
-  const cache = parsed.dryRun === true ? Cache.inspect(dir) : new Cache(dir)
+  const cache =
+    parsed.dryRun === true
+      ? new Cache(dir, undefined, undefined, undefined, 'inspect', storeRoot)
+      : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather
   // than dying in the first DELETE with SQLite's "readonly database" and a
   // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
   // run only reads, and reads a read-only cache fine.
   if (!parsed.dryRun) cache.assertWritable()
-  noteSchemaReset(cache, warnToStderr)
   // A prune beside a run on this workspace evicts what the run has just
   // probed as hits, whose `accessed_at` bumps it has not flushed yet; the
   // run then re-runs those tasks (upstream survey, nx#36688). So a prune

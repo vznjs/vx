@@ -318,7 +318,7 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', '--format', 'yaml'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('--format must be pretty or json')
+      expect(r.err).toContain('--format must be pretty or json (got yaml) (see `vx show --help`)')
     },
     TIMEOUT,
   )
@@ -698,12 +698,18 @@ describe('parseShowArgs', () => {
     // `--format` at the end of the line takes the next argv, which is not
     // there: the empty string must fail the same validation `--format=x`
     // does, rather than leaving `pretty` in place and saying nothing.
-    expect(parseShowArgs(['--format']).error).toBe('--format must be pretty or json')
+    expect(parseShowArgs(['--format']).error).toBe(
+      '--format requires a value: pretty or json (see `vx show --help`)',
+    )
   })
 
   it('rejects an invalid format value', () => {
-    expect(parseShowArgs(['--format', 'yaml']).error).toBe('--format must be pretty or json')
-    expect(parseShowArgs(['--format=']).error).toBe('--format must be pretty or json')
+    expect(parseShowArgs(['--format', 'yaml']).error).toBe(
+      '--format must be pretty or json (got yaml) (see `vx show --help`)',
+    )
+    expect(parseShowArgs(['--format=']).error).toBe(
+      '--format requires a value: pretty or json (see `vx show --help`)',
+    )
   })
 
   it('rejects unknown flags and extra positionals', () => {
@@ -764,6 +770,7 @@ describe('vx info — the rendered rows', () => {
     workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
     memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
     cacheDir: '/w/.vx',
+    cacheStore: '/home/u/.vx/3f2a9c1e7b4d5a60/cache',
     cacheVersion: 'vx-cache-v39',
     schemaVersion: 'v28',
     cacheEntries: 0,
@@ -790,6 +797,7 @@ describe('vx info — the rendered rows', () => {
         'workers:          4 — the CPU count',
         'memory:           16 GB',
         'cache dir:        /w/.vx',
+        'cache store:      /home/u/.vx/3f2a9c1e7b4d5a60/cache',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    0 (0 B)',
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
@@ -816,6 +824,7 @@ describe('vx info — the rendered rows', () => {
       ],
       workers: { count: 8, source: 'workspace', cores: 4, cpuQuota: 2 },
       memory: { usableBytes: 2 * GB, totalBytes: 8 * GB, cgroupLimitBytes: 2 * GB },
+      cacheStore: null,
       cacheEntries: 3,
       cacheBytes: 2048,
       orphans: { artifacts: 1, bytes: 512 },
@@ -842,6 +851,7 @@ describe('vx info — the rendered rows', () => {
         'workers:          8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
         'cache dir:        /w/.vx',
+        'cache store:      none: the cache dir holds the entries',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    3 (2.0 KB)',
         'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',

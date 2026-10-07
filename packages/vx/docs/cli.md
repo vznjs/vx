@@ -159,7 +159,9 @@ a stack and exit 1 after its task had succeeded.
 Combining: every include (`--filter <pat>`, `--affected`) is taken
 first and every `!` exclude after them all, as pnpm does, so an
 exclude removes what any include added, whichever side of it it sits
-(items 955, 979). `--all` with a filter is the filter's selection:
+(items 955, 979). The union holds for tasks too: `--affected --filter
+other` runs other's tasks whether or not the change reaches them
+(X-10). `--all` with a filter is the filter's selection:
 the filters refine it rather than being overridden by it
 (`--all --filter '!docs'` is everything but docs).
 
@@ -174,7 +176,9 @@ two edits, or when exactly one scoped project's name after its `/` is
 (`--filter vx-mcp` hints `@vzn/vx-mcp`), and `Projects: a, b` otherwise
 (M-56). A list names eight, then a count. An unmatched `tag:` filter
 hints the nearest tag instead (`Did you mean tag:scope:web?`), else
-lists the tags.
+lists the tags. When every pattern matched and an exclusion took back
+all of it, the refusal names the exclusion instead (`no projects
+selected: !app excluded every project the other filters matched`).
 
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -250,7 +254,9 @@ Run the task only in projects whose files changed since `<base>`.
 - Without git on PATH, every shape is one line — `vx requires git:
 failed to spawn 'git' … Install git and re-run` — the same the input
   enumeration prints; a minimal image met a stack here before
-  (2026-09-16).
+  (2026-09-16). Outside a git work tree every shape says `vx requires
+git: <root> is not inside a git work tree`, as a plain run does, and a
+  repository with no commit yet says so, not "a shallow clone?" (X-52).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
@@ -284,7 +290,9 @@ change seeds tasks in the projects it touches:
   changed, or that holds a changed path no cached task of its declares
   (vx cannot prove that path re-keys nothing), or that a lockfile
   claim, a manifest edge at the base or a config import names;
-- an uncached task whenever its project changed. A group seeds nothing.
+- an uncached task when a changed path lies in its project or the
+  project is reached whole; a root file another task of its declares
+  (`workspaceFiles`) is no change there. A group seeds nothing.
 
 A requested task runs when its `dependsOn` closure holds a seeded task,
 so a change reaches another project only along a task edge. With
@@ -298,6 +306,11 @@ sees `ui`'s files either). A project that declares no `build` gets one
 keyed on all its files (`schema.md`), so any change there reaches a
 dependant behind `^build`; a package `^name` passes through for want of a
 config reaches it the same way.
+The graph is the one a `graph` plugin leaves: an edge or an input it
+adds reaches a task as a declared one does, and a task it marks
+requested runs whatever the diff. With such a plugin every project is a
+candidate once the diff touched anything, and its hook sees every
+candidate task before the selection prunes the graph.
 Nx 23.3 (`NX_LEGACY_AFFECTED=false`) and Turbo
 (`affectedUsingTaskInputs`) select tasks the same way, behind flags.
 
@@ -400,6 +413,9 @@ applies to bare names only, so `vx run app#deploy build
 --affected=origin/main` with nothing changed still runs `app#deploy`
 (vx notes `nothing affected since <ref> — running app#deploy only` on
 stderr). Only a bare-name-only invocation short-circuits to exit 0.
+With only `pkg#task` names the scope goes unused, but `--filter` and
+`--affected` are still resolved: a pattern that matches nothing or a ref
+git does not know refuses the run as it does beside a bare name.
 
 ### Argument forwarding (`--`)
 
@@ -411,43 +427,52 @@ vx run test -- --watch              # underlying test runner sees "--watch"
 vx run build -- --sourcemap         # build command gets "--sourcemap"
 ```
 
-They are appended to the command's end, or before a `#` comment still
+They are appended to the command's last line (trailing blank lines are
+dropped first, so a multi-line command's closing newline does not run
+them as a command of their own), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
-below a commented line, before the earliest), and a persistent task gets
+below a commented line, before the earliest). A heredoc's body and
+terminator are not command lines: `cat <<X … X` gets them on the
+`cat <<X` line (X-12). A persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;
 dependsOn-pulled deps don't see them (so upstream cache identity
-stays clean).
+stays clean). A frame's `$ <command>` line shows the command as it
+ran, so a requested task's carries the args and a dependency's does
+not.
+A group (a task with no command) takes none, so a request that names
+only groups is refused (`args after \`--\` reach no task`) rather
+than run with the args unheard.
 
 ### Flags
 
-| Flag                               | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------------------- | -------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--affected[=<base>]`              | optional value | off                                | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10). |
-| `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.                                                                          |
-| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--output-logs <mode>`             | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--download <mode>`                | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--verbosity <n>`                  | int (0+)       | `0`                                | `1` or more prints a per-task summary table after the framed blocks. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--dry[=text\|json]`               | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--graph[=<path>]`                 | optional value | off                                | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--summarize[=<path>]`             | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `--profile[=<path>]`               | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `--tag <k=v>`                      | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--report[=markdown]`              | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `--report-file <path>`             | value          | off                                | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Flag                               | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------- | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--affected[=<base>]`              | optional value | off                                | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10).          |
+| `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field, `VX_CACHE_DIR` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there. |
+| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--output-logs <mode>`             | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--download <mode>`                | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--verbosity <n>`                  | int (0+)       | `0`                                | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--dry[=text\|json]`               | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--graph[=<path>]`                 | optional value | off                                | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--summarize[=<path>]`             | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--profile[=<path>]`               | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--tag <k=v>`                      | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `--report[=markdown]`              | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--report-file <path>`             | value          | off                                | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Mutual exclusion:
 
@@ -608,7 +633,7 @@ fixed:
 | restored-local/-remote | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
 | up-to-date             | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
 | failed                 | frame                    | one-liner + frame replays | one-liner + frame replays | frame                        |
-| skipped                | one-liner                | silent                    | silent                    | one-liner                    |
+| skipped                | one-liner                | one-liner                 | one-liner                 | one-liner                    |
 
 What the shapes mean in each column:
 
@@ -623,9 +648,8 @@ What the shapes mean in each column:
   and it produced nothing a frame could hold. The one-liner says
   everything, the blocker included (`⊘ skipped app#deploy • blocked by
 lib#build`; a fail-fast skip, which nothing blocked, carries no
-  suffix), and where the flow prints none (broad, a dependency) the
-  footer's Skipped section names the task under the failure that
-  blocked it. `--report` reads the same fact into the status cell,
+  suffix). Every view that lists tasks prints it, a dependency's
+  included: nothing prints below the footer. `--report` reads the same fact into the status cell,
   `skipped (blocked by lib#build)`.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
   worth a frame (the output is the point); a hit with nothing to replay
@@ -681,7 +705,8 @@ tracks the run live. Top to bottom:
    first of them — exits; the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
-other persistent task`), and a non-zero exit makes the run exit 1.
+other persistent task`), and a non-zero exit makes the run exit 1
+   and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
    stopped, and vx exits 130. A run with a failure elsewhere (a task
    failed or skipped, a server never ready or crashed) holds nothing: it
@@ -976,10 +1001,11 @@ denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
-became ready — `timeout` (the readiness deadline fired), `exited` (the
-child exited first; `exitCode` is then its own) or `spawn` (the spawn
-itself failed). Every label reads it, `failed (never ready: timed out,
-exit 1)`. A server the run's stop (a Ctrl-C) killed while it started is
+became ready — `timeout` (the readiness deadline fired; `exitCode` is
+the kill's, 143 or 137 after the grace, as an ordinary timeout's),
+`exited` (the child exited first; `exitCode` is then its own) or `spawn`
+(the spawn itself failed). Every label reads it, `failed (never ready:
+timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
 `aborted`, not failed, as any task the stop kills.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
@@ -994,11 +1020,11 @@ violations)`.
 
 **`blockedBy`** is present only on a `skipped` row: the id of the failed
 (or aborted) task at the root of what blocked it, through any chain of
-skips between — what the footer's Skipped section prints, for a script.
+skips between — what the skipped row prints, for a script.
 A fail-fast skip has none.
 
 **`flaky: { passes, failures, attempts }`** is present only on a task
-this run proved flaky (the footer's Flaky section, typed): `passes` and
+this run proved flaky (its row's `flaky` note, typed): `passes` and
 `failures` count the outcomes on record for this exact `hash`, this run
 included, and `attempts` is what this run took. A consumer gating on
 `status: "failed"` can tell a break (no `flaky` key) from a flake
@@ -1070,17 +1096,20 @@ task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
-`—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
-still get a row and an `N aborted` count, so a red report with no failing
-row still says why. Group tasks (no `exec`) get neither — they are not
+`—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
+and its tasks keep the terminal's words: one the signal killed is
+`aborted` with its time so far, one the stop reached before it ran is
+`not run` with no time. Neither joins the counts; the header names them
+after the total, `not counted: 1 aborted, 1 not run`, so a red report
+with no failing row still says why. Group tasks (no `exec`) get neither — they are not
 work, and the header's counts match the terminal summary and
 `--summarize` exactly.
 
 The two durations in the header mean different things, and the
 distinction is the point:
 
-- **`N total`** sums `Duration` over the tasks that actually EXECUTED —
-  the time this run spent.
+- **`N total`** sums `Duration` over the tasks that actually EXECUTED,
+  an aborted task's time so far included — the time this run spent.
 - **`N saved`** sums the exec times the cache hits SKIPPED, read from
   each entry as it was stored (above, 2.01s and 640ms). It is
   deliberately not the hits' `Duration` column, which is the restore
@@ -1201,9 +1230,12 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    same task graph, same cache behaviour. The line `vx watch: initial
 run...` precedes it.
 2. **Watch loop.** After the initial run finishes, the directory of
-   every project a cycle can run — the scope plus its transitive
-   dependencies, the closure `--filter 'app...'` walks, cross-project
-   `dependsOn` edges included — is watched recursively. The workspace root is
+   every project a cycle can run — the scope (the bare tasks' scope
+   plus each `pkg#task`'s own project; only those when every task is
+   anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
+   `dependsOn` edges included — is watched recursively, less any project
+   nested inside it, with a config or not (a root project's key leaves a nested
+   project's files out, so an edit there is no cycle; X-42, X-57). The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
@@ -1261,7 +1293,8 @@ run...` precedes it.
    timestamped log) is either git-ignored — a git-ignored path never
    starts a cycle, since no cache key can see it (a user's edit to one
    still does in a project with a task that has a command and no cache,
-   which reads what it likes, item 947) — or declared an
+   which reads what it likes, item 947, outside any project nested
+   in it) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long
@@ -1293,7 +1326,11 @@ watch events within 2000 ms; polling every 250 ms instead`.
    (`vx watch: <project> <relpath>; re-running...`): the first changed
    path that still exists, so an editor's temporary file renamed away
    names nothing; a deletion names the cycle when nothing else changed. The
-   orchestrator is invoked again with the same options. Events arriving
+   orchestrator is invoked again with the same options, save one: the
+   `--affected` diff is read once, for the initial run. A later cycle
+   runs the requested task in every project of the scope fixed at start,
+   and the cache keys decide what executes (the startup diff, asked
+   again, kept an edit made since out of every cycle). Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event.
 4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
@@ -1425,12 +1462,10 @@ the end of every run when `vx.workspace.ts` declares
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
-drops every table and leaves the artifacts behind — the first run
-after the upgrade says `cache index reset: schema v24 → v25` and names
-this verb; a deleted `cache.db` does the same) and a `<hash>.tar.zst.tmp-*` a save that
-crashed never renamed. Nothing else reclaims them — a lookup starts at
-the row, so an orphan is never a hit, and only a save of the same key
-overwrites it. Files younger than one hour are left alone: a save
+drops every table and leaves the artifacts behind, as a deleted
+`cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
+renamed. A run that asks for an orphan's key indexes it again from its
+bytes and hits; one no task asks for again is only reclaimed here. Files younger than one hour are left alone: a save
 renames its artifact into place before the row commits, so a fresh
 row-less file is a save in flight. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
@@ -1462,8 +1497,8 @@ write `10G`, or `10B` when bytes really are the unit.
 evict every entry in the cache, which is far more often a
 computed-to-zero retention than an intent — and no flag combination
 expresses "wipe the cache" (running with neither flag is an error, not a
-full prune). Delete the cache directory when that is really what you
-want.
+full prune). Delete the cache store `vx info` names when that is really
+what you want: the entries live there, not in the workspace's `.vx`.
 
 ```
 $ vx cache prune --older-than 30d
@@ -1648,7 +1683,7 @@ One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
 workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
-`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-github`,
+`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-ci`,
 `@vzn/vx-lockfile`, `@vzn/vx-mcp`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
 `@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
 
@@ -1834,7 +1869,8 @@ loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
 without being named, are folded into `x`'s command in that order, each
 in its own subshell, so the chain stops at the first that fails whatever
 a part holds (a `;`, an `exit`), and forwarded `--` args reach `x` alone,
-as npm hands them to the script and not its hooks (item 905). The
+as npm hands them to the script and not its hooks (item 905), appended
+as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
@@ -1877,7 +1913,9 @@ pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
 `test: vitest`) and become the root's own tasks in a root vx.config, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
-of its own; a hand-written one stays as written. The report names each script left out and why
+of its own; one already there, hand-written or from an earlier
+`vx init`, stays as written, `--force` included, and is listed under
+`kept`. The report names each script left out and why
 (a `pre` / `post` hook goes with its script, D-85), its examples of running
 the members spelled by the repo's manager (`--workspaces` under npm, `yarn
 workspaces foreach` under Yarn 2+), and says which;
@@ -1942,7 +1980,9 @@ a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
 `key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
 (`bun test`, with `@vzn/vx` installed). It prints the line that
-declares it in `vx.workspace.ts`. An existing file is refused without
+declares it in the workspace file a run reads (`vx.workspace.ts` when
+there is none). The templates are TypeScript, so `--mjs` with
+`--plugin` is refused. An existing file is refused without
 `--force`; `--dry` names the files and writes nothing. The two files are
 `packages/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
@@ -1950,7 +1990,7 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Exit codes: `0` the files written (or, with `--dry`, printed); `1` no
 `package.json` here or in a parent, a file it would write already there
-without `--force`, or a parse error.
+without `--force`, or a parse error (`--mjs` with `--plugin` among them).
 
 ## `vx migrate`
 
@@ -2085,7 +2125,7 @@ closes with those keys, each object the verb prints whole is shown, and
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
 script) writes that product alone there; a notice or warning it meets
-on the way (a cache index from an earlier vx, a plugin's warning) goes
+on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
 the tasks' output it carries. `tests/cli-streams.test.ts` holds each
 product verb to it under a notice.
@@ -2116,7 +2156,9 @@ has that name) and `vx show project <name>` say `vx show` and
 No target: one line per project — name, root-relative dir, task count,
 and a `(no vx config)` marker for config-less packages; one whose
 tasks all come from plugins reads `N tasks (no vx config; from
-plugins)`; a project's `tags` follow in brackets. With `--format json`
+plugins)`, and one a configured project depends on reads `1 task (no
+vx config; default build)`: a run loads it for that dependant's
+`^build` (X-48). A project's `tags` follow in brackets. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 ```
@@ -2128,8 +2170,9 @@ bare  packages/bare  (no vx config)
 Under its header `vx show <project>` prints its `tags`.
 `vx show <project>` prints a block per task with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
-`timeout`, `retries`, `env.passThrough` / `env.define`, `remote`,
-`sandbox`, `persistent`, and the cache block
+`timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
+`remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
+cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
 task does not set are not printed; a value that spans lines (a
@@ -2187,9 +2230,10 @@ is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
 Workspace doctor — one screen of facts for bug reports and sanity
 checks. The task count and the sandbox row's declared count come from
 the same load a run uses, plugin stages included; a config that fails
-to load counts as zero in both rather than failing the doctor, and is
+to load counts as zero in both rather than failing the doctor, every
+other project still counts as a run loads it, and the broken one is
 named (`12 (34 tasks · 1 config did not load)`, then a `config errors`
-row with the loader's message per config):
+row per config with the message `vx run` stops on):
 
 ```
 $ vx info
@@ -2203,7 +2247,8 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v39 · index schema v31
+cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
+cache versions:   keys vx-cache-v40 · index schema v32
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2248,7 +2293,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   (`@vzn/vx-schedule-history`): the machine's total, capped by the
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
-- `flaky tasks` is the standing list a run's Flaky section adds to:
+- `flaky tasks` is the standing list a run's flaky notes add to:
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
@@ -2257,6 +2302,10 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
   those.
+- `cache store` is where the entries and their artifacts live: the
+  store every workspace of this user shares (`docs/caching.md`), or
+  `none: the cache dir holds the entries` when the workspace names its
+  cache dir. Before a first run it is the store a run would open.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -2264,8 +2313,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
 - `orphans` appears only when the cache directory holds artifacts or
   save temps the index has no row for, older than an hour (what a
   `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
-  flight). They are never a hit and nothing but `vx cache prune`
-  reclaims them, so the doctor says so.
+  flight). A task that asks for one's key again indexes it and hits;
+  the rest only `vx cache prune` reclaims, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
   script or a bug-report template: `vx`, `bun`, `bunSupported` (false
   below Bun 1.4.0), `git` (null when not
@@ -2275,7 +2324,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
 cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`,
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
+  (null when the cache dir holds the entries), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
@@ -2304,16 +2354,18 @@ vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <pa
 By default it compares the task's **latest** recorded run against its
 immediately-previous run; `--run <id>` pins a specific run (a unique
 prefix of the id is enough; a task that run did not run is refused,
-pointing at `vx last --list`). History is
+pointing at `vx last --list`, and so is an id no run carries). History is
 the cache directory's, not the checkout's: worktrees that share one
 `--cache-dir` share one history, so the previous run may be another
 worktree's (its branch is in `vx last`), and its edits read as changes. Latest and
 previous are the order runs were recorded, not their clock: a clock that
 stepped back once swapped the two and diffed the edit backwards. A bare task
-name resolves when exactly one project ran it (several → an error
-listing the candidates; unknown → include-match suggestions, or, with
+name resolves when exactly one project ran it (several → the project
+the current directory is in, as `vx run` picks, else an error listing
+the candidates; unknown → include-match suggestions, or, with
 none near, a pointer to `vx last --list`, or word that nothing has run
-yet).
+yet; after runs of only groups, which record no task row, that no run
+executed a task and to ask about one the group depends on, X-50).
 
 A control character in a component's name (a file named with an
 escape or a carriage return) prints as `\xNN`, so no file name drives
@@ -2326,10 +2378,13 @@ no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
 (`--force`, or a `--cache` without read), no entry for the key was
-there when it ran (pruned or evicted), or neither run saved it while
+there when it ran (pruned or evicted), neither run saved it while
 each ran beside a failed task (a task run past a failed dependency under
-`--continue` is never cached). Otherwise it names `--no-cache` /
-`--force`, or something outside the key.
+`--continue` is never cached), or the previous run executed and no entry
+holds the key (its save failed, or a prune took it; a previous run whose
+policy wrote no cache says that instead). Otherwise, with this run's
+policy recorded as reading the cache, it says it cannot name the cause;
+only a run with no recorded policy names `--no-cache` / `--force`.
 
 ```
 $ vx why app#build
@@ -2440,8 +2495,11 @@ a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10), one per
 line in aligned columns (verdict, start, run id, counts, duration,
 command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
-and `--list=5` alike); `vx last <runId>` replays a
-specific one, and the two do not combine. `--failed` replays the latest
+and `--list=5` alike; the space form takes the next argument as the
+count unless it is a flag or a run id, eight hex digits at least, so
+`--list 1.5` is refused as a count); `vx last <runId>` replays a
+specific one, and the two do not combine (a word beside `--list` no run
+id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
@@ -2452,7 +2510,9 @@ prints `no recorded runs`, exit 0), and past green runs only,
 `--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded).
+vx run app#test -- …`, with the arguments the run forwarded). The
+replayed `$ vx run …` or `$ vx watch …` line and that one keep each
+argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 
 `vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
@@ -2561,6 +2621,7 @@ task are the last row.
 | --------------------------------- | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run, a `--dry`, or each `vx watch` cycle (`docs/modules/timing.md`).                                                                                                                                                                                   |
 | `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.           |
+| `VX_CACHE_DIR`                    | a path                | none    | The workspace's cache dir, relative to the workspace root, below `--cache-dir` and `vx.workspace`'s `cacheDir`. A named cache dir holds the whole cache and shares nothing; unset, entries live in the user's shared store (`docs/caching.md`). Empty is ignored.                              |
 | `VX_CACHE_SCOPE`                  | a `cacheScope` value  | none    | The run's `cacheScope` (`trusted`, `read-only`, `pr-123`), above `vx.workspace`'s and `github()`'s. Empty is ignored; a value `cacheScope` would refuse is refused before any task.                                                                                                            |
 | `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                          |
 | `VX_READY_NOTICE_MS`              | positive integer (ms) | 10000   | How long a persistent task may take to match `readyWhen` before vx says once what it waits for. Out of range falls back to the default.                                                                                                                                                        |
@@ -2661,24 +2722,28 @@ checks it against this page, byte for byte.
 Group tasks emit no framed block by design (they aren't real tasks);
 running a group focused surfaces its real member tasks instead.
 
-**Skipped section.** After the footer, a red run names every task
-that never started, under the failure that blocked it — the footer's
-`1 skipped` names no task, and the broad flow prints no row for one:
+**Nothing below the footer.** The footer is the run's last word.
+What a run has to say about one task rides that task's row; what it
+says about the run (a server that died, outputs left remote, a file
+`--summarize` / `--profile` wrote, a history, upload, plugin or sandbox
+warning) prints above the footer: it prints once the run's closing work
+is done, the `VX_TIMING=1` table included. Cache housekeeping
+(`cacheRetention`) prints nothing. Only a kept server's own output
+follows it.
+
+**Skipped rows.** A red run lists every task that never started as a
+row naming the failure that blocked it, so the footer's `1 skipped`
+always has a name above it:
 
 ```
-  Skipped:  2 tasks never started — blocked upstream
-    ⊘ after lib#build failed: app#build, web#build
+ ⊘         skipped          app#build • blocked by lib#build
+ ⊘         skipped          web#build • blocked by lib#build
 ```
 
 A skip's cause is followed through a chain of skips to the failure at
-its root; a skip with no failed upstream is fail-fast's ("after the run
-stopped (fail-fast)"), and one behind a task killed by a signal names
-it as aborted. The header says `blocked upstream` only when every skip
-was. Eight names per cause, then `… +N more`. A blocked
-group (a task with no command) is not listed — it never starts by
-definition and no counter counts it, so the section and the tasks
-legend agree. Absent when nothing was skipped (`--continue=always`
-skips nothing).
+its root; a skip with no failed upstream is fail-fast's and carries no
+suffix. A blocked group (a task with no command) has no row: it never
+starts by definition and no counter counts it.
 
 **Aborted and not-run rows.** After a stop (a shutdown signal), the
 task list names what it cut short (`aborted`, with its time so far) and
@@ -2695,26 +2760,25 @@ telemetry share: `2 success · 2 total · not counted: 1 aborted, 2 not
 run`. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
 
-**Flaky section.** After the footer, a run names the tasks it just
-proved nondeterministic — from the local run history alone, no
-service:
+**Flaky rows.** A task the run just proved nondeterministic says so
+in a dim note on its own row (and its frame's footer) — from the local
+run history alone, no service:
 
 ```
-  Flaky:    2 tasks with the same inputs both passing and failing on record
-    ✗ app#test — failed on inputs that passed 3× before
-    ✓ api#e2e — passed on inputs that failed 1× before · 2 attempts this run
+ ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
+ ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
 A task is flaky when its exact cache key has BOTH passed and failed on
 record (this run counted; a cache hit is a pass, it replayed one), or
 when it needed a retry (`exec.retries` / `--retry`) this run. A failure
-on a key that never passed is a break and is not listed — a changed
+on a key that never passed is a break and carries no note — a changed
 input that fails is what a red run usually means. Only tasks with a
 `cache` block are judged: "same inputs, different outcome" is a claim
 only declared inputs can back, and a task without them keys on its
-config alone. The section is empty (not printed) when nothing was
-flaky. Zero cost on a run that executed nothing; a green miss costs one
-probe of the failed-row index; `vx info` keeps the standing list.
+config alone. It is judged as the task finishes, so the row carries
+it: zero cost for a hit or a skip, one probe of the failed-row index
+for a green miss; `vx info` keeps the standing list.
 
 ### Colors
 

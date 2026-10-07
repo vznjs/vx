@@ -94,8 +94,13 @@ class · `src/cache/cache.ts`
 ```ts
 export class Cache implements CacheLayer {
   readonly hasRemote
+  readonly uploads: UploadTally
+  readonly storeDir: string | undefined
+  readonly storeFallback: string | null
+  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
+  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   static async orphansBeforeReset(
     cacheDir: string,
@@ -106,6 +111,7 @@ export class Cache implements CacheLayer {
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' = 'open',
+    storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
   getConfigClosures(configPaths: readonly string[]): Map<string, string[]>
@@ -122,9 +128,12 @@ export class Cache implements CacheLayer {
   blobVerdict(digest: string): string[] | undefined
   rememberBlobVerdict(digest: string, paths: readonly string[]): void
   key(input: CacheKeyInput): Promise<string>
-  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
-  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  async getMany(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -224,7 +233,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -313,6 +325,11 @@ type · `src/orchestrator/run-context.ts`
 export interface CiContext {
   ci: boolean
   provider: string | null
+  runUrl?: string
+  change?: string
+  pipeline?: string
+  job?: string
+  attempt?: number
 }
 ```
 
@@ -508,6 +525,7 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
 }
@@ -592,7 +610,9 @@ make a run from inside a package treat that package as the whole workspace:
 `^task` edges vanish, upstream hashes drop out of the cache key (stale
 hits), and a second cache dir appears under the member. Claiming is decided
 with the same globs `loadWorkspace` applies, so "the root that claims me"
-and "the root that lists me as a project" cannot diverge.
+and "the root that lists me as a project" cannot diverge. An outer root
+that lists both the claimer and the claimed member outranks the claimer:
+from the claimer's own directory the walk reaches the outer root too.
 
 When no candidate claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins (the root itself IS
@@ -656,9 +676,13 @@ first that fails, as npm stops. The parts sit in a function the
 forwarded `--` args are appended to, and only the body takes them, as
 npm appends them to the script and never to its hooks. A plain ` && `
 join handed them to the post hook, and `test -f x && echo A; echo B` ran
-`echo B` after a failed pre hook and went green (item 905). Each part
-ends on its own line, so a trailing `# comment` cannot swallow the
-paren. A script with no hooks is its body, verbatim.
+`echo B` after a failed pre hook and went green (item 905). npm appends
+them as TEXT: no part sees them as `$1`…, so the function quotes them
+into `vx_a`, clears its positional parameters, and evals the body with
+`vx_a` after it; `"$@"` on the body made a script's `$1` the first
+forwarded arg and its `$*` print them twice. Each part ends on its own
+line, so a trailing `# comment` cannot swallow the paren. A script with
+no hooks is its body, verbatim.
 
 ```ts
 export function foldScriptHooks(
@@ -775,6 +799,7 @@ export interface InfoFacts {
   }
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  cacheStore: string | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number
@@ -1205,6 +1230,12 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   blockedBy?: string
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1405,6 +1436,37 @@ type · `src/config.ts`
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
 ```
 
+## `PluginHookHandlers`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface PluginHookHandlers {
+  onRunStart: (info: RunStartInfo) => void | Promise<void>
+  onTaskStart: (node: TaskNode) => void | Promise<void>
+  onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onRunStatus: (line: string) => void | Promise<void>
+  onRunEnd: () => void | Promise<void>
+}
+```
+
+## `PluginHookName`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export type PluginHookName =
+  | 'onRunStart'
+  | 'onTaskStart'
+  | 'onTaskStdout'
+  | 'onTaskStderr'
+  | 'onTaskComplete'
+  | 'onRunStatus'
+  | 'onRunEnd'
+```
+
 ## `PluginHooks`
 
 type · `src/orchestrator/plugin.ts`
@@ -1448,8 +1510,12 @@ export interface PluginOrigin {
 
 type · `src/orchestrator/plugin.ts`
 
+What `setup` receives: the run's lifecycle, observe-only.
+
 ```ts
-export interface PluginSetupContext extends BaseContext {}
+export interface PluginSetupContext extends BaseContext {
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 ```
 
 ## `PreparedRun`
@@ -1748,12 +1814,19 @@ export interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string
   workspaceName: string
+  repository?: string
+  workspacePath?: string
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  ciRunUrl?: string
+  ciChange?: string
+  ciPipeline?: string
+  ciJob?: string
+  ciAttempt?: number
   host: string | null
   os: string
   arch: string
@@ -1772,6 +1845,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   affected?: AffectedChanges
+  selectedOutright?: readonly string[]
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
@@ -1793,6 +1867,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -1866,6 +1941,22 @@ export interface RunResult {
 }
 ```
 
+## `RunStartInfo`
+
+type · `src/orchestrator/events.ts`
+
+Payload of the `run:start` event — mirrors the Logger.runStart hook.
+
+```ts
+export interface RunStartInfo {
+  total: number
+  concurrency?: number
+  requestedCount?: number
+  context?: RunContext
+  startedAtMs?: number
+}
+```
+
 ## `RunSummary`
 
 type · `src/orchestrator/options.ts`
@@ -1906,6 +1997,8 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[]
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
 }
 ```
 
@@ -2155,6 +2248,12 @@ export interface TaskOutcome {
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
+  inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
@@ -2168,6 +2267,8 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }
@@ -2230,6 +2331,19 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  failedAttempts?: readonly FailedAttempt[]
+  flaky?: { passes: number; failures: number }
+  sandboxViolationLines?: readonly string[]
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -2307,6 +2421,7 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      dependsOn?: readonly string[]
       ts: number
     }
   | {
@@ -2317,6 +2432,15 @@ export type TelemetryRecord =
       stream: 'stdout' | 'stderr'
       chunk: string
       ts: number
+    }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      cpuMs: number
+      rssBytes: number
     }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }
@@ -2427,6 +2551,7 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
   cacheScope?: string
+  rules?: WorkspaceRules
   plugins?: readonly Plugin[]
 }
 ```
@@ -2452,5 +2577,7 @@ type · `src/orchestrator/run-context.ts`
 export interface WorkspaceIdentity {
   id: string
   name: string
+  repository?: string
+  path?: string
 }
 ```

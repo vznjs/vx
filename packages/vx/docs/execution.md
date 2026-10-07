@@ -45,7 +45,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
  │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (concurrency /
  │       cacheDir / timeout / cacheRetention / affectedBase / cacheScope /
- │       plugins),
+ │       rules / plugins),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
@@ -407,7 +407,8 @@ The child process gets, in priority order (lowest first):
 Anything not in these four layers is invisible to the child, except
 the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a
 task that shells out to `vx run` in its own workspace is refused
-before it forks without bound. A sandboxed task also gets the sandbox's own
+before it forks without bound, and `npm_execpath`, the workspace's
+package manager (unkeyed; `schema.md` § `env`). A sandboxed task also gets the sandbox's own
 proxy, CA and `TMPDIR` values
 ([`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md#the-environment-srt-sets)). This prevents incidental env leakage
 between machines and gives reproducible runs.

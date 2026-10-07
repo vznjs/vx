@@ -19,6 +19,7 @@ import type { Logger, RunSummary } from '../src/orchestrator/index.js'
 import { prepareRun, run } from '../src/orchestrator/index.js'
 import { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
+import { probesAfterWrites } from '../src/orchestrator/stable-keys.js'
 import { computeWorkspaceFingerprints } from '../src/workspace/index.js'
 import {
   commandWriteReach,
@@ -26,6 +27,7 @@ import {
   undeclaredWriteReach,
 } from '../src/orchestrator/sandbox-request.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 const READ_ONLY: CachePolicy = {
@@ -156,6 +158,7 @@ describe('a cached task that runs but does not save', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       await writeFile(path.join(app, 'seed.txt'), 'B')
       // Before the fix: `gen.txt` kept its committed OID in the snapshot and
@@ -190,6 +193,7 @@ describe('a cached task that runs but does not save', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       const r = await runTask('build', READ_ONLY)
       expect(statusOf(r, 'app#gen')).toBe('cache-hit')
@@ -314,13 +318,13 @@ describe('a task that rewrites the lockfile the workspace fingerprint folded', (
 
 describe('the contract for `inputs.runtime`: an answer about the environment, taken once', () => {
   it(
-    'is asked once per run, before any task, and a task that changes it is not seen by that run',
+    'is asked once, after an upstream its key does not fold has written',
     async () => {
       // `bump` (uncached) changes what `build`'s runtime command answers,
-      // and `build` folds no key of it. The answer is not asked again before
-      // the save, as input files are re-checked: the entry built against 2
-      // is filed under 1, and a run that starts from 1 hits it. Declaring
-      // `ver.txt` as an input is how a task says it reads another's output.
+      // and `build` folds no key of it. Until X-34 the answer was taken up
+      // front, before `bump` ran: the entry built against 2 was filed under
+      // 1, and a run that started from 1 hit it. Now the probe waits for
+      // `bump` and is still asked once.
       const app = await addProject(root, 'app', {
         config: `
           export default {
@@ -351,8 +355,9 @@ describe('the contract for `inputs.runtime`: an answer about the environment, ta
       await writeFile(path.join(app, 'ver.txt'), '1')
       await writeFile(path.join(app, 'next.txt'), '1')
       const r = await runTask('build')
-      expect(statusOf(r, 'app#build')).toBe('cache-hit')
-      expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('2')
+      expect(statusOf(r, 'app#build')).toBe('success')
+      expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('1')
+      expect(await readFile(path.join(root, 'spawns.log'), 'utf8')).toBe('x\nx\n')
     },
     TIMEOUT,
   )
@@ -779,4 +784,225 @@ describe('FingerprintWatch — which fingerprinted files moved since the run rea
     rewritten.wrote()
     expect(rewritten.moved()).toEqual(['pnpm-lock.yaml'])
   })
+})
+
+// A runtime probe is a shell command: it may read what an upstream writes.
+// `app#build` folds no key of `lib#gen` (`tasks: []`) and reads its output
+// only through a probe. Its key was taken up front, before `lib#gen` wrote,
+// so it read the previous run's bytes; the run's probe memo then served
+// that answer to the key taken after `lib#gen` ran, and the re-check before
+// a save saw nothing move (X-34).
+describe('a runtime probe that reads an upstream output', () => {
+  const lib = `
+    export default { tasks: { gen: {
+      exec: { command: 'cp seed.txt out.txt' },
+      cache: { inputs: { files: ['seed.txt'] }, outputs: { files: ['out.txt'] } },
+    } } }
+  `
+  const app = (probe: string, sibling = ''): string => `
+    export default { tasks: {
+      build: {
+        dependsOn: ['lib#gen'],
+        exec: { command: 'mkdir -p dist && cat ../lib/out.txt > dist/out.txt' },
+        cache: { inputs: { files: [], tasks: [], ${probe} }, outputs: { files: ['dist/**'] } },
+      },
+      ${sibling}
+    } }
+  `
+  async function fixture(appConfig: string): Promise<{ libDir: string; appDir: string }> {
+    const libDir = await addProject(root, 'lib', { config: lib, files: { 'seed.txt': 'X' } })
+    const appDir = await addProject(root, 'app', { config: appConfig })
+    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nout.txt\n')
+    commit()
+    return { libDir, appDir }
+  }
+  async function seeds(
+    libDir: string,
+    appDir: string,
+    tasks: string[] = ['build'],
+  ): Promise<string[]> {
+    const outs: string[] = []
+    for (const seed of ['A', 'B', 'B', 'A']) {
+      await writeFile(path.join(libDir, 'seed.txt'), seed)
+      await runTask(tasks)
+      outs.push(await readFile(path.join(appDir, 'dist', 'out.txt'), 'utf8'))
+    }
+    return outs
+  }
+
+  it(
+    'seeds A, B, B, A build A, B, B, A: a project probe waits for the upstream',
+    async () => {
+      const { libDir, appDir } = await fixture(
+        app("runtime: ['cat ../lib/out.txt 2>/dev/null || true']"),
+      )
+      expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'seeds A, B, B, A build A, B, B, A: a workspace probe waits for the upstream',
+    async () => {
+      const { libDir, appDir } = await fixture(
+        app("workspaceRuntime: ['cat packages/lib/out.txt 2>/dev/null || true']"),
+      )
+      expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it.each([
+    ['project', "runtime: ['cat ../lib/out.txt 2>/dev/null || true']"],
+    ['workspace', "workspaceRuntime: ['cat packages/lib/out.txt 2>/dev/null || true']"],
+  ])(
+    "a sibling's up-front answer to the same %s probe is not reused after the upstream wrote",
+    async (_kind, probe) => {
+      // `lint` runs the same probe with no upstream, so its key is taken
+      // up front and its answer predates `lib#gen`'s write.
+      const { libDir, appDir } = await fixture(
+        app(
+          probe,
+          `lint: {
+            exec: { command: 'true' },
+            cache: { inputs: { files: [], ${probe} }, outputs: { files: [] } },
+          },`,
+        ),
+      )
+      expect(await seeds(libDir, appDir, ['build', 'lint'])).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a key that folds the writer's keeps its up-front answer: a spurious miss at worst, never a stale hit",
+    async () => {
+      // CONTROL: the same probe, with `lib#gen`'s key folded. The early
+      // answer is one run behind, but the key moves with the seed, so the
+      // trees stay right and the probe stays one spawn per run.
+      const { libDir, appDir } = await fixture(
+        app("runtime: ['cat ../lib/out.txt 2>/dev/null || true']").replace('tasks: [], ', ''),
+      )
+      const prepared = await prepareRun({ cwd: root, tasks: ['build'], log: logger }, logger)
+      try {
+        expect([...probesAfterWrites(prepared.nodes, prepared.workspaceRoot)]).toEqual([])
+      } finally {
+        prepared.cache.close()
+      }
+      expect(await seeds(libDir, appDir)).toEqual(['A', 'B', 'B', 'A'])
+    },
+    TIMEOUT,
+  )
+
+  it.each([
+    ['outputs.files', "outputs: { files: ['out.txt'] }"],
+    ['outputs.workspaceFiles', "outputs: { files: [], workspaceFiles: ['packages/lib/out.txt'] }"],
+  ])(
+    'a sandboxed upstream with no write grant still writes its %s: the probe waits',
+    async (_field, outputs) => {
+      await addProject(root, 'lib', {
+        config: `export default { tasks: { gen: {
+          exec: { command: 'cp seed.txt out.txt', sandbox: {} },
+          cache: { inputs: { files: ['seed.txt'] }, ${outputs} },
+        } } }`,
+        files: { 'seed.txt': 'X' },
+      })
+      await addProject(root, 'app', {
+        config: app("runtime: ['cat ../lib/out.txt 2>/dev/null || true']"),
+      })
+      commit()
+      const prepared = await prepareRun({ cwd: root, tasks: ['build'], log: logger }, logger)
+      try {
+        expect([...probesAfterWrites(prepared.nodes, prepared.workspaceRoot)]).toEqual([
+          'app#build',
+        ])
+      } finally {
+        prepared.cache.close()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a writer one hop down that the folded dependency leaves out still makes the probe wait',
+    async () => {
+      // `app#build` folds `app#mid`, and `mid` folds nothing (`tasks: []`):
+      // `lib#gen`'s writes reach `build`'s key through no fold.
+      await addProject(root, 'lib', { config: lib, files: { 'seed.txt': 'X' } })
+      await addProject(root, 'app', {
+        config: `export default { tasks: {
+          mid: {
+            dependsOn: ['lib#gen'],
+            exec: { command: 'true', sandbox: {} },
+            cache: { inputs: { files: [], tasks: [] }, outputs: { files: [] } },
+          },
+          build: {
+            dependsOn: ['mid'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: [], runtime: ['cat ../lib/out.txt'] }, outputs: { files: [] } },
+          },
+        } }`,
+      })
+      commit()
+      const prepared = await prepareRun({ cwd: root, tasks: ['build'], log: logger }, logger)
+      try {
+        expect([...probesAfterWrites(prepared.nodes, prepared.workspaceRoot)]).toEqual([
+          'app#build',
+        ])
+      } finally {
+        prepared.cache.close()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'with sibling dedup on, a probe behind a writer still spawns once per run',
+    async () => {
+      // Admission keys the task before it runs; that key and the task's own
+      // share the one answer, taken after `lib#gen`.
+      const { libDir, appDir } = await fixture(
+        app("runtime: ['echo x >> ../../spawns.log; cat ../lib/out.txt 2>/dev/null || true']"),
+      )
+      await writeFile(path.join(libDir, 'seed.txt'), 'A')
+      const r = await run({ cwd: root, tasks: ['build'], log: logger, inflight: new Map() })
+      expect(r.ok).toBe(true)
+      expect(await readFile(path.join(appDir, 'dist', 'out.txt'), 'utf8')).toBe('A')
+      expect(await readFile(path.join(root, 'spawns.log'), 'utf8')).toBe('x\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a probe behind a writer is never restore-tier',
+    async () => {
+      await fixture(app("runtime: ['cat ../lib/out.txt 2>/dev/null || true']"))
+      await writeFile(path.join(root, 'packages', 'lib', 'seed.txt'), 'A')
+      await runTask('build')
+      const prepared = await prepareRun({ cwd: root, tasks: ['build'], log: logger }, logger)
+      try {
+        expect([...probesAfterWrites(prepared.nodes, prepared.workspaceRoot)]).toEqual([
+          'app#build',
+        ])
+        const sc = await startLocalShortCircuit({
+          nodes: prepared.nodes,
+          cache: prepared.cache,
+          workspaceRoot: prepared.workspaceRoot,
+          workspaceFingerprint: prepared.workspaceFingerprint,
+          nestedDirsByProject: prepared.nestedDirsByProject,
+          gitFilesCache: prepared.gitFilesCache,
+          hashCache: prepared.hashCache,
+          concurrency: 4,
+        })
+        expect(sc.preProbed.has('app#build')).toBe(false)
+        // CONTROL: the writer's own hit is restore-tier as any leaf hit is.
+        expect(sc.restoreTier.has('lib#gen')).toBe(true)
+        // Its probe never ran up front: the memo holds no answer to it.
+        expect(prepared.hashCache.runtime.size).toBe(0)
+      } finally {
+        prepared.cache.close()
+      }
+    },
+    TIMEOUT,
+  )
 })

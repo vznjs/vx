@@ -1980,6 +1980,28 @@ describe.skipIf(!available || process.platform !== 'linux')(
       },
       TIMEOUT,
     )
+
+    // GNU cp opens its destination without O_CREAT first, and tsc probes
+    // its buildinfo: a miss under a write grant is the task's own output
+    // not made yet, as one under a read grant is a file it lacks. It was
+    // counted, and `cp` into `dist/` failed the task (X-63).
+    it(
+      'a missing file under a write grant is no violation',
+      async () => {
+        const dir = await addProject(fixture.root, 'app', {
+          config: `export default { tasks: { build: { exec: {
+            command: 'mkdir -p dist; cp src/in.txt dist/out.txt',
+            sandbox: { allow: { read: ['src/'], write: ['dist/'] } },
+          } } } }\n`,
+          files: { 'src/in.txt': 'in\n' },
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.sandboxViolationLines ?? []).toEqual([])
+        expectOk(r, fixture)
+        expect(await readFile(path.join(dir, 'dist', 'out.txt'), 'utf8')).toBe('in\n')
+      },
+      TIMEOUT,
+    )
   },
 )
 
@@ -3234,6 +3256,46 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     )
     expect(produced.map((v) => v.target)).toEqual([`${ws}/libx/y.ts`])
   })
+
+  // A write grant permits the same as a read grant here: a miss under it is
+  // the task's output not made yet (X-63). A sibling sharing its name
+  // prefix is still reported.
+  it('skips a miss under a write grant, and reports a sibling sharing its name prefix', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(path.join(ws, 'dist'), { recursive: true })
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, [at(`${ws}/dist/out.txt`), at(`${ws}/distx/y.ts`)].join('\n'))
+    const produced = await parseStraceViolations(
+      log,
+      {
+        command: 'x',
+        cwd: ws,
+        env: {},
+        config: resolveSandboxConfig({ allow: { write: ['dist/'] } }, ws),
+      } as never,
+      { allowRead: [], denyRead: [ws], cwd: ws },
+    )
+    expect(produced.map((v) => v.target)).toEqual([`${ws}/distx/y.ts`])
+  })
+
+  // …but one the Linux sandbox mounts no bind for permits nothing, as an
+  // unmountable read grant does: a miss under it is the refused write.
+  it.skipIf(process.platform !== 'linux')(
+    'a miss under a write grant the sandbox could not mount is reported',
+    async () => {
+      const ws = path.join(dir, 'ws')
+      await mkdir(ws, { recursive: true })
+      const log = path.join(dir, 'trace.log')
+      const grant = `${ws}/out*dir`
+      await writeFile(log, at(`${grant}/x`))
+      const produced = await parseStraceViolations(
+        log,
+        { command: 'x', cwd: ws, env: {}, config: { allowRead: [], allowWrite: [grant] } } as never,
+        { allowRead: [], denyRead: [ws], cwd: ws },
+      )
+      expect(produced.map((v) => v.target)).toEqual([`${grant}/x`])
+    },
+  )
 
   // Item 652: the fixture root above is canonical, so the three `toRealPath`
   // calls in the strace pass could each go with the suite green. A traced

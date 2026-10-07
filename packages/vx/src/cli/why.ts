@@ -6,8 +6,8 @@
 // no config evaluation, no re-hash.
 
 import path from 'node:path'
-import { Cache, noteSchemaReset } from '../cache/index.js'
-import { flagHint, seeHelp } from './help.js'
+import { Cache } from '../cache/index.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
@@ -18,7 +18,8 @@ import {
 } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
+import { findCwdProject } from './select.js'
+import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
@@ -69,17 +70,8 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       continue
     }
     if (a === '--format' || a.startsWith('--format=')) {
-      const fv = a === '--format' ? args[++i] : a.slice(9)
-      if (fv !== 'pretty' && fv !== 'json') {
-        // An omitted value reads as empty, not as the literal word "undefined".
-        return {
-          ...out,
-          error:
-            fv === undefined || fv === ''
-              ? '--format requires a value (pretty | json)'
-              : `invalid --format: ${fv} (expected pretty | json)`,
-        }
-      }
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'why')
+      if (typeof fv === 'object') return { ...out, ...fv }
       out.format = fv
       continue
     }
@@ -105,7 +97,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
  * every recorded id (the same rule `vx run` hints with) and the hint is
  * the runnable `project#task`; an anchored query is matched whole.
  */
-function suggest(query: string, ids: readonly string[]): string {
+function suggest(query: string, ids: readonly string[], invoked: boolean): string {
   let hits: string[]
   if (query.includes('#')) {
     hits = nearMatches(query, ids)
@@ -119,17 +111,25 @@ function suggest(query: string, ids: readonly string[]): string {
   }
   if (hits.length > 0) return ` — did you mean ${hits.slice(0, 3).join(', ')}?`
   // No near name: say where to look, or that there is nothing yet.
-  return ids.length === 0
-    ? `; nothing has run here yet (vx run ${query}, then vx why)`
-    : '; `vx last --list` shows what has run'
+  // A run of only group tasks records no task row: "nothing has run" was
+  // false there, and its advice re-ran the group to the same answer.
+  if (ids.length > 0) return '; `vx last --list` shows what has run'
+  return invoked
+    ? '; no recorded run executed a task (a group records none: ask about a task it depends on)'
+    : `; nothing has run here yet (vx run ${query}, then vx why)`
 }
 
 /**
  * Resolve a positional target to a full `project#task` id against the runs
  * table. A `pkg#task` form is used as-is; a bare task name matches every
- * project that ran it — unique → resolved, several → error listing them.
+ * project that ran it — unique → resolved, several → the project the cwd
+ * sits in, as `vx run build` there picks (X-18), else an error listing them.
  */
-function resolveTarget(cache: Cache, target: string): string {
+async function resolveTarget(
+  cache: Cache,
+  target: string,
+  cwdProject: () => Promise<string | null>,
+): Promise<string> {
   const db = cache.dbHandle()
   if (target.includes('#')) {
     // An exact id needs one row, and its newest is where a scan from the
@@ -145,18 +145,23 @@ function resolveTarget(cache: Cache, target: string): string {
     .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
     .all() as Array<{ project: string; task: string }>
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
+  const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (target.includes('#')) {
-    throw new UserError(`vx why: no recorded runs for "${target}"${suggest(target, ids)}`)
+    throw new UserError(`vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`)
   }
   const matches = ids.filter((id) => id.endsWith(`#${target}`))
   if (matches.length === 1) return matches[0]!
   if (matches.length > 1) {
+    const here = await cwdProject()
+    if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
     throw new UserError(
       `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
         matches.map((m) => `  ${m}`).join('\n'),
     )
   }
-  throw new UserError(`vx why: no recorded runs for task "${target}"${suggest(target, ids)}`)
+  throw new UserError(
+    `vx why: no recorded runs for task "${target}"${suggest(target, ids, invoked)}`,
+  )
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
@@ -185,14 +190,21 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
   const root = await findWorkspaceRoot(process.cwd())
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
-  noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
-    const taskId = resolveTarget(cache, await rootSpelled(root, parsed.target))
-    const runId =
-      parsed.runId !== undefined
-        ? (resolveRunId(db, parsed.runId, 'vx why') ?? parsed.runId)
-        : latestRunId(db, taskId)
+    const taskId = await resolveTarget(cache, await rootSpelled(root, parsed.target), () =>
+      findCwdProject(process.cwd()),
+    )
+    let runId: string | null
+    if (parsed.runId !== undefined) {
+      runId = resolveRunId(db, parsed.runId, 'vx why')
+      // An unknown id read as a known run missing the task (X-18).
+      if (runId === null) {
+        throw new UserError(
+          `vx why: no recorded run ${parsed.runId} (vx last --list shows recent runs)`,
+        )
+      }
+    } else runId = latestRunId(db, taskId)
 
     if (runId === null) {
       // Runs exist (resolveTarget passed) but predate run ids — fall back to
@@ -246,7 +258,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.
-      const moved = diff.entries.map((e) => `${e.kind} ${printable(e.name)}`)
+      // The config component is kind and name `config`: it read "config config".
+      const moved = diff.entries.map((e) =>
+        e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
+      )
       lines.push(
         `  verdict    ${
           why.hashChanged === true && moved.length > 0

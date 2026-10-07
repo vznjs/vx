@@ -10,7 +10,7 @@
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
-import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import type { ProjectConfig, WorkspaceConfig, WorkspaceRules } from '../config.js'
 import { checkGraph, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
@@ -169,21 +169,45 @@ export async function applyProjectHooks(
  * deleting each other's outputs). A violation is reported
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
- * the later one, since nothing is checked between plugins.
+ * the later one, since the structure is not checked between plugins.
+ * Each node's task config is (`afterEach`), like the `project` stage's.
  */
 export async function applyGraphHooks(
   plugins: readonly VxPlugin[],
   nodes: Map<string, TaskNode>,
   ctx: GraphHookContext,
+  /** Runs after EACH plugin's edit, so a refused task config names the plugin that wrote it. */
+  afterEach?: (plugin: VxPlugin) => void,
+  rules?: WorkspaceRules,
 ): Promise<void> {
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
     await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    await safe(plugin, 'graph', () => checkNodeShapes(nodes))
+    afterEach?.(plugin)
     last = plugin
   }
   if (last === undefined) return
-  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot))
+  await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot, rules))
+}
+
+/**
+ * A hook writes the graph as plain JS: `deps = null` surfaced as "null is
+ * not an object", naming no task (X-15). Checked per plugin, before its
+ * edits are read, so the refusal names the plugin that wrote them.
+ */
+function checkNodeShapes(nodes: Map<string, TaskNode>): void {
+  const what = (v: unknown): string => (v === null ? 'null' : typeof v)
+  for (const [key, node] of nodes as Map<string, unknown>) {
+    if (typeof node !== 'object' || node === null) {
+      throw new Error(`'${key}' holds ${what(node)}, not a task`)
+    }
+    const deps = (node as { deps?: unknown }).deps
+    if (!Array.isArray(deps)) {
+      throw new Error(`${key}'s deps is ${what(deps)}, not an array of task ids`)
+    }
+  }
 }
 
 /**

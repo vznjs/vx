@@ -45,6 +45,12 @@ const build = async (tasks = ['build']) => {
   const r = await run({ cwd: fx.root, tasks, log: silentLogger(fx) })
   return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o]))
 }
+/** The addition shape loads only with `rules.exclusiveOutputs` off (X-53). */
+const additive = () =>
+  writeFile(
+    path.join(fx.root, 'vx.workspace.mjs'),
+    'export default { rules: { exclusiveOutputs: false } }\n',
+  )
 const read = (rel: string): string => readFileSync(path.join(app, rel), 'utf8')
 /** The paths an entry recorded, as the index holds them. */
 const rowsOf = (hash: string): string[] => {
@@ -125,6 +131,7 @@ describe('a negated output', () => {
   it(
     "keeps a dependant's scratch file out of its entry in the addition shape",
     async () => {
+      await additive()
       await writeFile(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: {
@@ -174,6 +181,7 @@ describe('a negated output in the task graph', () => {
   it(
     "leaves a narrower dependant's negation out of what the upstream counts as its additions",
     async () => {
+      await additive()
       await writeFile(
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: {

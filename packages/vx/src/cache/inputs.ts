@@ -21,19 +21,23 @@ import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs
 import { rm, rmdir } from 'node:fs/promises'
 import type { CacheConfig, CacheInputs } from '../config.js'
 import {
+  anyTaskGlob,
   asTrees,
   isExecutableMissing,
+  isInstalledPath,
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  relPosix,
   shellArgv,
-  splitNegations,
   slashBraceExpansions,
+  splitNegations,
   staticPrefix,
   taskGlob,
   UserError,
 } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the
@@ -57,8 +61,10 @@ export {
 // re-lock can't bust every cache key the way a tracked source file
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
 // cache is a leaf module and must not import from workspace.)
+//
+// `node_modules` is not here: the enumeration drops an untracked file
+// under one (`isInstalledPath`), and a tracked one is a source.
 const ALWAYS_IGNORE = [
-  '**/node_modules/**',
   // Defense in depth, and measured as exactly that (item 497): git never
   // reports a path under `.git`, so dropping this line changes NOTHING on
   // any route into the input set. Probed three ways with the pattern in
@@ -90,6 +96,8 @@ const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
 export interface ResolvedInputs {
   files: string[]
+  /** What `files` was filtered from, for {@link addedInput}. */
+  listings: InputListing[]
   envValues: Array<[name: string, value: string | undefined]>
   runtimeValues: Array<[command: string, output: string]>
   workspaceRuntimeValues: Array<[command: string, output: string]>
@@ -131,6 +139,13 @@ export interface ResolveInputsArgs {
    */
   workspaceRuntimeCache?: Map<string, Promise<string>>
   /**
+   * Answer this task's probes apart from every other task's, in both memos
+   * above: the probes may read what its upstream wrote this run, so an
+   * answer another task took before that write is not this task's (X-34).
+   * The task id.
+   */
+  runtimeScope?: string
+  /**
    * Run-scoped memo for `cache.inputs.workspaceFiles`, keyed by the
    * declaration and valid for one enumeration snapshot. A Turbo-mapped
    * workspace gives every task the same `globalDependencies`, and
@@ -167,7 +182,7 @@ export type ProjectFilesCache = Map<
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const projectFiles = await resolveFiles({
+  const { files: projectFiles, listing } = await resolveFiles({
     projectDir: args.projectDir,
     workspaceRoot: args.workspaceRoot,
     files: args.inputs?.files,
@@ -177,15 +192,18 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
   })
   let files = projectFiles
+  const listings = listing === undefined ? [] : [listing]
   const wsDecl = args.inputs?.workspaceFiles
   if (wsDecl !== undefined && wsDecl.length > 0) {
-    const wsFiles = await resolveWorkspaceFiles({
+    const ws = resolveWorkspaceFiles({
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: wsDecl,
       ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.workspaceFilesCache !== undefined ? { memo: args.workspaceFilesCache } : {}),
     })
+    if (ws !== undefined) listings.push(ws.listing)
+    const wsFiles = ws === undefined ? [] : await ws.files
     // Dedupe: when the project dir IS the workspace root (or a glob
     // overlaps), the same absolute path can arrive via both lists —
     // it must contribute to the key exactly once.
@@ -204,18 +222,21 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.projectDir,
             projectBinDirs(args.projectDir, args.workspaceRoot),
             args.runtimeCache,
-            `${args.projectDir}\0`,
+            args.runtimeScope === undefined
+              ? `${args.projectDir}\0`
+              : `${args.projectDir}\0${args.runtimeScope}\0`,
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
             args.workspaceRoot,
             [path.join(args.workspaceRoot, 'node_modules', '.bin')],
             args.workspaceRuntimeCache,
-            '',
+            args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
           ),
         ])
   return {
     files,
+    listings,
     envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
     runtimeValues,
     workspaceRuntimeValues,
@@ -233,13 +254,13 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
  * codegen); the hard boundary continues to apply to project-relative
  * `files` globs only.
  */
-async function resolveWorkspaceFiles(args: {
+function resolveWorkspaceFiles(args: {
   workspaceRoot: string
   workspaceFiles: readonly string[]
   ownWorkspaceOutputs: readonly string[]
   gitFilesCache?: GitFilesCache
   memo?: WorkspaceFilesCache
-}): Promise<string[]> {
+}): { files: Promise<string[]>; listing: InputListing } | undefined {
   const positive: string[] = []
   const negative: string[] = []
   refuseOneAlternativeBrace(args.workspaceFiles, 'workspaceFiles')
@@ -247,12 +268,12 @@ async function resolveWorkspaceFiles(args: {
     if (entry.startsWith('!')) negative.push(entry.slice(1))
     else positive.push(entry)
   }
-  if (positive.length === 0) return []
+  if (positive.length === 0) return undefined
 
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
+  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
   // A path the task's own outputs take back with `!` is no output, so it
   // stays an input (A-44).
-  const ownOutput = outputMatcher(args.ownWorkspaceOutputs, globFor)
+  const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
@@ -273,27 +294,37 @@ async function resolveWorkspaceFiles(args: {
     args.memo === undefined
       ? undefined
       : JSON.stringify([positive, negative, args.ownWorkspaceOutputs])
+  let isPositive: ((rel: string) => boolean) | undefined
+  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel)
+  const listing: InputListing = {
+    root: args.workspaceRoot,
+    listed: gitFiles,
+    isInput: (rel) => (isPositive ??= anyTaskGlob(asTrees(positive)))(rel) && !excluded(rel),
+    nested: () => false,
+    ...reachOf(positive),
+  }
   if (memoKey !== undefined) {
     const hit = args.memo!.get(memoKey)
-    if (hit !== undefined && hit.snapshot === gitFiles) return hit.result
+    if (hit !== undefined && hit.snapshot === gitFiles) return { files: hit.result, listing }
   }
+  isPositive ??= anyTaskGlob(asTrees(positive))
   const result = resolveWorkspaceFilesOver(
     args,
     gitFiles,
     positive,
-    positiveGlobs,
-    (rel) => excludeGlobs.some((g) => g.match(rel)) || ownOutput(rel),
+    isPositive,
+    excluded,
     undecodable,
   )
   if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
-  return result
+  return { files: result, listing }
 }
 
 async function resolveWorkspaceFilesOver(
   args: { workspaceRoot: string; gitFilesCache?: GitFilesCache },
   gitFiles: readonly string[],
   positive: readonly string[],
-  positiveGlobs: readonly Bun.Glob[],
+  isPositive: (rel: string) => boolean,
   excluded: (rel: string) => boolean,
   undecodable: ReadonlySet<string> | undefined,
 ): Promise<string[]> {
@@ -301,13 +332,13 @@ async function resolveWorkspaceFilesOver(
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = new Set(
+  const unmatchedLiterals = unanswered(
     positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+    gitFiles,
   )
   const candidates: string[] = []
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
-    if (!positiveGlobs.some((g) => g.match(rel))) continue
+    if (!isPositive(rel)) continue
     if (excluded(rel)) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
   }
@@ -424,19 +455,31 @@ async function runRuntimeCommand(
   let stdout, stderr, exitCode
   try {
     ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      new Response(proc.stdout).bytes(),
+      new Response(proc.stderr).bytes(),
       proc.exited,
     ])
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
   }
-  const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
+    const lossy = new TextDecoder()
+    const output = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
         (output ? `\n${output}` : ''),
+    )
+  }
+  let output: string
+  try {
+    output = `${FATAL_UTF8.decode(stdout)}${FATAL_UTF8.decode(stderr)}`.trim()
+  } catch {
+    // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
+    // folded the same output and replayed each other's build.
+    throw new UserError(
+      `cache.inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+        `Pipe it through a hash or od.`,
     )
   }
   return output
@@ -663,15 +706,15 @@ export async function cleanOutputs(args: {
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
-  await removeAll(files, args.projectDir)
+  const removed = await removeAll(files, args.projectDir)
   await pruneEmptiedDirs(
     args.projectDir,
-    files,
+    removed,
     args.keepGlobRoots === true ? globRoots(args.projectDir, args.outputs) : undefined,
   )
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
-  return files.map((f) => path.relative(args.projectDir, f).split(path.sep).join('/'))
+  return files.map((f) => relPosix(args.projectDir, f))
 }
 
 /**
@@ -686,14 +729,20 @@ export async function cleanOutputPaths(args: {
   rels: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await removeAll(files, args.projectDir)
-  await pruneEmptiedDirs(args.projectDir, files)
+  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
 }
 
-/** A file's identity for the additive diff: what the hit path's fingerprint trusts too. */
+/**
+ * A file's identity for the additive diff: what the hit path's
+ * `isOutputsCurrent` trusts too. Size and mtime alone missed a rewrite to
+ * bytes of the same length with the mtime stamped back; the inode and
+ * ctime are what no task sets (item 886).
+ */
 export interface OutputStamp {
   size: number
   mtimeMs: number
+  ino: number
+  ctimeMs: number
 }
 
 /**
@@ -722,7 +771,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
   for (const f of files) {
     try {
       const st = lstatSync(f)
-      out.set(f, { size: st.size, mtimeMs: st.mtimeMs })
+      out.set(f, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs })
     } catch {
       // Gone between the walk and the stat: not a file the task found.
     }
@@ -732,16 +781,20 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
 
 /**
  * The files an additive task's run ADDED or CHANGED under its declared
- * outputs: every selected file that was not in `before`, or whose size or
- * mtime moved. Size + mtime is the proof the hit path already trusts for
- * a current tree, so no new trust is introduced. A file the run rewrote
- * with identical bytes counts as its own (the mtime moved), which is the
+ * outputs: every selected file that was not in `before`, or whose stamp
+ * (`OutputStamp`) moved — the proof the hit path trusts for a current
+ * tree, so no new trust is introduced. A file the run rewrote, even with
+ * identical bytes, counts as its own (its ctime moved), which is the
  * rewrite-in-place cost the design note records.
+ *
+ * Undefined when the run REMOVED a file it found: an artifact holds what a
+ * run wrote, never what it took away, and the upstream's restore puts the
+ * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
   args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
 }
 
@@ -749,15 +802,16 @@ export async function ownOutputsSince(
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
 }
 
 function changedSince(
   after: readonly string[],
   before: ReadonlyMap<string, OutputStamp>,
-): string[] {
+): string[] | undefined {
   const own: string[] = []
+  let kept = 0
   for (const f of after) {
     const was = before.get(f)
     if (was === undefined) {
@@ -766,12 +820,19 @@ function changedSince(
     }
     try {
       const st = lstatSync(f)
-      if (st.size !== was.size || st.mtimeMs !== was.mtimeMs) own.push(f)
+      kept++
+      if (
+        st.size !== was.size ||
+        st.mtimeMs !== was.mtimeMs ||
+        st.ino !== was.ino ||
+        st.ctimeMs !== was.ctimeMs
+      )
+        own.push(f)
     } catch {
-      // Vanished since the walk: not an output.
+      // Vanished since the walk: removed, as one the walk missed is.
     }
   }
-  return own
+  return kept < before.size ? undefined : own
 }
 
 /**
@@ -788,9 +849,10 @@ const SYNC_CLEAN_MAX = 128
  * the scheduler prints any other error as an "internal error", which
  * sends the reader to file a bug against a permission bit.
  */
-async function removeAll(files: readonly string[], root: string): Promise<void> {
+async function removeAll(all: readonly string[], root: string): Promise<string[]> {
+  const files = notThroughLink(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
-    const rel = path.relative(root, f).split(path.sep).join('/')
+    const rel = relPosix(root, f)
     return new UserError(
       `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
         `declared outputs before it runs and before a restore; make the path removable ` +
@@ -805,7 +867,7 @@ async function removeAll(files: readonly string[], root: string): Promise<void> 
         throw refused(f, err as NodeJS.ErrnoException)
       }
     }
-    return
+    return files
   }
   await Promise.all(
     files.map((f) =>
@@ -814,6 +876,39 @@ async function removeAll(files: readonly string[], root: string): Promise<void> 
       }),
     ),
   )
+  return files
+}
+
+/**
+ * The paths whose directory is really where it sits, not reached through a
+ * symlinked directory. A save follows `dist -> real-out` on purpose
+ * (turborepo#13042), but a clean through a link deletes the target's
+ * files: `public -> static` in the same project took the tracked
+ * `static/logo.svg` before every run (X-5). The link is a declared
+ * output's own entry; what it leads to is not.
+ */
+function notThroughLink(files: readonly string[], root: string): string[] {
+  const real = (p: string): string | null => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return null
+    }
+  }
+  const realRoot = real(root) ?? root
+  const own = new Map<string, boolean>()
+  return files.filter((f) => {
+    const dir = path.dirname(f)
+    let ok = own.get(dir)
+    if (ok === undefined) {
+      // A directory already gone has nothing to delete through; its path
+      // stays so the prune still reaches the parents it emptied.
+      const r = real(dir)
+      ok = r === null || r === path.join(realRoot, path.relative(root, dir))
+      own.set(dir, ok)
+    }
+    return ok
+  })
 }
 
 /**
@@ -919,9 +1014,8 @@ export async function cleanWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await removeAll(files, args.workspaceRoot)
-  await pruneEmptiedDirs(args.workspaceRoot, files)
-  return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
+  await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
+  return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
 function stripTrailingSlash(p: string): string {
@@ -935,11 +1029,37 @@ function stripTrailingSlash(p: string): string {
 // unchanged.
 export { asTrees } from '../util/index.js'
 
-/** A literal is answered by the path itself or by anything under it. */
-function settleLiterals(unmatched: Set<string>, rel: string): void {
-  for (const lit of unmatched) {
-    if (rel === lit || rel.startsWith(`${lit}/`)) unmatched.delete(lit)
+/**
+ * The literals no path in `files` answers; a literal is answered by the
+ * path itself or by anything under it. Git lists in order, so a binary
+ * search finds the answer; a listing out of code-unit order (git sorts
+ * bytes) can hide one from it, so only a walk says a literal is
+ * unanswered. Testing every literal against every file was ~1.5 ms of a
+ * 1,800-file all-cached run (2026-10-06).
+ */
+function unanswered(literals: readonly string[], files: readonly string[]): Set<string> {
+  const left = new Set<string>()
+  for (const lit of literals) {
+    const under = `${lit}/`
+    const answered =
+      files[lowerBound(files, lit)] === lit ||
+      files[lowerBound(files, under)]?.startsWith(under) === true ||
+      files.some((rel) => rel === lit || rel.startsWith(under))
+    if (!answered) left.add(lit)
   }
+  return left
+}
+
+/** The first index whose path is not below `key`. */
+function lowerBound(files: readonly string[], key: string): number {
+  let lo = 0
+  let hi = files.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (files[mid]! < key) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 /**
@@ -1029,7 +1149,7 @@ function refuseUndecodable(
   if (undecodable === undefined || undecodable.size === 0) return
   const bad = candidates.filter((abs) => undecodable.has(abs) && undecodableOnDisk(abs))
   if (bad.length === 0) return
-  const names = bad.map((abs) => JSON.stringify(path.relative(root, abs).split(path.sep).join('/')))
+  const names = bad.map((abs) => JSON.stringify(relPosix(root, abs)))
   throw new UserError(
     `cache.inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
       `(shown with \ufffd), and vx cannot read a file by it. Rename it, or exclude it with a ` +
@@ -1065,11 +1185,14 @@ function refuseOneAlternativeBrace(
 interface FilesPlan {
   positive: string[]
   negative: string[]
-  excludeGlobs: Bun.Glob[]
+  isExcluded: (rel: string) => boolean
   ownOutput: (rel: string) => boolean
   positiveGlobs: Bun.Glob[]
-  /** The literal entries, each naming one path (see `unmatchedLiterals`). */
+  isPositive: (rel: string) => boolean
+  /** The literal entries, each naming one path (see `unanswered`). */
   literals: string[]
+  /** The directories a positive entry reaches; see `InputListing`. */
+  prefixes: string[]
   /**
    * Whether a project-relative path is an input by the declaration alone:
    * a positive glob selects it, and no exclude and no own output takes it
@@ -1112,12 +1235,13 @@ function filesPlan(
       : {
           positive,
           negative,
-          excludeGlobs: [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor),
+          isExcluded: anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]),
           // A path the task's own outputs take back with `!` is no output, so it
           // stays an input: a tracked file under `dist` the build reads (A-44).
-          ownOutput: outputMatcher(ownOutputs, globFor),
+          ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
-          literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+          isPositive: anyTaskGlob(asTrees(positive)),
+          ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
@@ -1149,10 +1273,7 @@ export function declaresInput(
 function inPlan(plan: FilesPlan, rel: string): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {
-    input =
-      plan.positiveGlobs.some((g) => g.match(rel)) &&
-      !plan.excludeGlobs.some((g) => g.match(rel)) &&
-      !plan.ownOutput(rel)
+    input = plan.isPositive(rel) && !plan.isExcluded(rel) && !plan.ownOutput(rel)
     plan.verdicts.set(rel, input)
   }
   return input
@@ -1168,21 +1289,20 @@ function workspaceMatcher(
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
-  const positiveGlobs = asTrees(positive).map(globFor)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...asTrees(negative)].map(globFor)
-  const ownOutput = outputMatcher(ownOutputs, globFor)
-  m = (rel) =>
-    positiveGlobs.some((g) => g.match(rel)) &&
-    !excludeGlobs.some((g) => g.match(rel)) &&
-    !ownOutput(rel)
+  const isPositive = anyTaskGlob(asTrees(positive))
+  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
+  const ownOutput = outputMatcher(ownOutputs)
+  m = (rel) => isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
   workspaceMatchers.set(key, m)
   return m
 }
 
-async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+async function resolveFiles(
+  args: ResolveFilesArgs,
+): Promise<{ files: string[]; listing?: InputListing }> {
   const plan = filesPlan(args.files, args.ownOutputs)
-  if (plan === null) return []
-  const { positive, negative, excludeGlobs, ownOutput, positiveGlobs } = plan
+  if (plan === null) return { files: [] }
+  const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
 
@@ -1204,7 +1324,12 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     // Identity, not equality: a re-enumeration hands back a new array even
     // when the file set is unchanged, and that is exactly when this task's
     // inputs must be walked again.
-    if (memo !== undefined && memo.snapshot === gitFiles) return [...memo.result]
+    if (memo !== undefined && memo.snapshot === gitFiles) {
+      return {
+        files: [...memo.result],
+        listing: listingFor(args.projectDir, gitFiles, plan, nested),
+      }
+    }
   }
   if (gitFiles === undefined) {
     // Mid-run re-enumeration — or a project the workspace-wide populate
@@ -1233,7 +1358,6 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(plan.literals)
   // First pass: glob-filter to candidate absolute paths (no I/O). Git
   // prints normalized relative paths, so under an absolute, normalized
   // project dir a join is a concatenation: `path.resolve` per file was
@@ -1249,18 +1373,15 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const candidates: string[] = []
   const verdicts = plan.verdicts
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
     let input = verdicts.get(rel)
     if (input === undefined) {
-      input =
-        positiveGlobs.some((g) => g.match(rel)) &&
-        !excludeGlobs.some((g) => g.match(rel)) &&
-        !ownOutput(rel)
+      input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
     if (!input || nested(rel)) continue
     candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
+  const unmatchedLiterals = unanswered(plan.literals, gitFiles)
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
   }
@@ -1284,7 +1405,23 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
-  return [...resolved]
+  return { files: [...resolved], listing: listingFor(args.projectDir, gitFiles, plan, nested) }
+}
+
+function listingFor(
+  root: string,
+  listed: readonly string[],
+  plan: FilesPlan,
+  nested: (rel: string) => boolean,
+): InputListing {
+  return {
+    root,
+    listed,
+    isInput: (rel) => inPlan(plan, rel),
+    nested,
+    prefixes: plan.prefixes,
+    literals: plan.literals,
+  }
 }
 
 /**
@@ -1334,6 +1471,135 @@ function undecodableOnDisk(abs: string): boolean {
     }
   }
   return false
+}
+
+/**
+ * The listing a task's input files were filtered from, and what reading it
+ * again takes: {@link addedInput} looks for a file the listing lacked.
+ */
+export interface InputListing {
+  root: string
+  /** Root-relative paths, as git listed them. */
+  listed: readonly string[]
+  isInput: (rel: string) => boolean
+  nested: (rel: string) => boolean
+  /** Root-relative directories a positive entry reaches, `''` for the root. */
+  prefixes: readonly string[]
+  /** The literal entries, each naming one path. */
+  literals: readonly string[]
+}
+
+function reachOf(positive: readonly string[]): { prefixes: string[]; literals: string[] } {
+  const prefixes = new Set<string>()
+  for (const p of asTrees(positive)) {
+    if (isLiteralPattern(p)) continue
+    const prefix = staticPrefix(p)
+    prefixes.add(prefix === '.' ? '' : prefix)
+  }
+  return {
+    prefixes: [...prefixes],
+    literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+  }
+}
+
+/** Every directory holding a listed path, `''` for the root, once per listing. */
+const listedDirsMemo = new WeakMap<readonly string[], Set<string>>()
+function listedDirs(listed: readonly string[]): Set<string> {
+  let dirs = listedDirsMemo.get(listed)
+  if (dirs !== undefined) return dirs
+  dirs = new Set([''])
+  for (const rel of listed) {
+    for (let i = rel.lastIndexOf('/'); i > 0; i = rel.lastIndexOf('/', i - 1)) {
+      const dir = rel.slice(0, i)
+      if (dirs.has(dir)) break
+      dirs.add(dir)
+    }
+  }
+  listedDirsMemo.set(listed, dirs)
+  return dirs
+}
+
+function reaches(prefixes: readonly string[], rel: string): boolean {
+  return prefixes.some(
+    (p) => p === '' || rel === p || rel.startsWith(`${p}/`) || p.startsWith(`${rel}/`),
+  )
+}
+
+/**
+ * An input file that exists now and that the key did not fold, or undefined.
+ * The facts re-check only the files the key folded, so a file ADDED under
+ * an input glob while the command ran — and read by it — was saved under a
+ * key without it, and replayed once the file was gone.
+ *
+ * Adding a name changes its directory's ctime, so the listing's directories
+ * that a positive entry reaches are stat'ed, and only one changed since
+ * `listedAt` (the listing's time, less the racy window) is read. A name
+ * there that the key lacks and the declaration matches, or an unlisted
+ * directory, is asked of git, which alone knows what is ignored; so is a
+ * missing literal that now exists. Not seen: a file added inside a
+ * directory that held no listed file before (only ignored ones, or none)
+ * and was not itself created during the run — its parent's ctime stays.
+ */
+export function addedInput(
+  listings: readonly InputListing[],
+  keyFiles: ReadonlySet<string>,
+  listedAt: number,
+): string | undefined {
+  for (const l of listings) {
+    const found = addedTo(l, keyFiles, listedAt)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+function addedTo(
+  l: InputListing,
+  keyFiles: ReadonlySet<string>,
+  listedAt: number,
+): string | undefined {
+  const candidates: string[] = []
+  for (const lit of l.literals) {
+    if (l.nested(lit) || keyFiles.has(path.resolve(l.root, lit))) continue
+    if (existsOnDisk(path.resolve(l.root, lit))) candidates.push(lit)
+  }
+  const known = listedDirs(l.listed)
+  for (const dir of known) {
+    if (!reaches(l.prefixes, dir) || (dir !== '' && l.nested(`${dir}/`))) continue
+    const abs = dir === '' ? l.root : path.resolve(l.root, dir)
+    let entries
+    try {
+      const st = lstatSync(abs, { throwIfNoEntry: false })
+      if (st === undefined) continue
+      if (st.ctimeMs < listedAt - racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) continue
+      entries = readdirSync(abs, { withFileTypes: true })
+    } catch {
+      // Unreadable here: git answers for the whole directory instead.
+      candidates.push(dir)
+      continue
+    }
+    for (const e of entries) {
+      const rel = dir === '' ? e.name : `${dir}/${e.name}`
+      if (e.isDirectory()) {
+        if (known.has(rel) || e.name === 'node_modules' || l.nested(`${rel}/`)) continue
+        if (reaches(l.prefixes, rel)) candidates.push(rel)
+      } else if (
+        l.isInput(rel) &&
+        !l.nested(rel) &&
+        !isInstalledPath(rel) &&
+        !keyFiles.has(path.resolve(abs, e.name))
+      ) {
+        candidates.push(rel)
+      }
+    }
+  }
+  if (candidates.length === 0) return undefined
+  for (const rel of runGitLsFiles(l.root).files) {
+    if (!candidates.some((c) => c === '' || rel === c || rel.startsWith(`${c}/`))) continue
+    if (isInstalledPath(rel) || l.nested(rel) || !l.isInput(rel)) continue
+    const abs = path.resolve(l.root, rel)
+    if (!keyFiles.has(abs) && isInputOnDisk(abs)) return abs
+  }
+  return undefined
 }
 
 const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
@@ -1423,9 +1689,7 @@ function globFor(pattern: string): Bun.Glob {
  */
 function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
   if (nestedDirs.length === 0) return () => false
-  const dirs = new Set(
-    nestedDirs.map((d) => path.relative(projectDir, d).split(path.sep).join('/')),
-  )
+  const dirs = new Set(nestedDirs.map((d) => relPosix(projectDir, d)))
   return (rel) => {
     for (let i = rel.indexOf('/'); i !== -1; i = rel.indexOf('/', i + 1)) {
       if (dirs.has(rel.slice(0, i))) return true

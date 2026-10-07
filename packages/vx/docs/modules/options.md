@@ -16,6 +16,7 @@ export interface RunOptions {
   projects?: string[] // the selection's project names; undefined = no scope needed
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   affected?: AffectedChanges // --affected's diff: a bare task runs only when it reaches a seeded task (affected-tasks.md)
+  selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number
@@ -37,6 +38,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean // hand requested persistent tasks, and those they depend on, back on RunSummary.persistent
+  summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
   tty?: boolean // vx's stdin is a terminal: each exec.interactive task is handed it, alone
   log?: Logger
   bus?: EventBus // an embedder's bus; the run's own when absent

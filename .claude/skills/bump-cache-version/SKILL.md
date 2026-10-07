@@ -36,12 +36,18 @@ you must bump it; otherwise stale entries can produce wrong restores.
    why the bump was needed (or why it was not: a key-derivation fix whose
    old key was already wrong is self-healing; a machine-local acceleration
    table with a fallback — `output_dirs`, 2026-09-03 — is not identity).
-6. **Cache tests** (`packages/vx/tests/cache*.test.ts`) — key-derivation
+6. **Cache tests** (`packages/vx/tests/cache*.test.ts`, and the digest `tests/key-fold.test.ts` pins) — key-derivation
    assertions and storage-layout fixtures.
 7. **`packages/vx/tests/contract/stored-format.json`** — regenerate with
    `VX_UPDATE_CONTRACT=1 bun test tests/contract-stored-format.test.ts`
    (from `packages/vx`). It records each stored layout beside its version
    and fails a layout that moved under an unchanged one.
+
+8. **`packages/vx-docs/src/content/docs/guides/upgrading.md`** — a bump is a
+   breaking commit (`type!:` + `BREAKING CHANGE:` footer), and
+   `site-upgrading.unsafe.test.ts` wants its footer there, newest first
+   (`bun packages/vx/scripts/upgrading.ts` regenerates it from a full clone;
+   in a shallow one, add the entry by hand).
 
 ## After the bump
 
@@ -59,7 +65,7 @@ you will read it to understand cache invalidation history.
 
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
-was retired 2026-09-02). Current: `vx-cache-v39`, core `SCHEMA_VERSION`
-`v31` (bumped 2026-10-04 for the hit restore columns; a
+was retired 2026-09-02). Current: `vx-cache-v40`, core `SCHEMA_VERSION`
+`v32` (bumped 2026-10-06 for the shared store; a
 `SCHEMA_VERSION` bump drops the whole index, so it is taken only when a
 stored shape changes).

@@ -384,6 +384,15 @@ Semantics:
   'dev:run':  { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } },
   'e2e':      { dependsOn: ['dev:run'], exec: { command: 'playwright test' } },
   ```
+- **Not started when nothing needs it.** A persistent task you did not
+  request, whose every dependant is a confirmed local cache hit, is
+  never spawned: a fully cached `vx run e2e` does not boot the server
+  `e2e` depends on, and the server is in no outcome or count. It starts
+  if one of those hits turns out to need running (its artifact went),
+  and that task runs once it is ready. A dependant whose key the
+  server's writes could change (one in its own project, unless a sandbox
+  bounds the server's writes) is not probed ahead of it, so there the
+  server still starts.
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
@@ -521,8 +530,14 @@ environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
 child split at its `=` or not at all.
 
-Anything outside these three layers, and the two variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`), is invisible to the child:
+vx also sets `npm_execpath` to the workspace's package manager (the root
+`package.json`'s `packageManager`, else its lockfile, found on the root's
+`node_modules/.bin` or `PATH`) unless a layer gives one, as `pnpm run`
+does: npm-run-all calls that manager back and falls back to a global `npm`
+without it. It names a binary on this machine, so it is not in the key.
+
+Anything outside these three layers, the two variables vx sets for
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to the child:
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
@@ -547,7 +562,8 @@ remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
 `cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
-key) is also masked line by line, each line of six characters or more.
+key) is also masked line by line, each line of six characters or more,
+and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
 A value
 split across two output chunks is still caught; the output holds back
 that many characters until the next chunk. A plugin that reads a task's
@@ -686,7 +702,10 @@ interface CacheInputs {
 Project-relative globs. `!`-prefix negates. A **literal** entry (no
 glob character) names a file or a whole directory tree — `src` and
 `src/` both mean everything under `src`, as in Turbo and `.gitignore`;
-`!src` subtracts the tree. Spellings a matcher would otherwise turn into
+`!src` subtracts the tree. A `!` entry subtracts wherever it sits in the
+list, so a literal file it covers (`['src/**', '!src/gen/**',
+'src/gen/keep.ts']`) would never be an input: that is refused at load.
+Spellings a matcher would otherwise turn into
 nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
 is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
 a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
@@ -738,12 +757,21 @@ package.json. A task with no _file_ inputs (e.g. a pure
 Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
-- **Always-ignored** — `node_modules/**`, `.git/**`, `.vx/**`,
-  `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, and Bun's cross-compile
-  extraction directory `.<16 hex>-<8 hex>.tmp/**`.
+- **Always-ignored** — `.git/**`, `.vx/**`, `*.tsbuildinfo`,
+  `vx-lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+  directory `.<16 hex>-<8 hex>.tmp/**`, at any depth.
+- **Installs** — an untracked file under any `node_modules/` (ignored or
+  not). A file git TRACKS there, such as a committed test fixture, is an
+  input like any other.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is
-  no output, so it stays an input (A-44).
+  no output, so it stays an input (A-44). Another task's outputs are
+  not excluded for you: an input glob that can match them is refused
+  while `rules.upfrontKeys` is on (X-54). Write the exclusion,
+  `['**/*', '!dist/**']`. An input entry the task's OWN outputs take
+  back whole is always refused (X-55): vx removes outputs before a run,
+  so a formatter declaring `src/**` as both would delete its sources. A
+  task that rewrites files in place declares no outputs.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -777,10 +805,15 @@ globs only.
 No input or output glob, `files` or `workspaceFiles`, may be absolute
 or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
 `{/etc,src}/*` are refused at load, where the glob engine would have
-matched nothing under that arm and said so nowhere.
+matched nothing under that arm and said so nowhere. A Windows spelling
+is refused the same way, with the forward-slash glob to write: a
+backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
+`C:/src/**`). A backslash before a bracket, a brace, a `!` or a
+backslash stays an escape.
 
-Still applied: the always-ignored set (`node_modules/**`, `.git/**`,
-`.vx/**`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`) and the task's own declared
+Still applied: the always-ignored set (`.git/**`, `.vx/**`,
+`*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
+untracked files under `node_modules/`, and the task's own declared
 `outputs.workspaceFiles` (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
@@ -860,6 +893,8 @@ Semantics:
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
+- **Output that is not UTF-8 fails the run** too: a lossy decode keyed
+  every invalid byte alike. Pipe binary output through a hash or `od`.
 - The command **inherits vx's full environment**, _not_ the isolated
   env that task `exec` commands get — `exec.env.define` and
   `passThrough` describe the command's environment, not the probe's.
@@ -1051,7 +1086,9 @@ Workspace-root-relative globs for outputs the task writes OUTSIDE its
 project dir (e.g. a root-level generated file). Same capture / restore
 / wipe semantics as `files`, anchored at the workspace root; packed
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
-namespace so project and workspace outputs never collide.
+namespace so project and workspace outputs never collide. A project
+`outputs.files` glob under a top-level `workspace-outputs/` is refused
+at load: that name is the namespace.
 
 ```ts
 outputs: {
@@ -1078,9 +1115,10 @@ overlap (`dist/*` and `dist/sub/**`) are let through; there, last
 restore wins. A workspace output is also compared with every other
 project's `files` outputs, read from the root: `packages/b/dist/a.txt`
 collides with `b`'s `dist/**` (item 1088). An overlap
-between two tasks one of which depends on the other is not refused: the
-dependant is additive and owns only what its run adds to the tree
-(`caching.md` § Additive outputs, item 588). Across the two namespaces
+between two tasks one of which depends on the other is refused too,
+unless the workspace sets `rules: { exclusiveOutputs: false }` (X-53);
+then the dependant is additive and owns only what its run adds to the
+tree (`caching.md` § Additive outputs, item 588). Across the two namespaces
 an upstream `files` task is told the dependant's globs in its own
 project's terms, so a workspace glob that does not start inside that
 project (`**/a.txt`) is refused even with the edge.
@@ -1203,7 +1241,9 @@ A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. So
 is one whose bind would make `.git`, `.vx`, the cache directory or a
 nested project writable:
-a file grant at a single-package workspace's root binds the root.
+a file grant at a single-package workspace's root binds the root. A
+directory grant is judged as the directory, made before the judgement
+when it does not exist yet, so `dist/` or `dist/**` at that root stands.
 
 **A write grant is readable, and on Linux it reads WIDER than it looks.**
 A write path is readable too (`tsc --incremental` re-reads its own
@@ -1419,7 +1459,7 @@ export default defineWorkspace({
 interface WorkspaceConfig {
   /** Maximum concurrent tasks. Defaults to the cores this process may use (the CPU count, capped by a cgroup quota). */
   concurrency?: number
-  /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
+  /** Cache directory, relative to workspace root. Named, it holds the whole cache; unset, entries live in the user's shared store. */
   cacheDir?: string
   /** Default per-task timeout (ms) for tasks without their own exec.timeout. */
   timeout?: number
@@ -1429,8 +1469,17 @@ interface WorkspaceConfig {
   affectedBase?: string
   /** Where remote writes land: 'trusted' (default), 'read-only', or an untrusted scope name. */
   cacheScope?: string
+  /** Graph rules checked before anything runs; each on unless set to false. */
+  rules?: WorkspaceRules
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
+}
+
+interface WorkspaceRules {
+  /** Refuse overlapping outputs even across a dependsOn edge. Default true. */
+  exclusiveOutputs?: boolean
+  /** Refuse a task whose inputs can match another task's outputs. Default true. */
+  upfrontKeys?: boolean
 }
 ```
 
@@ -1442,13 +1491,20 @@ interface WorkspaceConfig {
   `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task's
   process group is SIGTERMed and the task reported `failed`. Purely a safety net — never folded
   into a cache key (a timed-out task fails and is never cached).
-- **`cacheDir`** — relative paths are resolved against the workspace
+- **`cacheDir`** — unset, the workspace keeps its index and history in
+  `.vx/cache` and its entries and artifacts in its repository's shared
+  store (`~/.vx/<id>/cache`), where every other checkout of the
+  repository hits them (`docs/caching.md`). Named here, by
+  `VX_CACHE_DIR`, or by `--cache-dir`, the directory holds the whole
+  cache, shared with no other workspace.
+  Relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
-  root) is refused before anything is written, since its `*`
+  root), whose subdirectory does (`'packages'`), or that holds the
+  workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for
@@ -1459,16 +1515,14 @@ interface WorkspaceConfig {
   run just saved (item 969). It runs after the run's saves
   and uploads have landed, never on a run a signal or an abort stopped
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
-  nothing to evict pays one scan of the index), and says what it
-  evicted in one line (`vx: cache retention evicted 3 entries
-(1.2 GB)`); under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
+  nothing to evict pays one scan of the index), and says nothing:
+  housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
   orphan sweep (artifacts no index row counts, older than an hour —
   see `vx cache prune`) also runs on its own clock, at most once an
-  hour, so their bytes go even when nothing the index holds is due
-  (`vx: cache retention reaped 3 orphaned artifacts (9.0 MB)`);
+  hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
   entries. Housekeeping,
-  not the run's work: a failure is a warning, never a failed run. Not
+  not the run's work: a failure is silent, never a failed run. Not
   folded into any cache key. Omitted → the cache grows until
   `vx cache prune`.
 - **`affectedBase`** — the git ref a bare `--affected` compares with
@@ -1493,6 +1547,34 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.
+- **`rules`** — checks on the task graph, each on unless set to
+  `false`. Turning one off allows a shape vx runs correctly but more
+  slowly; never folded into a cache key. A value that is not a boolean,
+  or a rule vx does not know, is refused.
+  - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
+    overlap are refused even when a `dependsOn` edge orders them:
+    `<a> and <b> both declare the output "<glob>" … Give each task its
+own output path, or set rules: { exclusiveOutputs: false } in
+vx.workspace.ts to let a dependant add to its upstream's outputs.`
+    Off, the dependant adds to its upstream's tree (item 588;
+    `caching.md` § Additive outputs). Two overlapping tasks with no
+    edge are refused either way.
+  - **`upfrontKeys`** (X-54) — a cached task whose `inputs.files` can
+    match a same-project task's `outputs.files`, or whose
+    `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
+    or another project's `outputs.files` read from the root, is refused,
+    edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:
+false } in vx.workspace.ts to let it wait for its producer.` Such a key
+    reads what the producer writes this run, so vx cannot know it before
+    the producer ran: it is not probed, prefetched or restored ahead of
+    the schedule (`caching.md` § Local restore tier). The upstream's key
+    already reaches the reader through `dependsOn`. A `!` entry that
+    takes the whole output back clears it, and an output the reader's
+    `!` entries take back no longer holds its key back either. A task's
+    own outputs, a task with no `cache`, and a group are exempt. Off,
+    the key waits for its producer, as before.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
@@ -1518,7 +1600,7 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   OTel, the GitHub job summary, a custom sink), `setup` and `teardown`
   around the run, and CLI `commands` (`{ verb: { description, run } }`,
   consulted for a verb core does not know). First-party plugins:
-  `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
+  `@vzn/vx-otel`, `@vzn/vx-ci`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
   `@vzn/vx-schedule-history`, `@vzn/vx-mcp`, `@vzn/vx-migrate`. A
   plugin that declines every capability (`otel()` with no OTLP endpoint
   configured) costs nothing — a run with no active plugin is
@@ -1806,16 +1888,18 @@ lists the messages a user meets most:
 | `cache.inputs is required when cache is set`                                                                                          | Forgot `inputs`.                                                                                                                                                                                                               |
 | `cache.inputs must be an object`                                                                                                      | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.inputs.files must be an array`                                                                                                 | Wrong shape.                                                                                                                                                                                                                   |
-| `cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
-| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                       | Non-string / empty entry, or one holding a NUL.                                                                                                                                                                                |
+| `cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
+| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                       | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
+| `cache.inputs.files: "<file>" is taken back by "!<glob>"`                                                                             | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's `package.json` or its own `vx.config.*` (`**`, `*.json`): the clean before a run would delete them. A `!` entry that takes the file back (`!package.json`) lets it load.             |
+| `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
@@ -1870,6 +1954,7 @@ Workspace-config errors:
 | `concurrency must be a positive integer`                                                                                                                     | `concurrency` is negative, zero, NaN, ...                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `timeout must be a positive integer (milliseconds)`                                                                                                          | Workspace `timeout` is ≤ 0, NaN, or not an int.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `cacheDir must be a string`                                                                                                                                  | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `cacheDir is only whitespace — name a directory`                                                                                                             | A `cacheDir` of spaces: it made a directory named so at the root, hidden by the cache's own `.gitignore`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }`                                                                                              | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `cacheRetention names neither olderThan nor maxSize`                                                                                                         | An empty policy would evict nothing and read as one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'`                                                                              | The `vx cache prune --older-than` spelling, or not a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1884,8 +1969,10 @@ Workspace-config errors:
 | `plugins[<i>].name overrides the package name`                                                                                                               | A `name` set over `definePlugin`'s result; drop the field.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `plugins[<i>].<capability> must be a function`                                                                                                               | A capability key holding something that is not callable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `plugins[<i>] must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown` | A plugin object with no capability.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `plugin '<name>' declares '<key>', which is no plugin hook`                                                                                                  | A key on a plugin that names no hook (`excutor`, `setUp`): it was never called. The nearest hook is hinted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `<file> has unknown field "<key>"`                                                                                                                           | Typo'd / unsupported top-level key (`plugin`); the hint names the nearest spelling, or where vx keeps a Turbo or Nx key (`pipeline`, `remoteCache`, `parallel`, `cacheDirectory`, `defaultBase`, `tasksRunnerOptions`, `globalPassThroughEnv`; D-38, D-49; pnpm-workspace.yaml's, Lerna's and package.json's `packages`, `workspaces`, `catalog`, `npmClient`, and `ignore`, `cache`, `remote`, `env`, D-98; in a project's vx.config, `targets`, `extends`, `implicitDependencies` and `name`, D-56; `scripts`, `pipeline`, `namedInputs`, `root`, `sourceRoot`, `projectType`, and a task's `dependsOn`, `cache`, `exec`, `inputs`, `outputs`, `env` one level too high, D-99). |
 | `plugin '<name>' declares command '<verb>', a core verb — core verbs cannot be shadowed`                                                                     | A plugin verb the dispatcher matches first; it could never run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `plugin '<name>' declares command '<verb>', which no command line reaches — a verb is a word, not a flag or empty`                                           | A verb like `--version` or `''`: core reads a flag first, and an empty word is no verb.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner`                                                                               | Two packages on one verb; the first would win and hide the second. Plugins of one package are one owner, and the first declared runs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                                  | A fingerprint claim without its file list or its `affected` answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `plugin '<name>' claims fingerprint file "<file>", which is not a file name at the workspace root`                                                           | A claim names a path, or no name: a claim is a bare file at the root (`vx watch`'s root arm is not recursive).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

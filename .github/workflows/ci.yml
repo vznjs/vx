@@ -59,7 +59,7 @@ jobs:
       # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
       # resolve from a raw shell.
       #
-      # The job summary comes from `@vzn/vx-github`, declared in
+      # The job summary comes from `@vzn/vx-ci`, declared in
       # vx.workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
       # verdict, stats, failures and the per-task table, so a red run says
       # WHICH task failed on the PR page instead of only in the log.
@@ -99,7 +99,10 @@ jobs:
       # entry another run reads.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -154,14 +157,17 @@ jobs:
           bun packages/vx/src/bin.ts run ci --all
           code=$?
           set -e
-          test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
+          test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # A cross-compile on a cold Bun cache, in bwrap: nothing warms
@@ -307,7 +313,10 @@ jobs:
       # vx's cache between runs, as in the linux job.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
@@ -328,7 +337,10 @@ jobs:
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: .vx/cache
+          # The workspace's index and the user store its entries live in.
+          path: |
+            .vx/cache
+            ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on

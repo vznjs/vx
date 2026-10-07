@@ -36,6 +36,14 @@ export type TaskStatus =
   // are partial.
   | 'aborted'
 
+/** What moved in a missed task's key since the last entry saved for it. */
+export interface InputChanges {
+  /** How many components changed, appeared or went. 0: the same key, its entry gone. */
+  count: number
+  /** The first of them, by kind then name. */
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -69,6 +77,29 @@ export interface TaskOutcome {
    * stream and the summary footer show it.
    */
   admissionHeldMs?: number
+  /**
+   * How long this task waited ready (its deps done, or none to wait on)
+   * before it was dispatched: a full worker pool's wait, plus any
+   * `admissionHeldMs`. Absent when it started within the millisecond and
+   * on a task that never ran.
+   */
+  queuedMs?: number
+  /** On a cacheable task that ran: how many files its key read. */
+  inputFiles?: number
+  /**
+   * The artifact's compressed size: on a hit, the entry's; on a miss, the one
+   * its save wrote (measured only when a telemetry sink listens).
+   */
+  artifactBytes?: number
+  /** On a remote hit this run pulled: the download and its ingest. */
+  fetchMs?: number
+  /** On a miss that saved, with a sink listening: the save's own time. */
+  saveMs?: number
+  /**
+   * On a cacheable task that ran: what its key changed since the last entry
+   * saved for it. Only when a telemetry sink asked, and the cache holds one.
+   */
+  inputChanges?: InputChanges
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
@@ -139,6 +170,13 @@ export interface TaskOutcome {
    * flaky detection reads it off the outcome stream.
    */
   attempts?: number
+  /** The attempts that failed and were run again, in order: when each ended (epoch ms) and how. */
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  /**
+   * Set when this run proved the task flaky: its key holds both outcomes on
+   * record (this run's included) or it needed a retry. Its row carries it.
+   */
+  flaky?: { passes: number; failures: number }
   /**
    * Count of sandbox violations captured during this task's exec (a task
    * declaring `exec.sandbox`). Non-zero means the task touched something
@@ -205,7 +243,7 @@ export interface ScheduleOptions {
    * execute request), so it waits for the save to land, while the freed
    * slot admits other work at once. Undefined: nothing owed.
    */
-  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
+  settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /**
    * Optional priority override: callers pass their own per-node weight
    * (e.g. `computePredictedPriorities` from the orchestrator's history
@@ -229,6 +267,9 @@ export interface ScheduleOptions {
    *     output is reported `cache-hit` regardless of a dep failing);
    *   - leaves the tier when `execute` throws `RestoreDemoted`, and is
    *     dispatched again once its deps are done, with the dep check.
+   * A persistent task nobody requested whose every dependant is in the
+   * tier starts only when one of them is demoted; once they have all
+   * finished it settles without an outcome, never spawned.
    * It still runs through `execute()` (so the logger frame is unchanged);
    * the orchestrator's execute reuses the up-front probe, so there is no
    * second cache.get. When undefined/empty, behavior is byte-identical.
@@ -425,6 +466,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // they are exec-tier tasks, gated on their deps like any other.
   const demoted = new Set<string>()
   const inRestoreTier = (id: string): boolean => restoreTier?.has(id) === true && !demoted.has(id)
+  // A server pulled in only for restore-tier hits serves nobody: it waits
+  // (`dormant`) until a dependant is demoted, which starts it, or until
+  // every dependant has finished, which settles it unspawned. Settled
+  // without an outcome: it is not part of the run, as a pruned task is not.
+  const idle = idleServers(nodes, dependents, restoreTier)
+  const dormant = new Set<string>()
+  let settledIdle = 0
   const execReady = new ReadyHeap(priority)
   const restoreReady = new ReadyHeap(priority)
   // A restore-tier task is dep-independent (a stable hit's restore needs
@@ -432,9 +480,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // decrements still happen (in finishOne) but never re-enqueue it.
   // Everything else enqueues on the exec-tier the moment its deps
   // complete.
+  // When each queued id became ready; dispatch takes it out.
+  const readyAt = new Map<string, number>()
+  const startedAt = Date.now()
   for (const node of nodes.values()) {
     if (restoreTier?.has(node.id)) restoreReady.push(node.id)
     else if (node.deps.length === 0) execReady.push(node.id)
+    else continue
+    readyAt.set(node.id, startedAt)
   }
 
   let active = 0
@@ -537,6 +590,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
       outcomes.set(id, outcome)
+      // A dormant server is asked again: the dispatch settles it once its
+      // last dependant is in.
+      if (dormant.size > 0) {
+        for (const p of (nodes.get(id) as TaskNode).deps) if (dormant.delete(p)) execReady.push(p)
+      }
       // Observer hook (the logger's taskComplete). Crash-isolated: a
       // throwing observer must NOT break scheduling — it would otherwise
       // skip the dependent-enqueue + tick below and hang the run. Same
@@ -596,7 +654,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // don't wait on deps); one that finished early releases its own
         // dependents now. Only an exec-tier dependent is enqueued.
         if (heldRelease.delete(d)) release(d)
-        else if (!inRestoreTier(d)) execReady.push(d)
+        else if (!inRestoreTier(d)) {
+          execReady.push(d)
+          readyAt.set(d, Date.now())
+        }
       }
     }
 
@@ -678,7 +739,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
-            if (willSkip(id)) return id
+            if (willSkip(id) || idle.has(id)) return id
             if (exclusive?.has(id) === true) {
               if (!busy() && (!admitActive || admits(id))) return id
               parked.push([id, seq])
@@ -733,7 +794,17 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           })
           continue
         }
+        if (idle.has(id)) {
+          readyAt.delete(id)
+          if (dependents.get(id)!.every((d) => outcomes.has(d))) {
+            settledIdle++
+            release(id)
+          } else dormant.add(id)
+          continue
+        }
 
+        const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
+        readyAt.delete(id)
         const leave = admit(id)
         // Listed as running on dispatch, so the policy's next ask in this
         // tick sees it; the completion callbacks unlist it.
@@ -742,7 +813,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         const heldMs = since === undefined ? 0 : Math.max(1, Date.now() - since)
         if (since !== undefined) heldSince.delete(id)
         const withHold = (o: TaskOutcome): TaskOutcome =>
-          heldMs > 0 ? { ...o, admissionHeldMs: heldMs } : o
+          heldMs === 0 && queuedMs === 0
+            ? o
+            : {
+                ...o,
+                ...(heldMs > 0 ? { admissionHeldMs: heldMs } : {}),
+                ...(queuedMs > 0 ? { queuedMs } : {}),
+              }
         // Crash-isolated observer hook — a throwing onStart must not abort
         // the dispatch loop (it would strand the tick with the slot held).
         // A demoted task's second dispatch is the same task, already started.
@@ -781,18 +858,28 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               return
             }
             tick()
-            const done = (): void => {
-              finishOne(id, outcome)
+            // What the save cost rides the outcome it settles.
+            const done = (owed?: Partial<TaskOutcome> | void): void => {
+              finishOne(id, owed ? { ...outcome, ...owed } : outcome)
               tick()
             }
-            void settled.then(done, done)
+            void settled.then(done, () => done())
           },
           (err: unknown) => {
             if (err instanceof RestoreDemoted) {
               leave()
               untrack()
               demoted.add(id)
-              if (pending.get(id) === 0) execReady.push(id)
+              for (const p of node.deps) {
+                if (idle.delete(p) && dormant.delete(p)) {
+                  execReady.push(p)
+                  readyAt.set(p, Date.now())
+                }
+              }
+              if (pending.get(id) === 0) {
+                execReady.push(id)
+                readyAt.set(id, Date.now())
+              }
               tick()
               return
             }
@@ -861,7 +948,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // takes none), so a task still holding one has no outcome yet, and
       // the lane counters could add nothing — deleting both from this
       // condition survived the whole core suite (item 644).
-      if (outcomes.size === nodes.size) {
+      if (outcomes.size + settledIdle === nodes.size) {
         resolved = true
         resolve(outcomes)
       }
@@ -869,4 +956,20 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
     tick()
   })
+}
+
+/** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
+function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string> {
+  const out = new Set<string>()
+  if (restoreTier === undefined || restoreTier.size === 0) return out
+  for (const n of nodes.values()) {
+    if (n.config.exec?.persistent === undefined || n.requested || n.surfaced === true) continue
+    const ds = dependents.get(n.id)
+    if (ds !== undefined && ds.every((d) => restoreTier.has(d))) out.add(n.id)
+  }
+  return out
 }

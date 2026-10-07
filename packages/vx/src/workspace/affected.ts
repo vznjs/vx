@@ -10,13 +10,13 @@ import { realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  asTrees,
   executablePath,
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
+  isInstalledPath,
+  notAWorkTree,
   relPosix,
-  taskGlob,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
@@ -234,7 +234,11 @@ export async function affectedChanges(
 
   // vx-lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
-  const changed = [...diffed, ...untracked].filter((s) => s !== LOCKFILE_NAME)
+  // An untracked file under `node_modules` is an install, which the input
+  // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  const changed = [...diffed, ...untracked.filter((s) => !isInstalledPath(s))].filter(
+    (s) => s !== LOCKFILE_NAME,
+  )
 
   // A lockfile or workspace-definition change re-keys EVERY task, because the
   // workspace fingerprint folds those files into every cache key. Mapping
@@ -572,36 +576,6 @@ async function workspaceConfigChanged(
 }
 
 /**
- * Does any `cache.inputs.workspaceFiles` entry in `globs` match `rel`?
- *
- * Mirrors `resolveWorkspaceFiles`' partition: a leading `!` is an EXCLUDE, and
- * with no positive glob nothing matches. Paths are workspace-root-relative and
- * POSIX-separated, which is the form both git enumeration and the glob
- * resolver already speak.
- *
- * `asTrees` on BOTH sides, because the resolver runs it on both and this
- * has to answer the same question the KEY answers. It did not, and the
- * gap decided whether a changed file rebuilt anything: with
- * `workspaceFiles: ['./generated/**']` or the literal `['generated']` —
- * five spellings in all — the resolver folds `generated/x.txt` into the
- * project's key while a raw `Bun.Glob` matched none of them, so
- * `--affected` left the project out of a run its own key says is stale
- * (item 445). A mirror that normalizes differently from what it mirrors
- * is not a mirror.
- */
-export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean {
-  const positive: string[] = []
-  const negative: string[] = []
-  for (const entry of globs) {
-    if (entry.startsWith('!')) negative.push(entry.slice(1))
-    else positive.push(entry)
-  }
-  if (positive.length === 0) return false
-  if (!asTrees(positive).some((g) => taskGlob(g).match(rel))) return false
-  return !asTrees(negative).some((g) => taskGlob(g).match(rel))
-}
-
-/**
  * The fingerprint files as workspace-root-relative paths. Read from the same
  * constant the fingerprint itself walks, so a new lockfile format cannot be
  * taught to one surface and not the other.
@@ -676,6 +650,8 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
   const trunk = trunkBase(workspaceRoot)
   if (trunk !== undefined) return trunk
   if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
+    const noHistory = noHistoryRefusal(workspaceRoot)
+    if (noHistory !== undefined) throw noHistory
     throw new UserError(
       '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
         'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
@@ -683,6 +659,24 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
     )
   }
   return 'HEAD~1'
+}
+
+/**
+ * Why a base cannot resolve before any ref is to blame: no work tree, or
+ * no commit yet. Asked only once a base has failed, so a run that finds
+ * one spawns nothing more (X-52).
+ */
+function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
+  const tree = spawnGitSync(['rev-parse', '--is-inside-work-tree'], workspaceRoot, 'pipe')
+  if (tree.exitCode !== 0) {
+    return notAWorkTree(workspaceRoot, new TextDecoder().decode(tree.stderr).trim())
+  }
+  if (revParse(workspaceRoot, 'HEAD') === undefined) {
+    return new UserError(
+      '--affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+    )
+  }
+  return undefined
 }
 
 const TRUNKS = ['origin/main', 'origin/master', 'main', 'master']
@@ -779,6 +773,8 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // 1 gets the ref message; anything else surfaces what git actually said.
   const stderr = new TextDecoder().decode(proc.stderr).trim()
   if (proc.exitCode !== 1) {
+    const noHistory = noHistoryRefusal(workspaceRoot)
+    if (noHistory !== undefined) throw noHistory
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),

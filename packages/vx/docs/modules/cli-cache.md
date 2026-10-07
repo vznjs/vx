@@ -39,7 +39,8 @@ vx cache prune --older-than 30d --cache-dir <path>
 
 At least one of `--older-than` / `--max-size` is required, and neither
 may be zero — a policy that would evict every entry is refused with
-"delete the cache directory instead". A bare number for `--max-size`
+"to clear the cache, delete the cache store `vx info` names" (the
+entries live in `~/.vx/<id>/cache`, not `.vx/cache`). A bare number for `--max-size`
 is refused too: `--max-size 10` would read as ten bytes and evict
 nearly everything; give a unit. Both policies may be combined:
 age-based eviction first, then LRU eviction if the total is still
@@ -51,7 +52,9 @@ with no index row) and stale temps, and says so — `Pruned 12 entries
 The directory is the one a run would use — `--cache-dir`,
 `defineWorkspace({ cacheDir })` and a `config` plugin's edit of it,
 through `cliCacheDir` — or a prune silently no-ops against the wrong
-path. A cache this user cannot write is refused up front with the
+path. So is the store: with `.vx/cache` deleted the prune still opens
+the store a run would (`resolveStoreRoot`), where it once said 0 while
+every entry stayed restorable (X-17); `vx info` reads it the same way. A cache this user cannot write is refused up front with the
 directory named, as a run refuses it (a dry run only reads, and reads
 a read-only cache fine), and an upgrade that reset the index is
 announced once. A prune that deletes takes the workspace's run lock

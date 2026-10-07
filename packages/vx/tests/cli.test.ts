@@ -792,6 +792,20 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
   })
 
+  it('an exclusion that takes back every match says so, not "no projects matched"', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', 'one', '--filter', '!one', 'hello'])
+    expect([code, stderr.trim()]).toEqual([
+      1,
+      'vx run: no projects selected: !one excluded every project the other filters matched',
+    ])
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''
@@ -823,6 +837,41 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(code).toBe(0)
     expect(stdout).toContain('TASK')
     expect(stdout).toContain('one#hello')
+  })
+
+  it('--verbosity 1: the table lists no group and prints above the footer', async () => {
+    const { writeFile } = await import('node:fs/promises')
+    const path = await import('node:path')
+    await writeFile(
+      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          hello: {
+            exec: { command: "echo hello-cli" },
+            cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+          },
+          all: { dependsOn: ['hello'] },
+        },
+      }`,
+    )
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    expect(await run(['run', '--all', '--verbosity', '1', 'all'])).toBe(0)
+    const lines = stdout.split('\n')
+    const header = lines.findIndex((l) => l.startsWith('TASK'))
+    const rows = lines.slice(header + 2, lines.indexOf('', header))
+    // The footer and --report count no group; a `success 0ms` row for one
+    // invented a task with no command.
+    expect(rows.map((r) => r.split(/\s+/)[0])).toEqual(['one#hello'])
+    // Nothing prints below the footer (owner rule).
+    const footer = lines.findIndex((l) => l.startsWith('─ vx '))
+    expect(header).toBeGreaterThan(-1)
+    expect(footer).toBeGreaterThan(header)
   })
 
   it('exits 1 when a task fails', async () => {
@@ -1932,6 +1981,10 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--filter']).error).toBe(
       '--filter requires a value (a project name, glob or path, e.g. --filter app)',
     )
+    // X-13: the next flag is no pattern (`--filter --dry` matched "--dry").
+    expect(parseRunArgs(['build', '--filter', '--dry']).error).toBe(
+      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+    )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
       ['--concurrency', '--cache', '--verbosity', '--tag'].map(
@@ -2302,10 +2355,16 @@ describe('formatRunReportMarkdown', () => {
       ok: true,
       outcomes: [
         { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 10 },
-        { taskId: 'web#dev', status: 'aborted', exitCode: 143, durationMs: 99 },
+        {
+          taskId: 'web#dev',
+          status: 'aborted',
+          exitCode: 143,
+          durationMs: 99,
+          wallclockStartNs: '1',
+        },
       ],
     })
-    // Aborted did no work, so it joins no outcome bucket and no total. It is
+    // Aborted finished no work, so it joins no outcome bucket and no task count. It is
     // still named: a run carrying one exits non-zero, and a report that shows
     // only green rows leaves that red undiagnosable.
     expect(md).toContain('**1 task**')

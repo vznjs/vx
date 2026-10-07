@@ -178,6 +178,18 @@ function coveredTracked(globs: readonly string[], files: readonly string[]): str
   return [...hit].sort()
 }
 
+/** The first of `files` a `!` entry of `globs` takes back though a positive one reads it. */
+function hidden(globs: unknown, files: readonly string[]): string | undefined {
+  if (!Array.isArray(globs) || files.length === 0) return undefined
+  const strings = globs.filter((g): g is string => typeof g === 'string')
+  const negative = strings.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+  if (negative.length === 0) return undefined
+  const positive = strings.filter((g) => !g.startsWith('!'))
+  return files.find(
+    (f) => negative.some((n) => outputsOverlap(n, f)) && positive.some((g) => outputsOverlap(g, f)),
+  )
+}
+
 /** Past this many, a task's take-backs cost its runs more than its cache saves. */
 export const MAX_SPARED = 16
 
@@ -223,6 +235,30 @@ export function spareTrackedOutputs(
       }
       const spared = hits.flatMap(([, , hit]) => hit)
       if (spared.length === 0) continue
+      // A committed file under these outputs is still a source, and the `!`
+      // entry `excludeSiblingOutputs` gave a reader over the whole output
+      // hides it from that reader's key: such a reader runs uncached (X-54).
+      const local = hits.flatMap(([key, , hit]) => (key === 'files' ? hit : []))
+      const rooted = hits.flatMap(([key, , hit]) =>
+        key === 'files' ? hit.map((f) => (rel === '' ? f : `${rel}/${f}`)) : hit,
+      )
+      for (const q of projects) {
+        for (const r of q.tasks) {
+          if (r === t) continue
+          const inputs = (r.task?.['cache'] as { inputs?: Outputs } | undefined)?.inputs
+          if (inputs === undefined) continue
+          const f =
+            (q === p ? hidden(inputs.files, local) : undefined) ??
+            hidden(inputs.workspaceFiles, rooted)
+          if (f === undefined) continue
+          delete r.task!['cache']
+          todos.push([
+            `${q.name}#${r.name}`,
+            `reads the committed ${f}, which its inputs take back with ${p.name}#${t.name}'s ` +
+              'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
+          ])
+        }
+      }
       const shown = spared.slice(0, 3).join(', ') + (spared.length > 3 ? ', …' : '')
       // Each `!` is matched against every output path on each save, clean
       // and restore: 4,200 of them cost typescript-eslint's warm run 1.2 s.

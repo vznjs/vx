@@ -7,10 +7,9 @@ import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
-  outcomeLabel,
   projectOutcome,
   run as runOrchestrator,
-  type OutcomeView,
+  shellQuote,
   type RunOptions,
   type RunResult,
 } from '../orchestrator/index.js'
@@ -160,7 +159,8 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     const a = before[i]
     if (a === '--filter' || a?.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
-      if (v === undefined || v === '')
+      // `--filter --dry` took `--dry` as the pattern (X-13); no filter opens with `--`.
+      if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
           error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,
@@ -498,19 +498,25 @@ export async function resolveRunOptions(
   let discovered: RunOptions['discovered']
   let selectedByDiff = false
   let affected: RunOptions['affected']
+  let outright: string[] | undefined
+  // Resolved even when every task is anchored and the scope goes unused:
+  // a filter or ref the user typed is judged, as it is beside a bare task.
+  const resolved =
+    filterStrings.length > 0
+      ? await resolveFilters(
+          cwd,
+          filterStrings,
+          {
+            ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
+            ...(parsed.frozen ? { frozen: true } : {}),
+          },
+          affectedFilter,
+        )
+      : undefined
+  if (resolved !== undefined && 'error' in resolved) return { error: resolved.error }
   if (bareTasks.length === 0) {
     projects = undefined
-  } else if (filterStrings.length > 0) {
-    const resolved = await resolveFilters(
-      cwd,
-      filterStrings,
-      {
-        ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-        ...(parsed.frozen ? { frozen: true } : {}),
-      },
-      affectedFilter,
-    )
-    if ('error' in resolved) return { error: resolved.error }
+  } else if (resolved !== undefined) {
     if ('empty' in resolved) {
       // "Nothing changed" is a clean exit for the BARE tasks the filter
       // scopes — but it must never cancel an explicitly anchored
@@ -528,6 +534,7 @@ export async function resolveRunOptions(
       staged = resolved.staged
       discovered = resolved.discovered
       affected = resolved.affected
+      outright = resolved.outright
     }
   } else if (parsed.all) {
     projects = undefined
@@ -558,6 +565,7 @@ export async function resolveRunOptions(
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
+    ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
     ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
@@ -573,6 +581,7 @@ export async function resolveRunOptions(
   if (projects !== undefined) opts.projects = projects
   if (selectedByDiff) opts.selectedByDiff = true
   if (affected !== undefined) opts.affected = affected
+  if (outright !== undefined) opts.selectedOutright = outright
   if (staged !== undefined) opts.staged = staged
   if (discovered !== undefined) opts.discovered = discovered
   if (parsed.retries !== undefined) opts.retries = parsed.retries
@@ -640,8 +649,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
-  // show what was actually run. `args` is everything after `run`.
-  opts.command = ['vx', 'run', ...args].join(' ')
+  // show what was actually run. `args` is everything after `run`, quoted
+  // so `vx last` replays one paste-able line.
+  opts.command = ['vx', 'run', ...args.map(shellQuote)].join(' ')
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
@@ -696,7 +706,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
-  if (parsed.verbosity > 0) printSummary(result)
   // Report generation is post-run, gated on the flags — zero cost when
   // both are absent. Rendered once, however many sinks asked for it.
   if (parsed.report === 'markdown' || parsed.reportFile !== undefined) {
@@ -730,36 +739,4 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     }
   }
   return result.ok ? 0 : 1
-}
-
-function printSummary(summary: RunResult): void {
-  const rows = summary.outcomes.map((o) => formatRow(o))
-  if (rows.length === 0) return
-  const widths = {
-    task: Math.max(4, ...rows.map((r) => r.task.length)),
-    status: Math.max(6, ...rows.map((r) => r.status.length)),
-    duration: Math.max(8, ...rows.map((r) => r.duration.length)),
-  }
-  const header =
-    'TASK'.padEnd(widths.task) +
-    '  ' +
-    'STATUS'.padEnd(widths.status) +
-    '  ' +
-    'DURATION'.padStart(widths.duration)
-  process.stdout.write(`\n${header}\n`)
-  process.stdout.write('-'.repeat(header.length) + '\n')
-  for (const r of rows) {
-    process.stdout.write(
-      r.task.padEnd(widths.task) +
-        '  ' +
-        r.status.padEnd(widths.status) +
-        '  ' +
-        r.duration.padStart(widths.duration) +
-        '\n',
-    )
-  }
-}
-
-function formatRow(o: OutcomeView): { task: string; status: string; duration: string } {
-  return { task: o.taskId, status: outcomeLabel(o), duration: `${o.durationMs}ms` }
 }

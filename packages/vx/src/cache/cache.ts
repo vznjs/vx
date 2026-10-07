@@ -20,6 +20,12 @@
 // for the user to see — but on a cache hit there's nothing to replay
 // (the original run was successful and stderr typically empty).
 //
+// With a shared store (v32, the default: `docs/design/shared-store-2026-10.md`)
+// the entries and their artifacts live in `<store>/store.db` and
+// `<store>/<hash>.tar.zst`, attached to the workspace's own `cache.db`,
+// which keeps the history and the memos: every workspace of one user hits
+// what another saved, and none reads another's runs.
+//
 // This is core's FLOOR, not a module to replace: remote storage is a
 // `RemoteCacheLayer` (has / get / put) that `LayeredCache` wraps around
 // this handle, declared by a plugin's `cache` hook. The contract every
@@ -28,11 +34,15 @@
 import { Database } from 'bun:sqlite'
 import {
   accessSync,
+  chmodSync,
   closeSync,
   constants,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   renameSync,
   writeFileSync,
 } from 'node:fs'
@@ -161,21 +171,6 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
   }
 }
 
-/** Say once, on the channel the opener has, that an upgrade emptied the index. */
-export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void {
-  if (cache.formatChange !== null) {
-    const { from, to } = cache.formatChange
-    warn(
-      `[vx] cache format changed: ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and the old entries, never read again, age out under \`vx cache prune --older-than\` or \`cacheRetention\``,
-    )
-    return
-  }
-  if (cache.schemaReset === null) return
-  const { from, to } = cache.schemaReset
-  warn(
-    `[vx] cache index reset: schema ${from} → ${to} (vx upgraded); every cached task misses once and re-saves, and \`vx cache prune\` reclaims the old artifacts`,
-  )
-}
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
 //   v20: file_hashes.content_hash (git blob OIDs).
 //   v21: dropped the unused outputs_hash column (pure-input hashing).
@@ -237,17 +232,19 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        restored_remote counts — a hit that restored outputs apart from
 //        one that found them in place, for every reader after the run.
 //        The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v31'
+//   v32: the entry tables (entries, entry_stdout, output_files,
+//        entry_inputs) may live in a shared store attached as `store`;
+//        output_files' ino + ctime_ms moved to the workspace's own
+//        output_stamps, output_dirs lost its foreign key, and the value
+//        salt moved to store_meta. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v32'
+
+/** The tables a store holds: dropped from a workspace index that held them itself. */
+const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
   "SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash"
-
-/** A schema version's number (`v28` → 28); one that is not `v<n>` is older than any. */
-function schemaOrdinal(version: string): number {
-  const m = /^v(\d+)$/.exec(version)
-  return m === null ? -1 : Number(m[1])
-}
 
 /**
  * Artifacts `indexed` does not hold, and temps, past the in-flight grace
@@ -343,6 +340,7 @@ function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
     command: row.command,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
+    sizeBytes: row.size_bytes,
     ...(row.cpu_ms !== null ? { cpuMs: row.cpu_ms } : {}),
     ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
@@ -376,7 +374,7 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * it there", and the ignore file is created exclusively instead of probed
  * first. An existing cache costs three calls; it cost six.
  */
-function openCacheDir(cacheDir: string): string | null {
+function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
   const ignore = path.join(cacheDir, '.gitignore')
   try {
     accessSync(cacheDir, constants.W_OK)
@@ -393,12 +391,54 @@ function openCacheDir(cacheDir: string): string | null {
     // A FILE at `cacheDir` passed the `access` above; mkdir names it.
     if (code === 'ENOTDIR') makeCacheDir(cacheDir)
     if (code !== 'ENOENT') return errorText(err)
-    refuseManifestDir(cacheDir)
+    refuseManifestDir(cacheDir, workspaceRoot)
   }
   try {
     writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+  return null
+}
+
+/** `openCacheDir` for the shared store: why it cannot be used, or null. Never throws. */
+function storeBlocked(storeDir: string, storeRoot: string | null): string | null {
+  try {
+    if (storeRoot !== null) {
+      // `~/.vx`, `~/.vx/<id>`, `~/.vx/<id>/cache`: owner-only, each level
+      // made alone and re-checked, as Nx makes `~/.nx/<id>`. Artifacts are
+      // replayed into the workspace, so nobody else may write them.
+      const vxHome = path.dirname(path.dirname(storeRoot))
+      for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
+        const refused = ensurePrivateDir(dir)
+        if (refused !== null) return refused
+      }
+    }
+    return openCacheDir(storeDir)
+  } catch (err) {
+    return errorText(err)
+  }
+}
+
+function ensurePrivateDir(dir: string): string | null {
+  try {
+    mkdirSync(dir, { mode: 0o700 })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return errorText(err)
+  }
+  const st = lstatSync(dir)
+  if (!st.isDirectory()) return `${dir} is not a directory`
+  const uid = process.getuid?.()
+  if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`
+  // The user's own directory open to others (a `~/.vx` made at the
+  // default umask, 0755) is vx's to close: refusing it left the store
+  // unused on a stock macOS home (owner, 2026-10-06: "you should own it").
+  if ((st.mode & 0o077) !== 0) {
+    try {
+      chmodSync(dir, 0o700)
+    } catch (err) {
+      return `${dir} is open to other users and chmod 700 failed (${errorText(err)})`
+    }
   }
   return null
 }
@@ -417,20 +457,49 @@ const IGNORE_ALL = '*\n'
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
  * matched nothing and a changed source replayed the old output, and the
- * artifacts landed among the sources (item 997). Asked only when there is
- * no index yet, so an open cache pays nothing for it.
+ * artifacts landed among the sources (item 997). A directory that holds
+ * projects (`'packages'`) or the workspace (`'..'`, `'/'`) does the same
+ * one level up. Asked only when there is no index yet, so an open cache
+ * pays nothing for it.
  */
-function refuseManifestDir(cacheDir: string): void {
-  for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
-    if (!existsSync(path.join(cacheDir, manifest))) continue
+function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined): void {
+  const manifestIn = (dir: string): string | undefined =>
+    MANIFESTS.find((m) => existsSync(path.join(dir, m)))
+  const own = manifestIn(cacheDir)
+  if (own !== undefined) {
     throw new UserError(
-      `cache directory ${cacheDir} holds a ${manifest}: it is the workspace's or a project's own ` +
+      `cache directory ${cacheDir} holds a ${own}: it is the workspace's or a project's own ` +
         `directory, and vx would keep its index there under a \`*\` .gitignore that hides every file ` +
-        `in it from git and from the cache keys. Point \`cacheDir\` in vx.workspace.ts (or ` +
-        `--cache-dir) at a directory of its own, such as .vx/cache.`,
+        `in it from git and from the cache keys. ${OWN_DIR_HINT}`,
+    )
+  }
+  let held: string | undefined
+  if (workspaceRoot !== undefined) {
+    const rel = path.relative(cacheDir, workspaceRoot)
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) held = workspaceRoot
+  }
+  if (held === undefined) {
+    for (const entry of readdirSync(cacheDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const sub = path.join(cacheDir, entry.name)
+      if (manifestIn(sub) !== undefined) {
+        held = sub
+        break
+      }
+    }
+  }
+  if (held !== undefined) {
+    throw new UserError(
+      `cache directory ${cacheDir} holds ${held}, a project or workspace directory, and vx would keep ` +
+        `its index there under a \`*\` .gitignore that hides it from git and from the cache keys. ` +
+        OWN_DIR_HINT,
     )
   }
 }
+
+const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
+const OWN_DIR_HINT =
+  'Point `cacheDir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -449,9 +518,24 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** What a run's background uploads moved: totals over the ones that landed. */
+export interface UploadTally {
+  count: number
+  bytes: number
+  /** Summed per-upload time; uploads overlap, so this exceeds the wall. */
+  ms: number
+  failed: number
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
+  /**
+   * The run's uploads to a remote behind this cache, tallied by the
+   * `LayeredCache` over it (a plugin's, constructed over `ctx.localCache`)
+   * so the run can report them without a method on the layer seam.
+   */
+  readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
@@ -482,23 +566,42 @@ export class Cache implements CacheLayer {
   /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
   private readonly writeBlocked: string | null
   private readonly dbFile: string
+  /** Where the artifacts live: the shared store, or `cacheDir` itself. */
+  private readonly artifactDir: string
+
+  /** The shared store this index attached, or undefined when it holds its entries itself. */
+  readonly storeDir: string | undefined
+
+  /**
+   * The store this open was asked for and could not use, with why: the
+   * entries went to a store inside `cacheDir` instead.
+   */
+  readonly storeFallback: string | null = null
+
+  /** Set when this open moved a workspace index's own entries out for a shared store. */
+  readonly storeMoved: { from: string; to: string } | null = null
 
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
-   * reports null, so whoever opened first is the one that can say so —
-   * `noteSchemaReset` is that one line, at every opener that has a
-   * channel. Without it an upgrade empties the cache and the history in
-   * silence, and the all-miss run that follows looks like a bug.
+   * reports null. vx prints nothing for it: the cache is vx's to keep
+   * (owner, 2026-10-06).
    */
   readonly schemaReset: SchemaReset | null = null
 
   /**
    * Set when THIS open found entries written under another
    * `CACHE_VERSION`: the index survives, but no old key is derived again,
-   * so every cached task misses once. Reported by `noteSchemaReset`.
+   * so every cached task misses once. Not printed, like `schemaReset`.
    */
   readonly formatChange: SchemaReset | null = null
+
+  /**
+   * Set when THIS open found the shared store written under another
+   * `SCHEMA_VERSION` and dropped its inventory; the artifacts stay and are
+   * indexed again as they hit. Never printed: the cache is vx's to keep.
+   */
+  readonly storeReset: SchemaReset | null = null
 
   /** A reading verb's open: it never resets the index (the constructor's `mode`). */
   static inspect(cacheDir: string): Cache {
@@ -533,7 +636,7 @@ export class Cache implements CacheLayer {
     } catch {
       return null
     }
-    if (found === undefined || schemaOrdinal(found) >= schemaOrdinal(SCHEMA_VERSION)) return null
+    if (found === undefined || found === SCHEMA_VERSION) return null
     const aged = await scanOrphanFiles(cacheDir, () => new Set())
     let orphanBytes = 0
     for (const o of aged) orphanBytes += o.size
@@ -557,6 +660,16 @@ export class Cache implements CacheLayer {
      * and left as it was.
      */
     mode: 'open' | 'inspect' = 'open',
+    /**
+     * The shared store's directory, unversioned: every key is seeded with
+     * `CACHE_VERSION`, so two vx versions never read each other's entries,
+     * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
+     * `null` for an index that holds its entries itself (a `cacheDir`).
+     * Undefined follows the layout the index records: a reading verb, a
+     * plugin's handle. An `'inspect'` open reads it only where the index
+     * records none (deleted, or never written beside a run's store).
+     */
+    storeRoot?: string | null,
   ) {
     this.inspecting = mode === 'inspect'
     this.read = localPolicy.read
@@ -575,7 +688,7 @@ export class Cache implements CacheLayer {
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
     const absent = mode === 'inspect' && !existsSync(dbFile)
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
+    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     try {
       this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
@@ -661,20 +774,14 @@ export class Cache implements CacheLayer {
           | { value: string }
           | undefined
       )?.value
-    // Only an EARLIER schema is reset, and only by an opener that may write
-    // it. A newer one is another vx's index and history: an older binary
-    // (a global install beside a workspace's own) dropped every table of it
-    // and announced "vx upgraded", and so did a reading verb, a dry prune
-    // among them (item 896).
+    // Any other schema is reset by an opener that may write it: the index is
+    // an inventory the artifacts rebuild, whichever vx wrote it (owner,
+    // 2026-10-06; a newer one used to be refused, item 896). A reading verb
+    // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
-      if (schemaOrdinal(found) > schemaOrdinal(SCHEMA_VERSION)) {
-        throw new UserError(
-          `the cache at ${cacheDir} holds index schema ${found}, written by a newer vx; this vx reads ${SCHEMA_VERSION} and leaves it untouched. Run the newer vx, or give this one another --cache-dir`,
-        )
-      }
       if (mode === 'inspect') {
         throw new UserError(
-          `the cache at ${cacheDir} holds index schema ${found} from an earlier vx; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
+          `the cache at ${cacheDir} holds index schema ${found} from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         )
       }
     }
@@ -693,8 +800,11 @@ export class Cache implements CacheLayer {
               return null
             }
             if (found === SCHEMA_VERSION) return null
+            // `main.` on every name: unqualified, a table the index lacks
+            // resolves to an attached store's (none is attached yet; this
+            // keeps it so).
             this.db.exec(
-              'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS blob_sizes; DROP TABLE IF EXISTS blob_verdicts; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals; DROP TABLE IF EXISTS config_closures; DROP TABLE IF EXISTS output_dirs; DROP TABLE IF EXISTS entry_stdout;',
+              'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
             )
             this.db
               .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
@@ -712,7 +822,83 @@ export class Cache implements CacheLayer {
       }
     }
 
-    createTables(this.db)
+    // Where the entry tables live (v32): `store_dir` names the shared store
+    // this index was last opened with; absent, the index holds them itself.
+    const recorded = readable(
+      () =>
+        (
+          this.db.prepare("SELECT value FROM schema_meta WHERE key = 'store_dir'").get() as {
+            value: string
+          } | null
+        )?.value,
+    )
+    let storeDir =
+      mode === 'inspect'
+        ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
+        : storeRoot === undefined
+          ? recorded
+          : storeRoot === null
+            ? undefined
+            : storeRoot
+    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
+      const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
+      if (blocked !== null) {
+        // A home this user cannot write (a container, a read-only mount):
+        // the entries stay in this workspace rather than fail the run.
+        const fallback = cacheDir
+        if (fallback !== storeDir) {
+          // Said by the open that falls back; the ones after it find it recorded.
+          if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
+          storeDir = fallback
+          openCacheDir(fallback)
+        }
+      }
+    }
+    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
+      // An index that held its entries itself would shadow the store's:
+      // SQLite resolves an unqualified name in `main` first. Its history
+      // and memos stay; its entries' artifacts are orphans `prune` reaps.
+      const holds = readable(
+        () =>
+          this.db
+            .prepare("SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = 'entries'")
+            .get() != null,
+      )
+      if (holds) {
+        const had = this.db.prepare('SELECT 1 FROM main.entries LIMIT 1').get() != null
+        this.db
+          .transaction(() => {
+            for (const t of STORE_TABLES) this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
+          })
+          .immediate()
+        if (had) this.storeMoved = { from: cacheDir, to: storeDir }
+      }
+    }
+    this.storeDir = storeDir
+    this.artifactDir = storeDir ?? cacheDir
+    if (storeDir !== undefined) {
+      this.attachStore(storeDir, mode === 'inspect')
+      this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
+    }
+
+    createTables(this.db, storeDir === undefined ? 'main' : 'store')
+    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
+      this.db
+        .prepare(
+          "INSERT INTO store.store_meta(key, value) VALUES ('schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .run(SCHEMA_VERSION)
+    }
+    if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
+      if (storeDir === undefined)
+        this.db.prepare("DELETE FROM schema_meta WHERE key = 'store_dir'").run()
+      else
+        this.db
+          .prepare(
+            "INSERT INTO schema_meta(key, value) VALUES ('store_dir', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          )
+          .run(storeDir)
+    }
 
     this.deleteEntryRow = lazyStatement(this.db, 'DELETE FROM entries WHERE hash = ?')
     this.insertEntry = lazyStatement(
@@ -798,6 +984,84 @@ export class Cache implements CacheLayer {
     } catch (err) {
       return refuse(err)
     }
+  }
+
+  /**
+   * Attach the shared store as `store`, with the pragmas the index takes:
+   * WAL for both, so a workspace's run and another's share the store as
+   * two runs on one `--cache-dir` share an index. A reading verb over a
+   * store with no file yet reads an empty one in memory.
+   */
+  private attachStore(storeDir: string, inspecting: boolean): void {
+    const storeFile = path.join(storeDir, 'store.db')
+    const absent = inspecting && !existsSync(storeFile)
+    try {
+      this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+      this.db.exec('PRAGMA store.journal_mode = WAL')
+      if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
+      this.db.exec('PRAGMA store.journal_size_limit = 67108864')
+      this.db.exec('PRAGMA store.synchronous = NORMAL')
+    } catch (err) {
+      try {
+        closeDb(this.db)
+      } catch {
+        // The refusal below is the error worth reporting.
+      }
+      throw unreadableIndex(err)
+        ? unreadableIndexError(storeFile, err)
+        : (outOfFdsAtOpen(storeFile, err) ?? err)
+    }
+  }
+
+  /**
+   * The store is an inventory of the artifacts beside it, and only this vx
+   * reads it: a store another `SCHEMA_VERSION` wrote has its tables dropped
+   * (owner, 2026-10-06), the artifacts kept. Each is indexed again from its
+   * own bytes on its next hit (`adopt`). A reading verb reads such a store
+   * as empty and changes nothing.
+   */
+  private matchStoreSchema(writable: boolean): SchemaReset | null {
+    const tables = new Set(
+      (
+        this.db
+          .prepare("SELECT name FROM store.sqlite_master WHERE type = 'table'")
+          .all() as Array<{
+          name: string
+        }>
+      ).map((r) => r.name),
+    )
+    if (!tables.has('entries')) return null
+    const found = tables.has('store_meta')
+      ? (
+          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
+            value: string
+          } | null
+        )?.value
+      : undefined
+    if (found === SCHEMA_VERSION) return null
+    if (!writable) {
+      this.db.exec('DETACH DATABASE store')
+      this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+      return null
+    }
+    let reset: SchemaReset | null = null
+    this.db
+      .transaction(() => {
+        // Re-read under the write lock: another workspace's open may have
+        // reset it first.
+        const now = (
+          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
+            value: string
+          } | null
+        )?.value
+        if (now === SCHEMA_VERSION) return
+        for (const t of STORE_TABLES) {
+          if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
+        }
+        reset = { from: found ?? 'an earlier schema', to: SCHEMA_VERSION }
+      })
+      .immediate()
+    return reset
   }
 
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
@@ -908,7 +1172,7 @@ export class Cache implements CacheLayer {
   private loadValueSalt(): string {
     const read = (): string | undefined =>
       (
-        this.db.prepare("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+        this.db.prepare("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
           value: string
         } | null
       )?.value
@@ -921,7 +1185,7 @@ export class Cache implements CacheLayer {
     // Two processes opening one new store: the first salt stands.
     this.db
       .prepare(
-        "INSERT INTO schema_meta(key, value) VALUES ('value_salt', ?) ON CONFLICT(key) DO NOTHING",
+        "INSERT INTO store_meta(key, value) VALUES ('value_salt', ?) ON CONFLICT(key) DO NOTHING",
       )
       .run(salt)
     return read() ?? salt
@@ -930,11 +1194,53 @@ export class Cache implements CacheLayer {
   // ctx is accepted but ignored — the local layer reads metadata from
   // the entries row. It's part of the contract so LayeredCache can
   // route metadata to `ingest()` on remote-hit without a separate API.
-  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null> {
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
     // Local reads disabled (e.g. `--force` / `--cache=local:w`): report a
     // miss so the task re-executes. The artifact + index are untouched.
     if (!this.read) return null
-    return this.guard(() => this.readEntry(hash))
+    return this.guard(async () => {
+      const entry = await this.readEntry(hash)
+      if (entry !== null || ctx === undefined || !this.write) return entry
+      return (await this.adopt(hash, ctx)) ? this.readEntry(hash) : null
+    })
+  }
+
+  /**
+   * Index an artifact the index does not know, from its own bytes: the
+   * artifact is the record, the index only an inventory of it (owner,
+   * 2026-10-06). A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
+   * `store.db` deleted) loses nothing a task asks for again. The artifact
+   * is checked as an ingest checks a remote's (its recorded key, its names
+   * against the declared outputs); one that fails is a miss, and the run
+   * that follows saves over it.
+   */
+  private async adopt(hash: string, ctx: CacheGetContext): Promise<boolean> {
+    const finalPath = this.tarPath(hash)
+    if (!existsSync(finalPath)) return false
+    const tmpPath = this.tempPath(hash)
+    try {
+      // A second name for the same bytes: the index step renames it over
+      // the artifact inside its write transaction, as for a save.
+      linkSync(finalPath, tmpPath)
+    } catch {
+      return false
+    }
+    try {
+      await this.writeArtifactAndIndex(
+        hash,
+        { tmpPath },
+        {
+          taskId: ctx.taskId,
+          command: ctx.command,
+          durationMs: 0,
+          ...(ctx.outputs !== undefined ? { outputs: ctx.outputs } : {}),
+        },
+      )
+      return true
+    } catch (err) {
+      if (err instanceof CorruptArtifactError || err instanceof ArchiveSecurityError) return false
+      throw err
+    }
   }
 
   /**
@@ -983,8 +1289,21 @@ export class Cache implements CacheLayer {
    * The up-front short-circuit probe is the caller; per-hit `get` stays for
    * the lazy path.
    */
-  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
-    return this.guard(() => this.getManyEntries(hashes))
+  async getMany(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>> {
+    return this.guard(async () => {
+      const out = await this.getManyEntries(hashes)
+      if (ctx === undefined || !this.write || out.size === hashes.length) return out
+      // An artifact the index does not know is still a hit (`adopt`).
+      for (const hash of hashes) {
+        if (out.has(hash) || !(await this.adopt(hash, ctx(hash)))) continue
+        const entry = await this.readEntry(hash)
+        if (entry !== null) out.set(hash, entry)
+      }
+      return out
+    })
   }
 
   private async getManyEntries(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
@@ -1079,11 +1398,15 @@ export class Cache implements CacheLayer {
   /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
   private async dropEntry(hash: string): Promise<void> {
     await rm(this.tarPath(hash), { force: true })
-    try {
+    const drop = this.db.transaction(() => {
       this.deleteEntryRow.run(hash)
+      this.outputs.forget([hash])
+    })
+    try {
+      drop()
     } catch (err) {
       if (!isIndexFull(err)) throw err
-      this.deleteEntryRow.run(hash)
+      drop()
     }
   }
 
@@ -1183,9 +1506,17 @@ export class Cache implements CacheLayer {
       // leaves it or loops (item 748).
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'EISDIR' || code === 'ENOTDIR' || code === 'EEXIST' || code === 'ENOTEMPTY') {
+        // Bun's message already opens with the code: `EEXIST: EEXIST: …` read
+        // as a stutter. EEXIST and ENOTDIR are a FILE in a directory's
+        // place; the told-backwards sentence named only the reverse (X-7).
+        const msg = (err as Error).message
+        const what =
+          code === 'EISDIR' || code === 'ENOTEMPTY'
+            ? 'a directory stands where the entry holds a file'
+            : 'a file stands where the entry needs a directory'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${code}: ${(err as Error).message}). ` +
-            `The clean before a restore removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run.`,
+          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
+            `The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run.`,
         )
       }
       // A legal name under a destination deep enough that the two together
@@ -1921,6 +2252,7 @@ export class Cache implements CacheLayer {
       const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
         this.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
+        this.outputs.forget(rows)
       })
       try {
         deleteRows()
@@ -1930,6 +2262,13 @@ export class Cache implements CacheLayer {
       }
     }
 
+    // This workspace's rows for entries another workspace pruned from a
+    // shared store: never read (a lookup starts at the entry), only kept.
+    try {
+      this.outputs.forgetGone()
+    } catch (err) {
+      if (!isIndexFull(err)) throw err
+    }
     const orphans = await this.reapOrphans()
     return { evicted: victims.size, bytesFreed, ...orphans }
   }
@@ -1994,7 +2333,7 @@ export class Cache implements CacheLayer {
     }>
     let names: string[]
     try {
-      names = await readdir(this.cacheDir)
+      names = await readdir(this.artifactDir)
     } catch {
       return { phantoms: new Map(), stale: [] }
     }
@@ -2019,8 +2358,8 @@ export class Cache implements CacheLayer {
 
   /** Row-less artifacts and temps past the in-flight grace window: one readdir, one stat per candidate. */
   private async scanOrphans(): Promise<Array<{ file: string; size: number }>> {
-    return scanOrphanFiles(
-      this.cacheDir,
+    const found = await scanOrphanFiles(
+      this.artifactDir,
       () =>
         new Set(
           (this.db.prepare('SELECT hash FROM entries').all() as Array<{ hash: string }>).map(
@@ -2028,6 +2367,10 @@ export class Cache implements CacheLayer {
           ),
         ),
     )
+    // With a shared store, no artifact in `cacheDir` is indexed: they are
+    // what this workspace saved before its entries moved out.
+    if (this.artifactDir === this.cacheDir) return found
+    return [...found, ...(await scanOrphanFiles(this.cacheDir, () => new Set()))]
   }
 
   close(): void {
@@ -2070,7 +2413,7 @@ export class Cache implements CacheLayer {
   }
 
   private tarPath(hash: string): string {
-    return path.join(this.cacheDir, `${hash}.tar.zst`)
+    return path.join(this.artifactDir, `${hash}.tar.zst`)
   }
 }
 

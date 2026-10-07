@@ -52,7 +52,13 @@ export function defaultLogger(
   colors?: ColorSupport,
   view?: OutputView, // default { mode: 'full' }
   out?: StatusStream, // default process.stdout
-  opts?: { forceFloorMs?: number; coalesce?: boolean },
+  // forwardArgs: the args after `--`, shown on a requested task's `$` line
+  opts?: {
+    forceFloorMs?: number
+    coalesce?: boolean
+    tty?: boolean
+    forwardArgs?: readonly string[]
+  },
 ): DefaultLogger
 ```
 

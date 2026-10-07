@@ -696,13 +696,10 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(got.files.map((p) => relPosix(projectDir, p))).toEqual([path.join('src', 'keep.ts')])
   })
 
-  it('node_modules under a project is always excluded (defense in depth)', async () => {
-    // git would already exclude node_modules if it's in .gitignore;
-    // we also have ALWAYS_IGNORE as a belt-and-suspenders guard.
+  it('an untracked node_modules under a project is excluded even when not ignored', async () => {
+    // git would already exclude node_modules if it's in .gitignore; an
+    // untracked file there is an install either way (`isInstalledPath`).
     await write(path.join(projectDir, 'node_modules', 'dep', 'index.js'))
-    await write(path.join(projectDir, 'src', 'index.ts'))
-    // Force git to track node_modules to verify our own filter wins.
-    await git(root, 'add', '-f', 'pkg/node_modules/dep/index.js')
     await write(path.join(projectDir, 'src', 'index.ts'))
 
     const got = await resolveInputs({
@@ -856,7 +853,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     expect(await resolve({ files: ['**/*'] }, git, files)).toEqual(['src.ts'])
     expect(files.size).toBe(1)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     expect(await resolve({ files: ['**/*'] }, git, files)).toEqual([
       path.relative(projectDir, '/planted.ts'),
     ])
@@ -902,7 +899,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     const files: ProjectFilesCache = new Map()
     await resolve({ files: ['**/*'] }, git, files)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     // Same project, same snapshot, a narrower glob: a different question.
     expect(await resolve({ files: ['src.ts'] }, git, files)).toEqual(['src.ts'])
     // And the same glob with the file declared as this task's own output —
@@ -915,7 +912,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     const files: ProjectFilesCache = new Map()
     await resolve({ files: ['**/*'] }, git, files)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     // What a mid-run write does: the project's snapshot is replaced (a new
     // array, even for the same contents), so the planted list must NOT come
     // back — this is the half that keeps a task from keying on a file set
@@ -1349,7 +1346,7 @@ describe('inputs.ts edges', () => {
     await writeFile(path.join(root, 'dist', 'same-mtime'), 'bbbbbbbb')
     await utimes(path.join(root, 'dist', 'same-mtime'), old, old) // new size, same mtime
     const own = await ownOutputsSince(args, before)
-    expect(own.map((f) => relPosix(root, f)).sort()).toEqual(['dist/same-mtime', 'dist/same-size'])
+    expect(own?.map((f) => relPosix(root, f)).sort()).toEqual(['dist/same-mtime', 'dist/same-size'])
   })
 
   it('a clean never removes the project directory itself, even when it empties it', async () => {

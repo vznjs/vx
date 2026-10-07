@@ -428,7 +428,31 @@ function unchangedKeyNote(
   if (createdAt !== undefined && createdAt >= this_.startedAt) {
     return 'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one'
   }
-  return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
+  // The flags that skip a read were ruled out above whenever the policy was
+  // recorded; blaming them here named a flag the policy shows was not passed
+  // when the previous run's save had failed (X-46). No row records a failed
+  // save, only its trace: the previous run executed, succeeded, and no entry
+  // holds the key.
+  if (policy === undefined) {
+    return 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
+  }
+  if (createdAt === undefined && prev.status === 'success' && prev.cacheHit === 0) {
+    const prevPolicy =
+      prev.runId === null
+        ? undefined
+        : (
+            db
+              .query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?')
+              .get(prev.runId) as {
+              p: string
+            } | null
+          )?.p
+    if (prevPolicy !== undefined && !prevPolicy.split(',').some((a) => a === 'lW' || a === 'rW')) {
+      return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit'
+    }
+    return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
+  }
+  return 'cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause'
 }
 
 /**

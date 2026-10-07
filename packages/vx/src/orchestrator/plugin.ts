@@ -167,10 +167,10 @@ export interface VxPlugin {
   /**
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
-   * Precedence: first non-undefined plugin cache wins, in declaration
-   * order, ahead of core's own `.vx/cache` handle at the tail. A layer
-   * that WRAPS the local handle subsumes that tail, so it is not written
-   * twice.
+   * Every contributed layer is kept and chained in declaration order,
+   * ahead of core's own `.vx/cache` handle at the tail: a lookup walks
+   * them until one hits, a save reaches each. A layer that WRAPS the local
+   * handle subsumes that tail, so it is not written twice.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 
@@ -227,7 +227,14 @@ interface BaseContext {
   warn(message: string): void
 }
 
-export interface PluginSetupContext extends BaseContext {}
+/** What `setup` receives: the run's lifecycle, observe-only. */
+export interface PluginSetupContext extends BaseContext {
+  /**
+   * Subscribe a lifecycle handler; it leaves with the run. A throw or a
+   * rejection warns once and switches the plugin's handlers off for the run.
+   */
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 
 /** One CLI verb contributed by a plugin. */
 export interface PluginCommand {
@@ -294,7 +301,11 @@ export interface ProjectHookContext extends BaseContext {
 }
 
 export interface GraphHookContext extends BaseContext {
-  /** Task ids the user asked for (the rest were pulled in by `dependsOn`). */
+  /**
+   * Task ids the user asked for (the rest were pulled in by `dependsOn`).
+   * Under `--affected` this is every candidate: the selection reads the
+   * graph the hooks leave and cuts it down afterwards.
+   */
   readonly requested: readonly string[]
 }
 
@@ -353,23 +364,12 @@ export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
 }
 
-export interface PluginContext {
-  /** Where the workspace lives on disk. */
-  readonly workspaceRoot: string
-  /** Where vx's cache lives — read-only as far as the plugin is concerned. */
-  readonly cacheDir: string
-  /** Funnel warnings into the run:status channel, as every hook's context does. */
-  warn(message: string): void
+export interface PluginContext extends PluginSetupContext {
   /**
    * The run event bus. A plugin can subscribe directly if its needs exceed
    * the hooks; the subscription ends with the run, as a hook's does.
    */
   readonly bus: EventBus
-  /**
-   * Convenience: register a typed handler keyed off `RunEvent.kind`.
-   * Multiple hooks can chain via repeated calls.
-   */
-  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
 
 export type PluginHookName =
@@ -445,7 +445,17 @@ function pluginPackageName(dir: string): string {
       /* not here; look one level up */
     }
     if (text !== undefined) {
-      const name = (JSON.parse(text) as { name?: unknown }).name
+      // A bare JSON.parse reached the user as a SyntaxError and a stack,
+      // naming no file (X-20).
+      let pkg: { name?: unknown } | null
+      try {
+        pkg = JSON.parse(text) as { name?: unknown } | null
+      } catch (err) {
+        throw new UserError(
+          `definePlugin: failed to parse ${path.join(d, 'package.json')}: ${(err as Error).message}`,
+        )
+      }
+      const name = pkg?.name
       if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,

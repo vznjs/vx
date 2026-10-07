@@ -148,9 +148,7 @@ describe('vx why (e2e)', () => {
     async () => {
       const r = await vx(root, ['why', 'app#build', '--run', 'nope'])
       expect(r.code).toBe(1)
-      expect(r.err).toBe(
-        'vx why: run nope has no row for app#build; `vx last --list` shows the recorded runs, `vx last <runId>` what one ran\n',
-      )
+      expect(r.err).toBe('vx why: no recorded run nope (vx last --list shows recent runs)\n')
     },
     TIMEOUT,
   )
@@ -350,7 +348,9 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
     expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
     expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
-    expect(parseWhyArgs(['--format', 'xml']).error).toContain('invalid --format')
+    expect(parseWhyArgs(['--format', 'xml']).error).toBe(
+      '--format must be pretty or json (got xml) (see `vx why --help`)',
+    )
     expect(parseWhyArgs(['--run=']).error).toBe(
       '--run requires a run id (`vx last --list` shows them)',
     )
@@ -359,7 +359,7 @@ describe('parseWhyArgs', () => {
 
   it.each([
     ['--run', '--run requires a run id (`vx last --list` shows them)'],
-    ['--format', '--format requires a value (pretty | json)'],
+    ['--format', '--format requires a value: pretty or json (see `vx why --help`)'],
   ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
     // A trailing flag used to consume a non-existent argv slot, fall through
     // to the catch-all, and be reported as `unknown flag: --run` — false, and
@@ -685,6 +685,26 @@ describe('vx why in a workspace that never ran (E-39)', () => {
       expect({ code: r.code, err: r.err }).toEqual({
         code: 1,
         err: 'vx why: no recorded runs for "app#build"; nothing has run here yet (vx run app#build, then vx why)\n',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
+describe('vx why after a run of only a group (X-50)', () => {
+  it('says no run executed a task, instead of "nothing has run here yet"', async () => {
+    const root = await makeWorkspace()
+    try {
+      // No config: `lib` has only the default `build`, a group.
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(lib, { recursive: true })
+      await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
+      expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
+      const r = await vx(root, ['why', 'lib#build'])
+      expect({ code: r.code, err: r.err }).toEqual({
+        code: 1,
+        err: 'vx why: no recorded runs for "lib#build"; no recorded run executed a task (a group records none: ask about a task it depends on)\n',
       })
     } finally {
       await rm(root, { recursive: true, force: true })

@@ -237,7 +237,7 @@ describe('applyMigration', () => {
     p.projects[0]!.importLines = ["import { cmd } from './cmd.mjs'"]
     await apply(p, { format: 'mjs' })
     const file = readFileSync(path.join(root, 'app', 'vx.config.mjs'), 'utf8')
-    expect(file).toContain("\nimport { cmd } from './cmd.mjs'\n")
+    expect(file.startsWith("import { cmd } from './cmd.mjs'\n")).toBe(true)
     expect(file).toContain('\n        command: cmd(),\n')
   })
 
@@ -330,6 +330,16 @@ describe('foldScriptHooks runs the hooks as npm does', () => {
       code: 0,
       out: ['PRE', 'BODY', 'POST'],
     })
+  })
+
+  it('appends the args as text, as npm does: no part sees them as $1 (hunt 8)', async () => {
+    const fold = foldScriptHooks('echo pre:$1:$#', 'echo body:$1:$#: "$*"', 'echo post:$1:$#')
+    expect(await run(fold, ['foo', "it's", 'a b', '$HOME'])).toEqual({
+      code: 0,
+      out: ['pre::0', "body::0:  foo it's a b $HOME", 'post::0'],
+    })
+    const npm = await run('echo body:$1:$#: "$*"', ['foo', "it's", 'a b', '$HOME'])
+    expect(npm.out[0]).toBe("body::0:  foo it's a b $HOME")
   })
 
   it('CONTROL: a script with no hooks is its body, verbatim', () => {

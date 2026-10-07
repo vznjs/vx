@@ -274,6 +274,13 @@ of CPU against Vite Task's 12.46. Q-1 cut vx's own CPU by a sixth. The
 rest of the gap is mostly the shell: vx runs every task as `sh -c`,
 one exec more per task than Vite Task, which execs `a && b` itself.
 
+**All-cached run (owner, 2026-10-06: "optimize these";
+`docs/history/ws-v.md`).** This repo's `vx run build --all` with every
+task cached: 136 → 107 ms (median, compiled, Linux). Two configs no
+longer evaluate on every run, check-attr overlaps git status, the
+telemetry context reads files instead of spawning git, and a literal
+file output no longer walks its glob on each hit.
+
 **Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
 competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how
@@ -307,7 +314,7 @@ since item 586 (Decisions below), not an open item.
 and v0.0.23 (f7096cea) were tagged, released with generated notes, their
 four binaries attached by the dispatched `release.yml`, and `@vzn/vx`
 with its four platform packages published by the dispatched `npm.yml`.
-That `npm.yml` run is still red at its first plugin: `@vzn/vx-github`
+That `npm.yml` run is still red at its first plugin: `@vzn/vx-ci`
 answers the OIDC publish with `E404 Not Found - PUT`, because none of
 the seven plugin names has ever been published and a trusted publisher
 cannot be bound to a name that does not exist. OWNER ACTION, once:
@@ -671,6 +678,9 @@ next?".
 
 ## Decisions (this arc)
 
+- **`@vzn/vx-github` is `@vzn/vx-ci` (owner, 2026-10-06).** Package and
+  directory renamed; the `github()` export is unchanged. A new npm
+  name needs the owner's placeholder publish and `npm trust` first.
 - **Rust rewrite: stay (2026-09-29).** Assessed and prototyped on Bun
   1.4.2 (`docs/design/rust-feasibility-2026-09.md`): Rust starts in
   3.3 ms against the compiled vx's 19 ms, but it is only 1.2× faster on
@@ -696,9 +706,10 @@ next?".
   inputs, in place (a formatter), and nothing else: its key names those,
   so a reader folding it is covered. A root-project task may rewrite the
   lockfile; the run watches for it. An `inputs.runtime` answer is the
-  environment, asked once per run and never re-checked: a task that
-  changes it is out of contract, and a file another task writes is
-  declared as an input instead.
+  environment, asked once per run and never re-checked; a probe behind a
+  writer its key does not fold is asked after that writer, for its task
+  alone (X-34). A file another task writes is still better declared as
+  an input.
 - **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
 - **A plugin verb's owner is its package (2026-10-03).** Plugins of two
@@ -791,6 +802,17 @@ next?".
   `vx last` need stay in `metrics.ts`; the rest went.
 - **`vx why` / `vx last` stay.** Cache-miss explainability is a core
   promise; both read the local run history core already writes.
+- **Entries live in a store every checkout of the repo shares (owner,
+  2026-10-05; schema v32).** `~/.vx/<id>/cache` (owner,
+  2026-10-06: "exactly like Nx", whose `~/.nx/<id>` the id ports) holds
+  the entries and artifacts; each workspace keeps its
+  history and memos in `.vx/cache` and attaches the store. A named
+  `cacheDir` / `VX_CACHE_DIR` / `--cache-dir` holds everything and
+  shares nothing; the test tasks, the bench harness and CI name one.
+  The artifact is the record, the index its inventory: a reset index
+  re-indexes each artifact from its bytes on its next hit, the batched
+  short-circuit probe included (`getMany` takes each hash's get context).
+  `docs/design/shared-store-2026-10.md`.
 
 ## Legacy map (what the old memory called things)
 

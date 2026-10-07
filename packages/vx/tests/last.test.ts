@@ -234,6 +234,21 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    'the replayed command and its re-run line keep the args shell-quoted (X-45)',
+    async () => {
+      // Joined bare, `a b` read back as two args and `c;echo X` as a second
+      // command for whoever pasted the line.
+      await vx(root, ['run', 'boom', '--all', '--', 'a b', 'c;echo X'])
+      const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
+      expect([lines[1], lines.at(-1)]).toEqual([
+        `  $ vx run boom --all -- 'a b' 'c;echo X'`,
+        `  re-run what failed: vx run app#boom -- 'a b' 'c;echo X'`,
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task killed by a signal replays with the exit code and the signal it stands for',
     async () => {
       const r1 = await vx(root, ['run', 'killed', '--all'])
@@ -408,10 +423,12 @@ describe('parseLastArgs', () => {
     ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
-    expect(parseLastArgs(['--format', 'yaml']).error).toMatch(/pretty \| json/)
+    expect(parseLastArgs(['--format', 'yaml']).error).toBe(
+      '--format must be pretty or json (got yaml) (see `vx last --help`)',
+    )
     expect([parseLastArgs(['--format']).error, parseLastArgs(['--format=']).error]).toEqual([
-      '--format requires a value (pretty | json)',
-      '--format requires a value (pretty | json)',
+      '--format requires a value: pretty or json (see `vx last --help`)',
+      '--format requires a value: pretty or json (see `vx last --help`)',
     ])
     expect(parseLastArgs(['--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parseLastArgs(['--cache-dir=y/z', '--list']).list).toBe(10)
@@ -442,9 +459,37 @@ describe('parseLastArgs', () => {
     expect(pick(['01a0dee9-run', '--list']).error).toBe(
       'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
     )
-    expect(pick(['--list=3', 'r1']).error).toBe(
-      'a run id and --list do not combine: replay r1, or list runs',
+    expect(pick(['--list=3', '0199b2c4-5e6f']).error).toBe(
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
     )
+  })
+
+  it('--list takes a bad count as its count, and an extra word is unexpected (X-29)', () => {
+    // Each read as a run id beside --list: "a run id and --list do not combine".
+    const error = (args: string[]) => parseLastArgs(args).error
+    expect([
+      error(['--list', '1.5']),
+      error(['--list', 'abc']),
+      error(['--list', '-3']),
+      error(['--list', '2', 'extra']),
+      error(['extra', '--list']),
+    ]).toEqual([
+      'invalid --list: 1.5 (expected 1..500)',
+      'invalid --list: abc (expected 1..500)',
+      'invalid --list: -3 (expected 1..500)',
+      'unexpected argument: extra (see `vx last --help`)',
+      'unexpected argument: extra (see `vx last --help`)',
+    ])
+    // CONTROL: a run id, whole or as `--list` prints it, still names the clash.
+    expect([
+      error(['--list', '0199b2c4-5e6f']),
+      error(['--list', '0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d']),
+      error(['--list', '--failed']),
+    ]).toEqual([
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
+      'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs',
+      undefined,
+    ])
   })
 })
 

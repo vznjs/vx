@@ -83,6 +83,10 @@ export function namedProject(
   by: string,
 ): Promise<ProjectMeta | null>
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
+export function resolveStoreRoot(
+  root: string,
+  config: WorkspaceConfig | null,
+): Promise<string | null>
 
 // A loaded project: its canonical name, directory and evaluated config.
 // `ProjectMeta` is what discovery finds; this is what a run reads.
@@ -158,7 +162,11 @@ A `package.json` with `workspaces` of its own is a root the same way
 unless the outer root lists that directory itself, as npm reads it: a
 nested workspace inside a member (`apps/tool/ws` under `apps/*`) was
 claimed through `apps/tool`, and its members ran in a workspace that does
-not list them (D-137).
+not list them (D-137). The converse holds too: an outer root that lists
+both the nested root and the claimed member (`packages/**` over
+`packages/inner` and `packages/inner/sub`) owns the member, since the
+walk from `packages/inner` itself reaches it; `sub` resolved to `inner`
+with its `^` edges into the outer workspace dropped until X-3.
 
 When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
@@ -229,9 +237,22 @@ Returns the project list sorted by `name`.
 
 Resolves the cache directory:
 
-- `config?.cacheDir` (set via `vx.workspace.ts`) is honored.
-  Relative paths resolve against `root`; absolute paths pass through.
+- `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
+  `VX_CACHE_DIR`. Relative paths resolve against `root`; absolute
+  paths pass through.
 - Default: `<root>/.vx/cache`.
+
+### `resolveStoreRoot(root, config)`
+
+Where the repository's shared store lives: `~/.vx/<id>/cache` on every
+platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
+(`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
+git is spawned only for a repository with no parseable remote: one
+`rev-list` for its root commit, asynchronously, so `prepareRun` asks it
+before discovery and awaits it when the cache opens; shallow is read from
+the common dir's `shallow` file). Null
+when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
+which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
 Used by `prepareRun` (so `run` and `planRun`), the doctor, and every
 reading verb through `cli/workspace-config.ts` — `vx cache prune`

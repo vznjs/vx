@@ -53,9 +53,6 @@ export interface FingerprintClaims {
   }): Promise<ReadonlySet<string> | undefined>
 }
 
-/** Does any `workspaceFiles` glob match this root-relative path? */
-export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean
-
 /** Is `ref` the current HEAD? A base that is already HEAD selects nothing,
  *  which is a clean exit rather than an empty run. */
 export function refIsHead(workspaceRoot: string, ref: string): boolean
@@ -189,3 +186,6 @@ Every git spawn goes through `spawnGitSync` / `spawnGit`: a git that is
 not on PATH is util's `gitSpawnRefusal` (one line, the install named),
 never the `ENOENT` stack `defaultAffectedBase` showed a minimal image
 (item 241). `tests/no-git-on-path.test.ts`.
+A base that fails outside a work tree, or in a repository with no commit
+yet, says that (util's `notAWorkTree`, or "no commit yet") rather than
+blaming the ref or a shallow clone; asked only after a base fails (X-52).

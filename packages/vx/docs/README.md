@@ -137,8 +137,9 @@ export default defineProject({
 
 Optionally declare plugins — a remote cache, a remote executor,
 telemetry — in `vx.workspace.ts` (`vx init` and `@vzn/vx-migrate` emit it).
-Core applies none by default; running here and caching in `.vx/cache`
-are its floor, so the file can be absent:
+Core applies none by default; running here and caching on this machine
+(entries in `~/.vx/<id>/cache`, shared by every checkout of the repo) are its
+floor, so the file can be absent:
 
 ```ts
 // vx.workspace.ts
@@ -213,7 +214,7 @@ contract, and cross-module imports go through it only, enforced by
 Every source file is documented under [`modules/`](./modules/). Tests live
 in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel
 remote cache and remote execution), `@vzn/vx-otel` (OpenTelemetry
-traces, metrics and logs), `@vzn/vx-github` (job summary and Checks API),
+traces, metrics and logs), `@vzn/vx-ci` (job summary and Checks API),
 `@vzn/vx-lockfile` (per-project keys from the package manager's
 lockfile), `@vzn/vx-schedule-history` (order by the critical path
 learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI

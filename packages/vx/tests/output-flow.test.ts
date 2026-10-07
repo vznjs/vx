@@ -158,12 +158,25 @@ describe('defaultLogger visibility matrix — broad', () => {
     expect(text).toContain('failed (exit 3)')
   })
 
-  it('skipped → silent (summary carries the count)', () => {
+  it('skipped → a row naming its blocker (nothing prints below the footer)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
     const n = mkNode('one#later')
-    log.taskComplete(n, mkOutcome(n, 'skipped'))
-    expect(out.text()).toBe('')
+    log.taskComplete(n, mkOutcome(n, 'skipped', { blockedBy: 'one#build' }))
+    expect(out.text()).toBe(' ⊘         skipped          one#later • blocked by one#build\n')
+  })
+
+  it('a flaky task carries its note on the row it prints, pass or failure', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, out)
+    const a = mkNode('one#types')
+    const b = mkNode('one#test')
+    log.taskComplete(a, mkOutcome(a, 'success', { flaky: { passes: 1, failures: 1 } }))
+    log.taskComplete(b, mkOutcome(b, 'failed', { flaky: { passes: 3, failures: 1 } }))
+    expect(out.text().split('\n').slice(0, 2)).toEqual([
+      ' ⏺︎   100ms success no-cache one#types flaky - failed 1× before',
+      ' ◼︎   100ms failed  no-cache one#test flaky - passed 3× before',
+    ])
   })
 
   it('group tasks → silent', () => {
@@ -259,9 +272,8 @@ describe('defaultLogger visibility matrix — focused', () => {
   })
 
   it('the skipped one-liner names what blocked the task', () => {
-    // The footer's Skipped section groups the same fact after the run; the
-    // row is where the reader looks first, and a bare `skipped` there sent
-    // them scrolling.
+    // The row is where the reader looks first, and a bare `skipped` there
+    // sent them scrolling.
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
     const n = mkNode('one#test', { requested: true })

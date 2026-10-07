@@ -1,7 +1,9 @@
 // The addition shape of docs/design/overlapping-outputs-2026-09.md, end to
 // end (item 588): `build` fills `dist`, `individual` depends on it and adds
 // `dist/individual` (twenty's twenty-ui; storybook's sandbox/build is the
-// same shape). Before 588 the pair was refused at graph build. Every row
+// same shape). Before 588 the pair was refused at graph build, and since
+// X-53 it is again unless the workspace sets `rules: { exclusiveOutputs:
+// false }`, which every fixture here does (`additive`). Every row
 // compares the tree under `dist` byte for byte with a COLD run of the same
 // sources in a fresh workspace, which is the design note's acceptance:
 // whatever the cache did, the tree is what the two commands produce.
@@ -16,6 +18,16 @@ import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.j
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
+
+/** A fixture workspace whose `vx.workspace.mjs` turns `exclusiveOutputs` off. */
+async function additive(opts: { prefix: string }): Promise<string> {
+  const root = await makeWorkspace(opts)
+  await writeFile(
+    path.join(root, 'vx.workspace.mjs'),
+    'export default { rules: { exclusiveOutputs: false } }\n',
+  )
+  return root
+}
 const TIMEOUT = 30_000
 
 // Two shapes of the same pair. SUBDIRECTORY (twenty): the dependant
@@ -57,7 +69,7 @@ interface Ws {
 }
 
 async function workspace(a: string, b: string, config: string): Promise<Ws> {
-  const root = await makeWorkspace({ prefix: 'vx-ovl-' })
+  const root = await additive({ prefix: 'vx-ovl-' })
   const app = await addProject(root, 'app', { files: { 'src/a.txt': a, 'srcb/b.txt': b }, config })
   return { root, app }
 }
@@ -100,6 +112,28 @@ const statusOf = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
   Object.fromEntries(
     r.outcomes.map((o) => [o.node.taskName, o.status + (o.restored ? '+restored' : '')]),
   )
+
+describe('overlapping outputs under the default rules', () => {
+  it(
+    'a run refuses the edge-ordered pair before any task runs (X-53)',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-ovl-rule-' })
+      try {
+        const app = await addProject(root, 'app', {
+          files: { 'src/a.txt': 'A1', 'srcb/b.txt': 'B1' },
+          config: configFor(SHAPES.subdirectory),
+        })
+        await expect(run({ cwd: root, tasks: TASKS, log: silent })).rejects.toThrow(
+          /app#build and app#individual both declare the output .* rules: \{ exclusiveOutputs: false \}/,
+        )
+        expect(tree(app)).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
 
 describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s', (_shape, outs) => {
   const config = configFor(outs)
@@ -326,7 +360,7 @@ describe("overlapping outputs: a root-anchored upstream under a project's depend
   it(
     'both hit up-to-date: the upstream keeps its own rows under what the dependant adds',
     async () => {
-      root = await makeWorkspace({ prefix: 'vx-ovl-ws-' })
+      root = await additive({ prefix: 'vx-ovl-ws-' })
       await addProject(root, 'a', {
         files: { 'src/a.txt': 'A1' },
         config: `export default { tasks: { build: {
@@ -419,6 +453,145 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
         expect(recordedFor(ws.root, 'individual')).toEqual([])
       } finally {
         await rm(ws.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// An additive task that REMOVES a file its upstream wrote (a bundler
+// deleting its intermediate). An artifact holds what a run wrote, never
+// what it took away, so a hit cannot replay the removal: the upstream's
+// restore brought the file back and the dependant's own rows left it.
+describe('overlapping outputs: a dependant that removes an upstream file', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js && echo mid > dist/tmp.js' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        post: {
+          dependsOn: ['build'],
+          exec: { command: 'rm dist/tmp.js && echo bundle > dist/bundle.js' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('A1', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    'its removal is never undone by a hit: the dependant saves nothing and re-runs',
+    async () => {
+      const cold = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+      expect(statusOf(cold)).toEqual({ build: 'success', post: 'success' })
+      const want: Array<[string, string]> = [
+        ['dist/a.js', 'A1'],
+        ['dist/bundle.js', 'bundle\n'],
+      ]
+      expect(tree(ws.app)).toEqual(want)
+      for (let i = 0; i < 2; i++) {
+        const warm = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+        expect(tree(ws.app)).toEqual(want)
+        expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'success' })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the same at the workspace root: a root-anchored removal is never undone by a hit',
+    async () => {
+      const rootWs = await workspace(
+        'A1',
+        'B1',
+        `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.js && echo mid > ../../gen/tmp.js' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+            },
+            post: {
+              dependsOn: ['build'],
+              exec: { command: 'rm ../../gen/tmp.js && echo bundle > ../../gen/bundle.js' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+            },
+          },
+        }
+      `,
+      )
+      try {
+        const gen = (): string[] => readdirSync(path.join(rootWs.root, 'gen')).sort()
+        expect((await run({ cwd: rootWs.root, tasks: ['post'], log: silent })).ok).toBe(true)
+        expect(gen()).toEqual(['a.js', 'bundle.js'])
+        const warm = await run({ cwd: rootWs.root, tasks: ['post'], log: silent })
+        expect(gen()).toEqual(['a.js', 'bundle.js'])
+        expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'success' })
+      } finally {
+        await rm(rootWs.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// The rewrite-in-place shape where size and mtime hold: a dependant that
+// rewrites its upstream's file to bytes of the same length and stamps the
+// mtime back (a tool honouring SOURCE_DATE_EPOCH). Judged by size + mtime,
+// the rewrite was not its own, so its hit restored only what it added and
+// left the upstream's restored bytes in place.
+describe('overlapping outputs: a same-size rewrite that keeps the mtime', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cat src/a.txt > dist/a.txt && touch -t 200101010000 dist/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        types: {
+          dependsOn: ['build'],
+          exec: {
+            command:
+              'tr a-z A-Z < dist/a.txt > dist/up && cat dist/up > dist/a.txt && rm dist/up && ' +
+              'touch -t 200101010000 dist/a.txt && echo t > dist/types.d.ts',
+          },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('hello', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    "the rewrite is the dependant's own, so a warm run leaves its bytes",
+    async () => {
+      const want: Array<[string, string]> = [
+        ['dist/a.txt', 'HELLO'],
+        ['dist/types.d.ts', 't\n'],
+      ]
+      expect((await run({ cwd: ws.root, tasks: ['types'], log: silent })).ok).toBe(true)
+      expect(tree(ws.app)).toEqual(want)
+      for (let i = 0; i < 2; i++) {
+        const warm = await run({ cwd: ws.root, tasks: ['types'], log: silent })
+        expect(tree(ws.app)).toEqual(want)
+        expect(statusOf(warm)).toEqual({
+          build: 'cache-hit+restored',
+          types: 'cache-hit+restored',
+        })
       }
     },
     TIMEOUT,

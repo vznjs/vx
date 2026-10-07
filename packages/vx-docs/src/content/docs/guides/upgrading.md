@@ -9,6 +9,22 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: bump CACHE_VERSION to vx-cache-v40
+
+every cached task misses once after the upgrade.
+
+## vx-ci: rename @vzn/vx-github to @vzn/vx-ci
+
+import github() from '@vzn/vx-ci' instead of '@vzn/vx-github'.
+
+## cache: keep artifacts when the store schema changes
+
+Cache.getMany and CacheLayer.getMany take an optional per-hash get context; a layer that ignores it is unchanged.
+
+## cache: share cache entries across workspaces
+
+SCHEMA_VERSION v32; existing entries miss once.
+
 ## cache: count restored and up-to-date hits everywhere
 
 SCHEMA_VERSION v30 -> v31; an older index is dropped on first open and its artifacts are left for `vx cache prune`. WhyDidThisRerun's thisRun / previousRun, RunSummaryRow, InvocationDetail, RunSummaryRecord and CacheStats gain fields.

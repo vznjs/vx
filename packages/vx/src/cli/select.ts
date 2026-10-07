@@ -21,16 +21,17 @@ import {
   parseFilter,
   type ProjectMeta,
   readLockfile,
-  workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
+import { declaresInput } from '../cache/index.js'
 import { listed, maskedLine, nearest, UserError } from '../util/index.js'
 import {
   claimedAffected,
   fingerprintClaims,
   gitOfDiscovery,
+  hasHook,
   isDefaultBuild,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
@@ -61,9 +62,9 @@ export async function workspaceGlobOwners(
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
-      const globs = task.cache?.inputs?.workspaceFiles
-      if (globs === undefined) continue
-      if (changed.some((rel) => workspaceGlobsMatch(globs, rel))) return true
+      const cache = task.cache
+      if (cache === undefined) continue
+      if (changed.some((rel) => declaresInput(cache, null, rel))) return true
     }
     return false
   }
@@ -182,6 +183,8 @@ export type FilterResolution =
       discovered: { root: string; projects: ProjectMeta[] }
       /** The `affected` filter's diff, for the run to seed its tasks from (`RunOptions.affected`). */
       affected?: AffectedChanges
+      /** What the other includes selected (`RunOptions.selectedOutright`). */
+      outright?: string[]
     }
   | { error: string }
   | { empty: string }
@@ -240,7 +243,10 @@ export async function resolveFilters(
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
-  const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
+  const walksGraph = parsed.some(
+    (f) => f.withDeps || f.withDependents || f.onlyDeps || f.sinceViaDeps === true,
+  )
   // A filter that diffs against git starts the run's whole-tree walk now:
   // the diff reads its untracked files from it (one walk where it spawned
   // its own), and the run reuses it with the discovery (I-26).
@@ -298,6 +304,15 @@ export async function resolveFilters(
       if (f.raw === affected) {
         changes = await affectedChanges(args)
         names = changes.projects
+        // A `graph` plugin may tie any task to a changed path (an edge, an
+        // input), and the run alone builds that graph: every project is a
+        // candidate, and the run keeps the tasks its final graph reaches.
+        if (
+          changes.changed.length > 0 &&
+          hasHook((await loadCliWorkspace(root)).plugins, 'graph')
+        ) {
+          names = new Set(projects.map((p) => p.name))
+        }
       } else {
         names = await affectedProjects(args)
       }
@@ -354,6 +369,14 @@ export async function resolveFilters(
     if (unmatched.length === 0 && emptyWalks.length > 0) {
       return { error: `no projects selected: ${emptyWalks.join('; ')}` }
     }
+    // Every pattern matched and an exclusion took them all back: "no
+    // projects matched filter(s): one, !one" read as a typo of `one`.
+    const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
+    if (unmatched.length === 0 && negations.length > 0) {
+      return {
+        error: `no projects selected: ${negations.join(', ')} excluded every project the other filters matched`,
+      }
+    }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs.
@@ -367,6 +390,22 @@ export async function resolveFilters(
     process.stderr.write(
       `vx: filter "${f}" matched no projects${didYouMean([f], projects, tags)}\n`,
     )
+  // Each include is a union: what `--filter other` selected runs its tasks
+  // whether or not the `--affected` diff reaches them, and an exclude
+  // still removes it (X-10).
+  const others = parsed.filter((f) => f.negate || f.raw !== affected)
+  const outright =
+    changes !== undefined && others.some((f) => !f.negate)
+      ? [
+          ...applyFilters({
+            filters: others,
+            projects,
+            graph,
+            affectedByFilter,
+            ...(tags !== undefined ? { tags } : {}),
+          }),
+        ].filter((n) => selected.has(n))
+      : []
   let staged: Map<string, ProjectEntry> | undefined
   if (stagedPromise !== undefined) {
     try {
@@ -382,6 +421,7 @@ export async function resolveFilters(
     ...(staged !== undefined ? { staged } : {}),
     discovered: { root, projects },
     ...(changes !== undefined ? { affected: changes } : {}),
+    ...(outright.length > 0 ? { outright: outright.sort() } : {}),
   }
 }
 
@@ -505,6 +545,10 @@ function didYouMeanProject(
   }
   for (const pattern of unmatched) {
     const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
+    if (typed === '//') {
+      return ". `//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config"
+    }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())

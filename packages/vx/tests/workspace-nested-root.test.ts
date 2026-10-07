@@ -55,3 +55,22 @@ it('CONTROL: an outer root that lists the nested one owns it', async () => {
   )
   expect(await rootFrom('apps/tool/ws')).toBe('.')
 })
+
+it('an outer root that lists the nested root and its members owns them all', async () => {
+  // `apps/**` lists `apps/tool/ws` and `apps/tool/ws/pkgs/x`; from `x` the
+  // nearer `ws` claimed it while `ws` itself resolved to the outer root.
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'outer', workspaces: ['apps/**'] }),
+  )
+  expect(await rootFrom('apps/tool/ws')).toBe('.')
+  expect(await rootFrom('apps/tool/ws/pkgs/x')).toBe('.')
+})
+
+it('CONTROL: a member only the nested root lists stays with it', async () => {
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'outer', workspaces: ['apps/*', 'apps/tool/ws'] }),
+  )
+  expect(await rootFrom('apps/tool/ws/pkgs/x')).toBe('apps/tool/ws')
+})

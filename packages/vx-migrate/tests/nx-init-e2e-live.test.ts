@@ -175,7 +175,8 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
 
         // 3. The migrator writes native config.
         await clean()
-        expect(await run(['bun', MIGRATE])).toEqual({ code: 0, tail: '' })
+        // The sandbox has no registry: installing vx is adopt.test.ts's.
+        expect(await run(['bun', MIGRATE, '--no-install'])).toEqual({ code: 0, tail: '' })
         if (globs !== undefined) {
           // Follow the note: list the integrated projects' directories.
           const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))

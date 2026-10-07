@@ -15,10 +15,29 @@ export const CORE_INDEX = path.resolve(here, '../../src/index.ts')
  * inside the repo, and Bun keys modules by realpath, so it is the same
  * `src/index.ts` instance the test imports.
  */
-export function localWorkspaceSource(extra: readonly string[] = [], prelude = ''): string {
+export function localWorkspaceSource(
+  extra: readonly string[] = [],
+  prelude = '',
+  rules?: string,
+): string {
   return `${PLUGIN_IMPORT}${prelude}
-export default { plugins: [${extra.join(', ')}] }
+export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, rules: ${rules}`} }
 `
+}
+
+/**
+ * The `rules` of a fixture whose key reads another task's outputs: the
+ * default `rules.upfrontKeys` refuses that config (X-54), and the rows
+ * that pin how vx keeps such a key correct need it loaded.
+ */
+export const WAIT_FOR_PRODUCERS = '{ upfrontKeys: false }'
+
+/** Rewrites `root`'s `vx.workspace.mjs` with no plugins and `WAIT_FOR_PRODUCERS`. */
+export async function waitForProducers(root: string): Promise<void> {
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([], '', WAIT_FOR_PRODUCERS),
+  )
 }
 
 /**

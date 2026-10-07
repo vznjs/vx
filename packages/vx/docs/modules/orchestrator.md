@@ -132,6 +132,9 @@ export interface RunSummary {
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.
+    Such a run's history is written after that wait, through a fresh
+    `Cache.inspect` handle on the cache directory, so `vx last` and the
+    flaky list see the server's failure.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent`: the caller
@@ -143,6 +146,7 @@ export interface RunSummary {
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.
 11. **Summary.** `formatPersistentList` rows for kept-alive tasks,
+    `formatOutcomeTable` when `summaryTable` (`--verbosity 1`),
     then `formatRunSummary(list, totalMs, colors, runContext)` — the
     footer carries the run banner (wordmark rule + projects/tasks/
     cache meters + info + time).

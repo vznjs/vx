@@ -155,13 +155,16 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   so declared write paths are pre-created: a glob's static prefix or a
   literal ending in `/` as a directory, any other literal as an empty
   file unless something is already there; a grant outside the project
-  (`~/…`, absolute) only when it is a glob. The empty files are vx's
+  (`~/…`, absolute) only when it is a glob or ends in `/`. The empty files are vx's
   until the task writes them: the sweep after the attempt removes the
   untouched ones (an unwritten placeholder is never archived as an
   output), and a failed task is told that a grant it meant as a
   directory is spelled `dir/` — its own `mkdir` said only "File exists",
   or "Not a directory" for a path inside it (B-96), and the file used to
-  survive every later clean (2026-09-16).
+  survive every later clean (2026-09-16). They are made before the walls
+  judge the binds, so a directory grant naming nothing yet is judged as
+  the directory, not its parent (a root project's `dist/` was refused for
+  `.git`, X-61); a refused grant's placeholders are taken back.
 
 ## Tests
 

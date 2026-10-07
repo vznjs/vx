@@ -54,6 +54,7 @@ src/exec/executor.ts
 src/exec/index.ts
 src/exec/kill-tree.ts
 src/exec/local-executor.ts
+src/exec/proc-sample.ts
 src/exec/runner.ts
 src/exec/sandbox-binds.ts
 src/exec/sandbox-deny-scan.ts
@@ -86,6 +87,7 @@ src/orchestrator/local-shortcircuit.ts
 src/orchestrator/lockfile-claim.ts
 src/orchestrator/logger.ts
 src/orchestrator/metrics.ts
+src/orchestrator/miss-reason.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/persistent.ts
@@ -153,4 +155,5 @@ src/workspace/migration.ts
 src/workspace/nested-dirs.ts
 src/workspace/package-graph.ts
 src/workspace/project-loader.ts
+src/workspace/repo-id.ts
 src/workspace/workspace.ts

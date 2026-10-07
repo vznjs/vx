@@ -159,6 +159,10 @@ export interface CacheEntry {
    * them work vs. a stale-local replay.
    */
   source?: 'local' | 'remote'
+  /** The artifact's compressed size, when the index knows it. */
+  sizeBytes?: number
+  /** On a remote hit this run pulled: how long the download and its ingest took. */
+  fetchMs?: number
 }
 
 export interface RunRecord {
@@ -325,7 +329,8 @@ export interface PruneResult {
  * the full `workspace-outputs/<rel-to-root>` tar entry name as the
  * discriminator — least-invasive row format, no schema change. A
  * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved.
+ * collide with the namespace; the name is reserved, and a project
+ * output glob under it is refused at load (config-schema.ts).
  */
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
@@ -565,9 +570,12 @@ export interface CacheLayer {
   /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
-   * is probed hash by hash.
+   * is probed hash by hash. `ctx` is each hash's `get` context.
    */
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   /**
    * Lightweight existence probe. `'local'` / `'remote'` names the layer
    * that holds the artifact; `null` is a miss. NEVER moves bytes: no

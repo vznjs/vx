@@ -134,7 +134,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 
 | Cache feature            | Turbo                                      | Nx                     | vite-task                    | vx                                                                                                                                                                        |
 | ------------------------ | ------------------------------------------ | ---------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                                                                                                              |
+| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in a store every checkout of the repo shares (`~/.vx/<id>/cache`)                                                           |
 | Remote cache wire        | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | plugin-driven: `@vzn/vx-reapi` (Bazel AC/CAS), `@vzn/vx-migrate`'s `turboCache()` (`/v8/artifacts`, self-hosted or Vercel), `@vzn/vx-migrate`'s `nxCache()` (`/v1/cache`) |
 | Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                                                                                                       |
 | Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                                                                                                       |
@@ -142,7 +142,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Cache pruning            | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `cacheRetention: { olderThan, maxSize }` in `vx.workspace.ts` (run end), `vx cache prune --older-than / --max-size`                                                       |
 | Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`                                                                                            |
 | Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                                                                                                    |
-| Flaky task detection     | —                                          | Nx Cloud (paid)        | —                            | **local** — same key, both outcomes on record: the run's footer, `--summarize` (`flaky`), `vx info`                                                                       |
+| Flaky task detection     | —                                          | Nx Cloud (paid)        | —                            | **local** — same key, both outcomes on record: the task's row, `--summarize` (`flaky`), `vx info`                                                                         |
 | Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                                                                                                      |
 | Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                                                                                                               |
 | Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                                                                                                       |
@@ -344,7 +344,7 @@ prune` policy at the end of every run,
   ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--download`, remote execution through `@vzn/vx-reapi`,
-  `@vzn/vx-github` (job summary + check run), `@vzn/vx-mcp` (an MCP
+  `@vzn/vx-ci` (job summary + check run), `@vzn/vx-mcp` (an MCP
   server as a plugin verb), the `schedule-history` plugin (critical-path
   priorities from recorded durations).
 - npm distribution as per-platform binary packages plus a launcher,
@@ -451,7 +451,7 @@ Things `@vzn/vx` does that the others don't:
 - **A versioned telemetry contract + plugin seam.** `TelemetryRecord`
   / `RunSummaryRecord` (TELEMETRY_SCHEMA_VERSION) is one neutral
   export shape every sink reads — OTel (`@vzn/vx-otel`), the GitHub
-  job summary and check run (`@vzn/vx-github`), or a custom sink —
+  job summary and check run (`@vzn/vx-ci`), or a custom sink —
   observe-only by construction, zero cost when unused.
 - **Bun-native everything, and none of it the user's concern.**
   `Bun.spawn` for child rusage capture, `bun:sqlite`, `Bun.YAML`,

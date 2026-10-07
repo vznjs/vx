@@ -22,7 +22,7 @@ import { describe, expect, it } from 'bun:test'
 import { buildTaskGraph, outputsOverlap, type TaskNode } from '../src/graph/index.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
-import type { ProjectConfig, TaskConfig } from '../src/config.js'
+import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js'
 
 function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
   return {
@@ -41,7 +41,7 @@ function remoteOnlyTask(outputs: string[], wsOutputs?: string[]): TaskConfig {
 }
 
 /** Build a graph over projects → tasks, requesting every task. */
-function graph(projects: Record<string, Record<string, TaskConfig>>): void {
+function graph(projects: Record<string, Record<string, TaskConfig>>, rules?: WorkspaceRules): void {
   const entries = new Map<string, ProjectEntry>()
   for (const [name, tasks] of Object.entries(projects)) {
     entries.set(name, {
@@ -63,10 +63,17 @@ function graph(projects: Record<string, Record<string, TaskConfig>>): void {
       Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
     ),
     workspaceRoot: '/w',
+    rules,
   })
 }
 
-/** Like `graph`, returning the nodes, for the rows that read what the build marked. */
+/** The rule that lets an edge-ordered pair add to one tree (item 588). */
+const ADDITIVE: WorkspaceRules = { exclusiveOutputs: false }
+
+/**
+ * Like `graph`, returning the nodes, for the rows that read what the build
+ * marked: built with `exclusiveOutputs` off, the rule the marks need.
+ */
 function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<string, TaskNode> {
   const entries = new Map<string, ProjectEntry>()
   for (const [name, tasks] of Object.entries(projects)) {
@@ -89,10 +96,107 @@ function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<s
       Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
     ),
     workspaceRoot: '/w',
+    rules: ADDITIVE,
   })
 }
 
-describe('an overlap WITH an edge is the addition shape, and is allowed (item 588)', () => {
+// X-53: `rules.exclusiveOutputs`, on unless a workspace turns it off,
+// refuses the edge-ordered pair too. The addition shape below is correct,
+// but slower to clean and restore; the rule keeps one path to one task.
+describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => {
+  const dependant = (outputs: string[], on: string): TaskConfig => ({
+    ...task(outputs),
+    dependsOn: [on],
+  })
+  const twenty = {
+    app: { build: task(['dist']), individual: dependant(['dist/individual'], 'build') },
+  }
+
+  it("refuses twenty's shape by default, naming the rule", () => {
+    expect(() => graph(twenty)).toThrow(
+      'app#build and app#individual both declare the output "dist" / "dist/individual" in ' +
+        "cache.outputs.files — vx cleans a task's declared outputs before it runs and before a " +
+        "cache-hit restore, so whichever of these runs second DELETES the other's output. Give " +
+        'each task its own output path, or set rules: { exclusiveOutputs: false } in ' +
+        "vx.workspace.ts to let a dependant add to its upstream's outputs.",
+    )
+    expect(() => graph(twenty, {})).toThrow(/rules: \{ exclusiveOutputs: false \}/)
+    expect(() => graph(twenty, { exclusiveOutputs: true })).toThrow(/exclusiveOutputs: false/)
+  })
+
+  it('refuses through a hop, an identical glob, and root-anchored outputs', () => {
+    expect(() =>
+      graph({
+        app: {
+          individual: dependant(['dist/individual'], 'mid'),
+          mid: { dependsOn: ['build'] } as TaskConfig,
+          build: task(['dist']),
+        },
+      }),
+    ).toThrow(/exclusiveOutputs: false/)
+    expect(() =>
+      graph({ app: { build: task(['dist/**']), types: dependant(['dist/**'], 'build') } }),
+    ).toThrow(/exclusiveOutputs: false/)
+    expect(() =>
+      graph({
+        a: { build: task([], ['shared/**']) },
+        b: { build: { ...task([], ['shared/b.txt']), dependsOn: ['a#build'] } as TaskConfig },
+      }),
+    ).toThrow(/in cache\.outputs\.workspaceFiles .*exclusiveOutputs: false/)
+  })
+
+  it("refuses a root-anchored output inside another project's tree, either edge", () => {
+    expect(() =>
+      graph({
+        a: { build: { ...task([], ['b/dist/a.txt']), dependsOn: ['b#build'] } as TaskConfig },
+        b: { build: task(['dist/**']) },
+      }),
+    ).toThrow(
+      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set rules: { exclusiveOutputs: false }`,
+    )
+    expect(() =>
+      graph({
+        a: { build: task([], ['b/dist/**']) },
+        b: { build: { ...task(['dist/b.txt']), dependsOn: ['a#build'] } as TaskConfig },
+      }),
+    ).toThrow(/exclusiveOutputs: false/)
+  })
+
+  it('CONTROL: off, the same pairs load', () => {
+    expect(() => graph(twenty, ADDITIVE)).not.toThrow()
+    expect(() =>
+      graph(
+        {
+          a: { build: { ...task([], ['b/dist/a.txt']), dependsOn: ['b#build'] } as TaskConfig },
+          b: { build: task(['dist/**']) },
+        },
+        ADDITIVE,
+      ),
+    ).not.toThrow()
+  })
+
+  it('CONTROL: without an edge the pair is refused whatever the rule, with no rule hint', () => {
+    for (const rules of [undefined, ADDITIVE]) {
+      let msg = ''
+      try {
+        graph({ app: { build: task(['dist']), individual: task(['dist/individual']) } }, rules)
+      } catch (e) {
+        msg = (e as Error).message
+      }
+      expect(msg).toEndWith(
+        'and the run still reports success. Give each task its own output path.',
+      )
+    }
+  })
+
+  it('CONTROL: an edge between DISJOINT outputs loads', () => {
+    expect(() =>
+      graph({ app: { build: task(['dist']), docs: dependant(['out'], 'build') } }),
+    ).not.toThrow()
+  })
+})
+
+describe('an overlap WITH an edge is the addition shape when the rule is off (item 588)', () => {
   // twenty's `build` → `dist` and `build:individual` → `dist/individual`,
   // the second depending on the first: the order is fixed, so the dependant
   // can add to the tree and tell its own files from what it found.
@@ -183,6 +287,24 @@ describe("a workspaceFiles output inside another project's files output", () => 
     })
     expect(nodes.get('b#build')?.addsToOutputsOf).toEqual(['a#build'])
     expect(nodes.get('a#build')?.outputsAddedToBy).toEqual(['b/dist/b.txt'])
+  })
+
+  it('ordered, but with an entry outside the project, names that entry, not a missing edge', () => {
+    expect(() =>
+      graph(
+        {
+          a: {
+            build: { ...task([], ['b/dist/extra/**', 'other/**']), dependsOn: ['b#build'] },
+          } as Record<string, TaskConfig>,
+          b: { build: task(['dist/**']) },
+        },
+        ADDITIVE,
+      ),
+    ).toThrow(
+      `whichever of these runs second DELETES the other's output. a#build depends on b#build, ` +
+        `but adding to its output needs every cache.outputs.workspaceFiles entry inside b, and ` +
+        `"other/**" is not. Give each task its own output path.`,
+    )
   })
 
   it('CONTROL: a root-anchored output beside the project tree is allowed', () => {
@@ -476,7 +598,7 @@ describe('what must NOT be refused — a false positive breaks a working build',
       graph({ app: { a: task(['./dist/a/**']), b: task(['dist//b/**']) } }),
     ).not.toThrow()
     expect(() =>
-      graph({ app: { a: task(['./dist/*.js']), b: task(['dist/**/*.js']) } }),
+      graph({ app: { a: task(['./dist/*.js']), b: task(['dist/**/*.map']) } }),
     ).not.toThrow()
   })
 
@@ -489,15 +611,28 @@ describe('what must NOT be refused — a false positive breaks a working build',
     ).not.toThrow()
   })
 
-  it('allows two undecidable globs that are not identical', () => {
-    // Glob-vs-glob intersection is not decided here. `dist/*.js` and
-    // `dist/**/*.js` very likely overlap, but proving it needs a general
-    // algorithm, so the check lets them through rather than risk refusing a
-    // working config. Pinned so the conservatism is a decision, not an
-    // accident — widening this is where a future intersection algorithm goes.
-    expect(() =>
-      graph({ app: { a: task(['dist/*.js']), b: task(['dist/**/*.js']) } }),
-    ).not.toThrow()
+  it('refuses two globs a path both match proves overlapping (X-51)', () => {
+    // `dist/*.js` and `dist/**/*.js` both match `dist/x.js`; neither is a
+    // subtree holding the other's prefix, so only a built path decides it.
+    // M (2026-10-07): two tasks never share an output.
+    for (const [a, b] of [
+      ['dist/*.js', 'dist/**/*.js'],
+      ['dist/**/*.js', 'dist/sth/**'],
+      ['**/*.d.ts', 'dist/**'],
+    ]) {
+      expect(() => graph({ app: { a: task([a!]), b: task([b!]) } })).toThrow('vx cleans a task')
+    }
+  })
+
+  it('allows two globs no built path joins, when they are disjoint', () => {
+    // CONTROL for the row above: the same shapes, disjoint sets.
+    for (const [a, b] of [
+      ['dist/*.js', 'dist/sth/**'],
+      ['dist/**/*.js', 'dist/**/*.map'],
+      ['lib/**', 'dist/**/*.js'],
+    ]) {
+      expect(() => graph({ app: { a: task([a!]), b: task([b!]) } })).not.toThrow()
+    }
   })
 
   it('allows a task with no declared outputs beside one that has them', () => {
@@ -741,6 +876,8 @@ describe('the path index finds every pair the rule refuses', () => {
         if (expected !== null) refusals++
         expect(unordered.error).toBe(expected)
 
+        const ordered = graphNodesOrError({ app: chain })
+        expect(ordered.error).toBe(firstRefusal(ordered.order, ws))
         const nodes = graphNodes({ app: chain })
         const want = reference(nodes, ws)
         marks += want.filter((n) => n.addsToOutputsOf !== undefined).length
@@ -772,7 +909,10 @@ function graphNodesOrError(projects: Record<string, Record<string, TaskConfig>>)
   const bare: Record<string, Record<string, TaskConfig>> = {}
   for (const [p, tasks] of Object.entries(projects)) {
     bare[p] = Object.fromEntries(
-      Object.entries(tasks).map(([t, c]): [string, TaskConfig] => [t, { exec: c.exec! }]),
+      Object.entries(tasks).map(([t, c]): [string, TaskConfig] => [
+        t,
+        { exec: c.exec!, ...(c.dependsOn === undefined ? {} : { dependsOn: c.dependsOn }) },
+      ]),
     )
   }
   const order = [...graphNodes(bare).values()].map((n) => ({
@@ -1020,6 +1160,7 @@ describe('collision rows the C-30 sweep found unheld', () => {
         { project: 'a', task: 'build' },
       ],
       workspaceRoot: '/w',
+      rules: ADDITIVE,
     })
     expect([
       nodes.get('a#build')?.addsToOutputsOf,

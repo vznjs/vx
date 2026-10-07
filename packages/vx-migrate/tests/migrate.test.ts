@@ -22,8 +22,10 @@ interface VxResult {
   err: string
 }
 
+// --no-install: these rows are about what is written, and a sandboxed task
+// has no registry (`tests/adopt.test.ts` holds the install).
 async function vx(root: string, args: string[]): Promise<VxResult> {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
+  const proc = Bun.spawn([process.execPath, BIN, '--no-install', ...args], {
     cwd: root,
     env: { ...process.env },
     stdout: 'pipe',
@@ -145,20 +147,30 @@ async function makeTurboWorkspace(): Promise<string> {
 // script gets a key-only `true` (J-97). The README states it.
 describe("vx migrate (turbo): a package without a ^ task's script", () => {
   it(
-    'gets a cached `true` with no outputs, as the README says',
+    'gets a cached `true` with no outputs, as the README says; `build` is left to core',
     async () => {
       const root = await makeRoot('vx-migrate-noop-')
       try {
         await writeFile(
           path.join(root, 'turbo.json'),
-          JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
+          JSON.stringify({
+            tasks: {
+              build: { dependsOn: ['^build'], outputs: ['dist/**'] },
+              types: { dependsOn: ['^types'], outputs: ['types/**'] },
+            },
+          }),
         )
         await addPackage(root, 'ui', {})
-        await addPackage(root, 'web', { build: 'tsc -b' }, { ui: 'workspace:*' })
+        await addPackage(root, 'web', { build: 'tsc -b', types: 'tsc' }, { ui: 'workspace:*' })
         expect((await vx(root, [])).code).toBe(0)
         const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.config.ts'))
-        const build = (ui.tasks as Record<string, TaskConfig>).build!
-        expect([build.exec?.command, build.cache?.outputs?.files]).toEqual(['true', []])
+        const tasks = ui.tasks as Record<string, TaskConfig>
+        // Core gives a project with no `build` this node itself (projects.ts).
+        expect(Object.keys(tasks)).toEqual(['types'])
+        expect([tasks.types!.exec?.command, tasks.types!.cache?.outputs?.files]).toEqual([
+          'true',
+          [],
+        ])
         const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
         expect(readme).toContain(
           'A package without the script of a `^` task others run gets the same key-only task',
@@ -249,7 +261,9 @@ describe('vx migrate (turbo)', () => {
       // both root-relative → inputs.workspaceFiles, listed once as the live
       // `turbo()` lists it: the preset spread holds the explicit entry, and
       // written twice the migrated config keyed apart from the live run.
-      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
+      // `codegen`'s and `test`'s outputs taken back: no key reads another
+      // task's outputs (core X-54).
+      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
       expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
@@ -262,7 +276,7 @@ describe('vx migrate (turbo)', () => {
       // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
       const codegen = tasks.codegen!
       expect(codegen.exec?.command).toBe('node gen.js')
-      expect(codegen.cache?.inputs.files).toEqual(['**/*'])
+      expect(codegen.cache?.inputs.files).toEqual(['**/*', '!dist/**', '!coverage/**'])
       expect(codegen.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(codegen.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
       expect(codegen.cache?.outputs.files).toEqual(['src/gen/**'])
@@ -313,14 +327,19 @@ describe('vx migrate (turbo)', () => {
     TIMEOUT,
   )
 
-  it('emits vx.workspace.ts declaring the local plugins when none exists', async () => {
+  it('emits vx.workspace.ts declaring the plugins the repo calls for when none exists', async () => {
     expect(result.out).toContain('vx.workspace.ts')
     const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
     // Type-only: the runtime `defineWorkspace` import loaded a second copy
     // of core into every run (~17 ms on a two-package workspace).
     expect(ws).toContain("import type { WorkspaceConfig } from '@vzn/vx/config'")
     expect(ws).not.toContain('defineWorkspace')
-    expect(ws).toContain('export default { plugins: [] } satisfies WorkspaceConfig')
+    // No lockfile and no .github/workflows here: the history plugin alone.
+    expect([...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1])).toEqual([
+      'scheduleHistoryPlugin',
+    ])
+    expect(ws).toContain("import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'")
+    expect(ws).toContain('} satisfies WorkspaceConfig')
   })
 
   it('does not emit vx.workspace.ts when one already exists', async () => {
@@ -344,7 +363,7 @@ describe('vx migrate (turbo)', () => {
     const preset = await Bun.file(path.join(root, 'vx-preset.ts')).text()
     expect(preset).toContain("export const globalInputs = ['tsconfig.base.json']")
     // The preset names the tool as the configs do; `vx migrate` is no verb.
-    expect(preset).toContain('// Generated by `vx-migrate` from turbo.json')
+    expect(preset).not.toContain('Generated by')
     expect(preset).not.toContain('vx migrate')
     expect(preset).toContain("export const globalEnvInputs = ['GLOBAL_MODE']")
     expect(preset).toContain("export const globalPassThroughEnv = ['AWS_PROFILE']")
@@ -681,7 +700,13 @@ describe('vx migrate (nx)', () => {
       // no inputs → files ['**/*'].
       const test = tasks.test!
       expect(test.exec?.command).toBe('jest')
-      expect(test.cache?.inputs.files).toEqual(['**/*'])
+      expect(test.cache?.inputs.files).toEqual([
+        '**/*',
+        '!dist',
+        '!build/main.js',
+        '!coverage/lcov.info',
+        '!.output',
+      ])
 
       // Any executor runs as itself through nx-exec; dependsOn/cache parts kept.
       const serve = tasks.serve!
@@ -1321,7 +1346,8 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 // ─── Item 817's sweep: each row fails with one line of the writer undone ──
 
 describe('the writer: what the sweep found unheld', () => {
-  const USAGE = 'usage: vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]'
+  const USAGE =
+    'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
@@ -1452,8 +1478,7 @@ describe('the preset, exactly', () => {
       {
         relPath: 'vx-preset.ts',
         contents: [
-          '// Generated by `vx-migrate` from turbo.json. TypeScript composition',
-          "// replaces turbo's global fields: each vx.config.ts imports these",
+          "// TypeScript composition replaces turbo's global fields: each vx.config.ts imports these",
           '// arrays and spreads them into the matching task fields.',
           '',
           '// From globalEnv: cache inputs AND passed through to every task',
@@ -1467,7 +1492,7 @@ describe('the preset, exactly', () => {
 
   it('a preset of globalPassThroughEnv alone is written with its one section', async () => {
     const plan = await preset({ globalPassThroughEnv: ['AWS'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(3))).toEqual([
+    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
       [
         '',
         '// From globalPassThroughEnv: forwarded to every task, never hashed.',
@@ -1482,7 +1507,7 @@ describe('the preset, exactly', () => {
   // globalDependencies, which named neither.
   it('a preset of global inputs says where they come from', async () => {
     const plan = await preset({ globalDependencies: ['x.json'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(3))).toEqual([
+    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
       [
         '',
         '// From globalDependencies and what Turbo adds to them (the packages the',

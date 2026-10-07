@@ -9,10 +9,9 @@
 
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { mark, nearest, UserError } from '../util/index.js'
+import { beginRun, mark, nearest, UserError } from '../util/index.js'
 import {
   Cache,
-  noteSchemaReset,
   type CacheLayer,
   type CachePolicy,
   FULL_CACHE_POLICY,
@@ -38,12 +37,15 @@ import {
   type Lockfile,
   readLockfile,
   resolveCacheDir,
+  resolveStoreRoot,
   type ProjectEntry,
+  validateProjectConfig,
 } from '../workspace/index.js'
 import {
   buildTaskGraph,
   excludeDependencies,
   expandRequested,
+  isGroupTask,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,
@@ -61,6 +63,7 @@ import {
   discoverProjects,
   gitOfDiscovery,
   graphOfDiscovery,
+  isDefaultBuild,
   loadProjects,
   loadWorkspacePlugins,
   type LoadedProjects,
@@ -181,6 +184,7 @@ export interface PreparedRun {
  * empty plan).
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+  beginRun()
   mark('startup')
   // The root manifest is read once for the root, the globs and the
   // fingerprint. A watch cycle is a new run and reads it afresh.
@@ -215,9 +219,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   mark('workspace config')
   // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
   // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  // A cache dir named anywhere holds everything; the default shares its
+  // entries through the user's store.
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
+  // Asked now, read when the cache opens: a repository with no remote is
+  // named by its root commit, a git spawn the discovery below overlaps.
+  const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
   const projectMetas =
     reused !== undefined
       ? reused.projects
@@ -278,9 +287,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     { read: policy.localRead, write: policy.localWrite },
     workspaceRoot,
     options.artifactCeiling,
+    'open',
+    await storeRoot,
   )
   localCache.assertWritable()
-  noteSchemaReset(localCache, (m) => log.status(m))
   // Two digests from one read: the config-evaluation cache keys on every
   // file (a config may import a dependency), the task keys on the files no
   // plugin claims (`VxPlugin.fingerprint`).
@@ -347,12 +357,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const { projects, configured: projectsWithConfigs } = loaded
   mark('load configs')
 
-  // Boundary geometry considers every config-bearing project in the
-  // workspace, loaded or not — an out-of-scope nested project must
-  // still fence its files off from its parent's globs.
-  const nestedDirsByProject = computeNestedProjectDirs(
-    projectsWithConfigs.map((m) => ({ name: m.name, dir: m.dir })),
-  )
+  // Boundary geometry considers every workspace project, loaded or not,
+  // config or not: `--affected` gives a changed path to the deepest project
+  // dir, and a config-less one keys its files under its default `build`, so
+  // a parent's glob that folded (or cleaned) them crossed a boundary the
+  // selection drew (X-57).
+  const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))
@@ -505,20 +515,71 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         packageGraph,
         requested: req,
         workspaceRoot,
+        rules: workspaceConfig?.rules,
         ...(projects.size < projectsWithConfigs.length
           ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
           : {}),
       })
     let nodes = graphOf(requested)
+    const hasGraphHook = hasHook(plugins, 'graph')
+    const graphStage = async (): Promise<void> => {
+      // A hook edits each node's config in place, as `project` does, so the
+      // edit is held to what the loader accepts from a user: a misspelled
+      // `exec` field ran as an empty command and failed with no reason.
+      const configPaths = new Map(projectMetas.map((m) => [m.name, m.configPath]))
+      await applyGraphHooks(
+        plugins,
+        nodes,
+        {
+          workspaceRoot,
+          cacheDir,
+          warn: (m) => log.status(m),
+          requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
+        },
+        (plugin) => {
+          for (const n of nodes.values()) {
+            if (isDefaultBuild(n.config)) continue
+            const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
+            validateProjectConfig(
+              { tasks: { [n.taskName]: n.config } },
+              `${where} (after plugin '${plugin.name}')`,
+            )
+          }
+        },
+        workspaceConfig?.rules,
+      )
+    }
+    // `--affected` selects over the FINAL graph: an edge or an input a
+    // `graph` hook adds moves a key, so the hooks run first, over every
+    // candidate, and the selection prunes what they left.
+    const hooksFirst = hasGraphHook && options.affected !== undefined
     // `--affected` keeps a bare request only when the diff reaches its
     // closure; a `pkg#task` the user named runs as it always does.
     if (options.affected !== undefined) {
+      const before = hooksFirst ? new Set(nodes.keys()) : null
+      if (hooksFirst) await graphStage()
       const named = new Set(tasks.filter((t) => t.includes('#')))
+      const outright = new Set(options.selectedOutright)
       const ids = requested.map((r) => `${r.project}#${r.task}`)
       const reached = new Set(affectedRoots(nodes, ids, options.affected, projects, packageGraph))
-      const kept = requested.filter((_r, i) => named.has(ids[i]!) || reached.has(ids[i]!))
+      const kept = requested.filter(
+        (r, i) => named.has(ids[i]!) || outright.has(r.project) || reached.has(ids[i]!),
+      )
       if (kept.length === 0) return emptyRun('none-affected')
-      if (kept.length < requested.length) {
+      if (before !== null) {
+        const asked = new Set(ids)
+        // What a hook added or asked for is the plugin's choice, kept as it
+        // would be on a run without the diff.
+        const roots = [
+          ...kept.map((r) => `${r.project}#${r.task}`),
+          ...[...nodes.values()]
+            .filter((n) => !before.has(n.id) || (n.requested && !asked.has(n.id)))
+            .map((n) => n.id),
+        ]
+        pruneToClosure(nodes, new Set(roots))
+        for (let i = unproven.length - 1; i >= 0; i--)
+          if (!nodes.has(unproven[i]![0])) unproven.splice(i, 1)
+      } else if (kept.length < requested.length) {
         unproven.length = 0
         nodes = graphOf(kept)
       }
@@ -591,13 +652,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
     )
     mark('git enumeration')
-    if (hasHook(plugins, 'graph')) {
-      await applyGraphHooks(plugins, nodes, {
-        workspaceRoot,
-        cacheDir,
-        warn: (m) => log.status(m),
-        requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
-      })
+    if (hasGraphHook && !hooksFirst) await graphStage()
+    // Args after `--` go to requested commands only; with none among them
+    // they reached nothing and the run passed, the `--watch` unheard.
+    if ((options.forwardArgs?.length ?? 0) > 0) {
+      const requestedNodes = [...nodes.values()].filter((n) => n.requested)
+      if (requestedNodes.length > 0 && requestedNodes.every(isGroupTask)) {
+        const ids = requestedNodes.map((n) => n.id)
+        const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')
+        throw new UserError(
+          `args after \`--\` reach no task: ${named} ${ids.length === 1 ? 'has' : 'have'} no command (a group); name the task that runs one`,
+        )
+      }
     }
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
@@ -720,5 +786,25 @@ async function refuseUndeclaredDeps(
   }
   for (const [id, name] of unproven) {
     if (!declared.has(name)) throw undeclaredDepsError(id, name)
+  }
+}
+
+/**
+ * Drops every node outside the `dependsOn` closure of `roots`, and demotes a
+ * requested one only a kept task pulls in: what a rebuild from the kept
+ * requests would hold, with the `graph` hooks' edits kept.
+ */
+function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>): void {
+  const keep = new Set<string>()
+  const stack = [...roots]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (keep.has(id)) continue
+    keep.add(id)
+    stack.push(...nodes.get(id)!.deps)
+  }
+  for (const [id, n] of nodes) {
+    if (!keep.has(id)) nodes.delete(id)
+    else if (!roots.has(id)) n.requested = false
   }
 }

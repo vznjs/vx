@@ -49,6 +49,7 @@ export interface JudgeContext {
   armedAt: number
   held(): boolean
   uncached(): ReadonlySet<string>
+  fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
 }
 export class ChangeJudge {
@@ -72,7 +73,9 @@ export function makeRootEventFilter(
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
   claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
+  fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
+export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
 export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
 export function isWorkspaceFingerprintFile(name: string): boolean
 export function isWorkspaceConfigFile(name: string): boolean
@@ -147,17 +150,28 @@ are refused too: they format one run's result.
    Same scope resolution as `vx run`.
 3. Enumerate projects in the resolved scope via `discoverCliProjects`
    (discovery plus the plugins' `discover` stage, as `vx run` lists
-   them). Empty scope → exit 1.
+   them): `opts.projects` (every project when undefined) plus each
+   `pkg#task`'s project, or only those when every task is anchored
+   (`tests/watch-anchored-scope.test.ts`). Empty scope → exit 1, judged
+   after the initial run so an unknown `pkg` gets the run's refusal.
 4. **Initial run.** Print `vx watch: initial run...`; call
    `orchestrator.run(opts)`. One that ran nothing and failed (a task
-   no project declares) exits 1.
+   no project declares) exits 1. Then `opts.affected` and
+   `opts.selectedOutright` are dropped: the `--affected` diff is the
+   tree at start, so a later cycle runs the requested task across the
+   scope and the keys decide (`tests/watch-affected.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
      the cross-project `dependsOn` edges `taskEdges` collects — what
      `vx run` would run for the same filter), `fs.watch(dir,
 { recursive: true })`. Bun supports recursive watch on every
-     platform.
+     platform. A path inside a project nested under the
+     watched one is dropped (`makeFence`): its key leaves that file
+     out (`computeNestedProjectDirs`), so a root project ran a cycle
+     for every edit in a nested one (X-42). The fences are every
+     project, config or not (X-57). The nested project's own config
+     still passes, since it may give the project tasks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …) and
      the workspace config (`vx.workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
@@ -167,7 +181,8 @@ are refused too: they format one run's result.
      `inputs.workspaceFiles`, ONE
      `fs.watch(root, { recursive: true })` replaces all of the above,
      and `makeRootEventFilter` keeps the events a key can see — a path
-     inside any project's directory, a fingerprint file or the
+     inside any watched project's directory and outside the projects
+     fenced off under it, a fingerprint file or the
      workspace config at the root, a
      match of a declared `workspaceFiles` glob (negations not
      consulted: a `!` only narrows, and a spurious event is one
@@ -350,6 +365,8 @@ non-persistent tasks where each cycle should re-run cleanly.
 The loop's own suites: `tests/watch-rules.test.ts` (the ignore rules
 and the root event filter), `tests/watch-loop.test.ts` (cycles end to
 end), `tests/watch-loop-members.test.ts` (a package coming or going),
+`tests/watch-affected.test.ts` (`--affected` past the first cycle),
+`tests/watch-anchored-scope.test.ts` (what `pkg#task` watches),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
 settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT

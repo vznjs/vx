@@ -155,8 +155,7 @@ export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
   /**
    * Every project that can carry tasks: it has a config file, or a plugin
-   * fills the `project` stage and may give it tasks. Boundary geometry
-   * fences all of them, loaded or not.
+   * fills the `project` stage and may give it tasks.
    */
   configured: readonly ProjectMeta[]
 }
@@ -179,13 +178,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // scripts mapped onto packages that never wrote a `vx.config.ts`). It
   // then loads as `{ tasks: {} }` — nothing to evaluate, nothing to freeze
   // — and the stage runs on that like on any loaded config. With no
-  // `project` plugin a plain run never visits (or fences, or seeds) a
-  // config-less package.
+  // `project` plugin a plain run never seeds a config-less
+  // package, but loads one a loaded project's closure reaches: it gets the
+  // default `build`, so a dependant bundling its source is keyed on it
+  // behind `^build`. Left out, its edit replayed the dependant's stale
+  // output as a hit (X-9).
   const projectStage = hasHook(plugins, 'project')
   const configured = args.projectMetas.filter(
     (m) => projectStage || (typeof m.configPath === 'string' && m.configPath.length > 0),
   )
-  const metaByName = new Map<string, ProjectMeta>(configured.map((m) => [m.name, m]))
+  const metaByName = new Map<string, ProjectMeta>(args.projectMetas.map((m) => [m.name, m]))
   const needed = new Set<string>()
   const pending: ProjectMeta[] = []
   // Counted, not read off `pending`: a round empties `pending`, and a guard
@@ -212,10 +214,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     walked.add(name)
     for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
   }
-  const seeds = args.seeds === 'all' ? metaByName.keys() : [...args.seeds]
+  const seedAll = (): Iterable<string> => configured.map((m) => m.name)
+  const seeds = args.seeds === 'all' ? seedAll() : [...args.seeds]
   for (const seed of seeds) consider(seed)
   if (graph !== null && pending.length < metaByName.size) {
-    for (const seed of args.seeds === 'all' ? metaByName.keys() : seeds) {
+    for (const seed of args.seeds === 'all' ? seedAll() : seeds) {
       considerWithDeps(graph, seed)
     }
   }

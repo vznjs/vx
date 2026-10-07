@@ -7,7 +7,7 @@
       "devDependencies": {
         "@types/bun": "1.4.2",
         "@vzn/vx": "workspace:*",
-        "@vzn/vx-github": "workspace:*",
+        "@vzn/vx-ci": "workspace:*",
         "@vzn/vx-lockfile": "workspace:*",
         "@vzn/vx-mcp": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
@@ -43,6 +43,17 @@
         "picomatch": "4.0.3",
       },
     },
+    "packages/vx-ci": {
+      "name": "@vzn/vx-ci",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-docs": {
       "name": "@vzn/vx-docs",
       "version": "0.0.0",
@@ -58,21 +69,10 @@
       },
       "devDependencies": {
         "@vzn/vx": "workspace:*",
-        "@vzn/vx-github": "workspace:*",
+        "@vzn/vx-ci": "workspace:*",
         "@vzn/vx-mcp": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-schedule-history": "workspace:*",
-      },
-    },
-    "packages/vx-github": {
-      "name": "@vzn/vx-github",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-      "peerDependencies": {
-        "@vzn/vx": "*",
       },
     },
     "packages/vx-lockfile": {
@@ -714,9 +714,9 @@
 
     "@vzn/vx-bench": ["@vzn/vx-bench@workspace:packages/vx-bench"],
 
-    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:packages/vx-docs"],
+    "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
 
-    "@vzn/vx-github": ["@vzn/vx-github@workspace:packages/vx-github"],
+    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:packages/vx-docs"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 

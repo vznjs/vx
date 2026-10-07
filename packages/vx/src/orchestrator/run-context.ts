@@ -4,9 +4,11 @@
 // unset env degrades each field to null and NEVER throws. Telemetry must
 // not be able to fail a build.
 //
-// Cost: ONE git spawn (`captureGitContext`) on every run, plus two more
-// (`captureWorkspaceIdentity`, `captureDefaultBranch`) only when a plugin
-// declares the `telemetry` capability — nobody else needs those fields.
+// Cost: HEAD read from `.git` on every run (`captureGitContext`), plus
+// `refs/remotes/origin/HEAD` and the enumeration's `remote.origin.url`
+// only when a plugin declares the `telemetry` capability — nobody else
+// needs those fields. Each falls back to a `git` spawn where the files or
+// the enumeration cannot answer.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -27,6 +29,16 @@ export interface CiContext {
   /** Which CI matched: 'github' | 'gitlab' | 'buildkite' | 'circleci'
    *  | 'generic' (bare `CI`), or null when no CI env is present. */
   provider: string | null
+  /** The provider's page for this run (a GitHub Actions run, a GitLab pipeline). */
+  runUrl?: string
+  /** The pull or merge request number this run builds. */
+  change?: string
+  /** The workflow or pipeline name. */
+  pipeline?: string
+  /** The job (or step) within it. */
+  job?: string
+  /** 1 on a first run, 2 on its first re-run. */
+  attempt?: number
 }
 
 export interface HostContext {
@@ -115,28 +127,9 @@ function readHeadDirect(
   workspaceRoot: string,
 ): { commitSha: string; branch: string | null } | null {
   try {
-    let gitDir = path.join(workspaceRoot, '.git')
-    const st = fs.statSync(gitDir)
-    if (st.isFile()) {
-      const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(gitDir, 'utf8'))
-      if (m === null) return null
-      gitDir = path.resolve(workspaceRoot, m[1]!.trim())
-    }
-    let commonDir = gitDir
-    const commonFile = path.join(gitDir, 'commondir')
-    if (fs.existsSync(commonFile)) {
-      commonDir = path.resolve(gitDir, fs.readFileSync(commonFile, 'utf8').trim())
-    }
-    // Reftable storage (`git init --ref-format=reftable`, git 2.45): HEAD
-    // names `refs/heads/.invalid` and the refs live in `reftable/`, so the
-    // files say nothing true about HEAD. A leftover `packed-refs` there was
-    // read as the answer; git is asked instead.
-    if (
-      fs.existsSync(path.join(gitDir, 'reftable')) ||
-      fs.existsSync(path.join(commonDir, 'reftable'))
-    ) {
-      return null
-    }
+    const dirs = refDirsOf(workspaceRoot)
+    if (dirs === null) return null
+    const { gitDir, commonDir } = dirs
     const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim()
     const SHA = /^[0-9a-f]{40,64}$/
     if (SHA.test(head)) return { commitSha: head, branch: null }
@@ -163,6 +156,57 @@ function readHeadDirect(
     return null
   } catch {
     return null
+  }
+}
+
+/**
+ * The git dir and common dir behind `workspaceRoot` when its refs are files
+ * this code reads: a `.git` directory or a `.git` FILE (`gitdir: …`, a linked
+ * worktree, whose shared refs live under `commondir`). Null for a reftable
+ * repository (`git init --ref-format=reftable`, git 2.45): HEAD names
+ * `refs/heads/.invalid` and the refs live in `reftable/`, so the files say
+ * nothing true. A leftover `packed-refs` there was read as the answer.
+ * Throws when there is no `.git` at the root (a workspace in a subdirectory).
+ */
+function refDirsOf(workspaceRoot: string): { gitDir: string; commonDir: string } | null {
+  let gitDir = path.join(workspaceRoot, '.git')
+  const st = fs.statSync(gitDir)
+  if (st.isFile()) {
+    const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(gitDir, 'utf8'))
+    if (m === null) return null
+    gitDir = path.resolve(workspaceRoot, m[1]!.trim())
+  }
+  let commonDir = gitDir
+  const commonFile = path.join(gitDir, 'commondir')
+  if (fs.existsSync(commonFile)) {
+    commonDir = path.resolve(gitDir, fs.readFileSync(commonFile, 'utf8').trim())
+  }
+  if (
+    fs.existsSync(path.join(gitDir, 'reftable')) ||
+    fs.existsSync(path.join(commonDir, 'reftable'))
+  ) {
+    return null
+  }
+  return { gitDir, commonDir }
+}
+
+/**
+ * `refs/remotes/origin/HEAD`'s target from the files, as `git symbolic-ref
+ * --short` names it (`origin/main`): `undefined` when the files cannot say
+ * (no `.git` at the root, reftable), null when there is no such symbolic
+ * ref. A symbolic ref is never packed, so a missing file is git's answer
+ * too.
+ */
+function readOriginHeadDirect(workspaceRoot: string): string | null | undefined {
+  try {
+    const dirs = refDirsOf(workspaceRoot)
+    if (dirs === null) return undefined
+    const file = path.join(dirs.commonDir, 'refs', 'remotes', 'origin', 'HEAD')
+    if (!fs.existsSync(file)) return null
+    const ref = /^ref:\s*refs\/remotes\/(.+)$/.exec(fs.readFileSync(file, 'utf8').trim())
+    return ref === null ? undefined : ref[1]!
+  } catch {
+    return undefined
   }
 }
 
@@ -221,30 +265,34 @@ export function captureDefaultBranch(
     }
   }
 
-  try {
-    const proc = Bun.spawnSync({
-      cmd: [
-        executablePath('git'),
-        '-C',
-        workspaceRoot,
-        'symbolic-ref',
-        '--short',
-        'refs/remotes/origin/HEAD',
-      ],
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    if (proc.exitCode === 0) {
-      const ref = new TextDecoder().decode(proc.stdout).trim()
-      // `refs/remotes/origin/HEAD` → `origin/main`; strip the remote prefix.
-      const slash = ref.indexOf('/')
-      const name = slash >= 0 ? ref.slice(slash + 1) : ref
-      if (name.length > 0) return name
+  // The file first, as `captureGitContext` reads HEAD: a spawn here was
+  // ~8 ms of every run a telemetry plugin is declared in.
+  let ref = readOriginHeadDirect(workspaceRoot)
+  if (ref === undefined) {
+    ref = null
+    try {
+      const proc = Bun.spawnSync({
+        cmd: [
+          executablePath('git'),
+          '-C',
+          workspaceRoot,
+          'symbolic-ref',
+          '--short',
+          'refs/remotes/origin/HEAD',
+        ],
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+      if (proc.exitCode === 0) ref = new TextDecoder().decode(proc.stdout).trim()
+    } catch {
+      // git unavailable / no remote HEAD ref: null.
     }
-  } catch {
-    // git unavailable / no remote HEAD ref: null.
   }
-  return null
+  if (ref === null) return null
+  // `refs/remotes/origin/HEAD` → `origin/main`; strip the remote prefix.
+  const slash = ref.indexOf('/')
+  const name = slash >= 0 ? ref.slice(slash + 1) : ref
+  return name.length > 0 ? name : null
 }
 
 // Recognized CI env vars in match-priority order. The first whose value
@@ -269,9 +317,69 @@ function isTruthy(v: string | undefined): boolean {
  */
 export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefined>): CiContext {
   for (const [varName, provider] of CI_PROVIDERS) {
-    if (isTruthy(env[varName])) return { ci: true, provider }
+    if (isTruthy(env[varName])) return { ci: true, provider, ...ciLinks(provider, env) }
   }
   return { ci: false, provider: null }
+}
+
+type CiLinks = Pick<CiContext, 'runUrl' | 'change' | 'pipeline' | 'job' | 'attempt'>
+
+/** Where a dashboard links back to: each provider's own documented variables. */
+function ciLinks(provider: string, env: Record<string, string | undefined>): CiLinks {
+  const v = (k: string): string | undefined => (env[k] === '' ? undefined : env[k])
+  const n = (raw: string | undefined, plus = 0): number | undefined => {
+    const x = raw === undefined ? NaN : Number(raw)
+    return Number.isInteger(x) && x >= 0 ? x + plus : undefined
+  }
+  let links: Record<string, string | number | undefined>
+  switch (provider) {
+    case 'github': {
+      const server = v('GITHUB_SERVER_URL') ?? 'https://github.com'
+      const repo = v('GITHUB_REPOSITORY')
+      const id = v('GITHUB_RUN_ID')
+      links = {
+        runUrl: repo && id ? `${server}/${repo}/actions/runs/${id}` : undefined,
+        // `refs/pull/<n>/merge` on a pull_request event.
+        change: /^refs\/pull\/(\d+)\//.exec(v('GITHUB_REF') ?? '')?.[1],
+        pipeline: v('GITHUB_WORKFLOW'),
+        job: v('GITHUB_JOB'),
+        attempt: n(v('GITHUB_RUN_ATTEMPT')),
+      }
+      break
+    }
+    case 'gitlab':
+      links = {
+        runUrl: v('CI_PIPELINE_URL'),
+        change: v('CI_MERGE_REQUEST_IID'),
+        pipeline: v('CI_PIPELINE_NAME'),
+        job: v('CI_JOB_NAME'),
+      }
+      break
+    case 'buildkite': {
+      const pr = v('BUILDKITE_PULL_REQUEST')
+      links = {
+        runUrl: v('BUILDKITE_BUILD_URL'),
+        // `false` when the build is not for one.
+        change: pr !== undefined && /^\d+$/.test(pr) ? pr : undefined,
+        pipeline: v('BUILDKITE_PIPELINE_SLUG'),
+        job: v('BUILDKITE_LABEL'),
+        // Counts re-runs from 0.
+        attempt: n(v('BUILDKITE_RETRY_COUNT'), 1),
+      }
+      break
+    }
+    case 'circleci':
+      links = {
+        runUrl: v('CIRCLE_BUILD_URL'),
+        // The PR's URL, ending in its number.
+        change: /\/(\d+)$/.exec(v('CIRCLE_PULL_REQUEST') ?? '')?.[1] ?? v('CIRCLE_PR_NUMBER'),
+        job: v('CIRCLE_JOB'),
+      }
+      break
+    default:
+      return {}
+  }
+  return Object.fromEntries(Object.entries(links).filter(([, x]) => x !== undefined)) as CiLinks
 }
 
 /** Host name (null on failure) + platform + arch. */
@@ -291,6 +399,23 @@ export interface WorkspaceIdentity {
   id: string
   /** Human name for switchers/badges: the repo (or root dir) basename. */
   name: string
+  /** The origin remote, normalized (`github.com/org/repo`); absent without one. */
+  repository?: string
+  /** The root inside its git work tree, POSIX, `.` at the top; absent outside git. */
+  path?: string
+}
+
+/** Where `root` sits in the work tree whose `.git` is nearest above it. */
+function workTreePath(root: string): string | undefined {
+  const abs = path.resolve(root)
+  for (let dir = abs; ;) {
+    if (fs.existsSync(path.join(dir, '.git'))) {
+      return path.relative(dir, abs).split(path.sep).join('/') || '.'
+    }
+    const up = path.dirname(dir)
+    if (up === dir) return undefined
+    dir = up
+  }
 }
 
 /**
@@ -324,28 +449,40 @@ export function normalizeRemoteUrl(raw: string): string {
  *      checkout keeps a stable identity across runs; `.vx/` is already
  *      gitignored infrastructure);
  *   3. unwritable `.vx/` → the root path itself (stable per machine).
- * One `git` spawn behind try/catch; call sites gate on telemetry being
- * active so a plain run never pays it. Never throws.
+ * The URL comes from the run's own `git var -l` when it has one, else one
+ * `git` spawn behind try/catch; call sites gate on telemetry being active
+ * so a plain run never pays it. Never throws.
  */
-export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdentity {
+export function captureWorkspaceIdentity(
+  workspaceRoot: string,
+  /**
+   * `remote.origin.url` as the run's enumeration read it (`git var -l`, the
+   * same merged config): null when it has none. Undefined asks git.
+   */
+  originUrl?: string | null,
+): WorkspaceIdentity {
   const base = workspaceRoot.replace(/\/+$/, '').split('/').pop() || 'workspace'
+  const at = workTreePath(workspaceRoot)
+  const where = at === undefined ? {} : { path: at }
   try {
-    const proc = Bun.spawnSync({
-      // `config --get`, NOT `remote get-url`: get-url applies insteadOf
-      // rewrites, so two developers mirroring the same repo through
-      // different proxies would derive different workspace ids. The raw
-      // configured URL is the identity.
-      cmd: [executablePath('git'), '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    if (proc.exitCode === 0) {
-      const url = new TextDecoder().decode(proc.stdout).trim()
-      if (url.length > 0) {
-        const normalized = normalizeRemoteUrl(url)
-        const name = normalized.split('/').pop() || base
-        return { id: xxh3hex(normalized), name }
-      }
+    let url = originUrl ?? ''
+    if (originUrl === undefined) {
+      const proc = Bun.spawnSync({
+        // `config --get`, NOT `remote get-url`: get-url applies insteadOf
+        // rewrites, so two developers mirroring the same repo through
+        // different proxies would derive different workspace ids. The raw
+        // configured URL is the identity.
+        cmd: [executablePath('git'), '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+      if (proc.exitCode === 0) url = new TextDecoder().decode(proc.stdout)
+    }
+    url = url.trim()
+    if (url.length > 0) {
+      const normalized = normalizeRemoteUrl(url)
+      const name = normalized.split('/').pop() || base
+      return { id: xxh3hex(normalized), name, repository: normalized, ...where }
     }
   } catch {
     // git unavailable — fall through to the salt.
@@ -361,8 +498,8 @@ export function captureWorkspaceIdentity(workspaceRoot: string): WorkspaceIdenti
       fs.mkdirSync(path.dirname(saltPath), { recursive: true })
       fs.writeFileSync(saltPath, salt + '\n')
     }
-    return { id: xxh3hex(salt), name: base }
+    return { id: xxh3hex(salt), name: base, ...where }
   } catch {
-    return { id: xxh3hex(workspaceRoot), name: base }
+    return { id: xxh3hex(workspaceRoot), name: base, ...where }
   }
 }

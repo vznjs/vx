@@ -152,6 +152,13 @@ export interface ExecuteRequest {
   readonly signal?: AbortSignal
   /** See `RunOptions.liveChildren`: the run's SIGINT/SIGTERM registry. */
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /**
+   * An executor that runs the command as a process on THIS machine calls
+   * this with its pid once spawned, so a telemetry plugin can sample the
+   * process tree's CPU and memory while it runs. Absent when nobody samples;
+   * an executor that runs elsewhere never calls it.
+   */
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   /**
    * The task holds vx's terminal (`exec.interactive` on a TTY): its stdin,
@@ -270,6 +277,12 @@ export function assertExecuteResult(
   for (const key of ['exitCode', 'durationMs']) {
     if (typeof r[key] !== 'number') fail(`${key} is ${typeof r[key]} (expected a number)`)
   }
+  // NaN passed as a number, printed `failed (exit NaN)` and failed the run
+  // history's NOT NULL write (X-11).
+  if (!Number.isInteger(r['exitCode']) || (r['exitCode'] as number) < 0)
+    fail(`exitCode is ${String(r['exitCode'])} (expected a non-negative integer)`)
+  if (!Number.isFinite(r['durationMs']) || (r['durationMs'] as number) < 0)
+    fail(`durationMs is ${String(r['durationMs'])} (expected a non-negative number)`)
   for (const key of ['stdout', 'stderr']) {
     if (typeof r[key] !== 'string') fail(`${key} is ${typeof r[key]} (expected a string)`)
   }

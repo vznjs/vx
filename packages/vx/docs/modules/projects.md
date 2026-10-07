@@ -46,7 +46,7 @@ interface LoadProjectsBase {
   cacheDir: string
   plugins: readonly VxPlugin[]
   projectMetas: readonly ProjectMeta[]
-  seeds: 'all' | Iterable<string> // unknown / config-less names ignored
+  seeds: 'all' | Iterable<string> // 'all' is `configured`; unknown names ignored
   lock: (() => Promise<Lockfile>) | null // read from the lock instead of evaluating; asked only when a config is read
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (m: string) => void
@@ -69,12 +69,15 @@ export function loadResolvedProjects(
 
 1. **Who can carry tasks.** A project with a config file; and, when
    any plugin declares `project`, every package — it loads as
-   `{ tasks: {} }` for the stage to fill. `configured` is that set;
-   boundary geometry fences all of them, loaded or not.
-2. **Seeds.** `'all'`, or names filtered to `configured`. With
-   `closure`, each seed's `packageGraph.transitiveDeps` join — that
-   bounds `^task` frontier expansion. The closure is skipped when
-   every configured project is already pending.
+   `{ tasks: {} }` for the stage to fill. `configured` is that set.
+   Boundary geometry fences every workspace project, configured or not
+   (`prepare.ts`, X-57).
+2. **Seeds.** `'all'` is `configured`; named seeds load as named. With
+   `closure`, each seed's `packageGraph.transitiveDeps` join, a
+   config-less one too: it loads as `{ tasks: {} }` and gets the
+   default `build`, so a dependant bundling its source is keyed on it
+   behind `^build` (X-9). The closure is skipped when every project is
+   already pending.
 3. **Rounds to a fixpoint.** Each round evaluates its config files in
    one `loadProjectConfigs` batch (or reads them from the lock),
    applies the `project` stage per project, re-validating after EACH

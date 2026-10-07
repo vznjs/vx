@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ProjectConfig, TaskConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
@@ -267,6 +267,8 @@ export interface BuildGraphOptions {
    * with other root-anchored ones.
    */
   workspaceRoot?: string
+  /** The workspace's `rules`; each is on unless set to `false`. */
+  rules?: WorkspaceRules | undefined
 }
 
 /**
@@ -519,7 +521,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
-  checkGraph(nodes, options.workspaceRoot)
+  checkGraph(nodes, options.workspaceRoot, options.rules)
   return nodes
 }
 
@@ -534,7 +536,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
  * marks are derived here, so they are cleared first and follow the edges
  * the graph has now.
  */
-export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+export function checkGraph(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot?: string,
+  rules?: WorkspaceRules,
+): void {
   for (const [key, node] of nodes) {
     if (node.id !== key) {
       throw new Error(`the task ${node.id} is stored under '${key}', not its own id`)
@@ -547,8 +553,10 @@ export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string)
     delete node.addsToOutputsOf
     delete node.outputsAddedToBy
   }
+  for (const node of nodes.values()) refuseSelfClean(node)
   detectCycle(nodes)
-  detectOutputCollisions(nodes, workspaceRoot)
+  detectOutputCollisions(nodes, workspaceRoot, rules?.exclusiveOutputs !== false)
+  if (rules?.upfrontKeys !== false) detectInputOverlaps(nodes, workspaceRoot)
 }
 
 /**
@@ -684,6 +692,10 @@ export function excludeDependencies(
  * 445). One rule, one place: the copy is gone.
  */
 export function outputsOverlap(rawA: string, rawB: string): boolean {
+  // A built path proves overlap only between globs as written: a literal's
+  // `/**` twin reads it as a directory, and `dist/types.d.ts` met
+  // `dist/**/*.js` at `dist/types.d.ts/x.js`, a file no one can write.
+  const bothGlobs = !isLiteralPattern(rawA) && !isLiteralPattern(rawB)
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
       if (isLiteralPattern(a) && isLiteralPattern(b)) {
@@ -692,7 +704,41 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
         if (taskGlob(b).match(a)) return true
       } else if (isLiteralPattern(b)) {
         if (taskGlob(a).match(b)) return true
-      } else if (a === b || covers(a, b) || covers(b, a)) return true
+      } else if (a === b || covers(a, b) || covers(b, a) || (bothGlobs && witnessed(a, b)))
+        return true
+    }
+  }
+  return false
+}
+
+/** `staticPrefix` names the project root `.`; a path built under it starts bare. */
+const rootless = (prefix: string): string => (prefix === '.' ? '' : prefix)
+
+/**
+ * Do two globs both match a path built from them? Each candidate is a
+ * real path, so a hit proves the overlap and a miss decides nothing. The
+ * path sits under the deeper of the two literal prefixes and ends in
+ * either glob's last segment with its wildcards filled: a glob for every
+ * `.js` file under `dist` beside `dist/sth/**` meets at `dist/sth/x.js`,
+ * a pair `covers` cannot decide since neither is a subtree holding the
+ * other's prefix.
+ */
+function witnessed(a: string, b: string): boolean {
+  const pa = rootless(staticPrefix(a))
+  const pb = rootless(staticPrefix(b))
+  const nested = (outer: string, inner: string): boolean =>
+    outer === '' || inner === outer || inner.startsWith(`${outer}/`)
+  if (!nested(pa, pb) && !nested(pb, pa)) return false
+  const deeper = pa.length >= pb.length ? pa : pb
+  const ga = taskGlob(a)
+  const gb = taskGlob(b)
+  for (const glob of [a, b]) {
+    const last = glob.slice(glob.lastIndexOf('/') + 1)
+    if (/[[\]{}()!+@]/.test(last)) continue
+    const leaf = last.replace(/\*+|\?/g, 'x')
+    for (const mid of ['', 'x/']) {
+      const candidate = deeper === '' ? `${mid}${leaf}` : `${deeper}/${mid}${leaf}`
+      if (ga.match(candidate) && gb.match(candidate)) return true
     }
   }
   return false
@@ -732,7 +778,11 @@ function covers(tree: string, glob: string): boolean {
  * project boundaries by design, so ANY two tasks can. No cache key changes —
  * this only refuses a graph that was already destroying files.
  */
-function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+function detectOutputCollisions(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot: string | undefined,
+  exclusive: boolean,
+): void {
   // Does `from` reach `to` through deps? Asked only for a colliding pair,
   // so the walk is rare; memoised per source across the detector's calls.
   const reachMemo = new Map<string, Set<string>>()
@@ -796,14 +846,14 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: st
     for (const [i, j] of overlapCandidates(bucket, filesOf)) {
       const a = bucket[i]!
       const b = bucket[j]!
-      collide(a, b, filesOf(a), filesOf(b), 'files', reaches)
+      collide(a, b, filesOf(a), filesOf(b), 'files', reaches, exclusive)
     }
   }
   if (wsDeclarers.length >= 2) {
     for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
       const a = wsDeclarers[i]!
       const b = wsDeclarers[j]!
-      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches)
+      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches, exclusive)
     }
   }
   // A root-anchored output that reaches into ANOTHER project's `files`
@@ -832,7 +882,7 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: st
     const y = entries[j]!
     if ((x.rel === undefined) === (y.rel === undefined) || x.node === y.node) continue
     const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
-    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches)
+    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive)
   }
 }
 
@@ -851,11 +901,20 @@ function collideAcross(
   rebased: readonly string[],
   rel: string,
   reaches: (from: string, to: string) => boolean,
+  exclusive: boolean,
 ): void {
   if (neverWritesLocally(ws) || neverWritesLocally(files)) return
   for (const ga of wsGlobs) {
     for (const gb of rebased) {
       if (!outputsOverlap(ga, gb)) continue
+      const head =
+        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
+        `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
+        `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
+        `cache-hit restore, so whichever of these runs second DELETES the other's output`
+      if (exclusive && (reaches(files.id, ws.id) || reaches(ws.id, files.id))) {
+        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
+      }
       if (reaches(files.id, ws.id)) {
         ;(files.addsToOutputsOf ??= []).push(ws.id)
         ;(ws.outputsAddedToBy ??= []).push(...rebased)
@@ -870,14 +929,18 @@ function collideAcross(
           ;(files.outputsAddedToBy ??= []).push(...own)
           return
         }
+        // Already ordered: "make one depend on the other" would send the
+        // reader after an edge the config has. Name what keeps it out.
+        const outside = wsGlobs[own.indexOf(null)]!
+        throw new UserError(
+          `${head}. ${ws.id} depends on ${files.id}, but adding to its output needs every ` +
+            `cache.outputs.workspaceFiles entry inside ${rel === '' ? 'the workspace root' : rel}, ` +
+            `and ${JSON.stringify(outside)} is not. Give each task its own output path.`,
+        )
       }
       throw new UserError(
-        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
-          `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
-          `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
-          `cache-hit restore, so whichever of these runs second DELETES the other's output and ` +
-          `the run still reports success. Give each task its own output path, or make one ` +
-          `depend on the other.`,
+        `${head} and the run still reports success. Give each task its own output path` +
+          (exclusive ? '.' : ', or make one depend on the other.'),
       )
     }
   }
@@ -953,6 +1016,19 @@ function overlapCandidates<T>(
       for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
     }
   }
+  // `witnessed`: two globs meet only when one's literal prefix is the
+  // other's or under it, so each looks up the globs filed at its prefix
+  // and at each ancestor.
+  const byPrefix = new Map<string, number[]>()
+  for (const [i, prefix] of prefixes) file(byPrefix, rootless(prefix), i)
+  for (const [i, raw] of prefixes) {
+    const prefix = rootless(raw)
+    for (const j of byPrefix.get(prefix) ?? []) pair(i, j)
+    if (prefix !== '') for (const j of byPrefix.get('') ?? []) pair(i, j)
+    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
+      for (const j of byPrefix.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+    }
+  }
   for (const [i, prefix] of prefixes) {
     for (const j of subtrees.get(prefix) ?? []) pair(i, j)
     for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
@@ -988,6 +1064,15 @@ function neverWritesLocally(n: TaskNode): boolean {
   return n.config.exec?.remote === 'only'
 }
 
+/**
+ * The way out of an edge-ordered overlap under `rules.exclusiveOutputs`: an
+ * ordered pair is correct (the addition shape, item 588), only slower to
+ * clean and restore, so the rule may be turned off.
+ */
+const EXCLUSIVE_OUTPUTS_FIX =
+  'Give each task its own output path, or set rules: { exclusiveOutputs: false } in ' +
+  "vx.workspace.ts to let a dependant add to its upstream's outputs."
+
 function collide(
   a: TaskNode,
   b: TaskNode,
@@ -995,17 +1080,26 @@ function collide(
   bGlobs: readonly string[] | undefined,
   field: 'files' | 'workspaceFiles',
   reaches: (from: string, to: string) => boolean,
+  exclusive: boolean,
 ): void {
   if (neverWritesLocally(a) || neverWritesLocally(b)) return
   for (const ga of aGlobs ?? []) {
     for (const gb of bGlobs ?? []) {
       if (!outputsOverlap(ga, gb)) continue
+      const head =
+        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
+        (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
+        ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
+        `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
+        `output`
       // An overlap WITH an edge is the addition shape (item 588): the
       // dependant runs after its upstream and adds to that tree, so the
       // order is fixed and the dependant's own set can be told apart from
-      // what it found. Marked on both, and the pair is allowed. Without an
-      // edge the two run in either order, and the refusal below stands.
+      // what it found. Marked on both, and the pair is allowed when
+      // `rules.exclusiveOutputs` is off (X-53). Without an edge the two run
+      // in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
+      if (up !== undefined && exclusive) throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
       if (up !== undefined && down !== undefined) {
         const downGlobs = splitNegations(
           (field === 'files'
@@ -1017,11 +1111,175 @@ function collide(
         return
       }
       throw new UserError(
-        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
-          (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
-          ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
-          `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
-          `output and the run still reports success. Give each task its own output path.`,
+        `${head} and the run still reports success. Give each task its own output path.`,
+      )
+    }
+  }
+}
+
+/**
+ * Does the `!` set `negatives` take back every path the output glob
+ * `output` can select? Each of the output's `asTrees` forms must be one of
+ * the negatives' forms, sit inside a negative whole subtree (`covers`), or,
+ * as a literal, be matched by one. Sound and no more: an output only partly
+ * taken back answers false.
+ */
+export function outputTakenBack(output: string, negatives: readonly string[]): boolean {
+  if (negatives.length === 0) return false
+  const neg = asTrees(negatives)
+  return asTrees([output]).every((t) =>
+    neg.some((n) => n === t || covers(n, t) || (isLiteralPattern(t) && taskGlob(n).match(t))),
+  )
+}
+
+/**
+ * A task whose input entry its own outputs take back whole cleans its own
+ * sources: vx removes a task's outputs before it runs, so a formatter
+ * declaring `src/**` as both deleted every committed file under `src`,
+ * and its key read nothing (hunt 8). Always refused, whatever the rules.
+ */
+function refuseSelfClean(node: TaskNode): void {
+  const cache = node.config.cache
+  if (cache === undefined) return
+  for (const field of ['files', 'workspaceFiles'] as const) {
+    const inputs = splitNegations(cache.inputs[field] ?? [])
+    const out = splitNegations(cache.outputs[field] ?? [])
+    const outputs = out.positive
+    if (outputs.length === 0) continue
+    const roots = outputs.map((g) => rootless(staticPrefix(g)))
+    for (const gi of inputs.positive) {
+      // Only an output rooted at or above the input's prefix can cover it;
+      // the prefix test keeps the glob matchers off the common disjoint pair.
+      const pi = rootless(staticPrefix(gi))
+      const near = outputs.filter((_, k) => {
+        const r = roots[k]!
+        return r === '' || pi === r || pi.startsWith(`${r}/`)
+      })
+      // Taken back by the task's own `!` inputs, or by an output `!` (no
+      // output, so never cleaned: A-44), the entry reads what it says.
+      if (near.length === 0 || outputTakenBack(gi, inputs.negative)) continue
+      if (outputTakenBack(gi, out.negative)) continue
+      if (!outputTakenBack(gi, near)) continue
+      throw new UserError(
+        `${node.id}: every file ${JSON.stringify(gi)} in cache.inputs.${field} selects is also ` +
+          `its own output — vx removes a task's outputs before it runs, so the task would ` +
+          `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
+          `no outputs.`,
+      )
+    }
+  }
+}
+
+/** One task's inputs (`reads`) or outputs in one namespace, for `detectInputOverlaps`. */
+interface Side {
+  node: TaskNode
+  globs: readonly string[]
+  reads: boolean
+  /** The project's root-relative dir for a rebased `files` output. */
+  rel?: string
+}
+
+/**
+ * `rules.upfrontKeys` (X-54): refuse a task whose input globs can match
+ * another task's declared outputs. Such a key reads bytes a producer writes
+ * this run, so it is not known until the producer ran (`stable-keys.ts`
+ * keeps it waiting); refused, every key reads only what no task writes and
+ * can be derived before anything runs (M, 2026-10-07: "hash ahead of time,
+ * not waterfall"). A dependency's own key already cascades through
+ * `dependsOn`, so the bytes it wrote add nothing a key needs.
+ *
+ * Proven overlaps only (`outputsOverlap`), as for outputs: a pair the rule
+ * cannot decide passes, and the stability gate still keeps it waiting. The
+ * scope mirrors `detectOutputCollisions`: `inputs.files` against another
+ * same-project task's `outputs.files`; root-anchored `inputs.workspaceFiles`
+ * against every other task's `outputs.workspaceFiles` and, with the root
+ * known, its `outputs.files` rebased to the root. A task's own outputs are
+ * already subtracted from its inputs, and an output the reader's `!` entries
+ * take back whole is no overlap. A keyed group is exempt: the default
+ * `build` reads `**` of a config-less dependency and runs nothing, and its
+ * key waits as before.
+ */
+function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+  const byProject = new Map<string, Side[]>()
+  const rooted: Side[] = []
+  const filesWriters: TaskNode[] = []
+  let projectReaders = false
+  let rootReaders = false
+  const bucket = (name: string): Side[] => {
+    let list = byProject.get(name)
+    if (list === undefined) byProject.set(name, (list = []))
+    return list
+  }
+  for (const n of nodes.values()) {
+    const cache = n.config.cache
+    if (cache === undefined) continue
+    const outFiles = splitNegations(cache.outputs.files).positive
+    const outWs = splitNegations(cache.outputs.workspaceFiles ?? []).positive
+    if (outFiles.length > 0) {
+      bucket(n.projectName).push({ node: n, globs: outFiles, reads: false })
+      filesWriters.push(n)
+    }
+    if (outWs.length > 0) rooted.push({ node: n, globs: outWs, reads: false })
+    if (isGroupTask(n)) continue
+    const inFiles = splitNegations(cache.inputs.files).positive
+    const inWs = splitNegations(cache.inputs.workspaceFiles ?? []).positive
+    if (inFiles.length > 0) {
+      bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
+      projectReaders = true
+    }
+    if (inWs.length > 0) {
+      rooted.push({ node: n, globs: inWs, reads: true })
+      rootReaders = true
+    }
+  }
+  if (projectReaders) {
+    for (const sides of byProject.values()) {
+      if (sides.length < 2) continue
+      for (const [i, j] of overlapCandidates(sides, (s) => s.globs)) {
+        readsOutputs(sides[i]!, sides[j]!, 'files')
+      }
+    }
+  }
+  if (!rootReaders) return
+  if (workspaceRoot !== undefined) {
+    for (const node of filesWriters) {
+      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const globs = splitNegations(node.config.cache!.outputs.files).positive.map((g) =>
+        rel === '' ? g : `${rel}/${g}`,
+      )
+      rooted.push({ node, globs, reads: false, rel })
+    }
+  }
+  for (const [i, j] of overlapCandidates(rooted, (s) => s.globs)) {
+    readsOutputs(rooted[i]!, rooted[j]!, 'workspaceFiles')
+  }
+}
+
+function readsOutputs(x: Side, y: Side, field: 'files' | 'workspaceFiles'): void {
+  if (x.reads === y.reads || x.node === y.node) return
+  const [reader, writer] = x.reads ? [x, y] : [y, x]
+  const cache = reader.node.config.cache!
+  // What the reader's key never reads: its `!` entries and its own outputs.
+  const takeBack = [
+    ...splitNegations(field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []))
+      .negative,
+    ...splitNegations(
+      field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
+    ).positive,
+  ]
+  for (const go of writer.globs) {
+    if (outputTakenBack(go, takeBack)) continue
+    for (const gi of reader.globs) {
+      if (!outputsOverlap(gi, go)) continue
+      const shown =
+        writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
+      throw new UserError(
+        `${reader.node.id} reads ${JSON.stringify(gi)} in cache.inputs.${field}, which matches ` +
+          `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
+          `another task's outputs (the dependency's key already cascades through dependsOn). ` +
+          `Exclude it: add ${JSON.stringify(`!${go}`)} to ${reader.node.id}'s ` +
+          `cache.inputs.${field}, or set rules: { upfrontKeys: false } in vx.workspace.ts to ` +
+          `let it wait for its producer.`,
       )
     }
   }

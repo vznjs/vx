@@ -80,8 +80,7 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    specs that resolved to nothing).
 4. **Cache + fingerprint** — `new Cache(dir)` on `--cache-dir` or
    `resolveCacheDir(root, workspaceConfig)`, refused up front with the
-   directory named when this user cannot write it (`assertWritable`),
-   and an index reset by an upgrade said once (`noteSchemaReset`).
+   directory named when this user cannot write it (`assertWritable`).
    Then the layer resolution: an injected `RunOptions.remoteCache`
    composed into a `LayeredCache` wins; else `resolveCache` collects
    every `cache` capability in the declared plugin list in order — one
@@ -105,6 +104,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    narrows the schedule (`excludeDependencies`) and
    `keyExcludedDependencies` keys each dropped dependency on that whole
    graph, so the dependant folds the key a full run gives it.
+   Under `--affected` the selection (`affected-tasks.md`) prunes the
+   graph; with a `graph` plugin the hooks run before it, so it sees
+   their edges and inputs, else after the git enumeration.
 
 The cache + fingerprint are constructed even when the result will be
 empty so callers always have a uniform `try { ... } finally {

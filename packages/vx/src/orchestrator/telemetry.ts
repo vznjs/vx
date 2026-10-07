@@ -16,7 +16,14 @@
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { TaskOutcome, TaskStatus } from '../graph/index.js'
+import { sampleTrees } from '../exec/index.js'
+import {
+  isGroupTask,
+  type InputChanges,
+  type TaskNode,
+  type TaskOutcome,
+  type TaskStatus,
+} from '../graph/index.js'
 import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
@@ -122,6 +129,10 @@ export interface RunContextRecord {
    */
   workspaceId: string
   workspaceName: string
+  /** The origin remote, normalized (`github.com/org/repo`); absent without one. Additive. */
+  repository?: string
+  /** The workspace root relative to its git work tree, `.` at the top; absent outside git. Additive. */
+  workspacePath?: string
   // git / CI / host — straight from run-context.ts.
   commitSha: string | null
   branch: string | null
@@ -138,11 +149,30 @@ export interface RunContextRecord {
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  /** The CI provider's page for this run. */
+  ciRunUrl?: string
+  /** The pull or merge request number the run builds. */
+  ciChange?: string
+  /** The CI workflow or pipeline name. */
+  ciPipeline?: string
+  /** The CI job (or step) within it. */
+  ciJob?: string
+  /** 1 on a first run, 2 on its first re-run. */
+  ciAttempt?: number
   host: string | null
   os: string
   arch: string
   /** `--tag k=v` pairs. */
   tags: Readonly<Record<string, string>>
+}
+
+/** One attempt of a retried task that failed and was run again. */
+export interface FailedAttempt {
+  /** When the attempt ended, epoch ms. */
+  endedAt: number
+  exitCode: number
+  /** vx's own `timeout` ended it. */
+  timedOut?: true
 }
 
 /** Denormalized per-task analytics — shared by the streaming `task.end`
@@ -180,6 +210,34 @@ export interface TaskTelemetry {
   sandboxViolations?: number
   /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /** On a task that retried: each attempt that failed before the last, in order. Additive. */
+  failedAttempts?: readonly FailedAttempt[]
+  /** On a task proved flaky this run: its key's passes and failures on record. Additive. */
+  flaky?: { passes: number; failures: number }
+  /** On a sandboxed task: the violation lines themselves, one per denial. Additive. */
+  sandboxViolationLines?: readonly string[]
+  /** On a cache hit: how long the run that stored the entry took — the time this hit saved. Additive. */
+  storedDurationMs?: number
+  /** On a cache hit: the CPU and peak memory of the run that stored it. Additive. */
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  /** How long an `admit` policy held the task once it was ready. Additive. */
+  admissionHeldMs?: number
+  /** How long the task waited ready for a worker, any admission hold included. Additive. */
+  queuedMs?: number
+  /** On a cacheable task that ran: how many files its key read. Additive. */
+  inputFiles?: number
+  /**
+   * On a cacheable task that ran, when the cache holds an earlier entry for
+   * it: what its key changed since, the first ten named. Additive.
+   */
+  inputChanges?: InputChanges
+  /** The artifact's compressed size: on a hit the entry's, on a miss the save's. Additive. */
+  artifactBytes?: number
+  /** On a remote hit this run pulled: the download and its ingest. Additive. */
+  fetchMs?: number
+  /** On a miss that saved: the save's own time (pack, write, index). Additive. */
+  saveMs?: number
   /**
    * On a cache hit: whether outputs were written this run (`true`) or the
    * disk already matched the entry and nothing was restored (`false`, an
@@ -216,6 +274,12 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      /**
+       * The tasks with a command this one waits on: its direct dependencies,
+       * a group's seen through to the tasks with a command behind it.
+       * Additive.
+       */
+      dependsOn?: readonly string[]
       ts: number
     }
   | {
@@ -226,6 +290,17 @@ export type TelemetryRecord =
       stream: 'stdout' | 'stderr'
       chunk: string
       ts: number
+    }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      /** CPU time of the task's live process tree so far, in ms. */
+      cpuMs: number
+      /** Resident memory of the task's live process tree, in bytes. */
+      rssBytes: number
     }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }
@@ -264,6 +339,25 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  /**
+   * The run's stages as `VX_TIMING` marks them (startup, load configs,
+   * classify + probe, run graph, …), each a wall window in epoch ms. The
+   * stages ahead of the run lock end before `startedAt`. Additive.
+   */
+  stages?: readonly RunStage[]
+  /**
+   * The run's uploads to a remote cache, once they settled: how many landed,
+   * their bytes, their summed time (they overlap), and how many failed.
+   * Absent when nothing was uploaded or tried. Additive.
+   */
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
+}
+
+/** One stage of a run, a wall window in epoch ms. */
+export interface RunStage {
+  name: string
+  startedAt: number
+  endedAt: number
 }
 
 /**
@@ -286,6 +380,8 @@ export function assembleRunSummary(
     totalDurationMs: number
     exitOk: boolean
     abortedCount: number
+    stages?: readonly RunStage[]
+    uploads?: { count: number; bytes: number; ms: number; failed: number }
   },
 ): RunSummaryRecord {
   let failedCount = 0
@@ -320,6 +416,10 @@ export function assembleRunSummary(
     restoredRemoteCount,
     exitOk: timing.exitOk,
     tasks,
+    ...(timing.stages !== undefined && timing.stages.length > 0 ? { stages: timing.stages } : {}),
+    ...(timing.uploads !== undefined && timing.uploads.count + timing.uploads.failed > 0
+      ? { uploads: { ...timing.uploads } }
+      : {}),
   }
 }
 
@@ -370,7 +470,16 @@ export interface TelemetrySource {
   emitSummary(summary: RunSummaryRecord): void
   /** Await every sink's `flush()` (each crash-isolated, all time-bounded). */
   flush(): Promise<void>
+  /**
+   * Sample this task's process tree every `SAMPLE_MS` until the returned
+   * function is called, the root exits, or the run ends. Present only when
+   * a sink wants `task.sample`: nobody asking costs no timer and no read.
+   */
+  readonly track?: (taskId: string, pid: number) => () => void
 }
+
+/** How often a running task's process tree is sampled. */
+const SAMPLE_MS = 1000
 
 const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
   'run.start',
@@ -397,6 +506,8 @@ export function createTelemetrySource(args: {
   warn?: (message: string) => void
   /** What a sink with no `name` of its own is called: its plugin's (the host's map). */
   owners?: ReadonlyMap<TelemetrySink, string>
+  /** The run's task graph, to see a group dependency through to the tasks behind it. */
+  nodes?: ReadonlyMap<string, TaskNode>
 }): TelemetrySource {
   const { sinks, run, warn } = args
   const runId = run.runId
@@ -426,6 +537,62 @@ export function createTelemetrySource(args: {
   // Precompute which sinks want each kind, so per-event fan-out is a plain
   // array walk with no per-record `wants` scanning.
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
+  const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
+
+  // taskId → the pid of its running root. One timer for every task, alive
+  // only while one runs; a tick still reading when the next is due is not
+  // doubled.
+  const tracked = new Map<string, number>()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let sampling = false
+  let ended = false
+  const stopTimer = (): void => {
+    if (timer !== undefined) clearInterval(timer)
+    timer = undefined
+  }
+  const untrack = (taskId: string, pid: number): void => {
+    if (tracked.get(taskId) === pid) tracked.delete(taskId)
+    if (tracked.size === 0) stopTimer()
+  }
+  const tick = async (): Promise<void> => {
+    if (sampling) return
+    sampling = true
+    try {
+      const entries = [...tracked]
+      const usage = await sampleTrees(entries.map(([, pid]) => pid))
+      const ts = Date.now()
+      for (const [taskId, pid] of entries) {
+        if (ended || tracked.get(taskId) !== pid) continue
+        const u = usage.get(pid)
+        if (u === undefined) {
+          untrack(taskId, pid)
+          continue
+        }
+        deliver({
+          v: TELEMETRY_SCHEMA_VERSION,
+          kind: 'task.sample',
+          runId,
+          taskId,
+          ts,
+          cpuMs: u.cpuMs,
+          rssBytes: u.rssBytes,
+        })
+      }
+    } catch {
+      // A failed look is a missing point, never a broken run.
+    } finally {
+      sampling = false
+    }
+  }
+  const track = (taskId: string, pid: number): (() => void) => {
+    if (ended) return () => {}
+    tracked.set(taskId, pid)
+    if (timer === undefined) {
+      timer = setInterval(() => void tick(), SAMPLE_MS)
+      timer.unref()
+    }
+    return () => untrack(taskId, pid)
+  }
 
   function deliver(record: TelemetryRecord): void {
     for (const sink of sinks) {
@@ -470,6 +637,8 @@ export function createTelemetrySource(args: {
         }
         if (node.config.exec.command !== undefined)
           rec.command = maskedCommand(node.config.exec.command, node.config.exec.env)
+        const deps = commandDeps(node, args.nodes)
+        if (deps.length > 0) rec.dependsOn = deps
         deliver(rec)
         return
       }
@@ -502,6 +671,9 @@ export function createTelemetrySource(args: {
       case 'run:status':
         return // status lines are terminal-rendering noise, not telemetry
       case 'run:end':
+        ended = true
+        tracked.clear()
+        stopTimer()
         deliver({ v: TELEMETRY_SCHEMA_VERSION, kind: 'run.end', runId, ts })
         return
     }
@@ -509,6 +681,7 @@ export function createTelemetrySource(args: {
 
   return {
     subscriber,
+    ...(wantsSample ? { track } : {}),
     emitSummary(summary: RunSummaryRecord): void {
       for (const sink of sinks) {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue
@@ -556,6 +729,23 @@ export function createTelemetrySource(args: {
   }
 }
 
+/** `node`'s dependencies with a command; a group is seen through, once each. */
+function commandDeps(node: TaskNode, nodes: ReadonlyMap<string, TaskNode> | undefined): string[] {
+  if (nodes === undefined) return node.deps
+  const out: string[] = []
+  const seen = new Set<string>()
+  const stack = [...node.deps].reverse()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const dep = nodes.get(id)
+    if (dep !== undefined && isGroupTask(dep)) stack.push(...[...dep.deps].reverse())
+    else out.push(id)
+  }
+  return out
+}
+
 /**
  * The one projection of an outcome into `TaskTelemetry`, for the streaming
  * `task.end` record and the summary's `tasks[]` alike. Two copies drifted:
@@ -583,6 +773,21 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.timedOut === true) t.timedOut = true
   if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.notReady !== undefined) t.notReady = o.notReady
+  if (o.failedAttempts !== undefined) t.failedAttempts = o.failedAttempts
+  if (o.flaky !== undefined) t.flaky = o.flaky
+  if (o.sandboxViolationLines !== undefined && o.sandboxViolationLines.length > 0) {
+    t.sandboxViolationLines = o.sandboxViolationLines
+  }
+  if (o.storedDurationMs !== undefined) t.storedDurationMs = o.storedDurationMs
+  if (o.storedCpuMs !== undefined) t.storedCpuMs = o.storedCpuMs
+  if (o.storedPeakRssBytes !== undefined) t.storedPeakRssBytes = o.storedPeakRssBytes
+  if (o.admissionHeldMs !== undefined) t.admissionHeldMs = o.admissionHeldMs
+  if (o.queuedMs !== undefined) t.queuedMs = o.queuedMs
+  if (o.inputFiles !== undefined) t.inputFiles = o.inputFiles
+  if (o.inputChanges !== undefined) t.inputChanges = o.inputChanges
+  if (o.artifactBytes !== undefined) t.artifactBytes = o.artifactBytes
+  if (o.fetchMs !== undefined) t.fetchMs = o.fetchMs
+  if (o.saveMs !== undefined) t.saveMs = o.saveMs
   if (isCacheHit(o.status)) t.restored = o.restored === true
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()

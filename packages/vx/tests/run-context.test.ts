@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -10,6 +10,25 @@ import {
   detectCi,
   normalizeRemoteUrl,
 } from '../src/orchestrator/run-context.js'
+import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
+
+/** The `git` spawns `fn` makes, by `Bun.spawnSync`. */
+function gitSpawnsIn(fn: () => void): number {
+  const orig = Bun.spawnSync
+  const bunMut = Bun as unknown as { spawnSync: typeof Bun.spawnSync }
+  let n = 0
+  bunMut.spawnSync = ((...a: Parameters<typeof Bun.spawnSync>) => {
+    const cmd = (a[0] as { cmd?: readonly string[] }).cmd ?? []
+    if (path.basename(cmd[0] ?? '') === 'git') n++
+    return orig(...a)
+  }) as typeof Bun.spawnSync
+  try {
+    fn()
+  } finally {
+    bunMut.spawnSync = orig
+  }
+  return n
+}
 
 function git(cwd: string, args: string[]): void {
   const proc = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
@@ -184,6 +203,37 @@ describe('captureDefaultBranch', () => {
     expect(captureDefaultBranch({}, dir)).toBeNull()
   })
 
+  it('reads origin/HEAD from the files, in a linked worktree too, with no spawn (U-4)', () => {
+    // The spawn was ~8 ms of every run a telemetry plugin is declared in.
+    const main = path.join(dir, 'main')
+    git(dir, ['init', '-q', '-b', 'main', main])
+    git(main, ['config', 'user.email', 'test@example.com'])
+    git(main, ['config', 'user.name', 'Test'])
+    git(main, ['commit', '-q', '--allow-empty', '-m', 'c'])
+    git(main, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
+    let got = null as string | null
+    expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, main)))).toBe(0)
+    expect(got).toBe('trunk')
+    const linked = path.join(dir, 'linked')
+    git(main, ['worktree', 'add', '-q', linked])
+    expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, linked)))).toBe(0)
+    expect(got).toBe('trunk')
+    // No such ref: null, still from the files.
+    git(main, ['symbolic-ref', '--delete', 'refs/remotes/origin/HEAD'])
+    expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, main)))).toBe(0)
+    expect(got).toBeNull()
+  })
+
+  it('asks git when the root holds no .git (a workspace in a subdirectory)', async () => {
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'])
+    const sub = path.join(dir, 'ws')
+    await Bun.write(path.join(sub, 'package.json'), '{}')
+    let got = null as string | null
+    expect(gitSpawnsIn(() => (got = captureDefaultBranch({}, sub)))).toBe(1)
+    expect(got).toBe('trunk')
+  })
+
   it('ignores an unreadable / malformed GitHub event payload, falls through to null', () => {
     expect(
       captureDefaultBranch({ GITHUB_EVENT_PATH: path.join(dir, 'missing.json') }, dir),
@@ -221,6 +271,84 @@ describe('detectCi', () => {
     expect(detectCi({ GITLAB_CI: 'true' })).toEqual({ ci: true, provider: 'gitlab' })
     expect(detectCi({ BUILDKITE: 'true' })).toEqual({ ci: true, provider: 'buildkite' })
     expect(detectCi({ CIRCLECI: 'true' })).toEqual({ ci: true, provider: 'circleci' })
+  })
+
+  it('names the run page, the pull request, the workflow, the job and the attempt', () => {
+    expect([
+      detectCi({
+        GITHUB_ACTIONS: 'true',
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_REPOSITORY: 'vznjs/vx',
+        GITHUB_RUN_ID: '42',
+        GITHUB_REF: 'refs/pull/2787/merge',
+        GITHUB_WORKFLOW: 'CI',
+        GITHUB_JOB: 'test',
+        GITHUB_RUN_ATTEMPT: '2',
+      }),
+      detectCi({
+        GITLAB_CI: 'true',
+        CI_PIPELINE_URL: 'https://gitlab.com/o/r/-/pipelines/9',
+        CI_MERGE_REQUEST_IID: '7',
+        CI_PIPELINE_NAME: 'mr',
+        CI_JOB_NAME: 'lint',
+      }),
+      detectCi({
+        BUILDKITE: 'true',
+        BUILDKITE_BUILD_URL: 'https://buildkite.com/o/p/builds/3',
+        BUILDKITE_PULL_REQUEST: '12',
+        BUILDKITE_PIPELINE_SLUG: 'p',
+        BUILDKITE_LABEL: ':test: unit',
+        BUILDKITE_RETRY_COUNT: '0',
+      }),
+      detectCi({
+        CIRCLECI: 'true',
+        CIRCLE_BUILD_URL: 'https://circleci.com/gh/o/r/5',
+        CIRCLE_PULL_REQUEST: 'https://github.com/o/r/pull/31',
+        CIRCLE_JOB: 'build',
+      }),
+    ]).toEqual([
+      {
+        ci: true,
+        provider: 'github',
+        runUrl: 'https://github.com/vznjs/vx/actions/runs/42',
+        change: '2787',
+        pipeline: 'CI',
+        job: 'test',
+        attempt: 2,
+      },
+      {
+        ci: true,
+        provider: 'gitlab',
+        runUrl: 'https://gitlab.com/o/r/-/pipelines/9',
+        change: '7',
+        pipeline: 'mr',
+        job: 'lint',
+      },
+      {
+        ci: true,
+        provider: 'buildkite',
+        runUrl: 'https://buildkite.com/o/p/builds/3',
+        change: '12',
+        pipeline: 'p',
+        job: ':test: unit',
+        attempt: 1,
+      },
+      {
+        ci: true,
+        provider: 'circleci',
+        runUrl: 'https://circleci.com/gh/o/r/5',
+        change: '31',
+        job: 'build',
+      },
+    ])
+  })
+
+  it('names no pull request on a push build', () => {
+    expect([
+      detectCi({ GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/heads/main' }).change,
+      detectCi({ BUILDKITE: 'true', BUILDKITE_PULL_REQUEST: 'false' }).change,
+      detectCi({ GITHUB_ACTIONS: 'true', GITHUB_RUN_ATTEMPT: 'x' }).attempt,
+    ]).toEqual([undefined, undefined, undefined])
   })
 
   it('prefers the specific provider over a generic CI flag', () => {
@@ -294,10 +422,55 @@ describe('captureWorkspaceIdentity', () => {
     expect(salt.trim().length).toBeGreaterThan(0)
   })
 
+  it("takes the enumeration's remote URL with no spawn, and the salt for none (U-4)", async () => {
+    git('init', '-q')
+    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    await Bun.write(path.join(dir, 'a.txt'), 'a')
+    const cache = new GitFilesCache()
+    await populateGitFilesCache(dir, [dir], cache)
+    const url = cache.configValue('remote.origin.url')
+    expect(url).toBe('git@github.com:vznjs/vx.git')
+    expect(cache.configValue('remote.upstream.url')).toBeNull()
+    expect(new GitFilesCache().configValue('remote.origin.url')).toBeUndefined()
+    let id: ReturnType<typeof captureWorkspaceIdentity> | undefined
+    expect(gitSpawnsIn(() => (id = captureWorkspaceIdentity(dir, url)))).toBe(0)
+    // The id git's own answer gives.
+    expect(id).toEqual(captureWorkspaceIdentity(dir))
+    expect(gitSpawnsIn(() => (id = captureWorkspaceIdentity(dir, null)))).toBe(0)
+    expect(id?.name).toBe(path.basename(dir))
+    const salt = (await Bun.file(path.join(dir, '.vx', 'workspace-id')).text()).trim()
+    expect(id?.id).toBe(captureWorkspaceIdentity(path.join(dir), null).id)
+    expect(salt.length).toBeGreaterThan(0)
+  })
+
   it('never throws outside a git repo', () => {
     const identity = captureWorkspaceIdentity(dir)
     expect(identity.id).toMatch(/^[0-9a-f]{16}$/)
     expect(identity.name).toBe(path.basename(dir))
+    expect([identity.repository, identity.path]).toEqual([undefined, undefined])
+  })
+
+  it('names the repository and where in it the workspace sits', async () => {
+    git('init', '-q')
+    git('remote', 'add', 'origin', 'git@github.com:vznjs/vx.git')
+    const nested = path.join(dir, 'tools', 'ws')
+    await mkdir(nested, { recursive: true })
+    const top = captureWorkspaceIdentity(dir)
+    const sub = captureWorkspaceIdentity(nested)
+    expect([top.repository, top.path, sub.repository, sub.path]).toEqual([
+      'github.com/vznjs/vx',
+      '.',
+      'github.com/vznjs/vx',
+      'tools/ws',
+    ])
+  })
+
+  it('finds the work tree through a `.git` file, as a worktree has', async () => {
+    // A linked worktree or submodule holds `.git` as a FILE naming the git dir.
+    const nested = path.join(dir, 'apps')
+    await mkdir(nested, { recursive: true })
+    await Bun.write(path.join(dir, '.git'), 'gitdir: /elsewhere\n')
+    expect(captureWorkspaceIdentity(nested).path).toBe('apps')
   })
 })
 
