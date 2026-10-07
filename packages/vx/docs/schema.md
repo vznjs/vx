@@ -893,6 +893,8 @@ Semantics:
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
+- **Output that is not UTF-8 fails the run** too: a lossy decode keyed
+  every invalid byte alike. Pipe binary output through a hash or `od`.
 - The command **inherits vx's full environment**, _not_ the isolated
   env that task `exec` commands get — `exec.env.define` and
   `passThrough` describe the command's environment, not the probe's.
