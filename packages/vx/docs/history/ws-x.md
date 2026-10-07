@@ -517,3 +517,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-90.** Under `exec.sandbox` with `write: ['dist/']`,
+  `rm -rf dist && tsc` failed on Linux with a bare `Read-only file system`: the grant is
+  a bind mount, which the task may empty but not remove. No bind fixes
+  it soundly (binding the parent lets the task write beside the grant),
+  so a failed task whose output names a grant root on an `EROFS` /
+  `EBUSY` line now gets a hint naming the grant and `rm -rf dist/*`.
+  Rows: `sandbox-grant-remove.unsafe.test.ts` (three removal spellings,
+  the hinted removal, a near-miss control).

@@ -695,6 +695,19 @@ opens). The parse takes a descriptor's printed path up to the `, "` that
 opens the file argument, since a directory's name may hold a quote
 (`4</ws/q"d>`). No widened grant, no `-y` and no extra parse.
 
+## A write grant cannot be removed (Linux)
+
+A directory grant is a bind mount, and a mount point cannot be removed or
+renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
+then fails with `Read-only file system` (EBUSY under a writable parent).
+macOS allows it. No bind makes it work and keeps "a task writes only its
+grants": binding the parent lets the task write beside the grant. So a
+failed task whose stdout or stderr names a grant root (absolute, or
+relative to the cwd, `./` allowed) on a line holding `Read-only file
+system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
+and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
+`sandbox-grant-remove.unsafe.test.ts`).
+
 ## A write grant that mounts nothing
 
 A bind covers what exists when the task STARTS, so a Linux write grant

@@ -1339,6 +1339,11 @@ reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
 
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
+
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only

@@ -1976,6 +1976,15 @@ async function runSandboxedOnce(
     })
     if (outside.length > 0)
       violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
+    if (process.platform === 'linux') {
+      const removed = grantRemovalHint(
+        `${stdout}\n${stderr}`,
+        bindableWrites(args.config.allowWrite),
+        args.cwd,
+        args.reportWithin,
+      )
+      if (removed !== undefined) violations.push(removed)
+    }
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -2075,6 +2084,45 @@ function outsideWritesHint(
     : `${refused} If the task needs one, grant its directory, e.g. ` +
       `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
+}
+
+/**
+ * Linux: a directory write grant is a bind mount, and a mount point cannot
+ * be removed or renamed, so `rm -rf dist` empties it and then fails with
+ * "Read-only file system" (EBUSY under a writable parent). Binding the
+ * parent instead would let the task write beside the grant, so the
+ * removal stays refused; a failure whose output names a grant on such an
+ * error line gets the spelling that works.
+ */
+function grantRemovalHint(
+  output: string,
+  roots: readonly string[],
+  cwd: string,
+  within: string,
+): SandboxViolation | undefined {
+  const lines = output
+    .split('\n')
+    .filter((l) => /Read-only file system|EROFS|EBUSY|resource busy/i.test(l))
+  if (lines.length === 0) return undefined
+  const named = roots.filter((root) => {
+    const rel = path.relative(cwd, root)
+    const spellings = rel === '' ? [root] : [root, rel]
+    return spellings.some((s) => {
+      const re = new RegExp(`(^|[\\s'"\`(])(\\./)?${RegExp.escape(s)}/?($|[\\s'"\`:,)])`)
+      return lines.some((l) => re.test(l))
+    })
+  })
+  if (named.length === 0) return undefined
+  const grants = named.map((r) => `'${path.relative(within, r) || '.'}/'`).join(', ')
+  const contents = path.relative(cwd, named[0]!) || '.'
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
+      `but not remove or rename it ("Read-only file system"). Remove its contents ` +
+      `instead, e.g. \`rm -rf ${contents}/*\`.`,
+  }
 }
 
 /** A path as a JS string literal a config can take: a quote in it is escaped. */
