@@ -1216,8 +1216,9 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    same task graph, same cache behaviour. The line `vx watch: initial
 run...` precedes it.
 2. **Watch loop.** After the initial run finishes, the directory of
-   every project a cycle can run — the scope plus its transitive
-   dependencies, the closure `--filter 'app...'` walks, cross-project
+   every project a cycle can run — the scope (the bare tasks' scope
+   plus each `pkg#task`'s own project; only those when every task is
+   anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
    `dependsOn` edges included — is watched recursively. The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
