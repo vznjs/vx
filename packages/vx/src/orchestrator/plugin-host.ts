@@ -34,7 +34,16 @@ function describeValue(v: unknown): string {
   if (v === null) return 'null'
   if (Array.isArray(v)) return 'an array'
   const t = typeof v
-  return t === 'object' ? 'an object' : `a ${t}`
+  if (t !== 'object') return `a ${t}`
+  const proto: unknown = Object.getPrototypeOf(v)
+  if (proto === Object.prototype || proto === null) return 'an object'
+  return `a ${(v as object).constructor?.name || 'class instance'}`
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  if (typeof v !== 'object' || v === null) return false
+  const proto: unknown = Object.getPrototypeOf(v)
+  return proto === Object.prototype || proto === null
 }
 
 /** Every method `CacheLayer` requires (the optional ones are probed with `?.`). */
@@ -267,8 +276,10 @@ export async function applyKeyHooks(
       if (material === undefined) continue
       // `Object.entries` over a string yields its characters as string
       // values, so a plugin returning `'v22'` used to fold parts named
-      // '0', '1', '2' into every key — silently, and permanently.
-      if (typeof material !== 'object' || material === null || Array.isArray(material)) {
+      // '0', '1', '2' into every key — silently, and permanently. A Map or a
+      // class instance keeps its data off own enumerable keys, so
+      // `Object.entries` read it as no material at all: a silent miskey.
+      if (!isRecord(material)) {
         throw new UserError(
           `plugin '${plugin.name}' failed in key: returned ${describeValue(material)}, not a record of string values`,
         )
