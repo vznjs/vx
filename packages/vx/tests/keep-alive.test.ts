@@ -434,7 +434,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '200', NO_COLOR: '1' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200', NO_COLOR: '1' },
       }),
     )
     const [out, err, code] = await Promise.all([
