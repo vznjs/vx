@@ -468,7 +468,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`

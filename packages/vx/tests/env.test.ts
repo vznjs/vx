@@ -25,6 +25,24 @@ describe('buildIsolatedEnv', () => {
     expect(env.SECRET).toBeUndefined()
   })
 
+  // YF-1: a corepack shim finds its cached manager through COREPACK_HOME,
+  // and pnpm its global dir through PNPM_HOME; stripped, the shim fetched
+  // the manager again (no network in a sandbox: the task failed).
+  it("passes the package managers' home directories, not their other settings", () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: {
+        COREPACK_HOME: '/c',
+        PNPM_HOME: '/p',
+        COREPACK_ENABLE_STRICT: '0',
+        npm_config_registry: 'x',
+      },
+    })
+    expect(Object.keys(env).sort()).toEqual(['COREPACK_HOME', 'FORCE_COLOR', 'PNPM_HOME'])
+    expect([env['COREPACK_HOME'], env['PNPM_HOME']]).toEqual(['/c', '/p'])
+  })
+
   it('omits essentials that are not set in source', () => {
     const env = buildIsolatedEnv({
       passThrough: [],
