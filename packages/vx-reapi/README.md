@@ -37,7 +37,8 @@ from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching). `execute` is a
 boolean: a string (`process.env.X`) is refused.
-`instanceName` is the option form of `VX_REAPI_INSTANCE`, and `headers`
+`instanceName` is the option form of `VX_REAPI_INSTANCE`; like the endpoint
+it is trimmed, and a blank one is unset. `headers`
 adds gRPC metadata to every call: a hosted server's API key goes there
 (`headers: { 'x-buildbuddy-api-key': process.env.BB_KEY! }`).
 `toolName` and `toolVersion` (default `vx`, `0.0.0`) fill each call's

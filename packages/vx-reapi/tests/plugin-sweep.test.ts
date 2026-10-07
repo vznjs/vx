@@ -121,6 +121,30 @@ describe('reapi(): the connection it resolves', () => {
     },
     30_000,
   )
+
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'the instance name is trimmed as the endpoint is; a blank one is unset',
+    async () => {
+      const sent = async (env: Record<string, string>, instanceName?: string) =>
+        withEnv(env, async () => {
+          execEnabled = false
+          const before = instances.length
+          const p = reapi({
+            endpoint,
+            execute: true,
+            callTimeoutMs: 2000,
+            ...(instanceName === undefined ? {} : { instanceName }),
+          })
+          await p.executor?.(ctx([]))
+          await p.teardown?.()
+          return instances.slice(before)
+        })
+      expect(await sent({ VX_REAPI_INSTANCE: 'from-env\n' })).toEqual(['from-env', 'from-env'])
+      expect(await sent({}, ' opt\t')).toEqual(['opt', 'opt'])
+      expect(await sent({ VX_REAPI_INSTANCE: ' \n' })).toEqual(['', ''])
+    },
+    30_000,
+  )
 })
 
 describe.if(CHUNKING_SUPPORTED)(
