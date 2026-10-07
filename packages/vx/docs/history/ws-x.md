@@ -310,3 +310,10 @@ time (bugs, correctness, simplification, the plugin seams).
   neither. It now prints `env.secret` after `env.define` and
   `interactive: yes` / `no` after `persistent`. Row:
   `show-exec-fields.test.ts` (X-47).
+- **X-48.** `vx show` listed a config-less package that a configured
+  one depends on as `(no vx config)` and left it out of
+  `vx show build`, while a run loads it for the dependant's `^build`
+  and gives it the default `build` (and `vx show <it>` printed that
+  build). `vx show` now loads each seed's package closure as a run
+  does, and the list reads `1 task (no vx config; default build)`.
+  Rows: `show-default-build.test.ts` (X-48).

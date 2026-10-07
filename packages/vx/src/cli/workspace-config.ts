@@ -12,6 +12,7 @@ import { Cache } from '../cache/index.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
+  buildPackageGraph,
   computeWorkspaceFingerprint,
   FROZEN_WITHOUT_LOCK,
   type Workspace,
@@ -111,14 +112,20 @@ export interface CliLoadOptions {
    * create one.
    */
   noCreate?: boolean
+  /**
+   * Load what each seed's package closure reaches too, as a run does: a
+   * config-less package a configured one depends on gets the default
+   * `build` there, and a reader that skipped it showed less than a run.
+   */
+  closure?: boolean
 }
 
 /**
  * The run path's project-config load (`loadProjects`) for a verb that only
  * reads: the plugin `project` stage applies, and the local cache opens only
  * to serve cached evaluations — a pure config costs a stat, not an
- * evaluation. `scope` is every project or a list of names; no closure, no
- * lock (a verb reads live, as a default run does).
+ * evaluation. `scope` is every project or a list of names; their closure
+ * only with `closure`, no lock (a verb reads live, as a default run does).
  */
 export async function loadCliProjects(
   workspaceRoot: string,
@@ -154,7 +161,9 @@ export async function loadCliProjects(
       plugins,
       projectMetas: metas,
       seeds: scope,
-      closure: false,
+      ...(opts.closure === true
+        ? { closure: true as const, packageGraph: buildPackageGraph([...metas]) }
+        : { closure: false as const }),
       lock: lock === null ? null : async () => lock,
       evalCache:
         cache === null
