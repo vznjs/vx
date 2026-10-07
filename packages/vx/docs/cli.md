@@ -110,7 +110,8 @@ the project's upstream workspace deps run too. Override with `--all`,
 If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
-  across the workspace, prints `description` next to each, prompts
+  across the workspace (only the selected projects' under `--filter` /
+  `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
   for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
