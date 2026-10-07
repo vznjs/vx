@@ -445,6 +445,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     ),
   ],
   [
+    "plugin '<name>' declares command '<verb>', which no command line reaches — a verb is a word, not a flag or empty",
+    workspaceConfig(
+      `{ plugins: [${plugin('p', '{ commands: { "--version": { description: "d", run() { return 0 } } } }')}] }`,
+    ),
+  ],
+  [
     "plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner",
     workspaceConfig(
       `{ plugins: [${plugin('a', '{ commands: { hi: { description: "d", run() { return 0 } } } }')}, ` +

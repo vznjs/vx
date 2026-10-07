@@ -123,3 +123,8 @@ time (bugs, correctness, simplification, the plugin seams).
   `definePlugin` now refuses it naming the file. Row:
   `plugin-name.test.ts` › "refuses a module with no package above it, and
   a package with no name".
+- **X-21.** A plugin verb named `--version`, `--help` or `''` loaded
+  cleanly and could never run: core reads a flag first, and an empty
+  word is no verb. The workspace schema now refuses it. Row:
+  `config-schema-refusals.test.ts` › "a verb no command line reaches is
+  refused".
