@@ -1806,6 +1806,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   affected?: AffectedChanges
+  selectedOutright?: readonly string[]
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

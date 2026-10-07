@@ -521,9 +521,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // closure; a `pkg#task` the user named runs as it always does.
     if (options.affected !== undefined) {
       const named = new Set(tasks.filter((t) => t.includes('#')))
+      const outright = new Set(options.selectedOutright)
       const ids = requested.map((r) => `${r.project}#${r.task}`)
       const reached = new Set(affectedRoots(nodes, ids, options.affected, projects, packageGraph))
-      const kept = requested.filter((_r, i) => named.has(ids[i]!) || reached.has(ids[i]!))
+      const kept = requested.filter(
+        (r, i) => named.has(ids[i]!) || outright.has(r.project) || reached.has(ids[i]!),
+      )
       if (kept.length === 0) return emptyRun('none-affected')
       if (kept.length < requested.length) {
         unproven.length = 0

@@ -159,7 +159,9 @@ a stack and exit 1 after its task had succeeded.
 Combining: every include (`--filter <pat>`, `--affected`) is taken
 first and every `!` exclude after them all, as pnpm does, so an
 exclude removes what any include added, whichever side of it it sits
-(items 955, 979). `--all` with a filter is the filter's selection:
+(items 955, 979). The union holds for tasks too: `--affected --filter
+other` runs other's tasks whether or not the change reaches them
+(X-10). `--all` with a filter is the filter's selection:
 the filters refine it rather than being overridden by it
 (`--all --filter '!docs'` is everything but docs).
 

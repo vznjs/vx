@@ -182,6 +182,8 @@ export type FilterResolution =
       discovered: { root: string; projects: ProjectMeta[] }
       /** The `affected` filter's diff, for the run to seed its tasks from (`RunOptions.affected`). */
       affected?: AffectedChanges
+      /** What the other includes selected (`RunOptions.selectedOutright`). */
+      outright?: string[]
     }
   | { error: string }
   | { empty: string }
@@ -367,6 +369,22 @@ export async function resolveFilters(
     process.stderr.write(
       `vx: filter "${f}" matched no projects${didYouMean([f], projects, tags)}\n`,
     )
+  // Each include is a union: what `--filter other` selected runs its tasks
+  // whether or not the `--affected` diff reaches them, and an exclude
+  // still removes it (X-10).
+  const others = parsed.filter((f) => f.negate || f.raw !== affected)
+  const outright =
+    changes !== undefined && others.some((f) => !f.negate)
+      ? [
+          ...applyFilters({
+            filters: others,
+            projects,
+            graph,
+            affectedByFilter,
+            ...(tags !== undefined ? { tags } : {}),
+          }),
+        ].filter((n) => selected.has(n))
+      : []
   let staged: Map<string, ProjectEntry> | undefined
   if (stagedPromise !== undefined) {
     try {
@@ -382,6 +400,7 @@ export async function resolveFilters(
     ...(staged !== undefined ? { staged } : {}),
     discovered: { root, projects },
     ...(changes !== undefined ? { affected: changes } : {}),
+    ...(outright.length > 0 ? { outright: outright.sort() } : {}),
   }
 }
 

@@ -252,6 +252,42 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(plan('--filter', '!app', '--affected=HEAD')).toEqual(['lib#build'])
   })
 
+  it('a `--filter` beside --affected adds its projects, as every include does (X-10)', async () => {
+    // The union of projects was taken, then the run kept only the tasks
+    // the diff reached, so `--filter other` was dropped with exit 0.
+    for (const name of ['lib', 'other']) {
+      await mkdir(path.join(root, `pkgs/${name}/src`), { recursive: true })
+      await writeFile(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+      await writeFile(
+        path.join(root, `pkgs/${name}/vx.config.mjs`),
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      await writeFile(path.join(root, `pkgs/${name}/src/l.txt`), 'l1\n')
+    }
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'two')
+    await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
+    const plan = (...args: string[]) => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${p.stderr.toString()}`
+      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
+        .map((t) => t.id)
+        .sort()
+    }
+    expect(plan('--affected=HEAD')).toEqual(['lib#build'])
+    expect(plan('--affected=HEAD', '--filter', 'other')).toEqual(['lib#build', 'other#build'])
+    // An exclude still wins over the include it overlaps.
+    expect(plan('--affected=HEAD', '--filter', 'other', '--filter', '!other')).toEqual([
+      'lib#build',
+    ])
+  })
+
   it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)

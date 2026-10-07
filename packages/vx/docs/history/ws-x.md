@@ -60,3 +60,10 @@ time (bugs, correctness, simplification, the plugin seams).
   `{ tasks: {} }`; `'all'` seeds stay the config-bearing ones, and
   `vx show <it>` marks `(no vx config)` above its default build. Row:
   `configless-default-build.test.ts`.
+- **X-10.** `--affected --filter other` ran only what the diff reached:
+  the projects were a union, but the run then kept only reached tasks,
+  so `other` was dropped with exit 0 ("no affected project declares
+  …" when nothing changed in scope). The other includes' projects now
+  pass as `RunOptions.selectedOutright` and keep their tasks; an
+  exclude still removes them. Row: `affected-base-notes.test.ts` › "a
+  `--filter` beside --affected adds its projects".
