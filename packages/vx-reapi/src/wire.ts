@@ -1002,6 +1002,11 @@ export class ReapiClient {
     )
   }
 
+  /** The largest `Blob` `writeBlob` reads whole rather than streams. */
+  get wholeWriteBytes(): number {
+    return this.negotiatedBatchBytes || SAFE_BATCH_BYTES
+  }
+
   /**
    * Upload a blob via ByteStream, chunked at `chunkBytes`, RESUMING an
    * interrupted identity upload from the server's committed offset
@@ -1017,8 +1022,7 @@ export class ReapiClient {
    * zstd artifact already. A Blob under the limit is small enough to read.
    */
   async writeBlob(digest: Digest, source: Uint8Array | Blob): Promise<void> {
-    const streamed =
-      source instanceof Blob && source.size > (this.negotiatedBatchBytes || SAFE_BATCH_BYTES)
+    const streamed = source instanceof Blob && source.size > this.wholeWriteBytes
     const body = source instanceof Blob && !streamed ? await source.bytes() : source
     const compressed = this.compression && body instanceof Uint8Array
     // REAPI carries compression in the RESOURCE NAME:
