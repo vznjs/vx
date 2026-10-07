@@ -26,7 +26,7 @@ interface Proc {
 
 /**
  * Linux's `/proc/<pid>/stat` counts CPU in USER_HZ ticks, fixed at 100 by
- * the ABI on every architecture; `tests/proc-sample.test.ts` pins it by
+ * the ABI on every architecture; `tests/proc-sample.unsafe.test.ts` pins it by
  * burning a known span and reading it back.
  */
 const TICK_MS = 10
