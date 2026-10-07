@@ -107,7 +107,7 @@ describe('vx lock (e2e)', () => {
       // --check under the SAME env: fresh evaluation matches the lock.
       const checkSame = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(checkSame.code).toBe(0)
-      expect(checkSame.out).toContain('lock is up to date')
+      expect(checkSame.out).toContain('vx lock --check: up to date')
 
       // --check under X=b: file bytes are unchanged (hash check alone
       // would pass) but re-evaluation resolves a different object —
