@@ -232,10 +232,12 @@ export function makeRootEventFilter(
   fenced: (ownDir: string, abs: string) => boolean = () => false,
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
-  const globs = workspaceInputs
-    .map(normalizeGlob)
-    .filter((g) => !g.startsWith('!'))
-    .map((g) => taskGlob(g))
+  // A literal entry is the file or its tree, as the key resolves it: `shared`
+  // compiled as a glob matched the directory alone, and an edit inside it
+  // started no cycle.
+  const globs = asTrees(workspaceInputs.filter((g) => !normalizeGlob(g).startsWith('!'))).map((g) =>
+    taskGlob(g),
+  )
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
     // The depth test is a READING AID, not a guard: both predicates below

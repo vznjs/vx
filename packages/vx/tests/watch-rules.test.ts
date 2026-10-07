@@ -443,6 +443,17 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     expect([route('app/[id]/page.js'), route('app/i/page.js')]).toEqual([true, false])
   })
 
+  it('a literal directory in workspaceFiles is its tree, as the key reads it', () => {
+    const tree = makeRootEventFilter(root, [], ['shared', 'conf/'])
+    expect([
+      tree('shared/util.ts'),
+      tree('shared/deep/x.ts'),
+      tree('shared'),
+      tree('conf/a.json'),
+      tree('shared-other/x.ts'),
+    ]).toEqual([true, true, true, true, false])
+  })
+
   it('the sweep hands the loop every declared workspaceFiles glob, deduplicated', async () => {
     const wsRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-sweep-inputs-'))
     try {
