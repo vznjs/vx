@@ -1,7 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-12.** A persistent task that hit its readiness timeout reported a
-  duration taken after the child exited, so a server trapping TERM showed
-  the timeout plus the whole kill grace. `readyMs` now stops when the wait
-  gives up. Row: `tests/persistent-ready-timeout.test.ts` › "a never-ready
-  server reports the time it was waited on, not the kill grace after".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
