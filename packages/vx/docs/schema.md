@@ -756,7 +756,10 @@ Always applied to every glob pass (regardless of what you wrote):
   input like any other.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is
-  no output, so it stays an input (A-44).
+  no output, so it stays an input (A-44). Another task's outputs are
+  not excluded for you: an input glob that can match them is refused
+  while `rules.upfrontKeys` is on (X-54). Write the exclusion,
+  `['**/*', '!dist/**']`.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
@@ -1455,6 +1458,8 @@ interface WorkspaceConfig {
 interface WorkspaceRules {
   /** Refuse overlapping outputs even across a dependsOn edge. Default true. */
   exclusiveOutputs?: boolean
+  /** Refuse a task whose inputs can match another task's outputs. Default true. */
+  upfrontKeys?: boolean
 }
 ```
 
@@ -1533,6 +1538,22 @@ vx.workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
+  - **`upfrontKeys`** (X-54) — a cached task whose `inputs.files` can
+    match a same-project task's `outputs.files`, or whose
+    `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
+    or another project's `outputs.files` read from the root, is refused,
+    edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:
+false } in vx.workspace.ts to let it wait for its producer.` Such a key
+    reads what the producer writes this run, so vx cannot know it before
+    the producer ran: it is not probed, prefetched or restored ahead of
+    the schedule (`caching.md` § Local restore tier). The upstream's key
+    already reaches the reader through `dependsOn`. A `!` entry that
+    takes the whole output back clears it, and an output the reader's
+    `!` entries take back no longer holds its key back either. A task's
+    own outputs, a task with no `cache`, and a group are exempt. Off,
+    the key waits for its producer, as before.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain

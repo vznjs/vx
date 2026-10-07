@@ -19,6 +19,8 @@ import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileOutput,
   ownFileTodo,
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
@@ -1375,7 +1377,7 @@ export async function mapTurboWorkspace(
         npmScriptEnv(mapped.task, name, command === script, meta, opts)
       tasks.push(mapped)
     }
-    resolveSharedOutputs(tasks)
+    excludeSiblingOutputs(resolveSharedOutputs(tasks))
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 
@@ -1398,6 +1400,7 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
+  excludeWorkspaceOutputs(root, projects)
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }

@@ -11,6 +11,7 @@ import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 const TIMEOUT = 30_000
@@ -66,6 +67,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p ../../shared && echo g > ../../shared/gen.txt',
         'shared/**',
       )
+      await waitForProducers(root)
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['shared/gen.txt'])
     },
@@ -80,6 +82,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p dist && echo g > dist/x.txt',
         'packages/gen/dist/**',
       )
+      await waitForProducers(root)
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['packages/gen/dist/x.txt'])
     },

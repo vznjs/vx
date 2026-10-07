@@ -1680,6 +1680,7 @@ export interface WorkspaceIdentity {
 == type WorkspaceRules (src/config.ts)
 export interface WorkspaceRules {
   exclusiveOutputs?: boolean
+  upfrontKeys?: boolean
 }
 == runtime values
 LOG_WIRE_VERSION = 1

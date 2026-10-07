@@ -24,7 +24,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
@@ -395,6 +395,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -457,6 +458,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume', '--concurrency', '1')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -520,6 +522,7 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       // Cold: codegen wipes old.ts and emits b.js; consume's set is empty.
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
 
@@ -578,6 +581,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
 
@@ -633,6 +637,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('N')
       await rm(path.join(root, 'gen'), { recursive: true })
@@ -690,6 +695,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -1652,6 +1658,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
+      await waitForProducers(root)
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
       // `prep` and `app#build` both current: the run's key is the full one.

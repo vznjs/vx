@@ -27,7 +27,9 @@ can never drift on the stability gate.
   `deriveStableKeys` accumulates in topo order. The key is preliminary
   (→ unstable) when a same-project upstream declares `outputs.files`
   its input globs can meet (literal prefixes, ancestor or equal; A-20:
-  a `test` reading `src/**` after a `build` writing `dist/**` is stable),
+  a `test` reading `src/**` after a `build` writing `dist/**` is stable;
+  X-54: an output the task's own `!` inputs take back whole, by
+  `outputTakenBack`, does not count, so `['**/*', '!dist/**']` is too),
   when a same-project upstream may write undeclared (every input), when
   its own `outputs.files` meet another same-project task's (M-5: restored
   early, it raced the producer's restore), when ANY upstream declares

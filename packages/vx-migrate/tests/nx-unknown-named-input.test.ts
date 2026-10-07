@@ -52,7 +52,8 @@ describe('an undefined named input', () => {
         (tasks.get(id)!.task!['cache'] as { inputs: { files: unknown } }).inputs.files
       expect(files('a#build')).toEqual(['**/*'])
       expect(files('b#build')).toEqual(['**/*'])
-      expect(files('b#nx-input:production')).toEqual(['**/*'])
+      // `b#build`'s output taken back (core X-54).
+      expect(files('b#nx-input:production')).toEqual(['**/*', '!dist'])
       expect(tasks.get('a#build')!.todos).toEqual([
         'named input "production" not found in nx.json or the project — keyed on the whole project (`**/*`) until its globs are declared',
       ])

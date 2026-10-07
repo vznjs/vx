@@ -27,6 +27,7 @@ import {
   undeclaredWriteReach,
 } from '../src/orchestrator/sandbox-request.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 const READ_ONLY: CachePolicy = {
@@ -157,6 +158,7 @@ describe('a cached task that runs but does not save', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       await writeFile(path.join(app, 'seed.txt'), 'B')
       // Before the fix: `gen.txt` kept its committed OID in the snapshot and
@@ -191,6 +193,7 @@ describe('a cached task that runs but does not save', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       const r = await runTask('build', READ_ONLY)
       expect(statusOf(r, 'app#gen')).toBe('cache-hit')

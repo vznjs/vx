@@ -28,6 +28,8 @@ import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileTakeBacks,
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   wildcardOutput,
@@ -557,11 +559,12 @@ export async function mapNxWorkspace(
       dir: meta.dir,
       importLines: [],
       ...(tags.length > 0 ? { tags } : {}),
-      tasks: resolveSharedOutputs(tasks),
+      tasks: excludeSiblingOutputs(resolveSharedOutputs(tasks)),
     })
   }
 
   resolveAtomizedWorkspaceOutputs(root, projects, split)
+  excludeWorkspaceOutputs(root, projects)
   // A migration leaves Nx behind, so `nx sync` is no advice there: what a
   // generator keeps (the TypeScript one's tsconfig `references`) is the
   // user's to keep. `nx()` runs with Nx installed.

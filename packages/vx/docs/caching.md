@@ -432,7 +432,8 @@ performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
 Stability gate (shared with remote prefetch via
 `stable-keys.ts:deriveStableKeys`): a task whose input globs could
 match a same-project upstream's declared `outputs.files` (compared by
-literal prefix; one with undeclared writes reaches every input), whose
+literal prefix, less what its own `!` inputs take back whole; one with
+undeclared writes reaches every input), whose
 own `outputs.files` meet another same-project task's (it would restore
 into that tree beside the producer's restore), or whose
 `inputs.workspaceFiles` could reach any upstream's outputs, has a
@@ -450,7 +451,13 @@ can reach out of the restore tier — edge or no edge, because a
 root-anchored output can land in any project's directory — and every
 transitive dependant of one with it (their up-front keys fold a
 preliminary key); a glob with no literal prefix reaches every project.
-Before item 584 one such declaration emptied the tier graph-wide. The
+Before item 584 one such declaration emptied the tier graph-wide.
+`rules.upfrontKeys` (on by default, X-54) refuses at load a task whose
+input globs can match another task's declared outputs, so the clauses
+on declared outputs fire only with the rule off; undeclared writes, an
+`outputs.workspaceFiles` producer upstream, a rewriter the key does not
+fold, and runtime probes after a writer still leave a key preliminary.
+The
 short-circuit never runs under a `LayeredCache` (remote prefetch owns
 those runs — an up-front `get` there would put remote GETs on the
 critical path), never fires with local reads off, and never throws —

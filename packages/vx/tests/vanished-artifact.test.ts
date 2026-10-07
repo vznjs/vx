@@ -16,6 +16,7 @@ import { Cache } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 
@@ -225,6 +226,7 @@ describe('a cache artifact that vanishes before its restore', () => {
           }
         `,
       })
+      await waitForProducers(root)
       const cold = await run({
         cwd: root,
         tasks: ['consume'],

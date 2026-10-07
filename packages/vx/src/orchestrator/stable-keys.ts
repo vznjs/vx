@@ -11,7 +11,7 @@
 // fall back to lazy read-through in execute-task, which is always
 // correct. The check is conservative: when unsure, treat as unstable.
 
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, outputTakenBack, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
@@ -458,7 +458,13 @@ export function dependsOnSiblingOutputs(
     const inputs = cache.inputs?.files
     const outputs = sameProject.outputsOf.get(node.projectName) ?? []
     if (inputs === undefined || outputs.length === 0) return true
-    if (workspaceInputsReach(inputs, outputs.map(literalPrefix))) return true
+    // An output the reader's own `!` inputs take back whole is not in its
+    // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
+    // before and after it, which is what `rules.upfrontKeys` asks a config
+    // to write (X-54).
+    const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+    const reach = back.length === 0 ? outputs : outputs.filter((o) => !outputTakenBack(o, back))
+    if (reach.length > 0 && workspaceInputsReach(inputs, reach.map(literalPrefix))) return true
     // Nor where it WRITES inside another task's tree: restored ahead of
     // that producer, its restore raced the producer's clean and extract
     // (M-5; invariant 2 of docs/design/overlapping-outputs-2026-09.md).

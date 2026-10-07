@@ -364,3 +364,27 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `overlapping-outputs.test.ts` › "a run refuses the edge-ordered pair
   before any task runs (X-53)", `contract/config-schema.json` (the
   field's values and refusals) (X-53).
+- **X-54.** A cached task whose input globs could match another task's
+  declared outputs had a preliminary key: it was not probed, prefetched
+  or restored ahead of the schedule and was keyed again once the producer
+  ran (M, 2026-10-07: hash ahead of time, not as a waterfall). A
+  workspace rule now refuses it, `rules: { upfrontKeys }`, on unless set
+  to `false`: `inputs.files` against the same project's `outputs.files`,
+  `inputs.workspaceFiles` against every `outputs.workspaceFiles` and
+  every other project's `outputs.files` from the root. The fix it names
+  is a `!` entry; the stability gate now leaves out an output the
+  reader's own `!` entries take back whole, so `['**/*', '!dist/**']`
+  beside a `dist/**` build is keyed up front. The gate stays, since the
+  rule refuses only proven overlaps. Keys still wait on undeclared
+  writes (`undeclaredWriteReach`, `commandWriteReach`), any upstream
+  `outputs.workspaceFiles` (`dependsOnSiblingOutputs`'s
+  `hasWsOutputUpstream`), runtime probes after a writer
+  (`probesAfterWrites`), and a root-anchored output landing under a
+  project-relative `inputs.files`, which the rule does not check. This
+  repo's `vx` and `vx-docs` configs gain `!` entries for their gitignored
+  outputs (keys unchanged). `@vzn/vx-migrate` writes the `!` entries,
+  and a literal input another task writes runs uncached with a todo.
+  Rows: `input-overlap.test.ts`, `stable-keys.test.ts` › "an output its
+  own `!` inputs take back whole …", `local-shortcircuit.test.ts` ›
+  "under rules.upfrontKeys a reader that takes the output back is
+  restore-tier (X-54)", `contract/config-schema.json` (X-54).

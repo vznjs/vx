@@ -58,12 +58,12 @@ const WORKSPACE_FIELDS = new Set([
   'plugins',
 ])
 
-const RULE_FIELDS = new Set(['exclusiveOutputs'])
+const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
 
 function validateRules(rules: unknown, configPath: string): void {
   const where = `${configPath}: \`rules\``
   if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
-    throw new UserError(`${where} must be { exclusiveOutputs?: boolean }`)
+    throw new UserError(`${where} must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`)
   }
   assertKnownFields(rules as Record<string, unknown>, RULE_FIELDS, where)
   for (const [name, value] of Object.entries(rules)) {

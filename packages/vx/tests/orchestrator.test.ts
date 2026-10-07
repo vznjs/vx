@@ -18,6 +18,7 @@ import {
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
 import { run } from '../src/orchestrator/index.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 describe('orchestrator e2e — keys, inputs and invalidation', () => {
   let fixture: Fixture
@@ -746,7 +747,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
                 dependsOn: ['codegen', '^build'],
                 cache: {
                   inputs: {
-                    files: ['**/*'],
+                    files: ['**/*', '!generated.txt'],
                     tasks: ['codegen', '^*'],   // explicit self + all deps
                   },
                   outputs: { files: ['out.txt'] },
@@ -1451,6 +1452,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
           }
         `,
       })
+      await waitForProducers(fixture.root)
       const statuses = async () => {
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
         return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))

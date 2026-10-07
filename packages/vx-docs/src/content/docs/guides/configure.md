@@ -25,7 +25,9 @@ export default defineProject({
       description: 'compile TypeScript to dist/',
       dependsOn: ['codegen', '^build'],
       exec: { command: 'tsc -b' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      // codegen's output reaches this key through codegen's own key; a key
+      // that read it could not be known until codegen ran, so vx refuses it.
+      cache: { inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] } },
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
@@ -237,7 +239,7 @@ export default defineWorkspace({
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 | `cacheScope` | where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
-| `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other ([Schema](../../schema/#workspace-config-vxworkspacets)) |
+| `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the

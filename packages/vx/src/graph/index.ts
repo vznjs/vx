@@ -26,6 +26,7 @@ export {
   isGroupTask,
   markSurfacedDeps,
   outputsOverlap,
+  outputTakenBack,
   splitTaskId,
   type TaskNode,
   undeclaredDepsError,
