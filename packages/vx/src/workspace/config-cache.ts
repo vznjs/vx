@@ -542,6 +542,14 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
   return { key: h.toString(16).padStart(16, '0'), closure, indexable }
 }
 
+// `hashFile` names a symlink by its target string (git's mode 120000), not
+// the bytes the evaluation read, so no stored key can match a fold of it.
+// Only a linked config with no relative import is indexed at all; with no
+// warm key it joins the round lookup on its slow key instead of paying a
+// single lookup and an index rewrite per load. The identity is from the
+// lstat `hashFiles` already took: no syscall is added.
+const LINK_IDENTITY = '120000:'
+
 /**
  * The warm path: the key for a config whose ordered closure the store
  * remembers, from per-file identities alone — no read, no scan. The fold is
@@ -561,6 +569,7 @@ export async function configEvalKeyFromClosure(a: {
   } catch {
     return null
   }
+  if (identities.some((id) => id.startsWith(LINK_IDENTITY))) return null
   for (let i = 0; i < a.closure.length; i++) h = xxh3(`${a.closure[i]}\0${identities[i]}`, h)
   return h.toString(16).padStart(16, '0')
 }
@@ -574,7 +583,7 @@ export function configEvalKeyFromIdentities(a: {
   let h = keySeed(a.workspaceFingerprint)
   for (const file of a.closure) {
     const id = a.identities.get(file)
-    if (id === undefined) return null
+    if (id === undefined || id.startsWith(LINK_IDENTITY)) return null
     h = xxh3(`${file}\0${id}`, h)
   }
   return h.toString(16).padStart(16, '0')
