@@ -18,6 +18,7 @@
 import { createRequire } from 'node:module'
 import {
   refuseUnknownOptions,
+  UserError,
   type PluginCommand,
   type PluginOptionKinds,
   definePlugin,
@@ -91,8 +92,8 @@ const CONFLICT = /^(?:<{7}|={7}|>{7})(?: |$)/m
 function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   const scope = options.scope ?? 'project'
   if (scope !== 'project' && scope !== 'workspace') {
-    throw new Error(
-      `@vzn/vx-lockfile: ${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
+    throw new UserError(
+      `${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
     )
   }
   // The parsers name their own file, so prefixing unconditionally said it
