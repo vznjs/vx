@@ -15,6 +15,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
+import { foldedDeps } from './keyed-projects.js'
 import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
 import { filterUpstreamHashes, keyUpstream } from './upstream.js'
 
@@ -53,6 +54,7 @@ export interface StableKey {
  */
 export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<StableKey[]> {
   const order = topoOrder(args.nodes)
+  const late = probesAfterWrites(args.nodes, args.workspaceRoot)
   const keyById = new Map<string, string>()
   const unstableById = new Set<string>()
   // Transitive-upstream output producers, accumulated in topo order — the
@@ -203,6 +205,13 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     if (unfolded !== undefined) unfoldedById.set(id, unfolded)
     if (wsRewriter) wsRewriters.add(id)
 
+    // Its probes answer only once its writers have run, so it has no key
+    // up front, and its dependants inherit that.
+    if (late.has(id)) {
+      unstableById.add(id)
+      continue
+    }
+
     if (isGroupTask(node)) {
       // Groups have no exec/cache; they only fold upstream keys so
       // dependents that filter inputs.tasks through the group still
@@ -269,6 +278,86 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       args.uncachedKeys?.set(id, hash)
   }
   return stableKeys
+}
+
+const probesAfterWritesOf = new WeakMap<ReadonlyMap<string, TaskNode>, ReadonlySet<string>>()
+
+/**
+ * The cached tasks whose `cache.inputs.runtime` / `workspaceRuntime` probes
+ * may read what an upstream writes this run while the key folds nothing of
+ * that upstream (X-34). A probe is a shell command and may read anywhere,
+ * so no glob bounds it, and its answer taken before the writer ran is the
+ * previous run's bytes. Such a task is never stable (`deriveStableKeys`
+ * takes no key for it), and its probes are answered for it alone, after
+ * its upstream ran (`ComputeHashArgs.probesAfterWrites`).
+ *
+ * A writer is any upstream whose command may write (`commandWriteReach`)
+ * or that declares outputs. A key that folds the writer's covers what it
+ * writes, as for a rewriter in `deriveStableKeys`: an early answer then
+ * costs a spurious miss on the run after the bytes change, never a stale
+ * hit, and such a probe keeps the run's shared answer — one spawn per run,
+ * not per task. So only a writer the key does not fold, transitively
+ * (`tasks: []`, a filter that leaves it out, an order-only edge), makes
+ * the probe wait.
+ *
+ * Once per graph: run, admission and both up-front passes ask the same map.
+ */
+export function probesAfterWrites(
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string,
+): ReadonlySet<string> {
+  const memo = probesAfterWritesOf.get(nodes)
+  if (memo !== undefined) return memo
+  const late = new Set<string>()
+  probesAfterWritesOf.set(nodes, late)
+  const probes = (n: TaskNode): boolean =>
+    (n.config.cache?.inputs?.runtime?.length ?? 0) > 0 ||
+    (n.config.cache?.inputs?.workspaceRuntime?.length ?? 0) > 0
+  let anyProbe = false
+  for (const n of nodes.values()) {
+    if (probes(n)) {
+      anyProbe = true
+      break
+    }
+  }
+  if (!anyProbe) return late
+  // A sandbox with no write grant still writes the declared outputs. A
+  // fingerprinted file is only writable where `commandWriteReach` is not
+  // 'none' already (`mayWriteFingerprint`).
+  const writers = new Set<string>()
+  for (const n of nodes.values()) {
+    if (
+      commandWriteReach(n, workspaceRoot) !== 'none' ||
+      (n.config.cache?.outputs.files.length ?? 0) > 0 ||
+      (n.config.cache?.outputs.workspaceFiles?.length ?? 0) > 0
+    )
+      writers.add(n.id)
+  }
+  const nodeOf = (id: string): TaskNode => nodes.get(id)!
+  // Any writer runs before the task; one its key does not fold does.
+  const writerBelow = new Set<string>()
+  const unfoldedBelow = new Set<string>()
+  for (const id of topoOrder(nodes)) {
+    const node = nodes.get(id)!
+    let writer = false
+    let unfolded = false
+    // No filter and no order-only edge: the key folds every dependency.
+    const foldsAll = node.orderOnly === undefined && node.config.cache?.inputs?.tasks === undefined
+    let folds: Set<string> | undefined
+    for (const dep of node.deps) {
+      if (!nodes.has(dep)) continue
+      const depWrites = writerBelow.has(dep) || writers.has(dep)
+      if (depWrites) writer = true
+      if (unfolded || !depWrites) continue
+      const folded =
+        foldsAll || (folds ??= new Set(foldedDeps(node, nodeOf).map((c) => c.node.id))).has(dep)
+      unfolded = folded ? unfoldedBelow.has(dep) : true
+    }
+    if (writer) writerBelow.add(id)
+    if (unfolded) unfoldedBelow.add(id)
+    if (unfolded && node.config.cache !== undefined && probes(node)) late.add(id)
+  }
+  return late
 }
 
 /**
@@ -519,7 +608,7 @@ class ProjectSet implements ProjectNames {
   }
 }
 
-function topoOrder(nodes: Map<string, TaskNode>): string[] {
+function topoOrder(nodes: ReadonlyMap<string, TaskNode>): string[] {
   const indegree = new Map<string, number>()
   const dependents = new Map<string, string[]>()
   for (const node of nodes.values()) {

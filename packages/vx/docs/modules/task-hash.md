@@ -51,6 +51,7 @@ export interface ComputeHashArgs {
   gitFilesCache?: GitFilesCache
   hashCache?: HashCache
   captureInto?: TaskInputComponent[] // filled at each fold site inside `cache.key()`; no effect on the hash
+  probesAfterWrites?: ReadonlySet<string> // stable-keys.md: these tasks' probes are answered per task (`runtimeScope`)
 }
 
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>

@@ -212,3 +212,14 @@ time (bugs, correctness, simplification, the plugin seams).
   and ctime, as `isOutputsCurrent` checks. Row:
   `overlapping-outputs.test.ts` › "the rewrite is the dependant's own, so a
   warm run leaves its bytes".
+- **X-34.** A task whose `cache.inputs.runtime` probe read an upstream's
+  output, with a key that folded no key of that upstream (`tasks: []`),
+  was classed stable: its key was taken up front, before the upstream
+  wrote, and the run's probe memo served that answer again to the
+  re-check, so seeds A, B, B, A replayed B on the fourth run. Item 750
+  had pinned that as the contract. Now such a task
+  (`probesAfterWrites`) takes no key up front, is never restore-tier,
+  and its probes run for it alone after its upstream finished; a probe
+  whose key folds the writer keeps the shared answer. Row:
+  `in-run-writes.test.ts` › "seeds A, B, B, A build A, B, B, A: a
+  project probe waits for the upstream".

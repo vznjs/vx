@@ -51,6 +51,7 @@ export interface ResolveInputsArgs {
   gitFilesCache?: GitFilesCache // per-run memo of `git ls-files` per project
   runtimeCache?: Map<string, Promise<string>> // per-run memo of `inputs.runtime`, keyed projectDir + '\0' + command
   workspaceRuntimeCache?: Map<string, Promise<string>> // per-run memo of `workspaceRuntime`, keyed by command
+  runtimeScope?: string // a task id: both memos above answer this task's probes apart from every other's (X-34)
   workspaceFilesCache?: WorkspaceFilesCache // per-run memo of `inputs.workspaceFiles` per declaration
   projectFilesCache?: ProjectFilesCache // per-run memo of `inputs.files` per project + declaration
 }

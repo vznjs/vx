@@ -706,9 +706,10 @@ next?".
   inputs, in place (a formatter), and nothing else: its key names those,
   so a reader folding it is covered. A root-project task may rewrite the
   lockfile; the run watches for it. An `inputs.runtime` answer is the
-  environment, asked once per run and never re-checked: a task that
-  changes it is out of contract, and a file another task writes is
-  declared as an input instead.
+  environment, asked once per run and never re-checked; a probe behind a
+  writer its key does not fold is asked after that writer, for its task
+  alone (X-34). A file another task writes is still better declared as
+  an input.
 - **Every project's lockfile key folds the root importer (item 733).**
   What the root declares is reachable from every task.
 - **A plugin verb's owner is its package (2026-10-03).** Plugins of two

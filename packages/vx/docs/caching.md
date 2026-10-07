@@ -963,18 +963,22 @@ A runtime command executes **once per run, per project** (memoized by
 `projectDir + command`), at key-derivation time — which, with the
 up-front classify/prefetch pass, is before any task runs. It is a
 run-level reading of the ENVIRONMENT (toolchain versions, resolved
-config), not a per-task probe, and the contract is that no task in the
-run changes its answer: it is not asked again before a save, as input
-files are, because that would be one spawn per command per miss where a
-file costs one `lstat`. A command that reads another task's OUTPUT folds
-the pre-run state. When the reader's key folds that task's key, the
-upstream key covers it, and the cost is a spurious miss on the run after
-the output changes. When it does not (`tasks: []`), nothing covers it:
-the save files bytes built from the new state under the old answer, and
-a later run that starts from the old state hits them (item 750 pins
-exactly that, `tests/in-run-writes.test.ts`). So declare the producing
-task's output as an input (`dependsOn` + files) rather than sampling it
-from a runtime command: files are re-checked, answers are not.
+config), not a per-task probe: it is not asked again before a save, as
+input files are, because that would be one spawn per command per miss
+where a file costs one `lstat`. A command that reads another task's
+OUTPUT reads whatever is on disk when it is asked. When the reader's key
+folds that task's key, the upstream key covers it: an answer taken before
+the upstream ran costs a spurious miss on the run after the output
+changes, never a stale hit, and the answer stays shared. When it does
+not (`tasks: []`, a filter that leaves it out, transitively), nothing
+covered it until X-34: the save filed bytes built from the new state
+under the old answer, and a later run that started from the old state
+hit them. Now such a task (`probesAfterWrites`, stable-keys.ts) takes no
+key up front and is never restore-tier, and its probes run for it alone,
+after its upstream finished — one spawn per such task per run, not one
+per project (`tests/in-run-writes.test.ts`). Declaring the producing
+task's output as an input (`dependsOn` + files) is still the cheaper
+spelling: files are re-checked, answers are not.
 
 A probe runs in its own process group. One still running when vx exits
 — a Ctrl-C, or a refusal, while a hung `git` or `node -e …` answers — is

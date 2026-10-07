@@ -167,6 +167,8 @@ export interface ExecuteArgs {
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
+  /** The run's `probesAfterWrites`, handed to every key this task takes. */
+  probesAfterWrites?: ReadonlySet<string>
   /**
    * Up-front probe result from the local short-circuit classify, when
    * this task was stable + cacheable + local-read. Reused here so there
@@ -715,6 +717,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       nestedProjectDirs: args.nestedProjectDirs,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+      ...(args.probesAfterWrites !== undefined
+        ? { probesAfterWrites: args.probesAfterWrites }
+        : {}),
     }))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
@@ -814,6 +819,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         captureInto: captured,
         ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        ...(args.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.probesAfterWrites }
+          : {}),
       })
     : undefined
   // A name only `exec.env.secret` makes secret is not one the name rule
