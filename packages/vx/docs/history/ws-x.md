@@ -436,3 +436,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   question left open. Rows: `scheduler.test.ts` › "a persistent task
   only restore-tier hits depend on", `persistent.test.ts` › "a server
   only cached dependants pulled in is not started …".
+- **X-60.** A script `vx init` folded with its `pre`/`post` hooks took
+  forwarded `--` args as the function's positional parameters: under
+  `vx run test -- foo bar` the body's `$1` was `foo` and its `$*` printed
+  the args twice, and the hooks saw them too, where npm appends them to
+  the script as text and no part sees `$1`. The fold now quotes them into
+  a variable, clears the positional parameters, and evals the body with
+  them appended. Row: `migration.test.ts` › "appends the args as text, as
+  npm does: no part sees them as $1 (hunt 8)".
