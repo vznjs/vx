@@ -185,12 +185,16 @@ self.onmessage = async (e) => {
         : thrown
     const report = changed()
     umaskBack()
+    // A thrown string or plain object has no message, and String() of a
+    // null-prototype object throws here, inside the catch.
+    const isError = err !== null && typeof err === 'object' && typeof err.message === 'string'
     postMessage({
       id,
       ok: false,
-      name: err?.name ?? 'Error',
-      message: err?.message ?? String(err),
-      stack: err?.stack ?? null,
+      thrown: isError ? null : globalThis.Bun.inspect(err, { compact: true }),
+      name: isError ? (err.name ?? 'Error') : 'Error',
+      message: isError ? err.message : '',
+      stack: isError ? (err.stack ?? null) : null,
       changed: report,
       position:
         err?.position && typeof err.position === 'object'
@@ -214,6 +218,8 @@ interface WorkerReply {
   nonJson: NonJsonValue[]
   name: string
   message: string
+  /** What a config threw that is not an Error, as `thrownValueMessage` shows it; null for an Error. */
+  thrown?: string | null
   stack: string | null
   /** A transpile error's location — `BuildMessage.position`, trimmed to what the loader reads. */
   position: { file?: string; line?: number; column?: number } | null
@@ -222,6 +228,16 @@ interface WorkerReply {
 interface Pending {
   resolve: (reply: WorkerReply) => void
   reject: (err: Error) => void
+  configPath: string
+}
+
+/**
+ * A config threw something that is not an Error: `throw 'no'` printed
+ * `vx: no`, naming no file, and a null-prototype object crashed vx's own
+ * error printer with a stack.
+ */
+export function thrownValueMessage(kind: string, configPath: string, shown: string): string {
+  return `${kind} config ${configPath} threw ${shown}, which is not an Error`
 }
 
 /**
@@ -285,6 +301,10 @@ function acquireWorker(): Worker {
     pending.delete(msg.id)
     if (msg.ok) {
       p.resolve(msg)
+      return
+    }
+    if (typeof msg.thrown === 'string') {
+      p.reject(new UserError(thrownValueMessage('Project', p.configPath, msg.thrown)))
       return
     }
     // Rebuild the error the config actually threw. Name, message, stack
@@ -361,7 +381,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // evaluation costs, so it can only fire on a genuine wedge.
     const budget = evalBudgetMs()
     const reply = await new Promise<WorkerReply>((resolve, reject) => {
-      pending.set(id, { resolve, reject })
+      pending.set(id, { resolve, reject, configPath })
       timer = setTimeout(() => {
         rejectAll(new Error(`config worker did not answer within ${budget}ms`))
         if (worker !== null) {
