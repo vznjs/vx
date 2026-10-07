@@ -646,7 +646,16 @@ describe('vx migrate (lerna)', () => {
   const installed = (v: string) => JSON.stringify({ name: 'lerna', version: v })
 
   for (const [label, files, mapped] of [
-    ['lerna.json alone', { 'lerna.json': '{}' }, true],
+    [
+      'Lerna installed',
+      { 'lerna.json': '{}', 'node_modules/lerna/package.json': installed('9.0.7') },
+      true,
+    ],
+    [
+      'lerna.json with no Lerna (lerna-lite reads it too)',
+      { 'lerna.json': '{ "useNx": true }' },
+      false,
+    ],
     [
       'Lerna 5 that opts in',
       { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },
@@ -705,7 +714,11 @@ describe('vx migrate (lerna)', () => {
   it(
     'beside turbo.json, Turbo runs the tasks: no --from asked',
     async () => {
-      const root = await lernaRepo({ 'lerna.json': '{}', 'turbo.json': '{ "tasks": {} }' })
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+        'turbo.json': '{ "tasks": {} }',
+      })
       try {
         const r = await vx(root, ['--dry'])
         expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.config.ts')]).toEqual([
@@ -723,7 +736,10 @@ describe('vx migrate (lerna)', () => {
   it(
     '--keep writes the workspace file declaring nx(), as vx init does for nx.json',
     async () => {
-      const root = await lernaRepo({ 'lerna.json': '{}' })
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+      })
       try {
         const r = await vx(root, ['--keep'])
         const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()

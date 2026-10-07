@@ -369,18 +369,11 @@ async function keepLerna(
 /**
  * Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph`
  * exports, nx.json or not, unless lerna.json says `useNx: false`; Lerna 5
- * ran its own unless it said `useNx: true`. The version is the installed
- * one, else the root manifest's range; unknown is a current Lerna.
+ * ran its own unless it said `useNx: true`. Lerna is the installed one,
+ * else the root manifest's range; with neither, the lerna.json is another
+ * tool's (lerna-lite reads it too, and runs no Nx).
  */
 function lernaOnNx(root: string): boolean {
-  let useNx: unknown
-  try {
-    useNx = (JSON.parse(readFileSync(path.join(root, 'lerna.json'), 'utf8')) as { useNx?: unknown })
-      ?.useNx
-  } catch {
-    return false
-  }
-  if (typeof useNx === 'boolean') return useNx
   const json = (file: string): Record<string, unknown> | undefined => {
     try {
       return JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
@@ -388,11 +381,16 @@ function lernaOnNx(root: string): boolean {
       return undefined
     }
   }
+  const config = json(path.join(root, 'lerna.json'))
+  if (config === undefined) return false
   const installed = json(path.join(root, 'node_modules', 'lerna', 'package.json'))?.['version']
   const manifest = json(path.join(root, 'package.json'))
   const declared = ['devDependencies', 'dependencies']
     .map((k) => (manifest?.[k] as Record<string, unknown> | undefined)?.['lerna'])
     .find((v): v is string => typeof v === 'string')
-  const major = /\d+/.exec(typeof installed === 'string' ? installed : (declared ?? ''))?.[0]
+  const version = typeof installed === 'string' ? installed : declared
+  if (version === undefined) return false
+  if (typeof config['useNx'] === 'boolean') return config['useNx']
+  const major = /\d+/.exec(version)?.[0]
   return major === undefined || Number(major) >= 6
 }
