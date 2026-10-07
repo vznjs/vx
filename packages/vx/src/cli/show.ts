@@ -12,6 +12,7 @@ import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../orchestrator/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
+import { affectedFilterFor, resolveFilters } from './select.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
   findWorkspaceRoot,
@@ -24,16 +25,27 @@ import {
 export interface ShowArgs {
   target?: string
   format: 'pretty' | 'json'
+  /** `--filter`, as `vx run` reads it: which projects the list shows. */
+  filters: string[]
+  /** `--affected[=<base>]`: `''` is the default base. */
+  affected?: string
   error?: string
 }
 
 export function parseShowArgs(args: readonly string[]): ShowArgs {
-  const out: ShowArgs = { format: 'pretty' }
+  const out: ShowArgs = { format: 'pretty', filters: [] }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
+    else if (a === '--filter') {
+      const v = args[++i]
+      if (v === undefined) return { ...out, error: '--filter requires a value (a pattern)' }
+      out.filters.push(v)
+    } else if (a.startsWith('--filter=')) out.filters.push(a.slice('--filter='.length))
+    else if (a === '--affected') out.affected = ''
+    else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
     else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
     else if (out.target === 'project')
@@ -103,10 +115,35 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const bareTask = projectName !== undefined && taskName === undefined && !byName.has(projectName)
   const scope = projectName === undefined || bareTask ? 'all' : [projectName]
 
+  // `turbo ls --filter` / `nx show projects --affected`: the list, and a
+  // task's projects, narrowed by the selection `vx run` would make.
+  let selected: Set<string> | undefined
+  if (parsed.filters.length > 0 || parsed.affected !== undefined) {
+    if (scope !== 'all') {
+      throw new UserError(
+        'vx show: --filter and --affected narrow a list: `vx show` or `vx show <task>`',
+      )
+    }
+    const raw = [...parsed.filters]
+    let affected: string | undefined
+    if (parsed.affected !== undefined) {
+      const f = await affectedFilterFor(process.cwd(), parsed.affected)
+      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`)
+      affected = f
+      raw.unshift(f)
+    }
+    const r = await resolveFilters(process.cwd(), raw, { noCreate: true }, affected)
+    if ('error' in r) throw new UserError(`vx show: ${r.error}`)
+    if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
+    selected = new Set('empty' in r ? [] : r.names)
+  }
+  const inSelection = (name: string): boolean => selected === undefined || selected.has(name)
+
   const projects = await loadCliProjects(root, metas, scope, { noCreate: true, closure: true })
 
   if (parsed.target === undefined) {
-    process.stdout.write(renderList(root, metas, projects, parsed.format))
+    const shown = metas.filter((m) => inSelection(m.name))
+    process.stdout.write(renderList(root, shown, projects, parsed.format))
     return 0
   }
 
@@ -124,7 +161,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`,
       )
     }
-    process.stdout.write(renderTaskAcross(root, declaring, projectName!, parsed.format))
+    const shown = declaring.filter((p) => inSelection(p.name))
+    process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format))
     return 0
   }
 
@@ -239,6 +277,7 @@ function renderList(
       2,
     )}\n`
   }
+  if (rows.length === 0) return ''
   const nameW = Math.max(...rows.map((r) => r.name.length))
   const dirW = Math.max(...rows.map((r) => r.dir.length))
   const lines = rows.map((r) => {
