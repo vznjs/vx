@@ -1298,7 +1298,11 @@ grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
 dependency the task ran could copy a key into an output the cache
 shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
-`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`.
+`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`,
+`~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
+`~/.cargo/credentials.toml`, `~/.gem/credentials`, `~/.config/hub`,
+`~/.config/containers/auth.json`, `~/.terraform.d/credentials.tfrc.json`,
+`~/.vault-token`, `~/.pgpass`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`

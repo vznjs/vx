@@ -539,3 +539,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   server's exit swept, which never came. The persistent path now sweeps
   when the wrap throws. Row: `sandbox-port-held.unsafe.test.ts` › "a
   server refused for the port leaves no placeholder behind".
+- **X-84.** A sandboxed task read Bun's global bunfig (`~/.bunfig.toml`,
+  `~/.config/.bunfig.toml`, where `[install.scopes]` keeps registry
+  tokens), Cargo's and RubyGems' credentials and the like, though the
+  same task was denied `~/.npmrc` (L-41): a dependency it ran could copy
+  the token into an output the cache shares. They join the denied
+  stores, granted by naming one in `allow.read`. Row:
+  `sandbox-credential-stores.unsafe.test.ts` › "reads none unless
+  granted, and the rest of home as before".

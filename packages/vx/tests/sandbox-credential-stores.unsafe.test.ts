@@ -28,6 +28,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       ['.ssh/id_ed25519', 'SSHKEY'],
       ['.npmrc', 'NPMRC'],
       ['.aws/credentials', 'AWSKEY'],
+      ['.bunfig.toml', 'BUNFIG'],
+      ['.cargo/credentials.toml', 'CARGO'],
       ['.cache/tool/state', 'CACHE'],
     ] as const) {
       await mkdir(path.dirname(path.join(home, rel)), { recursive: true })
@@ -42,7 +44,14 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     // A denied file reads as empty (a /dev/null bind), a denied directory as
     // an empty one: either way grep finds no line.
     const read = (f: string): string => `grep -s . "$HOME/${f}" || echo "no ${f}"`
-    const cmd = ['.ssh/id_ed25519', '.npmrc', '.aws/credentials', '.cache/tool/state']
+    const cmd = [
+      '.ssh/id_ed25519',
+      '.npmrc',
+      '.aws/credentials',
+      '.bunfig.toml',
+      '.cargo/credentials.toml',
+      '.cache/tool/state',
+    ]
       .map(read)
       .join('; ')
     await writeFile(
@@ -67,9 +76,16 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       return text
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
-        .filter((l) => /^(no \.|SSHKEY|NPMRC|AWSKEY|CACHE)/.test(l))
+        .filter((l) => /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|CACHE)/.test(l))
     }
-    expect(out('peek')).toEqual(['no .ssh/id_ed25519', 'no .npmrc', 'no .aws/credentials', 'CACHE'])
+    expect(out('peek')).toEqual([
+      'no .ssh/id_ed25519',
+      'no .npmrc',
+      'no .aws/credentials',
+      'no .bunfig.toml',
+      'no .cargo/credentials.toml',
+      'CACHE',
+    ])
     expect(out('granted')).toEqual(['NPMRC'])
   })
 })

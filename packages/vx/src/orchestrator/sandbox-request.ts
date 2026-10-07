@@ -617,6 +617,18 @@ const CREDENTIAL_STORES = [
   '.npmrc',
   '.yarnrc.yml',
   '.pypirc',
+  // Registry and service tokens of the same kind: Bun's global bunfig
+  // (`[install.scopes]` tokens) at either of its homes, Cargo's, RubyGems'.
+  '.bunfig.toml',
+  '.config/.bunfig.toml',
+  '.cargo/credentials',
+  '.cargo/credentials.toml',
+  '.gem/credentials',
+  '.config/hub',
+  '.config/containers/auth.json',
+  '.terraform.d/credentials.tfrc.json',
+  '.vault-token',
+  '.pgpass',
 ]
 
 /** The stores present on this host, learned once per home. */
