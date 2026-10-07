@@ -1351,6 +1351,31 @@ describe('plugin-host, called directly', () => {
     TIMEOUT,
   )
 
+  // X-15: a raw TypeError named neither the task nor the field.
+  it(
+    'a graph hook that nulls deps or a node is refused naming the task',
+    async () => {
+      await pkg('a', build)
+      const said = async (edit: string) => {
+        await workspace([pluginSource('org/edit', `{ graph(nodes) { ${edit} } }`)])
+        return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+          () => 'planned',
+          (e: Error) => e.message,
+        )
+      }
+      expect([
+        await said(`nodes.get('a#build').deps = null`),
+        await said(`nodes.set('a#build', null)`),
+        await said(`nodes.get('a#build').deps = []`),
+      ]).toEqual([
+        "plugin 'org/edit' failed in graph: a#build's deps is null, not an array of task ids",
+        "plugin 'org/edit' failed in graph: 'a#build' holds null, not a task",
+        'planned',
+      ])
+    },
+    TIMEOUT,
+  )
+
   describe('admit', () => {
     const graph = new Map([
       ['a', { id: 'a' } as TaskNode],

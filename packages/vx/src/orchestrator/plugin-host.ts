@@ -183,11 +183,30 @@ export async function applyGraphHooks(
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
     await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    await safe(plugin, 'graph', () => checkNodeShapes(nodes))
     afterEach?.(plugin)
     last = plugin
   }
   if (last === undefined) return
   await safe(last, 'graph', () => checkGraph(nodes, ctx.workspaceRoot))
+}
+
+/**
+ * A hook writes the graph as plain JS: `deps = null` surfaced as "null is
+ * not an object", naming no task (X-15). Checked per plugin, before its
+ * edits are read, so the refusal names the plugin that wrote them.
+ */
+function checkNodeShapes(nodes: Map<string, TaskNode>): void {
+  const what = (v: unknown): string => (v === null ? 'null' : typeof v)
+  for (const [key, node] of nodes as Map<string, unknown>) {
+    if (typeof node !== 'object' || node === null) {
+      throw new Error(`'${key}' holds ${what(node)}, not a task`)
+    }
+    const deps = (node as { deps?: unknown }).deps
+    if (!Array.isArray(deps)) {
+      throw new Error(`${key}'s deps is ${what(deps)}, not an array of task ids`)
+    }
+  }
 }
 
 /**

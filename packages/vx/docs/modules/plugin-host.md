@@ -16,7 +16,10 @@ marks derived again) and a violation is reported against the last plugin
 that ran. Only the first two were checked until item 981: a plugin that
 dropped the edge between two overlapping outputs lost one task's files
 under a green run, and one that moved a node to another key crashed
-the scheduler with a raw TypeError.
+the scheduler with a raw TypeError. Before that, after EACH plugin,
+every entry must be an object whose `deps` is an array (X-15): a hook
+that set `deps = null` was refused as "null is not an object", naming
+neither the task nor the field.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved

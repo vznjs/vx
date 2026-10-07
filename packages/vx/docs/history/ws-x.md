@@ -89,3 +89,9 @@ time (bugs, correctness, simplification, the plugin seams).
   dependencies without the args and passed: a group takes none and the
   args reached nothing. A request whose tasks are all groups is now
   refused, naming them. Row: `forward-args-group.test.ts`.
+- **X-15.** A `graph` hook that set a node's `deps` to `null` (or a node
+  to `null`) was refused as "null is not an object (evaluating
+  'n.config')". Each plugin's edit is now checked for shape first:
+  "plugin 'p' failed in graph: a#build's deps is null, not an array of
+  task ids". Row: `plugin-pipeline.test.ts` › "a graph hook that nulls
+  deps or a node is refused naming the task".
