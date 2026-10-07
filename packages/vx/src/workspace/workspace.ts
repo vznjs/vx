@@ -160,8 +160,11 @@ function claimsMember(root: string, below: readonly string[], globs: readonly st
     const normalized = pattern.replace(/\/+$/, '')
     // `.` means the root itself is the project — never a directory below it.
     if (normalized === '' || normalized === '.') continue
-    const glob = new Bun.Glob(normalized)
-    if (rels.some((rel) => glob.match(rel))) return true
+    // Matched as discovery scans, on the manifest: `packages/**` lists
+    // `packages/package.json`, while against the directory `**` needs a
+    // segment below `packages`, and a run from there was its own root.
+    const glob = new Bun.Glob(`${normalized}/package.json`)
+    if (rels.some((rel) => glob.match(`${rel}/package.json`))) return true
   }
   return false
 }
