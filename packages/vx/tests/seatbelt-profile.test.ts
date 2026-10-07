@@ -10,11 +10,13 @@ import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { wrapCommandWithSandboxMacOS } from '@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js'
 import {
   darwinWallRules,
   macProfileRules,
   resolveSandboxConfig,
   sbplResolvedPath,
+  seatbeltBrackets,
   wallsGlobsReach,
 } from '../src/exec/sandbox-runtime.js'
 import { UserError } from '../src/util/index.js'
@@ -239,5 +241,39 @@ describe('the walls a darwin config reaches', () => {
         () => resolveSandboxConfig({ allow: { read: ['.', 'src'] } }, dir, walls).wallsReached,
       ),
     ]).toEqual([{ read: [], write: walls }, undefined])
+  })
+})
+
+// SRT compiles any deny path holding `[` as a regex, where the bracket
+// opens a class: a root project's wall on a nested project under
+// `[legacy]/` matched `l`, `e`, … and never the directory itself.
+describe('a seatbelt wall whose name holds a bracket', () => {
+  const regexes = (denyRead: string[]): RegExp[] => {
+    const cfg = seatbeltBrackets({
+      filesystem: { denyRead, allowRead: ['/ws/app'], allowWrite: [], denyWrite: [] },
+    })!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    return [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith('^/ws/'))
+      .map((r) => new RegExp(r))
+  }
+
+  it('denies the directory and its subtree, and not a class member', () => {
+    const rx = regexes(['/ws', '/ws/app/[legacy]'])
+    expect([
+      rx.length > 0,
+      rx.every((r) => r.test('/ws/app/[legacy]/src/a.ts')),
+      rx.some((r) => r.test('/ws/app/l/src/a.ts')),
+    ]).toEqual([true, true, false])
+  })
+
+  it('CONTROL: a plain wall is a subpath, no regex', () => {
+    expect(regexes(['/ws', '/ws/app/legacy'])).toEqual([])
   })
 })

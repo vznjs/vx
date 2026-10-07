@@ -1188,6 +1188,16 @@ export async function wrapSandboxedCommand(
   // user command, so it goes INTO the sandboxed command; the host side is
   // spawned here and released when the task's process ends.
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
+  // Before the wrap, which holds the runtime's stub cleanup until `afterCommand`.
+  const held = portsHeld(ports)
+  if (held.length > 0) {
+    throw new UserError(
+      `sandbox: localBinding port${held.length === 1 ? '' : 's'} ${held.join(', ')} ` +
+        `${held.length === 1 ? 'is' : 'are'} already in use on this machine, so the task's own ` +
+        `cannot be exposed there and a client would reach the other listener; stop what ` +
+        `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
+    )
+  }
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1240,15 +1250,6 @@ export async function wrapSandboxedCommand(
   }
   if (process.platform === 'linux' && !hostHasIpv6())
     wrapped = `SOCAT_DEFAULT_LISTEN_IP=4 ${wrapped}`
-  const held = portsHeld(ports)
-  if (held.length > 0) {
-    throw new UserError(
-      `sandbox: localBinding port${held.length === 1 ? '' : 's'} ${held.join(', ')} ` +
-        `${held.length === 1 ? 'is' : 'are'} already in use on this machine, so the task's own ` +
-        `cannot be exposed there and a client would reach the other listener; stop what ` +
-        `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
-    )
-  }
   if (args.server === true) liveServers.add(tag)
   if (ports.length > 0) {
     spawnHostBridges(ports, tag)
@@ -1409,9 +1410,11 @@ function literalReadPaths(
  * it the pattern, and SRT compiles any spelling holding `[` as a regex in
  * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
  * file and the route could not be granted. `[[]` is a class of one `[`; a
- * lone `]` is plain text (B-65).
+ * lone `]` is plain text (B-65). A deny path is a real directory, never a
+ * pattern: a nested project's wall under `[legacy]/` compiled as a class,
+ * matched nothing, and the root task read it.
  */
-function seatbeltBrackets(
+export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
@@ -1422,6 +1425,7 @@ function seatbeltBrackets(
     ...config,
     filesystem: {
       ...fs,
+      denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
       allowWrite: literal(fs.allowWrite),
       ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
     },
@@ -1775,6 +1779,7 @@ async function runSandboxedOnce(
   if (args.signal?.aborted === true) {
     releaseBridges(tag)
     takeRecords()
+    afterCommand(SandboxManager)
     const signal = stopSignal(args.signal.reason)
     return {
       exitCode: signalExitCode(signal),
@@ -1823,6 +1828,7 @@ async function runSandboxedOnce(
     args.onStderr?.(stderr)
     releaseBridges(tag)
     takeRecords()
+    afterCommand(SandboxManager)
     return {
       exitCode: 127,
       durationMs: Date.now() - start,
@@ -2012,11 +2018,7 @@ async function runSandboxedOnce(
     if (hidden.length > 0) violations.push(hiddenReadsHint(hidden, args.reportWithin))
   }
 
-  try {
-    SandboxManager.cleanupAfterCommand()
-  } catch {
-    // ignore; bwrap mount-point cleanup is best-effort
-  }
+  afterCommand(SandboxManager)
 
   return {
     exitCode,
@@ -2039,6 +2041,20 @@ async function runSandboxedOnce(
       straceLog !== undefined &&
       !timeout.timedOut() &&
       (straceSpoke || STRACE_OWN_ERROR.test(partial)),
+  }
+}
+
+/**
+ * The runtime counts every wrap as a live sandbox until this, and removes
+ * the empty files bwrap made on the host as mount points (`.bashrc`,
+ * `.vscode`, … under a write grant) only at a count of 0: a wrap with no
+ * call here kept every later task's stubs on the host until the reset.
+ */
+function afterCommand(SandboxManager: SrtModule['SandboxManager']): void {
+  try {
+    SandboxManager.cleanupAfterCommand()
+  } catch {
+    // ignore; bwrap mount-point cleanup is best-effort
   }
 }
 

@@ -253,6 +253,36 @@ describe('Turbo and Nx flags on vx run', () => {
     )
   })
 
+  // Turbo's clap and Nx's yargs read `=true` / `=false` on these.
+  // `--skip-nx-cache=false` forced every task, and `--summarize=true`
+  // wrote the summary to a file named `true`.
+  it('a boolean flag with =false is left out, with =true is bare', () => {
+    for (const [foreign, vx] of [
+      [['--force=true'], ['--force']],
+      [['--force=false'], []],
+      [['--summarize=true'], ['--summarize']],
+      [['--summarize=false'], []],
+      [['--remote-only=false'], []],
+      [['--remote-cache-read-only=false'], []],
+      [['--skip-nx-cache=false'], []],
+      [['--skipNxCache=true'], ['--force']],
+      [['--nx-bail=false'], []],
+      [['--nxBail=true'], ['--continue=never']],
+      [['--exclude-task-dependencies=false'], []],
+      [['--skip-remote-cache=false'], []],
+      [['--skip-remote-cache=true'], ['--cache', 'local:rw,remote:']],
+    ]) {
+      const got = parseRunArgs(['build', ...foreign!])
+      expect([foreign, got.error]).toEqual([foreign, undefined])
+      expect([foreign, got]).toEqual([foreign, parseRunArgs(['build', ...vx!])])
+    }
+    expect(parseRunArgs(['build', '--remote-only=true']).error).toBe(
+      '--remote-only (turbo): use `--cache local:,remote:rw`',
+    )
+    // CONTROL: any other value is vx's own: a path stays a path.
+    expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')
+  })
+
   it("arguments after -- are the task's, never translated", () => {
     expect(parseRunArgs(['build', '--', '-t', 'x', '--parallel']).forwardArgs).toEqual([
       '-t',
