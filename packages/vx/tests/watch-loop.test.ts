@@ -482,15 +482,21 @@ describe('vx watch with a persistent task (e2e)', () => {
   it('a server that rewrites a file in its project is named after three restarts (item 948)', async () => {
     // Its write lands after the cycle that started it ended, so the streak
     // never counted it: 12 restarts in 8 s and no word of why.
+    // The first server writes only once watch is armed: a write before the
+    // arm is the initial run's, never an event, and a loaded runner took
+    // longer than the 0.3 s to arm, so no cycle ever started (CI, 2026-10-06).
+    const armed = path.join(outside, 'armed')
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: { dev: { exec: {
-        command: 'echo $$ >> ${pids}; echo READY; sleep 0.3; date +%s%N > server.log; exec sleep 1000',
+        command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; sleep 0.3; date +%s%N > server.log; exec sleep 1000',
         persistent: { readyWhen: 'READY' },
       } } } }\n`,
     )
     watch = startWatch(root, ['--all'], {}, 'dev')
     const w = watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await writeFile(armed, '')
     await until(
       () => w.out().includes('server.log has started 3 cycles in a row'),
       'the notice naming the server-written file',
