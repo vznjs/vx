@@ -43,6 +43,7 @@ import {
   mkdirSync,
   openSync,
   renameSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
@@ -1192,6 +1193,12 @@ export class Cache implements CacheLayer {
       // A second name for the same bytes: the index step renames it over
       // the artifact inside its write transaction, as for a save.
       linkSync(finalPath, tmpPath)
+      // The link shares the artifact's inode and so its mtime, which an
+      // artifact that needs adopting has had for hours: another process's
+      // orphan sweep read the temp as a crashed save's and took it, and the
+      // artifact with it, while this adopt was scanning them.
+      const now = new Date()
+      utimesSync(tmpPath, now, now)
     } catch {
       return false
     }
