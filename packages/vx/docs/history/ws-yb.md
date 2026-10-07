@@ -1,0 +1,3 @@
+# Workstream YB — Nx/Turbo parity (2026-10-07)
+
+- **YB-2.** fix: opencode's root depends on `@opencode-ai/plugin` (build outputs `dist/**`); the written configs read it as `...globalInputs`, which the take-back pass saw as no glob, so no `!packages/plugin/dist/**` was written and core refused to load them. The pass reads the spread as its globs. Rows: `migrate-turbo-preset-takeback.test.ts` › "takes its outputs back after the preset spread in every other task's inputs".
