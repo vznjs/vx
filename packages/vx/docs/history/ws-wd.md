@@ -1,7 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-18.** The picker wrote its menu and prompt to stdout, so
-  `vx run > out.txt` on a terminal put them in the file and sat on a
-  blank screen waiting for a number. They now go to stderr; only the run
-  reaches stdout. Row: `tests/terminal.unsafe.test.ts` › "asks on the
-  terminal, and only the run reaches the file".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
