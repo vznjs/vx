@@ -2635,7 +2635,10 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
-Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
+Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`. A sandboxed
+task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
+else `/tmp/claude`), the sandbox runtime's own convention
+(`docs/modules/sandbox-runtime.md`).
 
 ## Output format
 
