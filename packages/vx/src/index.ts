@@ -168,6 +168,9 @@ export type {
   DiscoverContext,
   NamedProject,
   PluginSetupContext,
+  PluginHookName,
+  PluginHookHandlers,
+  RunStartInfo,
 } from './orchestrator/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
 // (`runCommand` / `runSandboxed`, the local executor's own primitives, left

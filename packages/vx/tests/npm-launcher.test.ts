@@ -40,11 +40,12 @@ describe.skipIf(NODE === null)('npm launcher', () => {
   function run(
     args: string[],
     pathDirs: string[],
+    env: Record<string, string> = {},
   ): { code: number | null; out: string; err: string } {
     const p = Bun.spawnSync({
       cmd: [NODE!, path.join(pkgDir, 'launcher.cjs'), ...args],
       cwd: root,
-      env: { PATH: pathDirs.join(':'), HOME: root },
+      env: { PATH: pathDirs.join(':'), HOME: root, ...env },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -146,5 +147,57 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(r.out).toBe(
       `fake bun: --no-env-file --no-install ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`,
     )
+  })
+
+  // musl has no glibc loader, so the glibc binary's execve fails ENOENT. The
+  // stub hides the loader the way an Alpine host lacks it.
+  describe.skipIf(process.platform !== 'linux')('without glibc (musl)', () => {
+    function musl(): Record<string, string> {
+      const stub = path.join(root, 'no-glibc.cjs')
+      writeFileSync(
+        stub,
+        `const fs = require('node:fs'); const real = fs.existsSync
+fs.existsSync = (p) => (String(p).includes('/ld-linux-') ? false : real(p))\n`,
+      )
+      return { NODE_OPTIONS: `--require ${stub}` }
+    }
+
+    function platformPackage(): void {
+      const plat = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`)
+      mkdirSync(plat, { recursive: true })
+      writeFileSync(path.join(plat, 'package.json'), JSON.stringify({ name: `@vzn/vx-${KEY}` }))
+      writeFileSync(path.join(plat, 'vx'), '#!/bin/sh\necho "glibc binary"\n')
+      chmodSync(path.join(plat, 'vx'), 0o755)
+    }
+
+    it('skips the glibc binary and runs the source through bun', async () => {
+      await launcherReady()
+      platformPackage()
+      const fakeBun = path.join(binDir, 'bun')
+      writeFileSync(
+        fakeBun,
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.4.0; exit 0; fi\necho "fake bun"\n',
+      )
+      chmodSync(fakeBun, 0o755)
+      mkdirSync(path.join(pkgDir, 'src'))
+      writeFileSync(path.join(pkgDir, 'src', 'bin.ts'), '')
+      const r = run(['--version'], [binDir, '/usr/bin', '/bin'], musl())
+      expect(r.out).toBe('fake bun\n')
+      expect(r.code).toBe(0)
+    })
+
+    it('with no bun, names musl as the cause', async () => {
+      await launcherReady()
+      platformPackage()
+      const r = run(['--version'], ['/usr/bin', '/bin'], musl())
+      expect(r.code).toBe(1)
+      expect(r.err.split('\n')[0]).toBe(`vx: no prebuilt binary for ${KEY} without glibc (musl).`)
+    })
+
+    it('control: with the loader present, the glibc binary runs', async () => {
+      await launcherReady()
+      platformPackage()
+      expect(run(['--version'], ['/usr/bin', '/bin']).out).toBe('glibc binary\n')
+    })
   })
 })

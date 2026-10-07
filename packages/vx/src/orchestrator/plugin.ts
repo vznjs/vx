@@ -227,7 +227,14 @@ interface BaseContext {
   warn(message: string): void
 }
 
-export interface PluginSetupContext extends BaseContext {}
+/** What `setup` receives: the run's lifecycle, observe-only. */
+export interface PluginSetupContext extends BaseContext {
+  /**
+   * Subscribe a lifecycle handler; it leaves with the run. A throw or a
+   * rejection warns once and switches the plugin's handlers off for the run.
+   */
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 
 /** One CLI verb contributed by a plugin. */
 export interface PluginCommand {
@@ -357,23 +364,12 @@ export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
 }
 
-export interface PluginContext {
-  /** Where the workspace lives on disk. */
-  readonly workspaceRoot: string
-  /** Where vx's cache lives — read-only as far as the plugin is concerned. */
-  readonly cacheDir: string
-  /** Funnel warnings into the run:status channel, as every hook's context does. */
-  warn(message: string): void
+export interface PluginContext extends PluginSetupContext {
   /**
    * The run event bus. A plugin can subscribe directly if its needs exceed
    * the hooks; the subscription ends with the run, as a hook's does.
    */
   readonly bus: EventBus
-  /**
-   * Convenience: register a typed handler keyed off `RunEvent.kind`.
-   * Multiple hooks can chain via repeated calls.
-   */
-  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
 
 export type PluginHookName =
