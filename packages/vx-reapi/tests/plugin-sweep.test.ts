@@ -169,3 +169,25 @@ describe.if(CHUNKING_SUPPORTED)(
     }, 30_000)
   },
 )
+
+describe('reapi(): execute off', () => {
+  it('declines the executor before reading the connection; execute on still reads it', async () => {
+    await withEnv({}, async () => {
+      const opts = { endpoint: '127.0.0.1:1', tlsCertificate: '/nonexistent/vx-reapi-ca.pem' }
+      const off = reapi(opts)
+      expect(await off.executor?.(ctx([]))).toBeUndefined()
+      await off.teardown?.()
+      const on = reapi({ ...opts, execute: true })
+      const refusal = await Promise.resolve()
+        .then(() => on.executor!(ctx([])))
+        .then(
+          () => 'ok',
+          (err: Error) => err.message,
+        )
+      expect(refusal).toBe(
+        'vx/reapi: `reapi({ tlsCertificate })` names /nonexistent/vx-reapi-ca.pem, which cannot be read (ENOENT)',
+      )
+      await on.teardown?.()
+    })
+  })
+})
