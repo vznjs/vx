@@ -508,3 +508,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-67.** A Windows task glob loaded with only a "matched no files"
+  warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
+  `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
+  separator or a drive in any task glob list (`inputs` / `outputs`,
+  `files` / `workspaceFiles`, a brace arm included) is now refused at
+  load with the forward-slash spelling to write; a backslash before a
+  bracket, a brace, a `!` or a backslash stays an escape. Rows:
+  `config-schema-refusals.test.ts` › "a backslash separator or a drive
+  letter in a task glob".
