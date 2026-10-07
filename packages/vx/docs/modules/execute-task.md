@@ -119,8 +119,9 @@ caches.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: the key is re-checked
    (`keyStillTrue`, item 743): the key the describe re-derived before
-   the command must equal it, and no input may have moved since its
-   fact (`movedInput`). A move withholds the save, says so on the
+   the command must equal it, no input may have moved since its
+   fact (`movedInput`), and no input file may have been added since
+   the listing (`described.added`, inputs.md's `addedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
    whose save would have marked them). A workspace fingerprint a task

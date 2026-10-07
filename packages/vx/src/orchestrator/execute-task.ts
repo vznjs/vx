@@ -1330,14 +1330,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
-   * The input that no longer holds what the key folded: `null` when the
-   * key re-derived just before the command already differed (the file
-   * unnamed), undefined when none moved.
+   * The input that no longer holds what the key folded, or one the key did
+   * not fold that is there now: `null` when the key re-derived just before
+   * the command already differed (the file unnamed), undefined when none
+   * moved.
    */
   async function movedSinceKey(): Promise<string | null | undefined> {
-    return described!.hash !== hash
-      ? null
-      : await movedInput(described!.facts, cache, described!.describedAt)
+    if (described!.hash !== hash) return null
+    return (await movedInput(described!.facts, cache, described!.describedAt)) ?? described!.added()
   }
 
   /**

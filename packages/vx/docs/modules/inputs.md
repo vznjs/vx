@@ -35,6 +35,7 @@ export function declaresInput(
 
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
+  listings: InputListing[] // what `files` was filtered from, for `addedInput`
   envValues: Array<[name: string, value: string | undefined]> // sorted by name; undefined = unset
   runtimeValues: Array<[command: string, output: string]> // sorted by command
   workspaceRuntimeValues: Array<[command: string, output: string]>
@@ -65,6 +66,23 @@ export type ProjectFilesCache = Map<
   string,
   { snapshot: readonly string[]; result: readonly string[] }
 >
+
+// One git listing a task's input files were filtered from.
+export interface InputListing {
+  root: string // project dir, or the workspace root for `workspaceFiles`
+  listed: readonly string[] // root-relative, as git listed them
+  isInput: (rel: string) => boolean // the declaration's verdict
+  nested: (rel: string) => boolean // inside a nested project
+  prefixes: readonly string[] // directories a positive entry reaches, '' for the root
+  literals: readonly string[]
+}
+
+// An input file that exists now and that `keyFiles` lacks, or undefined.
+export function addedInput(
+  listings: readonly InputListing[],
+  keyFiles: ReadonlySet<string>,
+  listedAt: number, // ms epoch the listings are as old as
+): string | undefined
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
 
@@ -209,7 +227,17 @@ other walker: a project outside a git work tree is a `UserError`
    have their OID dropped up front — git is not watching those, so
    their OID says nothing about whether the file is on disk.
 
-The matched absolute paths are sorted alphabetically and returned.
+The matched absolute paths are sorted alphabetically and returned,
+with the listing each half was filtered from (`listings`).
+
+`addedInput` is the save's check for a file added since that listing
+(caching.md § re-checked before the save): it `lstat`s each listed
+directory a positive entry reaches, reads one whose ctime moved since
+`listedAt` (less the racy window), and asks `git ls-files` only when a
+name there matches the declaration and the key lacks it, or names an
+unlisted directory; a literal absent from the key that exists now is
+asked too. Blind to a file added inside a directory that held no
+listed file and was not itself created since the listing.
 
 ## Env resolution rules
 
@@ -290,6 +318,10 @@ block verifies:
 - Nested-project boundary still excludes under the git path.
 - Negation in `inputs.files` still strips under the git path.
 - `node_modules` always-ignored even when force-added to git.
+
+**`tests/inputs-moved.test.ts`** — `addedInput` end to end: a file
+added mid-run in a listed directory, in a new one, a literal that
+appears, and the control (an ignored file, a non-matching one).
 
 **`tests/orchestrator.test.ts`** — e2e behaviour:
 
