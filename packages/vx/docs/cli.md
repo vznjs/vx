@@ -2497,8 +2497,9 @@ their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
-`vx last --list` prints the N most recent runs (default 10) with their
-run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
+`vx last --list` prints the N most recent runs (default 10), one per
+line in aligned columns (verdict, start, run id, counts, duration,
+command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last <runId>` replays a
