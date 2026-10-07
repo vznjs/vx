@@ -51,7 +51,7 @@ export interface OtlpTls {
   key?: string
 }
 
-export type OtelSignal = 'traces' | 'metrics' | 'logs'
+type OtelSignal = 'traces' | 'metrics' | 'logs'
 
 export interface OtelSinkConfig {
   tracesUrl: string
