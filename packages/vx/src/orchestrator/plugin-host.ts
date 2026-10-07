@@ -192,7 +192,8 @@ export async function applyProjectHooks(
  * against the LAST plugin that ran: usually the one whose edit made it so,
  * but an earlier plugin's edit that a later one left in place is blamed on
  * the later one, since the structure is not checked between plugins.
- * Each node's task config is (`afterEach`), like the `project` stage's.
+ * Each node's task config is re-validated after EACH plugin (`afterEach`),
+ * like the `project` stage's.
  */
 export async function applyGraphHooks(
   plugins: readonly VxPlugin[],
