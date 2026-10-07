@@ -68,7 +68,7 @@ export function clampJobSummary(markdown: string, room = MAX_JOB_SUMMARY_BYTES):
   if (markdown.length * 3 <= room) return markdown
   const bytes = new TextEncoder().encode(markdown)
   if (bytes.byteLength <= room) return markdown
-  const suffix = '\n\n…truncated by @vzn/vx-github (GitHub caps a job summary at 1 MiB)\n'
+  const suffix = '\n\n…truncated by @vzn/vx-ci (GitHub caps a job summary at 1 MiB)\n'
   let end = room - new TextEncoder().encode(suffix).byteLength
   if (end <= 0) return ''
   // Back up off a continuation byte, so the cut never splits a character.

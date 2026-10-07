@@ -87,7 +87,7 @@ jobs:
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { github } from '@vzn/vx-github'
+import { github } from '@vzn/vx-ci'
 
 export default defineWorkspace({ plugins: [github()] })
 ```
@@ -116,11 +116,10 @@ A test renders this sample:
 >
 > <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
-A failure on inputs that passed before is named under the run's footer:
+A failure on inputs that passed before says so on its row:
 
 ```
-  Flaky:    1 task with the same inputs both passing and failing on record
-    ✗ web#test — failed on inputs that passed 3× before
+ ◼︎   4.21s failed  miss     web#test flaky - passed 3× before
 ```
 
 ### A frozen graph

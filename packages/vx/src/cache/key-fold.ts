@@ -103,7 +103,7 @@ import type { CacheKeyInput } from './layer.js'
 // bytes on disk, the filter since removed, holds the CRLF build (A-60).
 // v39: an entry saved while a gitlink without `.git` held files the key
 // never listed sits under the key of that directory empty (A-61).
-export const CACHE_VERSION = 'vx-cache-v39'
+export const CACHE_VERSION = 'vx-cache-v40'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

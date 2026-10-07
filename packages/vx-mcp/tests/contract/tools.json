@@ -181,6 +181,7 @@
       "cacheBytes",
       "cacheDir",
       "cacheEntries",
+      "cacheStore",
       "cacheVersion",
       "configErrors",
       "flakyTasks",

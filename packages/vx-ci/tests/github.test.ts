@@ -1,4 +1,4 @@
-// @vzn/vx-github — render tests (pure), plugin activation/decline, and the
+// @vzn/vx-ci — render tests (pure), plugin activation/decline, and the
 // composition proof: a real `vx run` with `github({ summaryFile })` writes
 // the job summary. No GitHub API involved in wave one — the summary is a
 // file the Actions runner renders.
@@ -9,7 +9,8 @@ import path from 'node:path'
 import { run } from '@vzn/vx'
 import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { github, GithubSummarySink } from '../src/plugin.js'
+import { github } from '../src/plugin.js'
+import { GithubSummarySink } from '../src/sink.js'
 import { MAX_JOB_SUMMARY_BYTES } from '../src/summary.js'
 import { renderJobSummary } from '../src/summary.js'
 import type { FetchFn } from '../src/checks.js'
@@ -231,7 +232,7 @@ describe('github() activation', () => {
     expect(writes.length).toBe(1)
     const written = writes[0]!
     expect({ overCap: written.length > MAX_JOB_SUMMARY_BYTES }).toEqual({ overCap: false })
-    expect(written).toContain('truncated by @vzn/vx-github')
+    expect(written).toContain('truncated by @vzn/vx-ci')
     // The head survives: the verdict and the stats line are what a reader
     // needs, and they are rendered before the table.
     expect(written.startsWith('## ')).toBe(true)
@@ -264,7 +265,7 @@ describe('github() activation', () => {
       const full = await run(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.size).toBe(MAX_JOB_SUMMARY_BYTES - 10)
       expect(full.warns).toEqual([
-        `vx-github: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
+        `vx-ci: ${path.join(dir, `summary-${MAX_JOB_SUMMARY_BYTES - 10}.md`)} already holds ${MAX_JOB_SUMMARY_BYTES - 10} bytes of GitHub's 1 MiB job summary cap — no room for vx's page`,
       ])
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -304,7 +305,7 @@ describe('github() activation', () => {
     }).telemetry!(ctx) as GithubSummarySink
     sink.onRunSummary!(summary([task({}), task({ taskId: 'b#build' })]))
     await sink.flush!()
-    expect(writes[0]).not.toContain('truncated by @vzn/vx-github')
+    expect(writes[0]).not.toContain('truncated by @vzn/vx-ci')
     expect(writes[0]).toContain('b#build')
   })
 
@@ -456,7 +457,7 @@ describe('Checks API', () => {
     expect({ posted, warns }).toEqual({
       posted: [],
       warns: [
-        'vx-github: GITHUB_TOKEN holds a line break or NUL, which no HTTP header can carry — no check-run will be created (the token is not printed)',
+        'vx-ci: GITHUB_TOKEN holds a line break or NUL, which no HTTP header can carry — no check-run will be created (the token is not printed)',
       ],
     })
   })
@@ -519,7 +520,7 @@ describe('Checks API', () => {
     expect(ok['conclusion']).toBe('success')
     const clamped = clampSummary('x'.repeat(70_000))
     expect(clamped.length).toBeLessThanOrEqual(65_535)
-    expect(clamped).toContain('truncated by @vzn/vx-github')
+    expect(clamped).toContain('truncated by @vzn/vx-ci')
   })
 
   it('payload: a stopped run with nothing failed is cancelled, not a failure', async () => {
@@ -654,7 +655,7 @@ describe('Checks API', () => {
 })
 
 // Item 806's sweep: each row fails with one line of src/ undone.
-describe('every output the vx-github sweep found unheld', () => {
+describe('every output the vx-ci sweep found unheld', () => {
   const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
   const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
   const row = (md: string, id: string) => md.split('\n').find((l) => l.startsWith(`| ${id} |`))
@@ -674,7 +675,7 @@ describe('every output the vx-github sweep found unheld', () => {
     })
     const written = clampJobSummary(page)
     expect(Buffer.byteLength(written, 'utf8')).toBeLessThanOrEqual(MAX_JOB_SUMMARY_BYTES)
-    expect(written).toContain('truncated by @vzn/vx-github')
+    expect(written).toContain('truncated by @vzn/vx-ci')
     expect(written).not.toContain('�')
   })
 
@@ -698,10 +699,10 @@ describe('every output the vx-github sweep found unheld', () => {
     const { clampSummary } = await import('../src/checks.js')
     const atJob = 'x'.repeat(MAX_JOB_SUMMARY_BYTES)
     expect(clampJobSummary(atJob)).toBe(atJob)
-    expect(clampJobSummary(`${atJob}x`)).toContain('truncated by @vzn/vx-github')
+    expect(clampJobSummary(`${atJob}x`)).toContain('truncated by @vzn/vx-ci')
     const atCheck = 'x'.repeat(65_535)
     expect(clampSummary(atCheck)).toBe(atCheck)
-    expect(clampSummary(`${atCheck}x`)).toContain('truncated by @vzn/vx-github')
+    expect(clampSummary(`${atCheck}x`)).toContain('truncated by @vzn/vx-ci')
   })
 
   it.each([
@@ -822,7 +823,7 @@ describe('every output the vx-github sweep found unheld', () => {
       accept: 'application/vnd.github+json',
       'content-type': 'application/json',
       'x-github-api-version': '2022-11-28',
-      'user-agent': 'vzn-vx-github',
+      'user-agent': 'vzn-vx-ci',
     })
     await postCheckRun({
       env,
@@ -837,8 +838,8 @@ describe('every output the vx-github sweep found unheld', () => {
       warn: (m) => warns.push(m),
     })
     expect(warns).toEqual([
-      `vx-github: check-run POST failed (500): ${'e'.repeat(200)}`,
-      'vx-github: check-run POST failed (502): ',
+      `vx-ci: check-run POST failed (500): ${'e'.repeat(200)}`,
+      'vx-ci: check-run POST failed (502): ',
     ])
   })
 
@@ -865,7 +866,7 @@ describe('every output the vx-github sweep found unheld', () => {
       2,
       2,
       1,
-      ['vx-github: check-run POST failed (400): '],
+      ['vx-ci: check-run POST failed (400): '],
     ])
   })
 
@@ -895,7 +896,7 @@ describe('every output the vx-github sweep found unheld', () => {
       warn: (m) => warns.push(m),
       signal: deadline.signal,
     })
-    expect([calls, warns]).toEqual([1, ['vx-github: check-run POST failed (502): bad gateway']])
+    expect([calls, warns]).toEqual([1, ['vx-ci: check-run POST failed (502): bad gateway']])
     // Slept out, the wait ends ~200 ms after the abort.
     expect(Date.now() - abortedAt).toBeLessThan(150)
   })
@@ -918,7 +919,7 @@ describe('every output the vx-github sweep found unheld', () => {
     expect([calls, warns]).toEqual([
       1,
       [
-        "vx-github: check-run POST failed: unable to verify the first certificate — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file",
+        "vx-ci: check-run POST failed: unable to verify the first certificate — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file",
       ],
     ])
   })
@@ -969,7 +970,7 @@ describe('every output the vx-github sweep found unheld', () => {
   })
 })
 
-// F-6: the mutation sweep of vx-github (147 mutants, 31 real survivors).
+// F-6: the mutation sweep of vx-ci (147 mutants, 31 real survivors).
 describe('what the F-6 sweep found unheld', () => {
   const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
   const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
@@ -1071,7 +1072,7 @@ describe('what the F-6 sweep found unheld', () => {
     const warns = await postWith('t0ken', async () => {
       throw new Error('ECONNREFUSED')
     })
-    expect(warns).toEqual(['vx-github: check-run POST failed: ECONNREFUSED'])
+    expect(warns).toEqual(['vx-ci: check-run POST failed: ECONNREFUSED'])
   })
 
   it('a token with CR, NUL or past Latin-1 is refused unprinted; a trailing newline is not', async () => {
@@ -1081,7 +1082,7 @@ describe('what the F-6 sweep found unheld', () => {
       return { ok: true, status: 201, text: async () => '' }
     }
     const refused = (fault: string) => [
-      `vx-github: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
+      `vx-ci: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
     ]
     expect([
       await postWith('ghs_S3CRET\rx', ok),
@@ -1120,13 +1121,13 @@ describe('a rate-limited check-run POST', () => {
       await warnFor(403, 'Resource not accessible by integration'),
     ]).toEqual([
       [
-        'vx-github: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
+        'vx-ci: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
       ],
       [
-        'vx-github: check-run POST failed (429) — rate-limited by GitHub; this run has no check: slow down',
+        'vx-ci: check-run POST failed (429) — rate-limited by GitHub; this run has no check: slow down',
       ],
       [
-        'vx-github: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
+        'vx-ci: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
       ],
     ])
   })
@@ -1318,7 +1319,7 @@ describe('the check run, as its second sweep found it unheld', () => {
       got.push([r.urls.length, r.warns])
     }
     expect(got).toEqual(
-      Array.from({ length: 3 }, () => [1, [`vx-github: check-run POST failed: refused${hint}`]]),
+      Array.from({ length: 3 }, () => [1, [`vx-ci: check-run POST failed: refused${hint}`]]),
     )
   })
 
@@ -1333,7 +1334,7 @@ describe('the check run, as its second sweep found it unheld', () => {
       }, 0)
     const r = await post(['drop'], { signal: deadline.signal, onCall })
     expect([r.warns, Date.now() - abortedAt < 150]).toEqual([
-      ['vx-github: check-run POST failed: the flush deadline passed before it could be retried'],
+      ['vx-ci: check-run POST failed: the flush deadline passed before it could be retried'],
       true,
     ])
   })
@@ -1343,7 +1344,7 @@ describe('the check run, as its second sweep found it unheld', () => {
     const bytes = (s: string) => new TextEncoder().encode(s).byteLength
     const wide = clampSummary('€'.repeat(30_000))
     expect([
-      wide.includes('truncated by @vzn/vx-github'),
+      wide.includes('truncated by @vzn/vx-ci'),
       bytes(wide) <= 65_535,
       bytes(wide) >= 65_535 - 2,
       bytes(clampSummary('x'.repeat(70_000))),

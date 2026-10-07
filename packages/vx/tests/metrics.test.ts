@@ -813,6 +813,8 @@ describe('whyDidThisRerunQuery', () => {
   it('names why an unchanged key re-executed, from the evidence the index holds', () => {
     const verdict = (setup: {
       prevStatus?: RunRecord['status']
+      prevHit?: boolean
+      prevPolicy?: string
       policy?: string
       entryAt?: number
       /** Failed tasks in the previous run and in this one. */
@@ -830,12 +832,14 @@ describe('whyDidThisRerunQuery', () => {
                 runId: 'r-1',
                 startedAt: 1000,
                 status: setup.prevStatus ?? 'success',
+                cacheHit: setup.prevHit ?? false,
               }),
             ],
             invocation: mkInvocation({
               runId: 'r-1',
               startedAt: 1000,
               failedCount: setup.failed?.[0] ?? 0,
+              ...(setup.prevPolicy === undefined ? {} : { cachePolicy: setup.prevPolicy }),
             }),
           })
           cache.recordRunBundle({
@@ -872,15 +876,22 @@ describe('whyDidThisRerunQuery', () => {
       'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',
     )
     // CONTROL: a read policy, an entry older than the run, a sound previous
-    // run — nothing in the index explains it, and the old text stands.
-    expect(verdict({ entryAt: 500 })).toBe(
-      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+    // run — nothing in the index explains it, and no flag is named: the
+    // policy shows this run read the cache (X-46).
+    const unknown =
+      'cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause'
+    expect(verdict({ entryAt: 500 })).toBe(unknown)
+    // The previous run executed and succeeded on a full policy, and no entry
+    // holds the key: its save failed (or a prune took it). This blamed
+    // --no-cache / --force under a policy that shows neither (X-46).
+    const unsaved =
+      'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
+    expect(verdict({})).toBe(unsaved)
+    expect(verdict({ prevPolicy: 'lR' })).toBe(
+      'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit',
     )
-    // No entry at all (a run recorded without one): the old text, not a
-    // crash on `get`'s null.
-    expect(verdict({})).toBe(
-      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
-    )
+    // CONTROL: a previous run that was a hit saved nothing of its own.
+    expect(verdict({ prevHit: true })).toBe(unknown)
     // Both runs executed beside a failure and neither saved: the
     // continue-taint, which blamed a flag nobody passed (J-74's lead).
     expect(verdict({ failed: [1, 2] })).toBe(
@@ -888,8 +899,8 @@ describe('whyDidThisRerunQuery', () => {
     )
     // CONTROLS: one run without a failure, or an entry for the key, is not it.
     expect([verdict({ failed: [0, 2] }), verdict({ failed: [1, 2], entryAt: 500 })]).toEqual([
-      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
-      'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)',
+      unsaved,
+      unknown,
     ])
   })
 

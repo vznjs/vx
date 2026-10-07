@@ -54,6 +54,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
   markUndecodable(absPaths: readonly string[]): void
+  setGitVars(listing: string | null): void // the enumeration's `git var -l`
+  configValue(key: string): string | null | undefined // undefined: not read, ask git
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
 }
 
@@ -61,6 +63,7 @@ export interface GitEnumeration {
   all: string[] // every path git listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
+  vars: string | null // `git var -l` output, read once for config lookups
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative

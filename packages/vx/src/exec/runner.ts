@@ -87,6 +87,8 @@ export interface RunOptions {
    * handler can SIGTERM everything still alive mid-run.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** Told the child's pid once it is spawned (telemetry samples its tree). */
+  onSpawn?: (pid: number) => void
   /**
    * Hand the child vx's own stdin, stdout and stderr (`exec.interactive` on
    * a TTY). Nothing passes through vx: the callbacks hear nothing and the
@@ -104,7 +106,8 @@ function taskStdio(terminal: boolean | undefined, stdin: 'ignore' | 'pipe') {
 
 export function shellQuote(arg: string): string {
   if (arg === '') return `''`
-  if (/^[A-Za-z0-9_\-.,/=:@%+]+$/.test(arg)) return arg
+  // A `#` opens a comment only at a word's start, so `app#build` stays bare.
+  if (/^[A-Za-z0-9_\-.,/=:@%+][A-Za-z0-9_\-.,/=:@%+#]*$/.test(arg)) return arg
   return `'${arg.replace(/'/g, `'\\''`)}'`
 }
 
@@ -153,16 +156,50 @@ function trailingCommentStart(command: string): number {
   return comment
 }
 
+/** Per line: is it a heredoc's body or terminator (`<<X` / `<<-'X'` … `X`)? */
+function heredocLines(lines: readonly string[]): boolean[] {
+  const pending: Array<{ delim: string; tabs: boolean }> = []
+  return lines.map((line) => {
+    const open = pending[0]
+    if (open !== undefined) {
+      if ((open.tabs ? line.replace(/^\t+/, '') : line) === open.delim) pending.shift()
+      return true
+    }
+    for (const m of line.matchAll(/(?<!<)<<(?!<)(-?)\s*(['"]?)([A-Za-z_]\w*)\2/g)) {
+      pending.push({ delim: m[3]!, tabs: m[1] === '-' })
+    }
+    return false
+  })
+}
+
 /**
  * The command a task runs with the args after `--` appended, shell-quoted.
  * They go before a trailing comment: appended after it, `echo args: # show`
- * ran without them and said nothing (item 1060).
+ * ran without them and said nothing (item 1060). Trailing blanks go first.
  */
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
   if (!args || args.length === 0) return command
+  // A command that ends in a heredoc's body: appended to its terminator,
+  // `X FWD` closed nothing and the args never reached the command (X-12).
+  // They go on the last line that is a command, where `cat <<X FWD` is
+  // still `cat FWD` reading the heredoc.
+  const lines = command.trimEnd().split('\n')
+  const body = heredocLines(lines)
+  if (body[lines.length - 1] === true) {
+    const last = body.lastIndexOf(false)
+    const tail = lines.slice(last + 1).join('\n')
+    return `${withForwardArgs(lines.slice(0, last + 1).join('\n'), args)}\n${tail}`
+  }
   const quoted = args.map(shellQuote).join(' ')
   let comment = trailingCommentStart(command)
-  if (comment < 0) return `${command} ${quoted}`
+  if (comment < 0) {
+    // A command that ends in a newline (a template literal's closing line)
+    // ran the args as a command of their own: `--watch: not found`. Kept
+    // when an odd run of backslashes ends it: that escapes what follows.
+    const body = command.trimEnd()
+    const escaped = (/\\+$/.exec(body)?.[0].length ?? 0) % 2 === 1
+    return `${escaped ? command : body} ${quoted}`
+  }
   // A comment-only last line after a commented line: the args go before
   // the earliest comment, or they land inside it (`echo one # c\n# two`).
   for (let c = comment; c >= 0; c = trailingCommentStart(command.slice(0, c).trimEnd())) comment = c
@@ -632,6 +669,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   void consumeChunks(child.stderr, true)
 
   opts.liveChildren?.add(child)
+  opts.onSpawn?.(child.pid)
 
   // Readiness deadline. Reject FIRST so the failure reads as a
   // timeout, then SIGTERM — the exit handler's later reject is a
@@ -738,6 +776,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   }
 
   opts.liveChildren?.add(proc)
+  opts.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
   const streams = Promise.all([

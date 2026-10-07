@@ -18,7 +18,6 @@
 // and server.ts is about 210 lines — a number a test holds to the file.
 
 import { definePlugin, type VxPlugin } from '@vzn/vx'
-import { serveStdio } from './server.js'
 
 export function mcp(): VxPlugin {
   return definePlugin(import.meta, {
@@ -39,6 +38,9 @@ export function mcp(): VxPlugin {
               return 1
             }
           }
+          // Loaded by the verb alone: every run evaluates the workspace config,
+          // and the server's modules cost it ~12 ms there.
+          const { serveStdio } = await import('./server.js')
           await serveStdio({ cacheDir: ctx.cacheDir, workspaceRoot: ctx.workspaceRoot })
           return 0
         },

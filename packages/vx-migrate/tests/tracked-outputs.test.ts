@@ -53,6 +53,36 @@ describe('spareTrackedOutputs', () => {
   })
 })
 
+describe('spareTrackedOutputs — a reader the take-back hides a committed file from (X-54)', () => {
+  const reader = (files: string[]) => ({
+    name: 'test',
+    task: { exec: { command: 't' }, cache: { inputs: { files } } } as Record<string, unknown>,
+  })
+  it('uncaches the reader whose `!` hides the committed file, keeps the one without', () => {
+    const writer = task({ files: ['data'] })
+    const hides = reader(['**/*', '!data'])
+    // CONTROL: no take-back, so the committed file stays in its key.
+    const plain = reader(['src/**'])
+    const todos = spareTrackedOutputs(
+      '/w',
+      [{ name: 'a', dir: '/w/packages/a', tasks: [writer, hides, plain] }],
+      ['packages/a/data/sponsors.json'],
+    )
+    expect([hides.task['cache'], plain.task['cache'] !== undefined, todos]).toEqual([
+      undefined,
+      true,
+      [
+        [
+          'a#test',
+          "reads the committed data/sponsors.json, which its inputs take back with a#build's " +
+            'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
+        ],
+        ['a#build', expect.stringContaining('(data/sponsors.json)')],
+      ],
+    ])
+  })
+})
+
 describe('trackedKinds', () => {
   it('reads each directory’s own files, the root’s all of them, extensions lower-cased', () => {
     const kinds = trackedKinds([

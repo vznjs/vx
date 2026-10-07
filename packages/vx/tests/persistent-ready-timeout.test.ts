@@ -77,6 +77,7 @@ describe('exec.timeout — normal task', () => {
       expect(Date.now() - started).toBeLessThan(5000)
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
+      expect(r.outcomes[0]!.exitCode).toBe(143)
       // The timeout note streamed into the task's output.
       expect(fixture.err.join('\n')).toContain('timed out after 1000ms')
       // The child must be dead once the run returns. `exec` in the fixture is
@@ -147,6 +148,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       )
       const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
       expect(r.ok).toBe(false)
+      // X-24: the SIGKILL's exit, as an ordinary timeout reports it, not a made-up 1.
+      expect(r.outcomes[0]!.exitCode).toBe(137)
       const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
       expect(await waitForDead(pid, 1_000)).toBe(true)
     },
@@ -181,6 +184,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       expect(r.outcomes[0]!.status).toBe('failed')
       // The reason rides the outcome, so every label reads it (item 270).
       expect(r.outcomes[0]!.notReady).toBe('timeout')
+      // X-24: the SIGTERM's exit, as the ordinary timeout above reports it.
+      expect(r.outcomes[0]!.exitCode).toBe(143)
       // Fast failure, not a 30s hang on the sleep.
       expect(Date.now() - started).toBeLessThan(5000)
       // The reason reaches the TASK's stderr stream — the frame, and an

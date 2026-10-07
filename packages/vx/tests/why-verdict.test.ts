@@ -87,4 +87,47 @@ describe('vx why names what moved the key', () => {
     },
     TIMEOUT,
   )
+
+  // X-18: a config edit read "config config"; a bare name refused from
+  // inside a project that `vx run` there would pick; an unknown run id
+  // read as a known run with no row for the task.
+  it(
+    'names a config change once, scopes a bare name to the cwd, refuses an unknown run',
+    async () => {
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(path.join(lib, 'src'), { recursive: true })
+      await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
+      await writeFile(path.join(lib, 'vx.config.mjs'), CONFIG)
+      await writeFile(path.join(lib, 'src', 'a.txt'), 'v1\n')
+      await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
+      await writeFile(
+        path.join(app(), 'vx.config.mjs'),
+        CONFIG.replace('build: {', "build: { description: 'edited',"),
+      )
+      await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
+      expect(verdict((await vx(root, ['why', 'app#build'])).out)).toBe(
+        'verdict    cache key changed: config',
+      )
+      const inApp = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'why', 'build'],
+        cwd: app(),
+        env: process.env,
+      })
+      expect([inApp.exitCode, inApp.stdout.toString().split('\n')[0]?.split(' ')[0]]).toEqual([
+        0,
+        'app#build',
+      ])
+      const atRoot = Bun.spawnSync({ cmd: [process.execPath, BIN, 'why', 'build'], cwd: root })
+      expect(atRoot.stderr.toString()).toContain('"build" ran in 2 projects')
+      const unknown = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'why', 'app#build', '--run', 'zzz'],
+        cwd: root,
+      })
+      expect([unknown.exitCode, unknown.stderr.toString().trim()]).toEqual([
+        1,
+        'vx why: no recorded run zzz (vx last --list shows recent runs)',
+      ])
+    },
+    TIMEOUT,
+  )
 })

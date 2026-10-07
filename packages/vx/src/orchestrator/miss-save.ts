@@ -7,7 +7,7 @@
 // a later run replays. Moved out of execute-task.ts 2026-09-09 as pure
 // code motion.
 
-import { lstatSync, realpathSync } from 'node:fs'
+import { lstatSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
@@ -91,10 +91,21 @@ export interface SaveMissArgs {
    * index go to the run's save lane (save-lane.ts).
    */
   deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined
+  /** Time the save and size its artifact, for a telemetry sink: one stat. */
+  measure?: boolean | undefined
 }
 
-/** `landed` settles when the entry is in the cache — at once without a lane. */
-export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }> {
+/** What a measured save cost, on the outcome once it lands. */
+export interface SaveFacts {
+  saveMs?: number
+  artifactBytes?: number
+}
+
+/**
+ * `landed` settles when the entry is in the cache — at once without a lane —
+ * with what it cost when `measure` asked.
+ */
+export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }> {
   const { node, cache, log } = a
   const endResolve = span('miss: resolve outputs')
   const outputFiles =
@@ -145,7 +156,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
             : ''),
     )
   }
+  const facts: SaveFacts = {}
   const save = async (): Promise<void> => {
+    const saveStart = a.measure === true ? performance.now() : 0
     const endSave = span('miss: save')
     // Tier-3 input fingerprint: the digest rows captured by the pre-exec
     // describe above, persisted with the entry inside `cache.save`'s
@@ -171,6 +184,14 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
       },
     })
     endSave()
+    if (a.measure === true) {
+      facts.saveMs = Math.round(performance.now() - saveStart)
+      try {
+        facts.artifactBytes = statSync(cache.outputsPath(a.hash)).size
+      } catch {
+        // No local artifact (local writes off): no size to say.
+      }
+    }
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same
     // size and mtime (item 886).
@@ -198,9 +219,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
   // Off the slot when the run keeps a lane (the save lane bounds and
   // drains it); in the slot otherwise — an embedder without a lane gets
   // the entry before the outcome.
-  if (a.deferSave !== undefined) return { landed: a.deferSave(save) }
+  if (a.deferSave !== undefined) return { landed: a.deferSave(save).then(() => facts) }
   await save()
-  return { landed: Promise.resolve() }
+  return { landed: Promise.resolve(facts) }
 }
 
 /** What `markUnsaved` reads of a miss: where its declared outputs are. */

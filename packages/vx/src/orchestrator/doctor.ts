@@ -7,7 +7,7 @@
 
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
+import { Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
 import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
@@ -23,15 +23,19 @@ import {
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
   type LoadReads,
-  loadProjectConfig,
   loadWorkspace,
   lockfilePath,
-  type ProjectMeta,
   resolveCacheDir,
+  resolveStoreRoot,
 } from '../workspace/index.js'
 import { flakyTasks, type FlakyTask } from './failure-mode.js'
 import type { VxPlugin } from './plugin.js'
-import { discoverProjects, loadProjects, loadWorkspacePlugins } from './projects.js'
+import {
+  discoverProjects,
+  type LoadProjectsArgs,
+  loadProjects,
+  loadWorkspacePlugins,
+} from './projects.js'
 
 const warnToStderr = (message: string): void => {
   process.stderr.write(`${message}\n`)
@@ -81,6 +85,8 @@ export interface InfoFacts {
    */
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  /** The shared store holding the entries, or null when `cacheDir` holds them. */
+  cacheStore: string | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number
@@ -149,8 +155,9 @@ async function collectWorkspaceInfo(
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
   const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
-  const cache = Cache.inspect(cacheDir)
-  noteSchemaReset(cache, warn)
+  const storeRoot =
+    opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
+  const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
   let stats
   let orphans
   let flaky: FlakyTask[]
@@ -164,23 +171,23 @@ async function collectWorkspaceInfo(
     // The run path's load — a plugin's `project` stage counts — so the
     // doctor's task count is the number a run would see. A broken config
     // must not take the doctor down with it: the count then falls back to
-    // the configs that do load, one by one, the broken ones as zero.
-    try {
-      const loaded = await loadProjects({
+    // the same load, one project at a time, the broken ones as zero.
+    const load = {
+      workspaceRoot: root,
+      cacheDir,
+      plugins,
+      projectMetas: metas,
+      closure: false,
+      lock: null,
+      evalCache: {
+        store: cache,
         workspaceRoot: root,
-        cacheDir,
-        plugins,
-        projectMetas: metas,
-        seeds: 'all',
-        closure: false,
-        lock: null,
-        evalCache: {
-          store: cache,
-          workspaceRoot: root,
-          workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
-        },
-        warn,
-      })
+        workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
+      },
+      warn,
+    } as const
+    try {
+      const loaded = await loadProjects({ ...load, seeds: 'all' })
       for (const p of loaded.projects.values()) {
         const tasks = p.config.tasks ?? {}
         taskCount += Object.keys(tasks).length
@@ -194,7 +201,7 @@ async function collectWorkspaceInfo(
         tasks: taskCount,
         sandboxed,
         errors: configErrors,
-      } = await countLoadableTasks(metas, root))
+      } = await countLoadableTasks(load, root))
     }
   } finally {
     cache.close()
@@ -232,6 +239,8 @@ async function collectWorkspaceInfo(
     workers: workersFact(workspaceConfig?.concurrency),
     memory: memoryFact(),
     cacheDir,
+    // The store the index records, else the one a first run would open.
+    cacheStore: cache.storeDir ?? storeRoot,
     // The two versions a bug report needs and the reset notice names: the
     // key prefix (a bump orphans every entry) and the index schema (a
     // mismatch drops every table).
@@ -239,9 +248,9 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
-    // The index is authoritative, so a row-less artifact is bytes nothing
-    // will ever hit — and only `vx cache prune` reclaims them (after an
-    // upgrade's schema reset, most often).
+    // A row-less artifact is indexed again only when its task asks for its
+    // key; the rest only `vx cache prune` reclaims (after an upgrade's
+    // schema reset, most often).
     orphans: { artifacts: orphans.orphans, bytes: orphans.orphanBytes },
     runs24h: stats.runCountLast24h,
     hits24h: stats.hitCountLast24h,
@@ -357,18 +366,19 @@ function gitVersion(): string | null {
 }
 
 async function countLoadableTasks(
-  metas: readonly ProjectMeta[],
+  load: Omit<LoadProjectsArgs, 'seeds'> & { closure: false },
   root: string,
 ): Promise<{ tasks: number; sandboxed: number; errors: InfoFacts['configErrors'] }> {
   let tasks = 0
   let sandboxed = 0
   const errors: InfoFacts['configErrors'] = []
+  // No seeds loads nothing and answers which projects an 'all' load seeds.
+  const { configured } = await loadProjects({ ...load, seeds: [] })
   await Promise.all(
-    metas.map(async (meta) => {
-      if (meta.configPath === null) return
+    configured.map(async (meta) => {
       try {
-        const config = await loadProjectConfig(meta.configPath)
-        const declared = Object.values(config.tasks ?? {})
+        const loaded = await loadProjects({ ...load, seeds: [meta.name] })
+        const declared = Object.values(loaded.projects.get(meta.name)?.config.tasks ?? {})
         tasks += declared.length
         for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
       } catch (err) {
@@ -380,11 +390,12 @@ async function countLoadableTasks(
         // still did).
         const raw = err instanceof Error ? err.message : String(err)
         const bare = raw.startsWith('Project config ') ? raw.slice('Project config '.length) : raw
-        const message = bare.startsWith(`${meta.configPath}:`)
-          ? bare.slice(meta.configPath.length + 1).trimStart()
+        const where = meta.configPath ?? meta.dir
+        const message = bare.startsWith(`${where}:`)
+          ? bare.slice(where.length + 1).trimStart()
           : raw
         errors.push({
-          path: path.relative(root, meta.configPath).split(path.sep).join('/'),
+          path: path.relative(root, where).split(path.sep).join('/'),
           message,
         })
       }

@@ -45,8 +45,13 @@ const silentLogger = (fixture: Fixture): Logger => {
   }
 }
 
+// The gate this file pins decides only for a key that MAY read another
+// task's outputs, which `rules.upfrontKeys` refuses by default (X-54).
+const WAITING = 'export default { rules: { upfrontKeys: false } }\n'
+
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-sc-' })
+  await Bun.write(path.join(root, 'vx.workspace.mjs'), WAITING)
   return { root, log: [], err: [] }
 }
 
@@ -205,6 +210,39 @@ describe('local cache short-circuit', () => {
       const warm = await run({ cwd: fixture.root, tasks: ['consume'], log: silentLogger(fixture) })
       expect(warm.ok).toBe(true)
       expect(warm.outcomes.find((o) => o.node.id === 'gen#consume')?.status).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'under rules.upfrontKeys a reader that takes the output back is restore-tier (X-54)',
+    async () => {
+      // The default rule refuses `**/*` beside build's output; with the
+      // output excluded, test's key cannot see it, so it is known before
+      // build runs and both restore ahead of the schedule.
+      await rm(path.join(fixture.root, 'vx.workspace.mjs'))
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+              test: {
+                dependsOn: ['build'],
+                exec: { command: 'true' },
+                cache: { inputs: { files: ['**/*', '!dist/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const tasks = ['build', 'test']
+      expect((await run({ cwd: fixture.root, tasks, log: silentLogger(fixture) })).ok).toBe(true)
+      const c = await classify(fixture, tasks)
+      expect([...c.restoreTier].sort()).toEqual(['app#build', 'app#test'])
     },
     TIMEOUT,
   )
@@ -1023,7 +1061,12 @@ describe('local cache short-circuit', () => {
       // restore into a directory a is about to clean. Under the reach rule
       // (item 584) b's output reaches a's directory, so a is kept out, and b
       // — a's dependant — with it: b restores AFTER a, as the note measured
-      // under the graph-wide rule. Both stay in probe reuse.
+      // under the graph-wide rule. Both stay in probe reuse. The pair loads
+      // only with `rules.exclusiveOutputs` off (X-53).
+      await Bun.write(
+        path.join(fixture.root, 'vx.workspace.mjs'),
+        'export default { rules: { exclusiveOutputs: false, upfrontKeys: false } }\n',
+      )
       await addProject(fixture.root, 'a', {
         files: { 'src/a.txt': 'a' },
         config: `

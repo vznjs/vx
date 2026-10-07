@@ -39,6 +39,7 @@ export interface RunOptions {
   capture?: CaptureConfig // omitted → both retained
   timeoutMs?: number // SIGTERM the child when it elapses; result flagged `timedOut`
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
+  onSpawn?: (pid: number) => void // told the child's pid once spawned (telemetry samples its tree)
   terminal?: boolean // inherit vx's stdin, stdout and stderr (exec.interactive on a TTY)
 }
 
@@ -129,7 +130,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
   capture, no callbacks.
 - **forwardArgs** are appended to `command` after a single space, each
-  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe), by
+  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe; a
+  `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
   line), so no comment can swallow them. The sandbox wrapper and the

@@ -22,7 +22,7 @@ vx's `telemetry` capability makes it a structure instead.
 ```ts
 interface TelemetrySink {
   readonly name?: string
-  readonly wants?: ReadonlyArray<'run.start' | 'task.start' | 'task.end' | 'task.log' | 'run.end'>
+  readonly wants?: ReadonlyArray<'run.start' | 'task.start' | 'task.end' | 'task.log' | 'task.sample' | 'run.end'>
   onRecord?(record: TelemetryRecord): void          // must return promptly; buffer here
   onRunSummary?(summary: RunSummaryRecord): void    // one per run, at the end
   flush?(signal: AbortSignal): Promise<void>        // awaited at end of run, time-bounded;
@@ -70,7 +70,7 @@ fills is not a no-op call, it is no call.
 - **`@vzn/vx-otel`** maps each run to OTLP traces, metrics and logs over
   HTTP/JSON with no OpenTelemetry SDK dependency. The wire format is
   small and the SDK is not.
-- **`@vzn/vx-github`** writes every run as a GitHub Actions job summary
+- **`@vzn/vx-ci`** writes every run as a GitHub Actions job summary
   and, given a token, a completed check run on the built commit, so a
   red run explains itself in the pull request's checks list.
 - Anything else is a few dozen lines: buffer records in `onRecord`,

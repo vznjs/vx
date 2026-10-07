@@ -11,13 +11,20 @@ so up to twice `N` run at once while exec-tier work keeps the cap
 (at `--concurrency 1` the two lanes share one slot). An outcome may still owe
 something before its dependents start — `settledOf(outcome)`, the
 orchestrator's off-slot cache save landing — and the scheduler frees
-the slot at the outcome and unblocks the dependents at the settle.
+the slot at the outcome and unblocks the dependents at the settle. What
+the settle resolves with (the save's time and size) is merged into the
+outcome the dependents and observers see.
 
 ## Public surface
 
 ```ts
 export type TaskStatus =
   'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped' | 'aborted' // child killed by a shutdown signal (Ctrl-C teardown)
+
+export interface InputChanges {
+  count: number // components changed, added or removed; 0: the same key, its entry gone
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[] // the first ten, by kind then name
+}
 
 export interface TaskOutcome {
   node: TaskNode
@@ -29,6 +36,12 @@ export interface TaskOutcome {
   storedCpuMs?: number // hits: what the producing execution used (rides the artifact)
   storedPeakRssBytes?: number
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
+  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  inputFiles?: number // on a cacheable task that ran: the files its key read
+  artifactBytes?: number // a hit's entry size, or (sink listening) the size a miss's save wrote
+  fetchMs?: number // a remote hit this run pulled: download + ingest
+  saveMs?: number // a miss that saved, sink listening: the save's own time
+  inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
@@ -42,6 +55,8 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)
   attempts?: number // set only when `retries` / `--retry` ran it more than once
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[] // the attempts that were run again
+  flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }
@@ -63,7 +78,7 @@ export interface ScheduleOptions {
   /** Where a rejected `execute`'s line goes, before its outcome; default stderr. */
   onError?: (node: TaskNode, line: string) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
-  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
+  settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
@@ -99,6 +114,14 @@ finishes, with the failed-dep skip applied like any other. It may have
 been running ahead of those deps, so running its command in the
 restore slot would build from outputs they have not written.
 `onStart` fires once; its dependents wait for the second dispatch.
+
+A persistent task neither requested nor surfaced whose every dependant
+is in the restore tier is idle (X-59): due, it goes dormant instead of
+dispatching, asking no admission policy and taking no slot. A demoted
+dependant starts it, and that dependant runs once it is ready. Once
+every dependant has an outcome it settles with none of its own and
+releases them, so it is never spawned and the returned map lacks it.
+Its own deps still run first and a failed one skips it as before.
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the
@@ -206,7 +229,8 @@ A failed task does not stop the scheduler: its transitive exec-tier
 dependents get `skipped`, through a restore-tier hit between them too
 (the hit stays a `cache-hit`, its key being its deps' inputs, and passes
 the block down with the root); unrelated tasks continue; the promise
-resolves only after every task has _some_ outcome. This is Turbo's
+resolves only after every task has _some_ outcome (an idle server
+excepted, above). This is Turbo's
 middle `--continue` setting, `deps-ok`, as the default; `never` stops
 dispatch at the first failure (in-flight tasks finish, everything not
 yet started — restores included — completes `skipped`); `always` runs

@@ -61,3 +61,25 @@ function classMembers(body: string): string[] | null {
   }
   return [...out]
 }
+
+/**
+ * `list` without a literal that one of its `!` entries takes back. Turbo,
+ * Nx and vx all subtract an exclusion wherever it sits, so such a file was
+ * never an input there either; vx refuses it at load, which would stop an
+ * unchanged repo's run, so the adapters drop it.
+ */
+export function withoutTakenBack<T>(list: readonly T[]): T[] {
+  const wild = /[*?{}]/
+  const negative = list.flatMap((e) =>
+    typeof e === 'string' && e.startsWith('!') ? [e.slice(1)] : [],
+  )
+  if (negative.length === 0) return [...list]
+  const globs = negative
+    .flatMap((n) => (wild.test(n) ? [n] : [n, `${n.replace(/\/+$/, '')}/**`]))
+    .map((g) => new Bun.Glob(g.replace(/^\.\//, '')))
+  return list.filter((e) => {
+    if (typeof e !== 'string' || e.startsWith('!') || wild.test(e)) return true
+    const lit = e.replace(/^\.\//, '').replace(/\/+$/, '')
+    return !globs.some((g) => g.match(lit))
+  })
+}

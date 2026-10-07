@@ -18,6 +18,13 @@ export function keyedProjects(
 ): (node: TaskNode) => ReadonlySet<string>
 ```
 
+```ts
+export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[]
+```
+
+The dependencies one task's key folds, the step the walk repeats;
+`stable-keys.ts`' `probesAfterWrites` asks it too.
+
 Under `--exclude-dependencies` the walk folds what the key folds
 (`keyUpstream`): a task's scheduled edges less its order-only ones, plus
 its `excludedUpstream`, whose own dependencies it reads from `keyOnly`

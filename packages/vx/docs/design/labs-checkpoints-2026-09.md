@@ -337,10 +337,12 @@ The page ends with a Checkpoint in the `<details>` form.
   no edge, and the task field asks for `build test bundle`. The first Run
   is refused with core's `detectOutputCollisions` message, shown in a
   code block, since Starlight's typography turns a quoted `"dist/**"`
-  into curly quotes. `dependsOn: ['build']` makes the pair the addition
+  into curly quotes. `dependsOn: ['build']` made the pair the addition
   shape: ten tasks, all miss, then all hit, and a `button.tsx` edit
   moves `ui#bundle` too, with "packages/ui/src/button.tsx changed,
-  upstream ui#build moved". The prose follows the code: a refusal only
+  upstream ui#build moved". Since X-53 the default `rules.exclusiveOutputs`
+  refuses the ordered pair as well, so the lab's fix step gives `bundle`
+  its own output path (`bundle/**`). The prose follows the code: a refusal only
   for an overlap the check can prove (equal paths, a path the other's
   glob matches, the same glob twice), between two tasks neither of which
   reaches the other (of one project for `outputs.files`, of any for

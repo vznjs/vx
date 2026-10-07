@@ -5,7 +5,10 @@
 For each project, compute the set of other projects' directories that
 live underneath it. Passed to `cache/inputs.ts` glob resolution so a
 parent project's `inputs.files` can never reach into a nested
-project's tree.
+project's tree. The entries are every workspace project, a
+config-less package included (X-57): `--affected` gives a changed path
+to the deepest project dir, so the key and the output clean fence the
+same set.
 
 ## Public surface
 
@@ -44,7 +47,9 @@ included) and `tests/inputs-resolution.test.ts` (the same class through
 the resolver); end to end, the "project boundary" cases in
 `tests/orchestrator.test.ts` create a parent + nested layout and verify
 that the parent's `inputs.files: ['**/*']` doesn't pick up files from
-the nested project.
+the nested project. `tests/configless-fence.test.ts` holds a config-less
+member to the same fence: the root's key and `--affected` agree on its
+edit, and the root's output clean leaves its source.
 
 ## What this does NOT do
 

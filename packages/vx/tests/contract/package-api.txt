@@ -1,8 +1,13 @@
 == class Cache (src/cache/cache.ts)
 export class Cache implements CacheLayer {
   readonly hasRemote
+  readonly uploads: UploadTally
+  readonly storeDir: string | undefined
+  readonly storeFallback: string | null
+  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
+  readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
   static async orphansBeforeReset(
     cacheDir: string,
@@ -13,6 +18,7 @@ export class Cache implements CacheLayer {
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' = 'open',
+    storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
   getConfigClosures(configPaths: readonly string[]): Map<string, string[]>
@@ -29,9 +35,12 @@ export class Cache implements CacheLayer {
   blobVerdict(digest: string): string[] | undefined
   rememberBlobVerdict(digest: string, paths: readonly string[]): void
   key(input: CacheKeyInput): Promise<string>
-  async get(hash: string, _ctx?: CacheGetContext): Promise<CacheEntry | null>
+  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
-  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  async getMany(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -93,6 +102,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setWorkspaceRoot(root: string): void
   get worktreeDirty(): boolean | null
   setWorktreeDirty(dirty: boolean | null): void
+  setGitVars(listing: string | null): void
+  configValue(key: string): string | null | undefined
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
@@ -374,6 +385,8 @@ export interface CacheEntry {
   stdout: string
   storedAt: string
   source?: 'local' | 'remote'
+  sizeBytes?: number
+  fetchMs?: number
 }
 == type CacheGetContext (src/cache/layer.ts)
 export interface CacheGetContext {
@@ -422,7 +435,10 @@ export interface CacheLayer {
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  getMany?(
+    hashes: readonly string[],
+    ctx?: (hash: string) => CacheGetContext,
+  ): Promise<Map<string, CacheEntry>>
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
@@ -503,6 +519,11 @@ export interface CgroupProbe {
 export interface CiContext {
   ci: boolean
   provider: string | null
+  runUrl?: string
+  change?: string
+  pipeline?: string
+  job?: string
+  attempt?: number
 }
 == type CollectInfoOptions (src/orchestrator/doctor.ts)
 export interface CollectInfoOptions {
@@ -591,6 +612,7 @@ export interface ExecuteRequest {
   readonly onStderr: (chunk: string) => void
   readonly signal?: AbortSignal
   readonly liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
 }
@@ -611,6 +633,12 @@ export interface ExecuteSandbox {
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
+}
+== type FailedAttempt (src/orchestrator/telemetry.ts)
+export interface FailedAttempt {
+  endedAt: number
+  exitCode: number
+  timedOut?: true
 }
 == type FailureMode (src/orchestrator/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
@@ -712,6 +740,7 @@ export interface InfoFacts {
   }
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  cacheStore: string | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number
@@ -731,6 +760,11 @@ export interface IngestMeta {
   durationMs: number
   inputComponents?: readonly TaskInputRow[]
   outputs?: DeclaredOutputs
+}
+== type InputChanges (src/graph/scheduler.ts)
+export interface InputChanges {
+  count: number
+  first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
 }
 == type InputFile (src/exec/executor.ts)
 export interface InputFile {
@@ -858,6 +892,12 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   blockedBy?: string
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -1085,12 +1125,19 @@ export interface RunContextRecord {
   flow: 'focused' | 'broad' | null
   workspaceId: string
   workspaceName: string
+  repository?: string
+  workspacePath?: string
   commitSha: string | null
   branch: string | null
   defaultBranch: string | null
   dirty: boolean | null
   ci: boolean
   ciProvider: string | null
+  ciRunUrl?: string
+  ciChange?: string
+  ciPipeline?: string
+  ciJob?: string
+  ciAttempt?: number
   host: string | null
   os: string
   arch: string
@@ -1114,6 +1161,7 @@ export interface RunOptions {
   projects?: string[]
   selectedByDiff?: boolean
   affected?: AffectedChanges
+  selectedOutright?: readonly string[]
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
@@ -1135,6 +1183,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus
@@ -1195,6 +1244,12 @@ export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
 }
+== type RunStage (src/orchestrator/telemetry.ts)
+export interface RunStage {
+  name: string
+  startedAt: number
+  endedAt: number
+}
 == type RunStartInfo (src/orchestrator/events.ts)
 export interface RunStartInfo {
   total: number
@@ -1228,6 +1283,8 @@ export interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
+  stages?: readonly RunStage[]
+  uploads?: { count: number; bytes: number; ms: number; failed: number }
 }
 == type SandboxConfig (src/config.ts)
 export interface SandboxConfig {
@@ -1377,6 +1434,12 @@ export interface TaskOutcome {
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
+  inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
@@ -1390,6 +1453,8 @@ export interface TaskOutcome {
   wallclockEndNs?: bigint
   restored?: boolean
   attempts?: number
+  failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
+  flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }
@@ -1429,6 +1494,19 @@ export interface TaskTelemetry {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  failedAttempts?: readonly FailedAttempt[]
+  flaky?: { passes: number; failures: number }
+  sandboxViolationLines?: readonly string[]
+  storedDurationMs?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  queuedMs?: number
+  inputFiles?: number
+  inputChanges?: InputChanges
+  artifactBytes?: number
+  fetchMs?: number
+  saveMs?: number
   restored?: boolean
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -1468,6 +1546,7 @@ export type TelemetryRecord =
       project: string
       task: string
       command?: string
+      dependsOn?: readonly string[]
       ts: number
     }
   | {
@@ -1479,6 +1558,15 @@ export type TelemetryRecord =
       chunk: string
       ts: number
     }
+  | {
+      v: number
+      kind: 'task.sample'
+      runId: string
+      taskId: string
+      ts: number
+      cpuMs: number
+      rssBytes: number
+    }
   | ({ v: number; kind: 'task.end'; runId: string; ts: number } & TaskTelemetry)
   | { v: number; kind: 'run.end'; runId: string; ts: number }
 == type TelemetrySink (src/orchestrator/telemetry.ts)
@@ -1488,6 +1576,13 @@ export interface TelemetrySink {
   onRecord?(record: TelemetryRecord): void
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
+}
+== type UploadTally (src/cache/cache.ts)
+export interface UploadTally {
+  count: number
+  bytes: number
+  ms: number
+  failed: number
 }
 == type VxPlugin (src/orchestrator/plugin.ts)
 export interface VxPlugin {
@@ -1558,6 +1653,7 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
   cacheScope?: string
+  rules?: WorkspaceRules
   plugins?: readonly Plugin[]
 }
 == type WorkspaceFilesCache (src/cache/inputs.ts)
@@ -1579,6 +1675,13 @@ export interface WorkspaceHookContext {
 export interface WorkspaceIdentity {
   id: string
   name: string
+  repository?: string
+  path?: string
+}
+== type WorkspaceRules (src/config.ts)
+export interface WorkspaceRules {
+  exclusiveOutputs?: boolean
+  upfrontKeys?: boolean
 }
 == runtime values
 LOG_WIRE_VERSION = 1

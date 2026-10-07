@@ -8,10 +8,11 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import { Cache, noteSchemaReset } from '../cache/index.js'
+import { Cache } from '../cache/index.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
+  buildPackageGraph,
   computeWorkspaceFingerprint,
   FROZEN_WITHOUT_LOCK,
   type Workspace,
@@ -19,12 +20,15 @@ import {
   type ProjectMeta,
   readLockfile,
   resolveCacheDir,
+  resolveStoreRoot,
 } from '../workspace/index.js'
 
 export interface CliWorkspace {
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
   cacheDir: string
+  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked on load. */
+  storeRoot: Promise<string | null>
 }
 
 export const warnToStderr = (message: string): void => {
@@ -33,7 +37,12 @@ export const warnToStderr = (message: string): void => {
 
 export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnToStderr)
-  return { workspaceConfig, plugins, cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig) }
+  return {
+    workspaceConfig,
+    plugins,
+    cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
+    storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
+  }
 }
 
 /**
@@ -103,14 +112,20 @@ export interface CliLoadOptions {
    * create one.
    */
   noCreate?: boolean
+  /**
+   * Load what each seed's package closure reaches too, as a run does: a
+   * config-less package a configured one depends on gets the default
+   * `build` there, and a reader that skipped it showed less than a run.
+   */
+  closure?: boolean
 }
 
 /**
  * The run path's project-config load (`loadProjects`) for a verb that only
  * reads: the plugin `project` stage applies, and the local cache opens only
  * to serve cached evaluations — a pure config costs a stat, not an
- * evaluation. `scope` is every project or a list of names; no closure, no
- * lock (a verb reads live, as a default run does).
+ * evaluation. `scope` is every project or a list of names; their closure
+ * only with `closure`, no lock (a verb reads live, as a default run does).
  */
 export async function loadCliProjects(
   workspaceRoot: string,
@@ -131,8 +146,14 @@ export async function loadCliProjects(
   const cache =
     opts.noCreate === true && !existsSync(cacheDir)
       ? null
-      : new Cache(cacheDir, { read: true, write: true }, workspaceRoot)
-  if (cache !== null) noteSchemaReset(cache, warnToStderr)
+      : new Cache(
+          cacheDir,
+          { read: true, write: true },
+          workspaceRoot,
+          undefined,
+          'open',
+          opts.cacheDir === undefined ? await ws.storeRoot : null,
+        )
   try {
     const loaded = await loadProjects({
       workspaceRoot,
@@ -140,7 +161,9 @@ export async function loadCliProjects(
       plugins,
       projectMetas: metas,
       seeds: scope,
-      closure: false,
+      ...(opts.closure === true
+        ? { closure: true as const, packageGraph: buildPackageGraph([...metas]) }
+        : { closure: false as const }),
       lock: lock === null ? null : async () => lock,
       evalCache:
         cache === null

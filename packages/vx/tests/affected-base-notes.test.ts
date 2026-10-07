@@ -4,7 +4,7 @@
 // — an exit-0 note was the only sign), and a depth-1 checkout with no
 // `origin/HEAD` and no parent (no base at all; the old error named a
 // `HEAD~1` nobody typed). Found by walking the CI persona, 2026-09-16.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -65,6 +65,16 @@ beforeEach(async () => {
   git(root, 'add', '-A')
   git(root, 'commit', '-q', '-m', 'one')
 })
+/**
+ * The fixture copied without its `.git`: removing a repository in place
+ * left enough of it on macOS CI that `git init` found the old commit.
+ */
+async function withoutGit(): Promise<string> {
+  const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-nogit-'))
+  await cp(root, copy, { recursive: true, filter: (src) => path.basename(src) !== '.git' })
+  return copy
+}
+
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
@@ -252,11 +262,84 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(plan('--filter', '!app', '--affected=HEAD')).toEqual(['lib#build'])
   })
 
+  it('a `--filter` beside --affected adds its projects, as every include does (X-10)', async () => {
+    // The union of projects was taken, then the run kept only the tasks
+    // the diff reached, so `--filter other` was dropped with exit 0.
+    for (const name of ['lib', 'other']) {
+      await mkdir(path.join(root, `pkgs/${name}/src`), { recursive: true })
+      await writeFile(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+      await writeFile(
+        path.join(root, `pkgs/${name}/vx.config.mjs`),
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      await writeFile(path.join(root, `pkgs/${name}/src/l.txt`), 'l1\n')
+    }
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'two')
+    await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
+    const plan = (...args: string[]) => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${p.stderr.toString()}`
+      return (JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }).tasks
+        .map((t) => t.id)
+        .sort()
+    }
+    expect(plan('--affected=HEAD')).toEqual(['lib#build'])
+    expect(plan('--affected=HEAD', '--filter', 'other')).toEqual(['lib#build', 'other#build'])
+    // An exclude still wins over the include it overlaps.
+    expect(plan('--affected=HEAD', '--filter', 'other', '--filter', '!other')).toEqual([
+      'lib#build',
+    ])
+  })
+
   it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)
     expect(r.out).toContain('vx run: --affected has no base here')
     expect(r.out).toContain('a shallow clone? Fetch history (actions/checkout: fetch-depth: 0)')
     expect(r.out).not.toContain('did not resolve')
+  })
+
+  it('outside a git work tree every base form says so, as a plain run does (X-52)', async () => {
+    const root = await withoutGit()
+    // vx names the canonical root: macOS's /tmp is a link to /private/tmp.
+    const real = await realpath(root)
+    const refusal = `vx run: vx requires git: ${real} is not inside a git work tree. Run 'git init' in your workspace root.`
+    // A sandboxed CI shard's temp dir sits under a repository git found by
+    // walking up; the ceiling keeps the fixture its own world.
+    process.env['GIT_CEILING_DIRECTORIES'] = `${path.dirname(root)}:${path.dirname(real)}`
+    try {
+      for (const args of [['--affected'], ['--affected=main'], ['--filter', '...[main]']]) {
+        const r = vx(root, 'run', 'build', ...args)
+        expect({ args, exitCode: r.exitCode, first: r.out.split(' (git: ')[0] }).toEqual({
+          args,
+          exitCode: 1,
+          first: refusal,
+        })
+      }
+    } finally {
+      delete process.env['GIT_CEILING_DIRECTORIES']
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a repository with no commit yet says that, not "a shallow clone?" (X-52)', async () => {
+    const root = await withoutGit()
+    try {
+      git(root, 'init', '-q', '-b', 'feat')
+      const r = vx(root, 'run', 'build', '--affected')
+      expect({ exitCode: r.exitCode, out: r.out.trim() }).toEqual({
+        exitCode: 1,
+        out: 'vx run: --affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

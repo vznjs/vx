@@ -23,12 +23,13 @@ export function asTrees(patterns: readonly string[]): string[]
 // the matcher that honours both: a `!` glob compiled as-is is Bun.Glob's own
 // negation, true of every other path (A-44).
 export function splitNegations(globs: readonly string[]): { positive: string[]; negative: string[] }
-export function outputMatcher(
-  globs: readonly string[],
-  compile?: (pattern: string) => Bun.Glob,
-): (rel: string) => boolean
+export function outputMatcher(globs: readonly string[]): (rel: string) => boolean
 export function isLiteralPattern(glob: string): boolean
 export function taskGlob(pattern: string): Bun.Glob
+export function anyTaskGlob(patterns: readonly string[]): (rel: string) => boolean
+// A path inside an install (`node_modules/` at any depth): untracked, it is
+// never an input; tracked, it is a source like any other (X-4).
+export function isInstalledPath(rel: string): boolean
 // A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):
 // workspace discovery and the output scan (A-10).
 export function slashBraceExpansions(pattern: string): string[]
@@ -97,7 +98,12 @@ that expands the grant sees a wildcard.
   then deleted each other's outputs, green, every run (item 495).
 - `taskGlob(p)` — compile a task glob for `Bun.Glob` with every bare
   bracket escaped. The one door: a site that compiled a task glob itself
-  is a route directory that keys nothing.
+  is a route directory that keys nothing. Its `match` is a RegExp of the
+  same verdict when the pattern has no brace, escape, leading `!`, empty
+  or dot segment: a JS test, not a native call.
+- `anyTaskGlob(ps)` — whether a path matches any of the task globs: one
+  RegExp for the lot when each has one. An input file is tested once per
+  side (positives, excludes), not once per glob.
 
 ## Why
 

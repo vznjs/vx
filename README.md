@@ -145,7 +145,7 @@ Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
 | [`@vzn/vx-reapi`](packages/vx-reapi)                       | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
 | [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
 | [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                |
-| [`@vzn/vx-github`](packages/vx-github)                     | GitHub Actions job summary and Checks API                                     |
+| [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
 | [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                         |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 

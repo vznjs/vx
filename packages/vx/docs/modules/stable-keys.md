@@ -27,7 +27,9 @@ can never drift on the stability gate.
   `deriveStableKeys` accumulates in topo order. The key is preliminary
   (→ unstable) when a same-project upstream declares `outputs.files`
   its input globs can meet (literal prefixes, ancestor or equal; A-20:
-  a `test` reading `src/**` after a `build` writing `dist/**` is stable),
+  a `test` reading `src/**` after a `build` writing `dist/**` is stable;
+  X-54: an output the task's own `!` inputs take back whole, by
+  `outputTakenBack`, does not count, so `['**/*', '!dist/**']` is too),
   when a same-project upstream may write undeclared (every input), when
   its own `outputs.files` meet another same-project task's (M-5: restored
   early, it raced the producer's restore), when ANY upstream declares
@@ -66,6 +68,22 @@ can never drift on the stability gate.
   for a cached rewriter, so a graph with no `cache.inputs.tasks` filter
   builds none of the sets: building them cost about 2 ms (median) of a 27 ms memoised walk
   over the 3,000-task bench.
+
+- `probesAfterWrites(nodes, workspaceRoot): ReadonlySet<string>` — the
+  cached tasks with `cache.inputs.runtime` / `workspaceRuntime` probes
+  behind a writer their key does not fold (X-34). A probe is a shell
+  command and may read anywhere, so its answer taken up front is the
+  previous run's bytes. A writer is an upstream whose command may write
+  (`commandWriteReach`) or that declares outputs; "does not fold" is
+  `keyed-projects.ts`' `foldedDeps`, transitively (a writer behind a
+  folded dependency that leaves it out counts). `deriveStableKeys`
+  takes no key for such a task (unstable, so never probed or restored
+  ahead of its writer, and its probe is not spawned up front), and
+  `ComputeHashArgs.probesAfterWrites` answers its probes for it alone.
+  A key that folds the writer's keeps the run's shared answer: an early
+  answer then costs a spurious miss on the run after the bytes change,
+  never a stale hit. Memoised per graph; a graph with no probe walks
+  nothing.
 
 The helpers (`synthUpstream`, `foldedBy`, `topoOrder`) are internal and
 not exported.

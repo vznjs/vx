@@ -50,7 +50,7 @@ export function keyedProjects(
         continue
       }
       if (deps === undefined) {
-        frame[1] = folded(node, nodeOf)
+        frame[1] = foldedDeps(node, nodeOf)
         for (const { node: dep } of frame[1]) if (!below.has(dep.id)) stack.push([dep, undefined])
         continue
       }
@@ -75,7 +75,7 @@ export function keyedProjects(
  * edges and lacked the dropped ones: the sandbox granted a sibling the key
  * does not answer for.
  */
-function folded(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[] {
+export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[] {
   const candidates: FoldCandidate[] = []
   for (const id of keyedDeps(node)) {
     const dep = nodeOf(id)

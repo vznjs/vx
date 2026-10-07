@@ -15,18 +15,31 @@
 // and the diff are core's.
 //
 // Imports core only through the public `@vzn/vx` specifier.
+import { createRequire } from 'node:module'
 import {
   refuseUnknownOptions,
+  type PluginCommand,
   type PluginOptionKinds,
   definePlugin,
   lockfileClaim,
   type VxPlugin,
 } from '@vzn/vx'
-import * as pnpmLock from './pnpm.js'
-import * as bunLock from './bun.js'
-import * as npmLock from './npm.js'
-import * as yarnLock from './yarn.js'
-import { pruneCommand } from './prune.js'
+
+// Each parser and `prune` load when first used: every run evaluates
+// `vx.workspace.ts`, and the four parsers and the verb were ~2.5 ms of it
+// for a workspace that declares one manager and runs no `prune`. The
+// digest seam is synchronous, so a parser loads by `require`.
+const load = createRequire(import.meta.url)
+const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
+const bunLock = (): typeof import('./bun.js') => load('./bun.js')
+const npmLock = (): typeof import('./npm.js') => load('./npm.js')
+const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
+
+/** One object for all four plugins, so a workspace declaring two still has one `prune`. */
+const pruneCommand: PluginCommand = {
+  description: 'copy projects and their workspace deps, lockfile pruned, for a Docker build',
+  run: async (argv, ctx) => (await import('./prune.js')).prune(argv, ctx),
+}
 
 export interface LockfileOptions {
   /**
@@ -53,23 +66,23 @@ const MANAGERS = {
   pnpm: {
     name: 'pnpm',
     file: 'pnpm-lock.yaml',
-    digest: (t) => pnpmLock.importerDigests(pnpmLock.parseLockfile(t)),
+    digest: (t) => pnpmLock().importerDigests(pnpmLock().parseLockfile(t)),
   },
   bun: {
     name: 'bun',
     file: 'bun.lock',
-    digest: (t, files) => bunLock.importerDigests(bunLock.parseLockfile(t), files),
-    extraFiles: (t) => bunLock.patchFiles(t),
+    digest: (t, files) => bunLock().importerDigests(bunLock().parseLockfile(t), files),
+    extraFiles: (t) => bunLock().patchFiles(t),
   },
   npm: {
     name: 'npm',
     file: 'package-lock.json',
-    digest: (t) => npmLock.importerDigests(npmLock.parseLockfile(t)),
+    digest: (t) => npmLock().importerDigests(npmLock().parseLockfile(t)),
   },
   yarn: {
     name: 'yarn',
     file: 'yarn.lock',
-    digest: (t) => yarnLock.importerDigests(yarnLock.parseLockfile(t)),
+    digest: (t) => yarnLock().importerDigests(yarnLock().parseLockfile(t)),
   },
 } satisfies Record<string, Manager>
 

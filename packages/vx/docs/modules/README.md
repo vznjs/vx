@@ -66,6 +66,7 @@ here, itself or in a brace group.
 | [`keyed-projects.md`](./keyed-projects.md)         | `src/orchestrator/keyed-projects.ts` — the projects a task's key answers for, which bound a cached task's linked-package grant.                               |
 | [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 126, 127 and 128 + n: the PATH rule, the file, the signal.                                      |
 | [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                                                 |
+| [`miss-reason.md`](./miss-reason.md)               | `src/orchestrator/miss-reason.ts` — what a miss's key changed since the last saved entry, for a telemetry sink.                                               |
 | [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                                                     |
 | [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                                        |
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.                                       |
@@ -109,7 +110,7 @@ here, itself or in a brace group.
 
 | File                                       | Topic                                                                                                                                           |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads}.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir; the root files a load reads once.                    |
+| [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads,repo-id}.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir, store id; the root files a load reads once.  |
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                                |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
@@ -149,6 +150,7 @@ here, itself or in a brace group.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
 | [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
+| [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.           |
 | [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition + essential allowlist.                                                      |
 | [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.              |
 |                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |

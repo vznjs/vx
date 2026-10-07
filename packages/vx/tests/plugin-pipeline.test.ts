@@ -446,6 +446,15 @@ describe('graph stage', () => {
       await workspace([
         pluginSource('org/unedge', `{ graph(nodes) { nodes.get('a#extra').deps = [] } }`),
       ])
+      // The addition shape loads only with `exclusiveOutputs` off (X-53).
+      const file = path.join(root, 'vx.workspace.mjs')
+      await Bun.write(
+        file,
+        (await Bun.file(file).text()).replace(
+          'export default {',
+          'export default { rules: { exclusiveOutputs: false },',
+        ),
+      )
       await expect(planRun({ cwd: root, tasks: ['extra'], log: silent() })).rejects.toThrow(
         /plugin 'org\/unedge' failed in graph: a#(gen|extra) and a#(gen|extra) both declare the output "dist\/\*\*"/,
       )
@@ -465,6 +474,32 @@ describe('graph stage', () => {
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/rekey' failed in graph: the task a#build is stored under 'zz#build', not its own id/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task config a plugin breaks is refused, naming the plugin and the field',
+    async () => {
+      // Unchecked, the misspelled field left the task without a command:
+      // it failed with exit 1 and no reason.
+      await pkg('a', build)
+      await workspace([
+        pluginSource('org/first', `{ graph() {} }`),
+        pluginSource(
+          'org/typo',
+          `{ graph(nodes) { nodes.get('a#build').config.exec = { comand: 'echo x' } } }`,
+        ),
+      ])
+      const said = await planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+        () => 'planned',
+        (e: Error) => e.message,
+      )
+      expect(said).toBe(
+        `${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
+          'tasks.build.exec has unknown field "comand" (allowed: command, env, interactive, ' +
+          'persistent, remote, retries, sandbox, timeout) — did you mean command?',
       )
     },
     TIMEOUT,
@@ -1321,6 +1356,31 @@ describe('plugin-host, called directly', () => {
       expect(said).toBe(
         "plugin 'org/second' failed in graph: a#build depends on 'zz#nope', which is not a task in this run's graph",
       )
+    },
+    TIMEOUT,
+  )
+
+  // X-15: a raw TypeError named neither the task nor the field.
+  it(
+    'a graph hook that nulls deps or a node is refused naming the task',
+    async () => {
+      await pkg('a', build)
+      const said = async (edit: string) => {
+        await workspace([pluginSource('org/edit', `{ graph(nodes) { ${edit} } }`)])
+        return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+          () => 'planned',
+          (e: Error) => e.message,
+        )
+      }
+      expect([
+        await said(`nodes.get('a#build').deps = null`),
+        await said(`nodes.set('a#build', null)`),
+        await said(`nodes.get('a#build').deps = []`),
+      ]).toEqual([
+        "plugin 'org/edit' failed in graph: a#build's deps is null, not an array of task ids",
+        "plugin 'org/edit' failed in graph: 'a#build' holds null, not a task",
+        'planned',
+      ])
     },
     TIMEOUT,
   )

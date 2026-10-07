@@ -17,6 +17,8 @@ import {
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
+  packageManagerPath,
+  PM_EXEC_ENV,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
   runPersistent,
@@ -63,9 +65,10 @@ import {
   type WithheldLink,
   withheldLinkLine,
 } from './sandbox-request.js'
-import { markUnsaved, saveMiss, type OutputDirSnapshot } from './miss-save.js'
+import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
+import type { MissExplainer } from './miss-reason.js'
 import { shellVerdict } from './shell-verdict.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
@@ -143,6 +146,10 @@ export interface ExecuteArgs {
    * SIGTERMs whatever is in here.
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
+  /** Sample a spawned task's process tree (`TelemetrySource.track`); absent when nobody samples. */
+  track?: (taskId: string, pid: number) => () => void
+  /** Name what a missed key changed (`createMissExplainer`); absent when nobody listens. */
+  explainMiss?: MissExplainer
   /**
    * Run-level retry default (`--retry <n>` / `RunOptions.retries`).
    * Explicit `exec.retries` wins, including an explicit 0. Threaded as
@@ -160,6 +167,8 @@ export interface ExecuteArgs {
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
   hashCache?: HashCache
+  /** The run's `probesAfterWrites`, handed to every key this task takes. */
+  probesAfterWrites?: ReadonlySet<string>
   /**
    * Up-front probe result from the local short-circuit classify, when
    * this task was stable + cacheable + local-read. Reused here so there
@@ -204,7 +213,7 @@ export interface ExecuteArgs {
    * in-flight join (admission.ts): a duplicate of this task in another run
    * must not probe the cache before the entry is there.
    */
-  deferredSaves?: Map<string, Promise<void>>
+  deferredSaves?: Map<string, Promise<SaveFacts>>
   /**
    * `continueMode: 'always'` let this task run although an upstream —
    * directly or through a chain of successes — failed or aborted. It still
@@ -374,6 +383,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     onStdout: serverOut ? (chunk) => serverOut.push(chunk) : (chunk) => log.taskStdout(node, chunk),
     onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
     ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+    ...(args.track !== undefined
+      ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
+      : {}),
     ...(signalChannel ? { signalChannel } : {}),
     ...(args.terminal === true ? { terminal: true } : {}),
   }
@@ -497,11 +509,13 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     // The reason rides the outcome (every label reads it), and a child that
     // exited before ready keeps its own exit code rather than a made-up 1.
+    // One the readiness timeout is killing reports the signal's, as an
+    // ordinary timeout does (X-24).
     const ready = err instanceof PersistentReadyError ? err : undefined
     return {
       node,
       status: 'failed',
-      exitCode: ready?.exitCode ?? 1,
+      exitCode: ready?.reason === 'timeout' ? await spawn.child.exited : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
       wallclockStartNs,
@@ -703,6 +717,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       nestedProjectDirs: args.nestedProjectDirs,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+      ...(args.probesAfterWrites !== undefined
+        ? { probesAfterWrites: args.probesAfterWrites }
+        : {}),
     }))
 
   // The local no-op half of `exec.remote: 'only'`: no remote executor took
@@ -802,6 +819,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         captureInto: captured,
         ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
         ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        ...(args.probesAfterWrites !== undefined
+          ? { probesAfterWrites: args.probesAfterWrites }
+          : {}),
       })
     : undefined
   // A name only `exec.env.secret` makes secret is not one the name rule
@@ -812,6 +832,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
         c.hash = MASKED + c.hash
   const inputs: TaskInputs | undefined = described?.inputs
+  const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
   // the upstream outputs read now. Only the local floor leaves them unread.
   if (inputs !== undefined && !isLocalExecutor(args.executor)) void inputs.upstream
@@ -951,6 +972,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         unlistenStop?.()
         unlistenStop = undefined
         flushMasked()
+        untrack?.()
+        untrack = undefined
       })
     endExec()
     if (secrets !== null)
@@ -1074,6 +1097,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
+  const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
+  // The sampling of the attempt's process tree, stopped once it settles.
+  let untrack: (() => void) | undefined
   // The entry's command is shown by `vx why` and sent with the entry to a
   // remote cache: a value a config interpolated stays out of both.
   const storedCommand = secrets?.mask(step.command) ?? step.command
@@ -1128,6 +1154,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
 
     if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    failedAttempts.push({
+      endedAt: Date.now(),
+      exitCode: effectiveExitCode,
+      ...(result.timedOut === true ? { timedOut: true as const } : {}),
+    })
     log.taskStderr(
       node,
       `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
@@ -1153,6 +1184,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStdout: out ? (chunk) => out.push(chunk) : (chunk) => log.taskStdout(node, chunk),
       onStderr: err ? (chunk) => err.push(chunk) : (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
+      ...(args.track !== undefined
+        ? {
+            onSpawn: (pid: number) => {
+              untrack?.()
+              untrack = args.track!(node.id, pid)
+            },
+          }
+        : {}),
       signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
@@ -1182,6 +1221,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
     // record (a row with no artifact) is exactly the corrupt-entry shape
@@ -1203,18 +1243,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         },
       })
     }
-  } else if (effectiveExitCode === 0 && willSave && (await keyStillTrue())) {
-    const ownOutputFiles =
-      additive && stampedBefore !== undefined
-        ? await ownOutputsSince(cleanArgs, stampedBefore)
-        : undefined
-    const ownWsOutputFiles =
-      additive && wsStampedBefore !== undefined
-        ? await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
-        : undefined
+  } else if (
+    effectiveExitCode === 0 &&
+    willSave &&
+    (await keyStillTrue()) &&
+    (own = await ownOutputs()) !== undefined
+  ) {
     const { landed } = await saveMiss({
-      ...(ownOutputFiles !== undefined ? { ownOutputFiles } : {}),
-      ...(ownWsOutputFiles !== undefined ? { ownWsOutputFiles } : {}),
+      ...own,
       node,
       hash,
       cache,
@@ -1232,6 +1268,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
       outputDirSnapshots: args.outputDirSnapshots,
       deferSave: args.deferSave,
+      // A sink listens: say what the save cost.
+      measure: args.explainMiss !== undefined,
     })
     args.deferredSaves?.set(node.id, landed)
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
@@ -1270,14 +1308,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
-   * The input that no longer holds what the key folded: `null` when the
-   * key re-derived just before the command already differed (the file
-   * unnamed), undefined when none moved.
+   * What an additive run saves as its own, or undefined when it removed a
+   * file it found: no entry replays a removal (`ownOutputsSince`), so the
+   * task saves nothing and runs again.
+   */
+  async function ownOutputs(): Promise<
+    { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
+  > {
+    const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
+    if (stampedBefore !== undefined) {
+      const files = await ownOutputsSince(cleanArgs, stampedBefore)
+      if (files === undefined) return undefined
+      mine.ownOutputFiles = files
+    }
+    if (wsStampedBefore !== undefined) {
+      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
+      if (files === undefined) return undefined
+      mine.ownWsOutputFiles = files
+    }
+    return mine
+  }
+
+  /**
+   * The input that no longer holds what the key folded, or one the key did
+   * not fold that is there now: `null` when the key re-derived just before
+   * the command already differed (the file unnamed), undefined when none
+   * moved.
    */
   async function movedSinceKey(): Promise<string | null | undefined> {
-    return described!.hash !== hash
-      ? null
-      : await movedInput(described!.facts, cache, described!.describedAt)
+    if (described!.hash !== hash) return null
+    return (await movedInput(described!.facts, cache, described!.describedAt)) ?? described!.added()
   }
 
   /**
@@ -1335,6 +1395,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: spentMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
+    ...(failedAttempts.length > 0 ? { failedAttempts } : {}),
+    ...(described !== undefined
+      ? { inputFiles: captured.reduce((n, c) => (c.kind === 'file' ? n + 1 : n), 0) }
+      : {}),
+    ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
@@ -1411,6 +1476,11 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   })
   env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
   env[VX_RUN_TASK_ENV] = node.id
+  // A task's own passThrough or define wins.
+  if (env[PM_EXEC_ENV] === undefined) {
+    const manager = packageManagerPath(workspaceRoot)
+    if (manager !== null) env[PM_EXEC_ENV] = manager
+  }
   return env
 }
 

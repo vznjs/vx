@@ -64,6 +64,15 @@ describe('vx lock and a secret in an evaluated config', () => {
     })
   })
 
+  it('the hint names the variable that leaked, not a fixed one', async () => {
+    const r = await lock(INTERPOLATED, { API_TOKEN: '', GH_PAT: 'ghp_patvalue456' })
+    expect(r.err).toBe(
+      'vx lock: vx-lock.json is committed, and these configs evaluated to a secret value:\n' +
+        '  a: tasks.deploy.exec.env.define.NPM_AUTH holds $GH_PAT\n' +
+        'let the shell expand it ($GH_PAT in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
+    )
+  })
+
   it('locks the same config when the environment holds no secret (control)', async () => {
     const r = await lock(INTERPOLATED, { API_TOKEN: '', GH_PAT: '' })
     expect(r).toEqual({ code: 0, err: '', written: true })

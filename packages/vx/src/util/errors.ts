@@ -98,6 +98,18 @@ export function gitSpawnRefusal(cwd: string): UserError {
   )
 }
 
+/**
+ * The one refusal for a directory git does not track, wherever vx needed
+ * it: `--affected` named a missing base there, as a shallow clone, while
+ * a plain run already said this (X-52).
+ */
+export function notAWorkTree(cwd: string, stderr = ''): UserError {
+  return new UserError(
+    `vx requires git: ${cwd} is not inside a git work tree. ` +
+      `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
+  )
+}
+
 export const TMPDIR_HINT = 'point TMPDIR at a writable directory'
 
 /**

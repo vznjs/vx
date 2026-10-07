@@ -24,6 +24,9 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  anyTaskGlob,
+  asTrees,
+  isLiteralPattern,
 } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
@@ -51,8 +54,24 @@ const WORKSPACE_FIELDS = new Set([
   'cacheRetention',
   'affectedBase',
   'cacheScope',
+  'rules',
   'plugins',
 ])
+
+const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
+
+function validateRules(rules: unknown, configPath: string): void {
+  const where = `${configPath}: \`rules\``
+  if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
+    throw new UserError(`${where} must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`)
+  }
+  assertKnownFields(rules as Record<string, unknown>, RULE_FIELDS, where)
+  for (const [name, value] of Object.entries(rules)) {
+    if (value !== undefined && typeof value !== 'boolean') {
+      throw new UserError(`${where}.${name} must be true or false`)
+    }
+  }
+}
 
 const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
@@ -110,6 +129,15 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
     throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
   }
+  // `'   '` made a directory named three spaces at the root, hidden by the
+  // cache's own `.gitignore` (X-22).
+  if (
+    typeof config.cacheDir === 'string' &&
+    config.cacheDir !== '' &&
+    config.cacheDir.trim() === ''
+  ) {
+    throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
+  }
   if (config.timeout !== undefined) {
     if (
       typeof config.timeout !== 'number' ||
@@ -130,6 +158,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   if (config.cacheScope !== undefined && !isCacheScope(config.cacheScope)) {
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
+  if (config.rules !== undefined) validateRules(config.rules, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
@@ -180,6 +209,17 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             `task's command runs (see docs/architecture.md § plugin capabilities).`,
         )
       }
+      // A misspelled hook (`excutor`, `setUp`) was never called and never
+      // said: tasks ran here with the plugin's executor unheard (X-19).
+      for (const key of Object.keys(plug)) {
+        if (key === 'name' || (PLUGIN_HOOKS as readonly string[]).includes(key)) continue
+        const near = nearest(key, PLUGIN_HOOKS)
+        const hint =
+          near === undefined ? ` (hooks: ${PLUGIN_HOOKS.join(', ')})` : ` — did you mean '${near}'?`
+        throw new UserError(
+          `${configPath}: plugin '${pkg}' declares '${key}', which is no plugin hook${hint}`,
+        )
+      }
       for (const cap of PLUGIN_FUNCTION_HOOKS) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
@@ -208,6 +248,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           // plugin-verb lookup — refuses it the same way. The owner is the
           // package: two plugins one package exports (`bun()` and `pnpm()`
           // both carry `prune`) are one owner, and the first declared runs.
+          // `vx --version` and `vx ''` never reach a plugin: a flag is
+          // core's, and an empty word is no verb (X-21).
+          if (verb.trim() === '' || verb.startsWith('-')) {
+            throw new UserError(
+              `${configPath}: plugin '${plug.name}' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`,
+            )
+          }
           if ((CORE_VERBS as readonly string[]).includes(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', a core verb — core verbs cannot be shadowed`,
@@ -616,11 +663,21 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `let cleanOutputs delete files outside it)`,
           )
         }
+        assertPosixGlob(g, `${where}.cache.outputs.files`, 'project')
         assertNoForeignToken(g, `${where}.cache.outputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — ` +
               `name the directory the task writes, such as "dist/**"`,
+          )
+        }
+        // An artifact stores workspace outputs under `workspace-outputs/`,
+        // and its index read a project output there as one: every hit was
+        // a "corrupt artifact", dropped and run again.
+        if (!g.startsWith('!') && normalizeGlob(g).split('/')[0] === 'workspace-outputs') {
+          throw new UserError(
+            `${where}.cache.outputs.files: "${g}" is under workspace-outputs/, a name vx's ` +
+              `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
           )
         }
         // A `!` entry takes a path back from the outputs (A-44): it is not
@@ -658,6 +715,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
           )
         }
+        assertPosixGlob(g, `${where}.cache.inputs.files`, 'project')
         assertNoForeignToken(g, `${where}.cache.inputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
@@ -686,6 +744,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       // error for the same reason. Refusing costs nothing: such a config was
       // already silently broken, so no working key changes.
       assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
+      assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
       // The only CacheInputs field that reached the run unvalidated: a
       // non-string entry crashes deep in `filterUpstreamHashes` /
       // `parseDependencySpec` with a raw TypeError naming neither the task
@@ -710,7 +769,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (list !== undefined) {
           if (
             !Array.isArray(list) ||
-            list.some((s) => typeof s !== 'string' || s.length === 0 || s.includes('\0'))
+            // Whitespace alone ran as a no-op probe that folds nothing, as
+            // a blank `exec.command` did before item 1099 (X-22).
+            list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
           ) {
             throw new UserError(
               `${where}.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
@@ -1137,6 +1198,39 @@ function isAbsoluteGlob(glob: string): boolean {
   return g.startsWith('/') || (g.includes('{') && /[{,]\//.test(g))
 }
 
+const DRIVE = /(^|[{,])[A-Za-z]:[\\/]+/g
+
+/**
+ * True when a backslash in the glob is a Windows separator. One before a
+ * bracket, a brace, a `!` or a backslash is an escape (`app/\[id\]`,
+ * `\{b\}`); one before anything else is a separator — `a\*b` reads as
+ * `a/*b` on Windows far more often than as a file named with a star, which
+ * `a?b` still selects.
+ */
+function hasBackslashSeparator(body: string): boolean {
+  for (let i = body.indexOf('\\'); i !== -1; i = body.indexOf('\\', i + 2)) {
+    if (!'[]{}!\\'.includes(body[i + 1] ?? '/')) return true
+  }
+  return false
+}
+
+/**
+ * A Windows spelling (`src\**`, `C:/src/**`) loaded with only a "matched no
+ * files" warning, and a task keyed on it never saw its source (X-67).
+ */
+function assertPosixGlob(glob: string, where: string, base: string): void {
+  const neg = glob.startsWith('!') ? '!' : ''
+  const body = glob.slice(neg.length)
+  DRIVE.lastIndex = 0
+  const drive = DRIVE.test(body)
+  if (!drive && !hasBackslashSeparator(body)) return
+  const write = neg + body.replace(DRIVE, '$1').replace(/\\(?![[\]{}!\\])/g, '/')
+  throw new UserError(
+    `${where}: "${glob}" ${drive ? 'starts with a Windows drive' : 'uses a backslash as a path separator'} — ` +
+      `task globs are ${base}-relative with forward slashes: write "${write}"`,
+  )
+}
+
 /**
  * `!!x` INVERTS the input set instead of double-negating it.
  *
@@ -1301,6 +1395,28 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
 }
 
 /**
+ * A `!` entry subtracts wherever it sits in the list, so a file named
+ * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
+ * entered the key, and an edit to it replayed the old output. Refusing is
+ * free: the literal already selected nothing.
+ */
+function assertNoLiteralTakenBack(globs: readonly string[], where: string): void {
+  const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+  if (negative.length === 0) return
+  const taken = anyTaskGlob(asTrees(negative))
+  for (const g of globs) {
+    if (g.startsWith('!')) continue
+    const lit = normalizeGlob(g).replace(/\/+$/, '')
+    if (!isLiteralPattern(lit) || !taken(lit)) continue
+    const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
+    throw new UserError(
+      `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+        `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`,
+    )
+  }
+}
+
+/**
  * `negation: false` for OUTPUT globs: a `!` entry takes a path back (A-44),
  * and a list of only negations selects nothing and is refused.
  */
@@ -1324,6 +1440,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
           `entries are workspace-root-relative and must stay within the workspace root`,
       )
     }
+    assertPosixGlob(g, where, 'workspace-root')
     assertNoForeignToken(g, where)
     if (namesDirItself(g)) {
       throw new UserError(
@@ -1332,8 +1449,10 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     }
     assertNotDoubleNegated(g, where)
   }
-  if (negation) assertNotNegationOnly(v as string[], where)
-  else assertOutputsNotNegationOnly(v as string[], where)
+  if (negation) {
+    assertNotNegationOnly(v as string[], where)
+    assertNoLiteralTakenBack(v as string[], where)
+  } else assertOutputsNotNegationOnly(v as string[], where)
 }
 
 /**

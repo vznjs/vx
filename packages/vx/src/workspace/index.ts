@@ -8,7 +8,6 @@ export {
   defaultAffectedBase,
   type FingerprintClaims,
   refIsHead,
-  workspaceGlobsMatch,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export {
@@ -61,6 +60,7 @@ export {
   memberBaseDirs,
   PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
+  resolveStoreRoot,
   type ProjectEntry,
   type ProjectMeta,
   type Workspace,

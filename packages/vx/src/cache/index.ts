@@ -25,12 +25,13 @@ export {
   FILE_HASH_RACY_MS,
   OUTPUT_DIRS_RACY_MS,
   racyWindowMs,
-  noteSchemaReset,
   type SchemaReset,
   SCHEMA_VERSION,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
 export {
+  addedInput,
+  type InputListing,
   cleanOutputs,
   cleanWorkspaceOutputs,
   declaresInput,

@@ -14,8 +14,10 @@ import type {
 import {
   buildMetricsRequest,
   buildTraceRequest,
+  runResource,
   runSpanAttributes,
   taskSpanAttributes,
+  taskSpanEvents,
   taskStatusCode,
 } from '../src/otlp.js'
 import { otel, parseOtlpHeaders, resolveOtelConfig } from '../src/plugin.js'
@@ -41,6 +43,18 @@ const RUN: RunContextRecord = {
   os: 'linux',
   arch: 'x64',
   tags: { env: 'prod' },
+}
+
+/** Every field: a new one is a type error here until the pin below names it. */
+const FULL_RUN: Required<RunContextRecord> = {
+  ...RUN,
+  repository: 'github.com/vznjs/vx',
+  workspacePath: 'tools/ws',
+  ciRunUrl: 'https://github.com/vznjs/vx/actions/runs/42',
+  ciChange: '2787',
+  ciPipeline: 'CI',
+  ciJob: 'test',
+  ciAttempt: 2,
 }
 
 /** Run context every task span carries so it is readable on its own. */
@@ -482,6 +496,211 @@ describe('OtelSink end-to-end', () => {
     expect([point.startTimeUnixNano, point.timeUnixNano]).toEqual(['0', '100000000'])
   })
 
+  it("charts each task: its totals at the end, and its tree's CPU usage and memory as it ran", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 2, ts: 0, startedAt: 0 })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 0 })
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 1000, cpuMs: 500, rssBytes: 4096 })
+    // A descendant exited and took its CPU out of the sum: zero, not negative.
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 2000, cpuMs: 400, rssBytes: 2048 })
+    rec({ kind: 'task.sample', taskId: 'a#build', ts: 3000, cpuMs: 2400, rssBytes: 8192 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      cacheSource: 'miss',
+      exitCode: 0,
+      ts: 3500,
+      ...extra,
+    })
+    rec(
+      end('a#build', {
+        status: 'success',
+        durationMs: 3500,
+        cpuMs: 2600,
+        peakRssBytes: 9000,
+        queuedMs: 70,
+        artifactBytes: 512,
+        fetchMs: 9,
+        saveMs: 3,
+      }),
+    )
+    // Never ran: no point, or it would chart as the fastest run there is.
+    rec(end('a#lint', { status: 'skipped', durationMs: 0 }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const bodies = calls.filter((c) => c.url === 'http://c/v1/metrics')
+    expect(bodies).toHaveLength(1)
+    type Metric = {
+      name: string
+      unit?: string
+      gauge?: { dataPoints: { asDouble: number; attributes: { key: string }[] }[] }
+    }
+    const metrics = (
+      bodies[0]!.body as { resourceMetrics: { scopeMetrics: { metrics: Metric[] }[] }[] }
+    ).resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const of = (name: string) => {
+      const m = metrics.find((x) => x.name === name)!
+      return [m.unit, m.gauge!.dataPoints.map((p) => p.asDouble)]
+    }
+    expect([
+      of('vx.task.cpu_usage'),
+      of('vx.task.memory'),
+      of('vx.task.duration'),
+      of('vx.task.cpu_time'),
+      of('vx.task.peak_memory'),
+      of('vx.task.queued'),
+      of('vx.task.artifact_size'),
+      of('vx.task.cache_fetch'),
+      of('vx.task.cache_save'),
+    ]).toEqual([
+      ['1', [0.5, 0, 2]],
+      ['By', [4096, 2048, 8192]],
+      ['ms', [3500]],
+      ['ms', [2600]],
+      ['By', [9000]],
+      ['ms', [70]],
+      ['By', [512]],
+      ['ms', [9]],
+      ['ms', [3]],
+    ])
+    const keys = (name: string) =>
+      metrics.find((x) => x.name === name)!.gauge!.dataPoints[0]!.attributes.map((a) => a.key)
+    expect([keys('vx.task.memory'), keys('vx.task.duration')]).toEqual([
+      ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task'],
+      ['cicd.pipeline.task.name', 'vx.task.project', 'vx.task.task', 'vx.cache.source'],
+    ])
+  })
+
+  it("splits a large run's task points across requests, the run's own metrics in the first only", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 2500,
+      ts: 0,
+      startedAt: 0,
+    } as TelemetryRecord)
+    for (let i = 0; i < 2500; i++) {
+      sink.onRecord({
+        v: 3,
+        kind: 'task.end',
+        runId: 'r',
+        ts: 10,
+        taskId: `p${i}#build`,
+        project: `p${i}`,
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 10,
+      } as TelemetryRecord)
+    }
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const names = calls
+      .filter((c) => c.url === 'http://c/v1/metrics')
+      .map((c) =>
+        (
+          c.body as { resourceMetrics: { scopeMetrics: { metrics: { name: string }[] }[] }[] }
+        ).resourceMetrics[0]!.scopeMetrics[0]!.metrics.map((m) => m.name),
+      )
+    expect(
+      names.map((n) => [n.includes('vx.tasks.total'), n.includes('vx.task.duration')]),
+    ).toEqual([
+      [true, true],
+      [false, true],
+      [false, true],
+    ])
+  })
+
+  it('links a task to the spans it waited on, marks retries and a timeout, and draws the stages', async () => {
+    const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    const end = (taskId: string, extra: Record<string, unknown>) =>
+      rec({
+        kind: 'task.end',
+        taskId,
+        project: taskId.split('#')[0],
+        task: taskId.split('#')[1],
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+        ...extra,
+      })
+    rec({ kind: 'run.start', run: RUN, total: 3, ts: 0, startedAt: 0 })
+    rec({ kind: 'task.start', taskId: 'a#build', project: 'a', task: 'build', ts: 1 })
+    end('a#build', { status: 'success', ts: 2 })
+    // Never started: still a span, and still linked to.
+    end('c#build', { status: 'skipped', cacheSource: 'none', ts: 2 })
+    rec({
+      kind: 'task.start',
+      taskId: 'b#test',
+      project: 'b',
+      task: 'test',
+      dependsOn: ['a#build', 'c#build', 'gone#build'],
+      ts: 3,
+    })
+    end('b#test', {
+      status: 'failed',
+      exitCode: 143,
+      timedOut: true,
+      attempts: 2,
+      failedAttempts: [{ endedAt: 5, exitCode: 1 }],
+      ts: 9,
+    })
+    rec({ kind: 'run.end', ts: 10 })
+    sink.onRunSummary({
+      ...summaryFor(RUN, []),
+      stages: [{ name: 'classify + probe', startedAt: 0.5, endedAt: 2.25 }],
+    })
+    await sink.flush()
+    type Span = {
+      spanId: string
+      parentSpanId?: string
+      name: string
+      startTimeUnixNano: string
+      endTimeUnixNano: string
+      attributes: { key: string; value: { stringValue?: string } }[]
+      events?: { name: string; timeUnixNano: string; attributes: { key: string }[] }[]
+      links?: { spanId: string; attributes: { value: { stringValue?: string } }[] }[]
+    }
+    const spans = (
+      calls.find((c) => c.url === 'http://c/v1/traces')!.body as {
+        resourceSpans: { scopeSpans: { spans: Span[] }[] }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans
+    const task = (id: string) =>
+      spans.find((x) =>
+        x.attributes.some((a) => a.value.stringValue === id && a.key === 'cicd.pipeline.task.name'),
+      )!
+    const b = task('b#test')
+    expect(b.links!.map((l) => [l.spanId, l.attributes[0]!.value.stringValue])).toEqual([
+      [task('a#build').spanId, 'a#build'],
+      [task('c#build').spanId, 'c#build'],
+    ])
+    expect(b.events!.map((e) => [e.name, e.timeUnixNano, e.attributes.map((a) => a.key)])).toEqual([
+      ['vx.task.retry', '5000000', ['vx.task.attempt', 'vx.task.exit_code']],
+      ['vx.task.timeout', '9000000', []],
+    ])
+    expect([task('a#build').events, task('a#build').links]).toEqual([undefined, undefined])
+    const root = spans.find((x) => x.name === 'vx.run')!
+    const stage = spans.find((x) => x.name === 'classify + probe')!
+    expect([stage.parentSpanId, stage.startTimeUnixNano, stage.endTimeUnixNano]).toEqual([
+      root.spanId,
+      '500000',
+      '2250000',
+    ])
+  })
+
   it('skips metrics when disabled', async () => {
     const { cfg, calls } = mkConfig({ metricsEnabled: false })
     const sink = new OtelSink(cfg)
@@ -603,15 +822,31 @@ describe('otel() plugin', () => {
     }
   })
 
-  it('returns a sink when an endpoint is configured via options', () => {
+  it('returns a sink when an endpoint is configured via options', async () => {
     const plugin = otel({ endpoint: 'http://c:4318' })
-    const sink = plugin.telemetry!({
+    const sink = (await plugin.telemetry!({
       workspaceRoot: '/ws',
       cacheDir: '/ws/.vx/cache',
       warn: () => undefined,
-    }) as TelemetrySink | undefined
+    })) as TelemetrySink | undefined
     expect(sink).toBeDefined()
     expect(sink!.name).toBe('@vzn/vx-otel')
+  })
+
+  it('loads the exporter only when one is configured', () => {
+    // A fresh process: this file already loaded sink.ts.
+    const probe = `
+      const { otel } = await import('${import.meta.dir}/../src/index.ts')
+      const loaded = () => Object.keys(require.cache).some((k) => k.endsWith('/vx-otel/src/sink.ts'))
+      const ctx = { workspaceRoot: '/ws', cacheDir: '/c', warn() {} }
+      const declined = [otel().telemetry(ctx), loaded()]
+      const sink = await otel({ endpoint: 'http://c:4318' }).telemetry(ctx)
+      console.log(JSON.stringify([...declined, sink.name, loaded()]))`
+    const env = { ...process.env }
+    delete env['OTEL_EXPORTER_OTLP_ENDPOINT']
+    const out = Bun.spawnSync([process.execPath, '-e', probe], { env })
+    expect(out.stderr.toString()).toBe('')
+    expect(JSON.parse(out.stdout.toString())).toEqual([null, false, '@vzn/vx-otel', true])
   })
 })
 
@@ -640,6 +875,27 @@ const FULL_TASK: Required<TaskTelemetry> = {
   timedOut: true,
   sandboxViolations: 2,
   notReady: 'timeout',
+  // Rides as `vx.task.retry` span events ("links a task …" above).
+  failedAttempts: [{ endedAt: 5, exitCode: 1 }],
+  flaky: { passes: 1, failures: 1 },
+  // Rides as `vx.sandbox.violation` span events.
+  sandboxViolationLines: ['deny file-write /etc/x'],
+  storedDurationMs: 5000,
+  storedCpuMs: 4000,
+  storedPeakRssBytes: 2048,
+  admissionHeldMs: 30,
+  queuedMs: 40,
+  inputFiles: 12,
+  inputChanges: {
+    count: 3,
+    first: [
+      { kind: 'file', name: 'src/a.ts', change: 'changed' },
+      { kind: 'upstream', name: 'lib#build', change: 'changed' },
+    ],
+  },
+  artifactBytes: 4096,
+  fetchMs: 25,
+  saveMs: 7,
   restored: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
@@ -649,12 +905,17 @@ const FULL_TASK: Required<TaskTelemetry> = {
 describe('OTLP losslessness', () => {
   it('pins the RunContextRecord field set the run span must carry', () => {
     // A new field here fails until it is mapped below.
-    expect(Object.keys(RUN).sort()).toEqual([
+    expect(Object.keys(FULL_RUN).sort()).toEqual([
       'arch',
       'branch',
       'cachePolicy',
       'ci',
+      'ciAttempt',
+      'ciChange',
+      'ciJob',
+      'ciPipeline',
       'ciProvider',
+      'ciRunUrl',
       'command',
       'commitSha',
       'concurrency',
@@ -663,13 +924,36 @@ describe('OTLP losslessness', () => {
       'flow',
       'host',
       'os',
+      'repository',
       'requestedTasks',
       'runId',
       'tags',
       'vxVersion',
       'workspaceId',
       'workspaceName',
+      'workspacePath',
     ])
+  })
+
+  it('names the repository, the workspace path in it and the CI run, on the span and every resource', () => {
+    const want = {
+      'vcs.repository.url.full': 'https://github.com/vznjs/vx',
+      'vcs.repository.name': 'vx',
+      'vcs.owner.name': 'vznjs',
+      'vcs.provider.name': 'github',
+      'vx.workspace.path': 'tools/ws',
+      'cicd.pipeline.run.url.full': 'https://github.com/vznjs/vx/actions/runs/42',
+      'vcs.change.id': '2787',
+      'cicd.pipeline.name': 'CI',
+      'vx.ci.job': 'test',
+      'vx.ci.attempt': '2',
+    }
+    const a = attrMap(runSpanAttributes(FULL_RUN) as never)
+    const pick = (m: Record<string, unknown>) =>
+      Object.fromEntries(Object.keys(want).map((k) => [k, m[k]]))
+    expect([pick(a), pick(runResource(FULL_RUN))]).toEqual([want, want])
+    // Absent ones send nothing, not an empty string.
+    expect(Object.keys(runResource(RUN)).filter((k) => k.startsWith('vcs.repository'))).toEqual([])
   })
 
   it('pins the TaskTelemetry field set the task span must carry', () => {
@@ -680,20 +964,33 @@ describe('OTLP losslessness', () => {
     // that way rode NOTHING while every test here passed (probed with a
     // `probeField?: string`, 2026-09-19).
     expect(Object.keys(FULL_TASK).sort()).toEqual([
+      'admissionHeldMs',
+      'artifactBytes',
       'attempts',
       'blockedBy',
       'cacheSource',
       'cpuMs',
       'durationMs',
       'exitCode',
+      'failedAttempts',
+      'fetchMs',
+      'flaky',
       'hash',
+      'inputChanges',
+      'inputFiles',
       'notReady',
       'outputs',
       'peakRssBytes',
       'project',
+      'queuedMs',
       'restored',
+      'sandboxViolationLines',
       'sandboxViolations',
+      'saveMs',
       'status',
+      'storedCpuMs',
+      'storedDurationMs',
+      'storedPeakRssBytes',
       'task',
       'taskId',
       'timedOut',
@@ -746,8 +1043,15 @@ describe('OTLP losslessness', () => {
       restoredRemoteCount: 1,
       exitOk: false,
       tasks: [],
+      uploads: { count: 5, bytes: 9000, ms: 120, failed: 1 },
     }
     const a = attrMap(runSpanAttributes(RUN, summary) as never)
+    expect([
+      a['vx.cache.upload.count'],
+      a['vx.cache.upload.bytes'],
+      a['vx.cache.upload.ms'],
+      a['vx.cache.upload.failed'],
+    ]).toEqual(['5', '9000', '120', '1'])
     expect(a['vx.run.started_at']).toBe('1700000000000')
     expect(a['vx.run.ended_at']).toBe('1700000009000')
     expect(a['vx.run.duration_ms']).toBe('9000')
@@ -812,6 +1116,23 @@ describe('OTLP losslessness', () => {
     expect(a['vx.cpu_ms']).toBe('900')
     expect(a['vx.peak_rss_bytes']).toBe('123456789')
     expect(a['vx.task.attempts']).toBe('2')
+    expect([a['vx.task.flaky.passes'], a['vx.task.flaky.failures']]).toEqual(['1', '1'])
+    expect(a['vx.cache.stored_duration_ms']).toBe('5000')
+    expect(a['vx.cache.stored_cpu_ms']).toBe('4000')
+    expect(a['vx.cache.stored_peak_rss_bytes']).toBe('2048')
+    expect(a['vx.task.admission_held_ms']).toBe('30')
+    expect(a['vx.task.queued_ms']).toBe('40')
+    expect(a['vx.task.input_files']).toBe('12')
+    expect(a['vx.cache.miss.change_count']).toBe('3')
+    expect(a['vx.cache.artifact_bytes']).toBe('4096')
+    expect(a['vx.cache.fetch_ms']).toBe('25')
+    expect(a['vx.cache.save_ms']).toBe('7')
+    expect(a['vx.cache.miss.changes']).toEqual({
+      values: [
+        { stringValue: 'changed file src/a.ts' },
+        { stringValue: 'changed upstream lib#build' },
+      ],
+    })
     expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.outputs']).toBe('deferred')
     expect(a['vx.task.blocked_by']).toBe('lib#build')
@@ -1129,7 +1450,10 @@ describe('OTLP envelopes, exactly', () => {
       restoredLocalCount: 2,
       restoredRemoteCount: 1,
       exitOk: false,
-      tasks: [],
+      tasks: [
+        { ...FULL_TASK, storedDurationMs: 700 },
+        { ...FULL_TASK, storedDurationMs: 50 },
+      ],
     }
     // Item 927: each count is the run's own, a DELTA from the run's start;
     // the cache hits are one metric with a point per source.
@@ -1166,6 +1490,11 @@ describe('OTLP envelopes, exactly', () => {
                 {
                   name: 'vx.run.duration_ms',
                   gauge: { dataPoints: [{ asDouble: 1234, timeUnixNano: '9', attributes: [] }] },
+                },
+                // The stored runs' time the hits skipped.
+                {
+                  name: 'vx.run.time_saved_ms',
+                  gauge: { dataPoints: [{ asDouble: 750, timeUnixNano: '9', attributes: [] }] },
                 },
               ],
             },
@@ -1419,7 +1748,7 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     expect([root.startTimeUnixNano, root.endTimeUnixNano]).toEqual(['1000000000', '1000000000'])
   })
 
-  it('a summary’s own start and end win over the records’ times, for the root and the logs', async () => {
+  it('a summary’s own start and end win over the records’ times; a log is the task’s end', async () => {
     const { cfg, calls } = mkConfig({ metricsEnabled: false })
     const sink = new OtelSink(cfg)
     start(sink, 1000)
@@ -1441,7 +1770,11 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     const logs = calls.find((c) => c.url === 'http://c/v1/logs')!.body as {
       resourceLogs: { scopeLogs: { logRecords: { timeUnixNano: string }[] }[] }[]
     }
-    expect(logs.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!.timeUnixNano).toBe('2000000000')
+    const record = logs.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]! as {
+      timeUnixNano: string
+      observedTimeUnixNano: string
+    }
+    expect([record.timeUnixNano, record.observedTimeUnixNano]).toEqual(['1050000000', '2000000000'])
   })
 
   it('a run that recorded nothing POSTs nothing', async () => {
@@ -1491,6 +1824,8 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
         a: 'traces only',
         'x-top': 'opt',
       },
+      // Live (the default) sent the task's metrics as it ended: the shared `a`.
+      'http://c/v1/metrics': { 'content-type': 'application/json', a: 'shared', 'x-top': 'opt' },
     })
   })
 })
@@ -1601,7 +1936,8 @@ describe('the standard OTLP env a pipeline already sets', () => {
       },
       {
         ...base,
-        OTEL_RESOURCE_ATTRIBUTES: 'deployment.environment=ci,team=a%20b,service.version=9',
+        OTEL_RESOURCE_ATTRIBUTES:
+          'deployment.environment=ci,team=a%20b,service.version=9,host.name=mine',
       },
     )!
     const sink = new OtelSink(cfg)
@@ -1635,7 +1971,16 @@ describe('the standard OTLP env a pipeline already sets', () => {
     sink.onRecord({ v: 1, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
     sink.onRunSummary(summaryFor(RUN, [t]))
     await sink.flush()
+    // The run's own first, so every signal joins on it; the env's win.
+    const str = (key: string, v: string) => ({ key, value: { stringValue: v } })
     const expected = [
+      str('service.instance.id', 'run-1'),
+      str('cicd.pipeline.run.id', 'run-1'),
+      str('os.type', 'linux'),
+      str('host.arch', 'amd64'),
+      str('host.name', 'mine'),
+      str('vcs.ref.head.revision', 'abc123'),
+      str('vcs.ref.head.name', 'main'),
       { key: 'deployment.environment', value: { stringValue: 'ci' } },
       { key: 'team', value: { stringValue: 'a b' } },
       { key: 'service.name', value: { stringValue: 'vx' } },
@@ -2032,12 +2377,14 @@ describe('the sink, past its sweep', () => {
     ]).toEqual([true, true, true, '1000000000', 2, ['run-1', RUN.workspaceId, '900']])
   })
 
-  it('what the sink asks core for, with logs on and off', () => {
+  it('what the sink asks core for, with logs and metrics on and off', () => {
     const on = new OtelSink(mkConfig().cfg)
-    const off = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
-    expect([on.wants, off.wants]).toEqual([
+    const noLogs = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
+    const noMetrics = new OtelSink(mkConfig({ metricsEnabled: false }).cfg)
+    expect([on.wants, noLogs.wants, noMetrics.wants]).toEqual([
+      ['run.start', 'task.start', 'task.log', 'task.sample', 'task.end', 'run.end'],
+      ['run.start', 'task.start', 'task.sample', 'task.end', 'run.end'],
       ['run.start', 'task.start', 'task.log', 'task.end', 'run.end'],
-      ['run.start', 'task.start', 'task.end', 'run.end'],
     ])
   })
 
@@ -2164,4 +2511,373 @@ describe('the OTLP env, as its second sweep found it unheld', () => {
     const c = resolveOtelConfig({ tracesEndpoint: '', endpoint: '' }, base)!
     expect(c.tracesUrl).toBe('http://c/v1/traces')
   })
+})
+
+describe('live mode', () => {
+  const task = (taskId: string): TaskTelemetry => ({
+    taskId,
+    project: taskId.split('#')[0]!,
+    task: 'build',
+    status: 'success',
+    cacheSource: 'miss',
+    exitCode: 0,
+    durationMs: 10,
+  })
+  type Body = Record<string, { scopeSpans?: { spans: { name: string }[] }[] }[]>
+  const spanNames = (calls: { url: string; body: Record<string, unknown> }[]) =>
+    calls
+      .filter((c) => c.url.endsWith('/v1/traces'))
+      .flatMap((c) =>
+        (c.body as Body)['resourceSpans']![0]!.scopeSpans![0]!.spans.map((s) => s.name),
+      )
+  const eventNames = (calls: { url: string; body: Record<string, unknown> }[]) =>
+    calls
+      .filter((c) => c.url.endsWith('/v1/logs'))
+      .flatMap((c) =>
+        (
+          c.body['resourceLogs'] as {
+            scopeLogs: {
+              logRecords: { attributes: { key: string; value: { stringValue?: string } }[] }[]
+            }[]
+          }[]
+        )[0]!.scopeLogs[0]!.logRecords.map(
+          (r) => r.attributes.find((a) => a.key === 'event.name')?.value.stringValue ?? 'tail',
+        ),
+      )
+  const drive = (sink: OtelSink, taskId: string, at: number) => {
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId,
+      project: 'a',
+      task: 'build',
+      command: 'tsc',
+      ts: at,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.log',
+      runId: 'run-1',
+      taskId,
+      stream: 'stdout',
+      chunk: 'ok',
+      ts: at + 1,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.end',
+      runId: 'run-1',
+      ts: at + 10,
+      ...task(taskId),
+    } as TelemetryRecord)
+  }
+
+  it('sends each task as it ends, before the run does', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 20 })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 2,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    drive(sink, 'a#build', 1001)
+    await Bun.sleep(80)
+    // Mid-run: the task's span, its metrics, its tail and both starts are out.
+    expect([spanNames(calls), eventNames(calls).sort()]).toEqual([
+      ['vx.task'],
+      ['tail', 'vx.run.start', 'vx.task.start'],
+    ])
+    expect(calls.some((c) => c.url.endsWith('/v1/metrics'))).toBe(true)
+    drive(sink, 'b#build', 1020)
+    sink.onRecord({ v: 3, kind: 'run.end', runId: 'run-1', ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [task('a#build'), task('b#build')]))
+    await sink.flush()
+    // Each span once: the first task's mid-run, the rest (root included) at the end.
+    expect(spanNames(calls).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'vx.run',
+      'vx.task',
+      'vx.task',
+    ])
+    expect(eventNames(calls).filter((n) => n === 'tail')).toHaveLength(2)
+  })
+
+  it('what ends within one window goes in one send, and nothing before it', async () => {
+    const { cfg, calls } = mkConfig({ live: true, liveBatchMs: 50 })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 3,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    for (const [i, id] of ['a#build', 'b#build', 'c#build'].entries()) drive(sink, id, 1001 + i)
+    await Bun.sleep(10)
+    expect(calls).toEqual([])
+    await Bun.sleep(120)
+    expect([calls.filter((c) => c.url.endsWith('/v1/traces')).length, spanNames(calls)]).toEqual([
+      1,
+      ['vx.task', 'vx.task', 'vx.task'],
+    ])
+  })
+
+  it('without it, nothing leaves before the run ends', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    drive(sink, 'a#build', 1001)
+    await Bun.sleep(0)
+    expect(calls).toEqual([])
+    sink.onRunSummary(summaryFor(RUN, [task('a#build')]))
+    await sink.flush()
+    expect([spanNames(calls), eventNames(calls)]).toEqual([['vx.run', 'vx.task'], ['tail']])
+  })
+
+  it('a down collector is said once per signal, however many tasks it refused', async () => {
+    const warns: string[] = []
+    const { cfg } = mkConfig({
+      live: true,
+      liveBatchMs: 5,
+      post: async () => {
+        throw new Error('refused')
+      },
+      warn: (m) => void warns.push(m),
+    })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 3,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    for (const [i, id] of ['a#build', 'b#build', 'c#build'].entries()) {
+      drive(sink, id, 1001 + i * 20)
+      await Bun.sleep(40)
+    }
+    // Three sends refused per signal; one word of each.
+    expect(
+      warns.map((w) => /v1\/(\w+)/.exec(w)![1]).toSorted((a, b) => a!.localeCompare(b!)),
+    ).toEqual(['logs', 'metrics', 'traces'])
+  })
+})
+
+describe('signals link to each other', () => {
+  it("each task metric point carries its span as an exemplar, and its log record the task's end", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const t: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 40,
+    }
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1010,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.log',
+      runId: 'run-1',
+      taskId: 'a#build',
+      stream: 'stdout',
+      chunk: 'x',
+      ts: 1020,
+    } as TelemetryRecord)
+    sink.onRecord({ v: 3, kind: 'task.end', runId: 'run-1', ts: 1050, ...t } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [t]))
+    await sink.flush()
+    const traces = calls.find((c) => c.url.endsWith('/v1/traces'))!.body as {
+      resourceSpans: {
+        scopeSpans: { spans: { name: string; traceId: string; spanId: string }[] }[]
+      }[]
+    }
+    const span = traces.resourceSpans[0]!.scopeSpans[0]!.spans.find((s) => s.name === 'vx.task')!
+    const metrics = calls.find((c) => c.url.endsWith('/v1/metrics'))!.body as {
+      resourceMetrics: {
+        scopeMetrics: {
+          metrics: { name: string; gauge?: { dataPoints: { exemplars?: unknown[] }[] } }[]
+        }[]
+      }[]
+    }
+    const duration = metrics.resourceMetrics[0]!.scopeMetrics[0]!.metrics.find(
+      (m) => m.name === 'vx.task.duration',
+    )!
+    expect(duration.gauge!.dataPoints[0]!.exemplars).toEqual([
+      {
+        timeUnixNano: '1050000000',
+        asDouble: 40,
+        filteredAttributes: [],
+        traceId: span.traceId,
+        spanId: span.spanId,
+      },
+    ])
+    const logs = calls.find((c) => c.url.endsWith('/v1/logs'))!.body as {
+      resourceLogs: { scopeLogs: { logRecords: { spanId: string; timeUnixNano: string }[] }[] }[]
+    }
+    const record = logs.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!
+    expect([record.spanId, record.timeUnixNano]).toEqual([span.spanId, '1050000000'])
+  })
+
+  it('with traces off, no exemplar names a span that is never sent', async () => {
+    const { cfg, calls } = mkConfig({ tracesEnabled: false })
+    const sink = new OtelSink(cfg)
+    const t: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'success',
+      cacheSource: 'miss',
+      exitCode: 0,
+      durationMs: 40,
+    }
+    sink.onRecord({
+      v: 3,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 3,
+      kind: 'task.start',
+      runId: 'run-1',
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1010,
+    } as TelemetryRecord)
+    sink.onRecord({ v: 3, kind: 'task.end', runId: 'run-1', ts: 1050, ...t } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [t]))
+    await sink.flush()
+    expect(JSON.stringify(calls.map((c) => c.body))).not.toContain('exemplars')
+    expect(calls.map((c) => c.url)).toEqual(['http://c/v1/metrics'])
+  })
+
+  it('a task span holds each sandbox violation as an event, up to 100, then how many more', () => {
+    const lines = Array.from({ length: 103 }, (_, i) => `deny file-read /x${i}`)
+    const events = taskSpanEvents(
+      { ...FULL_TASK, failedAttempts: [], sandboxViolationLines: lines },
+      '7',
+    )
+    expect(
+      events.filter((e) => e.name === 'vx.sandbox.violation').map((e) => e.attributes[0]!.value),
+    ).toEqual(lines.slice(0, 100).map((stringValue) => ({ stringValue })))
+    // FULL_TASK timed out: its timeout event comes first.
+    expect(events.at(-1)).toEqual({
+      timeUnixNano: '7',
+      name: 'vx.sandbox.violations_dropped',
+      attributes: [{ key: 'vx.sandbox.violations_dropped', value: { intValue: '3' } }],
+    })
+  })
+})
+
+describe('a slow collector never holds the run', () => {
+  it('a live send hanging when the run ends is cut at the flush deadline, not left open', async () => {
+    const held: Request[] = []
+    let release = (): void => undefined
+    const hanging = new Promise<Response>((resolve) => {
+      release = () => resolve(new Response('late'))
+    })
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        held.push(req)
+        return hanging
+      },
+    })
+    try {
+      const base = `http://localhost:${server.port}`
+      const sink = new OtelSink({
+        tracesUrl: `${base}/v1/traces`,
+        metricsUrl: `${base}/v1/metrics`,
+        logsUrl: `${base}/v1/logs`,
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        live: true,
+        liveBatchMs: 10,
+        // The transport's own timeout is far past the test: only the deadline can end it.
+        timeoutMs: 60_000,
+      })
+      const t0 = performance.now()
+      sink.onRecord({
+        v: 3,
+        kind: 'run.start',
+        run: RUN,
+        total: 1,
+        ts: 0,
+        startedAt: 0,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 3,
+        kind: 'task.start',
+        runId: 'run-1',
+        taskId: 'a#build',
+        project: 'a',
+        task: 'build',
+        ts: 1,
+      } as TelemetryRecord)
+      sink.onRecord({
+        v: 3,
+        kind: 'task.end',
+        runId: 'run-1',
+        ts: 2,
+        taskId: 'a#build',
+        project: 'a',
+        task: 'build',
+        status: 'success',
+        cacheSource: 'miss',
+        exitCode: 0,
+        durationMs: 1,
+      } as TelemetryRecord)
+      // Handing records over never waits on the network.
+      expect(performance.now() - t0).toBeLessThan(50)
+      while (held.length === 0) await Bun.sleep(5)
+      const deadline = new AbortController()
+      setTimeout(() => deadline.abort(new Error('deadline')), 100)
+      const started = Date.now()
+      await sink.flush(deadline.signal)
+      expect(Date.now() - started).toBeLessThan(2_000)
+      // The live request itself was aborted: nothing keeps the process alive.
+      // The server hears the client's close a turn later.
+      for (let i = 0; i < 100 && !held.every((r) => r.signal.aborted); i++) await Bun.sleep(10)
+      expect([held.length > 0, held.every((r) => r.signal.aborted)]).toEqual([true, true])
+    } finally {
+      release()
+      await server.stop(true)
+    }
+  }, 10_000)
 })

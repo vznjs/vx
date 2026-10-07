@@ -36,6 +36,7 @@ export interface BuildGraphOptions {
   // `projects` declares is handed here instead of refused (see below).
   undeclaredDeps?: (taskId: string, name: string) => void
   workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
+  rules?: WorkspaceRules | undefined // the workspace's `rules`; each on unless false (X-53)
 }
 
 export function taskId(project: string, task: string): string
@@ -57,7 +58,14 @@ export function declaredTask(
   config: ProjectConfig | null | undefined,
   name: string,
 ): TaskConfig | undefined
-export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void // id keys, deps, cycle, output collisions
+export function checkGraph(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot?: string,
+  rules?: WorkspaceRules, // `exclusiveOutputs`: edge-ordered overlap; `upfrontKeys`: inputs over outputs
+): void // id keys, deps, cycle, output collisions, inputs reading outputs
+// Does `negatives` (an input list's `!` entries, `!` stripped) take back
+// every path `output` can select? (X-54)
+export function outputTakenBack(output: string, negatives: readonly string[]): boolean
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 export function undeclaredDepsError(taskId: string, name: string): UserError
@@ -165,8 +173,10 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 ## Overlapping outputs
 
 Last, `detectOutputCollisions` refuses two tasks whose declared outputs
-overlap (`outputsOverlap`) with no edge between them, and marks the
-pair that has one as the addition shape. It never compares all pairs:
+overlap (`outputsOverlap`) with no edge between them. A pair with one is
+refused too while `rules.exclusiveOutputs` is on (the default, X-53), its
+message naming the rule; off, the pair is marked as the addition shape.
+It never compares all pairs:
 `outputs.files` is compared only within a project and
 `outputs.workspaceFiles` only among its declarers, and within each
 domain a path index (`overlapCandidates`) names the pairs that can
@@ -179,6 +189,21 @@ at the root. The pairs are compared in the order all pairs met them,
 so the refusal names the same pair and the marks land in the same
 order. One project of 4,000 tasks with outputs built its graph in
 10.0 s (distinct literals) and now in 10 ms (item 746).
+
+## Inputs that read outputs
+
+While `rules.upfrontKeys` is on (the default, X-54), `detectInputOverlaps`
+refuses a cached task whose input globs can match another task's
+declared outputs: `inputs.files` against the same project's
+`outputs.files`, and `inputs.workspaceFiles` against every
+`outputs.workspaceFiles` and every other project's `outputs.files` at its
+workspace path. The test is `outputsOverlap`, so only a proven overlap is
+refused; the stability gate keeps the "may reach" cases preliminary. An
+output the reader's own `!` entries take back whole (`outputTakenBack`)
+does not count, nor do its own outputs. A group has no outputs and no
+key of its own, so the default build (`**`) is exempt. Each domain runs
+through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
+project check in milliseconds.
 
 ## What this does NOT do
 
@@ -232,8 +257,9 @@ stays a real one (item 980), and no edge names a task that left (C-71).
 `tests/output-collision.test.ts` covers the overlapping-output refusal:
 what is refused, the spellings that name one path (`./dist/**` against
 `dist/**`), the literal that is a whole tree (`dist` against
-`dist/app.js`) with the clean that proves it, the limit where the tree
-rule meets the undecided glob-vs-glob case, and the false-positive
+`dist/app.js`) with the clean that proves it, two globs a path built
+from them proves overlapping (`dist/*.js` against `dist/**/*.js` meet at
+`dist/x.js`, X-51) beside disjoint pairs of the same shapes, and the false-positive
 controls — the refusal aborts the run, so a widening breaks a build that
 works today. It also holds the path index: a row per way an index could
 miss a pair (a literal deep under a glob's head, a wildcard or brace in
@@ -241,6 +267,13 @@ the first segment, an escape in the head), the first refusal and the
 marks in all-pairs order, 3,000 random configs against the all-pairs
 loop, and a time bound at 4,000 tasks in one project that the old loop
 misses tenfold.
+
+`tests/input-overlap.test.ts` covers the input refusal: the exact
+message, each shape refused and loaded with the rule off, edge or no
+edge, both workspace domains, the `!` take-back and a partial one that
+is still refused, the exemptions (own outputs, uncached, group, the
+default build), a run refused and the same run with the rule off, a
+non-boolean value, and a time bound at 4,000 tasks.
 
 ## Replacing this module
 

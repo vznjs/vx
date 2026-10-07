@@ -776,4 +776,54 @@ describe('exec.persistent (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // X-59: a fully cached second run booted the server and waited ~2 s for it.
+  it(
+    'a server only cached dependants pulled in is not started when they all hit; a miss still waits for it',
+    async () => {
+      await addProject(fixture.root, 'api', {
+        config: `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: 'echo boot >> ../../boots.log; sleep 0.3; touch up; echo READY; exec sleep 30',
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const web = await addProject(fixture.root, 'web', {
+        deps: { api: 'workspace:*' },
+        files: { 'src/a.ts': 'a\n' },
+        config: `
+          export default {
+            tasks: {
+              e2e: {
+                dependsOn: ['api#dev'],
+                exec: { command: 'test -f ../api/up && echo ran >> ../../e2e.log' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const boots = async () => (await Bun.file(`${fixture.root}/boots.log`).text()).split('\n')
+      const go = async () => {
+        await rm(path.join(fixture.root, 'packages/api/up'), { force: true })
+        const r = await run({ cwd: fixture.root, tasks: ['web#e2e'], log: silentLogger(fixture) })
+        return { ok: r.ok, outcomes: r.outcomes.map((o) => `${o.node.id} ${o.status}`) }
+      }
+      expect(await go()).toEqual({ ok: true, outcomes: ['api#dev success', 'web#e2e success'] })
+      expect(await go()).toEqual({ ok: true, outcomes: ['web#e2e cache-hit'] })
+      expect(await boots()).toEqual(['boot', ''])
+      await Bun.write(path.join(web, 'src/a.ts'), 'b\n')
+      expect(await go()).toEqual({ ok: true, outcomes: ['api#dev success', 'web#e2e success'] })
+      expect(await boots()).toEqual(['boot', 'boot', ''])
+      expect(await Bun.file(`${fixture.root}/e2e.log`).text()).toBe('ran\nran\n')
+    },
+    TIMEOUT,
+  )
 })

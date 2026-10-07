@@ -8,6 +8,7 @@ import {
   formatTaskAbortedLine,
   formatTaskBlock,
   formatTaskExecutedLine,
+  flakyNote,
   formatTaskHitLine,
   formatTaskSkippedLine,
 } from './framed-output.js'
@@ -165,8 +166,15 @@ export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
   out: StatusStream = process.stdout,
-  opts: { forceFloorMs?: number; coalesce?: boolean; tty?: boolean } = {},
+  opts: {
+    forceFloorMs?: number
+    coalesce?: boolean
+    tty?: boolean
+    /** The args after `--`: a requested task's `$ <command>` line shows them, as it ran. */
+    forwardArgs?: readonly string[]
+  } = {},
 ): DefaultLogger {
+  const forwardArgs = opts.forwardArgs ?? []
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
   // The price: chunks that interleaved at runtime get re-ordered (all
@@ -431,6 +439,10 @@ export function defaultLogger(
     (framesTerminal && holdsTerminal(node)) ||
     (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
+  const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
+    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)) +
+    flakyNote(outcome, colors)
+
   return {
     settle() {
       // The bus delivers one `run:end`, so the CLI's last word reaches here.
@@ -473,7 +485,7 @@ export function defaultLogger(
         killStatus()
         // Open the live frame: full task info even when the command
         // streams nothing (or the hit replays nothing).
-        emitLine(formatFrameOpen(node, colors))
+        emitLine(formatFrameOpen(node, colors, forwardArgs))
         return
       }
       // Bound a persistent task's output from its FIRST chunk. Waiting for
@@ -515,6 +527,7 @@ export function defaultLogger(
                   { stdout: tailText(t.out), stderr: tailText(t.err) },
                   { stdout: t.out.dropped, stderr: t.err.dropped },
                   colors,
+                  forwardArgs,
                 ),
               ),
             )
@@ -614,7 +627,16 @@ export function defaultLogger(
           return
         }
         if (framed && (stdout.length > 0 || stderr.length > 0)) {
-          emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
+          emitBlock(
+            formatTaskBlock(
+              node,
+              outcome,
+              { stdout, stderr, ...dropped },
+              colors,
+              true,
+              forwardArgs,
+            ),
+          )
           return
         }
         // Otherwise a row in the task list, in every view that lists a
@@ -697,25 +719,45 @@ export function defaultLogger(
           return
         }
         case 'errors-only':
+          if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            return
+          }
           if (outcome.status !== 'failed') return
-          emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+          emitLine(failureRow(node, outcome))
           deferredFailures.push(
-            formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+            formatTaskBlock(
+              node,
+              outcome,
+              { stdout, stderr, ...dropped },
+              colors,
+              false,
+              forwardArgs,
+            ),
           )
           return
         case 'broad':
-          // News only: executed work gets a one-liner, failures get
-          // the full frame. Hits (including up-to-date) are silent —
+          // News only: executed work and skips get a one-liner, failures
+          // get the full frame. Hits (including up-to-date) are silent —
           // their replay buffers are deliberately dropped; the counts
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
             // ◼ row now; the full frame replays at runEnd.
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+            emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+              formatTaskBlock(
+                node,
+                outcome,
+                { stdout, stderr, ...dropped },
+                colors,
+                false,
+                forwardArgs,
+              ),
             )
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
+          } else if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
           }
           return
         case 'focused':
@@ -745,23 +787,48 @@ export function defaultLogger(
             // to runEnd like everywhere else; everything else emits
             // ONE atomic block from the buffered output.
             if (outcome.status === 'failed') {
-              emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+              emitLine(failureRow(node, outcome))
               deferredFailures.push(
-                formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+                formatTaskBlock(
+                  node,
+                  outcome,
+                  { stdout, stderr, ...dropped },
+                  colors,
+                  false,
+                  forwardArgs,
+                ),
               )
               return
             }
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
-            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
+            emitBlock(
+              formatTaskBlock(
+                node,
+                outcome,
+                { stdout, stderr, ...dropped },
+                colors,
+                true,
+                forwardArgs,
+              ),
+            )
             return
           }
-          // Dependency-pulled nodes: silent on success; failures get
-          // the ◼ row now and their frame replayed at runEnd.
-          if (outcome.status === 'failed') {
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
+          // Dependency-pulled nodes: silent on success; a skip gets its
+          // row, failures the ◼ row now and their frame replayed at runEnd.
+          if (outcome.status === 'skipped') {
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+          } else if (outcome.status === 'failed') {
+            emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+              formatTaskBlock(
+                node,
+                outcome,
+                { stdout, stderr, ...dropped },
+                colors,
+                false,
+                forwardArgs,
+              ),
             )
           }
           return
@@ -780,7 +847,14 @@ export function defaultLogger(
             emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
             return
           }
-          const block = formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors)
+          const block = formatTaskBlock(
+            node,
+            outcome,
+            { stdout, stderr, ...dropped },
+            colors,
+            false,
+            forwardArgs,
+          )
           if (block.length === 0) return
           if (view.gha) {
             // The block is the task's own output — fenced, so a task that

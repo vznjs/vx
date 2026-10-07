@@ -236,6 +236,22 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
     )
   })
 
+  it('an exitCode or durationMs that is a number but no count is refused (X-11)', () => {
+    expect([
+      refusal({ ...ok, exitCode: Number.NaN }),
+      refusal({ ...ok, exitCode: 1.5 }),
+      refusal({ ...ok, exitCode: -1 }),
+      refusal({ ...ok, durationMs: Number.POSITIVE_INFINITY }),
+      refusal({ ...ok, exitCode: 2 }),
+    ]).toEqual([
+      says('exitCode is NaN (expected a non-negative integer)'),
+      says('exitCode is 1.5 (expected a non-negative integer)'),
+      says('exitCode is -1 (expected a non-negative integer)'),
+      says('durationMs is Infinity (expected a non-negative number)'),
+      'ACCEPTED',
+    ])
+  })
+
   it('a result that is not an object at all is refused before any field is read', () => {
     // `null` is the arm that would otherwise throw a TypeError on the first
     // property read — the internal error this function exists to replace.

@@ -90,8 +90,8 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
   if (leaks.length > 0) {
     process.stderr.write(
       `vx lock: ${LOCKFILE_NAME} is committed, and these configs evaluated to a secret value:\n` +
-        leaks.map((l) => `  ${l}\n`).join('') +
-        `let the shell expand it ($API_TOKEN in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n`,
+        leaks.map((l) => `  ${l.at}\n`).join('') +
+        `let the shell expand it ($${leaks[0]!.name} in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n`,
     )
     return 1
   }
@@ -111,7 +111,7 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
  * such a value would be published, and masking it would freeze a `***`
  * that `--frozen` runs (L-42).
  */
-function secretsIn(projects: Record<string, LockfileEntry>): string[] {
+function secretsIn(projects: Record<string, LockfileEntry>): Array<{ at: string; name: string }> {
   const named = new Set<string>()
   for (const entry of Object.values(projects)) {
     for (const task of Object.values(entry.config.tasks ?? {}))
@@ -123,11 +123,11 @@ function secretsIn(projects: Record<string, LockfileEntry>): string[] {
       secrets.push([value, name])
   }
   if (secrets.length === 0) return []
-  const found: string[] = []
+  const found: Array<{ at: string; name: string }> = []
   const walk = (project: string, at: string, v: unknown): void => {
     if (typeof v === 'string') {
       for (const [value, name] of secrets)
-        if (v.includes(value)) found.push(`${project}: ${at} holds $${name}`)
+        if (v.includes(value)) found.push({ at: `${project}: ${at} holds $${name}`, name })
     } else if (Array.isArray(v)) {
       v.forEach((x, i) => walk(project, `${at}[${i}]`, x))
     } else if (v !== null && typeof v === 'object') {

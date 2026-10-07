@@ -13,12 +13,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
-import { minimatchToVx } from '../glob-grammar.js'
+import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileOutput,
   ownFileTodo,
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
@@ -1259,6 +1261,11 @@ export async function mapTurboWorkspace(
       if (override === null) continue
       const script = scripts[name]
       const noop = keyOnly.get(meta.name)?.has(name) === true
+      // Core gives a project with no `build` this very node (a group behind
+      // `^build`, keyed on the project's files), so writing it is noise:
+      // solid's three script-less packages each got a `build` running `true`.
+      if (noop && name === 'build' && (defFor(name)!.dependsOn ?? []).every((d) => d === '^build'))
+        continue
       if (
         override === undefined &&
         script === undefined &&
@@ -1370,7 +1377,7 @@ export async function mapTurboWorkspace(
         npmScriptEnv(mapped.task, name, command === script, meta, opts)
       tasks.push(mapped)
     }
-    resolveSharedOutputs(tasks)
+    excludeSiblingOutputs(resolveSharedOutputs(tasks))
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 
@@ -1393,6 +1400,7 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
+  excludeWorkspaceOutputs(root, projects)
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1951,8 +1959,9 @@ function buildTask(
       wsFiles.unshift(...files.splice(0))
       wsOutFiles.unshift(...outFiles.splice(0))
     }
-    const inputs: Record<string, unknown> = { files }
-    if (wsFiles.length > 0) inputs.workspaceFiles = uniq(wsFiles, hidden('inputs'))
+    const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
+    if (wsFiles.length > 0)
+      inputs.workspaceFiles = withoutTakenBack(uniq(wsFiles, hidden('inputs')))
     if (cacheEnv.length > 0) inputs.env = cacheEnv
     if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
     if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]

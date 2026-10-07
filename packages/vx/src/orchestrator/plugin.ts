@@ -167,10 +167,10 @@ export interface VxPlugin {
   /**
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
-   * Precedence: first non-undefined plugin cache wins, in declaration
-   * order, ahead of core's own `.vx/cache` handle at the tail. A layer
-   * that WRAPS the local handle subsumes that tail, so it is not written
-   * twice.
+   * Every contributed layer is kept and chained in declaration order,
+   * ahead of core's own `.vx/cache` handle at the tail: a lookup walks
+   * them until one hits, a save reaches each. A layer that WRAPS the local
+   * handle subsumes that tail, so it is not written twice.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 
@@ -294,7 +294,11 @@ export interface ProjectHookContext extends BaseContext {
 }
 
 export interface GraphHookContext extends BaseContext {
-  /** Task ids the user asked for (the rest were pulled in by `dependsOn`). */
+  /**
+   * Task ids the user asked for (the rest were pulled in by `dependsOn`).
+   * Under `--affected` this is every candidate: the selection reads the
+   * graph the hooks leave and cuts it down afterwards.
+   */
   readonly requested: readonly string[]
 }
 
@@ -445,7 +449,17 @@ function pluginPackageName(dir: string): string {
       /* not here; look one level up */
     }
     if (text !== undefined) {
-      const name = (JSON.parse(text) as { name?: unknown }).name
+      // A bare JSON.parse reached the user as a SyntaxError and a stack,
+      // naming no file (X-20).
+      let pkg: { name?: unknown } | null
+      try {
+        pkg = JSON.parse(text) as { name?: unknown } | null
+      } catch (err) {
+        throw new UserError(
+          `definePlugin: failed to parse ${path.join(d, 'package.json')}: ${(err as Error).message}`,
+        )
+      }
+      const name = pkg?.name
       if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,

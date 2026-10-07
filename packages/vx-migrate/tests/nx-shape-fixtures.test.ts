@@ -86,7 +86,7 @@ async function migrate(shape: string): Promise<{
     )
     await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
     await symlink(CORE_PKG, path.join(root, 'node_modules', '@vzn', 'vx'), 'dir')
-    const proc = Bun.spawn([process.execPath, BIN, '--from', 'nx'], {
+    const proc = Bun.spawn([process.execPath, BIN, '--no-install', '--from', 'nx'], {
       cwd: root,
       env: { ...process.env, NO_COLOR: '1' },
       stdout: 'pipe',
@@ -113,6 +113,9 @@ async function migrate(shape: string): Promise<{
     }
     // Every written task plans: a config that loads can still be refused
     // when core builds the graph (a cycle, P2-22; a dropped key, P2-23).
+    // The written workspace file imports plugins this fixture never
+    // installs (--no-install); the configs are the subject here.
+    await rm(path.join(root, 'vx.workspace.ts'), { force: true })
     await writeFile(path.join(root, '.gitignore'), 'node_modules\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })

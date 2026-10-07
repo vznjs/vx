@@ -25,6 +25,7 @@
 // price is no live progress within a task. This matches Turbo's
 // `--ui=stream` mode.
 
+import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
@@ -82,6 +83,7 @@ export function formatTaskBlock(
   // tasks set this so a requested task's frame is identical whether it
   // ran or was cached — you asked for it, you see what it would run.
   forceCommand = false,
+  forwardArgs: readonly string[] = [],
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
   // organizational nodes the user wrote so a `vx run ci` invocation
@@ -105,11 +107,7 @@ export function formatTaskBlock(
   if (forceCommand || outcome.status === 'success' || outcome.status === 'failed') {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
-    lines.push(
-      '',
-      corner(`$ ${maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)}`),
-      '',
-    )
+    lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
   pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
@@ -344,22 +342,42 @@ function formatOutcomeRow(
 ): string {
   const st = statusOf(o)
   const ca = cacheOf(o)
-  return formatTaskRow(
-    taskGlyph(o, colors),
-    ms,
-    st.word,
-    st.color,
-    ca.word,
-    ca.color,
-    paintedId,
-    colors,
+  return (
+    formatTaskRow(
+      taskGlyph(o, colors),
+      ms,
+      st.word,
+      st.color,
+      ca.word,
+      ca.color,
+      paintedId,
+      colors,
+    ) + flakyNote(o, colors)
   )
 }
 
 /**
+ * The dim note a flaky task's row and frame carry (`flaky - failed 1×
+ * before`): nothing prints below the footer, so the task's own line is
+ * where the reader learns it. '' when the run did not prove it flaky.
+ */
+export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
+  if (o.flaky === undefined) return ''
+  const said: string[] = []
+  if (o.status === 'failed' && o.flaky.passes > 0)
+    said.push(`passed ${o.flaky.passes}\u00d7 before`)
+  if (o.status !== 'failed' && o.flaky.failures > 0) {
+    said.push(`failed ${o.flaky.failures}\u00d7 before`)
+  }
+  if ((o.attempts ?? 1) > 1) said.push(`${o.attempts} attempts`)
+  const text = said.length === 0 ? 'flaky' : `flaky - ${said.join(' \u00b7 ')}`
+  return ` ${paint('', text, colors, { dim: true })}`
+}
+
+/**
  * Compact one-liner for a skipped task — it never ran (blank time). The
- * blocker rides the row (`• blocked by lib#build`): the footer's Skipped
- * section groups the same fact, but the row is where the reader's eye is.
+ * blocker rides the row (`• blocked by lib#build`): nothing prints below
+ * the footer, so the row is where the reader learns what blocked it.
  */
 export function formatTaskSkippedLine(
   node: TaskNode,
@@ -424,9 +442,13 @@ export function formatTaskAbortedLine(
  * formatTaskBlock, but emitted in real time around the live stream
  * instead of buffered.
  */
-export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
+export function formatFrameOpen(
+  node: TaskNode,
+  colors: ColorSupport = NO_COLOR,
+  forwardArgs: readonly string[] = [],
+): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const cmd = maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)
+  const cmd = shownCommand(node, forwardArgs)
   const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
@@ -472,6 +494,15 @@ export function formatFrameClose(
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
 
+/** What ran: a requested task gets the args after `--`, as execute-task.ts appends them. */
+function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
+  const exec = node.config.exec
+  return maskedCommand(
+    withForwardArgs(exec?.command ?? '', node.requested ? forwardArgs : []),
+    exec?.env,
+  )
+}
+
 function isPersistentNode(node: TaskNode): boolean {
   return node.config.exec?.persistent !== undefined
 }
@@ -492,11 +523,12 @@ export function formatPersistentTailBlock(
   body: TaskBlockBody,
   dropped: { stdout?: number; stderr?: number } = {},
   colors: ColorSupport = NO_COLOR,
+  forwardArgs: readonly string[] = [],
 ): string {
   const stdout = body.stdout ?? ''
   const stderr = body.stderr ?? ''
   if (stdout.trim().length === 0 && stderr.trim().length === 0) return ''
-  const lines: string[] = [formatFrameOpen(node, colors)]
+  const lines: string[] = [formatFrameOpen(node, colors, forwardArgs)]
   pushStreamSection(lines, stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0, colors)
   pushStreamSection(lines, stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0, colors)
   lines.push(formatFrameClose(node, outcome, colors))
@@ -564,7 +596,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // formatStatusTag.
   const dur = paint('', `(${formatDuration(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
-  return ` ${dur} ${tag}`
+  return ` ${dur} ${tag}${flakyNote(o, colors)}`
 }
 
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {

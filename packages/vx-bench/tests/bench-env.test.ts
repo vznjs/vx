@@ -23,3 +23,7 @@ it('a child spawned with it sees no BUN_OPTIONS', () => {
   })
   expect(p.stdout.toString()).toBe('unset')
 })
+
+it("keeps vx's whole cache in the workspace, where a wipe makes the next run cold", () => {
+  expect(benchEnv()['VX_CACHE_DIR']).toBe('.vx/cache')
+})

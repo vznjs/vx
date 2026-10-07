@@ -1,5 +1,6 @@
 import { constants, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import {
@@ -13,6 +14,7 @@ import {
   normalizeBunGlob,
 } from '../util/index.js'
 import { type LoadReads, readOnce, unreadable } from './load-reads.js'
+import { repoIdOf } from './repo-id.js'
 
 export interface PackageJson {
   name: string
@@ -72,7 +74,9 @@ const decoder = new TextDecoder()
  * `^task` edges vanish, upstream hashes drop out of the cache key (stale
  * hits), and a second cache dir appears under the member. Claiming is decided
  * with the same globs `loadWorkspace` applies, so "the root that claims me"
- * and "the root that lists me as a project" cannot diverge.
+ * and "the root that lists me as a project" cannot diverge. An outer root
+ * that lists both the claimer and the claimed member outranks the claimer:
+ * from the claimer's own directory the walk reaches the outer root too.
  *
  * When no candidate claims `start` — a standalone package, or a subdirectory
  * of a single-project repo — the nearest candidate wins (the root itself IS
@@ -90,6 +94,9 @@ export async function findWorkspaceRoot(
   // The nearest manifest with workspace globs of its own, once passed: an
   // outer root claims the tree only by listing this directory itself.
   let inner: string | null = null
+  // The root that claims `start`, and the members it claimed it through.
+  let claimed: string | null = null
+  let members: string[] = []
   while (true) {
     let globs: string[] | null
     try {
@@ -103,12 +110,23 @@ export async function findWorkspaceRoot(
     }
     if (globs !== null) {
       nearest ??= dir
-      if (claimsMember(dir, inner === null ? below : [inner], globs)) return dir
+      if (claimed !== null) {
+        // An outer root that lists both the claimer and the member owns
+        // them: `packages/**` holding `packages/inner` (with `workspaces:
+        // ['sub']`) and `packages/inner/sub` resolved `sub` to `inner` and
+        // `inner` to the outer root, two roots and two keys for one tree.
+        if (claimsMember(dir, [claimed], globs) && claimsMember(dir, members, globs)) claimed = dir
+      } else if (claimsMember(dir, inner === null ? below : [inner], globs)) {
+        claimed = dir
+        members = inner === null ? [...below] : [inner]
+      }
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
       // while `apps/inner/pkgs/x` resolved to the inner one: two roots and
       // two caches for one tree (item 990). Already read: `reads` holds it.
-      if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) return dir
+      if ((await readOnce(reads, path.join(dir, 'pnpm-workspace.yaml'))) !== null) {
+        return claimed ?? dir
+      }
     }
     const parent = path.dirname(dir)
     if (parent === dir) break
@@ -124,6 +142,7 @@ export async function findWorkspaceRoot(
     if (inner === null && globs !== null && globs.length > 0) inner = dir
     dir = parent
   }
+  if (claimed !== null) return claimed
   if (nearest !== null) return nearest
   throw new UserError(
     `Could not find a workspace root in any parent of ${start} ` +
@@ -349,14 +368,38 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
 }
 
 /**
- * Resolve the cache directory for a workspace. Respects the user's
- * `defineWorkspace({ cacheDir })` override (relative to the workspace
- * root) and falls back to `.vx/cache` when no config is set.
+ * The workspace's own cache directory (index, history, memos): the
+ * workspace's `cacheDir`, else `VX_CACHE_DIR`, else `.vx/cache`, relative
+ * to the workspace root.
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
-  const rel = config?.cacheDir ?? path.join('.vx', 'cache')
+  const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
   return path.resolve(root, rel)
 }
+
+/**
+ * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
+ * Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06), so every checkout of
+ * the repository hits what another saved and no other repository shares
+ * it (`repoIdOf`). Null when the workspace names its cache (`cacheDir`,
+ * `VX_CACHE_DIR`): that directory then holds everything, as one
+ * workspace's alone. Null with no repository identity or no home.
+ */
+export async function resolveStoreRoot(
+  root: string,
+  config: WorkspaceConfig | null,
+): Promise<string | null> {
+  if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
+  // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
+  const home = process.env['HOME'] || homedir()
+  if (!path.isAbsolute(home)) return null
+  let id = repoIds.get(root)
+  if (id === undefined) repoIds.set(root, (id = repoIdOf(root)))
+  const resolved = await id
+  return resolved === null ? null : path.join(home, '.vx', resolved, 'cache')
+}
+
+const repoIds = new Map<string, Promise<string | null>>()
 
 /**
  * Read the workspace's package-glob list, supporting all common

@@ -1,12 +1,19 @@
 // Module contract. Cross-module imports must come through here; see
 // docs/design/module-isolation-2026-06.md and tests/module-boundaries.test.ts.
 
-export { buildIsolatedEnv, VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from './env.js'
+export {
+  buildIsolatedEnv,
+  packageManagerPath,
+  PM_EXEC_ENV,
+  VX_RUN_TASK_ENV,
+  VX_RUN_WORKSPACE_ENV,
+} from './env.js'
 export {
   runCommand,
   runPersistent,
   PersistentReadyError,
   withForwardArgs,
+  shellQuote,
   signalExitCode,
   exitSignal,
   type CaptureConfig,
@@ -39,6 +46,7 @@ export {
 export { bindableWrites, punchWalls } from './sandbox-binds.js'
 export { isLocalExecutor, localExecutor } from './local-executor.js'
 export { holdGroups, killTree, untilGroupsGone } from './kill-tree.js'
+export { sampleTrees } from './proc-sample.js'
 export {
   assertExecuteResult,
   executorFallback,

@@ -5,7 +5,7 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import { type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -25,14 +25,15 @@ import {
   type TaskOutcome,
 } from '../graph/index.js'
 import {
-  formatBytes,
   mark,
+  stageTimes,
   killGraceMs,
   MAX_TIMEOUT_MS,
   parseDuration,
   parseSize,
   printTimings,
   ulid,
+  isLiteralPattern,
   listed,
   nearest,
   UserError,
@@ -42,7 +43,7 @@ import {
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
-import type { OutputDirSnapshot } from './miss-save.js'
+import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
@@ -52,7 +53,7 @@ import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
+import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
@@ -85,13 +86,15 @@ import {
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
+import { probesAfterWrites } from './stable-keys.js'
 
 import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import { formatFlakySection, formatRunSummary, formatSkippedSection } from './summary.js'
-import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
+import { formatOutcomeTable, formatRunSummary } from './summary.js'
+import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
+import { createMissExplainer } from './miss-reason.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -294,6 +297,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
           coalesce: true,
           ...(options.tty === true ? { tty: true } : {}),
+          ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
         })
       : null
   const sink = options.log ?? terminal!
@@ -720,9 +724,13 @@ async function runOnBus(
     // but declines still pays — its answer is only knowable by asking.
     const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)
     if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
-      // Workspace identity (telemetry v2): one git spawn, paid only when a
-      // telemetry consumer can exist — a plain run never reaches here.
-      const wsIdentity = captureWorkspaceIdentity(workspaceRoot)
+      // Workspace identity (telemetry v2), paid only when a telemetry
+      // consumer can exist — a plain run never reaches here. The remote URL
+      // is the enumeration's `git var -l`: a spawn here cost ~4 ms.
+      const wsIdentity = captureWorkspaceIdentity(
+        workspaceRoot,
+        gitFilesCache.configValue('remote.origin.url'),
+      )
       runContextRecord = {
         runId,
         vxVersion: VERSION,
@@ -743,11 +751,18 @@ async function runOnBus(
         dirty: gitContext.dirty,
         ci: ciContext.ci,
         ciProvider: ciContext.provider,
+        ...(ciContext.runUrl !== undefined ? { ciRunUrl: ciContext.runUrl } : {}),
+        ...(ciContext.change !== undefined ? { ciChange: ciContext.change } : {}),
+        ...(ciContext.pipeline !== undefined ? { ciPipeline: ciContext.pipeline } : {}),
+        ...(ciContext.job !== undefined ? { ciJob: ciContext.job } : {}),
+        ...(ciContext.attempt !== undefined ? { ciAttempt: ciContext.attempt } : {}),
         host: hostContext.host,
         os: hostContext.os,
         arch: hostContext.arch,
         workspaceId: wsIdentity.id,
         workspaceName: wsIdentity.name,
+        ...(wsIdentity.repository !== undefined ? { repository: wsIdentity.repository } : {}),
+        ...(wsIdentity.path !== undefined ? { workspacePath: wsIdentity.path } : {}),
         tags: maskTags(options.tags ?? {}),
       }
       telemetry = await subscribeTelemetry(
@@ -756,6 +771,7 @@ async function runOnBus(
         { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
         runContextRecord,
         options.telemetrySinks,
+        nodes,
       )
     }
 
@@ -787,7 +803,7 @@ async function runOnBus(
     const saveLane = createSaveLane(2 * concurrency, (err) =>
       log.status(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
     )
-    const deferredSaves = new Map<string, Promise<void>>()
+    const deferredSaves = new Map<string, Promise<SaveFacts>>()
 
     // Focused flow: a requested GROUP has no output of its own, so
     // surface the same-project, non-group tasks it chains (one level)
@@ -909,6 +925,11 @@ async function runOnBus(
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
+    // Why a task missed, for a sink: a read of the history per miss, so only
+    // when a sink exists.
+    const explainMiss =
+      telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
+    const lateProbes = probesAfterWrites(nodes, workspaceRoot)
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
@@ -939,8 +960,11 @@ async function runOnBus(
         runStartHrTimeNs,
         persistentRegistry,
         liveChildren,
+        ...(telemetry?.track !== undefined ? { track: telemetry.track } : {}),
+        ...(explainMiss !== undefined ? { explainMiss } : {}),
         gitFilesCache,
         hashCache,
+        probesAfterWrites: lateProbes,
         ...(probe !== undefined ? { preProbed: probe } : {}),
         ...(upfrontKey !== undefined ? { upfrontKey } : {}),
         ...(tainted ? { taintedUpstream: true } : {}),
@@ -968,11 +992,30 @@ async function runOnBus(
         nestedDirsByProject,
         gitFilesCache,
         hashCache,
+        probesAfterWrites: lateProbes,
       },
       buildExecuteArgs,
     })
 
     mark('classify + probe')
+    // Judged as each task finishes, against the history BEFORE this run's
+    // rows land, so the row that prints next carries the verdict: nothing
+    // prints below the footer. A hit or a skip asks nothing; a green miss
+    // is one probe of the failed-row index.
+    const flaky: FlakyFinding[] = []
+    const historyDb = prepared.localCache.dbHandle()
+    const judgeFlaky = (o: TaskOutcome): void => {
+      const candidates = flakyCandidates([o])
+      if (candidates.length === 0) return
+      try {
+        const found = detectFlaky(historyDb, candidates)[0]
+        if (found === undefined) return
+        flaky.push(found)
+        o.flaky = { passes: found.passes, failures: found.failures }
+      } catch {
+        // History is observability: an unreadable one judges nothing.
+      }
+    }
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -988,6 +1031,7 @@ async function runOnBus(
       },
       onFinish: (o) => {
         taint.settled(o)
+        judgeFlaky(o)
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
@@ -1069,9 +1113,8 @@ async function runOnBus(
     if (stillUp.length > 0) {
       for (const line of formatPersistentList(stillUp, colors)) log.status(line)
     }
-    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
     // A dependency-only server that died before the end of the graph
-    // stopped it: the footer counts it failed, this says why.
+    // stopped it: the footer below counts it failed, this says why.
     // A signal death is named as its exit code, as the keep-alive wait
     // names it: `code SIGTERM` read beside `code 143` for one event (item
     // 1102).
@@ -1079,20 +1122,11 @@ async function runOnBus(
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
       log.status(`vx: ${c.id} exited with code ${code} before the run stopped it`)
     }
-    // The footer's "N skipped" names no task; this names each under the
-    // failure that blocked it.
-    for (const line of formatSkippedSection(list)) log.status(line)
-    // Judged against the history BEFORE this run's rows land, so the query
-    // is one scan over the executed tasks' keys and nothing at all on a run
-    // that executed none (every hit, every skip).
-    const flaky = detectFlaky(prepared.localCache.dbHandle(), flakyCandidates(list))
-    for (const line of formatFlakySection(flaky)) log.status(line)
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
     // still remote.
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
-      log.status('')
       log.status(
         `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
       )
@@ -1104,6 +1138,9 @@ async function runOnBus(
     // Ctrl-C there is the process's exit, and the first write said ok.
     const summarize = async (runOk: boolean, final = list): Promise<void> => {
       if (options.summarize === undefined) return
+      // The rewrite after the keep-alive wait says nothing: the footer is
+      // the run's last word.
+      const quiet = final !== list
       try {
         const wrote = await writeRunSummary({
           target: options.summarize,
@@ -1118,7 +1155,7 @@ async function runOnBus(
           outcomes: final,
           flaky,
         })
-        log.status(`vx: summary written to ${wrote}`)
+        if (!quiet) log.status(`vx: summary written to ${wrote}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         log.status(`vx: failed to write summary: ${msg}`)
@@ -1138,7 +1175,6 @@ async function runOnBus(
         log.status(`vx: failed to write profile: ${msg}`)
       }
     }
-
     // Record each task to the run history in a single SQLite transaction
     // (one fsync instead of N), with the invocation header row alongside,
     // atomically via recordRunBundle. The Tier-3 input-fingerprint rows
@@ -1146,59 +1182,49 @@ async function runOnBus(
     // entry's save transaction (miss path only), so a warm all-cache-hit
     // run does no extra recording work. The telemetry mirror is built in
     // the same pass, only when a sink is active.
-    const records = assembleRunRecords({
-      outcomes: list,
-      runId,
-      startedAtMs: endedAtMsAtStart,
-      endedAtMs,
-      totalMs,
-      ok,
-      // The invocation is stored and `vx last` prints it: a secret passed
-      // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
-      // own output masks it, so cache.db holds no plaintext value.
-      command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
-      requestedTasks: options.tasks,
-      cachePolicy: compactCachePolicy(policy),
-      concurrency,
-      flow: options.flow ?? null,
-      forwardArgs: options.forwardArgs,
-      tags: maskTags(options.tags ?? {}),
-      git: gitContext,
-      ci: ciContext,
-      host: hostContext,
-      withTelemetry: telemetry !== undefined,
-    })
-    try {
-      if (stoppedBy === undefined) cache.recordRunBundle(records)
-    } catch (err) {
-      // History is observability: a full cache disk at the very end must
-      // not turn a finished run's verdict into a stack and exit 1 (seen as
-      // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
-      // what happened; `vx last` and the flaky list will not know this one.
-      const message = err instanceof Error ? err.message : String(err)
-      log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
-    }
-    mark('record history')
-    // Hand the per-run summary to the telemetry sinks + drain them. Only
-    // when a sink is active (telemetry !== undefined) — otherwise this
-    // whole block is skipped and the run is byte-identical to before.
-    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
-    // the run; flush is the sink's last chance to ship buffered records.
-    if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
-        startedAt: endedAtMsAtStart,
-        endedAt: endedAtMs,
-        totalDurationMs: Math.round(totalMs),
-        exitOk: ok,
-        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+    const recordsOf = (final: TaskOutcome[], runOk: boolean) =>
+      assembleRunRecords({
+        outcomes: final,
+        runId,
+        startedAtMs: endedAtMsAtStart,
+        endedAtMs,
+        totalMs,
+        ok: runOk,
+        // The invocation is stored and `vx last` prints it: a secret passed
+        // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
+        // own output masks it, so cache.db holds no plaintext value.
+        command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
+        requestedTasks: options.tasks,
+        cachePolicy: compactCachePolicy(policy),
+        concurrency,
+        flow: options.flow ?? null,
+        forwardArgs: options.forwardArgs,
+        tags: maskTags(options.tags ?? {}),
+        git: gitContext,
+        ci: ciContext,
+        host: hostContext,
+        withTelemetry: telemetry !== undefined,
       })
-      telemetry.emitSummary(summary)
-      await telemetry.flush()
+    const records = recordsOf(list, ok)
+    const recordHistory = (write: () => void): void => {
+      try {
+        write()
+      } catch (err) {
+        // History is observability: a full cache disk at the very end must
+        // not turn a finished run's verdict into a stack and exit 1 (seen as
+        // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
+        // what happened; `vx last` and the flaky list will not know this one.
+        const message = err instanceof Error ? err.message : String(err)
+        log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
+      }
     }
-    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
-    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
-    // fail nor hang the run. Here on the normal path, after the drains
-    // below; every other exit takes it through `teardown` too.
+    // A server kept in the foreground can still fail the run after the
+    // cache closes: its history is written once the wait has decided, or it
+    // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
+    const historyAfterWait = keepAlive.children.length > 0 && !hold && stoppedBy === undefined
+    if (stoppedBy === undefined && !historyAfterWait)
+      recordHistory(() => cache.recordRunBundle(records))
+    mark('record history')
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -1221,6 +1247,30 @@ async function runOnBus(
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
+    // Hand the per-run summary to the telemetry sinks + drain them. Only
+    // when a sink is active (telemetry !== undefined) — otherwise this
+    // whole block is skipped and the run is byte-identical to before.
+    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
+    // the run; flush is the sink's last chance to ship buffered records.
+    // After the drain, so the summary says what the uploads moved; a live
+    // sink's task records went out as each task ended.
+    if (telemetry !== undefined && runContextRecord !== undefined) {
+      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
+        startedAt: endedAtMsAtStart,
+        endedAt: endedAtMs,
+        totalDurationMs: Math.round(totalMs),
+        exitOk: ok,
+        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+        stages: stageTimes(),
+        uploads: prepared.localCache.uploads,
+      })
+      telemetry.emitSummary(summary)
+      await telemetry.flush()
+    }
+    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
+    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
+    // fail nor hang the run. Here on the normal path, after the drains
+    // above; every other exit takes it through `teardown` too.
     // The miss path's output-directory snapshots, taken now that the
     // directories are old enough for the snapshot's racy window (see
     // miss-save.ts). A few at a time: each is an lstat + readdir per
@@ -1249,7 +1299,7 @@ async function runOnBus(
     mark('output dir snapshots')
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
-    if (!stopRun.signal.aborted) await applyCacheRetention(prepared, log)
+    if (!stopRun.signal.aborted) await applyCacheRetention(prepared)
     // A plugin hears the run until its teardown and nothing after: released
     // only in the finally, its handlers heard a kept server through the
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
@@ -1273,9 +1323,17 @@ async function runOnBus(
       }
     }
 
+    // The footer is the run's last word (owner, 2026-10-06): it prints once
+    // the run's own work is done, history, uploads, plugin teardown and the
+    // sandbox reset included, so any warning they raise lands above it. A
+    // task's own facts (flaky, blocked) ride its row. Only a kept server's
+    // own output follows.
+    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every
-    // bookkeeping sense — summary printed, history recorded — but the
+    // bookkeeping sense — summary printed, the cache closed — but the
     // server is still up and that's the point. Stay in the foreground
     // until ONE of them exits: Ctrl-C hits the whole process group (the
     // server dies; our SIGINT handler also exits 130), and a crash ends
@@ -1336,6 +1394,16 @@ async function runOnBus(
       if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
       const final = [...outcomes.values()]
       await summarize(ok && first.code === 0, final)
+      if (historyAfterWait) {
+        recordHistory(() => {
+          const local = Cache.inspect(prepared.cacheDir)
+          try {
+            local.recordRunBundle(recordsOf(final, ok && first.code === 0))
+          } finally {
+            local.close()
+          }
+        })
+      }
       return { ok: ok && first.code === 0, outcomes: final }
     }
 
@@ -1377,10 +1445,10 @@ async function runOnBus(
 /**
  * The workspace's `cacheRetention`, after every save and upload of this run
  * has landed (so nothing this run wrote is mid-flight) and before the cache
- * closes. Housekeeping, not the run's work: a failure is one warning, never
+ * closes. Housekeeping, not the run's work: silent, and a failure is never
  * a failed run. Declared nowhere → one property read.
  */
-async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<void> {
+async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
   const retention = prepared.workspaceConfig?.cacheRetention
   if (retention === undefined) return
   // Validated at load (`validateRetention`), so both parse.
@@ -1388,26 +1456,12 @@ async function applyCacheRetention(prepared: PreparedRun, log: Logger): Promise<
     retention.olderThan === undefined ? undefined : parseDuration(retention.olderThan)!
   const maxBytes = retention.maxSize === undefined ? undefined : parseSize(retention.maxSize)!
   try {
-    const result = await prepared.localCache.evictIfDue({
+    await prepared.localCache.evictIfDue({
       ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
       ...(maxBytes !== undefined ? { maxBytes } : {}),
     })
-    if (result !== null && (result.evicted > 0 || result.orphans > 0)) {
-      const said: string[] = []
-      if (result.evicted > 0) {
-        said.push(
-          `evicted ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)})`,
-        )
-      }
-      if (result.orphans > 0) {
-        said.push(
-          `reaped ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`,
-        )
-      }
-      log.status(`vx: cache retention ${said.join(', ')}`)
-    }
-  } catch (err) {
-    log.status(`vx: cache retention skipped: ${err instanceof Error ? err.message : String(err)}`)
+  } catch {
+    // Housekeeping says nothing (owner): the next due run tries again.
   }
 }
 
@@ -1550,6 +1604,21 @@ function didYouMean(
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
+    // `//` is two edits from any two-letter name: it hinted `ui#build` (X-13).
+    if (proj === '//') {
+      lists.add(
+        "`//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task.",
+      )
+      continue
+    }
+    // `*` is one edit from any one-letter name and two from `ui`: `*#lint`
+    // hinted `ui#lint`, though the user meant every project.
+    if (!isLiteralPattern(proj) && !projects.has(proj)) {
+      lists.add(
+        `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
+      )
+      continue
+    }
     if (!projects.has(proj)) {
       const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
       if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)

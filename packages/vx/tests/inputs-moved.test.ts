@@ -8,7 +8,7 @@
 // before the fix.
 
 import { existsSync, lstatSync } from 'node:fs'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
@@ -24,6 +24,7 @@ import type { Logger, RunSummary } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 const MOVED = /changed after its key was taken/
@@ -453,6 +454,92 @@ describe('an input the user edits during the run', () => {
   )
 })
 
+// The key folds the files the listing held; a file ADDED under an input glob
+// while the command ran was read by it (`cat src/*`) and folded by nothing,
+// and the entry replayed it after the file was gone.
+describe('an input file added during the run', () => {
+  const ADDS = (cmd: string, files = "['src/**']") => `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; ${cmd}' },
+          cache: { inputs: { files: ${files} }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  const BUILD = 'mkdir -p dist; cat src/* src/*/* > dist/out.txt 2>/dev/null; true'
+
+  async function addedDuring(rel: string, config = ADDS(BUILD)): Promise<string> {
+    const app = await addProject(root, 'app', { config, files: { 'src/in.txt': 'hi\n' } })
+    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n*.log\n')
+    commit()
+    const pending = runTask('build')
+    await reached(path.join(app, 'started'))
+    await mkdir(path.dirname(path.join(app, rel)), { recursive: true })
+    await writeFile(path.join(app, rel), 'NEW\n')
+    await writeFile(path.join(app, 'go'), '')
+    await pending
+    return app
+  }
+
+  it(
+    'in a listed directory: the entry is withheld, naming the file, and the next run rebuilds',
+    async () => {
+      const app = await addedDuring('src/new.txt')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      ])
+      await rm(path.join(app, 'src', 'new.txt'))
+      await rm(path.join(app, 'dist'), { recursive: true, force: true })
+      const again = await runTask('build')
+      // Before the fix: a local hit restoring `hi NEW`.
+      expect(statusOf(again, 'app#build')).toBe('success')
+      expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('hi\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'in a directory created during the run: the entry is withheld',
+    async () => {
+      await addedDuring('src/sub/new.txt')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/src/sub/new.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a literal input absent when the key was taken: the entry is withheld',
+    async () => {
+      await addedDuring('extra.txt', ADDS(BUILD, "['src/**', 'extra.txt']"))
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#build: `packages/app/extra.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'control: an ignored file, or one no glob matches, added during the run is no move',
+    async () => {
+      const app = await addProject(root, 'app', {
+        config: ADDS(`touch src/x.log other.txt; ${BUILD}`),
+        files: { 'src/in.txt': 'hi\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n*.log\n')
+      commit()
+      await writeFile(path.join(app, 'go'), '')
+      await runTask('build')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('control: inputs an upstream wrote just before are not a move', () => {
   it(
     'a codegen consumer is saved on its first run and hits on its second',
@@ -480,6 +567,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')

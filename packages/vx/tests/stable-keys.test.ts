@@ -97,6 +97,16 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
       expect(writing(['types/**'], ['dist/**', 'types/**'])).toBe(false)
     })
 
+    it('an output its own `!` inputs take back whole does not reach it (X-54)', () => {
+      expect(gate(['**/*', '!dist/**'], declared(['dist/**']))).toBe(false)
+      expect(gate(['**/*', '!dist'], declared(['dist/**', 'dist']))).toBe(false)
+      expect(gate(['**/*', '!coverage/**'], declared(['coverage/lcov.info']))).toBe(false)
+      // CONTROL: a partial take-back, or one over another tree, still reaches.
+      expect(gate(['**/*', '!dist/*.js'], declared(['dist/**']))).toBe(true)
+      expect(gate(['**/*', '!dist/**'], declared(['dist/**', 'out/**']))).toBe(true)
+      expect(gate(['**/*'], declared(['dist/**']))).toBe(true)
+    })
+
     it('stays project-wide for undeclared writes, default inputs, or no declared outputs', () => {
       expect(gate(['src/**'], declared(['dist/**'], ['B']))).toBe(true)
       expect(gate(undefined, declared(['dist/**']))).toBe(true)

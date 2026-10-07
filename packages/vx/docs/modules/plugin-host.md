@@ -16,7 +16,10 @@ marks derived again) and a violation is reported against the last plugin
 that ran. Only the first two were checked until item 981: a plugin that
 dropped the edge between two overlapping outputs lost one task's files
 under a green run, and one that moved a node to another key crashed
-the scheduler with a raw TypeError.
+the scheduler with a raw TypeError. Before that, after EACH plugin,
+every entry must be an object whose `deps` is an array (X-15): a hook
+that set `deps = null` was refused as "null is not an object", naming
+neither the task nor the field.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved
@@ -90,9 +93,10 @@ holds the list to the file.
   contract's methods, a `key` return that is not a record of strings
   or names a part with a NUL (the fold's delimiter, A-57),
   a `schedule` return that is not a `Map`. A stage's edit is
-  re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`
-  and `applyProjectHooks`), so the refusal names the plugin whose edit
-  broke the config (H-13).
+  re-validated after EACH plugin (the `afterEach` of `applyConfigHooks`,
+  `applyProjectHooks` and `applyGraphHooks`, the last over each node's
+  task config), so the refusal names the plugin whose edit broke the
+  config (H-13).
 - A capability factory or stage that throws becomes a clean
   `UserError` naming the plugin and the hook: what a plugin does is
   load-bearing, never silently degraded (telemetry sinks are the

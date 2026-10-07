@@ -71,6 +71,21 @@ describe('loadProjectConfig', () => {
     expect(err?.message).toContain('Expected "}"')
   })
 
+  it('two syntax errors name the first one, not a stack', async () => {
+    // Bun throws an AggregateError of BuildMessages when a file has more
+    // than one, and it reached the user as a stack with no position (X-6).
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(file, 'export default {{\n')
+    const err = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect([err?.name, err?.message]).toEqual([
+      'UserError',
+      `Project config ${file}:1:17: Expected identifier but found "{"`,
+    ])
+  })
+
   it('a syntax error in an imported preset names the preset, not only the config', async () => {
     // The config itself is fine; the file that fails to parse is the one the
     // user has to open, and the config is the entry point they can find it from.

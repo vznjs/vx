@@ -14,6 +14,27 @@ const PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
+// What `import` generates from packages/vx/docs.
+const IMPORTED = [
+  'src/content/docs/architecture.md',
+  'src/content/docs/benchmarks.md',
+  'src/content/docs/caching.md',
+  'src/content/docs/cli.md',
+  'src/content/docs/comparison.md',
+  'src/content/docs/execution.md',
+  'src/content/docs/flows.md',
+  'src/content/docs/optimizations.md',
+  'src/content/docs/overview.md',
+  'src/content/docs/patterns.md',
+  'src/content/docs/schema.md',
+  'src/content/docs/modules/**',
+  'src/content/docs/design/**',
+]
+// A key reads no other task's outputs (`rules.upfrontKeys`, X-54): each
+// arrives through that task's key and `dependsOn`. All three are gitignored,
+// so no key read them before either.
+const NOT_GENERATED = [...IMPORTED, 'public/playground/planner.js', 'dist/**'].map((g) => `!${g}`)
+
 export default defineProject({
   tasks: {
     ci: {
@@ -81,7 +102,7 @@ export default defineProject({
       dependsOn: ['install'],
       cache: {
         inputs: {
-          files: ['**/*'],
+          files: ['**/*', ...NOT_GENERATED],
         },
         outputs: { files: [] },
       },
@@ -114,23 +135,7 @@ export default defineProject({
           files: ['scripts/import-docs.ts'],
           workspaceFiles: ['packages/vx/docs/**'],
         },
-        outputs: {
-          files: [
-            'src/content/docs/architecture.md',
-            'src/content/docs/benchmarks.md',
-            'src/content/docs/caching.md',
-            'src/content/docs/cli.md',
-            'src/content/docs/comparison.md',
-            'src/content/docs/execution.md',
-            'src/content/docs/flows.md',
-            'src/content/docs/optimizations.md',
-            'src/content/docs/overview.md',
-            'src/content/docs/patterns.md',
-            'src/content/docs/schema.md',
-            'src/content/docs/modules/**',
-            'src/content/docs/design/**',
-          ],
-        },
+        outputs: { files: IMPORTED },
       },
     },
 
@@ -144,7 +149,7 @@ export default defineProject({
     // Two rows read across project boundaries through packages this one
     // links (package.json), whose keys arrive through `install`
     // (`^build` folds each linked package's `source`, item 687): the CI
-    // guide's job summary is rendered by `@vzn/vx-github`, and the plugins
+    // guide's job summary is rendered by `@vzn/vx-ci`, and the plugins
     // guide's snippets type-check against `@vzn/vx-schedule-history`.
     test: {
       description:
@@ -152,12 +157,13 @@ export default defineProject({
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test --only-failures',
+        env: { define: { VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: [
               '**/*',
               '../vx/src/**',
-              '../vx-github/src/**',
+              '../vx-ci/src/**',
               '../vx-schedule-history/src/**',
               ...PROOFS.map((p) => `../${p.slice('packages/'.length)}`),
             ],
@@ -193,6 +199,7 @@ export default defineProject({
             'astro.config.*',
             '.gitignore',
             'package.json',
+            ...NOT_GENERATED,
           ],
           workspaceFiles: PROOFS,
         },
@@ -279,7 +286,7 @@ export default defineProject({
         // root — a path that stopped existing when core moved under
         // `packages/`, so a docs edit never re-keyed the build.
         inputs: {
-          files: ['**/*'],
+          files: ['**/*', ...NOT_GENERATED],
         },
         outputs: { files: ['dist/**'] },
       },

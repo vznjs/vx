@@ -26,7 +26,7 @@ import {
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import { criticalPathPriorities } from './critical-path.js'
-import { renderHistory, type HistoryRow } from './history-view.js'
+import type { HistoryRow } from './history-view.js'
 
 export { criticalPathPriorities } from './critical-path.js'
 
@@ -415,6 +415,8 @@ async function historyCmd(
     process.stdout.write(`${JSON.stringify({ window, budgets, tasks: rows })}\n`)
     return 0
   }
+  // The table's module loads with the verb, off every run's path.
+  const { renderHistory } = await import('./history-view.js')
   process.stdout.write(renderHistory(rows, window, budgets, usable(options.memory)))
   return 0
 }

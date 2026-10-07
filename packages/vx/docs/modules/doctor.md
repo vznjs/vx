@@ -39,8 +39,10 @@ denies, else null). See
 
 - **The task count is the run's.** It comes from the same staged load a
   run uses (`loadProjects`, plugin `project` stage applied); a config
-  that fails to load counts as zero and never fails the doctor — and is
-  named in `configErrors`, with the loader's message, because a `0
+  that fails to load counts as zero and never fails the doctor — the
+  rest then load one project at a time through the same `loadProjects`,
+  so a plugin's tasks still count — and is named in `configErrors`, with
+  the message `vx run` stops on, because a `0
 tasks` that hides a typo is the fact a bug report needs.
 - **The machine as the process may use it.** `workers` and `memory` read
   `util/cgroup.ts`, so inside a container they say what the cgroup

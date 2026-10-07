@@ -526,7 +526,7 @@ describe('Cache.key', () => {
     // @ts-expect-error: private member access for testing
     const db = cache.db as Database
     const salt = (
-      db.query("SELECT value FROM schema_meta WHERE key = 'value_salt'").get() as {
+      db.query("SELECT value FROM store_meta WHERE key = 'value_salt'").get() as {
         value: string
       }
     ).value
@@ -3128,11 +3128,11 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 })
 
 // nx#35403: artifacts copied into a cache directory without the index that
-// named them failed the run. The index is authoritative (caching.md): an
-// artifact with no row is never a hit, and the save that follows replaces
-// it and indexes it.
+// named them failed the run. The artifact is the record and the index only
+// its inventory (owner, 2026-10-06): an artifact with no row is indexed from
+// its own bytes and hits.
 describe('an artifact on disk with no index row, through a run', () => {
-  it('is a silent miss; the task runs, the save takes the file over, and the next run hits', async () => {
+  it('is indexed from its bytes and hits, restoring its outputs', async () => {
     const root = await makeWorkspace({ prefix: 'vx-rowless-' })
     try {
       await addProject(root, 'app', {
@@ -3171,9 +3171,12 @@ describe('an artifact on disk with no index row, through a run', () => {
       await rm(path.join(root, 'packages', 'app', 'dist'), { recursive: true })
 
       lines.length = 0
-      expect(await once()).toEqual({ ok: true, statuses: ['success'] })
+      expect(await once()).toEqual({ ok: true, statuses: ['cache-hit'] })
       // Notices, not the summary block every run prints.
       expect(lines.filter((l) => /^\[?vx[\]:]/.test(l))).toEqual([])
+      expect(await readFile(path.join(root, 'packages', 'app', 'dist', 'out.txt'), 'utf8')).toBe(
+        'a1\n',
+      )
       expect(await artifacts()).toEqual([artifact!])
       expect(await once()).toEqual({ ok: true, statuses: ['cache-hit'] })
       const { Database: Db } = await import('bun:sqlite')

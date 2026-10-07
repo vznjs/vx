@@ -5,6 +5,8 @@ import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   ABSENT_INPUT,
   absentOr,
+  addedInput,
+  type InputListing,
   type CacheKeyInput,
   type CacheLayer,
   FILE_HASH_RACY_MS,
@@ -88,6 +90,12 @@ export interface ComputeHashArgs {
    * site, so the recorded set can't drift from the key.
    */
   captureInto?: TaskInputComponent[]
+  /**
+   * The run's tasks whose runtime probes may read an upstream's writes
+   * (`probesAfterWrites`): such a task's probes are answered for it alone,
+   * after its upstream ran, never from the run's shared memo.
+   */
+  probesAfterWrites?: ReadonlySet<string>
 }
 
 /**
@@ -105,7 +113,7 @@ export interface ComputeHashArgs {
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   const end = span('task hash')
   try {
-    return await args.cache.key(await resolveKeyInput(args))
+    return await args.cache.key((await resolveKeyInput(args)).input)
   } finally {
     end()
   }
@@ -132,11 +140,16 @@ export interface InputFact {
  * same sources as the fold: the index-OID map for clean tracked files,
  * else `hashFile`'s stat memo (already warm after `key()`).
  */
-export async function describeTaskInputs(
-  args: ComputeHashArgs,
-): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[]; describedAt: number }> {
+export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
+  hash: string
+  inputs: TaskInputs
+  facts: InputFact[]
+  describedAt: number
+  /** An input file the key did not fold that exists now (see `addedInput`). */
+  added: () => string | undefined
+}> {
   const hashedAt = Date.now()
-  const input = await resolveKeyInput(args)
+  const { input, listings } = await resolveKeyInput(args)
   const hash = await args.cache.key(input)
   const sorted = [...input.inputFiles].sort()
   const digests = await Promise.all(
@@ -188,10 +201,14 @@ export async function describeTaskInputs(
     })
   }
   let upstream: TaskInputs['upstream'] | undefined
+  // A listing from the run's enumeration is as old as it; one listed with
+  // no run cache was listed during this describe.
+  const listedAt = args.gitFilesCache === undefined ? hashedAt : indexedAt
   return {
     hash,
     facts,
     describedAt: hashedAt,
+    added: () => addedInput(listings, new Set(input.inputFiles), listedAt),
     inputs: {
       files,
       env: input.envValues.map(([name, value]) => ({ name, value })),
@@ -254,7 +271,9 @@ export async function movedInput(
   return undefined
 }
 
-async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
+async function resolveKeyInput(
+  args: ComputeHashArgs,
+): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
   const cfg = args.node.config
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const outputs = cacheCfg?.outputs.files ?? []
@@ -268,6 +287,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.probesAfterWrites?.has(args.node.id) === true ? { runtimeScope: args.node.id } : {}),
     ...(args.hashCache !== undefined
       ? {
           runtimeCache: args.hashCache.runtime,
@@ -320,7 +340,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
 
   const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
 
-  return {
+  const input: CacheKeyInput = {
     taskId: args.node.id,
     taskConfigHash,
     projectPackageJsonHash,
@@ -338,6 +358,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
     ...(args.node.keyParts !== undefined ? { pluginParts: args.node.keyParts } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
+  return { input, listings: resolved.listings }
 }
 
 /**

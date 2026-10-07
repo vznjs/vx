@@ -1,10 +1,11 @@
 import os from 'node:os'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { describe, expect, it } from 'bun:test'
 import {
   buildIsolatedEnv,
   ESSENTIAL_ENV,
+  PM_EXEC_ENV,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
 } from '../src/exec/env.js'
@@ -361,5 +362,61 @@ describe('what a task sees of the host environment, end to end', () => {
       }
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+// solidjs/solid's `npm-run-all -nl build:*` calls back the manager named by
+// `npm_execpath` and falls back to a global `npm` without it (owner,
+// 2026-10-06). vx hands every task the workspace's own manager.
+describe('npm_execpath', () => {
+  const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  const probe = (env = '') => `
+    export default {
+      tasks: {
+        probe: {
+          exec: {
+            command: "node -e 'require(\\"fs\\").writeFileSync(\\"seen.txt\\", String(process.env.npm_execpath))'",
+            ${env}
+          },
+        },
+      },
+    }
+  `
+  async function seen(pm: string | undefined, config: string): Promise<[string, string]> {
+    const root = await makeWorkspace({ prefix: 'vx-env-pm-' })
+    try {
+      if (pm !== undefined) {
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'r', private: true, packageManager: pm }),
+        )
+      }
+      const bin = path.join(root, 'node_modules', '.bin')
+      await mkdir(bin, { recursive: true })
+      const stub = path.join(bin, 'pnpm')
+      await writeFile(stub, '#!/bin/sh\n')
+      await chmod(stub, 0o755)
+      const dir = await addProject(root, 'app', { config })
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      return [await Bun.file(path.join(dir, 'seen.txt')).text(), stub]
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('is the workspace manager found on its node_modules/.bin', async () => {
+    const [value, stub] = await seen('pnpm@9.15.0', probe())
+    expect([PM_EXEC_ENV, value]).toEqual(['npm_execpath', stub])
+  })
+
+  it('a task that defines it keeps its own', async () => {
+    const [value] = await seen('pnpm@9.15.0', probe("env: { define: { npm_execpath: 'mine' } },"))
+    expect(value).toBe('mine')
+  })
+
+  it('a workspace that names no manager sets none', async () => {
+    const [value] = await seen(undefined, probe())
+    expect(value).toBe('undefined')
   })
 })

@@ -105,7 +105,9 @@ projects and their dependents, the candidates (#446) — put first in
 `filterStrings` before `resolveFilters` runs, which keeps that filter's
 diff per path (`affectedChanges`) as `RunOptions.affected`; `prepare`
 then keeps a bare request only when the diff reaches its `dependsOn`
-closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). The no-value form takes
+closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). With a
+`graph` plugin the candidates are every project once anything changed:
+the plugin's edges exist only in the run's graph. The no-value form takes
 the workspace's `affectedBase` (a plugin's `config` stage may set it),
 else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
 `origin/main`, `origin/master`, `main`, `master` that is not HEAD, else
@@ -145,9 +147,11 @@ If `--dry` or `--graph` is set:
 
 ## Verbose summary
 
-`--verbosity 1` (any value above 0) prints a per-task table after the
-framed blocks, the status column being `outcomeLabel` — the one
-vocabulary every surface uses:
+`--verbosity 1` (any value above 0) sets `RunOptions.summaryTable`:
+the run prints a per-task table after the framed blocks and above the
+footer (nothing prints below it), one row per task with a command —
+groups are left out, as the footer and `--report` leave them. The
+status column is `outcomeLabel`, the one vocabulary every surface uses:
 
 ```
 TASK          STATUS          DURATION

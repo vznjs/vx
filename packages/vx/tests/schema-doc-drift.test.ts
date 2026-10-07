@@ -337,6 +337,33 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    'cache.outputs.files: "<glob>" is under workspace-outputs/',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: { inputs: { files: [] }, outputs: { files: ['workspace-outputs/**'] } },
+          },
+        },
+      }),
+  ],
+  [
+    'cache.inputs.files: "<file>" is taken back by "!<glob>"',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: ['src/**', '!src/gen/**', 'src/gen/keep.ts'] },
+              outputs: { files: [] },
+            },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs.files: every entry is a negation, which selects NOTHING',
     () =>
       validated({
@@ -445,6 +472,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     ),
   ],
   [
+    "plugin '<name>' declares command '<verb>', which no command line reaches — a verb is a word, not a flag or empty",
+    workspaceConfig(
+      `{ plugins: [${plugin('p', '{ commands: { "--version": { description: "d", run() { return 0 } } } }')}] }`,
+    ),
+  ],
+  [
     "plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner",
     workspaceConfig(
       `{ plugins: [${plugin('a', '{ commands: { hi: { description: "d", run() { return 0 } } } }')}, ` +
@@ -454,6 +487,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
+  ['cacheDir is only whitespace — name a directory', workspaceConfig('{ cacheDir: "   " }')],
   [
     "affectedBase must be a git ref like 'origin/main'",
     workspaceConfig('{ affectedBase: "--output=x" }'),
@@ -496,6 +530,10 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     'plugins[<i>].<capability> must be a function',
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup: 1 }')}] }`),
+  ],
+  [
+    "plugin '<name>' declares '<key>', which is no plugin hook",
+    workspaceConfig(`{ plugins: [${plugin('p', '{ setup() {}, excutor() {} }')}] }`),
   ],
   [
     'plugins[<i>] must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown',
@@ -587,7 +625,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
     expect(message).toContain(
-      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, plugins, timeout)',
+      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, plugins, rules, timeout)',
     )
   })
 })

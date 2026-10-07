@@ -92,7 +92,7 @@ describe('the headline totals', () => {
       report([
         view({ taskId: 'a#build' }),
         view({ taskId: 'a#test', status: 'skipped' }),
-        view({ taskId: 'a#e2e', status: 'aborted' }),
+        view({ taskId: 'a#e2e', status: 'aborted', wallclockStartNs: '1' }),
       ]),
     )
     expect(messy).toContain('1 skipped')
@@ -272,7 +272,9 @@ describe('per-row status and cache words', () => {
     // Neither reached a cache decision, so anything in that column would be an
     // invention. The em dash is the codebase's convention for "not applicable"
     // as opposed to zero.
-    const md = report([view({ taskId: 'a#b', status: status as OutcomeView['status'] })])
+    const md = report([
+      view({ taskId: 'a#b', status: status as OutcomeView['status'], wallclockStartNs: '1' }),
+    ])
     expect(rows(md)[0]).toContain(`| ${word} |`)
     expect(rows(md)[0]).toContain('| — |')
   })
@@ -413,5 +415,52 @@ describe('structure', () => {
       view({ taskId: 'b#build', status: 'cache-hit', storedDurationMs: 500 }),
     ])
     expect(/\[/.test(md)).toBe(false)
+  })
+})
+
+describe("X-25: an interrupted run in the terminal summary's words", () => {
+  // The probe: `vx run x#after x#quick` with `after` on `long` (`sleep 37.5`),
+  // SIGINT at 1.5 s. The terminal said `✗ aborted x#long`, `◌ not run x#after`
+  // and `not counted: 1 aborted, 1 not run`; the report said `failed`, called
+  // `x#after` aborted, and left `x#long`'s 1.30 s out of its total.
+  const interrupted = [
+    view({
+      taskId: 'x#long',
+      status: 'aborted',
+      exitCode: 130,
+      durationMs: 1300,
+      wallclockStartNs: '1',
+    }),
+    view({ taskId: 'x#after', status: 'aborted', exitCode: 1, durationMs: 0 }),
+    view({ taskId: 'x#quick', durationMs: 3, noCache: true }),
+  ]
+
+  it('renders an interrupted run, byte for byte', () => {
+    expect(report(interrupted, false)).toBe(
+      [
+        '## vx run — interrupted',
+        '',
+        '**1 task** · 1 success · 0 failed · 0 cached · 1.30s total · not counted: 1 aborted, 1 not run',
+        '',
+        '| Task | Status | Cache | Duration |',
+        '| --- | --- | --- | --- |',
+        '| x#long | aborted | — | 1.30s |',
+        '| x#after | not run | — | — |',
+        '| x#quick | success | no-cache | 3ms |',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('a failed run with no aborted task keeps its failed heading', () => {
+    const md = report(
+      [
+        view({ taskId: 'a#test', status: 'failed', exitCode: 1 }),
+        view({ taskId: 'a#e2e', status: 'skipped', blockedBy: 'a#test' }),
+      ],
+      false,
+    )
+    expect(md.split('\n')[0]).toBe('## vx run — failed')
+    expect(headline(md)).not.toContain('not counted')
   })
 })

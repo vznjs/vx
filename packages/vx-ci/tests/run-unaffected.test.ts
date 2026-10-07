@@ -16,7 +16,7 @@ let server: ReturnType<typeof Bun.serve> | undefined
 const saved: Partial<Record<(typeof ENV)[number], string | undefined>> = {}
 beforeEach(async () => {
   for (const k of ENV) saved[k] = process.env[k]
-  root = await mkdtemp(path.join(tmpdir(), 'vx-github-run-'))
+  root = await mkdtemp(path.join(tmpdir(), 'vx-ci-run-'))
   await writeFile(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture', workspaces: ['pkg'] }),
@@ -87,7 +87,7 @@ async function runWith(
     statuses: r.outcomes.map((o) => o.status),
     out: await Bun.file(path.join(root, 'pkg', 'out.txt')).text(),
     summary: (await Bun.file(summary).exists()) ? 'written' : 'absent',
-    said: said.filter((l) => /github/i.test(l)),
+    said: said.filter((l) => l.startsWith('vx-ci:')),
   }
 }
 
@@ -104,7 +104,7 @@ describe('a run whose Checks API fails', () => {
     expect(r).toEqual({
       ...ran,
       said: [
-        'vx-github: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
+        'vx-ci: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
       ],
     })
   })
@@ -117,7 +117,7 @@ describe('a run whose Checks API fails', () => {
     expect(r).toEqual({
       ...ran,
       said: [
-        'vx-github: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
+        'vx-ci: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
       ],
     })
   })
@@ -126,7 +126,7 @@ describe('a run whose Checks API fails', () => {
     expect(await runWith({ GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'abc' })).toEqual({
       ...ran,
       said: [
-        'vx-github: checks requested but GITHUB_TOKEN / GITHUB_REPOSITORY / GITHUB_SHA are not all set — no check-run will be created',
+        'vx-ci: checks requested but GITHUB_TOKEN / GITHUB_REPOSITORY / GITHUB_SHA are not all set — no check-run will be created',
       ],
     })
   })

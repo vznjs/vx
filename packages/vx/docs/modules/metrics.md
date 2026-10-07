@@ -55,8 +55,14 @@ case it is.
   (saving nothing), the invocation's `cache_policy` read no cache, or
   the key's entry was created by this run (none was there when it ran),
   or neither run saved it because each ran beside a failed task (a task
-  run past a failed dependency under `--continue` is never cached).
-  Only when none applies does it name `--no-cache` / `--force` (item 1009).
+  run past a failed dependency under `--continue` is never cached), or
+  the previous run executed and succeeded and no entry holds the key (its
+  save failed or was pruned: no row records a failed save, only this
+  trace; a previous policy that wrote nothing is named instead).
+  Only when none applies does it name `--no-cache` / `--force` (item
+  1009), and only with no recorded policy: a recorded one that read the
+  cache rules the flags out, and the note says vx cannot name the cause
+  (X-46).
 - `cacheKeyDiff` is the moat: it resolves both runs to their task
   hashes and full-outer-joins the two `entry_inputs` fingerprint sets
   over `(kind, name)` — `changed` / `added` / `removed`, unchanged ones

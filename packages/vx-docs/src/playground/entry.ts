@@ -188,7 +188,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
     staged.set(meta.name, { name: meta.name, dir: meta.dir, config })
   }
   const warn = (m: string): void => console.warn(m)
-  const { projects, configured } = await loadProjects({
+  const { projects } = await loadProjects({
     workspaceRoot: root,
     cacheDir: `${root}/.vx/cache`,
     plugins: [],
@@ -201,9 +201,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
     warn,
     staged,
   })
-  const nestedDirsByProject = computeNestedProjectDirs(
-    configured.map((m) => ({ name: m.name, dir: m.dir })),
-  )
+  const nestedDirsByProject = computeNestedProjectDirs(metas)
   const candidates = [...projects.keys()]
   const requested = expandRequested(input.tasks, candidates, projects)
   const unresolvedTasks = unresolvedRequests(input.tasks, candidates, projects)
@@ -227,6 +225,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       all: [...trusted.keys()],
       trusted,
       dirty: false,
+      vars: null,
       changed: [],
       untracked: [],
       undecodable: [],

@@ -26,8 +26,10 @@ export interface ExecuteArgs {
   runStartHrTimeNs: bigint
   persistentRegistry?: Map<string, ReturnType<typeof Bun.spawn>>
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
+  track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
   // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, fingerprintWatch, noDependants, …)
+  // deferSave, taintedUpstream, fingerprintWatch, noDependants,
+  // probesAfterWrites, …)
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
@@ -117,8 +119,9 @@ caches.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: the key is re-checked
    (`keyStillTrue`, item 743): the key the describe re-derived before
-   the command must equal it, and no input may have moved since its
-   fact (`movedInput`). A move withholds the save, says so on the
+   the command must equal it, no input may have moved since its
+   fact (`movedInput`), and no input file may have been added since
+   the listing (`described.added`, inputs.md's `addedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
    whose save would have marked them). A workspace fingerprint a task
@@ -157,7 +160,10 @@ attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
 `saveMiss` as `ownOutputFiles` in place of the glob walk. Its
 `workspaceFiles` get the same treatment (`stampWorkspaceOutputs`,
-`ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43).
+`ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file
+it found (a bundler deleting its upstream's intermediate) saves nothing:
+an artifact holds what a run wrote, never what it took away, and the
+upstream's restore puts the file back (X-32).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

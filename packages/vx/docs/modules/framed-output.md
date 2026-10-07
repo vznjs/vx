@@ -27,6 +27,7 @@ export function formatTaskBlock(
   body: TaskBlockBody,
   colors?: ColorSupport,
   forceCommand?: boolean, // `$ cmd` even on a hit: a focused requested task's frame
+  forwardArgs?: readonly string[], // the args after `--`, on a requested task's `$` line
 ): string
 
 // ` ⇢ <time> success local <id>` — quiet cache hit
@@ -34,6 +35,9 @@ export function formatTaskHitLine(node, outcome, colors?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
+// ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
+// frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
+export function flakyNote(outcome, colors?): string
 // ` ⊘ <blank> skipped <id> • blocked by <id>` — a skip never ran
 export function formatTaskSkippedLine(node, colors?, blockedBy?): string
 // ` ✗ <time> aborted <id>` — killed by a shutdown signal;
@@ -55,10 +59,17 @@ export const TIME_COL = 7 // the time cell's width
 export function paintIdParts(hueSource, projectText, taskText, colors, opts?): string
 
 // Focused mode's live frame around a streamed task
-export function formatFrameOpen(node, colors?): string // `┌─ <id> > $ <cmd>`
+export function formatFrameOpen(node, colors?, forwardArgs?): string // `┌─ <id> > $ <cmd>`
 export function formatFrameClose(node, outcome, colors?): string
 // A held persistent task's output since ready; '' for an empty body
-export function formatPersistentTailBlock(node, outcome, body, dropped?, colors?): string
+export function formatPersistentTailBlock(
+  node,
+  outcome,
+  body,
+  dropped?,
+  colors?,
+  forwardArgs?,
+): string
 export function formatPersistentList(nodes, colors?): string[] // `▸ <id> running` rows
 ```
 
@@ -81,6 +92,8 @@ The block format is:
 - **Top line:** `┌─ <task-id> > <status header>`
 - **`$ <command>` line:** executed tasks only (success and failed),
   dim, between blank lines, with no section label (the owner cut it);
+  a requested task's line carries the args after `--`, shell-quoted and
+  placed as `withForwardArgs` placed them in what ran (X-41);
   cache hits replay stored output and skip it, skips never ran
 - **`├─ STDOUT ──…` / `├─ STDERR ──…` sections:** present only when the
   stream is non-empty after trim; a blank line above and below the

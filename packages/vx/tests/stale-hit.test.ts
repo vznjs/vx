@@ -24,7 +24,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
@@ -395,6 +395,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -457,6 +458,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume', '--concurrency', '1')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -520,6 +522,7 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       // Cold: codegen wipes old.ts and emits b.js; consume's set is empty.
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
 
@@ -578,6 +581,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
 
@@ -633,6 +637,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('N')
       await rm(path.join(root, 'gen'), { recursive: true })
@@ -690,6 +695,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
+      await waitForProducers(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -1120,6 +1126,64 @@ describe('stale cache hits', () => {
       expect(seen.some((cmd) => cmd.includes('check-attr'))).toBe(false)
       // The gate probe itself must stay in the concurrent batch, not serial.
       expect(seen.some((cmd) => cmd.at(-2) === 'var' && cmd.at(-1) === '-l')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a tracked .gitattributes starts check-attr before status has answered (U-3)',
+    async () => {
+      // check-attr waited for status, the one spawn that walks the tree, and
+      // ran after it: ~8 ms of a warm run on this repo, whose root
+      // `.gitattributes` sets a merge driver. The index listing alone proves
+      // the gate will fire. Status is held here until check-attr starts or a
+      // second passes, and only the first is the fix.
+      await write(path.join(root, '.gitattributes'), '*.txt text\n')
+      await write(path.join(root, 'pkg/src/a.txt'), 'a\n')
+      await write(path.join(root, 'pkg/src/b.ts'), 'export const b = 1\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      const origSpawn = Bun.spawn
+      const bunMut = Bun as unknown as { spawn: typeof Bun.spawn }
+      let attrStarted!: () => void
+      const attr = new Promise<'check-attr'>((r) => (attrStarted = () => r('check-attr')))
+      let released: string | undefined
+      bunMut.spawn = ((...a: Parameters<typeof Bun.spawn>) => {
+        const cmd = (a[0] as { cmd?: readonly string[] } | undefined)?.cmd ?? []
+        const proc = origSpawn(...a)
+        if (path.basename(cmd[0] ?? '') !== 'git') return proc
+        if (cmd.includes('check-attr')) attrStarted()
+        if (!cmd.includes('status')) return proc
+        const gate = Promise.race([attr, Bun.sleep(1000).then(() => 'timeout')])
+        return new Proxy(proc, {
+          get(target, key) {
+            if (key === 'exited') {
+              return gate.then((by) => {
+                released = by
+                return target.exited
+              })
+            }
+            const v = Reflect.get(target, key, target) as unknown
+            return typeof v === 'function' ? (v as () => unknown).bind(target) : v
+          },
+        })
+      }) as typeof Bun.spawn
+      const cache = new GitFilesCache()
+      try {
+        await populateGitFilesCache(root, [path.join(root, 'pkg')], cache)
+      } finally {
+        bunMut.spawn = origSpawn
+      }
+      expect(released).toBe('check-attr')
+      // And its answer still lands: the text file is hashed from disk, the
+      // other keeps its index OID.
+      const oids = cache.oidsFor(path.join(root, 'pkg'))
+      expect(oids?.has(path.join(root, 'pkg/src/a.txt'))).toBe(false)
+      expect(oids?.has(path.join(root, 'pkg/src/b.ts'))).toBe(true)
     },
     TIMEOUT,
   )
@@ -1594,6 +1658,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
+      await waitForProducers(root)
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
       // `prep` and `app#build` both current: the run's key is the full one.

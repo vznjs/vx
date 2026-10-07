@@ -3,7 +3,8 @@
 // ignored: `a#test` depending on `fixture-root#build` refused with "no such
 // project", and every adoption path dropped the root tasks it met.
 // Design: docs/design/root-project-2026-09-28.md.
-import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadResolvedProjects, run } from '../src/orchestrator/index.js'
@@ -113,6 +114,53 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       'fixture-root#build',
       '!fixture-root#lint',
     ])
+  })
+
+  // `//` is two edits from any two-letter name, so with no root project the
+  // refusal hinted a member's task (X-13): say what `//` is instead.
+  it('//#task with no root project says so rather than hinting a member', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-rootslash-'))
+    try {
+      await mkdir(path.join(root, 'packages', 'ui'), { recursive: true })
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
+      await writeFile(
+        path.join(root, 'packages', 'ui', 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      )
+      const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      const said = (...args: string[]) => {
+        const p = Bun.spawnSync({
+          cmd: [process.execPath, bin, 'run', ...args],
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1' },
+        })
+        const err = p.stderr.toString()
+        return [
+          p.exitCode,
+          err.includes("`//` is Turbo's root package"),
+          err.includes('Did you mean'),
+        ]
+      }
+      expect([said('//#build'), said('build', '--filter', '//')]).toEqual([
+        [1, true, false],
+        [1, true, false],
+      ])
+      const glob = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'run', '*#build'],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect([glob.exitCode, glob.stderr.toString().includes('Did you mean')]).toEqual([1, false])
+      expect(glob.stderr.toString()).toContain(
+        "`*#build` names one project, not a pattern: run `build` with --filter '*' instead.",
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   // `turbo run //#build` runs the root's task from any package; vx read

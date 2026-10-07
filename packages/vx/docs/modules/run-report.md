@@ -11,7 +11,7 @@ CI step summaries (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`).
 - `formatRunReportMarkdown(result: RunResult): string` — the report.
 - `escapeMarkdownCell(value: string): string` — a table cell made safe:
   an unescaped `|` escaped, a line break a space; the façade exports it
-  for a plugin's own table (`@vzn/vx-github`'s summary).
+  for a plugin's own table (`@vzn/vx-ci`'s summary).
 
 ## Invariants
 
@@ -21,3 +21,7 @@ CI step summaries (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`).
   shares that stream, so `--report=markdown >> file` captures the whole
   run log as well. `--report-file` writes the report and nothing else,
   appending (a step summary is shared with other steps).
+- An interrupted run uses the terminal summary's words: heading
+  `interrupted` when any task is `aborted`, a status of `aborted` (killed,
+  its time in the total) or `not run` (`neverStarted`, no time), and
+  `not counted: N aborted, N not run` after the total.

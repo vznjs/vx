@@ -240,6 +240,12 @@ describe('exec.retries — e2e', () => {
       const task = captured?.tasks.find((t) => t.taskId === 'flaky#build')
       expect(task?.status).toBe('success')
       expect(task?.attempts).toBe(2)
+      // The attempt that failed, when it ended: inside the run, before its end.
+      const [first] = task?.failedAttempts ?? []
+      expect(task?.failedAttempts?.length).toBe(1)
+      expect(first!.exitCode).toBe(1)
+      expect(first!.endedAt).toBeGreaterThanOrEqual(captured!.startedAt)
+      expect(first!.endedAt).toBeLessThanOrEqual(captured!.endedAt)
     },
     TIMEOUT,
   )

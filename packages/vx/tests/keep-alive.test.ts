@@ -30,6 +30,21 @@ afterEach(() => {
     if (p.exitCode === null && p.signalCode === null) p.kill('SIGKILL')
 })
 
+/** `vx last --format json`: what the run history recorded. */
+async function lastRun(root: string): Promise<{
+  invocation: { exitOk: boolean }
+  tasks: Array<{ project: string; task: string; status: string; exitCode: number | null }>
+}> {
+  const proc = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = await new Response(proc.stdout).text()
+  expect(await proc.exited).toBe(0)
+  return JSON.parse(out)
+}
+
 async function waitForPid(file: string, timeoutMs: number): Promise<number> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -114,6 +129,13 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       expect([other.status, other.exitCode, summary.summary.failed]).toEqual(
         exitCode === 0 ? ['success', 0, 0] : ['failed', exitCode, 1],
       )
+      // X-23: the history, written before the wait, said `ok` over it, and
+      // flaky detection reads the history.
+      const last = await lastRun(root)
+      const recorded = last.tasks.find((t) => t.task === 'other')!
+      expect([last.invocation.exitOk, recorded.status, recorded.exitCode]).toEqual(
+        exitCode === 0 ? [true, 'success', 0] : [false, 'failed', exitCode],
+      )
     }, 20_000)
   }
 
@@ -175,6 +197,9 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect([summary.ok, summary.exitCode]).toEqual([false, 130])
     // The user stopped it: no failure (C-53's guard).
     expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
+    // The usual end of a dev session still leaves its record.
+    const last = await lastRun(root)
+    expect(last.tasks.map((t) => t.status)).toEqual(['success'])
   }, 20_000)
   // C-66: a plugin's subscriptions were released only after the keep-alive
   // wait, so through a dev session it heard the server after its teardown.
