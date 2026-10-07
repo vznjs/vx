@@ -1242,7 +1242,8 @@ run...` precedes it.
    task's input; the cycle after it re-evaluates the file. A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
-   the configs. A file the workspace config imports is loaded once per
+   the configs; so is one inside a project, which re-reads the set as the
+   config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
    run stale (item 949). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
