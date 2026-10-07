@@ -348,7 +348,9 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
     expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
     expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
-    expect(parseWhyArgs(['--format', 'xml']).error).toContain('invalid --format')
+    expect(parseWhyArgs(['--format', 'xml']).error).toBe(
+      '--format must be pretty or json (got xml) (see `vx why --help`)',
+    )
     expect(parseWhyArgs(['--run=']).error).toBe(
       '--run requires a run id (`vx last --list` shows them)',
     )
@@ -357,7 +359,7 @@ describe('parseWhyArgs', () => {
 
   it.each([
     ['--run', '--run requires a run id (`vx last --list` shows them)'],
-    ['--format', '--format requires a value (pretty | json)'],
+    ['--format', '--format requires a value: pretty or json (see `vx why --help`)'],
   ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
     // A trailing flag used to consume a non-existent argv slot, fall through
     // to the catch-all, and be reported as `unknown flag: --run` — false, and
