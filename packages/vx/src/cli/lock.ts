@@ -20,7 +20,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 
-export interface LockArgs {
+interface LockArgs {
   check: boolean
   error?: string
 }

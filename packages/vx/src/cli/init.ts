@@ -22,7 +22,7 @@ import {
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
-export interface InitArgs {
+interface InitArgs {
   dry: boolean
   force: boolean
   /** `vx.config.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
