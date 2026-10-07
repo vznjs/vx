@@ -212,7 +212,10 @@ output the reader's own `!` entries take back whole (`outputTakenBack`)
 does not count, nor do its own outputs. A group has no outputs and no
 key of its own, so the default build (`**`) is exempt. Each domain runs
 through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
-project check in milliseconds.
+project check in milliseconds. The index is kept per side, readers and
+writers, and pairs across sides only (X-101): filed together, 5,000
+tasks reading one shared input (`tsconfig.base.json`) paired every
+reader with every other and built the graph in 15 s; 0.2 s now.
 
 ## What this does NOT do
 
@@ -283,7 +286,9 @@ message, each shape refused and loaded with the rule off, edge or no
 edge, both workspace domains, the `!` take-back and a partial one that
 is still refused, the exemptions (own outputs, uncached, group, the
 default build), a run refused and the same run with the rule off, a
-non-boolean value, and a time bound at 4,000 tasks.
+non-boolean value, a time bound at 4,000 tasks and at 4,000 readers of
+one shared input, and a row per way the per-side index could miss a
+reader and a writer.
 
 ## Replacing this module
 

@@ -536,3 +536,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   "default builds on a package cycle make no task cycle", "a default
   build on a cycle keeps the builds behind it for its dependants", and
   the off-cycle control.
+- **X-101.** `rules.upfrontKeys` paired every reader of a shared input
+  with every other reader: the path index filed them all under one key
+  (`src/**`, a root `tsconfig.base.json`), so 5,000 tasks reading
+  `tsconfig.base.json` built their graph in 15 s, and 20,000 in one
+  project died `RangeError: Out of memory`. `overlapCandidates` takes a
+  side and keeps its index per side, pairing readers with writers only:
+  15 s → 0.2 s. Rows: `input-overlap.test.ts` › "4,000 readers of one
+  shared input pair none of them" and "the reader-writer index finds
+  every pair the rule refuses" (twenty).

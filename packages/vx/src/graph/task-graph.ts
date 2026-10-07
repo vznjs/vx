@@ -1043,36 +1043,51 @@ const GLOB_HEAD_END = /[*?{}\\!]/
  * directory its own head names. A whole subtree meets the globs whose
  * literal prefix lies at or under it, found the same way from the glob's
  * side (item 941).
+ *
+ * Given `sideOf`, only the pairs whose members sit on different sides are
+ * wanted (a reader and a writer, `detectInputOverlaps`), and each index is
+ * kept per side, so a member looks up only the other side's: thousands of
+ * readers sharing one input (`src/**`, a root `tsconfig.base.json`) were
+ * paired with each other, millions of pairs no rule judges (X-101).
  */
 function overlapCandidates<T>(
   tasks: readonly T[],
   globsOf: (n: T) => readonly string[] | undefined,
+  sideOf?: (n: T) => boolean,
 ): Array<[number, number]> {
-  const globs = new Map<string, number[]>()
-  const globsUnder = new Map<string, number[]>()
+  const sides = sideOf === undefined ? 1 : 2
+  // The index a member of side `s` looks up: its own side's, or the other's.
+  const across = (s: number): number => (sides === 1 ? s : 1 - s)
+  const perSide = (): Array<Map<string, number[]>> =>
+    Array.from({ length: sides }, () => new Map<string, number[]>())
+  const globs = perSide()
+  const globsUnder = perSide()
   const literals: Array<[task: number, path: string]> = []
   // `covers` (item 941): a whole subtree `P/**` meets every glob whose
   // literal prefix is P or under it, so each glob looks up the subtrees
   // filed at its prefix and at each of that prefix's ancestors.
-  const subtrees = new Map<string, number[]>()
+  const subtrees = perSide()
   const prefixes: Array<[task: number, prefix: string]> = []
   const file = (index: Map<string, number[]>, key: string, i: number): void => {
     const list = index.get(key)
     if (list === undefined) index.set(key, [i])
     else list.push(i)
   }
+  const side: number[] = []
   for (let i = 0; i < tasks.length; i++) {
+    const s = sideOf?.(tasks[i]!) === true ? 1 : 0
+    side.push(s)
     for (const tree of asTrees(globsOf(tasks[i]!) ?? [])) {
       if (isLiteralPattern(tree)) {
         literals.push([i, tree])
         continue
       }
-      file(globs, tree, i)
+      file(globs[s]!, tree, i)
       const dir = wholeSubtreePrefixes([tree])?.[0]
-      if (dir !== undefined) file(subtrees, dir, i)
+      if (dir !== undefined) file(subtrees[s]!, dir, i)
       prefixes.push([i, staticPrefix(tree)])
       const head = tree.slice(0, tree.search(GLOB_HEAD_END))
-      file(globsUnder, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
+      file(globsUnder[s]!, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
     }
   }
   const n = tasks.length
@@ -1080,34 +1095,38 @@ function overlapCandidates<T>(
   const pair = (x: number, y: number): void => {
     if (x !== y) pairs.add(x < y ? x * n + y : y * n + x)
   }
-  for (const list of globs.values()) {
+  for (const [tree, list] of globs[0]!) {
+    const other = sides === 1 ? list : (globs[1]!.get(tree) ?? [])
     for (let x = 0; x < list.length; x++) {
-      for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
+      for (let y = sides === 1 ? x + 1 : 0; y < other.length; y++) pair(list[x]!, other[y]!)
     }
   }
   // `witnessed`: two globs meet only when one's literal prefix is the
   // other's or under it, so each looks up the globs filed at its prefix
   // and at each ancestor.
-  const byPrefix = new Map<string, number[]>()
-  for (const [i, prefix] of prefixes) file(byPrefix, rootless(prefix), i)
+  const byPrefix = perSide()
+  for (const [i, prefix] of prefixes) file(byPrefix[side[i]!]!, rootless(prefix), i)
   for (const [i, raw] of prefixes) {
+    const index = byPrefix[across(side[i]!)]!
     const prefix = rootless(raw)
-    for (const j of byPrefix.get(prefix) ?? []) pair(i, j)
-    if (prefix !== '') for (const j of byPrefix.get('') ?? []) pair(i, j)
+    for (const j of index.get(prefix) ?? []) pair(i, j)
+    if (prefix !== '') for (const j of index.get('') ?? []) pair(i, j)
     for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of byPrefix.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, prefix] of prefixes) {
-    for (const j of subtrees.get(prefix) ?? []) pair(i, j)
+    const index = subtrees[across(side[i]!)]!
+    for (const j of index.get(prefix) ?? []) pair(i, j)
     for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of subtrees.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, path] of literals) {
-    for (const j of globsUnder.get('') ?? []) pair(i, j)
+    const index = globsUnder[across(side[i]!)]!
+    for (const j of index.get('') ?? []) pair(i, j)
     for (let sep = path.indexOf('/'); sep !== -1; sep = path.indexOf('/', sep + 1)) {
-      for (const j of globsUnder.get(path.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(path.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   return [...pairs].sort((x, y) => x - y).map((p) => [Math.floor(p / n), p % n])
@@ -1304,7 +1323,11 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   if (projectReaders) {
     for (const sides of byProject.values()) {
       if (sides.length < 2) continue
-      for (const [i, j] of overlapCandidates(sides, (s) => s.globs)) {
+      for (const [i, j] of overlapCandidates(
+        sides,
+        (s) => s.globs,
+        (s) => s.reads,
+      )) {
         readsOutputs(sides[i]!, sides[j]!, 'files')
       }
     }
@@ -1319,7 +1342,11 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       rooted.push({ node, globs, reads: false, rel })
     }
   }
-  for (const [i, j] of overlapCandidates(rooted, (s) => s.globs)) {
+  for (const [i, j] of overlapCandidates(
+    rooted,
+    (s) => s.globs,
+    (s) => s.reads,
+  )) {
     readsOutputs(rooted[i]!, rooted[j]!, 'workspaceFiles')
   }
 }
