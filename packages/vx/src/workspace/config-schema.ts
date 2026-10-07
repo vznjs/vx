@@ -1332,12 +1332,10 @@ function specForm(spec: string): SpecForm {
  * A name an environment can hold. An `=` splits at the first one, so
  * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
  * was dropped; a NUL failed the spawn with a hint about exit 127 (item
- * 999). Refused at load, where the config is named.
- */
-/**
- * The task runs under `sh -c`, and dash (Linux's `sh`) drops a variable whose
- * name is no shell identifier from the environment it hands the command:
- * `my.var` reached a task under macOS's bash and nothing on Linux.
+ * 999). And the task runs under `sh -c`, whose dash (Linux) drops a
+ * variable whose name is no shell identifier: `my.var` reached a task
+ * under macOS's bash and nothing on Linux. Refused at load, where the
+ * config is named.
  */
 function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
