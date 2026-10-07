@@ -1,7 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-1.** `vx watch`'s idle debounce reset on every event with no cap, so a
-  writer that never paused 150 ms (a dev server logging into its project every
-  50 ms) kept the loop idle for good and an edit never ran. A window now closes
-  at most 1 s after its first event. Row: `tests/watch-loop.test.ts` › "a writer
-  that never pauses for a debounce window does not hold an edit back".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
