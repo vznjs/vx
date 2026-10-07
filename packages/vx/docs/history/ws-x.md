@@ -543,3 +543,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   (with it listed, a solo policy hung the run). The doc now says so. Row:
   `plugin-pipeline.test.ts` › "a ready server leaves the running set, so
   a solo policy still admits what depends on it".
+- **X-99.** Under `--exclude-dependencies` + `--continue=always` the
+  taint read the key's upstream, which drops order-only edges: `t` saved
+  what it built after `a` failed (`t → gen → a`, `gen` excluded), where
+  the run without the flag withheld it. `judge` now reads the order-only
+  deps' settled outcomes too. Row: `continue-taint.test.ts` › "a task
+  ordered after a failure by --exclude-dependencies is not saved".
