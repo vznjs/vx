@@ -4,7 +4,7 @@ import {
   mergePriorities,
   tieredReverseDepCount,
 } from '../src/graph/priorities.js'
-import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
+import { RestoreDemoted, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -1119,6 +1119,143 @@ describe('runGraph restore-tier (local short-circuit)', () => {
       execute: async (n) => (n.id === 'up#prep' ? failed(n) : success(n)),
     })
     expect(out.get('down#build')?.status).toBe('skipped')
+  })
+
+  // A server pulled in only for cached dependants booted on every warm run
+  // and held it until ready (X-59).
+  describe('a persistent task only restore-tier hits depend on', () => {
+    const server = (id: string, deps: string[], requested = false): TaskNode => ({
+      ...node(id, deps),
+      config: { exec: { command: 'serve', persistent: {} } },
+      requested,
+    })
+    const graph = (requested = false) =>
+      nodes(
+        node('db#migrate'),
+        server('api#dev', ['db#migrate'], requested),
+        { ...node('web#e2e', ['api#dev']), requested: false },
+        { ...node('web#smoke', ['api#dev']), requested: false },
+        node('web#ci', ['web#e2e', 'web#smoke']),
+      )
+    const tier = new Set(['web#e2e', 'web#smoke'])
+
+    it('is never started, has no outcome, and what follows still waits for its deps', async () => {
+      const calls: string[] = []
+      const done: string[] = []
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 30))
+          if (n.id === 'web#smoke') await new Promise((r) => setTimeout(r, 10))
+          done.push(n.id)
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(calls.sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect([...out.keys()].sort()).toEqual(['db#migrate', 'web#ci', 'web#e2e', 'web#smoke'])
+      expect(done.indexOf('web#ci')).toBeGreaterThan(done.indexOf('db#migrate'))
+    })
+
+    it('settles once its last dependant finishes after it was due', async () => {
+      const calls: string[] = []
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'web#smoke') await new Promise((r) => setTimeout(r, 30))
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(calls).not.toContain('api#dev')
+      expect(out.get('web#ci')?.status).toBe('success')
+    })
+
+    it('takes no slot: the admission policy is never asked about it', async () => {
+      const asked: string[] = []
+      await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        admit: (id) => {
+          asked.push(id)
+          return true
+        },
+        execute: async (n) => (tier.has(n.id) ? hit(n) : success(n)),
+      })
+      expect(asked.sort()).toEqual(['db#migrate', 'web#ci'])
+    })
+
+    it('starts when the user asked for it', async () => {
+      const calls: string[] = []
+      await runGraph({
+        nodes: graph(true),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          return tier.has(n.id) ? hit(n) : success(n)
+        },
+      })
+      expect(calls).toContain('api#dev')
+    })
+
+    it('starts when one dependant is not in the tier', async () => {
+      const calls: string[] = []
+      await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: new Set(['web#e2e']),
+        execute: async (n) => {
+          calls.push(n.id)
+          return n.id === 'web#e2e' ? hit(n) : success(n)
+        },
+      })
+      expect(calls.indexOf('api#dev')).toBeLessThan(calls.indexOf('web#smoke'))
+    })
+
+    it('starts when a dependant is demoted, and the demoted one runs once it is up', async () => {
+      const calls: string[] = []
+      const finished: string[] = []
+      let demote = true
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => {
+          calls.push(n.id)
+          if (n.id === 'db#migrate') await new Promise((r) => setTimeout(r, 10))
+          if (n.id === 'web#e2e' && demote) {
+            // After the server was due and its sibling had finished: the
+            // server is still owed.
+            await new Promise((r) => setTimeout(r, 30))
+            demote = false
+            throw new RestoreDemoted(n.id)
+          }
+          finished.push(n.id)
+          return n.id === 'web#smoke' ? hit(n) : success(n)
+        },
+      })
+      expect(out.get('api#dev')?.status).toBe('success')
+      expect(out.get('web#e2e')?.status).toBe('success')
+      expect(calls.filter((c) => c === 'web#e2e')).toHaveLength(2)
+      expect(finished.indexOf('web#e2e')).toBeGreaterThan(finished.indexOf('api#dev'))
+    })
+
+    it('is skipped as before when its own dependency failed', async () => {
+      const out = await runGraph({
+        nodes: graph(),
+        concurrency: 4,
+        restoreTier: tier,
+        execute: async (n) => (n.id === 'db#migrate' ? failed(n) : hit(n)),
+      })
+      expect(out.get('api#dev')?.status).toBe('skipped')
+      expect(out.get('web#ci')?.status).toBe('skipped')
+    })
   })
 })
 

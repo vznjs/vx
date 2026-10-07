@@ -423,3 +423,16 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   one depend on the other". The refusal now names the entry outside the
   project. Row: `output-collision.test.ts` › "ordered, but with an entry
   outside the project, names that entry, not a missing edge".
+- **X-59.** A persistent task pulled in only as a dependency booted on
+  every run, and its cached dependants waited for it to be ready: a fully
+  cached `vx run b#e2e` over `a#dev` (`sleep 2; echo READY`) took ~2.2 s
+  and logged a boot per run. The scheduler now holds such a server
+  dormant when nobody requested it and every dependant is a restore-tier
+  hit; a demoted dependant starts it, otherwise it settles unspawned with
+  no outcome once they finish. The fixture's warm run: 2150–2201 ms →
+  156–187 ms (4 runs per arm), one boot in four runs instead of four. A
+  same-project dependant still waits: the server's undeclared write
+  reach keeps its key preliminary, and exempting it is a stale-hit
+  question left open. Rows: `scheduler.test.ts` › "a persistent task
+  only restore-tier hits depend on", `persistent.test.ts` › "a server
+  only cached dependants pulled in is not started …".

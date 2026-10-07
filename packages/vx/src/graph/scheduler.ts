@@ -267,6 +267,9 @@ export interface ScheduleOptions {
    *     output is reported `cache-hit` regardless of a dep failing);
    *   - leaves the tier when `execute` throws `RestoreDemoted`, and is
    *     dispatched again once its deps are done, with the dep check.
+   * A persistent task nobody requested whose every dependant is in the
+   * tier starts only when one of them is demoted; once they have all
+   * finished it settles without an outcome, never spawned.
    * It still runs through `execute()` (so the logger frame is unchanged);
    * the orchestrator's execute reuses the up-front probe, so there is no
    * second cache.get. When undefined/empty, behavior is byte-identical.
@@ -463,6 +466,13 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // they are exec-tier tasks, gated on their deps like any other.
   const demoted = new Set<string>()
   const inRestoreTier = (id: string): boolean => restoreTier?.has(id) === true && !demoted.has(id)
+  // A server pulled in only for restore-tier hits serves nobody: it waits
+  // (`dormant`) until a dependant is demoted, which starts it, or until
+  // every dependant has finished, which settles it unspawned. Settled
+  // without an outcome: it is not part of the run, as a pruned task is not.
+  const idle = idleServers(nodes, dependents, restoreTier)
+  const dormant = new Set<string>()
+  let settledIdle = 0
   const execReady = new ReadyHeap(priority)
   const restoreReady = new ReadyHeap(priority)
   // A restore-tier task is dep-independent (a stable hit's restore needs
@@ -580,6 +590,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const finishOne = (id: string, outcome: TaskOutcome): void => {
       if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
       outcomes.set(id, outcome)
+      // A dormant server is asked again: the dispatch settles it once its
+      // last dependant is in.
+      if (dormant.size > 0) {
+        for (const p of (nodes.get(id) as TaskNode).deps) if (dormant.delete(p)) execReady.push(p)
+      }
       // Observer hook (the logger's taskComplete). Crash-isolated: a
       // throwing observer must NOT break scheduling — it would otherwise
       // skip the dependent-enqueue + tick below and hang the run. Same
@@ -724,7 +739,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
-            if (willSkip(id)) return id
+            if (willSkip(id) || idle.has(id)) return id
             if (exclusive?.has(id) === true) {
               if (!busy() && (!admitActive || admits(id))) return id
               parked.push([id, seq])
@@ -777,6 +792,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             durationMs: 0,
             ...(blockedBy !== undefined ? { blockedBy } : {}),
           })
+          continue
+        }
+        if (idle.has(id)) {
+          readyAt.delete(id)
+          if (dependents.get(id)!.every((d) => outcomes.has(d))) {
+            settledIdle++
+            release(id)
+          } else dormant.add(id)
           continue
         }
 
@@ -847,6 +870,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               leave()
               untrack()
               demoted.add(id)
+              for (const p of node.deps) {
+                if (idle.delete(p) && dormant.delete(p)) {
+                  execReady.push(p)
+                  readyAt.set(p, Date.now())
+                }
+              }
               if (pending.get(id) === 0) {
                 execReady.push(id)
                 readyAt.set(id, Date.now())
@@ -919,7 +948,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // takes none), so a task still holding one has no outcome yet, and
       // the lane counters could add nothing — deleting both from this
       // condition survived the whole core suite (item 644).
-      if (outcomes.size === nodes.size) {
+      if (outcomes.size + settledIdle === nodes.size) {
         resolved = true
         resolve(outcomes)
       }
@@ -927,4 +956,20 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
     tick()
   })
+}
+
+/** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
+function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string> {
+  const out = new Set<string>()
+  if (restoreTier === undefined || restoreTier.size === 0) return out
+  for (const n of nodes.values()) {
+    if (n.config.exec?.persistent === undefined || n.requested || n.surfaced === true) continue
+    const ds = dependents.get(n.id)
+    if (ds !== undefined && ds.every((d) => restoreTier.has(d))) out.add(n.id)
+  }
+  return out
 }

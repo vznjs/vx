@@ -384,6 +384,15 @@ Semantics:
   'dev:run':  { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } },
   'e2e':      { dependsOn: ['dev:run'], exec: { command: 'playwright test' } },
   ```
+- **Not started when nothing needs it.** A persistent task you did not
+  request, whose every dependant is a confirmed local cache hit, is
+  never spawned: a fully cached `vx run e2e` does not boot the server
+  `e2e` depends on, and the server is in no outcome or count. It starts
+  if one of those hits turns out to need running (its artifact went),
+  and that task runs once it is ready. A dependant whose key the
+  server's writes could change (one in its own project, unless a sandbox
+  bounds the server's writes) is not probed ahead of it, so there the
+  server still starts.
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
