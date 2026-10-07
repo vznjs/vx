@@ -509,6 +509,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
 - **X-9x.** A Windows task glob loaded with only a "matched no files"
+- **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
   separator or a drive in any task glob list (`inputs` / `outputs`,
