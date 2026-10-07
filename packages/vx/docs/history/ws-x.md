@@ -395,3 +395,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   rules, naming the entry and saying an in-place rewriter declares no
   outputs. Rows: `input-overlap.test.ts` › "a task whose own outputs take
   back an input entry whole is always refused".
+- **X-56.** `vx lock`'s refusal of a config that evaluated to a secret
+  ended with a hint naming `$API_TOKEN` whatever variable leaked. It now
+  names the first leaked variable. Row: `lock-secret.test.ts` › "the
+  hint names the variable that leaked, not a fixed one".
