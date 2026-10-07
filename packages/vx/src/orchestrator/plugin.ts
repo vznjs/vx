@@ -227,7 +227,8 @@ interface BaseContext {
   warn(message: string): void
 }
 
-export interface PluginSetupContext extends BaseContext {}
+/** What `setup` is handed: the run's bus and `on` (installPlugins builds it). */
+export interface PluginSetupContext extends PluginContext {}
 
 /** One CLI verb contributed by a plugin. */
 export interface PluginCommand {

@@ -118,6 +118,31 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
+## Setup and teardown
+
+`setup` runs once per run, before the first task; a throw stops the run.
+`ctx.on` subscribes to the run's events (`onRunStart`, `onTaskStart`,
+`onTaskStdout`, `onTaskStderr`, `onTaskComplete`, `onRunStatus`,
+`onRunEnd`). `teardown` runs at the end, even on Ctrl-C:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function taskLog(): VxPlugin {
+  const lines: string[] = []
+  return definePlugin(import.meta, {
+    setup(ctx) {
+      ctx.on('onTaskComplete', (task, outcome) => {
+        lines.push(`${task.id} ${outcome.status}`)
+      })
+    },
+    teardown() {
+      console.log(lines.join('\n'))
+    },
+  })
+}
+```
+
 ## A verb and a sink
 
 `commands` adds a verb. A telemetry sink gets each run's summary; do

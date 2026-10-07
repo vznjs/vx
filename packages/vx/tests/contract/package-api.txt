@@ -983,8 +983,35 @@ export interface PluginCommand {
   readonly description: string
   run(argv: readonly string[], ctx: CommandContext): number | Promise<number>
 }
+== type PluginContext (src/orchestrator/plugin.ts)
+export interface PluginContext {
+  readonly workspaceRoot: string
+  readonly cacheDir: string
+  warn(message: string): void
+  readonly bus: EventBus
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 == type PluginHook (src/config.ts)
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
+== type PluginHookHandlers (src/orchestrator/plugin.ts)
+export interface PluginHookHandlers {
+  onRunStart: (info: RunStartInfo) => void | Promise<void>
+  onTaskStart: (node: TaskNode) => void | Promise<void>
+  onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onRunStatus: (line: string) => void | Promise<void>
+  onRunEnd: () => void | Promise<void>
+}
+== type PluginHookName (src/orchestrator/plugin.ts)
+export type PluginHookName =
+  | 'onRunStart'
+  | 'onTaskStart'
+  | 'onTaskStdout'
+  | 'onTaskStderr'
+  | 'onTaskComplete'
+  | 'onRunStatus'
+  | 'onRunEnd'
 == type PluginHooks (src/orchestrator/plugin.ts)
 export type PluginHooks = Omit<VxPlugin, 'name'>
 == type PluginOptionKinds (src/orchestrator/plugin.ts)
@@ -997,7 +1024,7 @@ export interface PluginOrigin {
   readonly url?: string
 }
 == type PluginSetupContext (src/orchestrator/plugin.ts)
-export interface PluginSetupContext extends BaseContext {}
+export interface PluginSetupContext extends PluginContext {}
 == type PreparedRun (src/orchestrator/prepare.ts)
 export interface PreparedRun {
   workspaceRoot: string
