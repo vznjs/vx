@@ -197,6 +197,11 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member outside the workspace root (`../ext/*`, an absolute glob) is
+  refused naming its directory: npm and pnpm take one, but `--affected`
+  asks git from the root and saw nothing outside it, so an edit there
+  moved the task's key and selected nothing. Move the root up to a
+  directory that holds every member.
 - A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
   skipped with a stderr line naming it (D-128): `--all` said only that no
   package matched, and a run from inside it "not inside a project".
