@@ -223,7 +223,10 @@ async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[
         throw new UserError(`${yamlPath}: must be a mapping (\`packages:\` and pnpm's settings)`)
       }
       const packages = (parsed as { packages?: unknown }).packages
-      if (packages !== undefined) return assertGlobList(packages, yamlPath, 'packages')
+      // `packages:` with every entry commented out is null, which pnpm skips.
+      if (packages !== undefined && packages !== null) {
+        return assertGlobList(packages, yamlPath, 'packages')
+      }
     }
     // No `packages:`: pnpm 10 keeps its settings and catalogs in this file
     // for a single-package repo too. The root's package.json decides, as it

@@ -852,6 +852,15 @@ describe('malformed workspace manifests', () => {
     expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
+  it('an empty `packages:` key defers to package.json, as pnpm reads it', async () => {
+    // Every entry commented out leaves `packages: null`; pnpm skips a falsy
+    // list, and vx refused the file as "must be an array".
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  # - "packages/*"\n')
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    const single = await listProjects(await loadWorkspace(dir))
+    expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
+  })
+
   it('a trailing slash on a member glob does not make it recursive (item 985)', async () => {
     for (const [file, body] of [
       ['package.json', JSON.stringify({ name: 'r', workspaces: ['packages/*/'] })],

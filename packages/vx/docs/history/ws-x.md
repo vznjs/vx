@@ -517,3 +517,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-74.** A `pnpm-workspace.yaml` whose `packages:` entries were all
+  commented out (`packages: null`) was refused as "must be an array";
+  pnpm skips a falsy list. It now defers to `package.json` as a file
+  with no `packages:` does (item 984). Row: `workspace.test.ts` › "an
+  empty `packages:` key defers to package.json, as pnpm reads it".
