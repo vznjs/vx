@@ -6,7 +6,7 @@
 // on left a `turbo run --dry-run` user at a dead end. The table renders
 // cli.md's parity section (`renderForeignFlags`), pinned by a test.
 
-export interface ForeignFlag {
+interface ForeignFlag {
   runner: 'turbo' | 'nx'
   /** Every spelling, first the one shown. */
   names: readonly string[]
