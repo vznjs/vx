@@ -255,8 +255,10 @@ describe('the reservation rules the sweep found unheld', () => {
         'b#build': { memory: 512, cpus: -1 },
         'c#build': { memory: 0 },
         'd#build': { memory: 512, cpus: Number('x') },
-        // A config typo, not a type: no crash, no reservation, no word.
+        // A config typo, not a type: no crash, no reservation, but a word —
+        // `vx history` showed each declared with nothing reserved.
         'e#build': null as never,
+        'f#build': 2048 as never,
       },
     })
     const beside = (id: string, running: string) =>
@@ -266,10 +268,11 @@ describe('the reservation rules the sweep found unheld', () => {
       beside('a#build', 'b#build'),
       beside('d#build', 'b#build'),
       beside('e#build', 'd#build'),
-    ]).toEqual([true, true, true, true])
+      beside('f#build', 'b#build'),
+    ]).toEqual([true, true, true, true, true])
     await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(warned[0]).toBe(
-      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none) — each must be a finite number above 0',
+      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none), reservations["e#build"] null (using none; must be { cpus?, memory? }), reservations["f#build"] 2048 (using none; must be { cpus?, memory? }) — each must be a finite number above 0',
     )
   })
 

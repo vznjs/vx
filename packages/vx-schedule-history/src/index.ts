@@ -106,8 +106,14 @@ function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => vo
     check('resources.headroom', options.resources.headroom, String(DEFAULT_HEADROOM))
   }
   for (const [id, r] of Object.entries(options.reservations ?? {})) {
+    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
+      bad.push(
+        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using none; must be { cpus?, memory? })`,
+      )
+      continue
+    }
     for (const axis of ['cpus', 'memory'] as const) {
-      const v = (r as Record<string, unknown> | null)?.[axis]
+      const v = r[axis]
       if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'none')
     }
   }
