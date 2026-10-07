@@ -758,6 +758,24 @@ describe('project tags', () => {
     for (const bad of ['ui', ['ui', ''], ['  '], [1], [null], { ui: true }])
       expect(refusal(bad)).toBe(msg)
   })
+  // Each loaded, and `--filter tag:<it>` parsed as something else: the
+  // padding is lost to the shell, `v1...` walked v1's deps, `v[2]` asked
+  // git for ref 2.
+  it.each([
+    [' ui', 'has surrounding whitespace'],
+    ['ui\t', 'has surrounding whitespace'],
+    ['ui*', "holds '*', which makes it a pattern"],
+    ['v1...', "ends in '...', which a filter reads as a dependency walk"],
+    ['v1^...', "ends in '...', which a filter reads as a dependency walk"],
+    ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
+  ])('refuses %j, which a tag filter cannot name', (tag, why) => {
+    expect(refusal(['ok', tag])).toBe(
+      `${CFG}: tag ${JSON.stringify(tag)} ${why} — \`--filter tag:<name>\` could not name it. Rename the tag.`,
+    )
+  })
+  it('keeps the characters a tag filter reads literally', () => {
+    expect(refusal(['scope:web', 'a.b', 'v1..', '[x', 'x]', 'a b', 'a#b', '^x', '!x'])).toBeNull()
+  })
 })
 
 // Nx 23.3 compare, 2026-10-04: `Bun.Glob` has no extglob, so an input of
