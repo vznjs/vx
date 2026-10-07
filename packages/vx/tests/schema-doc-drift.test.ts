@@ -493,6 +493,15 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ affectedBase: "--output=x" }'),
   ],
   [
+    "cacheScope must be 'trusted', 'read-only', or a scope name of <rule>",
+    workspaceConfig('{ cacheScope: "pr 123" }'),
+  ],
+  [
+    'rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }',
+    workspaceConfig('{ rules: true }'),
+  ],
+  ['rules.<name> must be true or false', workspaceConfig('{ rules: { upfrontKeys: "off" } }')],
+  [
     "cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }",
     workspaceConfig('{ cacheRetention: "30d" }'),
   ],

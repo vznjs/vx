@@ -106,6 +106,9 @@ bun add -d @vzn/vx
 npm install -g @vzn/vx
 ```
 
+The binaries link glibc; on musl (Alpine) the launcher runs vx from
+source with Bun when Bun is installed.
+
 Drop a `vx.config.ts` next to any workspace package:
 
 ```ts

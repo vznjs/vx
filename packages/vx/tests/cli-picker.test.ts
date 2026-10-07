@@ -162,6 +162,36 @@ describe('vx run interactive picker', () => {
     expect(printed.indexOf('alpha#build')).toBeLessThan(printed.indexOf('alpha#zed'))
   })
 
+  it('lists only the projects a filter selected, and says when they declare no task', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    let printed = ''
+    output.on('data', (c: Buffer) => {
+      printed += c.toString()
+    })
+    const picking = pickTask(root, { input, output }, {}, new Set(['beta']))
+    await Bun.sleep(50)
+    input.write('1\n')
+    expect(await picking).toEqual({ project: 'beta', task: 'build', description: 'beta build' })
+    expect(printed.split('\n').filter((l) => l.includes('#'))).toEqual([
+      '  1. beta#build  beta build',
+    ])
+
+    await writeFile(
+      path.join(root, 'packages', 'beta', 'vx.config.mjs'),
+      'export default { tasks: {} }\n',
+    )
+    let stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    expect(
+      await pickTask(root, { input: new PassThrough(), output }, {}, new Set(['beta'])),
+    ).toBeNull()
+    expect(stderr).toBe('vx run: no tasks declared in the selected projects (beta)\n')
+  })
+
   it('rejects an out-of-range selection with null', async () => {
     const input = new PassThrough()
     const output = new PassThrough()

@@ -82,7 +82,7 @@ export interface Digest {
   size_bytes: number
 }
 
-export interface ServerCapabilities {
+interface ServerCapabilities {
   digestFunctions: string[]
   maxBatchBytes: number
   acUpdateEnabled: boolean
@@ -1566,7 +1566,7 @@ export interface Operation {
   metadata?: { type_url?: string; value?: Uint8Array }
 }
 
-export interface ExecuteOptions {
+interface ExecuteOptions {
   /** The operation's name, once the server has given one. */
   onOperation?: (name: string) => void
   /** Default TRUE: vx owns the cache decision, so the server must not re-check its own AC. */

@@ -51,7 +51,7 @@ import {
   span,
   UserError,
 } from '../util/index.js'
-import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
@@ -133,6 +133,8 @@ export interface ExecuteArgs {
    * terms (item 962).
    */
   stopSignal?: AbortSignal
+  /** `continueMode: 'never'` stopped dispatch: no further attempt starts. */
+  failFast?: AbortSignal
   /**
    * Registry the orchestrator owns. For each persistent task we
    * spawn, we stash the subprocess handle here so the orchestrator
@@ -512,6 +514,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // One the readiness timeout is killing reports the signal's, as an
     // ordinary timeout does (X-24).
     const ready = err instanceof PersistentReadyError ? err : undefined
+    // The timer's SIGKILL is a grace away and the shell may die on the
+    // TERM first: a server that ignores it held its port past run() into
+    // the next `vx watch` cycle. Return once the group is gone.
+    if (ready?.reason === 'timeout') await terminateChildren(() => [spawn.child])
     return {
       node,
       status: 'failed',
@@ -1058,7 +1064,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // no edge to the producer fails naming only the file (A-48).
       if (code !== 0) {
         for (const c of (args.gitFilesCache?.trackedCleansMissing(node.id) ?? []).slice(0, 3)) {
-          const rel = path.relative(args.workspaceRoot, c.path).split(path.sep).join('/')
+          const rel = relPosix(args.workspaceRoot, c.path)
           log.taskStderr(
             node,
             `\n[vx] ${rel} is tracked by git, and ${c.by} removed it as an output before its run; it is still missing. A task that reads it needs dependsOn on ${c.by}.\n`,
@@ -1153,7 +1159,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
     }
 
-    if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    if (effectiveExitCode === 0 || attempt >= maxAttempts || args.failFast?.aborted === true) break
     failedAttempts.push({
       endedAt: Date.now(),
       exitCode: effectiveExitCode,
