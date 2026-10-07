@@ -1,3 +1,4 @@
+import { Console } from 'node:console'
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
@@ -469,6 +470,7 @@ export async function loadProjectConfigs(
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
   let umask = -1
+  let unredirect: (() => void) | undefined
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
@@ -578,6 +580,7 @@ export async function loadProjectConfigs(
       else misses.push(i)
     }
     if (misses.length > 0) {
+      unredirect = stdoutToStderr()
       builtins = builtinSnapshot()
       env = { ...process.env }
       cwd = process.cwd()
@@ -641,6 +644,7 @@ export async function loadProjectConfigs(
       )
     return results.map((r) => (r as Loaded).config)
   } finally {
+    unredirect?.()
     endRound()
     if (store !== undefined && !tainted) {
       if (evals.length > 0) {
@@ -652,6 +656,49 @@ export async function loadProjectConfigs(
         else for (const [p, files] of learnedClosures) store.putConfigClosure(p, files)
       }
     }
+  }
+}
+
+/**
+ * Every route to fd 1 sent to stderr while configs evaluate in this
+ * process; returns the undo. A verb's stdout is its output (`vx show
+ * --format json`), and a config's `console.log` came out ahead of the
+ * JSON. The worker does the same for a repeat load (D-64), `vx mcp` for
+ * its whole serve. Installed before the built-in snapshot and undone after
+ * its check, so the guard sees no change of vx's own.
+ */
+function stdoutToStderr(): () => void {
+  const out = process.stdout
+  const ownWrite = Object.getOwnPropertyDescriptor(out, 'write')
+  const ownConsole = globalThis.console
+  const bun = Bun as { write: typeof Bun.write }
+  const ownBunWrite = Bun.write
+  const ownWriter = Object.getOwnPropertyDescriptor(Bun.stdout, 'writer')
+  out.write = ((...args: Parameters<typeof process.stderr.write>) =>
+    process.stderr.write(...args)) as typeof out.write
+  bun.write = ((dest: unknown, ...rest: unknown[]) =>
+    (ownBunWrite as (...a: unknown[]) => Promise<number>)(
+      dest === Bun.stdout ? Bun.stderr : dest,
+      ...rest,
+    )) as typeof Bun.write
+  ;(Bun.stdout as { writer: typeof Bun.stdout.writer }).writer = ((
+    ...args: Parameters<typeof Bun.stderr.writer>
+  ) => Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
+  // Bun's console adds `write`, which the node Console lacks.
+  globalThis.console = Object.assign(new Console(process.stderr, process.stderr), {
+    write: (...data: string[]) => {
+      const text = data.join('')
+      process.stderr.write(text)
+      return text.length
+    },
+  })
+  return () => {
+    if (ownWrite === undefined) delete (out as { write?: unknown }).write
+    else Object.defineProperty(out, 'write', ownWrite)
+    bun.write = ownBunWrite
+    if (ownWriter === undefined) delete (Bun.stdout as { writer?: unknown }).writer
+    else Object.defineProperty(Bun.stdout, 'writer', ownWriter)
+    globalThis.console = ownConsole
   }
 }
 
@@ -736,6 +783,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'sleep',
   'spawn',
   'spawnSync',
+  'stderr',
   'stdout',
   'stringWidth',
   'stripANSI',
@@ -1024,6 +1072,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // left out: it loads first in every run, filtered or not, so none
     // depends on what else loaded (D-122's case), and plugins' tests and
     // tools hand state through them.
+    const unredirect = stdoutToStderr()
     const builtins = builtinSnapshot('globalThis', true)
     const env = { ...process.env }
     const cwd = process.cwd()
@@ -1038,6 +1087,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
         ...restoreCwd(cwd),
         ...restoreUmask(umask),
       ]
+      unredirect()
       // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
       if (changed.length > 0) throw builtinsChanged(changed, configPath)
     }
