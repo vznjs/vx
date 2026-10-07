@@ -22,3 +22,14 @@ it('a misspelt option is refused, naming the nearest one', () => {
 it('no options is taken', () => {
   expect(refusal(() => scheduleHistoryPlugin({}))).not.toContain('unknown option')
 })
+
+it('a resources value that is neither false nor an object is refused', () => {
+  expect(refusal(() => scheduleHistoryPlugin({ resources: null } as never))).toBe(
+    'scheduleHistoryPlugin() option "resources" must be false or an object, got null',
+  )
+  expect(refusal(() => scheduleHistoryPlugin({ resources: true } as never))).toBe(
+    'scheduleHistoryPlugin() option "resources" must be false or an object, got true',
+  )
+  expect(refusal(() => scheduleHistoryPlugin({ resources: false }))).toBe('taken')
+  expect(refusal(() => scheduleHistoryPlugin({ resources: { headroom: 1.2 } }))).toBe('taken')
+})

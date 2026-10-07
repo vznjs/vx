@@ -199,6 +199,18 @@ const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
 
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('scheduleHistoryPlugin()', options, SCHEDULE_HISTORY_KEYS)
+  // `'any'` above lets `null` through, and every run then failed in
+  // `schedule` reading `null.headroom`.
+  const { resources } = options
+  if (
+    resources !== undefined &&
+    resources !== false &&
+    (resources === null || typeof resources !== 'object' || Array.isArray(resources))
+  ) {
+    throw new UserError(
+      `scheduleHistoryPlugin() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+    )
+  }
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {
