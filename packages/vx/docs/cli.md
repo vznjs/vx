@@ -691,7 +691,8 @@ tracks the run live. Top to bottom:
    first of them — exits; the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
-other persistent task`), and a non-zero exit makes the run exit 1.
+other persistent task`), and a non-zero exit makes the run exit 1
+   and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
    stopped, and vx exits 130. A run with a failure elsewhere (a task
    failed or skipped, a server never ready or crashed) holds nothing: it

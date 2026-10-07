@@ -132,6 +132,9 @@ export interface RunSummary {
     The foreground then blocks until ONE kept-alive server exits, tears
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.
+    Such a run's history is written after that wait, through a fresh
+    `Cache.inspect` handle on the cache directory, so `vx last` and the
+    flaky list see the server's failure.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent`: the caller
