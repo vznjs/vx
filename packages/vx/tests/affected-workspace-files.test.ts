@@ -209,4 +209,48 @@ describe('--affected sees a workspaceFiles change', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "a root file one task reads does not seed its project's uncached task (X-40)",
+    async () => {
+      // `shared/**` re-keys app#build alone, but the owner went into the
+      // changed-project set, and every uncached task there was seeded:
+      // app#lint, which reads nothing of `shared/`, ran.
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        [
+          'export default {',
+          '  tasks: {',
+          '    build: {',
+          '      exec: { command: "true" },',
+          '      cache: { inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, outputs: { files: [] } },',
+          '    },',
+          '    lint: { exec: { command: "true" } },',
+          '  },',
+          '}',
+          '',
+        ].join('\n'),
+      )
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'app lints')
+      const planned = (): string[] | string => {
+        const r = vx(root, 'run', 'build', 'lint', '--affected=HEAD~1', '--dry=json')
+        if (r.exitCode !== 0) return r.stdout
+        const out = r.stdout.slice(r.stdout.indexOf('{'))
+        return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+      }
+
+      await write(path.join(root, 'shared/schema.txt'), 'v2')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'bump shared schema')
+      expect(planned()).toEqual(['app#build'])
+
+      // CONTROL: a change inside the project still seeds the uncached task.
+      await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 2')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'edit app source')
+      expect(planned()).toEqual(['app#build', 'app#lint'])
+    },
+    TIMEOUT,
+  )
 })

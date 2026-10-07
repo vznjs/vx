@@ -252,3 +252,10 @@ time (bugs, correctness, simplification, the plugin seams).
   run. The filters are now resolved first, refused alike, and their
   scope dropped as before. Row: `task-selection.test.ts` › "only
   pkg#task args still refuse %p as a bare task beside them does (X-39)".
+- **X-40.** `--affected` seeded every uncached task of a project that
+  owned a changed root `workspaceFiles` glob, so a `shared/` edit that
+  re-keyed `app#build` alone also ran `app#lint`, which reads nothing
+  there. An uncached task now seeds only when a changed path lies in its
+  project or the project is reached whole. Row:
+  `affected-workspace-files.test.ts` › "a root file one task reads does
+  not seed its project's uncached task (X-40)".
