@@ -1501,7 +1501,8 @@ interface WorkspaceRules {
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
-  root) is refused before anything is written, since its `*`
+  root), whose subdirectory does (`'packages'`), or that holds the
+  workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for
