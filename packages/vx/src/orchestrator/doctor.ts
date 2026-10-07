@@ -153,7 +153,7 @@ async function collectWorkspaceInfo(
       : path.resolve(cwd, opts.cacheDir)
   const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
   const storeRoot = opts.cacheDir === undefined ? resolveStoreRoot(root, workspaceConfig) : null
-  const cache = Cache.inspect(cacheDir)
+  const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
   let stats
   let orphans
   let flaky: FlakyTask[]

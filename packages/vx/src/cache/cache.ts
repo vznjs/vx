@@ -636,7 +636,8 @@ export class Cache implements CacheLayer {
      * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle.
+     * plugin's handle. An `'inspect'` open reads it only where the index
+     * records none (deleted, or never written beside a run's store).
      */
     storeRoot?: string | null,
   ) {
@@ -802,11 +803,13 @@ export class Cache implements CacheLayer {
         )?.value,
     )
     let storeDir =
-      mode === 'inspect' || storeRoot === undefined
-        ? recorded
-        : storeRoot === null
-          ? undefined
-          : storeRoot
+      mode === 'inspect'
+        ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
+        : storeRoot === undefined
+          ? recorded
+          : storeRoot === null
+            ? undefined
+            : storeRoot
     if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
       const blocked = storeBlocked(storeDir, typeof storeRoot === 'string' ? storeRoot : null)
       if (blocked !== null) {
