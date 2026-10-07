@@ -1371,9 +1371,20 @@ async function runOnBus(
       }
     }
     if (keepAlive.children.length > 0) {
-      const first = await Promise.race(
-        keepAlive.children.map((c, i) => c.exited.then((code) => ({ code, i }))),
-      )
+      // A server kept only as a dependency that exits 0 is a daemon that
+      // forked and returned (schema.md), not the end of the session: a
+      // `db: 'docker compose up -d'` under `app#dev` stopped the dev server
+      // right after the summary (WD-3). It ends the wait only as the last.
+      const first = await new Promise<{ code: number; i: number }>((resolve) => {
+        let left = keepAlive.children.length
+        keepAlive.children.forEach((c, i) => {
+          void c.exited.then((code) => {
+            left--
+            const n = keepAlive.nodes[i]!
+            if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })
+          })
+        })
+      })
       const node = keepAlive.nodes[first.i]!
       const others = keepAlive.nodes.length - 1
       // Not when the run was stopped: the server ended because the user
