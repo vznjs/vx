@@ -167,10 +167,10 @@ export interface VxPlugin {
   /**
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
-   * Precedence: first non-undefined plugin cache wins, in declaration
-   * order, ahead of core's own `.vx/cache` handle at the tail. A layer
-   * that WRAPS the local handle subsumes that tail, so it is not written
-   * twice.
+   * Every contributed layer is kept and chained in declaration order,
+   * ahead of core's own `.vx/cache` handle at the tail: a lookup walks
+   * them until one hits, a save reaches each. A layer that WRAPS the local
+   * handle subsumes that tail, so it is not written twice.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 

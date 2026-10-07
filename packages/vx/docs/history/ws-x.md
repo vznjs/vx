@@ -229,3 +229,7 @@ time (bugs, correctness, simplification, the plugin seams).
   removed, one that missed a same-size rewrite, and a runtime probe
   answered before its upstream wrote. Entries saved before them could
   replay that output, so every cached task misses once and re-saves.
+- **X-36.** `VxPlugin.cache`'s doc said the first plugin cache wins; every
+  contributed layer is kept and chained in declaration order (a lookup
+  walks them until one hits, a save reaches each), as `ChainedCache`
+  does. Doc only.
