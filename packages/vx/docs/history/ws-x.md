@@ -197,3 +197,10 @@ time (bugs, correctness, simplification, the plugin seams).
   unchanged repo still runs. Rows: `config-schema-refusals.test.ts` ›
   "a literal input a negation takes back (X-31)",
   `vx-migrate/tests/taken-back-literal.test.ts`.
+- **X-32.** An additive task that removed a file its upstream wrote (a
+  bundler deleting its intermediate) saved only what it added, so every
+  warm hit left the removed file: the upstream's restore put it back and
+  the dependant's rows never took it away. Now a run that removed a file
+  it found saves nothing and runs again. Row:
+  `overlapping-outputs.test.ts` › "its removal is never undone by a hit:
+  the dependant saves nothing and re-runs".

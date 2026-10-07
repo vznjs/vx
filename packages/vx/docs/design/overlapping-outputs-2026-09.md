@@ -54,6 +54,19 @@ depends on A:
 
 Cost: one stat walk of the overlap per B miss, none on a hit.
 
+**A removal is not an addition (X-32).** The diff as first built saw
+only what B added or changed. A B that deleted one of A's files (a
+bundler removing its intermediate) saved its additions, and every hit
+after left the deleted file: A's restore put it back and B's rows never
+took it away. Of the three answers — record deletions in the artifact,
+save B's whole tree when it deleted, or save nothing — the third is the
+only one that needs no new artifact shape and no new hit-path rule: a
+B whose run removed a file it found saves no entry and runs again, the
+way the rewrite-in-place shape costs A a restore. Recording deletions
+would make B's artifact a patch against A's tree, which is the
+"mixture of two runs" this note's clean exists to prevent; saving the
+whole tree would let B's hit restore A's files as B's.
+
 ## The invariant the sketch would break
 
 Point 4 is not free, and the sketch does not say what it costs. A

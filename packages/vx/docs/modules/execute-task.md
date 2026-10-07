@@ -158,7 +158,10 @@ attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
 `saveMiss` as `ownOutputFiles` in place of the glob walk. Its
 `workspaceFiles` get the same treatment (`stampWorkspaceOutputs`,
-`ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43).
+`ownWorkspaceOutputsSince`, `ownWsOutputFiles`; A-43). A run that removed a file
+it found (a bundler deleting its upstream's intermediate) saves nothing:
+an artifact holds what a run wrote, never what it took away, and the
+upstream's restore puts the file back (X-32).
 
 What a miss leaves behind — outputs resolved, artifact and rows saved,
 output prefixes recorded, git snapshot marked — is

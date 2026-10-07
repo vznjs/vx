@@ -1213,6 +1213,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
     // record (a row with no artifact) is exactly the corrupt-entry shape
@@ -1234,18 +1235,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         },
       })
     }
-  } else if (effectiveExitCode === 0 && willSave && (await keyStillTrue())) {
-    const ownOutputFiles =
-      additive && stampedBefore !== undefined
-        ? await ownOutputsSince(cleanArgs, stampedBefore)
-        : undefined
-    const ownWsOutputFiles =
-      additive && wsStampedBefore !== undefined
-        ? await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
-        : undefined
+  } else if (
+    effectiveExitCode === 0 &&
+    willSave &&
+    (await keyStillTrue()) &&
+    (own = await ownOutputs()) !== undefined
+  ) {
     const { landed } = await saveMiss({
-      ...(ownOutputFiles !== undefined ? { ownOutputFiles } : {}),
-      ...(ownWsOutputFiles !== undefined ? { ownWsOutputFiles } : {}),
+      ...own,
       node,
       hash,
       cache,
@@ -1300,6 +1297,28 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (args.fingerprintWatch?.moved() === undefined) return false
     args.fingerprintWatch.say(log)
     return true
+  }
+
+  /**
+   * What an additive run saves as its own, or undefined when it removed a
+   * file it found: no entry replays a removal (`ownOutputsSince`), so the
+   * task saves nothing and runs again.
+   */
+  async function ownOutputs(): Promise<
+    { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } | undefined
+  > {
+    const mine: { ownOutputFiles?: string[]; ownWsOutputFiles?: string[] } = {}
+    if (stampedBefore !== undefined) {
+      const files = await ownOutputsSince(cleanArgs, stampedBefore)
+      if (files === undefined) return undefined
+      mine.ownOutputFiles = files
+    }
+    if (wsStampedBefore !== undefined) {
+      const files = await ownWorkspaceOutputsSince(wsCleanArgs, wsStampedBefore)
+      if (files === undefined) return undefined
+      mine.ownWsOutputFiles = files
+    }
+    return mine
   }
 
   /**

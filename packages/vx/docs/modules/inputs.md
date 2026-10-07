@@ -106,7 +106,8 @@ export function asTrees(patterns: readonly string[]): string[]
 // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
 // orders them; item 588) owns what its run added or changed, not what
 // its glob selects: the stamp before, the diff after, and a clean by
-// recorded rows rather than by glob.
+// recorded rows rather than by glob. The diff is undefined when the run
+// removed a file it found: no entry replays a removal, so none is saved.
 export interface OutputStamp {
   size: number
   mtimeMs: number
@@ -119,7 +120,7 @@ export async function stampOutputs(args: {
 export async function ownOutputsSince(
   args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]>
+): Promise<string[] | undefined>
 // The same two for root-anchored `outputs.workspaceFiles` (A-43).
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
@@ -128,7 +129,7 @@ export async function stampWorkspaceOutputs(args: {
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]>
+): Promise<string[] | undefined>
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
