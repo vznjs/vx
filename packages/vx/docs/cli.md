@@ -176,7 +176,9 @@ two edits, or when exactly one scoped project's name after its `/` is
 (`--filter vx-mcp` hints `@vzn/vx-mcp`), and `Projects: a, b` otherwise
 (M-56). A list names eight, then a count. An unmatched `tag:` filter
 hints the nearest tag instead (`Did you mean tag:scope:web?`), else
-lists the tags.
+lists the tags. When every pattern matched and an exclusion took back
+all of it, the refusal names the exclusion instead (`no projects
+selected: !app excluded every project the other filters matched`).
 
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
