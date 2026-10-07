@@ -1,3 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-10.** A dependency-only server that died on its own during the run had its output block close `running`, right under the line naming its exit code. The outcome is now failed in place before the renderer closes the block, so it reads `failed (exit <n>)`. Row: `tests/keep-alive.test.ts` › "a crashed dependency-only server's output block closes failed".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
