@@ -508,3 +508,19 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
+  warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
+  `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
+  separator or a drive in any task glob list (`inputs` / `outputs`,
+  `files` / `workspaceFiles`, a brace arm included) is now refused at
+  load with the forward-slash spelling to write; a backslash before a
+  bracket, a brace, a `!` or a backslash stays an escape. Rows:
+  `config-schema-refusals.test.ts` › "a backslash separator or a drive
+  letter in a task glob".
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".
