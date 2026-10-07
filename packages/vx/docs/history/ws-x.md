@@ -525,3 +525,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   UTF-8 answer folds as before, so no `CACHE_VERSION` bump. Row:
   `runtime-inputs.test.ts` › "an answer that is not UTF-8 keys by its
   bytes, not by a lossy decode".
+- **X-79.** A task's own output reached through the other namespace was
+  an input: `outputs.files: ['out.json']` under its
+  `inputs.workspaceFiles: ['packages/a/*.json']`, or an
+  `outputs.workspaceFiles` entry in its project under `inputs.files`.
+  Each build moved the key, the recheck said the file "changed after its
+  key was taken … declare it in cache.outputs" (it was), and no run was
+  ever saved. Both input halves now drop both output fields. A key that
+  folded such a file moves and misses once; it held no wrong bytes, so
+  no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
+  project outputs from its workspaceFiles", "excludes the task’s own
+  workspace outputs from its project files".

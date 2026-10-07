@@ -216,8 +216,11 @@ other walker: a project outside a git work tree is a `UserError`
 5. **Boundary ignores** — a path under a nested project's directory
    (relative to this project), by ancestor lookup, not a glob (A-11).
    Cross-project isolation contract.
-6. **Own outputs** — declared `cache.outputs.files` are excluded.
-   Prevents self-invalidation.
+6. **Own outputs** — declared `cache.outputs.files` are excluded, and so
+   are the task's `outputs.workspaceFiles` that land in its project; a
+   `workspaceFiles` input drops both namespaces too. Prevents
+   self-invalidation: an output one namespace reached through the other
+   moved the key with every build, and no run was saved.
 7. **Existence check** — `git ls-files --cached` can surface a
    deleted-but-tracked path; we drop entries that are not on disk so
    the hasher doesn't throw ENOENT. "On disk" is an `lstat`: a regular

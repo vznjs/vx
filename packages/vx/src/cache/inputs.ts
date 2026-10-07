@@ -181,11 +181,14 @@ export type ProjectFilesCache = Map<
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
+  const projectRel = path.relative(args.workspaceRoot, args.projectDir).split(path.sep).join('/')
   const { files: projectFiles, listing } = await resolveFiles({
     projectDir: args.projectDir,
     workspaceRoot: args.workspaceRoot,
     files: args.inputs?.files,
     ownOutputs: args.ownOutputs,
+    ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
+    projectRel,
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
@@ -198,6 +201,8 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: wsDecl,
       ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
+      ownOutputs: args.ownOutputs,
+      projectRel,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.workspaceFilesCache !== undefined ? { memo: args.workspaceFilesCache } : {}),
     })
@@ -257,6 +262,9 @@ function resolveWorkspaceFiles(args: {
   workspaceRoot: string
   workspaceFiles: readonly string[]
   ownWorkspaceOutputs: readonly string[]
+  /** The task's project-relative `outputs.files`, and its project's root-relative directory. */
+  ownOutputs: readonly string[]
+  projectRel: string
   gitFilesCache?: GitFilesCache
   memo?: WorkspaceFilesCache
 }): { files: Promise<string[]>; listing: InputListing } | undefined {
@@ -273,6 +281,11 @@ function resolveWorkspaceFiles(args: {
   // A path the task's own outputs take back with `!` is no output, so it
   // stays an input (A-44).
   const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
+  // Its project outputs too, which a root-anchored glob can reach as well:
+  // left in, the task's own build moved its key, and no run was ever saved.
+  let ownProjectOutput: ((rel: string) => boolean) | undefined
+  const ownProject = (rel: string): boolean =>
+    (ownProjectOutput ??= underProject(args.projectRel, outputMatcher(args.ownOutputs)))(rel)
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
@@ -292,9 +305,15 @@ function resolveWorkspaceFiles(args: {
   const memoKey =
     args.memo === undefined
       ? undefined
-      : JSON.stringify([positive, negative, args.ownWorkspaceOutputs])
+      : JSON.stringify([
+          positive,
+          negative,
+          args.ownWorkspaceOutputs,
+          args.ownOutputs,
+          args.projectRel,
+        ])
   let isPositive: ((rel: string) => boolean) | undefined
-  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel)
+  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel) || ownProject(rel)
   const listing: InputListing = {
     root: args.workspaceRoot,
     listed: gitFiles,
@@ -349,6 +368,24 @@ async function resolveWorkspaceFilesOver(
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+}
+
+/** A project-relative matcher asked of root-relative paths: false outside the project. */
+function underProject(
+  projectRel: string,
+  matches: (rel: string) => boolean,
+): (rel: string) => boolean {
+  if (projectRel === '') return matches
+  const prefix = `${projectRel}/`
+  return (rel) => rel.startsWith(prefix) && matches(rel.slice(prefix.length))
+}
+
+/** A root-relative matcher asked of project-relative paths. */
+function inProject(
+  projectRel: string,
+  matches: (rel: string) => boolean,
+): (rel: string) => boolean {
+  return projectRel === '' ? matches : (rel) => matches(`${projectRel}/${rel}`)
 }
 
 /** Anything at the path — file, directory, symlink to anything or to nothing. */
@@ -1116,6 +1153,9 @@ interface ResolveFilesArgs {
   workspaceRoot: string
   files: string[] | undefined
   ownOutputs: string[]
+  /** Root-relative `outputs.workspaceFiles`, and the project's root-relative directory. */
+  ownWorkspaceOutputs: readonly string[]
+  projectRel: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache
   projectFilesCache?: ProjectFilesCache
@@ -1307,6 +1347,8 @@ async function resolveFiles(
   const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
+  // Its root-anchored outputs that land in the project, as `files` sees them.
+  const ownWsOutput = inProject(args.projectRel, outputMatcher(args.ownWorkspaceOutputs))
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -1318,7 +1360,7 @@ async function resolveFiles(
   // duration of one orchestrator run.
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
-  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
+  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.ownWorkspaceOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {
@@ -1329,7 +1371,7 @@ async function resolveFiles(
     if (memo !== undefined && memo.snapshot === gitFiles) {
       return {
         files: [...memo.result],
-        listing: listingFor(args.projectDir, gitFiles, plan, nested),
+        listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
       }
     }
   }
@@ -1380,7 +1422,7 @@ async function resolveFiles(
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
-    if (!input || nested(rel)) continue
+    if (!input || nested(rel) || ownWsOutput(rel)) continue
     candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
   const unmatchedLiterals = unanswered(plan.literals, gitFiles)
@@ -1407,7 +1449,10 @@ async function resolveFiles(
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
-  return { files: [...resolved], listing: listingFor(args.projectDir, gitFiles, plan, nested) }
+  return {
+    files: [...resolved],
+    listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
+  }
 }
 
 function listingFor(
@@ -1415,11 +1460,12 @@ function listingFor(
   listed: readonly string[],
   plan: FilesPlan,
   nested: (rel: string) => boolean,
+  ownWsOutput: (rel: string) => boolean,
 ): InputListing {
   return {
     root,
     listed,
-    isInput: (rel) => inPlan(plan, rel),
+    isInput: (rel) => inPlan(plan, rel) && !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,
