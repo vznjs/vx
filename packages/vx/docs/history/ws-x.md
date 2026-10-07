@@ -41,3 +41,8 @@ time (bugs, correctness, simplification, the plugin seams).
   `vx watch` leaked the internal `?vx-held=` query. The first error is
   now reported like a single one, `file:line:col: message`. Row:
   `project-loader.test.ts` › "two syntax errors name the first one".
+- **X-7.** A file `dist` where a restored entry needs a directory was
+  reported as "a directory standing where the entry holds a file", with
+  the code doubled (`EEXIST: EEXIST:`). The message now names the case
+  the code means, once. Row: `artifact-roundtrip.test.ts` › "names a
+  STRAY on disk as such".

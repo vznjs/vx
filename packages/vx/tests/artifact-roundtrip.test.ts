@@ -457,7 +457,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // Item 1094: `dist/**` covers this path, and the message said the globs
     // did not; what the clean leaves is a directory where a file goes.
     await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
-      /removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run\.$/,
+      /: a directory stands where the entry holds a file\. The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run\.$/,
     )
 
     // And a FILE standing where the entry needs a DIRECTORY — the same
@@ -470,9 +470,11 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await saveEntry('stray2')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     await write(path.join(projectDir, 'dist'), 'I AM A FILE')
-    await expect(cache.restoreOutputs('stray2', projectDir)).rejects.toThrow(
-      /was blocked by what is on disk \(EEXIST/,
-    )
+    const blocked = await cache.restoreOutputs('stray2', projectDir).catch((e: Error) => e.message)
+    expect(blocked).toMatch(/was blocked by what is on disk \(EEXIST/)
+    // X-7: the file case was described as its reverse, and the code doubled.
+    expect(blocked).toContain(': a file stands where the entry needs a directory.')
+    expect(blocked).not.toContain('EEXIST: EEXIST')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
   })
 

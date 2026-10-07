@@ -1473,9 +1473,17 @@ export class Cache implements CacheLayer {
       // leaves it or loops (item 748).
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'EISDIR' || code === 'ENOTDIR' || code === 'EEXIST' || code === 'ENOTEMPTY') {
+        // Bun's message already opens with the code: `EEXIST: EEXIST: …` read
+        // as a stutter. EEXIST and ENOTDIR are a FILE in a directory's
+        // place; the told-backwards sentence named only the reverse (X-7).
+        const msg = (err as Error).message
+        const what =
+          code === 'EISDIR' || code === 'ENOTEMPTY'
+            ? 'a directory stands where the entry holds a file'
+            : 'a file stands where the entry needs a directory'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${code}: ${(err as Error).message}). ` +
-            `The clean before a restore removes the files the output globs select, not a directory standing where the entry holds a file, nor a path the globs do not cover — remove it and re-run.`,
+          `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
+            `The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run.`,
         )
       }
       // A legal name under a destination deep enough that the two together
