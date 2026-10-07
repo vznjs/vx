@@ -108,9 +108,13 @@ import {
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
+/** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
+let srtLoaded: SrtModule | undefined
 
 async function loadSrt(): Promise<SrtModule> {
-  if (!srtPromise) srtPromise = import('@anthropic-ai/sandbox-runtime')
+  if (!srtPromise) {
+    srtPromise = import('@anthropic-ai/sandbox-runtime').then((m) => (srtLoaded = m))
+  }
   return srtPromise
 }
 
@@ -1620,8 +1624,17 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
-  if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
-    void resetSandbox().catch(() => {})
+  if (liveServers.delete(tag)) {
+    // A server's wrap counts as a live sandbox in SRT until this, and SRT
+    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
+    // grant) only at a count of 0: one stopped server kept every later
+    // task's stubs in the workspace until the reset.
+    try {
+      srtLoaded!.SandboxManager.cleanupAfterCommand()
+    } catch {
+      // best-effort, as a one-shot task's
+    }
+    if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return

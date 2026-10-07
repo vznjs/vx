@@ -917,7 +917,11 @@ takes `server: true` from the persistent path and lists the tag as a
 live server. `resetSandbox`, which every run calls at its end, releases
 only the bridges no live server owns, and while one runs it defers SRT's
 reset. That server's `releaseBridges`, on its exit, runs the deferred
-reset. Before item 882, a foreground `vx run dev` or a `vx watch` held a
+reset, and hands SRT the server's `cleanupAfterCommand`: SRT removes
+bwrap's empty host stubs (`.bashrc`, `.vscode`, … under a write grant)
+only once every wrap has made that call, and a stopped server's never
+came, so every later task left its stubs in the workspace. Before item
+882, a foreground `vx run dev` or a `vx watch` held a
 server past a reset that had already released its port and SRT's
 proxies, and the port went dark ~40 ms after the summary.
 
