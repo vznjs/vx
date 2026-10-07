@@ -323,7 +323,9 @@ describe('vx last (e2e)', () => {
       const all = (await vx(root, ['last', '--list', '20'])).out.trim().split('\n')
       const only = (await vx(root, ['last', '--list', '20', '--failed'])).out.trim().split('\n')
       expect(all.some((l) => l.startsWith('ok'))).toBe(true)
-      expect(only).toEqual(all.filter((l) => l.startsWith('FAILED')))
+      // Column widths are the listed rows' own, so compare past the padding.
+      const cells = (l: string): string => l.replace(/ {2,}/g, '  ')
+      expect(only.map(cells)).toEqual(all.filter((l) => l.startsWith('FAILED')).map(cells))
     },
     TIMEOUT,
   )
