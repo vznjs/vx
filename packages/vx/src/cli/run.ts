@@ -160,7 +160,8 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     const a = before[i]
     if (a === '--filter' || a?.startsWith('--filter=')) {
       const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
-      if (v === undefined || v === '')
+      // `--filter --dry` took `--dry` as the pattern (X-13); no filter opens with `--`.
+      if (v === undefined || v === '' || (a === '--filter' && v.startsWith('--')))
         return {
           ...out,
           error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,

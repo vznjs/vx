@@ -1932,6 +1932,10 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--filter']).error).toBe(
       '--filter requires a value (a project name, glob or path, e.g. --filter app)',
     )
+    // X-13: the next flag is no pattern (`--filter --dry` matched "--dry").
+    expect(parseRunArgs(['build', '--filter', '--dry']).error).toBe(
+      '--filter requires a value (a project name, glob or path, e.g. --filter app)',
+    )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
       ['--concurrency', '--cache', '--verbosity', '--tag'].map(
