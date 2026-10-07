@@ -113,3 +113,8 @@ time (bugs, correctness, simplification, the plugin seams).
   config change's verdict read "config config". Row:
   `why-verdict.test.ts` › "names a config change once, scopes a bare
   name to the cwd, refuses an unknown run".
+- **X-19.** A plugin key that names no hook (`excutor`, `setUp`) was
+  never called and never said: tasks ran here with the plugin's executor
+  unheard. The workspace schema now refuses it, hinting the nearest
+  hook. Row: `config-schema-refusals.test.ts` › "a key that names no
+  hook is refused, the nearest hinted".

@@ -180,6 +180,17 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             `task's command runs (see docs/architecture.md § plugin capabilities).`,
         )
       }
+      // A misspelled hook (`excutor`, `setUp`) was never called and never
+      // said: tasks ran here with the plugin's executor unheard (X-19).
+      for (const key of Object.keys(plug)) {
+        if (key === 'name' || (PLUGIN_HOOKS as readonly string[]).includes(key)) continue
+        const near = nearest(key, PLUGIN_HOOKS)
+        const hint =
+          near === undefined ? ` (hooks: ${PLUGIN_HOOKS.join(', ')})` : ` — did you mean '${near}'?`
+        throw new UserError(
+          `${configPath}: plugin '${pkg}' declares '${key}', which is no plugin hook${hint}`,
+        )
+      }
       for (const cap of PLUGIN_FUNCTION_HOOKS) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)

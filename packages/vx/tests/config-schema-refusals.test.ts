@@ -66,6 +66,20 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ plugins: [stamped] })).toBeNull()
   })
 
+  // X-19: a misspelled hook was never called and never said.
+  it('a key that names no hook is refused, the nearest hinted', () => {
+    const p = (hooks: object) => ({ ...testPlugin('x19', { setup() {} }), ...hooks })
+    expect([
+      refusal({ plugins: [p({ excutor: () => null })] }),
+      refusal({ plugins: [p({ zzzzzzzz: 1 })] }),
+      refusal({ plugins: [p({ teardown() {} })] }),
+    ]).toEqual([
+      `${WS}: plugin 'x19' declares 'excutor', which is no plugin hook — did you mean 'executor'?`,
+      `${WS}: plugin 'x19' declares 'zzzzzzzz', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, setup, commands, teardown)`,
+      null,
+    ])
+  })
+
   it('a non-object `commands` is refused, not read as a plugin that contributes a verb', () => {
     // `Object.entries(7)` is `[]`: without the shape check the plugin passes
     // the at-least-one-capability rule on a `commands` that declares nothing.
