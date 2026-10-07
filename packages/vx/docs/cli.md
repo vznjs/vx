@@ -111,7 +111,8 @@ If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
   across the workspace, prints `description` next to each, prompts
-  for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
+  for a number, runs the chosen one. The menu and prompt go to stderr,
+  so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
   `tasks` in a vx.config, or `vx init`).

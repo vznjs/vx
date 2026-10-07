@@ -462,7 +462,9 @@ export async function pickTask(
     )
     return null
   }
-  const out = io.output ?? process.stdout
+  // The menu is a conversation with the terminal, not the run's output: on
+  // stdout, `vx run > out.txt` put it in the file and asked a blank screen.
+  const out = io.output ?? process.stderr
   const numW = String(entries.length).length
   const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
   out.write('Tasks:\n')
@@ -477,7 +479,7 @@ export async function pickTask(
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({
     input: io.input ?? process.stdin,
-    output: io.output ?? process.stdout,
+    output: out,
   })
   // On a terminal readline takes Ctrl-C and Ctrl-D itself, raw, and
   // rejects the pending question with an AbortError — which reached the
