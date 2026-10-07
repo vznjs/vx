@@ -508,6 +508,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
@@ -517,14 +518,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
-- **X-78.** A `cache.inputs.runtime` / `workspaceRuntime` answer that is
-  not UTF-8 was decoded lossily, every invalid byte one U+FFFD, so
-  `v\xff` and `v\xfe` folded the same key and the second replayed the
-  first's output. Such an answer now folds as the hex of its stdout and
-  stderr bytes behind a leading newline, which no trimmed text holds; a
-  UTF-8 answer folds as before, so no `CACHE_VERSION` bump. Row:
-  `runtime-inputs.test.ts` › "an answer that is not UTF-8 keys by its
-  bytes, not by a lossy decode".
+- **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
+  from another lane, which refuses it by name.
 - **X-79.** A task's own output reached through the other namespace was
   an input: `outputs.files: ['out.json']` under its
   `inputs.workspaceFiles: ['packages/a/*.json']`, or an
@@ -544,3 +539,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   as `Cache.hashFile` does, and stats each extra file before hashing it.
   Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
   kept is read again in the same process".
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".

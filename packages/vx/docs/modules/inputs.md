@@ -8,9 +8,7 @@ can hash:
 - a sorted list of absolute file paths whose contents will be hashed
 - a sorted list of `[envName, hostValue]` pairs
 - sorted `[command, output]` pairs for `cache.inputs.runtime` and
-  `workspaceRuntime` (each command run once per run through a memo;
-  an output that is not UTF-8 is the hex of its bytes behind a leading
-  newline, never a lossy decode)
+  `workspaceRuntime` (each command run once per run through a memo)
 
 Plus the helpers that resolve and clean `cache.outputs.files` and
 `outputs.workspaceFiles`.

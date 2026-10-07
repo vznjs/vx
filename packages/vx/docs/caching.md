@@ -124,10 +124,6 @@ over (in order):
    The runtime-output analog of step 7: the command _strings_ are in
    the resolved config (step 5), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
-   An answer that is not UTF-8 folds as the hex of its stdout and
-   stderr bytes behind a leading newline, which no trimmed text has: a
-   lossy decode keyed every invalid byte as one U+FFFD, so two such
-   answers shared a key.
 9. **`cache.inputs.workspaceRuntime` resolved output** — same as step
    8 but commands run at the **workspace root**, and the pairs fold
    into a **distinct namespace** (`ws-runtime-values:`) so an identical
