@@ -338,6 +338,7 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
           .map(([k, v]) => `${k}=${v}`)
           .join(', '),
   )
+  add('env.secret', list(exec?.env?.secret))
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
@@ -347,6 +348,7 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
       persistent.readyWhen === undefined ? 'yes' : `readyWhen: ${persistent.readyWhen}`,
     )
   }
+  add('interactive', exec?.interactive === undefined ? undefined : exec.interactive ? 'yes' : 'no')
   const cache = task.cache
   if (cache !== undefined) {
     add('inputs.files', list(cache.inputs.files))
