@@ -792,24 +792,33 @@ export class Cache implements CacheLayer {
         this.schemaReset = this.db
           .transaction((): SchemaReset | null => {
             const found = readVersion()
-            if (found !== undefined && found !== SCHEMA_VERSION) refuseUnreadable(found)
-            if (found === undefined) {
-              this.db
-                .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
-                .run(SCHEMA_VERSION)
-              return null
-            }
             if (found === SCHEMA_VERSION) return null
+            if (found !== undefined) refuseUnreadable(found)
             // `main.` on every name: unqualified, a table the index lacks
             // resolves to an attached store's (none is attached yet; this
             // keeps it so).
-            this.db.exec(
-              'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
-            )
+            if (found !== undefined) {
+              this.db.exec(
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
+              )
+            }
+            // The tables land under the same write lock as the stamp: made
+            // after it, another vx's reset could stamp its own schema in
+            // between and keep these tables under it. An index beside a
+            // store keeps no entry tables (they would shadow the store's).
+            createTables(this.db, 'main')
+            const recordedStore = this.db
+              .prepare("SELECT 1 FROM schema_meta WHERE key = 'store_dir'")
+              .get()
+            if (storeRoot === undefined ? recordedStore != null : storeRoot !== null) {
+              for (const t of STORE_TABLES) this.db.exec(`DROP TABLE main.${t}`)
+            }
             this.db
-              .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
+              .prepare(
+                "INSERT INTO schema_meta(key, value) VALUES ('version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+              )
               .run(SCHEMA_VERSION)
-            return { from: found, to: SCHEMA_VERSION }
+            return found === undefined ? null : { from: found, to: SCHEMA_VERSION }
           })
           .immediate()
       } catch (err) {

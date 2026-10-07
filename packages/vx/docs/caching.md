@@ -1352,7 +1352,10 @@ hit replays it with pure SQL, never decompressing the artifact).
 it (pre-alpha: no migrations; the index is an inventory, owner
 2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
-`output_dirs` kept an earlier vx's columns).
+`output_dirs` kept an earlier vx's columns). The check, drop, re-create
+and stamp are one write transaction, so another version's open waits
+rather than landing between them; an index already current is opened
+without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache prune --dry-run` previews the reset
 instead, item 1083).
