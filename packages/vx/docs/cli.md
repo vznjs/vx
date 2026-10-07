@@ -2200,9 +2200,10 @@ is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
 Workspace doctor — one screen of facts for bug reports and sanity
 checks. The task count and the sandbox row's declared count come from
 the same load a run uses, plugin stages included; a config that fails
-to load counts as zero in both rather than failing the doctor, and is
+to load counts as zero in both rather than failing the doctor, every
+other project still counts as a run loads it, and the broken one is
 named (`12 (34 tasks · 1 config did not load)`, then a `config errors`
-row with the loader's message per config):
+row per config with the message `vx run` stops on):
 
 ```
 $ vx info

@@ -180,12 +180,7 @@ describe('the raw config load has only its two sanctioned uses', () => {
     }
     // A new name here is not automatically wrong — it is a consumer that has
     // to justify itself in this test, which is the point.
-    expect([...callers.keys()].sort()).toEqual([
-      'cli/lock.ts',
-      'cli/select.ts',
-      'cli/watch-set.ts',
-      'orchestrator/doctor.ts',
-    ])
+    expect([...callers.keys()].sort()).toEqual(['cli/lock.ts', 'cli/select.ts', 'cli/watch-set.ts'])
 
     for (const [rel, at] of callers) {
       const text = await Bun.file(path.join(SRC, rel)).text()

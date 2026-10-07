@@ -175,7 +175,14 @@ self.onmessage = async (e) => {
       fn: typeof mod === 'function',
       changed: report,
     })
-  } catch (err) {
+  } catch (thrown) {
+    // Two syntax errors arrive as one AggregateError, whose own message
+    // names no line; the in-process load reports the first (X-6), so the
+    // hop does too (X-26).
+    const err =
+      thrown?.name === 'AggregateError' && Array.isArray(thrown.errors) && thrown.errors.length > 0
+        ? thrown.errors[0]
+        : thrown
     const report = changed()
     umaskBack()
     postMessage({
