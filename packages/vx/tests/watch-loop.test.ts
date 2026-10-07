@@ -80,6 +80,16 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('the recorded command keeps its args shell-quoted, as `vx run` records them', async () => {
+    // A bare join recorded `--filter a*`, which a shell globs when pasted.
+    f.watch = startWatch(f.root, ['--filter', 'a*'])
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    const last = Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: f.root })
+    expect(last.stdout.toString()).toContain("$ vx watch build --filter 'a*'")
+  }, 40_000)
+
   it('under --frozen a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {
     const lock = () => {
       const r = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: f.root, stderr: 'pipe' })
