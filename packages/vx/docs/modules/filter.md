@@ -25,6 +25,7 @@ export interface ParsedFilter {
   pathRoot?: string // the workspace root `pathGlob` is relative to
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
   tag?: true // tag:<pattern>: `matcher` is a glob over the projects' tags
+  dirFallback?: ParsedFilter // `apps/*` naming no project: read as ./apps/*
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter
