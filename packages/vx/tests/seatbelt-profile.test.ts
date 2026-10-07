@@ -104,7 +104,11 @@ describe('macProfileRules, capability by capability', () => {
   ]
   const ROWS: Array<[string, Record<string, unknown>, string[]]> = [
     ['nothing declared', {}, []],
-    ['systemInfo', { systemInfo: ['hw.ncpu'] }, ['(allow system-info (info-type "hw.ncpu"))']],
+    [
+      'systemInfo',
+      { systemInfo: ['hw.ncpu'] },
+      ['(allow system-info (info-type "hw.ncpu"))', '(allow sysctl-read (sysctl-name "hw.ncpu"))'],
+    ],
     ['localBinding: true', { localBinding: true }, LOOPBACK],
     ['a localBinding port list', { localBinding: [3000] }, LOOPBACK],
     ['localBinding: false', { localBinding: false }, []],

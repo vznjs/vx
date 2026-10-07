@@ -2142,8 +2142,12 @@ function sbplToken(value: string, field: string): string {
  */
 export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
+  // A name is an info type to one caller and a sysctl to another (Bun
+  // reads `hw.optional.neon` with sysctl-read), so it grants both.
   for (const t of c.systemInfo ?? []) {
-    rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
+    const name = sbplToken(t, 'allow.systemInfo')
+    rules.push(`(allow system-info (info-type "${name}"))`)
+    rules.push(`(allow sysctl-read (sysctl-name "${name}"))`)
   }
   if (localBindingOn(c)) {
     // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is

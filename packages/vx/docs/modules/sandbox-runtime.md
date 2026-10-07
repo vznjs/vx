@@ -143,7 +143,8 @@ that link re-granted the whole project past its `allow.read`.
 SRT as config, and neither does a `network` domain list. The first three exist as fields, but `sandbox-manager.js`
 (0.0.75, still 0.0.76) reads them off the config given to `initialize()` and never off
 the per-call one, so a per-task grant is silently dropped; `systemInfo`
-has no field at any level. vx is per-task by definition, so it appends
+has no field at any level (each name becomes both a `system-info` and a
+`sysctl-read` rule: Bun reads `hw.optional.neon` as a sysctl). vx is per-task by definition, so it appends
 the corresponding SBPL rules to the END of the seatbelt profile SRT
 generated — last-match-wins is the only position where a rule of ours
 outranks one of SRT's. Measured 2026-09-05: the same rules injected after
