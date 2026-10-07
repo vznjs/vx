@@ -346,7 +346,7 @@ describe('the configure guide quotes what vx why says', () => {
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
     )
-    expect(notes.length).toBe(13)
+    expect(notes.length).toBe(14)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)

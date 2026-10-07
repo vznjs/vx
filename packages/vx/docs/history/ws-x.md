@@ -549,3 +549,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   alone. Rows: `failure-mode.test.ts` › "lists a key that passed only on
   a retry, its failed attempts as failures"; `flaky.test.ts` › "a
   within-run retry is named as such …".
+- **X-73.** `vx why` blamed a prune ("no entry for this key was in the
+  cache when it ran (pruned or evicted)") on a clean run whose previous
+  run had executed the task past a failed dependency under `--continue`,
+  so never saved it: the taint verdict fired only when both runs ran
+  beside a failure. A previous run that executed, succeeded and ran
+  beside a failure with writes on, with no entry older than this run, is
+  now named as not saved for that reason. Row: `metrics.test.ts` ›
+  "names why an unchanged key re-executed …".
