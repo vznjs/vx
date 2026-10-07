@@ -244,7 +244,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     Object.entries(declaredOf(options) ?? {}),
   )
   if (options.resources !== false || options.reservations !== undefined) {
-    const memoryMb = memoryBudgetMb(options)
+    // Read on the first admit: every config evaluation runs this factory,
+    // and the default budget is cgroup reads on Linux.
+    let memoryMb: number | undefined
     hooks.admit = (task, ctx) =>
       admits(
         task.id,
@@ -252,7 +254,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         reservations,
         {
           cpus: ctx.concurrency,
-          memory: memoryMb,
+          memory: (memoryMb ??= memoryBudgetMb(options)),
         },
       )
   }

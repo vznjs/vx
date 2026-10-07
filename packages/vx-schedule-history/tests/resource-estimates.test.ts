@@ -3,7 +3,8 @@
 // scheduler already reads; the pins here are the rounding, the headroom,
 // the thresholds, the packing rule and the one rule that matters most — a
 // declared reservation is never overridden.
-import { describe, expect, it } from 'bun:test'
+import os from 'node:os'
+import { describe, expect, it, spyOn } from 'bun:test'
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
 import { admits, resourceEstimates, scheduleHistoryPlugin, withDeclared } from '../src/index.js'
 
@@ -188,6 +189,22 @@ describe('the reservation rules the sweep found unheld', () => {
     })
     expect(typeof declared.admit).toBe('function')
     expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
+  })
+
+  // Every config evaluation runs the factory (`vx info`, `vx mcp`, a plan):
+  // the machine's memory, cgroup reads on Linux, is paid only by a run.
+  it('the memory budget is read on the first admit, once; not by the factory', () => {
+    const totalmem = spyOn(os, 'totalmem')
+    try {
+      const plugin = scheduleHistoryPlugin()
+      const declared = totalmem.mock.calls.length
+      const admitCtx = { running: [], concurrency: 4 }
+      plugin.admit!(node('a#build') as never, admitCtx as never)
+      plugin.admit!(node('a#build') as never, admitCtx as never)
+      expect([declared, totalmem.mock.calls.length]).toEqual([0, 1])
+    } finally {
+      totalmem.mockRestore()
+    }
   })
 
   // A NaN budget fits no reservation: every task that reserved memory
