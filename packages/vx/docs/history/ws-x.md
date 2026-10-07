@@ -542,3 +542,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   and `run()` marks each outcome of a run whose policy reads and writes
   nothing `cacheOff`. Rows: `cli.test.ts` › "--no-cache: the plan and the
   run both call the task no-cache", the same for `--cache=local:`.
+- **X-72.** `vx info` said `flaky tasks: none` after a task passed on a
+  retry: `flakyTasks()` listed only keys holding both a failed and a
+  passing row, and a retry's pass is one `success` row with `attempts`
+  above 1. Its failed attempts now count as failures, so such a key mixes
+  alone. Rows: `failure-mode.test.ts` › "lists a key that passed only on
+  a retry, its failed attempts as failures"; `flaky.test.ts` › "a
+  within-run retry is named as such …".

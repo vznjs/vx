@@ -2300,7 +2300,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one). `none` when the history never mixed.
+  replayed one), and a pass that took a retry mixes its key alone, its
+  failed attempts counted as failures. `none` when the history never
+  mixed.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
