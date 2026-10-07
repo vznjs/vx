@@ -1461,7 +1461,7 @@ function undecodableOnDisk(abs: string): boolean {
   } catch {
     return false
   }
-  const lossy = new TextDecoder()
+  const lossy = new TextDecoder('utf-8', { ignoreBOM: true })
   for (const name of raw) {
     if (lossy.decode(name) !== next) continue
     try {
@@ -1602,7 +1602,7 @@ function addedTo(
   return undefined
 }
 
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 /**
  * Union of the OUTPUT files matching any positive pattern in `cwd`, minus
