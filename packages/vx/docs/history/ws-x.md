@@ -189,3 +189,11 @@ time (bugs, correctness, simplification, the plugin seams).
   project output glob under it is now refused at load. Row:
   `config-schema-refusals.test.ts` › "an output glob under the reserved
   workspace-outputs/ is refused (X-30)".
+- **X-31.** A `!` input entry subtracts wherever it sits, so
+  `['src/**', '!src/gen/**', 'src/gen/keep.ts']` never keyed `keep.ts`
+  and an edit to it replayed the old output under a green run. Such a
+  literal is now refused at load, in `files` and `workspaceFiles`;
+  `turbo()` and `nx()` drop it (dead in Turbo and Nx too), so an
+  unchanged repo still runs. Rows: `config-schema-refusals.test.ts` ›
+  "a literal input a negation takes back (X-31)",
+  `vx-migrate/tests/taken-back-literal.test.ts`.
