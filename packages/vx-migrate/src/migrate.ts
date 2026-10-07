@@ -214,9 +214,21 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ],
     }
   }
+  // An executor target is an `nx-exec` line and a `.env` one an `nx-env`
+  // line: both bins are this package's, and `bunx` leaves none behind.
+  const runsBins = plan.projects.some((p) =>
+    p.tasks.some((t) => {
+      const cmd = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+      return typeof cmd === 'string' && /^nx-(exec|env) /.test(cmd)
+    }),
+  )
   const headerNotes = refused
     ? []
-    : await prepareRepo(root, ['@vzn/vx', ...plugins.map((p) => p.pkg)], parsed)
+    : await prepareRepo(
+        root,
+        ['@vzn/vx', ...(runsBins ? ['@vzn/vx-migrate'] : []), ...plugins.map((p) => p.pkg)],
+        parsed,
+      )
   return applyMigration({
     root,
     metas,
