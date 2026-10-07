@@ -21,3 +21,6 @@ differences, binaries and install across platforms.
   member whose dir holds a backslash-escaped space runs the members".
 - **XP-40.** turbo() escapes a brace in a package dir it writes into a glob (climbed inputs, root dependency trees): `r{x,y}` matched `rx`, `ry`, never itself. Rows: "a climbed glob escapes the package dir it keeps…", "key every task on a dependency whose dir name holds a brace".
 - **XP-50.** macOS `ps` under a comma locale (`0:01,50`) read no time, so off-Linux sampling saw no tree; `proc-sample.unsafe.test.ts` "reads ps's time column, macOS hundredths (either decimal point) and days included".
+- **XP-60.** `--affected` matched git's NFC paths against project dirs as
+  discovered; a macOS dir stored NFD selected nothing. Both sides compare
+  NFC. Row: `affected-unicode.test.ts`.
