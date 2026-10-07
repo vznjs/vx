@@ -879,15 +879,8 @@ export class Cache implements CacheLayer {
     if (storeDir !== undefined) {
       this.attachStore(storeDir, mode === 'inspect')
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
-    }
-
-    createTables(this.db, storeDir === undefined ? 'main' : 'store')
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      this.db
-        .prepare(
-          "INSERT INTO store.store_meta(key, value) VALUES ('schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        )
-        .run(SCHEMA_VERSION)
+    } else {
+      createTables(this.db, 'main')
     }
     if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
       if (storeDir === undefined)
@@ -1018,50 +1011,63 @@ export class Cache implements CacheLayer {
    * reads it: a store another `SCHEMA_VERSION` wrote has its tables dropped
    * (owner, 2026-10-06), the artifacts kept. Each is indexed again from its
    * own bytes on its next hit (`adopt`). A reading verb reads such a store
-   * as empty and changes nothing.
+   * as empty and changes nothing. Creates the store's tables either way.
    */
   private matchStoreSchema(writable: boolean): SchemaReset | null {
-    const tables = new Set(
-      (
-        this.db
-          .prepare("SELECT name FROM store.sqlite_master WHERE type = 'table'")
-          .all() as Array<{
-          name: string
-        }>
-      ).map((r) => r.name),
-    )
-    if (!tables.has('entries')) return null
-    const found = tables.has('store_meta')
-      ? (
-          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
-            value: string
-          } | null
-        )?.value
-      : undefined
-    if (found === SCHEMA_VERSION) return null
-    if (!writable) {
-      this.db.exec('DETACH DATABASE store')
-      this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+    const read = (): { has: boolean; found: string | undefined } => {
+      const tables = new Set(
+        (
+          this.db
+            .prepare("SELECT name FROM store.sqlite_master WHERE type = 'table'")
+            .all() as Array<{
+            name: string
+          }>
+        ).map((r) => r.name),
+      )
+      const found = tables.has('store_meta')
+        ? (
+            this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
+              value: string
+            } | null
+          )?.value
+        : undefined
+      return { has: tables.has('entries'), found }
+    }
+    const seen = read()
+    if (seen.has && seen.found === SCHEMA_VERSION) {
+      createTables(this.db, 'store')
       return null
     }
-    let reset: SchemaReset | null = null
-    this.db
-      .transaction(() => {
-        // Re-read under the write lock: another workspace's open may have
-        // reset it first.
-        const now = (
-          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
-            value: string
-          } | null
-        )?.value
-        if (now === SCHEMA_VERSION) return
-        for (const t of STORE_TABLES) {
-          if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
+    if (!writable) {
+      if (seen.has) {
+        this.db.exec('DETACH DATABASE store')
+        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+      }
+      createTables(this.db, 'store')
+      return null
+    }
+    // Re-read, drop, create and stamp under one write lock: as separate
+    // transactions, another vx's open landing after the drop made its own
+    // tables, and this one's `CREATE IF NOT EXISTS` kept them under its stamp.
+    return this.db
+      .transaction((): SchemaReset | null => {
+        const now = read()
+        let reset: SchemaReset | null = null
+        if (now.has && now.found !== SCHEMA_VERSION) {
+          for (const t of STORE_TABLES) {
+            if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
+          }
+          reset = { from: now.found ?? 'an earlier schema', to: SCHEMA_VERSION }
         }
-        reset = { from: found ?? 'an earlier schema', to: SCHEMA_VERSION }
+        createTables(this.db, 'store')
+        this.db
+          .prepare(
+            "INSERT INTO store.store_meta(key, value) VALUES ('schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          )
+          .run(SCHEMA_VERSION)
+        return reset
       })
       .immediate()
-    return reset
   }
 
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
