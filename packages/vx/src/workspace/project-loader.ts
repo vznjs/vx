@@ -665,14 +665,19 @@ export async function loadProjectConfigs(
  */
 // `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
 // => 7n` gave every task the key 00000000, and a changed command replayed
-// the old output (D-75).
+// the old output (D-75). `Bun` is read by its identifier, not through
+// globalThis: the docs playground bundles this file with the identifier
+// rewritten to its shim, and a browser has no global `Bun`.
 const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
   (name) =>
     [
       name,
       name
         .split('.')
-        .reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], globalThis) as object,
+        .reduce<unknown>(
+          (o, k) => (o === globalThis && k === 'Bun' ? Bun : (o as Record<string, unknown>)[k]),
+          globalThis,
+        ) as object,
     ] as const,
 )
 
