@@ -123,6 +123,15 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].commands\` must be an object`)
   })
 
+  it('a `commands` array is refused, not read as the verbs 0, 1, …', () => {
+    const p = testPlugin('sweep-cmd-list', {
+      commands: [{ description: 'd', run: () => 0 }] as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].commands\` must be an object keyed by verb, not an array`,
+    )
+  })
+
   it('a fingerprint claim over NO files is refused', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })

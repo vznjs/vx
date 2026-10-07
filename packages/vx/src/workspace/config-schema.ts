@@ -229,6 +229,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         if (plug.commands === null || typeof plug.commands !== 'object') {
           throw new UserError(`${configPath}: \`plugins[${i}].commands\` must be an object`)
         }
+        // A list of commands loaded as the verbs `0`, `1`, … that help listed.
+        if (Array.isArray(plug.commands)) {
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].commands\` must be an object keyed by verb, not an array`,
+          )
+        }
         for (const [verb, cmd] of Object.entries(plug.commands as Record<string, unknown>)) {
           const c = cmd as { description?: unknown; run?: unknown } | null
           if (
