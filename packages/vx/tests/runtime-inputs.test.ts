@@ -2,6 +2,7 @@
 // the headline property (output resolved live even under --frozen) only
 // holds across real invocations.
 
+import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
@@ -74,6 +75,37 @@ describe('runtime inputs — e2e', () => {
     const r3 = await vx(root, ['run', 'build', '--all'])
     expect(r3.code).toBe(0)
     expect((await readFile(log, 'utf8')).trim().split('\n').length).toBe(2)
+  })
+
+  it('refuses runtime output that is not UTF-8 rather than key its lossy decode', async () => {
+    // Latin-1 é and è both decoded to U+FFFD, so changing the marker kept
+    // the key and replayed the other byte's build.
+    const log = path.join(root, 'execlog')
+    await writeFile(path.join(root, 'marker'), Buffer.from([0xe9]))
+    await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: "echo built >> ${log}" },
+            cache: {
+              inputs: { files: [], workspaceRuntime: ['cat marker'] },
+              outputs: { files: [] },
+            },
+          },
+        },
+      }`,
+    )
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'init')
+
+    const r = await vx(root, ['run', 'build', '--all'])
+    expect(r.code).not.toBe(0)
+    expect(r.out + r.err).toContain(
+      'cache.inputs runtime command printed bytes that are not UTF-8: cat marker',
+    )
+    expect(existsSync(log)).toBe(false)
   })
 
   it('stays live under --frozen (re-resolves output after lock)', async () => {
