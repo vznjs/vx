@@ -187,3 +187,36 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
     ])
   })
 })
+
+describe('resolveFilters — `<name>...[ref]` over a task edge', () => {
+  let ws = ''
+  beforeAll(async () => {
+    ws = realpathSync(await makeWorkspace({ prefix: 'vx-select-via-' }))
+    await addProject(ws, 'lib', {
+      config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      files: { 'src/a.ts': '1\n' },
+    })
+    // e2e names lib only in a `dependsOn`, never in its package.json.
+    await addProject(ws, 'e2e', {
+      config: `export default { tasks: { test: { dependsOn: ['lib#build'], exec: { command: 'true' } } } }\n`,
+    })
+    const git = gitIn(ws)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await Bun.write(path.join(ws, 'packages', 'lib', 'src', 'a.ts'), '2\n')
+    git('commit', '-qam', 'lib')
+  })
+  afterAll(async () => {
+    await rm(ws, { recursive: true, force: true })
+  })
+
+  it('selects a project that depends on the changed one through a cross-project dependsOn', async () => {
+    // `e2e...[HEAD~1]` walks dependents without a walk flag, so the task
+    // edges were never loaded and e2e did not depend on lib.
+    const { value } = await quiet(() => resolveFilters(ws, ['e2e...[HEAD~1]']))
+    expect('names' in value ? value.names : value).toEqual(['e2e'])
+    // CONTROL: the dependents walk loads the task edges and reaches e2e.
+    const dents = (await quiet(() => resolveFilters(ws, ['...[HEAD~1]']))).value
+    expect('names' in dents ? dents.names : dents).toEqual(['e2e', 'lib'])
+  })
+})
