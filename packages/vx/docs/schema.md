@@ -868,7 +868,8 @@ which Nx runs at the workspace root, is `workspaceRuntime` below (Turbo
 has no built-in for this — see
 [vercel/turborepo#4124](https://github.com/vercel/turborepo/issues/4124)).
 Use it for tool/runtime versions, OS info, or a project-local probe
-script whose value should bust the cache when it changes.
+script whose value should bust the cache when it changes. An answer
+that is not UTF-8 is keyed by its bytes.
 
 ```ts
 inputs: {

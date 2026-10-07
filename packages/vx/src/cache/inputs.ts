@@ -454,22 +454,37 @@ async function runRuntimeCommand(
   let stdout, stderr, exitCode
   try {
     ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      new Response(proc.stdout).bytes(),
+      new Response(proc.stderr).bytes(),
       proc.exited,
     ])
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
   }
-  const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
+    const shown = `${new TextDecoder().decode(stdout)}${new TextDecoder().decode(stderr)}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
-        (output ? `\n${output}` : ''),
+        (shown ? `\n${shown}` : ''),
     )
   }
-  return output
+  return probeOutput(stdout, stderr)
+}
+
+/**
+ * A probe's answer as the key folds it: the trimmed text, or, when either
+ * stream is not UTF-8, both streams' bytes in hex behind a leading newline,
+ * which no trimmed text holds. A lossy decode made every invalid byte one
+ * U+FFFD, so `v\xff` and `v\xfe` keyed alike and the second replayed the
+ * first's output.
+ */
+function probeOutput(stdout: Uint8Array, stderr: Uint8Array): string {
+  try {
+    return `${FATAL_UTF8.decode(stdout)}${FATAL_UTF8.decode(stderr)}`.trim()
+  } catch {
+    return `\n${Buffer.from(stdout).toString('hex')}\0${Buffer.from(stderr).toString('hex')}`
+  }
 }
 
 /**

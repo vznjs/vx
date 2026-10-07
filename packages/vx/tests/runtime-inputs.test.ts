@@ -111,6 +111,35 @@ describe('runtime inputs — e2e', () => {
     expect((await readFile(log, 'utf8')).trim().split('\n').length).toBe(2)
   })
 
+  it('an answer that is not UTF-8 keys by its bytes, not by a lossy decode', async () => {
+    const log = path.join(root, 'execlog')
+    const dir = await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: "echo built >> ${log}" },
+            cache: { inputs: { files: [], runtime: ['cat marker.bin'] }, outputs: { files: [] } },
+          },
+        },
+      }`,
+    )
+    await writeFile(path.join(dir, '.gitignore'), 'marker.bin\n')
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'init')
+    const runs = async (): Promise<number> =>
+      (await readFile(log, 'utf8')).trim().split('\n').length
+
+    await writeFile(path.join(dir, 'marker.bin'), new Uint8Array([0x76, 0xff]))
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    expect(await runs()).toBe(1)
+    await writeFile(path.join(dir, 'marker.bin'), new Uint8Array([0x76, 0xfe]))
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    expect(await runs()).toBe(2)
+  })
+
   it('non-zero runtime command fails the run', async () => {
     await addProject(
       root,

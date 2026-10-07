@@ -517,3 +517,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-78.** A `cache.inputs.runtime` / `workspaceRuntime` answer that is
+  not UTF-8 was decoded lossily, every invalid byte one U+FFFD, so
+  `v\xff` and `v\xfe` folded the same key and the second replayed the
+  first's output. Such an answer now folds as the hex of its stdout and
+  stderr bytes behind a leading newline, which no trimmed text holds; a
+  UTF-8 answer folds as before, so no `CACHE_VERSION` bump. Row:
+  `runtime-inputs.test.ts` › "an answer that is not UTF-8 keys by its
+  bytes, not by a lossy decode".
