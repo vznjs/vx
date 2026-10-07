@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { pruneOrphanPersistentNotes, type GeneratedTask } from '@vzn/vx'
+import { foldScriptHooks, pruneOrphanPersistentNotes, type GeneratedTask } from '@vzn/vx'
 import { scriptCommand } from '../src/script-command.js'
 import { resolveSharedOutputs } from '../src/shared-outputs.js'
 import { dotenvCandidates, listDotenv, ownerTargetOf } from '../src/nx/nx-dotenv.js'
@@ -17,7 +17,7 @@ describe('scriptCommand: the package manager’s own lifecycle hooks never ride 
 
   it('CONTROL: an ordinary task’s hooks are folded around it', () => {
     expect(scriptCommand('build', 'tsc', { prebuild: 'gen', postbuild: 'copy' })).toBe(
-      'vx_script() {\n(gen\n) && (tsc "$@"\n) && (copy\n)\n}\nvx_script',
+      foldScriptHooks('gen', 'tsc', 'copy'),
     )
   })
 })

@@ -50,9 +50,13 @@ export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
  * forwarded `--` args are appended to, and only the body takes them, as
  * npm appends them to the script and never to its hooks. A plain ` && `
  * join handed them to the post hook, and `test -f x && echo A; echo B` ran
- * `echo B` after a failed pre hook and went green (item 905). Each part
- * ends on its own line, so a trailing `# comment` cannot swallow the
- * paren. A script with no hooks is its body, verbatim.
+ * `echo B` after a failed pre hook and went green (item 905). npm appends
+ * them as TEXT: no part sees them as `$1`…, so the function quotes them
+ * into `vx_a`, clears its positional parameters, and evals the body with
+ * `vx_a` after it; `"$@"` on the body made a script's `$1` the first
+ * forwarded arg and its `$*` print them twice. Each part ends on its own
+ * line, so a trailing `# comment` cannot swallow the paren. A script with
+ * no hooks is its body, verbatim.
  */
 export function foldScriptHooks(
   pre: string | undefined,
@@ -60,13 +64,21 @@ export function foldScriptHooks(
   post: string | undefined,
 ): string {
   if (pre === undefined && post === undefined) return body
+  const quoted = `'${body.replaceAll("'", `'\\''`)}'`
   const parts = [
     ...(pre === undefined ? [] : [`(${pre}\n)`]),
-    `(${body} "$@"\n)`,
+    `(eval ${quoted}"$vx_a"\n)`,
     ...(post === undefined ? [] : [`(${post}\n)`]),
   ]
-  return `vx_script() {\n${parts.join(' && ')}\n}\nvx_script`
+  return `vx_script() {\n${QUOTE_ARGS}\nset --\n${parts.join(' && ')}\n}\nvx_script`
 }
+
+/** Each argument single-quoted into `vx_a`, in sh alone (no spawn per arg). */
+const QUOTE_ARGS =
+  `vx_q="'" vx_a=\n` +
+  `for vx_s in "$@"; do vx_r=; while :; do case $vx_s in *"$vx_q"*) ` +
+  `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
+  `vx_a="$vx_a '$vx_r$vx_s'"; done`
 
 /**
  * Where a framework's build writes by default, for the cache TODO: the

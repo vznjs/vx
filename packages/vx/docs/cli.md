@@ -1864,7 +1864,8 @@ loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
 without being named, are folded into `x`'s command in that order, each
 in its own subshell, so the chain stops at the first that fails whatever
 a part holds (a `;`, an `exit`), and forwarded `--` args reach `x` alone,
-as npm hands them to the script and not its hooks (item 905). The
+as npm hands them to the script and not its hooks (item 905), appended
+as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.

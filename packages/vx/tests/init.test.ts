@@ -17,7 +17,7 @@ import {
   migrateScripts,
   PERSISTENT_TODO,
 } from '../src/workspace/index.js'
-import { vxInvocation } from '../src/workspace/migration.js'
+import { foldScriptHooks, vxInvocation } from '../src/workspace/migration.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
@@ -1025,7 +1025,7 @@ describe('migrateScripts', () => {
           'npm ran `postlint` around this script without being asked; folded into the command in that order',
         ],
         task: {
-          exec: { command: 'vx_script() {\n(eslint . "$@"\n) && (echo after\n)\n}\nvx_script' },
+          exec: { command: foldScriptHooks(undefined, 'eslint .', 'echo after') },
         },
       },
     ])
@@ -1131,7 +1131,7 @@ describe('migrateScripts', () => {
     expect(tasks['loop']).toEqual({ exec: { command: 'npm run loop' } })
     // A group has no command, so a folded hook would be dropped silently.
     expect(tasks['hooked']).toEqual({
-      exec: { command: 'vx_script() {\n(echo pre\n) && (npm run b "$@"\n)\n}\nvx_script' },
+      exec: { command: foldScriptHooks('echo pre', 'npm run b', undefined) },
     })
     // A group over a lifecycle script or a folded hook names a task the
     // mapping never emits (D-12).
@@ -1975,7 +1975,7 @@ describe('vx init (package.json scripts)', () => {
       // `prepack` is an npm lifecycle hook and is never a task.
       expect(Object.keys(tasks).sort()).toEqual(['build', 'pack', 'pretest'])
       expect(tasks['build']!.exec?.command).toBe(
-        'vx_script() {\n(rimraf dist\n) && (tsc -b "$@"\n) && (cp -r assets dist/\n)\n}\nvx_script',
+        foldScriptHooks('rimraf dist', 'tsc -b', 'cp -r assets dist/'),
       )
       expect(tasks['pack']!.exec?.command).toBe('echo pack')
       const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
@@ -2020,7 +2020,7 @@ describe('vx init (package.json scripts)', () => {
         expect(tasks['check']!.exec?.command).toBe('pnpm lint && pnpm typecheck') // a chain
         // Arguments make it a real command, and its hook folds in front.
         expect(tasks['release']!.exec?.command).toBe(
-          'vx_script() {\n(echo pre-release\n) && (npm run build -- --prod "$@"\n)\n}\nvx_script',
+          foldScriptHooks('echo pre-release', 'npm run build -- --prod', undefined),
         )
         // Delegating to a script that is itself hooked is still a plain group.
         expect(tasks['publishit']!.exec).toBeUndefined()
