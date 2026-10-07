@@ -104,8 +104,8 @@ Three things you get that the JSON could not give you:
   `turbo run web#lint build` also runs `web#build`; in vx, `build`
   takes the filter scope and `web#lint` stays anchored.
 - No `--parallel`. It exists in Turbo as an escape hatch for
-  over-declared edges. `dependsOn` in vx is explicit, so the hatch is
-  `--concurrency 1` to serialise and nothing to drop edges.
+  over-declared edges. `dependsOn` in vx is explicit; `--concurrency 1`
+  serialises, and `--exclude-dependencies[=<names>]` drops edges.
 - Failure propagation starts one notch further along. Turbo stops the
   run at the first failure; a vx run with no flag is `deps-ok` — a
   task runs when its own dependencies succeeded, and only its
