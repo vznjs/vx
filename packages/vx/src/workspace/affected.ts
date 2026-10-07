@@ -176,6 +176,14 @@ export async function affectedChanges(
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
     )
   }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
+    )
+  }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
   // on a branch whose base has moved on, `git diff <base>` reports every
   // file OTHER people changed on the base (over-selection that defeats a
