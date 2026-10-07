@@ -50,6 +50,7 @@ export {
   type ConfigEvalStore,
 } from './config-cache.js'
 export {
+  diskCase,
   findWorkspaceRoot,
   discoverProjects,
   listProjects,

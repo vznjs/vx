@@ -71,6 +71,8 @@ export interface ProjectMeta {
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
+// `dir` under `root`, each segment spelled as its parent's listing has it
+export function diskCase(root: string, dir: string): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 // listProjects, collecting each nameless member's dir into `nameless` (vx init)
@@ -158,6 +160,13 @@ root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
 and two caches for one tree, until item 990.
+
+A claim is case-sensitive, as the globs are; when only a case fold
+claims (`cd Packages/App` for `packages/app` on a case-insensitive file
+system), the members are re-spelled from directory listings (`diskCase`)
+and claimed only if the disk's spelling matches. Strings decide first;
+nothing is read unless the fold alone claims. `findCwdSelection` places
+the cwd the same way.
 A `package.json` with `workspaces` of its own is a root the same way
 unless the outer root lists that directory itself, as npm reads it: a
 nested workspace inside a member (`apps/tool/ws` under `apps/*`) was

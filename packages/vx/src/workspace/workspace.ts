@@ -116,9 +116,15 @@ export async function findWorkspaceRoot(
         // ['sub']`) and `packages/inner/sub` resolved `sub` to `inner` and
         // `inner` to the outer root, two roots and two keys for one tree.
         if (claimsMember(dir, [claimed], globs) && claimsMember(dir, members, globs)) claimed = dir
-      } else if (claimsMember(dir, inner === null ? below : [inner], globs)) {
-        claimed = dir
-        members = inner === null ? [...below] : [inner]
+      } else {
+        const candidates = inner === null ? below : [inner]
+        const claim = claimsMember(dir, candidates, globs)
+          ? candidates
+          : await claimedInDiskCase(dir, candidates, globs)
+        if (claim !== null) {
+          claimed = dir
+          members = [...claim]
+        }
       }
       // pnpm takes the nearest `pnpm-workspace.yaml` as the root, listed or
       // not. Walking past it, `apps/inner` resolved to the outer workspace
@@ -149,6 +155,42 @@ export async function findWorkspaceRoot(
       `(looked for pnpm-workspace.yaml or package.json): run vx inside a project, ` +
       `or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
   )
+}
+
+/**
+ * `below` spelled as the disk holds it, when only a case fold claims it: on
+ * a case-insensitive file system `cd Packages/App` keeps the typed case in
+ * the cwd, `packages/*` claimed nothing, and `Packages/App` ran as a
+ * standalone root. Strings first; the disk is read only on a folded claim.
+ */
+async function claimedInDiskCase(
+  root: string,
+  below: readonly string[],
+  globs: readonly string[],
+): Promise<string[] | null> {
+  const fold = (s: string) => s.toLowerCase()
+  if (!claimsMember(fold(root), below.map(fold), globs.map(fold))) return null
+  const onDisk = await Promise.all(below.map((d) => diskCase(root, d)))
+  return claimsMember(root, onDisk, globs) ? onDisk : null
+}
+
+/**
+ * `dir` below `root` with each segment as its parent's listing spells it.
+ * A listing spells a name as the disk holds it on every platform; Bun's
+ * `realpath` (both flavours) resolves an open fd's path instead of calling
+ * realpath(3), so it is not trusted for case.
+ */
+export async function diskCase(root: string, dir: string): Promise<string> {
+  let out = root
+  for (const name of path.relative(root, dir).split(path.sep)) {
+    const names = await readdir(out).catch(() => [] as string[])
+    const folded = name.toLowerCase()
+    out = path.join(
+      out,
+      names.includes(name) ? name : (names.find((n) => n.toLowerCase() === folded) ?? name),
+    )
+  }
+  return out
 }
 
 /** True when one of `below` (dirs under `root`, toward `start`) is a member. */
