@@ -1225,7 +1225,13 @@ export async function wrapSandboxedCommand(
       ...macProfileRules(args.config),
       ...darwinWallRules(args.config, baselines.allowRead),
     ]
-    if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    try {
+      if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    } catch (err) {
+      releaseBridges(tag)
+      afterCommand(SandboxManager)
+      throw err
+    }
   }
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,

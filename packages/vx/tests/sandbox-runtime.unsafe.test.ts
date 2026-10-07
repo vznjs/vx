@@ -5259,6 +5259,40 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // macOS adds rules to the wrapped profile and refuses one of an
+  // unexpected shape, after the wrap counted. Stubbed to darwin from the
+  // wrap on: what precedes it is Linux's, the refusal is darwin's.
+  it('hands the cleanup back, and drops the task dir, when the profile is refused', async () => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    let tmp = ''
+    let during = false
+    const wrap = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(async (c) => {
+      tmp = path.join(taskRoot(), /vx-task-\d+-[0-9a-f]{16}/.exec(c)?.[0] ?? '-')
+      during = existsSync(tmp)
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      return `sh -c ${c}`
+    })
+    const cleanup = spyOn(SandboxManager, 'cleanupAfterCommand')
+    try {
+      const config = { ...resolveSandboxConfig({}, dir), systemInfo: ['hw.ncpu'] }
+      const err = await runSandboxed(args('true', { config })).then(
+        () => undefined,
+        (e: Error) => e.message,
+      )
+      Object.defineProperty(process, 'platform', real)
+      expect([
+        err?.includes('did not have the expected shape'),
+        during,
+        existsSync(tmp),
+        cleanup.mock.calls.length,
+      ]).toEqual([true, true, false, 1])
+    } finally {
+      Object.defineProperty(process, 'platform', real)
+      wrap.mockRestore()
+      cleanup.mockRestore()
+    }
+  })
+
   // The note macOS needs (it logs nothing when the cwd is not granted) is
   // added on any platform when a task FAILED, reported nothing, and its
   // cwd lies outside every read grant. Each of the three is a row here.
