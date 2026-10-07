@@ -225,6 +225,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --list[=N]       List the N most recent runs (default 10) with run ids.',
     '      --failed         Only failed runs: the latest one, or with --list the list.',
     '      --format <fmt>   pretty (default) | json.',
+    '  info, why and last:',
+    '      --cache-dir <path>  Read the cache a run with the same flag uses.',
     '',
     'Migration:',
     '  vx init              Generate vx.workspace.ts + one vx.config.ts per package',
@@ -233,6 +235,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       only vx.workspace.ts, declaring turbo() or nx().',
     '      --dry            Print the generated files instead of writing them.',
     '      --force          Overwrite existing vx.config.* files.',
+    '      --mjs            Write .mjs files (no type import) instead of .ts.',
     '      --plugin <seam>  Instead: write plugins/<seam>.ts, a runnable plugin, and its',
     '                       test (executor, cache, telemetry, schedule, admit, commands,',
     '                       project, graph, key).',
@@ -265,6 +268,20 @@ export function helpText(pluginCommands: readonly string[] = []): string {
  */
 export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
+}
+
+/** `--format`'s value, or the one refusal every verb gives for a bad one. */
+export function formatValue(
+  v: string | undefined,
+  verb: string,
+): 'pretty' | 'json' | { error: string } {
+  if (v === 'pretty' || v === 'json') return v
+  return {
+    error:
+      v === undefined || v === ''
+        ? `--format requires a value: pretty or json${seeHelp(verb)}`
+        : `--format must be pretty or json (got ${v})${seeHelp(verb)}`,
+  }
 }
 
 /** How a verb names a word it refuses: a flag, or a positional it takes no more of. */
