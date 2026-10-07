@@ -124,12 +124,15 @@ export const LAB_STEPS: Record<LabId, LabEdit[][]> = {
     ],
     [{ file: 'packages/api/config.json', replace: '"hi"', with: '"hey"' }],
   ],
+  // An edge no longer settles it: `rules.exclusiveOutputs` refuses an
+  // ordered pair too (X-53), so the fix is an output path of its own.
   'shared-output': [
     [
       {
         file: UI_CONFIG,
-        replace: 'bundle: {\n      exec:',
-        with: "bundle: {\n      dependsOn: ['build'],\n      exec:",
+        replace:
+          "--mode bundle' },\n      cache: {\n        inputs: { files: ['src/**'] },\n        outputs: { files: ['dist/**'] }",
+        with: "--mode bundle --outDir bundle' },\n      cache: {\n        inputs: { files: ['src/**'] },\n        outputs: { files: ['bundle/**'] }",
       },
     ],
     [],

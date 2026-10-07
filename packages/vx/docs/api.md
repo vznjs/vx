@@ -2495,6 +2495,7 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
   cacheScope?: string
+  rules?: WorkspaceRules
   plugins?: readonly Plugin[]
 }
 ```

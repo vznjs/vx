@@ -1023,7 +1023,12 @@ describe('local cache short-circuit', () => {
       // restore into a directory a is about to clean. Under the reach rule
       // (item 584) b's output reaches a's directory, so a is kept out, and b
       // — a's dependant — with it: b restores AFTER a, as the note measured
-      // under the graph-wide rule. Both stay in probe reuse.
+      // under the graph-wide rule. Both stay in probe reuse. The pair loads
+      // only with `rules.exclusiveOutputs` off (X-53).
+      await Bun.write(
+        path.join(fixture.root, 'vx.workspace.mjs'),
+        'export default { rules: { exclusiveOutputs: false } }\n',
+      )
       await addProject(fixture.root, 'a', {
         files: { 'src/a.txt': 'a' },
         config: `

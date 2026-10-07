@@ -1,16 +1,18 @@
 // Two targets of one project on one output path. vx cleans a task's
 // declared outputs before it runs and before a cache-hit restore, so the
-// loader refuses two cached tasks whose outputs provably overlap — UNLESS
-// a same-project edge orders them (core item 588): then the dependant is
-// ADDITIVE, keeps its cache, and owns only what its run added. strapi
-// (2026-09-11) declares `build`, `build:code` and `build:types` all on
-// `dist/**`, and the refusal came at load time, after the migration had
-// reported clean. The mapping resolves it: the task with a `^` edge keeps
-// its cache (it is the one a dependant waits for), or the first declared
-// when none has one; every other task on that path stays cached when an
-// edge orders it against every kept task it overlaps, and otherwise runs
+// loader refuses two cached tasks whose outputs provably overlap, an edge
+// between them or not under core's default `rules.exclusiveOutputs` (X-53).
+// A workspace may turn the rule off (item 588's additive shape), but the
+// mapping never sees the workspace's rules, so it maps for the default and
+// loads under either.
+// strapi (2026-09-11) declares `build`, `build:code` and `build:types` all
+// on `dist/**`, and twenty's `build:individual` writes into `build`'s
+// `dist`; the refusal came at load time, after the migration had reported
+// clean. The mapping resolves it: the task with a `^` edge keeps its cache
+// (it is the one a dependant waits for), or the first declared when none
+// has one; every other task whose outputs overlap a kept task's runs
 // uncached, with a todo that names the keeper and the fix (its own output
-// path, or the edge).
+// path).
 //
 // The overlap question is core's own `outputsOverlap`, asked through the
 // façade. It used to be a COPY of it here, and the copy stopped being the
@@ -162,8 +164,6 @@ interface Cached {
   name: string
   files: string[]
   hasUpstreamEdge: boolean
-  /** Same-project `dependsOn` names (no `^`), for the ordering test. */
-  localDeps: string[]
 }
 
 function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
@@ -179,10 +179,7 @@ function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
   const deps = task['dependsOn']
   const hasUpstreamEdge =
     Array.isArray(deps) && deps.some((d) => typeof d === 'string' && d.startsWith('^'))
-  const localDeps = Array.isArray(deps)
-    ? deps.filter((d): d is string => typeof d === 'string' && !d.startsWith('^'))
-    : []
-  return { index, name: t.name, files: strings, hasUpstreamEdge, localDeps }
+  return { index, name: t.name, files: strings, hasUpstreamEdge }
 }
 
 /**
@@ -196,33 +193,6 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     const c = cachedOutputs(t, i)
     if (c !== null) cached.push(c)
   })
-  // Does `from` reach `to` through same-project edges? The generated
-  // tasks of one project are the whole graph here.
-  // Every task, cached or not: a hop through an uncached group task is an
-  // edge too.
-  const depsByName = new Map<string, string[]>()
-  for (const t of tasks) {
-    const deps = t.task?.['dependsOn']
-    depsByName.set(
-      t.name,
-      Array.isArray(deps)
-        ? deps.filter((d): d is string => typeof d === 'string' && !d.startsWith('^'))
-        : [],
-    )
-  }
-  const reaches = (from: Cached, to: Cached): boolean => {
-    const seen = new Set<string>()
-    const stack = [...from.localDeps]
-    while (stack.length > 0) {
-      const n = stack.pop()!
-      if (n === to.name) return true
-      if (seen.has(n)) continue
-      seen.add(n)
-      for (const d of depsByName.get(n) ?? []) stack.push(d)
-    }
-    return false
-  }
-  const ordered = (x: Cached, y: Cached): boolean => reaches(x, y) || reaches(y, x)
   const dropped = new Set<number>()
   for (const a of cached) {
     if (dropped.has(a.index)) continue
@@ -238,25 +208,22 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     const kept: Cached[] = [keeper]
     for (const c of all) {
       if (c === keeper) continue
-      // Additive under core's rule when an edge orders it against every
-      // kept task whose outputs it overlaps: it stays cached, no todo.
-      const unordered = kept.find(
-        (k) => c.files.some((gb) => k.files.some((ga) => outputsOverlap(ga, gb))) && !ordered(c, k),
+      const clash = kept.find((k) =>
+        c.files.some((gb) => k.files.some((ga) => outputsOverlap(ga, gb))),
       )
-      if (unordered === undefined) {
+      if (clash === undefined) {
         kept.push(c)
         continue
       }
       dropped.add(c.index)
       const t = tasks[c.index]!
-      const shared = c.files.find((gb) => unordered.files.some((ga) => outputsOverlap(ga, gb)))!
+      const shared = c.files.find((gb) => clash.files.some((ga) => outputsOverlap(ga, gb)))!
       delete t.task!['cache']
       t.todos.push(
-        `declares the output ${JSON.stringify(shared)} that ${JSON.stringify(unordered.name)} also ` +
+        `declares the output ${JSON.stringify(shared)} that ${JSON.stringify(clash.name)} also ` +
           "declares — vx cleans a task's outputs before it runs and before a restore, so two " +
           "cached tasks on one path would delete each other's work; this one runs uncached. " +
-          `Give it its own output path to cache it, or a dependsOn edge on ${JSON.stringify(unordered.name)} ` +
-          'so vx orders them and caches what this one adds.',
+          'Give it its own output path to cache it.',
       )
     }
   }
@@ -272,9 +239,8 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
  * workspace path: typescript-eslint's root project caches `dist` and every
  * package's typecheck `dist/packages/<name>`, and core refused the run
  * over the nesting. Keepers are the first in project and task order;
- * every later task on a kept path runs uncached, with a todo. Edges are
- * not read: across projects they are the package graph's, which the
- * mapping does not hold, so an ordered pair loses its cache too.
+ * every later task on a kept path runs uncached, with a todo, edge or not,
+ * as core refuses the pair either way.
  */
 export function resolveSharedWorkspaceOutputs(
   root: string,
@@ -335,8 +301,7 @@ export function resolveSharedWorkspaceOutputs(
         rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
       )
       if (ws.length === 0 && own.length === 0) continue
-      // Two own outputs of one project are resolveSharedOutputs', which
-      // reads the edges that order them.
+      // Two own outputs of one project are resolveSharedOutputs'.
       const overlap = (a: string[], b: string[]): string | undefined =>
         a.find((g) => b.some((h) => outputsOverlap(h, g)))
       let clash: (typeof kept)[number] | undefined

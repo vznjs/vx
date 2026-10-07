@@ -446,6 +446,15 @@ describe('graph stage', () => {
       await workspace([
         pluginSource('org/unedge', `{ graph(nodes) { nodes.get('a#extra').deps = [] } }`),
       ])
+      // The addition shape loads only with `exclusiveOutputs` off (X-53).
+      const file = path.join(root, 'vx.workspace.mjs')
+      await Bun.write(
+        file,
+        (await Bun.file(file).text()).replace(
+          'export default {',
+          'export default { rules: { exclusiveOutputs: false },',
+        ),
+      )
       await expect(planRun({ cwd: root, tasks: ['extra'], log: silent() })).rejects.toThrow(
         /plugin 'org\/unedge' failed in graph: a#(gen|extra) and a#(gen|extra) both declare the output "dist\/\*\*"/,
       )

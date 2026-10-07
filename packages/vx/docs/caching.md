@@ -793,9 +793,16 @@ function of the cache key.
 
 ### Additive outputs: two tasks, one tree, an edge between them
 
-Two cached tasks of one project whose declared outputs overlap are
-refused at graph build — unless one depends on the other (item 588).
-Then the order is fixed, and the dependant is **additive**: twenty's
+Two cached tasks whose declared outputs overlap are refused at graph
+build. By default that holds even when one depends on the other: the
+workspace rule `rules.exclusiveOutputs` (on unless set to `false` in
+`vx.workspace.ts`, X-53) keeps one path to one task, and its refusal says
+how to turn it off. The shape below is correct, only slower: a stamp
+before every run, a diff after, and a clean by rows. Give each task its
+own output path where you can (`dist-individual` beside `dist`).
+
+With the rule off, an edge fixes the order, and the dependant is
+**additive** (item 588): twenty's
 `build` fills `dist` and `build:individual` depends on it and writes
 `dist/individual`; strapi's `build:types` runs `tsc` into the same
 `dist` as `build`. For the dependant:
