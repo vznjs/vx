@@ -506,7 +506,7 @@ describe('listProjects', () => {
     }
     expect(await unreachedPackages(await loadWorkspace(dir))).toEqual(['tools/gen'])
     // Past three, the hint counts the rest.
-    expect(unreachedHint(['a', 'b', 'c', 'd'])).toContain('not: a, b, c and 1 more.')
+    expect(unreachedHint(['a', 'b', 'c', 'd'], dir)).toContain('not: a, b, c and 1 more.')
   })
 
   it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
