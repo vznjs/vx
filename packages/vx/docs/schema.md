@@ -805,7 +805,11 @@ globs only.
 No input or output glob, `files` or `workspaceFiles`, may be absolute
 or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
 `{/etc,src}/*` are refused at load, where the glob engine would have
-matched nothing under that arm and said so nowhere.
+matched nothing under that arm and said so nowhere. A Windows spelling
+is refused the same way, with the forward-slash glob to write: a
+backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
+`C:/src/**`). A backslash before a bracket, a brace, a `!` or a
+backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),

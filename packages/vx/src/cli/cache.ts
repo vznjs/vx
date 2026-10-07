@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { Cache } from '../cache/index.js'
-import { flagHint, refusedWord, seeHelp } from './help.js'
+import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
 import { nearest, parseDuration, parseSize } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -125,10 +125,8 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
     } else if (a === '--dry-run') {
       out.dryRun = true
     } else if (a === '--format' || a?.startsWith('--format=')) {
-      const v = a === '--format' ? args[++i] : a.slice('--format='.length)
-      if (v !== 'pretty' && v !== 'json') {
-        return { error: `--format must be pretty or json${seeHelp('cache')}` }
-      }
+      const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
+      if (typeof v === 'object') return v
       out.format = v
     } else {
       const cd = parseCacheDirFlag(args, i)
