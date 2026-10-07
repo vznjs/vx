@@ -128,3 +128,9 @@ time (bugs, correctness, simplification, the plugin seams).
   word is no verb. The workspace schema now refuses it. Row:
   `config-schema-refusals.test.ts` › "a verb no command line reaches is
   refused".
+- **X-22.** `cacheDir: '   '` made a directory named three spaces at the
+  workspace root, hidden by the cache's own `.gitignore`, and a
+  `cache.inputs.runtime` probe of whitespace ran as a no-op that folded
+  nothing into the key. Both are refused. Row:
+  `config-schema-refusals.test.ts` › "a cacheDir or runtime probe of
+  spaces is refused".
