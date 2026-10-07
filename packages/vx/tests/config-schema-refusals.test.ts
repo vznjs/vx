@@ -100,20 +100,34 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     ])
   })
 
-  // X-21: a flag-like or empty verb loaded and could never run.
+  // X-21: a flag-like or empty verb loaded and could never run. A verb
+  // with a space or shell syntax broke or injected into `vx completions`.
   it('a verb no command line reaches is refused', () => {
     const p = (verb: string) => ({
       ...testPlugin('x21', { teardown() {} }),
       commands: { [verb]: { description: 'd', run: () => 0 } },
     })
     const why = (verb: string) =>
-      `${WS}: plugin 'x21' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`
+      `${WS}: plugin 'x21' declares command '${verb}', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'`
     expect([
       refusal({ plugins: [p('--version')] }),
       refusal({ plugins: [p('')] }),
       refusal({ plugins: [p(' ')] }),
+      refusal({ plugins: [p('a b')] }),
+      refusal({ plugins: [p('$(touch x)')] }),
+      refusal({ plugins: [p('x;y')] }),
       refusal({ plugins: [p('deploy')] }),
-    ]).toEqual([why('--version'), why(''), why(' '), null])
+      refusal({ plugins: [p('db:migrate.v2_x-1')] }),
+    ]).toEqual([
+      why('--version'),
+      why(''),
+      why(' '),
+      why('a b'),
+      why('$(touch x)'),
+      why('x;y'),
+      null,
+      null,
+    ])
   })
 
   it('a non-object `commands` is refused, not read as a plugin that contributes a verb', () => {

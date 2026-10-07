@@ -487,7 +487,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     ),
   ],
   [
-    "plugin '<name>' declares command '<verb>', which no command line reaches — a verb is a word, not a flag or empty",
+    "plugin '<name>' declares command '<verb>', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'",
     workspaceConfig(
       `{ plugins: [${plugin('p', '{ commands: { "--version": { description: "d", run() { return 0 } } } }')}] }`,
     ),
