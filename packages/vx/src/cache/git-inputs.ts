@@ -12,6 +12,7 @@ import {
   executablePath,
   gitSpawnRefusal,
   isInstalledPath,
+  notAWorkTree,
   xxh3hex,
 } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -457,11 +458,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   if (proc.exitCode !== 0) {
     // Exit 128 = not a git work tree; other non-zero = git failure.
     // Either way we can't enumerate inputs reliably.
-    const stderr = new TextDecoder().decode(proc.stderr).trim()
-    throw new UserError(
-      `vx requires git: ${cwd} is not inside a git work tree. ` +
-        `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
-    )
+    throw notAWorkTree(cwd, new TextDecoder().decode(proc.stderr).trim())
   }
   const { text, undecodable } = decodeGitZ(proc.stdout)
   const parsed = parseLsFilesOutput(text.length === 0 ? [] : text.split('\0'), undecodable)

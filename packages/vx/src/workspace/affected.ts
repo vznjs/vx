@@ -15,6 +15,7 @@ import {
   gitSpawnRefusal,
   isExecutableMissing,
   isInstalledPath,
+  notAWorkTree,
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
@@ -649,6 +650,8 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
   const trunk = trunkBase(workspaceRoot)
   if (trunk !== undefined) return trunk
   if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
+    const noHistory = noHistoryRefusal(workspaceRoot)
+    if (noHistory !== undefined) throw noHistory
     throw new UserError(
       '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
         'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
@@ -656,6 +659,24 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
     )
   }
   return 'HEAD~1'
+}
+
+/**
+ * Why a base cannot resolve before any ref is to blame: no work tree, or
+ * no commit yet. Asked only once a base has failed, so a run that finds
+ * one spawns nothing more (X-52).
+ */
+function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
+  const tree = spawnGitSync(['rev-parse', '--is-inside-work-tree'], workspaceRoot, 'pipe')
+  if (tree.exitCode !== 0) {
+    return notAWorkTree(workspaceRoot, new TextDecoder().decode(tree.stderr).trim())
+  }
+  if (revParse(workspaceRoot, 'HEAD') === undefined) {
+    return new UserError(
+      '--affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+    )
+  }
+  return undefined
 }
 
 const TRUNKS = ['origin/main', 'origin/master', 'main', 'master']
@@ -752,6 +773,8 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // 1 gets the ref message; anything else surfaces what git actually said.
   const stderr = new TextDecoder().decode(proc.stderr).trim()
   if (proc.exitCode !== 1) {
+    const noHistory = noHistoryRefusal(workspaceRoot)
+    if (noHistory !== undefined) throw noHistory
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),
