@@ -10,7 +10,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -263,6 +264,106 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
         'lib#test',
         'tool#lint',
       ])
+    },
+    TIMEOUT,
+  )
+})
+
+describe('--affected follows the graph a `graph` plugin leaves', () => {
+  /** Commits a workspace whose plugin runs `body` as its `graph` hook. */
+  async function graphPlugin(body: string): Promise<void> {
+    await write(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
+    )
+    git(root, 'add', '-A')
+    git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'plugin')
+  }
+
+  it(
+    'an edge a plugin adds reaches a task no manifest ties to the change',
+    async () => {
+      await graphPlugin(
+        `const t = nodes.get('tool#build'); if (t && nodes.has('lib#build')) t.deps.push('lib#build')`,
+      )
+      await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual([
+        'app#build',
+        'lib#build',
+        'tool#build',
+      ])
+      // CONTROL: a change the edge does not reach leaves tool out.
+      await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual(['app#build', 'lib#build'])
+      // lib#build is in the run as app's dependency, not as a request: args
+      // after `--` (folded into a requested task's key) do not reach it.
+      const hashes = (...extra: string[]): Record<string, string> => {
+        const r = vx(root, 'run', 'build', '--affected=HEAD~1', '--dry=json', ...extra)
+        const out = r.stdout.slice(r.stdout.indexOf('{'))
+        const tasks = (JSON.parse(out) as { tasks: { id: string; hash: string }[] }).tasks
+        return Object.fromEntries(tasks.map((t) => [t.id, t.hash]))
+      }
+      const plain = hashes()
+      const forwarded = hashes('--', '--fwd')
+      expect(forwarded['lib#build']).toBe(plain['lib#build']!)
+      expect(forwarded['app#build']).not.toBe(plain['app#build']!)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an input a plugin gives a task reaches it',
+    async () => {
+      await graphPlugin(
+        `const c = nodes.get('tool#build')?.config.cache; if (c) c.inputs.workspaceFiles = ['pkgs/lib/README.md']`,
+      )
+      await commitEdit('pkgs/lib/README.md', 'docs')
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual([
+        'app#build',
+        'lib#build',
+        'tool#build',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task a plugin marks requested runs whatever the diff',
+    async () => {
+      await graphPlugin(`const t = nodes.get('tool#build'); if (t) t.requested = true`)
+      await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
+      expect(planned(['test'], '--affected=HEAD~1')).toEqual([
+        'app#build',
+        'app#test',
+        'lib#build',
+        'tool#build',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an unknown ^name in a task the diff does not reach is not judged',
+    async () => {
+      // `!x` leaves x unloaded, so `^nope` is judged against the rest of
+      // the workspace only for the tasks that stay in the run.
+      await write(path.join(root, 'pkgs/x/package.json'), JSON.stringify({ name: 'x' }))
+      await write(path.join(root, 'pkgs/x/vx.config.mjs'), CONFIG)
+      await write(
+        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        CONFIG.replace("dependsOn: ['^build']", "dependsOn: ['^build', '^nope']"),
+      )
+      await graphPlugin('')
+      await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1', '--filter', '!x')).toEqual([
+        'app#build',
+        'lib#build',
+      ])
+      // CONTROL: once the diff reaches tool#build, the name is refused.
+      await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
+      expect(planned(['build'], '--affected=HEAD~1', '--filter', '!x')).toContain(
+        'tool#build depends on ^nope',
+      )
     },
     TIMEOUT,
   )

@@ -88,8 +88,13 @@ export function affectedRoots(
     return false
   }
   const seeded = (n: TaskNode): boolean => {
-    if (!changes.projects.has(n.projectName)) return false
     const cache = n.config.cache
+    // Asked of every node, not only the changed projects' (the
+    // `workspaceFiles` owners): a `graph` hook may have given the glob.
+    if (cache !== undefined && changes.changed.some((rel) => declaresInput(cache, null, rel))) {
+      return true
+    }
+    if (!changes.projects.has(n.projectName)) return false
     // A group runs nothing; only the default `build` (projects.ts) is keyed.
     // An uncached task reads its project: a root file another task of it
     // declares (`workspaceFiles`) is no change there.
@@ -97,10 +102,7 @@ export function affectedRoots(
       return !isGroupTask(n) && (whole.has(n.projectName) || changes.paths.has(n.projectName))
     }
     if (whole.has(n.projectName)) return true
-    if ((changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))) {
-      return true
-    }
-    return changes.changed.some((rel) => declaresInput(cache, null, rel))
+    return (changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))
   }
   const reached = new Map<string, boolean>()
   const reaches = (id: string): boolean => {

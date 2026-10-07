@@ -306,6 +306,11 @@ sees `ui`'s files either). A project that declares no `build` gets one
 keyed on all its files (`schema.md`), so any change there reaches a
 dependant behind `^build`; a package `^name` passes through for want of a
 config reaches it the same way.
+The graph is the one a `graph` plugin leaves: an edge or an input it
+adds reaches a task as a declared one does, and a task it marks
+requested runs whatever the diff. With such a plugin every project is a
+candidate once the diff touched anything, and its hook sees every
+candidate task before the selection prunes the graph.
 Nx 23.3 (`NX_LEGACY_AFFECTED=false`) and Turbo
 (`affectedUsingTaskInputs`) select tasks the same way, behind flags.
 

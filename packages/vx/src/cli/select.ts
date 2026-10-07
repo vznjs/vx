@@ -31,6 +31,7 @@ import {
   claimedAffected,
   fingerprintClaims,
   gitOfDiscovery,
+  hasHook,
   isDefaultBuild,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
@@ -300,6 +301,15 @@ export async function resolveFilters(
       if (f.raw === affected) {
         changes = await affectedChanges(args)
         names = changes.projects
+        // A `graph` plugin may tie any task to a changed path (an edge, an
+        // input), and the run alone builds that graph: every project is a
+        // candidate, and the run keeps the tasks its final graph reaches.
+        if (
+          changes.changed.length > 0 &&
+          hasHook((await loadCliWorkspace(root)).plugins, 'graph')
+        ) {
+          names = new Set(projects.map((p) => p.name))
+        }
       } else {
         names = await affectedProjects(args)
       }

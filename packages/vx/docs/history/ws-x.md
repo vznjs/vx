@@ -496,3 +496,15 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   backslash lands as a literal name inside the anchor",
   `artifact-roundtrip.test.ts` › "a space, a quote, a backslash and a
   non-ASCII name round-trip …" (now a hit, no save failure).
+- **X-66.** `--affected` selected over the graph as configs declare it,
+  before the `graph` stage ran: an edge a plugin added (`tool#build` onto
+  `lib#build`) or an input it gave (`workspaceFiles`) moved a task's key,
+  and the task was left out of the run. With a `graph` plugin the CLI now
+  takes every project as a candidate once anything changed, and
+  `prepareRun` runs the hooks before the selection, which prunes the
+  final graph to the kept requests' closure (plus what a hook added or
+  marked requested). A `workspaceFiles` match is asked of every node.
+  Warm `vx run build test --affected` on 300 projects with no graph
+  plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
+  `affected-dependents.test.ts` › "--affected follows the graph a
+  `graph` plugin leaves" (four).
