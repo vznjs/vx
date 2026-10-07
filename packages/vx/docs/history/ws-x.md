@@ -525,3 +525,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-92.** `--affected` over a deep `dependsOn` chain ended in
+  `RangeError` and a stack: `affectedRoots` recursed once per edge, and
+  ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
+  closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
+  50,000-deep chain seeded at its bottom reaches its top", plus a
+  diamond control that passes both ways.
