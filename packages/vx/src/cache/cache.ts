@@ -574,7 +574,7 @@ export class Cache implements CacheLayer {
 
   /**
    * The store this open was asked for and could not use, with why: the
-   * entries went to a store inside `cacheDir` instead.
+   * entries went to a store inside `cacheDir` instead. Never printed.
    */
   readonly storeFallback: string | null = null
 
@@ -856,7 +856,8 @@ export class Cache implements CacheLayer {
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
-          // Said by the open that falls back; the ones after it find it recorded.
+          // Set by the open that falls back, never printed; the ones after it
+          // find it recorded.
           if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
           storeDir = fallback
           openCacheDir(fallback)

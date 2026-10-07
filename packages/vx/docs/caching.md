@@ -1158,7 +1158,7 @@ artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, says `shared cache store
 … re-indexed` once, and keeps every artifact, each indexed again when
 its task next hits. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
+in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
