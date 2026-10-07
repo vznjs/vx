@@ -2318,14 +2318,15 @@ vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <pa
 By default it compares the task's **latest** recorded run against its
 immediately-previous run; `--run <id>` pins a specific run (a unique
 prefix of the id is enough; a task that run did not run is refused,
-pointing at `vx last --list`). History is
+pointing at `vx last --list`, and so is an id no run carries). History is
 the cache directory's, not the checkout's: worktrees that share one
 `--cache-dir` share one history, so the previous run may be another
 worktree's (its branch is in `vx last`), and its edits read as changes. Latest and
 previous are the order runs were recorded, not their clock: a clock that
 stepped back once swapped the two and diffed the edit backwards. A bare task
-name resolves when exactly one project ran it (several → an error
-listing the candidates; unknown → include-match suggestions, or, with
+name resolves when exactly one project ran it (several → the project
+the current directory is in, as `vx run` picks, else an error listing
+the candidates; unknown → include-match suggestions, or, with
 none near, a pointer to `vx last --list`, or word that nothing has run
 yet).
 

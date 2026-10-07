@@ -106,3 +106,10 @@ time (bugs, correctness, simplification, the plugin seams).
   now open the store a run would; the refusal names the store. Row:
   `shared-store.test.ts` › "prune and info reach the store with the
   index deleted".
+- **X-18.** `vx why build` from inside `packages/a` refused "ran in 2
+  projects" where `vx run build` there picks `a#build`; it now picks the
+  cwd's project too. `vx why a#build --run zzz` said run zzz "has no
+  row" for the task; it now says no run is recorded under that id. A
+  config change's verdict read "config config". Row:
+  `why-verdict.test.ts` › "names a config change once, scopes a bare
+  name to the cwd, refuses an unknown run".
