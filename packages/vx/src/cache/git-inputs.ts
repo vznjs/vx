@@ -1299,8 +1299,11 @@ export async function startGitEnumeration(
   const facts = repoFacts(workspaceRoot)
   // The blob-size check's verdict is a function of the index's entries, so
   // the index file's bytes key it: one read, where `ls-files --debug` and a
-  // lookup per entry cost 550 ms at 100,000 files (A-60).
-  const pathspecKey = xxh3hex(pathspecs.join('\0'))
+  // lookup per entry cost 550 ms at 100,000 files (A-60). The verdict's
+  // paths are workspace-relative, so the repo→workspace prefix keys it too:
+  // a nested workspace sharing the cache read the outer one's verdict and
+  // trusted a resized blob.
+  const pathspecKey = xxh3hex([facts?.prefix ?? '', ...pathspecs].join('\0'))
   const indexFile =
     facts === null || facts.indexFile === ''
       ? undefined
