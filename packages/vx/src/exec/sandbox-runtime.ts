@@ -275,9 +275,16 @@ export function dependencyReason(errors: readonly string[]): string {
  * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
  * on Linux (its retry loop swallows the code), neither naming the
  * directory (2026-09-16). Checked up front, with room for the sequence.
+ * On Linux the longer name is the network bridge's,
+ * `claude-http-<16 hex>.sock`, and it is the one that fails there.
  */
 export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
-  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const sample = path.join(
+    tmpdir,
+    process.platform === 'linux'
+      ? `claude-http-${'0'.repeat(16)}.sock`
+      : `srt-mux-${process.pid}-zzz.sock`,
+  )
   const limit = process.platform === 'darwin' ? 103 : 107
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined

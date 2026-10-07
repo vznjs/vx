@@ -355,7 +355,8 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    temp directory and the one it has is not one, point TMPDIR at a
    writable directory. The probe also refuses up front a temp directory
    whose socket path is past the OS limit (`sun_path`, 108 bytes on
-   Linux and 104 on macOS): past it the runtime said ENAMETOOLONG on
+   Linux and 104 on macOS; on Linux the longest name is the network
+   bridge's, `claude-http-<16 hex>.sock`): past it the runtime said ENAMETOOLONG on
    macOS and "Failed to create bridge sockets after 5 attempts" on
    Linux, neither naming the directory; the verdict now gives the path,
    its length, the limit and "point TMPDIR at a shorter path".
