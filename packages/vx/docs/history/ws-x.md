@@ -417,3 +417,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `configless-fence.test.ts`, `watch-nested-boundary.test.ts` › "a
   nested project's config stays an edit; a config-less package's file
   is none (X-57)".
+- **X-58.** With `rules.exclusiveOutputs` off, a task whose
+  `outputs.workspaceFiles` overlapped a project task it already depended
+  on, but with an entry outside that project, was refused with "or make
+  one depend on the other". The refusal now names the entry outside the
+  project. Row: `output-collision.test.ts` › "ordered, but with an entry
+  outside the project, names that entry, not a missing edge".

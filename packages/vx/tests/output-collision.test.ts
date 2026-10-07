@@ -289,6 +289,24 @@ describe("a workspaceFiles output inside another project's files output", () => 
     expect(nodes.get('a#build')?.outputsAddedToBy).toEqual(['b/dist/b.txt'])
   })
 
+  it('ordered, but with an entry outside the project, names that entry, not a missing edge', () => {
+    expect(() =>
+      graph(
+        {
+          a: {
+            build: { ...task([], ['b/dist/extra/**', 'other/**']), dependsOn: ['b#build'] },
+          } as Record<string, TaskConfig>,
+          b: { build: task(['dist/**']) },
+        },
+        ADDITIVE,
+      ),
+    ).toThrow(
+      `whichever of these runs second DELETES the other's output. a#build depends on b#build, ` +
+        `but adding to its output needs every cache.outputs.workspaceFiles entry inside b, and ` +
+        `"other/**" is not. Give each task its own output path.`,
+    )
+  })
+
   it('CONTROL: a root-anchored output beside the project tree is allowed', () => {
     expect(() =>
       graph({

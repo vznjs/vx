@@ -929,6 +929,14 @@ function collideAcross(
           ;(files.outputsAddedToBy ??= []).push(...own)
           return
         }
+        // Already ordered: "make one depend on the other" would send the
+        // reader after an edge the config has. Name what keeps it out.
+        const outside = wsGlobs[own.indexOf(null)]!
+        throw new UserError(
+          `${head}. ${ws.id} depends on ${files.id}, but adding to its output needs every ` +
+            `cache.outputs.workspaceFiles entry inside ${rel === '' ? 'the workspace root' : rel}, ` +
+            `and ${JSON.stringify(outside)} is not. Give each task its own output path.`,
+        )
       }
       throw new UserError(
         `${head} and the run still reports success. Give each task its own output path` +
