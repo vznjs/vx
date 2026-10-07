@@ -2192,4 +2192,31 @@ describe('vx init --plugin <seam>', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'names the workspace file that exists and refuses --mjs (X-28)',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-mjs-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+        const mjs = await vx(root, ['init', '--plugin', 'cache', '--mjs', '--dry'])
+        expect([mjs.code, mjs.out, mjs.err]).toEqual([
+          1,
+          '',
+          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript\n',
+        ])
+        const ok = await vx(root, ['init', '--plugin', 'cache', '--dry'])
+        expect([ok.code, ok.err]).toEqual([0, ''])
+        expect(ok.out.split('\n')[1]).toStartWith('Declare it in vx.workspace.mjs: import {')
+        // CONTROL: with no workspace file, the one a run would read first.
+        await rm(path.join(root, 'vx.workspace.mjs'))
+        const none = await vx(root, ['init', '--plugin', 'cache', '--dry'])
+        expect(none.out.split('\n')[1]).toStartWith('Declare it in vx.workspace.ts: import {')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

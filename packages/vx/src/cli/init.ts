@@ -53,6 +53,12 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       return { ...out, error: `unknown flag: ${a}${flagHint('init', a)}${seeHelp('init')}` }
     else return { ...out, error: `unexpected argument: ${a}${seeHelp('init')}` }
   }
+  if (out.plugin !== undefined && out.mjs) {
+    return {
+      ...out,
+      error: '--mjs does not combine with --plugin: the plugin templates are TypeScript',
+    }
+  }
   return out
 }
 
@@ -139,9 +145,11 @@ async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
     for (const [rel, text] of files) await Bun.write(path.join(root, rel), text)
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
+  const workspaceFile =
+    WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? 'vx.workspace.ts'
   process.stdout.write(
     `${args.dry ? 'would write' : 'wrote'} ${files.map(([rel]) => rel).join(' and ')}\n` +
-      `Declare it in vx.workspace.ts: import { ${factory} } from './plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
+      `Declare it in ${workspaceFile}: import { ${factory} } from './plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
       `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
   )
   return 0

@@ -1957,7 +1957,9 @@ a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
 `key`), and `plugins/<seam>.test.ts`, which drives it through `run()`
 (`bun test`, with `@vzn/vx` installed). It prints the line that
-declares it in `vx.workspace.ts`. An existing file is refused without
+declares it in the workspace file a run reads (`vx.workspace.ts` when
+there is none). The templates are TypeScript, so `--mjs` with
+`--plugin` is refused. An existing file is refused without
 `--force`; `--dry` names the files and writes nothing. The two files are
 `packages/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
@@ -1965,7 +1967,7 @@ core (`src/cli/plugin-templates.ts`) and held equal by
 
 Exit codes: `0` the files written (or, with `--dry`, printed); `1` no
 `package.json` here or in a parent, a file it would write already there
-without `--force`, or a parse error.
+without `--force`, or a parse error (`--mjs` with `--plugin` among them).
 
 ## `vx migrate`
 
