@@ -123,6 +123,49 @@ describe('an interactive task under a vx on a terminal', () => {
   }, 20_000)
 })
 
+// Every run needs git, so a workspace git does not track is refused before
+// the picker asks: the menu came first and the refusal followed the choice.
+describe('the picker outside a git work tree', () => {
+  it('is never shown: the refusal comes first', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-nogit-', git: false })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+      })
+      let screen = ''
+      const proc = Bun.spawn([process.execPath, BIN, 'run'], {
+        cwd: root,
+        // A ceiling at the fixture's parent: a temp dir inside some repo
+        // must not lend the fixture its git.
+        env: {
+          ...process.env,
+          CI: '',
+          GITHUB_ACTIONS: '',
+          NO_COLOR: '1',
+          GIT_CEILING_DIRECTORIES: path.dirname(root),
+        },
+        terminal: {
+          data: (_term, data) => {
+            screen += new TextDecoder().decode(data)
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      expect({ code, lines: screen.split(/\r?\n/).filter((l) => l !== '') }).toEqual({
+        code: 1,
+        lines: [
+          `vx requires git: ${root} is not inside a git work tree. Run 'git init' in your workspace root. (git: fatal: not a git repository (or any of the parent directories): .git)`,
+        ],
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
 describe('a vx that paints its own output on a terminal', () => {
   let root: string
   beforeEach(async () => {

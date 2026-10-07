@@ -14,7 +14,12 @@ import {
   type RunResult,
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
-import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  gitRefusal,
+  parseCachePolicy,
+} from '../cache/index.js'
 import { findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { loadCliWorkspace } from './workspace-config.js'
@@ -623,6 +628,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(
         `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
+      return 1
+    }
+    // Every run needs git: refused here, not after the user has chosen.
+    const refusal = gitRefusal(await findWorkspaceRoot(cwd))
+    if (refusal !== undefined) {
+      process.stderr.write(`${refusal.message}\n`)
       return 1
     }
     const picked = await pickTask(

@@ -84,6 +84,29 @@ export function repoFacts(dir: string): RepoFacts | null {
   return facts
 }
 
+/**
+ * The refusal a run would meet at its enumeration, asked up front by a
+ * verb that waits on the user first (the picker); undefined when git
+ * tracks `dir`. Free when it does: `repoFacts` is the answer the run
+ * reuses.
+ */
+export function gitRefusal(dir: string): UserError | undefined {
+  if (repoFacts(dir) !== null) return undefined
+  let proc
+  try {
+    proc = Bun.spawnSync({
+      cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+      cwd: dir,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    })
+  } catch {
+    return gitSpawnRefusal(dir)
+  }
+  if (proc.exitCode === 0) return undefined
+  return notAWorkTree(dir, new TextDecoder().decode(proc.stderr).trim())
+}
+
 /** Variables that move where git finds the repository or its index: with any set, git is asked. */
 const GIT_LOCATION_ENV = [
   'GIT_INDEX_FILE',

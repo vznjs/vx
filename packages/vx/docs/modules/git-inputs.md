@@ -130,6 +130,9 @@ export interface RepoFacts {
   indexFile: string
 }
 export function repoFacts(dir: string): RepoFacts | null
+// The refusal the enumeration would throw (no git, not a work tree), asked
+// before the picker; undefined, and free via repoFacts, when git tracks dir.
+export function gitRefusal(dir: string): UserError | undefined
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
 // The identity the key folds: the blob OID, prefixed `<mode>:` unless mode is 100644 (item 887)
 export function fileIdentity(mode: string, oid: string): string

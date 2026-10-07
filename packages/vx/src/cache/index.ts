@@ -51,6 +51,7 @@ export {
 } from './inputs.js'
 export {
   GitFilesCache,
+  gitRefusal,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,
