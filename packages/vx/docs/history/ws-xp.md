@@ -24,3 +24,6 @@ differences, binaries and install across platforms.
 - **XP-60.** `--affected` matched git's NFC paths against project dirs as
   discovered; a macOS dir stored NFD selected nothing. Both sides compare
   NFC. Row: `affected-unicode.test.ts`.
+- **XP-70.** On macOS a project dir stored NFD got no slice of git's NFC
+  listing and spawned `git ls-files` per task. The enumeration matches the
+  dir as NFC; key paths stay git's spelling. Row: `git-enum-unicode.test.ts`.
