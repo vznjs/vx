@@ -426,6 +426,29 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 20_000)
 
+  // WD-10: its output block closed `running` under the line naming its exit.
+  it("a crashed dependency-only server's output block closes failed", async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; echo dying; touch gone; exit 3'))
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200', NO_COLOR: '1' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const closes = (out + err)
+      .split('\n')
+      .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
+      .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
+    expect([code, closes]).toEqual([1, ['└─ ▸ app#srv ── (T) failed (exit 3)']])
+  }, 20_000)
+
   // Item 1102: a signal death printed the signal's name as its code.
   it('a dependency-only server killed by a signal is named by its exit code', async () => {
     await addProject(root, 'app', crashing('echo READY; sleep 0.1; touch gone; kill -TERM $$'))

@@ -1076,8 +1076,6 @@ async function runOnBus(
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
 
     mark('run graph')
-    // Clear the status line for good before the summary prints.
-    log.runEnd?.()
 
     // A server that died on its own before the stop failed, whatever its
     // outcome said when it became ready: the footer counted it a success
@@ -1087,8 +1085,11 @@ async function runOnBus(
     const failServer = (id: string, code: number | string): void => {
       const o = outcomes.get(id)
       if (o === undefined) return
-      const exitCode = typeof code === 'number' ? code : signalExitCode(code)
-      outcomes.set(id, { ...o, status: 'failed', exitCode })
+      // In place: the renderer holds this outcome (events carry live refs)
+      // and closes the server's output block from it at runEnd, where a
+      // copy left it reading `running` under its exit line (WD-10).
+      o.status = 'failed'
+      o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
     }
     for (const c of crashedPersistent) failServer(c.id, c.code)
     keepAlive.nodes.forEach((n, i) => {
@@ -1097,6 +1098,8 @@ async function runOnBus(
       if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
       failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
     })
+    // Clear the status line for good before the summary prints.
+    log.runEnd?.()
     const list = [...outcomes.values()]
     const ok = list.every((o) => isPassStatus(o.status))
 
