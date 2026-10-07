@@ -27,11 +27,14 @@ export function relPosix(from: string, to: string): string {
  * holds: a string or an array would enumerate its INDICES as script names,
  * and indexing one by a task named `0` yields a single character that reads
  * as a usable command. Core's `migrate-scripts.ts` guards this read; these
- * mappers did not.
+ * mappers did not. Null-prototype, so a turbo.json task or Nx target named
+ * `constructor` or `toString` finds no script rather than Object's method.
  */
 export function packageScripts(meta: ProjectMeta): Record<string, unknown> {
   const raw = (meta.packageJson as unknown as { scripts?: unknown }).scripts
-  return isRecord(raw) ? raw : {}
+  const scripts: Record<string, unknown> = Object.create(null)
+  if (!isRecord(raw)) return scripts
+  return Object.assign(scripts, raw)
 }
 
 export const isRecord = (v: unknown): v is Record<string, unknown> =>

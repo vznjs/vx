@@ -299,8 +299,7 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   }
   if (!isCompiledBinary()) {
     throw new UserError(
-      'vx upgrade only works for the compiled binary. ' +
-        'You are running from source — use git pull instead. ' +
+      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull ' +
         '(npm installs update with: npm install -g @vzn/vx@latest)',
     )
   }

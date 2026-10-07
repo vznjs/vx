@@ -67,4 +67,28 @@ describe('the cache directory is git-ignored by construction', () => {
     new Cache(plain).close()
     expect(await Bun.file(path.join(plain, 'cache.db')).exists()).toBe(true)
   })
+
+  // `cacheDir: 'packages'` put a `*` .gitignore over every project, and
+  // `'..'` or `'/'` over the workspace itself: the same hidden inputs one
+  // level up.
+  it('a first index in a directory holding a project or the workspace is refused', async () => {
+    const parent = path.join(root, 'packages')
+    await Bun.write(path.join(parent, 'a', 'package.json'), '{}')
+    expect(() => new Cache(parent)).toThrow(
+      `cache directory ${parent} holds ${path.join(parent, 'a')}, a project or workspace directory`,
+    )
+    const ws = path.join(root, 'outer', 'ws')
+    await Bun.write(path.join(ws, 'notes.txt'), 'x')
+    const outer = path.join(root, 'outer')
+    expect(() => new Cache(outer, undefined, ws)).toThrow(
+      `cache directory ${outer} holds ${ws}, a project or workspace directory`,
+    )
+    for (const dir of [parent, outer]) {
+      expect(await Bun.file(path.join(dir, '.gitignore')).exists()).toBe(false)
+    }
+    // Control: a sibling of the workspace, named with its root, opens.
+    const sibling = path.join(root, 'outer', 'cache')
+    new Cache(sibling, undefined, ws).close()
+    expect(await Bun.file(path.join(sibling, 'cache.db')).exists()).toBe(true)
+  })
 })

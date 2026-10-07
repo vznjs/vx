@@ -521,6 +521,28 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(got.files.sort()).toEqual(odd.map((n) => path.join(projectDir, 'src', n)).sort())
   })
 
+  // A default TextDecoder (and Response.text()) strips a leading U+FEFF, so
+  // a name that opens with one, listed first by git, lost it, named no file,
+  // and dropped out of the key: every edit to it was a hit.
+  it('a name that opens with U+FEFF enters the input set intact, untracked and tracked', async () => {
+    const bom = '\ufeffx'
+    const file = path.join(projectDir, bom)
+    await write(file)
+    const resolve = () =>
+      resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: ['*'] },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      })
+    expect((await resolve()).files).toEqual([file])
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+    expect((await resolve()).files).toEqual([file])
+  })
+
   it('nested .gitignore patterns are correctly anchored (the v13 footgun)', async () => {
     // Pre-v14, a project-level pattern like `src/skip.ts` was anchored
     // to the workspace root, not the project — so it never matched.
