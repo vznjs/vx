@@ -1151,6 +1151,23 @@ export async function wrapSandboxedCommand(
   const tmp = taskTmpdir(tag)
   mkdirSync(tmp, { mode: 0o700 })
   trackTaskTmpdir(tmp)
+  try {
+    return await wrapIn(args, SandboxManager, userCommand, tag, tmp)
+  } catch (err) {
+    // Nothing spawned, so nothing releases it on exit: a `vx watch` kept
+    // one task directory per refused wrap (a held port) until it quit.
+    releaseBridges(tag)
+    throw err
+  }
+}
+
+async function wrapIn(
+  args: Parameters<typeof wrapSandboxedCommand>[0],
+  SandboxManager: SrtModule['SandboxManager'],
+  userCommand: string,
+  tag: string,
+  tmp: string,
+): ReturnType<typeof wrapSandboxedCommand> {
   // After the tag: SRT keys violations by the command's first 100 chars.
   const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
     process.env['JAVA_TOOL_OPTIONS'],
@@ -1824,6 +1841,10 @@ async function runSandboxedOnce(
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
+    if (straceLog) {
+      rmSync(straceLog, { force: true })
+      liveTempFiles.delete(straceLog)
+    }
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
     releaseBridges(tag)
