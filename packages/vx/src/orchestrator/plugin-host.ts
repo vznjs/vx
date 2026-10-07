@@ -106,6 +106,25 @@ export function hasHook(
   return false
 }
 
+/**
+ * An in-place stage reads nothing a hook returns: Vite's `config` hook
+ * returns a partial config, and one written that way here loaded, changed
+ * nothing and said nothing. Returning the object it was handed is harmless.
+ */
+function assertEditedInPlace(
+  plugin: VxPlugin,
+  hook: 'config' | 'project' | 'graph',
+  returned: unknown,
+  edited: unknown,
+  what: string,
+): void {
+  if (returned === undefined || returned === edited) return
+  throw new UserError(
+    `plugin '${plugin.name}' failed in ${hook}: returned ${describeValue(returned)}, which core ` +
+      `ignores — edit ${what} in place`,
+  )
+}
+
 /** `config` stage: every plugin edits the workspace config in place. */
 export async function applyConfigHooks(
   plugins: readonly VxPlugin[],
@@ -116,7 +135,8 @@ export async function applyConfigHooks(
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.config === undefined) continue
-    await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+    const returned = await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+    assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config')
     afterEach?.(plugin)
   }
 }
@@ -157,7 +177,8 @@ export async function applyProjectHooks(
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.project === undefined) continue
-    await safe(plugin, 'project', () => plugin.project!(config, ctx))
+    const returned = await safe(plugin, 'project', () => plugin.project!(config, ctx))
+    assertEditedInPlace(plugin, 'project', returned, config, "the project's config")
     afterEach?.(plugin)
   }
 }
@@ -183,7 +204,8 @@ export async function applyGraphHooks(
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
-    await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    const returned = await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph')
     await safe(plugin, 'graph', () => checkNodeShapes(nodes))
     afterEach?.(plugin)
     last = plugin

@@ -12,6 +12,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 import {
   applyConfigHooks,
+  applyGraphHooks,
   applyKeyHooks,
   applyProjectHooks,
   applyScheduleHooks,
@@ -1304,6 +1305,56 @@ describe('plugin-host, called directly', () => {
       ctx,
     )
     expect(got).toBe(ctx)
+  })
+
+  // Vite's `config` returns a partial config; written so here, the edit was
+  // dropped without a word. The types refuse it; a plugin in plain JS is untyped.
+  it('an in-place stage refuses a returned replacement, naming the plugin', async () => {
+    const refusal = (p: Promise<unknown>): Promise<string | null> =>
+      p.then(
+        () => null,
+        (e: Error) => e.message,
+      )
+    const ws = {}
+    const cfg = { tasks: {} }
+    const graph = nodes()
+    expect([
+      await refusal(
+        applyConfigHooks(
+          [testPlugin('org/vite', { config: (() => ({ concurrency: 2 })) as never })],
+          ws as never,
+          {} as never,
+        ),
+      ),
+      await refusal(
+        applyProjectHooks(
+          [testPlugin('org/proj', { project: (async () => ({ tasks: {} })) as never })],
+          cfg as never,
+          {} as never,
+        ),
+      ),
+      await refusal(
+        applyGraphHooks(
+          [testPlugin('org/graph', { graph: (() => new Map()) as never })],
+          graph,
+          {} as never,
+        ),
+      ),
+    ]).toEqual([
+      "plugin 'org/vite' failed in config: returned an object, which core ignores — edit the workspace config in place",
+      "plugin 'org/proj' failed in project: returned an object, which core ignores — edit the project's config in place",
+      "plugin 'org/graph' failed in graph: returned an object, which core ignores — edit the task graph in place",
+    ])
+    // CONTROL: handing back the object it was given changes nothing.
+    expect(
+      await refusal(
+        applyConfigHooks(
+          [testPlugin('org/same', { config: ((w: object) => w) as never })],
+          ws as never,
+          {} as never,
+        ),
+      ),
+    ).toBeNull()
   })
 
   it('three parts named alike are numbered #2 and #3, in value order', async () => {
