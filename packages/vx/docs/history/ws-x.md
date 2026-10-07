@@ -469,3 +469,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   ms (~30 µs a save, no git spawn); warm run unchanged (min 1055 →
   979 ms, A/A 915, 15 rounds, noisy box). Rows: `inputs-moved.test.ts`
   › "an input file added during the run" (three rows and a control).
+- **X-63.** A missing file under a write grant was counted as a
+  violation, where one under a read grant is not: with
+  `write: ['dist/']`, `cp src/in.txt dist/out.txt` failed on
+  `openat(dist/out.txt) = -1 ENOENT`, since GNU cp opens its destination
+  before creating it (tsc probes its buildinfo the same way). The strace pass now skips a
+  miss under a mounted write grant too. Rows:
+  `sandbox-runtime.unsafe.test.ts` › "a missing file under a write grant
+  is no violation", "skips a miss under a write grant, and reports a
+  sibling sharing its name prefix", "a miss under a write grant the
+  sandbox could not mount is reported".
