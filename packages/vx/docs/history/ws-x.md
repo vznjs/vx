@@ -531,3 +531,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   kill vx sent. The verdict line is now left out while the run is
   stopping. Row: `signal-handling.test.ts` › "a child that ignores
   SIGTERM is SIGKILLed after the grace; vx still exits 143".
+- **X-87.** A sandboxed task's `exec.timeout` started before the sandbox
+  was armed (the runtime's ~200 ms probe), so the task got less than it
+  declared, and `echo` under `timeout: 60` reached the executor with its
+  signal already aborted: `failed (timed out, exit 143)` in 0 ms,
+  "killed (SIGTERM)" though nothing ran. The request's signal is now
+  made last. Row: `execute-task.test.ts` › "exec.timeout counts from the
+  executor's call, not from the sandbox's arming".

@@ -1207,7 +1207,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             },
           }
         : {}),
-      signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
@@ -1219,7 +1218,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
     }
-    if (!userSandbox) return base
+    // The signal last: it arms `exec.timeout`, and the sandbox's arming
+    // below is vx's work, not the task's. Armed first, a 60 ms timeout
+    // expired before the spawn and failed `echo` as timed out, unrun.
+    if (!userSandbox) return { ...base, signal: requestSignal() }
     await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
@@ -1231,7 +1233,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
-    return { ...base, sandbox: sb.sandbox }
+    return { ...base, sandbox: sb.sandbox, signal: requestSignal() }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs

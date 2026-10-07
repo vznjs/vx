@@ -109,7 +109,10 @@ caches.
      `args.executor` — the executor this task was PLACED on by `run.ts`
      before scheduling, so every attempt of a task runs in the same
      place. With no executor plugin declared that is the local floor —
-     `runCommand` / `runSandboxed` exactly as before.
+     `runCommand` / `runSandboxed` exactly as before. The request's
+     `signal`, which arms `exec.timeout`, is made last, once the
+     sandbox is armed: armed first, a 60 ms `echo` timed out unrun
+     under the runtime's ~200 ms probe.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one
