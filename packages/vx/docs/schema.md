@@ -759,7 +759,10 @@ Always applied to every glob pass (regardless of what you wrote):
   no output, so it stays an input (A-44). Another task's outputs are
   not excluded for you: an input glob that can match them is refused
   while `rules.upfrontKeys` is on (X-54). Write the exclusion,
-  `['**/*', '!dist/**']`.
+  `['**/*', '!dist/**']`. An input entry the task's OWN outputs take
+  back whole is always refused (X-55): vx removes outputs before a run,
+  so a formatter declaring `src/**` as both would delete its sources. A
+  task that rewrites files in place declares no outputs.
 - **Nested-project subtree** — files belonging to a project rooted
   inside this one's dir are excluded. No cross-project leakage via
   globs; the only cross-project relationship is `dependsOn` +
