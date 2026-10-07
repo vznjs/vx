@@ -128,6 +128,8 @@ export function literalTailMatches(glob: string, tracked?: TrackedKinds): string
   const segs = glob.replace(/^(\.\/)+/, '').split('/')
   const [first, ...rest] = segs
   if (first === undefined || rest.length === 0 || first.includes('**')) return null
+  // A literal path names the file the task writes; it stays an output.
+  if (isLiteralPattern(first)) return null
   if (/[^A-Za-z0-9*?._@+-]/.test(first) || !rest.every((s) => isLiteralPattern(s) && s !== ''))
     return null
   const tail = `/${rest.join('/')}`

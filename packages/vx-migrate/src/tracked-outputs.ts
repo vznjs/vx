@@ -5,7 +5,8 @@
 // `data`, which holds the committed `sponsors.json`, and the first vx run
 // deleted it (2026-09-29). Each committed file under a mapped output is taken
 // back with a `!` entry (core's A-44): not cleaned, not saved, not restored,
-// still an input. The task keeps its cache.
+// still an input. The task keeps its cache. A file an output names exactly
+// is not taken back: the task writes it.
 
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -165,10 +166,15 @@ function literalPrefix(glob: string): string {
 function coveredTracked(globs: readonly string[], files: readonly string[]): string[] {
   const positive = globs.filter((g) => !g.startsWith('!'))
   const taken = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+  // A file an output names exactly is one the task says it writes (a
+  // codegen's committed `src/generated.ts`): it stays an output. Taken
+  // back, it stayed an input the run rewrote, and core never saved.
+  const named = new Set(positive.map((g) => g.replace(/^(\.\/)+/, '')))
   const hit = new Set<string>()
   for (const g of positive) {
     const prefix = literalPrefix(g)
     for (const f of files) {
+      if (named.has(f)) continue
       if (prefix !== '' && f !== prefix && !f.startsWith(`${prefix}/`)) continue
       if (!outputsOverlap(g, f)) continue
       if (taken.some((t) => outputsOverlap(t, f))) continue

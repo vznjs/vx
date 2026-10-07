@@ -1,0 +1,3 @@
+# Workstream YN — Nx/Turbo parity (2026-10-07)
+
+- **YN-1.** A committed file a Turbo or Nx output names exactly (a codegen's `src/generated.ts`) was taken back with `!` like any committed file under an output, so it stayed an input the task rewrote, and core never saved the task. Such a file now stays an output, which core keeps out of the task's inputs; a directory or glob over a committed file still takes it back. Rows: packages/vx-migrate/tests/turbo-generated-output.test.ts › "is an output: the codegen that rewrites it saves and hits"; packages/vx-migrate/tests/tracked-outputs.test.ts › "keeps a committed file an output names exactly; a directory over one takes it back".

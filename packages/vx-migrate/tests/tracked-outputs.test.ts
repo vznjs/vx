@@ -38,6 +38,26 @@ describe('spareTrackedOutputs', () => {
     ])
   })
 
+  // A codegen's committed `src/generated.ts`, taken back, stayed an input
+  // its run rewrote, and core never saved the task (Turbo and Nx alike).
+  it('keeps a committed file an output names exactly; a directory over one takes it back', () => {
+    const named = task({ files: ['./src/generated.ts'], workspaceFiles: ['gen/schema.json'] })
+    const dir = task({ files: ['src'] })
+    spareTrackedOutputs(
+      '/w',
+      [
+        { name: 'a', dir: '/w/packages/a', tasks: [named] },
+        { name: 'b', dir: '/w/packages/b', tasks: [dir] },
+      ],
+      ['packages/a/src/generated.ts', 'gen/schema.json', 'packages/b/src/generated.ts'],
+    )
+    expect([outputsOf(named), outputsOf(dir)]).toEqual([
+      { files: ['./src/generated.ts'], workspaceFiles: ['gen/schema.json'] },
+      // CONTROL: a directory does not name the file; it is still a source.
+      { files: ['src', '!src/generated.ts'] },
+    ])
+  })
+
   // 4,200 take-backs cost typescript-eslint's warm run 1.2 s.
   it('past sixteen files the task runs uncached instead', () => {
     const at = (n: number) => {
