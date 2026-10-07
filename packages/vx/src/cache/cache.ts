@@ -1676,6 +1676,21 @@ export class Cache implements CacheLayer {
   }
 
   /**
+   * The artifact under a private second name, for a body read more than
+   * once (a digest pass then an upload, a retry). The live name is not
+   * stable: a re-save of the key renames other bytes over it, and a body
+   * opened by path read those mid-upload (a digest of one artifact over
+   * the bytes of another). A `Bun.file` over an fd is no answer — its
+   * second read starts where the first ended. Throws when the artifact is
+   * gone; `release` unlinks the name.
+   */
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> } {
+    const pinned = this.tempPath(hash)
+    linkSync(this.tarPath(hash), pinned)
+    return { body: Bun.file(pinned), release: () => unlink(pinned).catch(() => undefined) }
+  }
+
+  /**
    * The remote body goes to the temp by `Bun.write`, which streams a
    * `Response` and copies a file `Blob` without collecting either, so a
    * pull never holds the artifact. A body that fails mid-stream (a dropped

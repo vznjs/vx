@@ -525,3 +525,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-107.** A background upload read its body through the artifact's
+  live name, and a re-save of the key (another run on a shared cache
+  dir, `--force`) renames other bytes over it: a plugin that reads the
+  body twice (`@vzn/vx-reapi`'s digest then upload, a retry) sent one
+  artifact's digest over another's bytes. The job now hands `put` a
+  `Bun.file` over a private hard link (`Cache.pinArtifact`), unlinked
+  when the PUT ends. Row: `layered-cache.test.ts` › "a re-save of the
+  key during an upload leaves every read of its body the same".
