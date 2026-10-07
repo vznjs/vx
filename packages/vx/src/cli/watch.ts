@@ -45,6 +45,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
+import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
@@ -365,10 +366,30 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  /** The run in flight, while one is. */
+  let current: WatchCycle | undefined
+  /** What stopped a cycle that waited on a server's readiness; the loop runs it next. */
+  let interruptedBy: string | undefined
+  let interruptTimer: ReturnType<typeof setTimeout> | null = null
+  // Judged on settled state one window later, as an idle edit is, and only
+  // if the cycle still waits on readiness alone by then.
+  const interruptIfWaiting = (): void => {
+    if (changes.pending.size === 0 || current?.waitsOnReadiness() !== true) return
+    if (interruptTimer) clearTimeout(interruptTimer)
+    interruptTimer = setTimeout(() => {
+      interruptTimer = null
+      const c = current
+      if (c === undefined || c.interrupted || !c.waitsOnReadiness() || stop.aborted) return
+      const label = changes.judge()
+      if (label === undefined) return
+      interruptedBy = label
+      c.interrupt()
+    }, DEBOUNCE_MS)
+  }
 
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
-    if (running) return
+    if (running) return interruptIfWaiting()
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       debounceTimer = null
@@ -394,7 +415,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           held = undefined
           restartTimings()
           const start = Date.now()
-          const cycle = await runOrchestrator(opts)
+          current = watchCycle(opts, stop, interruptIfWaiting)
+          const cycle = await runOrchestrator(current.opts)
+          current = undefined
           held = cycle.persistent
           if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
           changes.lastCycle = { start, end: Date.now() }
@@ -415,7 +438,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         }
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
-        if (changes.pending.size === 0 || stop.aborted) break
+        current = undefined
+        if (stop.aborted) break
+        if (interruptedBy !== undefined) {
+          label = interruptedBy
+          interruptedBy = undefined
+          continue
+        }
+        if (changes.pending.size === 0) break
         await Bun.sleep(DEBOUNCE_MS)
         label = changes.judge()
       }
@@ -824,6 +854,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     const cleanup = async (): Promise<void> => {
       pool.closeAll()
       if (debounceTimer) clearTimeout(debounceTimer)
+      if (interruptTimer) clearTimeout(interruptTimer)
       // The aborted cycle is tearing its children down; resolve only once
       // it has returned, so the process never exits over a live child.
       await inFlight
