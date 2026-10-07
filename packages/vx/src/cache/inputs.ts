@@ -33,6 +33,7 @@ import {
   slashBraceExpansions,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   taskGlob,
   UserError,
 } from '../util/index.js'
@@ -652,16 +653,9 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
   // promise round trip per call was most of this function's cost on every
   // miss (B, 2026-09-30).
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+  const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
-  const resolved = uniqueDirs.map(real)
+  const resolved = uniqueDirs.map(realOrNull)
   const contained = new Set<string>()
   for (const [i, dir] of uniqueDirs.entries()) {
     const real = resolved[i]
@@ -888,14 +882,7 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
  * output's own entry; what it leads to is not.
  */
 function notThroughLink(files: readonly string[], root: string): string[] {
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+  const realRoot = realOrNull(root) ?? root
   const own = new Map<string, boolean>()
   return files.filter((f) => {
     const dir = path.dirname(f)
@@ -903,7 +890,7 @@ function notThroughLink(files: readonly string[], root: string): string[] {
     if (ok === undefined) {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
-      const r = real(dir)
+      const r = realOrNull(dir)
       ok = r === null || r === path.join(realRoot, path.relative(root, dir))
       own.set(dir, ok)
     }
@@ -1018,8 +1005,12 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
-function stripTrailingSlash(p: string): string {
-  return p.replace(/\/+$/, '')
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
 }
 
 // The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it

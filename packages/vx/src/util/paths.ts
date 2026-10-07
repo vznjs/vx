@@ -261,7 +261,7 @@ function regExpSource(pattern: string): string | null {
   return out
 }
 
-function stripTrailingSlash(p: string): string {
+export function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, '')
 }
 
