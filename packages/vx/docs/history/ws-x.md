@@ -77,3 +77,11 @@ time (bugs, correctness, simplification, the plugin seams).
   command, exit 0. They now go on the last line that is a command, past
   heredoc bodies (`<<X`, `<<-'X'`). Rows: `runner.test.ts` ›
   `withForwardArgs` heredoc rows.
+- **X-13.** `vx run //#build` with no root project hinted a member's task
+  ("did you mean ui#build?"); it now says `//` is Turbo's root package
+  and the workspace root is no project here; `*#lint` hinted `ui#lint`
+  too, and now says to use `--filter '*'`. And `--filter --dry` took
+  `--dry` as the pattern; a value opening with `--` is refused as a
+  missing value. Rows: `root-project.test.ts` › "//#task with no root
+  project says so rather than hinting a member", `cli.test.ts` ›
+  "rejects missing flag value".

@@ -33,6 +33,7 @@ import {
   parseSize,
   printTimings,
   ulid,
+  isLiteralPattern,
   listed,
   nearest,
   UserError,
@@ -1577,6 +1578,21 @@ function didYouMean(
       continue
     }
     const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
+    // `//` is two edits from any two-letter name: it hinted `ui#build` (X-13).
+    if (proj === '//') {
+      lists.add(
+        "`//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task.",
+      )
+      continue
+    }
+    // `*` is one edit from any one-letter name and two from `ui`: `*#lint`
+    // hinted `ui#lint`, though the user meant every project.
+    if (!isLiteralPattern(proj) && !projects.has(proj)) {
+      lists.add(
+        `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
+      )
+      continue
+    }
     if (!projects.has(proj)) {
       const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
       if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)

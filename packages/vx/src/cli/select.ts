@@ -524,6 +524,10 @@ function didYouMeanProject(
   }
   for (const pattern of unmatched) {
     const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
+    if (typed === '//') {
+      return ". `//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config"
+    }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`
     const bare = byBare.has(typed) ? typed : nearest(typed, byBare.keys())
