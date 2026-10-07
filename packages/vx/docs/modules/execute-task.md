@@ -154,7 +154,8 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
-An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
+`rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
