@@ -304,3 +304,9 @@ time (bugs, correctness, simplification, the plugin seams).
   with no recorded policy names the flags. Row: `metrics.test.ts` ›
   "names why an unchanged key re-executed, from the evidence the index
   holds" (X-46).
+- **X-47.** `vx show <task>`'s block claims every field the run reads
+  but left out `exec.interactive` and `exec.env.secret`, so a task that
+  holds the terminal or masks a non-secret-named variable showed
+  neither. It now prints `env.secret` after `env.define` and
+  `interactive: yes` / `no` after `persistent`. Row:
+  `show-exec-fields.test.ts` (X-47).

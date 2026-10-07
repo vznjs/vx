@@ -2160,8 +2160,9 @@ bare  packages/bare  (no vx config)
 Under its header `vx show <project>` prints its `tags`.
 `vx show <project>` prints a block per task with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
-`timeout`, `retries`, `env.passThrough` / `env.define`, `remote`,
-`sandbox`, `persistent`, and the cache block
+`timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
+`remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
+cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
 task does not set are not printed; a value that spans lines (a
