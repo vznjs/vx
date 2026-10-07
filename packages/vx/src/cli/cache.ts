@@ -172,7 +172,11 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   let dir: string
   let storeRoot: string | null = null
   if (parsed.cacheDir !== undefined) dir = await cliCacheDir(root, parsed.cacheDir)
-  else ({ cacheDir: dir, storeRoot } = await loadCliWorkspace(root))
+  else {
+    const ws = await loadCliWorkspace(root)
+    dir = ws.cacheDir
+    storeRoot = await ws.storeRoot
+  }
   // A workspace that never ran has nothing to prune, and opening the cache
   // to find that out made it: `.vx/cache` with a database and a
   // `.gitignore`, where item 900 had held the dry run to making nothing

@@ -24,10 +24,11 @@ import path from 'node:path'
  * first root commit; null for a shallow clone with no remote and outside
  * git: those share nothing.
  */
-export function repoIdOf(root: string): string | null {
+export async function repoIdOf(root: string): Promise<string | null> {
   const located = locateGitDir(root)
   if (located === null) return null
-  const identity = remoteIdentity(root, located.commonDir) ?? firstCommit(root)
+  const identity =
+    (await remoteIdentity(root, located.commonDir)) ?? (await firstCommit(located.commonDir, root))
   if (identity === null) return null
   const rel = path.relative(located.gitRoot, path.resolve(root)).split(path.sep).join('/')
   const key = sha256(`${identity}#${rel}`)
@@ -108,10 +109,10 @@ function readOwnedFile(p: string): string | null {
 }
 
 /** The remote's identity from the config file, else from `git remote -v`. */
-function remoteIdentity(root: string, commonDir: string): string | null {
+async function remoteIdentity(root: string, commonDir: string): Promise<string | null> {
   const config = readOwnedFile(path.join(commonDir, 'config'))
   const remotes = config === null ? null : parseGitConfigRemotes(config)
-  const urls = remotes ?? remotesFromGit(root)
+  const urls = remotes ?? (await remotesFromGit(root))
   const found = new Map<string, string>()
   let first: string | null = null
   for (const [name, url] of urls) {
@@ -160,8 +161,8 @@ export function parseGitConfigRemotes(contents: string): [string, string][] | nu
   return remotes
 }
 
-function remotesFromGit(root: string): [string, string][] {
-  const out = git(root, ['remote', '-v'])
+async function remotesFromGit(root: string): Promise<[string, string][]> {
+  const out = await git(root, ['remote', '-v'])
   if (out === null) return []
   const pairs: [string, string][] = []
   for (const line of out.split('\n')) {
@@ -183,17 +184,22 @@ export function parseRemoteUrl(url: string): string | null {
   return ssh === null ? null : `${ssh[1]}/${ssh[3]}/${ssh[4]}`
 }
 
-/** The sorted-first root commit, so every clone agrees; null when shallow. */
-function firstCommit(root: string): string | null {
-  if (git(root, ['rev-parse', '--is-shallow-repository'])?.trim() === 'true') return null
-  const roots = git(root, ['rev-list', '--max-parents=0', 'HEAD'])
+/**
+ * The sorted-first root commit, so every clone agrees; null when shallow.
+ * Shallow is git's own test, a `shallow` file in the common dir: asking
+ * `rev-parse` cost a spawn on every run of a repo with no remote.
+ */
+async function firstCommit(commonDir: string, root: string): Promise<string | null> {
+  if (existsSync(path.join(commonDir, 'shallow'))) return null
+  const roots = await git(root, ['rev-list', '--max-parents=0', 'HEAD'])
   return roots?.split(/\r?\n/).filter(Boolean).sort()[0] ?? null
 }
 
-function git(cwd: string, args: string[]): string | null {
+async function git(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const p = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'ignore' })
-    return p.exitCode === 0 ? p.stdout.toString() : null
+    const p = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'ignore' })
+    const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
+    return code === 0 ? out : null
   } catch {
     return null
   }

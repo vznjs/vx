@@ -27,8 +27,8 @@ export interface CliWorkspace {
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
   cacheDir: string
-  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`). */
-  storeRoot: string | null
+  /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked on load. */
+  storeRoot: Promise<string | null>
 }
 
 export const warnToStderr = (message: string): void => {
@@ -152,7 +152,7 @@ export async function loadCliProjects(
           workspaceRoot,
           undefined,
           'open',
-          opts.cacheDir === undefined ? ws.storeRoot : null,
+          opts.cacheDir === undefined ? await ws.storeRoot : null,
         )
   try {
     const loaded = await loadProjects({
