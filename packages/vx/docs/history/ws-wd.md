@@ -1,3 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-11.** The line naming the kept server that ended the foreground wait counted every other kept server as stopped, dead ones included: `stopping 1 other persistent task` after both servers had crashed. It now counts only those still up, and says nothing when none is. Row: `tests/keep-alive.test.ts` › "the server that ends the wait counts only the others still up".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
