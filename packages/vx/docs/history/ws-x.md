@@ -341,3 +341,12 @@ time (bugs, correctness, simplification, the plugin seams).
   pairs globs whose prefixes nest. Rows: `output-collision.test.ts` ›
   "refuses two globs a path both match …", "allows two globs no built
   path joins …" (X-51).
+- **X-52.** Outside a git work tree `--affected` said "a shallow
+  clone? Fetch history", and `--affected=<ref>` or `[<ref>]` printed
+  `git rev-parse failed (exit 128)`; a repository with no commit yet got
+  the shallow-clone line too. Once a base fails, vx now asks git whether
+  there is a work tree and a commit, and says `vx requires git: … not
+inside a git work tree` (one helper, `notAWorkTree`, shared with the
+  input enumeration) or that there is no commit yet. A base that resolves
+  spawns nothing more. Rows: `affected-base-notes.test.ts` › "outside a
+  git work tree …", "a repository with no commit yet …" (X-52).

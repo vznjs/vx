@@ -15,6 +15,7 @@ export {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  notAWorkTree,
   OUT_OF_FDS_HINT,
 } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'

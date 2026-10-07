@@ -254,7 +254,9 @@ Run the task only in projects whose files changed since `<base>`.
 - Without git on PATH, every shape is one line — `vx requires git:
 failed to spawn 'git' … Install git and re-run` — the same the input
   enumeration prints; a minimal image met a stack here before
-  (2026-09-16).
+  (2026-09-16). Outside a git work tree every shape says `vx requires
+git: <root> is not inside a git work tree`, as a plain run does, and a
+  repository with no commit yet says so, not "a shallow clone?" (X-52).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
