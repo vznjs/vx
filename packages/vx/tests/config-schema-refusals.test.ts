@@ -120,7 +120,9 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     // `Object.entries(7)` is `[]`: without the shape check the plugin passes
     // the at-least-one-capability rule on a `commands` that declares nothing.
     const p = { ...testPlugin('sweep-653-cmd', { teardown() {} }), commands: 7 }
-    expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].commands\` must be an object`)
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].commands\` of plugin '${p.name}' must be an object`,
+    )
   })
 
   it('a `commands` array is refused, not read as the verbs 0, 1, …', () => {
@@ -136,7 +138,7 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].fingerprint\` must be { files: [name, …], affected: function }`,
+      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function }`,
     )
     // Control: the same claim over a file core folds validates.
     const ok = testPlugin('sweep-653-fp-ok', {

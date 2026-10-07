@@ -552,7 +552,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
   ],
   [
-    'plugins[<i>].<capability> must be a function',
+    "plugins[<i>].<capability> of plugin '<name>' must be a function",
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup: 1 }')}] }`),
   ],
   [
@@ -560,11 +560,11 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup() {}, excutor() {} }')}] }`),
   ],
   [
-    'plugins[<i>] must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown',
+    "plugins[<i>] (plugin '<name>') must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown",
     workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
   ],
   [
-    'plugins[<i>].fingerprint must be { files: [name, …], affected: function }',
+    "plugins[<i>].fingerprint of plugin '<name>' must be { files: [name, …], affected: function }",
     workspaceConfig(`{ plugins: [${plugin('p', '{ fingerprint: { files: [] } }')}] }`),
   ],
   [
@@ -578,6 +578,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(
       `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
         `${plugin('b', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
+    ),
+  ],
+  [
+    "plugin '<name>' claims fingerprint file '<file>' twice — declare the plugin once, and each file once",
+    workspaceConfig(
+      `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml", "pnpm-lock.yaml"], affected() {} } }')}] }`,
     ),
   ],
 ]

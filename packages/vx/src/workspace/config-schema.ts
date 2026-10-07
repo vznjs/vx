@@ -228,12 +228,16 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       }
       for (const cap of PLUGIN_FUNCTION_HOOKS) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
-          throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].${cap}\` of plugin '${pkg}' must be a function`,
+          )
         }
       }
       if (plug.commands !== undefined) {
         if (plug.commands === null || typeof plug.commands !== 'object') {
-          throw new UserError(`${configPath}: \`plugins[${i}].commands\` must be an object`)
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].commands\` of plugin '${pkg}' must be an object`,
+          )
         }
         // A list of commands loaded as the verbs `0`, `1`, … that help listed.
         if (Array.isArray(plug.commands)) {
@@ -250,7 +254,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             typeof c.description !== 'string'
           ) {
             throw new UserError(
-              `${configPath}: \`plugins[${i}].commands.${verb}\` must be { description: string, run: function }`,
+              `${configPath}: \`plugins[${i}].commands.${verb}\` of plugin '${pkg}' must be { description: string, run: function }`,
             )
           }
           // A verb the dispatcher would never reach is refused, not left
@@ -291,7 +295,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           typeof claim.affected !== 'function'
         ) {
           throw new UserError(
-            `${configPath}: \`plugins[${i}].fingerprint\` must be { files: [name, …], affected: function }`,
+            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function }`,
           )
         }
         for (const file of claim.files as unknown[]) {
@@ -312,6 +316,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             )
           }
           const owner = fileClaimants.get(file)
+          // One plugin twice (\`pnpm()\` declared again, or a file listed
+          // twice) read as "plugins 'x' and 'x' both claim".
+          if (owner === plug.name) {
+            throw new UserError(
+              `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice — declare the plugin once, and each file once`,
+            )
+          }
           if (owner !== undefined) {
             throw new UserError(
               `${configPath}: plugins '${owner}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
@@ -324,7 +335,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // — an empty `{ name }` object is a no-op authoring mistake.
       if (PLUGIN_HOOKS.every((hook) => plug[hook] === undefined)) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
+          `${configPath}: \`plugins[${i}]\` (plugin '${pkg}') must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
         )
       }
     }

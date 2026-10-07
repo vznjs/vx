@@ -45,20 +45,22 @@ describe('the plugin-shape refusals, whole', () => {
 
   it('a hook that is not a function', () => {
     const p = testPlugin('pin-hook', { teardown: 7 as never })
-    expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].teardown\` must be a function`)
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].teardown\` of plugin '${p.name}' must be a function`,
+    )
   })
 
   it('a command without its description', () => {
     const p = testPlugin('pin-cmd', { commands: { hello: { run: () => 0 } } as never })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].commands.hello\` must be { description: string, run: function }`,
+      `${WS}: \`plugins[0].commands.hello\` of plugin '${p.name}' must be { description: string, run: function }`,
     )
   })
 
   it('a plugin that contributes nothing', () => {
     const p = testPlugin('pin-empty', {})
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0]\` must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
+      `${WS}: \`plugins[0]\` (plugin '${p.name}') must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
     )
   })
 })
