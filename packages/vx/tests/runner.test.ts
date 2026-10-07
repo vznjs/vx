@@ -737,6 +737,14 @@ describe('withForwardArgs', () => {
     ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
     ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
     ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
+    // X-12: appended to the terminator, the heredoc never closed.
+    ['a command ending in a heredoc', 'xargs echo <<X\nhi\nX', '--fix a b hi\n'],
+    ['a quoted, tab-stripped heredoc', "xargs echo <<-'X'\n\thi\n\tX\n", '--fix a b hi\n'],
+    [
+      'control: a command after a heredoc',
+      'xargs echo <<X\nhi\nX\necho done',
+      'hi\ndone --fix a b\n',
+    ],
   ])('%s', (_name, command, printed) => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })

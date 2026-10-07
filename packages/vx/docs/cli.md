@@ -417,7 +417,9 @@ They are appended to the command's last line (trailing blank lines are
 dropped first, so a multi-line command's closing newline does not run
 them as a command of their own), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
-below a commented line, before the earliest), and a persistent task gets
+below a commented line, before the earliest). A heredoc's body and
+terminator are not command lines: `cat <<X … X` gets them on the
+`cat <<X` line (X-12). A persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce

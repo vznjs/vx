@@ -155,6 +155,22 @@ function trailingCommentStart(command: string): number {
   return comment
 }
 
+/** Per line: is it a heredoc's body or terminator (`<<X` / `<<-'X'` … `X`)? */
+function heredocLines(lines: readonly string[]): boolean[] {
+  const pending: Array<{ delim: string; tabs: boolean }> = []
+  return lines.map((line) => {
+    const open = pending[0]
+    if (open !== undefined) {
+      if ((open.tabs ? line.replace(/^\t+/, '') : line) === open.delim) pending.shift()
+      return true
+    }
+    for (const m of line.matchAll(/(?<!<)<<(?!<)(-?)\s*(['"]?)([A-Za-z_]\w*)\2/g)) {
+      pending.push({ delim: m[3]!, tabs: m[1] === '-' })
+    }
+    return false
+  })
+}
+
 /**
  * The command a task runs with the args after `--` appended, shell-quoted.
  * They go before a trailing comment: appended after it, `echo args: # show`
@@ -162,6 +178,17 @@ function trailingCommentStart(command: string): number {
  */
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string {
   if (!args || args.length === 0) return command
+  // A command that ends in a heredoc's body: appended to its terminator,
+  // `X FWD` closed nothing and the args never reached the command (X-12).
+  // They go on the last line that is a command, where `cat <<X FWD` is
+  // still `cat FWD` reading the heredoc.
+  const lines = command.trimEnd().split('\n')
+  const body = heredocLines(lines)
+  if (body[lines.length - 1] === true) {
+    const last = body.lastIndexOf(false)
+    const tail = lines.slice(last + 1).join('\n')
+    return `${withForwardArgs(lines.slice(0, last + 1).join('\n'), args)}\n${tail}`
+  }
   const quoted = args.map(shellQuote).join(' ')
   let comment = trailingCommentStart(command)
   if (comment < 0) {

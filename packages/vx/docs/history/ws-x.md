@@ -72,3 +72,8 @@ time (bugs, correctness, simplification, the plugin seams).
   run history's write. The check now wants a non-negative integer
   exit code and a non-negative finite duration. Row: `executor.test.ts`
   › "an exitCode or durationMs that is a number but no count".
+- **X-12.** Args after `--` were appended to a heredoc's terminator
+  (`X FWD`), so the heredoc never closed and the args never reached the
+  command, exit 0. They now go on the last line that is a command, past
+  heredoc bodies (`<<X`, `<<-'X'`). Rows: `runner.test.ts` ›
+  `withForwardArgs` heredoc rows.
