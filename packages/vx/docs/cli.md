@@ -774,7 +774,7 @@ down with it:
   it became ready is a failure to its dependents not yet started,
   including those that reach it through a group.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
-  tasks finish naturally; everything not yet started (cache restores
+  tasks finish their attempt and start no retry; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became
   ready stops dispatch the same way.
 - **`always`** (bare `--continue`): dependents run even when an

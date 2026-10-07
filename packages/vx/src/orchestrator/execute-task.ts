@@ -133,6 +133,8 @@ export interface ExecuteArgs {
    * terms (item 962).
    */
   stopSignal?: AbortSignal
+  /** `continueMode: 'never'` stopped dispatch: no further attempt starts. */
+  failFast?: AbortSignal
   /**
    * Registry the orchestrator owns. For each persistent task we
    * spawn, we stash the subprocess handle here so the orchestrator
@@ -1153,7 +1155,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
     }
 
-    if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    if (effectiveExitCode === 0 || attempt >= maxAttempts || args.failFast?.aborted === true) break
     failedAttempts.push({
       endedAt: Date.now(),
       exitCode: effectiveExitCode,
