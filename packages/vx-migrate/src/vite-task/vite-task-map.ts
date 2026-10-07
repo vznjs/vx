@@ -105,6 +105,8 @@ export interface ViteTaskOptions {
   tracked?: (rel: string) => TrackedKinds
   /** The config file each written task lives beside, by project dir. */
   ownConfig?: (dir: string) => string | null
+  /** The env names the tracked files under `dirs` spell: a `*` env entry's stand-in. */
+  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
 }
 
 export interface ViteTaskMapping {
@@ -265,11 +267,29 @@ export async function mapViteTaskWorkspace(
   }
 
   const projects: GeneratedProject[] = []
+  const wildUsed = new Map<string, number>()
   for (const meta of metas) {
     const pkgDir = relPosix(root, meta.dir)
     const atRoot = pkgDir === '' || pkgDir === '.'
     const tasks: GeneratedTask[] = []
     const own = tasksOf(meta)
+    // A `*` env entry matches names in the run's environment; a written
+    // config lists the ones this package and its workspace dependencies spell.
+    const wild = Object.values(own).some((raw) => {
+      const def = (typeof raw === 'object' && raw !== null ? raw : {}) as TaskDef
+      const c = (typeof def.cache === 'object' && def.cache !== null ? def.cache : def) as CacheDef
+      return [...asStrings(c.env), ...asStrings(c.untrackedEnv)].some(
+        (e) => !e.startsWith('!') && e.includes('*'),
+      )
+    })
+    let spelled: readonly string[] | undefined
+    if (wild && opts.sourceNames !== undefined) {
+      const closure = new Set<ProjectMeta>([meta])
+      for (const p of closure)
+        for (const field of [...DEP_FIELDS, 'optionalDependencies'])
+          for (const n of depsIn(p, field)) closure.add(byName.get(n)!)
+      spelled = await opts.sourceNames([...closure].map((p) => p.dir))
+    }
     for (const [name, raw] of Object.entries(own)) {
       const def: TaskDef =
         typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : ((raw ?? {}) as TaskDef)
@@ -281,6 +301,8 @@ export async function mapViteTaskWorkspace(
           dependsOn: (from) => fromDeps(meta, from),
           opts,
           dir: meta.dir,
+          spelled,
+          wildUsed,
         }),
       )
     }
@@ -325,7 +347,13 @@ export async function mapViteTaskWorkspace(
     for (const t of tasks) inlineRuns(t, meta)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
-  return { projects, notes: [] }
+  const notes = [...wildUsed].map(
+    ([e, n]) =>
+      `env ${JSON.stringify(e)}: the configs list the names the files of each task's package and its ` +
+      `workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add any other a task reads to ` +
+      'cache.inputs.env and exec.env.passThrough',
+  )
+  return { projects, notes }
 }
 
 /** The TODO for what Vite Task traces and vx declares. */
@@ -345,6 +373,9 @@ interface TaskCtx {
   dir: string
   dependsOn: (entry: { task: string; from: unknown }) => string[]
   opts: ViteTaskOptions
+  spelled: readonly string[] | undefined
+  /** Each `*` entry the spelled names stood in for, with its task count. */
+  wildUsed: Map<string, number>
 }
 
 function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
@@ -380,8 +411,10 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
         ? (def.cache as CacheDef)
         : def
 
-  const env = envNames('cache.env', cache?.env, todos)
-  const pass = [...new Set([...env, ...envNames('cache.untrackedEnv', cache?.untrackedEnv, todos)])]
+  const env = envNames('cache.env', cache?.env, todos, ctx)
+  const pass = [
+    ...new Set([...env, ...envNames('cache.untrackedEnv', cache?.untrackedEnv, todos, ctx)]),
+  ]
   if (pass.length > 0) exec['env'] = { passThrough: pass }
   if (cache === null) return { name, todos, task }
 
@@ -416,15 +449,32 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
 }
 
 /**
- * `env` / `untrackedEnv` as the exact names vx takes. `!NAME` takes a name
- * back; a wildcard names no one variable, and vx keys and passes names.
+ * `env` / `untrackedEnv` as the exact names vx takes. `*` matches any run
+ * of characters and `!` takes names back, as Vite Task's patterns do; a `*`
+ * entry lists the names `spelled` holds that it matches (the bare prefix is
+ * no name), or is a TODO when none does.
  */
-function envNames(field: string, v: unknown, todos: string[]): string[] {
+function envNames(
+  field: string,
+  v: unknown,
+  todos: string[],
+  { spelled, wildUsed }: Pick<TaskCtx, 'spelled' | 'wildUsed'>,
+): string[] {
+  const re = (p: string): RegExp => new RegExp(`^${p.split('*').map(RegExp.escape).join('.*')}$`)
   const names: string[] = []
-  const dropped = new Set<string>()
+  const dropped: RegExp[] = []
   for (const e of asStrings(v)) {
     if (e.startsWith('!')) {
-      if (!e.includes('*')) dropped.add(e.slice(1))
+      dropped.push(re(e.slice(1)))
+      continue
+    }
+    const hits =
+      e.includes('*') && spelled !== undefined
+        ? spelled.filter((n) => n !== e.replaceAll('*', '') && re(e).test(n))
+        : []
+    if (hits.length > 0) {
+      names.push(...hits)
+      wildUsed.set(e, (wildUsed.get(e) ?? 0) + 1)
       continue
     }
     if (/[*?[\]{}=\0]/.test(e) || e === '') {
@@ -435,7 +485,7 @@ function envNames(field: string, v: unknown, todos: string[]): string[] {
     }
     names.push(e)
   }
-  return [...new Set(names)].filter((n) => !dropped.has(n))
+  return [...new Set(names)].filter((n) => !dropped.some((d) => d.test(n)))
 }
 
 /**

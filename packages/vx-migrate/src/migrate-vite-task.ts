@@ -3,6 +3,7 @@
 // migration plan.
 
 import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn/vx'
+import { spelledNames } from './spelled-env.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { mapViteTaskWorkspace, viteTaskProjects } from './vite-task/vite-task-map.js'
 
@@ -16,6 +17,7 @@ export async function migrateViteTask(
   const mapped = await mapViteTaskWorkspace(root, withRoot.metas, {
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: () => `vx.config.${format}`,
+    sourceNames: (dirs) => spelledNames(root, dirs, tracked),
   })
   // A committed file under an output is taken back, or the first run's
   // clean deletes it (Vite Task never cleans).
