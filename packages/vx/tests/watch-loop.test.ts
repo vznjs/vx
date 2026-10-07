@@ -406,6 +406,24 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(1)
     expect(await executions(f.log)).toBe(2)
   }, 40_000)
+
+  it('a writer that never pauses for a debounce window does not hold an edit back', async () => {
+    // Each event reset the timer, so one every 50 ms (a dev server's log)
+    // kept the loop idle for good and the edit never ran.
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+    let n = 0
+    const writer = setInterval(() => void writeFile(path.join(f.dir, 'noise.log'), `${n++}\n`), 50)
+    try {
+      await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+      await until(async () => (await executions(f.log)) === 2, 'the re-run under the writer', 5_000)
+    } finally {
+      clearInterval(writer)
+    }
+    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
+  }, 40_000)
 })
 
 describe('vx watch with a persistent task (e2e)', () => {

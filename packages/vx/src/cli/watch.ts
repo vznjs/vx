@@ -55,6 +55,12 @@ function sayCannot(what: string, err: unknown): void {
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
+/**
+ * ...but no longer than this after the first: a writer that never pauses
+ * for a window (a dev server logging into its project every 50 ms) reset
+ * the timer forever, and an edit made meanwhile never ran.
+ */
+const DEBOUNCE_MAX_MS = 1_000
 
 /**
  * The run flags a watch loop cannot honour, as the refusal line it prints; null
@@ -365,11 +371,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  let windowOpened = 0
 
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     if (running) return
-    if (debounceTimer) clearTimeout(debounceTimer)
+    if (debounceTimer) {
+      if (Date.now() - windowOpened >= DEBOUNCE_MAX_MS) return
+      clearTimeout(debounceTimer)
+    } else windowOpened = Date.now()
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return
