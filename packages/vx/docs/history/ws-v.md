@@ -75,6 +75,11 @@ the rounds run with `GIT_CONFIG_GLOBAL=/dev/null`.
   ~11 ms of ~150 at 500 projects, none at 1,000 frozen. Discovery and the
   config load already overlap the whole-tree git enumeration, which the
   run then waits on instead.
+- **V-11.** Reftable refs (git 2.45; git 3.0's default): every ref vx
+  needs comes from git, the run context's HEAD reader and vx-migrate's
+  HEAD stamp already refuse the files' stub. The repository id
+  (`repo-id.ts`), which reads `.git` too, gains its row: a reftable clone
+  names the same store as its files origin, a shallow one none.
 
 Left: `workspace config` is mostly the plugin packages' transpile, half of
 it `@vzn/vx-otel` (owned by another thread); `git enumeration` is now the
