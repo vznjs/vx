@@ -1320,7 +1320,9 @@ links is refused by name. (A link the output globs themselves cover,
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are
-pruned (`tests/archive-security.test.ts`).
+pruned (`tests/archive-security.test.ts`). A backslash in a name is a
+name character (vx runs on Linux and macOS; Windows through WSL), so an
+output like `dist/back\slash` caches and restores as written.
 
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +

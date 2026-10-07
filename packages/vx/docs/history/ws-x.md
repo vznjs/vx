@@ -479,9 +479,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   is no violation", "skips a miss under a write grant, and reports a
   sibling sharing its name prefix", "a miss under a write grant the
   sandbox could not mount is reported".
-- **X-9x.** `vx run all --verbosity 1` (a group task) printed
+- **X-64.** `vx run all --verbosity 1` (a group task) printed
   `a#all success 0ms` in the per-task table, which the footer and
   `--report` leave out, and the table printed below the footer. The run
   now prints it (`RunOptions.summaryTable`, `formatOutcomeTable`) just
   above the footer, groups left out. Row: `cli.test.ts` › "--verbosity
   1: the table lists no group and prints above the footer".
+- **X-65.** An output whose name holds a backslash (`dist/back\slash`,
+  legal on Linux and macOS) never cached: the save scans its own
+  artifact with the restore's name checks, and `assertSafeName` refused
+  a backslash as a Windows separator, so every run printed
+  `cache save failed`. vx runs on Linux and macOS only (Windows through
+  WSL), where a backslash is a name character, so the refusal is gone
+  and such a name lands literally inside the anchor. No `CACHE_VERSION` bump: no artifact
+  with one was ever stored. Rows: `archive-security.test.ts` › "a
+  backslash lands as a literal name inside the anchor",
+  `artifact-roundtrip.test.ts` › "a space, a quote, a backslash and a
+  non-ASCII name round-trip …" (now a hit, no save failure).

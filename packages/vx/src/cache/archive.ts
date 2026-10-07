@@ -952,14 +952,9 @@ function assertSafeName(name: string): void {
   if (name.includes('//')) {
     throw new ArchiveSecurityError(`archive entry name has empty path component (unsafe): ${name}`)
   }
-  // Windows-shaped paths are categorically unsafe to extract on POSIX
-  // hosts (and vice versa): backslash separators, drive letters,
-  // extended-length prefixes.
-  if (name.includes('\\')) {
-    throw new ArchiveSecurityError(
-      `archive entry uses backslash separators (windows-unsafe): ${name}`,
-    )
-  }
+  // No backslash refusal: vx runs on Linux and macOS (Windows through WSL),
+  // where it is a name character, and the save scans its own artifact with
+  // these checks, so refusing one made `dist/back\slash` uncacheable.
   if (/^[A-Za-z]:[\\/]/.test(name)) {
     throw new ArchiveSecurityError(`archive entry has windows drive prefix (unsafe): ${name}`)
   }
