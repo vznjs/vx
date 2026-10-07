@@ -1502,7 +1502,7 @@ describe('the clean empties a tree without reaching past it', () => {
     expect(await tree(projectDir)).toEqual(['dist/', 'dist/keep/', 'dist/keep/stray.txt'])
   })
 
-  it('before a miss, the clean keeps each glob’s root and prunes below it (B-49)', async () => {
+  it('before a miss, the clean prunes only below each glob’s root (B-49)', async () => {
     const w = async (rel: string) => {
       await mkdir(path.dirname(path.join(projectDir, rel)), { recursive: true })
       await writeFile(path.join(projectDir, rel), 'x')
@@ -1513,11 +1513,13 @@ describe('the clean empties a tree without reaching past it', () => {
       await w('build/out/y.js')
       await w('gen/z.txt')
     }
-    // A literal (`gen/z.txt`) and a glob rooted at the project (`*.map`) keep nothing.
+    // A literal's directory (`gen`), a glob root's parent (`build`) and a
+    // glob rooted at the project (`*.map`) keep everything: a sibling task
+    // may have just made the directory to write into.
     const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', '*.map']
     await seed()
-    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [], keepGlobRoots: true })
-    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/'])
+    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [], beforeMiss: true })
+    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/', 'gen/'])
     // CONTROL: without the flag (a restore) every emptied directory goes.
     await seed()
     await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [] })

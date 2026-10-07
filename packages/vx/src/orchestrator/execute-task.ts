@@ -903,7 +903,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs({ ...cleanArgs, keepGlobRoots: true })
+      const cleanedRels = await cleanOutputs({ ...cleanArgs, beforeMiss: true })
       endClean()
       args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
@@ -916,7 +916,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     } else if (willWrite && !deferralRequested && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
-      const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+      const cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, beforeMiss: true })
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
     violations = []

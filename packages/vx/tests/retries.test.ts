@@ -204,6 +204,52 @@ describe('exec.retries — e2e', () => {
     TIMEOUT,
   )
 
+  // A retry's clean removed the failed attempt's `out/a.txt` and pruned the
+  // emptied `out/`, which a sibling running beside it had just made and
+  // was about to write into: the sibling failed "Directory nonexistent".
+  // The same held for a workspace output.
+  for (const [where, dir, outputs] of [
+    ['project', 'out', (f: string) => `{ files: ['out/${f}'] }`],
+    ['workspace', '../../out', (f: string) => `{ files: [], workspaceFiles: ['out/${f}'] }`],
+  ] as const) {
+    it(
+      `a retry's clean leaves a sibling's ${where} output directory standing`,
+      async () => {
+        await addProject(
+          fixture.root,
+          'p',
+          `export default {
+            tasks: {
+              flaky: {
+                exec: {
+                  command: 'while [ ! -e ready ]; do sleep 0.01; done; if [ -e tried ]; then touch go; exit 1; fi; touch tried; echo a > ${dir}/a.txt; exit 1',
+                  retries: 1,
+                },
+                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('a.txt')} },
+              },
+              other: {
+                exec: { command: 'mkdir -p ${dir} && touch ready && while [ ! -e go ]; do sleep 0.01; done; echo b > ${dir}/b.txt' },
+                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('b.txt')} },
+              },
+            },
+          }
+          `,
+        )
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['flaky', 'other'],
+          projects: ['p'],
+          log: capturingLogger(fixture),
+        })
+        const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
+        expect(status).toEqual({ 'p#flaky': 'failed', 'p#other': 'success' })
+        const b = path.join(fixture.root, 'packages/p', dir, 'b.txt')
+        expect(readFileSync(b, 'utf8')).toBe('b\n')
+      },
+      TIMEOUT,
+    )
+  }
+
   it(
     'the retried attempt count reaches the telemetry summary (flaky signal)',
     async () => {

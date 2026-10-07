@@ -96,8 +96,10 @@ caches.
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
-     `dist/` doesn't survive into a fresh exec; the directory each
-     wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
+     `dist/` doesn't survive into a fresh exec (`beforeMiss`): it prunes
+     only below each wildcard output glob's root, which stays (B-49); a
+     directory above it or holding a literal output may be one a sibling
+     task just made to write into.
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.

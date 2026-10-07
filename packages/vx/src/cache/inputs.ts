@@ -681,13 +681,16 @@ export async function cleanOutputs(args: {
   outputs: string[]
   nestedProjectDirs: string[]
   /**
-   * Before a miss: keep the directory each wildcard glob is rooted at
-   * (`dist` for `dist/**`). The task writes its matches under it, so a
-   * remove there bought only an rmdir and the task's mkdir: 0.4 ms of a
-   * 4.9 ms one-file miss (B-49). A restore prunes it, since the entry's
-   * shape decides there.
+   * Before a miss: prune only below the directory each wildcard glob is
+   * rooted at (`dist` for `dist/**`), the tree the task declared. The root
+   * stays: the task writes under it, and a remove there bought only an
+   * rmdir and the task's mkdir (B-49). A directory above it or holding a
+   * literal output stays too: a sibling task running beside this one may
+   * have just made it and not yet written into it, and pruning it failed
+   * that task "Directory nonexistent". A restore prunes everything, since
+   * the entry's shape decides there.
    */
-  keepGlobRoots?: boolean
+  beforeMiss?: boolean
 }): Promise<string[]> {
   const files = await resolveOutputs(args)
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
@@ -697,7 +700,7 @@ export async function cleanOutputs(args: {
   await pruneEmptiedDirs(
     args.projectDir,
     removed,
-    args.keepGlobRoots === true ? globRoots(args.projectDir, args.outputs) : undefined,
+    args.beforeMiss === true ? globRoots(args.projectDir, args.outputs) : undefined,
   )
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
@@ -910,7 +913,7 @@ function notThroughLink(files: readonly string[], root: string): string[] {
 async function pruneEmptiedDirs(
   root: string,
   removed: readonly string[],
-  keep?: ReadonlySet<string>,
+  within?: ReadonlySet<string>,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -928,7 +931,9 @@ async function pruneEmptiedDirs(
     const parents = new Set<string>()
     const dirs = [...level].filter(
       (dir) =>
-        dir !== rootResolved && dir.startsWith(rootResolved + path.sep) && keep?.has(dir) !== true,
+        dir !== rootResolved &&
+        dir.startsWith(rootResolved + path.sep) &&
+        (within === undefined || [...within].some((r) => dir.startsWith(r + path.sep))),
     )
     const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
     if (dirs.length <= SYNC_CLEAN_MAX) {
@@ -956,12 +961,12 @@ async function pruneEmptiedDirs(
  * literal names a file or a tree whose shape the task decides, so it has
  * none; nor has a glob rooted at the project itself.
  */
-function globRoots(projectDir: string, outputs: readonly string[]): Set<string> {
+function globRoots(base: string, outputs: readonly string[]): Set<string> {
   const roots = new Set<string>()
   for (const g of outputs) {
     if (g.startsWith('!') || isLiteralPattern(g)) continue
     const prefix = staticPrefix(g)
-    if (prefix !== '.') roots.add(path.resolve(projectDir, prefix))
+    if (prefix !== '.') roots.add(path.resolve(base, prefix))
   }
   return roots
 }
@@ -999,9 +1004,15 @@ export async function resolveWorkspaceOutputs(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: string[]
+  /** As `cleanOutputs`' `beforeMiss`. */
+  beforeMiss?: boolean
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
+  await pruneEmptiedDirs(
+    args.workspaceRoot,
+    await removeAll(files, args.workspaceRoot),
+    args.beforeMiss === true ? globRoots(args.workspaceRoot, args.outputs) : undefined,
+  )
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
 
