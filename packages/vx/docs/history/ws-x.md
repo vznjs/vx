@@ -153,3 +153,12 @@ time (bugs, correctness, simplification, the plugin seams).
   ends `not counted: 1 aborted, 1 not run`, and the total holds the aborted
   task's time. Row: `run-report.test.ts` › "renders an interrupted run,
   byte for byte".
+- **X-26.** One broken config zeroed every other project's
+  plugin-given tasks in `vx info`: the fallback count skipped config-less
+  projects and loaded configs without the `project` stage. A config with
+  two syntax errors read `2 errors building …`, not the line `vx run`
+  stops on, since the repeat load's worker did not unwrap the
+  AggregateError. The fallback now runs `loadProjects` per project, and
+  the worker reports the first error. Row: `info-syntax-error.test.ts` ›
+  "counts the other projects as vx run does and names the error vx run
+  stops on".

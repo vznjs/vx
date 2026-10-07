@@ -23,16 +23,19 @@ import {
   computeWorkspaceFingerprint,
   findWorkspaceRoot,
   type LoadReads,
-  loadProjectConfig,
   loadWorkspace,
   lockfilePath,
-  type ProjectMeta,
   resolveCacheDir,
   resolveStoreRoot,
 } from '../workspace/index.js'
 import { flakyTasks, type FlakyTask } from './failure-mode.js'
 import type { VxPlugin } from './plugin.js'
-import { discoverProjects, loadProjects, loadWorkspacePlugins } from './projects.js'
+import {
+  discoverProjects,
+  type LoadProjectsArgs,
+  loadProjects,
+  loadWorkspacePlugins,
+} from './projects.js'
 
 const warnToStderr = (message: string): void => {
   process.stderr.write(`${message}\n`)
@@ -167,23 +170,23 @@ async function collectWorkspaceInfo(
     // The run path's load — a plugin's `project` stage counts — so the
     // doctor's task count is the number a run would see. A broken config
     // must not take the doctor down with it: the count then falls back to
-    // the configs that do load, one by one, the broken ones as zero.
-    try {
-      const loaded = await loadProjects({
+    // the same load, one project at a time, the broken ones as zero.
+    const load = {
+      workspaceRoot: root,
+      cacheDir,
+      plugins,
+      projectMetas: metas,
+      closure: false,
+      lock: null,
+      evalCache: {
+        store: cache,
         workspaceRoot: root,
-        cacheDir,
-        plugins,
-        projectMetas: metas,
-        seeds: 'all',
-        closure: false,
-        lock: null,
-        evalCache: {
-          store: cache,
-          workspaceRoot: root,
-          workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
-        },
-        warn,
-      })
+        workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
+      },
+      warn,
+    } as const
+    try {
+      const loaded = await loadProjects({ ...load, seeds: 'all' })
       for (const p of loaded.projects.values()) {
         const tasks = p.config.tasks ?? {}
         taskCount += Object.keys(tasks).length
@@ -197,7 +200,7 @@ async function collectWorkspaceInfo(
         tasks: taskCount,
         sandboxed,
         errors: configErrors,
-      } = await countLoadableTasks(metas, root))
+      } = await countLoadableTasks(load, root))
     }
   } finally {
     cache.close()
@@ -362,18 +365,19 @@ function gitVersion(): string | null {
 }
 
 async function countLoadableTasks(
-  metas: readonly ProjectMeta[],
+  load: Omit<LoadProjectsArgs, 'seeds'> & { closure: false },
   root: string,
 ): Promise<{ tasks: number; sandboxed: number; errors: InfoFacts['configErrors'] }> {
   let tasks = 0
   let sandboxed = 0
   const errors: InfoFacts['configErrors'] = []
+  // No seeds loads nothing and answers which projects an 'all' load seeds.
+  const { configured } = await loadProjects({ ...load, seeds: [] })
   await Promise.all(
-    metas.map(async (meta) => {
-      if (meta.configPath === null) return
+    configured.map(async (meta) => {
       try {
-        const config = await loadProjectConfig(meta.configPath)
-        const declared = Object.values(config.tasks ?? {})
+        const loaded = await loadProjects({ ...load, seeds: [meta.name] })
+        const declared = Object.values(loaded.projects.get(meta.name)?.config.tasks ?? {})
         tasks += declared.length
         for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
       } catch (err) {
@@ -385,11 +389,12 @@ async function countLoadableTasks(
         // still did).
         const raw = err instanceof Error ? err.message : String(err)
         const bare = raw.startsWith('Project config ') ? raw.slice('Project config '.length) : raw
-        const message = bare.startsWith(`${meta.configPath}:`)
-          ? bare.slice(meta.configPath.length + 1).trimStart()
+        const where = meta.configPath ?? meta.dir
+        const message = bare.startsWith(`${where}:`)
+          ? bare.slice(where.length + 1).trimStart()
           : raw
         errors.push({
-          path: path.relative(root, meta.configPath).split(path.sep).join('/'),
+          path: path.relative(root, where).split(path.sep).join('/'),
           message,
         })
       }
