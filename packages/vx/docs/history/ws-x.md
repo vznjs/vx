@@ -169,3 +169,9 @@ time (bugs, correctness, simplification, the plugin seams).
   note when its scripts would map, and the note's reason is judged on
   its own scripts. Row: `init.test.ts` › "a second vx init keeps the
   root it mapped, with no note on it (X-27)".
+- **X-28.** `vx init --plugin <seam> --mjs` ignored `--mjs`, wrote a
+  `.ts` plugin, and told a workspace with `vx.workspace.mjs` to declare
+  it in `vx.workspace.ts`. The templates are TypeScript, so `--mjs` with
+  `--plugin` is now refused, and the hint names the workspace file a run
+  reads. Row: `init.test.ts` › "names the workspace file that exists and
+  refuses --mjs (X-28)".
