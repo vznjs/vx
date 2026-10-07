@@ -893,6 +893,8 @@ Semantics:
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
+- **Output that is not UTF-8 fails the run** too: a lossy decode keyed
+  every invalid byte alike. Pipe binary output through a hash or `od`.
 - The command **inherits vx's full environment**, _not_ the isolated
   env that task `exec` commands get — `exec.env.define` and
   `passThrough` describe the command's environment, not the probe's.
@@ -1501,7 +1503,8 @@ interface WorkspaceRules {
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
-  root) is refused before anything is written, since its `*`
+  root), whose subdirectory does (`'packages'`), or that holds the
+  workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for
