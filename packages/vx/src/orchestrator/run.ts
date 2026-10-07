@@ -86,6 +86,7 @@ import {
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
+import { probesAfterWrites } from './stable-keys.js'
 
 import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
@@ -927,6 +928,7 @@ async function runOnBus(
     // when a sink exists.
     const explainMiss =
       telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
+    const lateProbes = probesAfterWrites(nodes, workspaceRoot)
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
@@ -961,6 +963,7 @@ async function runOnBus(
         ...(explainMiss !== undefined ? { explainMiss } : {}),
         gitFilesCache,
         hashCache,
+        probesAfterWrites: lateProbes,
         ...(probe !== undefined ? { preProbed: probe } : {}),
         ...(upfrontKey !== undefined ? { upfrontKey } : {}),
         ...(tainted ? { taintedUpstream: true } : {}),
@@ -988,6 +991,7 @@ async function runOnBus(
         nestedDirsByProject,
         gitFilesCache,
         hashCache,
+        probesAfterWrites: lateProbes,
       },
       buildExecuteArgs,
     })

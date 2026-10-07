@@ -67,6 +67,22 @@ can never drift on the stability gate.
   builds none of the sets: building them cost about 2 ms (median) of a 27 ms memoised walk
   over the 3,000-task bench.
 
+- `probesAfterWrites(nodes, workspaceRoot): ReadonlySet<string>` — the
+  cached tasks with `cache.inputs.runtime` / `workspaceRuntime` probes
+  behind a writer their key does not fold (X-34). A probe is a shell
+  command and may read anywhere, so its answer taken up front is the
+  previous run's bytes. A writer is an upstream whose command may write
+  (`commandWriteReach`) or that declares outputs; "does not fold" is
+  `keyed-projects.ts`' `foldedDeps`, transitively (a writer behind a
+  folded dependency that leaves it out counts). `deriveStableKeys`
+  takes no key for such a task (unstable, so never probed or restored
+  ahead of its writer, and its probe is not spawned up front), and
+  `ComputeHashArgs.probesAfterWrites` answers its probes for it alone.
+  A key that folds the writer's keeps the run's shared answer: an early
+  answer then costs a spurious miss on the run after the bytes change,
+  never a stale hit. Memoised per graph; a graph with no probe walks
+  nothing.
+
 The helpers (`synthUpstream`, `foldedBy`, `topoOrder`) are internal and
 not exported.
 

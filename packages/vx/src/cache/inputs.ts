@@ -134,6 +134,13 @@ export interface ResolveInputsArgs {
    */
   workspaceRuntimeCache?: Map<string, Promise<string>>
   /**
+   * Answer this task's probes apart from every other task's, in both memos
+   * above: the probes may read what its upstream wrote this run, so an
+   * answer another task took before that write is not this task's (X-34).
+   * The task id.
+   */
+  runtimeScope?: string
+  /**
    * Run-scoped memo for `cache.inputs.workspaceFiles`, keyed by the
    * declaration and valid for one enumeration snapshot. A Turbo-mapped
    * workspace gives every task the same `globalDependencies`, and
@@ -207,14 +214,16 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.projectDir,
             projectBinDirs(args.projectDir, args.workspaceRoot),
             args.runtimeCache,
-            `${args.projectDir}\0`,
+            args.runtimeScope === undefined
+              ? `${args.projectDir}\0`
+              : `${args.projectDir}\0${args.runtimeScope}\0`,
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
             args.workspaceRoot,
             [path.join(args.workspaceRoot, 'node_modules', '.bin')],
             args.workspaceRuntimeCache,
-            '',
+            args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
           ),
         ])
   return {

@@ -88,6 +88,12 @@ export interface ComputeHashArgs {
    * site, so the recorded set can't drift from the key.
    */
   captureInto?: TaskInputComponent[]
+  /**
+   * The run's tasks whose runtime probes may read an upstream's writes
+   * (`probesAfterWrites`): such a task's probes are answered for it alone,
+   * after its upstream ran, never from the run's shared memo.
+   */
+  probesAfterWrites?: ReadonlySet<string>
 }
 
 /**
@@ -268,6 +274,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.probesAfterWrites?.has(args.node.id) === true ? { runtimeScope: args.node.id } : {}),
     ...(args.hashCache !== undefined
       ? {
           runtimeCache: args.hashCache.runtime,

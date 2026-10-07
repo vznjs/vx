@@ -28,7 +28,8 @@ export interface ExecuteArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; the signal handler signals these
   track?: (taskId: string, pid: number) => () => void // TelemetrySource.track: samples each attempt's tree
   // … and the optional run-scoped fields (timeout, preProbed, download,
-  // deferSave, taintedUpstream, fingerprintWatch, noDependants, …)
+  // deferSave, taintedUpstream, fingerprintWatch, noDependants,
+  // probesAfterWrites, …)
 }
 
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
