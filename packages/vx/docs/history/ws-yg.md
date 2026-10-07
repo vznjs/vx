@@ -1,0 +1,3 @@
+# Workstream YG — Nx/Turbo parity (2026-10-07)
+
+- **YG-1.** `turboCache()` ignored Turbo's preflight (`TURBO_PREFLIGHT`, `remoteCache.preflight`), so a server that answers `OPTIONS` with a signed storage `Location` was unreachable. It now sends the `OPTIONS`, follows `Location` (relative to `apiUrl`, query untouched) and sends the token only where `Access-Control-Allow-Headers` admits it; the batch query is not preflighted, as in Turbo. Rows: tests/turbo-cache-preflight.test.ts › "follows a relative Location, resolved against apiUrl, with the token it admits", "sends no token to a Location whose preflight does not admit Authorization".
