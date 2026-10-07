@@ -811,6 +811,10 @@ function buildTask(
     meta.packageJson,
     opts.manifestField,
     opts.executors,
+    (p, t) =>
+      !(p === nodeName && t === targetName) &&
+      metaByNode.has(p) &&
+      Object.hasOwn(nodeMap[p]?.data?.targets ?? {}, t),
   )
 
   const inputs = emptyNxInputs()
@@ -856,6 +860,12 @@ function buildTask(
       : { node: nodeName, configuration: variant.configuration! },
     options,
   )
+  // A nested `nx <target>` runs the target's default configuration, whatever this one runs.
+  for (const c of mapped?.nxCalls ?? []) {
+    const edge =
+      c.project === nodeName ? c.target : `${metaByNode.get(c.project)!.name}#${c.target}`
+    if (!deps.includes(edge)) deps.push(edge)
+  }
 
   // Nx's rule, not a guess: a target is cached when it says `cache: true`
   // (Nx ≥ 17 writes it into the graph from `cacheableOperations` too —
@@ -1014,6 +1024,8 @@ interface MappedCommand {
   readonly envInputs: readonly string[]
   /** A translated executor's `exec.timeout`. */
   readonly timeout?: number
+  /** The Nx targets a leading `nx <target> <project>` ran: dependency edges (nx-command.ts). */
+  readonly nxCalls?: readonly { readonly project: string; readonly target: string }[]
 }
 
 /**
@@ -1036,6 +1048,7 @@ function mapCommand(
   manifest: { readonly name?: unknown; readonly version?: unknown },
   manifestField: MapNxOptions['manifestField'],
   executors: NxExecutors | undefined,
+  isTarget: (project: string, target: string) => boolean,
 ): MappedCommand | null {
   const executor = target.executor
   if (executor === 'nx:noop') {
@@ -1074,7 +1087,7 @@ function mapCommand(
   if (executor === 'nx:run-commands' || plain) {
     const rc = mapRunCommands(
       plain ? { ...options, command: target.command } : options,
-      { projectRel, projectName },
+      { projectRel, projectName, isTarget },
       todos,
     )
     if (rc === null) return line(PLACEHOLDER)
@@ -1086,7 +1099,10 @@ function mapCommand(
         : path.posix.isAbsolute(rc.envFile)
           ? rc.envFile
           : relPosix(projectRel, path.posix.normalize(rc.envFile))
-    return shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen }, rc.readyAll)
+    return {
+      ...shell(rc.command, envFile, { env: rc.env, readyWhen: rc.readyWhen }, rc.readyAll),
+      ...(rc.nxCalls === undefined ? {} : { nxCalls: rc.nxCalls }),
+    }
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName

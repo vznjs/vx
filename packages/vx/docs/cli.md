@@ -110,7 +110,8 @@ the project's upstream workspace deps run too. Override with `--all`,
 If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
-  across the workspace, prints `description` next to each, prompts
+  across the workspace (only the selected projects' under `--filter` /
+  `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
   for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
@@ -269,7 +270,10 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   `<base>` itself, not the merge base. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
-  the history (`git fetch --unshallow`, `fetch-depth: 0`).
+  the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
+  a path inside a commit (`main:packages`) is refused, naming the commit
+  to pass: its paths lack the prefix, so the diff would select the wrong
+  projects. A root tree (`main^{tree}`) is still a base.
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -702,7 +706,8 @@ tracks the run live. Top to bottom:
    visible evidence the dev server is still alive. After the summary,
    a requested persistent task keeps vx in the foreground, with the
    persistent tasks it depends on, until it — or, with several, the
-   first of them — exits; the rest are then torn
+   first of them — exits (one kept only as a dependency that exits 0,
+   a daemon that forked and returned, does not end it); the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1
@@ -774,7 +779,7 @@ down with it:
   it became ready is a failure to its dependents not yet started,
   including those that reach it through a group.
 - **`never`**: fail fast — the first failure stops dispatch. In-flight
-  tasks finish naturally; everything not yet started (cache restores
+  tasks finish their attempt and start no retry; everything not yet started (cache restores
   included) completes as skipped. A server that dies after it became
   ready stops dispatch the same way.
 - **`always`** (bare `--continue`): dependents run even when an
@@ -1772,8 +1777,9 @@ named instead: vx does not speak its wire, so runs cache locally.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
-`{ plugins: [] }` whose comment says running and caching here are the
-floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
+`{ plugins: [] }`: running and caching here are the floor, so it
+declares no executor or cache, and the file carries no comment (it is
+the user's). `@vzn/vx-migrate` takes the
 same `--dry` / `--force` flags but reads a runner's config (turbo, nx);
 package.json scripts are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
@@ -2018,7 +2024,7 @@ vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
 `--skipNxCache`), which Nx's parser takes and its docs print, is its
-kebab-case row. `vx run-many` and `vx affected` name the
+kebab-case row. A `[=<bool>]` row takes `=true` (the flag bare) and `=false` (left out), as Turbo's and Nx's parsers do. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
 either tool name what does it here: `graph` (`--graph`), `ls`
 (`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
@@ -2042,9 +2048,9 @@ copy to the source.
 | turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                          |
 | turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                           |
 | turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                        |
-| turbo  | `--force`                                         | same    | `--force`: skip cache reads, keep writes                                                                                      |
+| turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                      |
 | turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                         |
-| turbo  | `--summarize`                                     | same    | `--summarize[=<path>]`                                                                                                        |
+| turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                        |
 | turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
 | turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
 | turbo  | `--no-cache`                                      | same    | `--no-cache`                                                                                                                  |
@@ -2064,8 +2070,8 @@ copy to the source.
 | turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
 | turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
 | turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
-| turbo  | `--remote-only`                                   | refuse  | use `--cache local:,remote:rw`                                                                                                |
-| turbo  | `--remote-cache-read-only`                        | refuse  | use `--cache local:rw,remote:r`                                                                                               |
+| turbo  | `--remote-only[=<bool>]`                          | refuse  | use `--cache local:,remote:rw`                                                                                                |
+| turbo  | `--remote-cache-read-only[=<bool>]`               | refuse  | use `--cache local:rw,remote:r`                                                                                               |
 | turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                           |
 | turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                           |
 | turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                            |
@@ -2082,20 +2088,20 @@ copy to the source.
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
-| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project                                                                                         |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)                               |
 | nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
 | nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
 | nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
 | nx     | `--head <v>`                                      | refuse  | vx compares `--affected=<base>` with the working tree: check out the head first                                               |
-| nx     | `--skip-nx-cache`                                 | alias   | `--force`                                                                                                                     |
+| nx     | `--skip-nx-cache[=<bool>]`                        | alias   | `--force`                                                                                                                     |
 | nx     | `--all`                                           | same    | `--all`                                                                                                                       |
-| nx     | `--nx-bail`                                       | alias   | `--continue=never`                                                                                                            |
+| nx     | `--nx-bail[=<bool>]`                              | alias   | `--continue=never`                                                                                                            |
 | nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
 | nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
 | nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
 | nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                           |
-| nx     | `--exclude-task-dependencies`                     | alias   | `--exclude-dependencies`                                                                                                      |
-| nx     | `--skip-remote-cache`                             | alias   | `--cache local:rw,remote:`                                                                                                    |
+| nx     | `--exclude-task-dependencies[=<bool>]`            | alias   | `--exclude-dependencies`                                                                                                      |
+| nx     | `--skip-remote-cache[=<bool>]`                    | alias   | `--cache local:rw,remote:`                                                                                                    |
 | nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                              |
 | nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                 |
 | nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                         |
@@ -2492,8 +2498,9 @@ their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
-`vx last --list` prints the N most recent runs (default 10) with their
-run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
+`vx last --list` prints the N most recent runs (default 10), one per
+line in aligned columns (verdict, start, run id, counts, duration,
+command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last <runId>` replays a

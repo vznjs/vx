@@ -418,7 +418,11 @@ async function runRuntimeCommand(
   owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
-  const prefix = binDirs.join(path.delimiter)
+  // As the task's PATH does (exec/env.ts): a dir holding the delimiter
+  // splits into an entry relative to the probe's cwd.
+  const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
+    .filter((entry) => entry)
+    .join(path.delimiter)
   let proc
   try {
     // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
@@ -426,7 +430,7 @@ async function runRuntimeCommand(
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
+      env: { ...process.env, PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -465,15 +469,17 @@ async function runRuntimeCommand(
   }
   if (exitCode !== 0) {
     const lossy = new TextDecoder()
-    const output = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
+    const shown = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
-        (output ? `\n${output}` : ''),
+        (shown ? `\n${shown}` : ''),
     )
   }
-  let output: string
+  let out: string
+  let err: string
   try {
-    output = `${FATAL_UTF8.decode(stdout)}${FATAL_UTF8.decode(stderr)}`.trim()
+    out = FATAL_UTF8.decode(stdout)
+    err = FATAL_UTF8.decode(stderr)
   } catch {
     // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
     // folded the same output and replayed each other's build.
@@ -482,7 +488,20 @@ async function runRuntimeCommand(
         `Pipe it through a hash or od.`,
     )
   }
-  return output
+  return probeOutput(out, err)
+}
+
+/**
+ * The probe's output as the key folds it. Plain concatenation keyed stdout
+ * `ab` and stdout `a` + stderr `b` alike. A probe with no stderr and no NUL
+ * folds its trimmed stdout, as before; any other is framed with a leading
+ * NUL and stdout's length, a form no unframed output takes.
+ */
+function probeOutput(stdout: string, stderr: string): string {
+  const out = stdout.trim()
+  const err = stderr.trim()
+  if (err === '' && !out.includes('\0')) return out
+  return `\0${out.length}\0${out}${err}`
 }
 
 /**
