@@ -242,8 +242,12 @@ describe('rules.upfrontKeys end to end', () => {
 
 describe('rules.upfrontKeys stays near-linear', () => {
   it('4,000 readers and writers in ONE project', () => {
-    // All pairs over 8,000 sides is 32 million glob comparisons; the path
-    // index pairs only the sides that can meet, as for outputs (item 746).
+    // All pairs over 8,000 sides is 32 million glob comparisons (4,000
+    // outputs alone took 10.7 s all-pairs, item 741); the path index pairs
+    // only the sides that can meet, as for outputs (item 746). The whole
+    // graph build is ~100 ms locally and reached 251 ms on a CI runner
+    // against a 250 ms bound, so the bound is 1 s: a tenth of that
+    // all-pairs pass, and clear of runner noise.
     const TASKS = 4_000
     const tasks: Record<string, TaskConfig> = {}
     for (let t = 0; t < TASKS; t++) {
@@ -255,7 +259,7 @@ describe('rules.upfrontKeys stays near-linear', () => {
       expect(refusal({ app: tasks })).toBeNull()
       best = Math.min(best, performance.now() - t0)
     }
-    expect(best).toBeLessThan(250)
+    expect(best).toBeLessThan(1_000)
   }, 120_000)
 })
 
