@@ -201,7 +201,7 @@ Why the command carries the options: vx's key sees them (resolved-config hashing
 ## `bunx @vzn/vx-migrate` — write the configs
 
 ```bash
-bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json or nx.json
+bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json, nx.json or lerna.json
 bunx @vzn/vx-migrate --dry     # print the generated files + the report instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
@@ -215,6 +215,8 @@ It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works 
 - In a terminal it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (the workspace file `vx init` writes, declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native.
 - With no `vx.workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists, from `@vzn/vx-ci`, each installed beside `@vzn/vx` at vx-migrate's own version. Keep adds them to the file `vx init` writes, or to one already in that shape; any other workspace file is the user's and left alone.
 - It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, plus `@vzn/vx-migrate` for keep (the declared plugins are built into the vx binary, so none is installed) (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. `--no-install` skips it.
+
+A Lerna repo is an Nx one: Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph` exports, nx.json or not, so a `lerna.json` with no nx.json and no turbo.json is mapped from that graph, and keep writes the workspace file declaring `nx()` (`vx init` adopts by nx.json, and would map the scripts). Not where Lerna runs its own runner: `useNx: false`, or Lerna 5 (the installed version, else the root manifest's range) without `useNx: true`; that is `vx init`'s scripts mapping. Beside turbo.json, Turbo runs the tasks and Lerna only publishes: turbo.json is the source.
 
 Your `package.json` scripts are never edited. `--dry` installs nothing and says what it would install.
 
