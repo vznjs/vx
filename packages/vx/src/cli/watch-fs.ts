@@ -77,10 +77,10 @@ export function pollWatcher(
    */
   skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
 ): WatchHandle {
-  let previous = new Map<string, number>()
+  let previous = new Map<string, string>()
   let first = true
   const scan = (): void => {
-    const current = new Map<string, number>()
+    const current = new Map<string, string>()
     const walk = (abs: string, rel: string): void => {
       let entries: fs.Dirent[]
       try {
@@ -95,15 +95,23 @@ export function pollWatcher(
           if (recursive && !skipDir(childRel)) walk(path.join(abs, e.name), childRel)
           continue
         }
-        if (!e.isFile()) continue
+        // A link is an input as its target string (watch-judge.ts), so that
+        // string is sampled, never the target's times: a retarget inside
+        // one clock tick carries the same times.
+        const link = e.isSymbolicLink()
+        if (!e.isFile() && !link) continue
         try {
           // The later of the two clocks, as `modifiedBefore` reads them: a
           // replacement that carries the old file's mtime (`cp -p`, `rsync
           // -a`, `mv` of a file stamped the same) moved nothing under mtime
           // alone, and the poller never ran it where the native watcher did.
           // A rename or a write moves ctime, and no process can set it.
-          const st = fs.statSync(path.join(abs, e.name))
-          current.set(childRel, Math.max(st.mtimeMs, st.ctimeMs))
+          const p = path.join(abs, e.name)
+          if (link) current.set(childRel, `link:${fs.readlinkSync(p)}`)
+          else {
+            const st = fs.statSync(p)
+            current.set(childRel, String(Math.max(st.mtimeMs, st.ctimeMs)))
+          }
         } catch {
           // raced with a delete; the next scan settles it
         }
@@ -111,8 +119,8 @@ export function pollWatcher(
     }
     walk(dir, '')
     if (!first) {
-      for (const [rel, mtime] of current) {
-        if (previous.get(rel) !== mtime) onEvent(rel)
+      for (const [rel, stamp] of current) {
+        if (previous.get(rel) !== stamp) onEvent(rel)
       }
       for (const rel of previous.keys()) {
         if (!current.has(rel)) onEvent(rel)
