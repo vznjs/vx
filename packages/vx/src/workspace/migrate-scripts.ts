@@ -41,6 +41,7 @@ import {
   cacheTodo,
   pruneOrphanPersistentNotes,
 } from './migration.js'
+import { relPosix } from '../util/index.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
 // serialises the two for nothing (the init walkthrough, 2026-09-04).
@@ -789,7 +790,7 @@ export function migrateScripts(
   } else if (clash !== undefined && outsideDir !== undefined && unnamedMaps().length > 0) {
     const would = unnamedMaps()
     notes.push(
-      `${clash.name} (the workspace root) not mapped: ${path.relative(outsideDir, clash.dir).split(path.sep).join('/')} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
+      `${clash.name} (the workspace root) not mapped: ${relPosix(outsideDir, clash.dir)} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,

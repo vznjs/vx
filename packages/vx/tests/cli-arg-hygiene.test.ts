@@ -261,10 +261,10 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--max-size=1G']).format).toBeUndefined()
     const seeHelp = ' (see `vx cache --help`)'
     expect(parsePruneArgs(['--max-size=1G', '--format', 'xml']).error).toBe(
-      `--format must be pretty or json${seeHelp}`,
+      `--format must be pretty or json (got xml)${seeHelp}`,
     )
     expect(parsePruneArgs(['--max-size=1G', '--format']).error).toBe(
-      `--format must be pretty or json${seeHelp}`,
+      `--format requires a value: pretty or json${seeHelp}`,
     )
   })
 
