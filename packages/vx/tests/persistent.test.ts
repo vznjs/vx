@@ -16,7 +16,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { planRun, run, type Logger } from '../src/orchestrator/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
@@ -816,10 +816,21 @@ describe('exec.persistent (e2e)', () => {
         const r = await run({ cwd: fixture.root, tasks: ['web#e2e'], log: silentLogger(fixture) })
         return { ok: r.ok, outcomes: r.outcomes.map((o) => `${o.node.id} ${o.status}`) }
       }
+      // `--dry` says what the run does: it called the server `would exec`.
+      const planned = async () => {
+        await rm(path.join(fixture.root, 'packages/api/up'), { force: true })
+        return (
+          await planRun({ cwd: fixture.root, tasks: ['web#e2e'], log: silentLogger(fixture) })
+        ).tasks
+          .map((t) => `${t.node.id} ${t.cacheStatus}`)
+          .sort()
+      }
       expect(await go()).toEqual({ ok: true, outcomes: ['api#dev success', 'web#e2e success'] })
+      expect(await planned()).toEqual(['api#dev not-started', 'web#e2e hit-local'])
       expect(await go()).toEqual({ ok: true, outcomes: ['web#e2e cache-hit'] })
       expect(await boots()).toEqual(['boot', ''])
       await Bun.write(path.join(web, 'src/a.ts'), 'b\n')
+      expect(await planned()).toEqual(['api#dev no-cache', 'web#e2e miss'])
       expect(await go()).toEqual({ ok: true, outcomes: ['api#dev success', 'web#e2e success'] })
       expect(await boots()).toEqual(['boot', 'boot', ''])
       expect(await Bun.file(`${fixture.root}/e2e.log`).text()).toBe('ran\nran\n')

@@ -871,6 +871,7 @@ Status legend:
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
 | `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `∅`    | `@noop` — task would not run anywhere                                                      |
+| `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as a structured object, alone on stdout
@@ -910,7 +911,7 @@ vx run ci --graph=graph.dot
 
 Node `fillcolor` varies by predicted status (green = local hit,
 sky-blue = remote hit, orange = miss, gray = no-cache, fuchsia =
-group). Edges are unstyled.
+group, white = not started). Edges are unstyled.
 
 ## Run artifacts (`--summarize`, `--profile`)
 

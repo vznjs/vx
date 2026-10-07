@@ -392,7 +392,8 @@ Semantics:
   and that task runs once it is ready. A dependant whose key the
   server's writes could change (one in its own project, unless a sandbox
   bounds the server's writes) is not probed ahead of it, so there the
-  server still starts.
+  server still starts. `vx run --dry` says so: such a server is
+  `not started` (`not-started` in `--dry=json`), not `would exec`.
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits

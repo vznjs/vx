@@ -100,6 +100,13 @@ export function deadServerBehind(
   id: string,
 ): string | undefined
 
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+export function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string>
+
 // Thrown by `execute` for a restore-tier task with nothing to restore.
 export class RestoreDemoted extends Error {
   constructor(readonly taskId: string)
