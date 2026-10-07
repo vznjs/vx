@@ -931,7 +931,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
     const endExec = span('miss: execute')
-    let res = await boundAfterAbort(args.executor.execute(req), req.signal)
+    // A plugin's execute may throw before returning or return a bare result:
+    // the throw is its rejection, the value its resolution, so both reach
+    // the naming catch and the cleanup in finally below.
+    let running: Promise<unknown>
+    try {
+      running = Promise.resolve(args.executor.execute(req))
+    } catch (thrown) {
+      running = Promise.reject(thrown)
+    }
+    let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
