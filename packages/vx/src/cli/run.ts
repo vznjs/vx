@@ -498,6 +498,7 @@ export async function resolveRunOptions(
   let discovered: RunOptions['discovered']
   let selectedByDiff = false
   let affected: RunOptions['affected']
+  let outright: string[] | undefined
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (filterStrings.length > 0) {
@@ -528,6 +529,7 @@ export async function resolveRunOptions(
       staged = resolved.staged
       discovered = resolved.discovered
       affected = resolved.affected
+      outright = resolved.outright
     }
   } else if (parsed.all) {
     projects = undefined
@@ -573,6 +575,7 @@ export async function resolveRunOptions(
   if (projects !== undefined) opts.projects = projects
   if (selectedByDiff) opts.selectedByDiff = true
   if (affected !== undefined) opts.affected = affected
+  if (outright !== undefined) opts.selectedOutright = outright
   if (staged !== undefined) opts.staged = staged
   if (discovered !== undefined) opts.discovered = discovered
   if (parsed.retries !== undefined) opts.retries = parsed.retries

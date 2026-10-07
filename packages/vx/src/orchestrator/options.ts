@@ -36,6 +36,12 @@ export interface RunOptions {
    */
   affected?: AffectedChanges
   /**
+   * The projects an include other than `--affected` selected (`--filter
+   * other`): every include is a union, so their requested tasks run
+   * whether or not `affected` reaches them (X-10).
+   */
+  selectedOutright?: readonly string[]
+  /**
    * Configs a selection pass in this same process already loaded and
    * staged with the same `cacheDir` and `frozen` (the CLI walks every
    * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
