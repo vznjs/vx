@@ -1155,8 +1155,7 @@ The store's directory carries no version: every key is seeded with
 `CACHE_VERSION`, which moves when hashing or the artifact layout does, so
 two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
-of another `SCHEMA_VERSION` drops its tables, says `shared cache store
-… re-indexed` once, and keeps every artifact, each indexed again when
+of another `SCHEMA_VERSION` drops its tables silently and keeps every artifact, each indexed again when
 its task next hits. The check, drop, re-create and stamp are one write
 transaction, so another version's open waits rather than landing between
 them. A home this user cannot write keeps the store
