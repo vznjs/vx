@@ -219,6 +219,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           // plugin-verb lookup — refuses it the same way. The owner is the
           // package: two plugins one package exports (`bun()` and `pnpm()`
           // both carry `prune`) are one owner, and the first declared runs.
+          // `vx --version` and `vx ''` never reach a plugin: a flag is
+          // core's, and an empty word is no verb (X-21).
+          if (verb.trim() === '' || verb.startsWith('-')) {
+            throw new UserError(
+              `${configPath}: plugin '${plug.name}' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`,
+            )
+          }
           if ((CORE_VERBS as readonly string[]).includes(verb)) {
             throw new UserError(
               `${configPath}: plugin '${plug.name}' declares command '${verb}', a core verb — core verbs cannot be shadowed`,

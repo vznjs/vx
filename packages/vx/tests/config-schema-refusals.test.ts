@@ -80,6 +80,22 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     ])
   })
 
+  // X-21: a flag-like or empty verb loaded and could never run.
+  it('a verb no command line reaches is refused', () => {
+    const p = (verb: string) => ({
+      ...testPlugin('x21', { teardown() {} }),
+      commands: { [verb]: { description: 'd', run: () => 0 } },
+    })
+    const why = (verb: string) =>
+      `${WS}: plugin 'x21' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`
+    expect([
+      refusal({ plugins: [p('--version')] }),
+      refusal({ plugins: [p('')] }),
+      refusal({ plugins: [p(' ')] }),
+      refusal({ plugins: [p('deploy')] }),
+    ]).toEqual([why('--version'), why(''), why(' '), null])
+  })
+
   it('a non-object `commands` is refused, not read as a plugin that contributes a verb', () => {
     // `Object.entries(7)` is `[]`: without the shape check the plugin passes
     // the at-least-one-capability rule on a `commands` that declares nothing.
