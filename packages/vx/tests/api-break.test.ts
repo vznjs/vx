@@ -41,6 +41,26 @@ describe('apiBreaks', () => {
     expect(apiBreaks(before, before)).toEqual([])
   })
 
+  it("an empty interface's first member is an addition, a changed head is not", () => {
+    const empty = record(['type C (src/c.ts)', 'export interface C extends B {}'])
+    const filled = record([
+      'type C (src/c.ts)',
+      'export interface C extends B {',
+      '  on(): void',
+      '}',
+    ])
+    expect(apiBreaks(empty, filled)).toEqual([])
+    const rebased = record([
+      'type C (src/c.ts)',
+      'export interface C extends D {',
+      '  on(): void',
+      '}',
+    ])
+    expect(apiBreaks(empty, rebased)).toEqual([
+      'type C (src/c.ts): - export interface C extends B {}',
+    ])
+  })
+
   it('a removed export, a removed member and a changed signature each are', () => {
     const after = record([
       'type TaskExecutor (src/exec/executor.ts)',

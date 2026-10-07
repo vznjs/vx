@@ -8,11 +8,12 @@
 import path from 'node:path'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import {
-  UserError,
   executablePath,
   gitSpawnRefusal,
   isInstalledPath,
   notAWorkTree,
+  relPosix,
+  UserError,
   xxh3hex,
 } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -70,7 +71,9 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder()
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
+    ignoreBOM: true,
+  })
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -115,10 +118,10 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
         if (!st.isDirectory() || !existsSync(path.join(dotGit, 'HEAD'))) return undefined
         const objectFormat = configObjectFormat(readFileSync(path.join(dotGit, 'config'), 'utf8'))
         if (objectFormat === undefined) return undefined
-        const below = path.relative(at, real).split(path.sep).join('/')
+        const below = relPosix(at, real)
         return {
           prefix: below === '' ? '' : `${below}/`,
-          commonDir: path.relative(real, dotGit).split(path.sep).join('/'),
+          commonDir: relPosix(real, dotGit),
           objectFormat,
           indexFile: path.relative(real, path.join(dotGit, 'index')).split(path.sep).join('/'),
         }
@@ -270,7 +273,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       for (const rel of relPaths) {
         const abs = path.resolve(workspaceRoot, rel)
         if (abs.startsWith(key + path.sep)) {
-          under.push(path.relative(key, abs).split(path.sep).join('/'))
+          under.push(relPosix(key, abs))
         }
       }
       if (under.length > 0) this.recordChanged(key, under)
@@ -427,8 +430,10 @@ function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string>
   return { text, undecodable }
 }
 
-const LOSSY_UTF8 = new TextDecoder()
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+// A default decoder strips a leading U+FEFF: the first path git lists
+// would lose it and name no file.
+const LOSSY_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
@@ -1193,7 +1198,7 @@ export function gitPathspecs(
   projectDirs: readonly string[],
   workspaceWide: boolean,
 ): string[] {
-  const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
+  const rels = projectDirs.map((d) => relPosix(workspaceRoot, d))
   const scoped =
     !workspaceWide &&
     rels.length > 0 &&
@@ -1556,7 +1561,7 @@ export async function applyGitEnumeration(
     const relPrefix =
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
-        : path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
+        : relPosix(workspaceRoot, projectDir)
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()

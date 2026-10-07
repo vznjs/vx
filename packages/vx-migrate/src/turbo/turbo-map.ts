@@ -500,6 +500,11 @@ function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
 }
 
+/** A turbo.json's own task `key`: a plain index reads `constructor` off Object. */
+function taskAt(tasks: Record<string, TurboTask>, key: string): TurboTask | undefined {
+  return Object.hasOwn(tasks, key) ? tasks[key] : undefined
+}
+
 function declares(meta: ProjectMeta, dependency: string): boolean {
   const pj = meta.packageJson as unknown as Record<string, unknown>
   // Turbo counts every kind but a peer in a monorepo.
@@ -627,7 +632,7 @@ function taskDefined(
   const cfg = files.get(at)
   if (cfg === undefined) return at === ROOT ? 'none' : taskDefined(pkgName, name, files, ROOT, seen)
   const tasks = tasksOf(cfg)
-  const def = tasks[`${pkgName}#${name}`] ?? tasks[name]
+  const def = taskAt(tasks, `${pkgName}#${name}`) ?? taskAt(tasks, name)
   if (def !== undefined) return optedOut(def) ? 'excluded' : 'found'
   if (at === ROOT) return 'none'
   for (const parent of parentsOf(cfg)) {
@@ -666,7 +671,9 @@ function taskNamesFor(
 function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]): TurboTask {
   const defs = chain.map((cfg, i) => {
     const tasks = tasksOf(cfg)
-    return i === 0 ? (tasks[`${pkgName}#${name}`] ?? tasks[name]) : tasks[name]
+    return i === 0
+      ? (taskAt(tasks, `${pkgName}#${name}`) ?? taskAt(tasks, name))
+      : taskAt(tasks, name)
   })
   let from = 0
   for (let i = defs.length - 1; i > 0; i--) {
