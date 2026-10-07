@@ -269,7 +269,10 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   `<base>` itself, not the merge base. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
-  the history (`git fetch --unshallow`, `fetch-depth: 0`).
+  the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
+  a path inside a commit (`main:packages`) is refused, naming the commit
+  to pass: its paths lack the prefix, so the diff would select the wrong
+  projects. A root tree (`main^{tree}`) is still a base.
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
