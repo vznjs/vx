@@ -1411,6 +1411,45 @@ describe('plugin-host, called directly', () => {
     TIMEOUT,
   )
 
+  it(
+    'a node a graph hook adds is refused, naming the field, when it lacks a project or a task',
+    async () => {
+      await pkg('a', build)
+      // Ran: `internal error in a#x: TypeError: The "path" property must be
+      // of type string`, or the command and its key in vx's own cwd.
+      const said = async (fields: string) => {
+        await workspace([
+          pluginSource(
+            'org/add',
+            `{ graph(nodes) {
+              const dir = nodes.get('a#build').projectDir
+              nodes.set('a#x', { id: 'a#x', config: { exec: { command: 'true' } }, deps: [], requested: true, ${fields} })
+            } }`,
+          ),
+        ])
+        return run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false }).then(
+          (s) => s.outcomes.map((o) => `${o.node.id} ${o.status}`).join(', '),
+          (e: Error) => e.message,
+        )
+      }
+      expect([
+        await said(`projectName: 'a', taskName: 'x'`),
+        await said(`projectName: 'a', taskName: 'x', projectDir: 'packages/a'`),
+        await said(`projectName: 'a', projectDir: dir`),
+        await said(`projectName: '', taskName: 'x', projectDir: dir`),
+        // CONTROL: the whole node runs.
+        await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
+      ]).toEqual([
+        "plugin 'org/add' failed in graph: a#x's projectDir is undefined, not an absolute path",
+        `plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
+        "plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name",
+        `plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        'a#build success, a#x success',
+      ])
+    },
+    TIMEOUT,
+  )
+
   describe('admit', () => {
     const graph = new Map([
       ['a', { id: 'a' } as TaskNode],
