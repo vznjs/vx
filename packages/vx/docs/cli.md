@@ -1308,7 +1308,11 @@ watch events within 2000 ms; polling every 250 ms instead`.
    (`vx watch: <project> <relpath>; re-running...`): the first changed
    path that still exists, so an editor's temporary file renamed away
    names nothing; a deletion names the cycle when nothing else changed. The
-   orchestrator is invoked again with the same options. Events arriving
+   orchestrator is invoked again with the same options, save one: the
+   `--affected` diff is read once, for the initial run. A later cycle
+   runs the requested task in every project of the scope fixed at start,
+   and the cache keys decide what executes (the startup diff, asked
+   again, kept an edit made since out of every cycle). Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event.
 4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
