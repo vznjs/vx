@@ -12,6 +12,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  type SecretMask,
 } from '../util/index.js'
 import {
   closeSignalChannel,
@@ -862,6 +863,23 @@ export function droppedOutputLine(dropped: number): string {
     `and the last ${mib(CAPTURE_TAIL_CHARS)} of a task's output for its cache entry and replay\n`
   )
 }
+
+/**
+ * A captured `text` with `secrets` masked. A value the dropped middle cut
+ * left a piece at the head's end and one at the tail's start, which the
+ * whole-value mask missed, and the cache entry stored and replayed both.
+ */
+export function maskCaptured(text: string, secrets: SecretMask): string {
+  const at = text.indexOf('\n[vx] ', CAPTURE_HEAD_CHARS - 1)
+  const end = at === -1 ? -1 : text.indexOf('\n', at + 1) + 1
+  if (at === -1 || at > CAPTURE_HEAD_CHARS || !DROPPED_LINE.test(text.slice(at, end))) {
+    return secrets.mask(text)
+  }
+  const [head, tail] = secrets.maskCut(text.slice(0, at), text.slice(end))
+  return head + text.slice(at, end) + tail
+}
+
+const DROPPED_LINE = /^\n\[vx\] [\d.]+ MiB of output not kept — /
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 
