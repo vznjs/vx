@@ -115,8 +115,12 @@ export async function findWorkspaceRoot(
         // them: `packages/**` holding `packages/inner` (with `workspaces:
         // ['sub']`) and `packages/inner/sub` resolved `sub` to `inner` and
         // `inner` to the outer root, two roots and two keys for one tree.
-        if (claimsMember(dir, [claimed], globs) && claimsMember(dir, members, globs)) claimed = dir
-      } else if (claimsMember(dir, inner === null ? below : [inner], globs)) {
+        if (
+          (await claimsMember(dir, [claimed], globs)) &&
+          (await claimsMember(dir, members, globs))
+        )
+          claimed = dir
+      } else if (await claimsMember(dir, inner === null ? below : [inner], globs)) {
         claimed = dir
         members = inner === null ? [...below] : [inner]
       }
@@ -152,7 +156,11 @@ export async function findWorkspaceRoot(
 }
 
 /** True when one of `below` (dirs under `root`, toward `start`) is a member. */
-function claimsMember(root: string, below: readonly string[], globs: readonly string[]): boolean {
+async function claimsMember(
+  root: string,
+  below: readonly string[],
+  globs: readonly string[],
+): Promise<boolean> {
   if (below.length === 0 || globs.length === 0) return false
   const { positive, negative } = splitPackageGlobs(globs)
   const rels = below.map((d) => relPosix(root, d)).filter((rel) => !excludedBy(rel, negative))
@@ -161,10 +169,20 @@ function claimsMember(root: string, below: readonly string[], globs: readonly st
     // `.` means the root itself is the project — never a directory below it.
     if (normalized === '' || normalized === '.') continue
     const glob = new Bun.Glob(normalized)
-    if (rels.some((rel) => glob.match(rel))) return true
+    for (const rel of rels) {
+      if (!glob.match(rel)) continue
+      // `match` has no `dot: false`: `packages/*` matched `packages/.tpl`,
+      // which discovery skips, and a run from inside it found a workspace
+      // that does not list it. Such a path asks discovery's own walk.
+      if (!SKIPPED_SEGMENT.test(rel)) return true
+      const dirs = await memberDirs(root, pattern)
+      if (dirs.includes(path.join(root, rel))) return true
+    }
   }
   return false
 }
+
+const SKIPPED_SEGMENT = /(^|\/)(\.|node_modules(\/|$))/
 
 /**
  * pnpm, npm, yarn and Bun all take `!packages/fixtures` in the package
