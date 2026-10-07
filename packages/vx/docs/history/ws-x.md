@@ -290,7 +290,7 @@ time (bugs, correctness, simplification, the plugin seams).
   each arg through `shellQuote`, which leaves a `#` past a word's first
   character bare (`app#build`); the secret mask also matches a value's
   `'\''` spelling, or a quoted value holding a `'` was stored plain.
-  `vx watch` still joins its args bare (`watch.ts`, out of this slice).
+  `vx watch` joined its args bare until X-49.
   Rows: `last.test.ts` › "the replayed command and its re-run line keep
   the args shell-quoted (X-45)", `invocation-secret-mask.test.ts`,
   `runner.test.ts` › `shellQuote` (X-45).
@@ -317,3 +317,8 @@ time (bugs, correctness, simplification, the plugin seams).
   build). `vx show` now loads each seed's package closure as a run
   does, and the list reads `1 task (no vx config; default build)`.
   Rows: `show-default-build.test.ts` (X-48).
+- **X-49.** `vx watch` recorded its command with the args joined bare,
+  so `vx last` showed `$ vx watch build --filter a*`, which a shell globs
+  when pasted. It now records each arg through `shellQuote`, as `vx run`
+  does (X-45). Row: `watch-loop.test.ts` › "the recorded command keeps
+  its args shell-quoted, as `vx run` records them" (X-49).

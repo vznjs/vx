@@ -22,6 +22,7 @@ import {
   run as runOrchestrator,
   type HeldPersistent,
   type RunOptions,
+  shellQuote,
 } from '../orchestrator/index.js'
 import {
   findWorkspaceRoot,
@@ -125,7 +126,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Every cycle's `invocations` row names the verb, as `vx run`'s does;
   // run()'s process.argv fallback put the bin's absolute path there, so
   // `vx last --list` showed `$ /…/bin.ts watch build` beside `$ vx run build`.
-  opts.command = ['vx', 'watch', ...args].join(' ')
+  opts.command = ['vx', 'watch', ...args.map(shellQuote)].join(' ')
   // A staged load and a discovery from the selection pass are one run's
   // worth; every cycle after an edit must load and list live.
   delete opts.staged
