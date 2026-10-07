@@ -240,6 +240,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
+  Nor is a task in flight when `--continue=never` stops the run: its
+  attempt finishes, and its failure is the last.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
@@ -805,7 +807,11 @@ globs only.
 No input or output glob, `files` or `workspaceFiles`, may be absolute
 or hold a `..` segment, and a brace arm counts: `{../shared,src}/**` and
 `{/etc,src}/*` are refused at load, where the glob engine would have
-matched nothing under that arm and said so nowhere.
+matched nothing under that arm and said so nowhere. A Windows spelling
+is refused the same way, with the forward-slash glob to write: a
+backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
+`C:/src/**`). A backslash before a bracket, a brace, a `!` or a
+backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
@@ -889,6 +895,8 @@ Semantics:
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
+- **Output that is not UTF-8 fails the run** too: a lossy decode keyed
+  every invalid byte alike. Pipe binary output through a hash or `od`.
 - The command **inherits vx's full environment**, _not_ the isolated
   env that task `exec` commands get — `exec.env.define` and
   `passThrough` describe the command's environment, not the probe's.
@@ -1492,12 +1500,14 @@ interface WorkspaceRules {
   `VX_CACHE_DIR`, or by `--cache-dir`, the directory holds the whole
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
-  root; absolute paths are used as-is. `vx run`, `vx cache prune`,
+  root, `~/` against the home directory; absolute paths are used
+  as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
-  root) is refused before anything is written, since its `*`
+  root), whose subdirectory does (`'packages'`), or that holds the
+  workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for
@@ -1955,7 +1965,10 @@ Workspace-config errors:
 | `cacheRetention.olderThan of 0 evicts every entry after every run`                                                                                           | Every run would evict what it just saved; `vx cache prune --older-than 0` is refused too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `cacheRetention.maxSize of 0 evicts every entry after every run`                                                                                             | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')`                                                                        | A bare number is bytes; a cache capped at `10` bytes is a typo for `10G`. `10B` still loads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `affectedBase must be a git ref like 'origin/main'`                                                                                                          | Not a string, empty, or opens with `-` (git would read an option).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `affectedBase must be a git ref like 'origin/main'`                                                                                                          | Not a string, empty, holding whitespace, or opening with `-` (git would read an option).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `cacheScope must be 'trusted', 'read-only', or a scope name of <rule>`                                                                                       | Not a string, or a scope name holding a character outside letters, digits and `. _ - / @`, or longer than 128.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`                                                                                        | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `rules.<name> must be true or false`                                                                                                                         | A rule set to something other than a boolean (`'off'`, `0`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `plugins must be an array of plugin objects`                                                                                                                 | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `plugins[<i>] must be an object`                                                                                                                             | A non-object entry in `plugins`; a string (Nx's `'@nx/vite/plugin'`) adds that a plugin is what its package's function returns, not a module name (D-49).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                               | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

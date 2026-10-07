@@ -19,6 +19,13 @@ export interface ForeignFlag {
   outcome: 'same' | 'alias' | 'refuse'
   /** The vx spelling, or what to use instead. */
   vx: string
+  /**
+   * The runner reads `=true` / `=false` on it (Turbo's `--force [FORCE]`,
+   * Nx's yargs booleans): `=false` is the flag left out, `=true` the flag
+   * bare. `--skip-nx-cache=false` forced every task, `--summarize=true`
+   * wrote the summary to a file named `true`.
+   */
+  bool?: true
   /** For an alias: the vx argv. For a refusal: none. */
   to?: (value: string | undefined) => string[]
 }
@@ -100,6 +107,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--force'],
     value: false,
+    bool: true,
     outcome: 'same',
     vx: '`--force`: skip cache reads, keep writes',
   },
@@ -114,6 +122,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--summarize'],
     value: false,
+    bool: true,
     outcome: 'same',
     vx: '`--summarize[=<path>]`',
   },
@@ -268,6 +277,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--remote-only'],
     value: false,
+    bool: true,
     outcome: 'refuse',
     vx: 'use `--cache local:,remote:rw`',
   },
@@ -275,6 +285,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--remote-cache-read-only'],
     value: false,
+    bool: true,
     outcome: 'refuse',
     vx: 'use `--cache local:rw,remote:r`',
   },
@@ -436,6 +447,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--skip-nx-cache'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--force`',
     to: () => ['--force'],
@@ -445,6 +457,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--nx-bail'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--continue=never`',
     to: () => ['--continue=never'],
@@ -482,6 +495,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--exclude-task-dependencies'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--exclude-dependencies`',
     to: () => ['--exclude-dependencies'],
@@ -490,6 +504,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--skip-remote-cache'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--cache local:rw,remote:`',
     to: () => ['--cache', 'local:rw,remote:'],
@@ -605,6 +620,13 @@ export function translateForeign(args: readonly string[]): string[] | { error: s
       name = kebab
       a = inline === undefined ? kebab : `${kebab}=${inline}`
     }
+    if (
+      (inline === 'true' || inline === 'false') &&
+      FOREIGN_FLAGS.some((f) => f.bool && f.names.includes(name))
+    ) {
+      if (inline === 'false') continue
+      a = name
+    }
     const entries = FOREIGN_FLAGS.filter((f) => f.names.includes(name) || f.names.includes(a))
     const next = before[i + 1]
     const spaced = inline === undefined && next !== undefined && !next.startsWith('-')
@@ -627,7 +649,9 @@ export function translateForeign(args: readonly string[]): string[] | { error: s
 /** cli.md's parity table, one row per entry. */
 export function renderForeignFlags(): string {
   const rows = FOREIGN_FLAGS.map((f) => {
-    const flag = f.shown ?? f.names.map((n) => `\`${n}${f.value ? ' <v>' : ''}\``).join(', ')
+    const flag =
+      f.shown ??
+      f.names.map((n) => `\`${n}${f.value ? ' <v>' : f.bool ? '[=<bool>]' : ''}\``).join(', ')
     return `| ${f.runner} | ${flag.replaceAll('|', '\\|')} | ${f.outcome} | ${f.vx.replaceAll('|', '\\|')} |`
   })
   return ['| runner | flag | outcome | in vx |', '| --- | --- | --- | --- |', ...rows].join('\n')

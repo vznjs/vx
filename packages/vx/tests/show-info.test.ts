@@ -318,7 +318,7 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', '--format', 'yaml'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('--format must be pretty or json')
+      expect(r.err).toContain('--format must be pretty or json (got yaml) (see `vx show --help`)')
     },
     TIMEOUT,
   )
@@ -698,12 +698,18 @@ describe('parseShowArgs', () => {
     // `--format` at the end of the line takes the next argv, which is not
     // there: the empty string must fail the same validation `--format=x`
     // does, rather than leaving `pretty` in place and saying nothing.
-    expect(parseShowArgs(['--format']).error).toBe('--format must be pretty or json')
+    expect(parseShowArgs(['--format']).error).toBe(
+      '--format requires a value: pretty or json (see `vx show --help`)',
+    )
   })
 
   it('rejects an invalid format value', () => {
-    expect(parseShowArgs(['--format', 'yaml']).error).toBe('--format must be pretty or json')
-    expect(parseShowArgs(['--format=']).error).toBe('--format must be pretty or json')
+    expect(parseShowArgs(['--format', 'yaml']).error).toBe(
+      '--format must be pretty or json (got yaml) (see `vx show --help`)',
+    )
+    expect(parseShowArgs(['--format=']).error).toBe(
+      '--format requires a value: pretty or json (see `vx show --help`)',
+    )
   })
 
   it('rejects unknown flags and extra positionals', () => {
