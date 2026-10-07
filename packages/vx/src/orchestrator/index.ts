@@ -38,7 +38,6 @@ export {
   projectNode,
   projectOutcome,
   outcomeWord,
-  outcomeLabel,
 } from './events.js'
 export type {
   EventBus,

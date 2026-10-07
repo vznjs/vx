@@ -53,6 +53,9 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[]
 
+// The `--verbosity 1` table (RunOptions.summaryTable): one row per real task, groups left out.
+export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[]
+
 export function neverStarted(o: TaskOutcome): boolean
 
 export function formatDuration(ms: number): string

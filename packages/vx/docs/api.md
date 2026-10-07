@@ -1832,6 +1832,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  summaryTable?: boolean
   tty?: boolean
   log?: Logger
   bus?: EventBus

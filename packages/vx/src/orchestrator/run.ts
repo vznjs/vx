@@ -92,7 +92,7 @@ import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import { formatRunSummary } from './summary.js'
+import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
 import { createMissExplainer } from './miss-reason.js'
 import type { RunOptions, RunSummary } from './options.js'
@@ -1328,6 +1328,7 @@ async function runOnBus(
     // sandbox reset included, so any warning they raise lands above it. A
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
+    if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a

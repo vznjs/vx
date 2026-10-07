@@ -146,6 +146,7 @@ export interface RunSummary {
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.
 11. **Summary.** `formatPersistentList` rows for kept-alive tasks,
+    `formatOutcomeTable` when `summaryTable` (`--verbosity 1`),
     then `formatRunSummary(list, totalMs, colors, runContext)` — the
     footer carries the run banner (wordmark rule + projects/tasks/
     cache meters + info + time).

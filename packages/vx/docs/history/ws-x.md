@@ -479,3 +479,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   is no violation", "skips a miss under a write grant, and reports a
   sibling sharing its name prefix", "a miss under a write grant the
   sandbox could not mount is reported".
+- **X-9x.** `vx run all --verbosity 1` (a group task) printed
+  `a#all success 0ms` in the per-task table, which the footer and
+  `--report` leave out, and the table printed below the footer. The run
+  now prints it (`RunOptions.summaryTable`, `formatOutcomeTable`) just
+  above the footer, groups left out. Row: `cli.test.ts` › "--verbosity
+  1: the table lists no group and prints above the footer".

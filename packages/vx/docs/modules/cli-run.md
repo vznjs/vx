@@ -145,9 +145,11 @@ If `--dry` or `--graph` is set:
 
 ## Verbose summary
 
-`--verbosity 1` (any value above 0) prints a per-task table after the
-framed blocks, the status column being `outcomeLabel` — the one
-vocabulary every surface uses:
+`--verbosity 1` (any value above 0) sets `RunOptions.summaryTable`:
+the run prints a per-task table after the framed blocks and above the
+footer (nothing prints below it), one row per task with a command —
+groups are left out, as the footer and `--report` leave them. The
+status column is `outcomeLabel`, the one vocabulary every surface uses:
 
 ```
 TASK          STATUS          DURATION

@@ -38,6 +38,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean // hand requested persistent tasks, and those they depend on, back on RunSummary.persistent
+  summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
   tty?: boolean // vx's stdin is a terminal: each exec.interactive task is handed it, alone
   log?: Logger
   bus?: EventBus // an embedder's bus; the run's own when absent

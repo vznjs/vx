@@ -208,6 +208,11 @@ export interface RunOptions {
    */
   holdPersistent?: boolean
   /**
+   * Print the per-task table (`--verbosity 1`) just above the footer: the
+   * footer is the run's last word, so the caller cannot print it after.
+   */
+  summaryTable?: boolean
+  /**
    * vx's stdin is a terminal: each `exec.interactive` task is handed it,
    * alone (placement.ts `terminalHolders`). The CLI sets it from
    * `isatty(0)`; absent, an interactive task runs as any task.

@@ -6,6 +6,7 @@
 import type { TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
+import { outcomeLabel, projectOutcome } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import { formatElapsed } from '../util/index.js'
 
@@ -312,6 +313,34 @@ function resultLine(
   if (noCache > 0) parts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
   parts.push(formatDuration(totalMs))
   return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
+}
+
+/**
+ * The `--verbosity 1` per-task table (`RunOptions.summaryTable`). Groups are
+ * left out as the footer and `--report` leave them: a group ran no command.
+ */
+export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
+  const rows = outcomes
+    .filter((o) => !isGroupTask(o.node))
+    .map((o) => {
+      const v = projectOutcome(o)
+      return { task: v.taskId, status: outcomeLabel(v), duration: `${v.durationMs}ms` }
+    })
+  if (rows.length === 0) return []
+  const widths = {
+    task: Math.max(4, ...rows.map((r) => r.task.length)),
+    status: Math.max(6, ...rows.map((r) => r.status.length)),
+    duration: Math.max(8, ...rows.map((r) => r.duration.length)),
+  }
+  const line = (task: string, status: string, duration: string) =>
+    `${task.padEnd(widths.task)}  ${status.padEnd(widths.status)}  ${duration.padStart(widths.duration)}`
+  const header = line('TASK', 'STATUS', 'DURATION')
+  return [
+    '',
+    header,
+    '-'.repeat(header.length),
+    ...rows.map((r) => line(r.task, r.status, r.duration)),
+  ]
 }
 
 // Local byte formatter — the orchestrator can't import cli/format.ts
