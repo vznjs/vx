@@ -570,7 +570,7 @@ async function workspaceConfigChanged(
   if (config === undefined) return false
   const root = realpathSync(workspaceRoot)
   for (const file of await configImports(config)) {
-    if (set.has(path.relative(root, file).split(path.sep).join('/'))) return true
+    if (set.has(relPosix(root, file))) return true
   }
   return false
 }
