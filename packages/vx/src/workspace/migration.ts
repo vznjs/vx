@@ -276,6 +276,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     kept.push(relPosix(root, existing))
     return false
   })
+  // A plan never maps a workspace root that has a config (D-45), even
+  // under `--force`; its file stays, so it is named with the rest (X-27).
+  const rootConfig = metas.find((m) => m.dir === root)?.configPath
+  if (init && rootConfig && !projects.some((p) => p.dir === root && p.tasks.length > 0)) {
+    kept.push(relPosix(root, rootConfig))
+  }
   if (empty && !init) {
     throw new UserError(
       `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,

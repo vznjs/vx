@@ -670,11 +670,14 @@ export function migrateScripts(
   // insomnia's root is named as its `packages/insomnia`: a root config made
   // it a project, and every later run was refused for the duplicate (D-129).
   const clash = outsideName === undefined ? undefined : metas.find((m) => m.name === outsideName)
+  // A root with a config of its own is kept as written, and a run of `vx
+  // init` after the one that mapped it keeps it like a member's (X-27).
+  const rootKept = root !== undefined && root.configPath !== null
   const rootMeta: ProjectMeta | undefined =
     root !== undefined
-      ? root.configPath === null
-        ? root
-        : undefined
+      ? rootKept
+        ? undefined
+        : root
       : outsideName !== undefined && outsideDir !== undefined && clash === undefined
         ? { name: outsideName, dir: outsideDir, packageJson: outside as never, configPath: null }
         : undefined
@@ -722,10 +725,9 @@ export function migrateScripts(
       Object.entries(scripts).filter(([n, v]) => typeof v === 'string' && !out.has(n)),
     )
   }
-  const rootMapped =
-    rootMeta === undefined
-      ? 0
-      : Object.keys(rootScripts(rootMeta)).filter((n) => !LIFECYCLE.test(n)).length
+  const mapsOf = (meta: ProjectMeta | undefined): number =>
+    meta === undefined ? 0 : Object.keys(rootScripts(meta)).filter((n) => !LIFECYCLE.test(n)).length
+  const rootMapped = mapsOf(rootMeta)
   const listed = (names: readonly string[]): string =>
     names.slice(0, 8).join(', ') + (names.length > 8 ? ` and ${names.length - 8} more` : '')
   const outsideScripts = outside?.['scripts']
@@ -750,14 +752,15 @@ export function migrateScripts(
   // Why a root mapped nothing: `eslint .` beside a member's `lint` runs
   // nothing of the workspace, and the note said it did.
   const rootLeftOut = (): string => {
-    if (rootMeta === undefined) return 'run the workspace'
-    const scripts = scriptsOf(rootMeta)
+    const judged = rootKept ? root : rootMeta
+    if (judged === undefined) return 'run the workspace'
+    const scripts = scriptsOf(judged)
     const named = Object.keys(scripts).filter(
       (n) => typeof scripts[n] === 'string' && scripts[n] !== '' && !LIFECYCLE.test(n),
     )
     const runs = runningMembers(
       scripts,
-      rootMeta.dir,
+      judged.dir,
       metas.filter((m) => m !== root).map((m) => m.dir),
     )
     const shared = named.filter((n) => memberTasks.has(n) && !runs.has(n))
@@ -796,7 +799,7 @@ export function migrateScripts(
     notes.push(
       `package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
-  } else if (rootName !== undefined) {
+  } else if (rootName !== undefined && !(rootKept && mapsOf(root) > 0)) {
     // A nameless root's vx.config is skipped (vx names projects by their
     // manifest's name), so the hand-written one needs a name first (vuejs/core).
     notes.push(
