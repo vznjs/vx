@@ -140,3 +140,9 @@ time (bugs, correctness, simplification, the plugin seams).
   read it. Such a run's history is now written after the wait. Row:
   `keep-alive.test.ts` › "a server exiting 1 tears the other down and vx
   exits 1".
+- **X-24.** A persistent task whose readiness timeout fired reported
+  `exit 1`, a code nothing exited with; an ordinary timeout reports the
+  kill's 143. It now waits for the server's death and reports its code
+  (143, or 137 after the grace). Row: `persistent-ready-timeout.test.ts`
+  › "never-matching readyWhen + timeout → run fails fast, child is
+  killed".

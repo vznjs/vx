@@ -507,11 +507,13 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     // The reason rides the outcome (every label reads it), and a child that
     // exited before ready keeps its own exit code rather than a made-up 1.
+    // One the readiness timeout is killing reports the signal's, as an
+    // ordinary timeout does (X-24).
     const ready = err instanceof PersistentReadyError ? err : undefined
     return {
       node,
       status: 'failed',
-      exitCode: ready?.exitCode ?? 1,
+      exitCode: ready?.reason === 'timeout' ? await spawn.child.exited : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
       wallclockStartNs,
