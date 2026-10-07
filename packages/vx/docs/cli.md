@@ -1333,7 +1333,7 @@ watch events within 2000 ms; polling every 250 ms instead`.
    again, kept an edit made since out of every cycle). Events arriving
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event.
-4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
+4. **Exit.** `SIGINT` (Ctrl+C) exits 0; once the cycle in flight is down, `vx watch: stopped` is the last line.
 
 ### Path filtering
 
