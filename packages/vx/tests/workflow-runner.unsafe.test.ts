@@ -58,6 +58,7 @@ describe('a Linux CI job that runs a vx task', () => {
       'auto-release.yml#release',
       'ci.yml#ci',
       'ci.yml#packages',
+      'ci.yml#binary-linux-arm64',
       'docs.yml#build',
       'npm.yml#publish',
       'release.yml#assets',

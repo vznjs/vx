@@ -24,7 +24,7 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { grantPrefix, UserError } from '../util/index.js'
+import { grantPrefix, relPosix, UserError } from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from '../workspace/index.js'
 
 /**
@@ -350,6 +350,7 @@ async function linkedDeps(
   keyed: ReadonlySet<string> | undefined,
 ): Promise<{ granted: string[]; withheld: WithheldLink[] }> {
   const [self, root] = await Promise.all([realpath(projectDir), realpath(workspaceRoot)])
+  const realDirs = dirs.map(toRealPath)
   const scan = async (dir: string, scope: string): Promise<Array<[string, string, string]>> => {
     const found: Array<[target: string, link: string, name: string]> = []
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -359,7 +360,7 @@ async function linkedDeps(
         const target = await realpath(full).catch(() => undefined)
         if (
           target !== undefined &&
-          !dirs.some((d) => atOrUnder(target, d)) &&
+          !realDirs.some((d) => atOrUnder(target, d)) &&
           !atOrUnder(self, target)
         ) {
           found.push([target, full, scope + e.name])
@@ -388,8 +389,8 @@ async function linkedDeps(
       withheld.push({
         dir: target,
         name,
-        target: posixRel(root, target),
-        link: posixRel(workspaceRoot, link),
+        target: relPosix(root, target),
+        link: relPosix(workspaceRoot, link),
       })
   }
   return { granted, withheld }
@@ -419,11 +420,6 @@ export function reachedWithheld(
   return withheld.filter((w) =>
     violations.some((v) => v.path !== undefined && atOrUnder(v.path, w.dir)),
   )
-}
-
-/** `p` relative to `from`, with `/` separators. */
-function posixRel(from: string, p: string): string {
-  return path.relative(from, p).split(path.sep).join('/')
 }
 
 /**
@@ -565,7 +561,7 @@ export function placeholderSweeper(placeholders: readonly Placeholder[]): () => 
  * never reddens a pass and never buries a real denial.
  */
 export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string {
-  const rel = path.relative(projectDir, placeholder).split(path.sep).join('/')
+  const rel = relPosix(projectDir, placeholder)
   return (
     `vx: the sandbox write grant \`${rel}\` named nothing on disk, so vx bound it as an empty ` +
     `file, which the task never wrote (removed again). If the task creates a directory there ` +
