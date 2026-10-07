@@ -298,11 +298,10 @@ describe('turbo()', () => {
   )
 
   it(
-    'a ^task no package has a script for is no edge, as under turbo',
+    'a ^task no package has a script for is an empty group, as under turbo',
     async () => {
       // turbo.json may name a task no package runs (`prepack` here): Turbo
-      // gives `^prepack` no edges. Passed through, core refuses a `^name`
-      // no project declares (nx#32779), so the mapper drops it.
+      // runs a no-op `lib#prepack` before `app#test` (dry run, 2026-10-07).
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
@@ -310,10 +309,14 @@ describe('turbo()', () => {
         }),
       )
       const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
-      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#test', 'lib#build'])
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual([
+        'app#test',
+        'lib#build',
+        'lib#prepack',
+      ])
       const test = plan.tasks.find((t) => t.node.id === 'app#test')!.node
-      expect(test.deps).toEqual(['lib#build'])
-      expect(test.config.dependsOn).toEqual(['^build'])
+      expect(test.deps.toSorted()).toEqual(['lib#build', 'lib#prepack'])
+      expect(test.config.dependsOn).toEqual(['^build', '^prepack'])
     },
     TIMEOUT,
   )
@@ -892,8 +895,9 @@ describe('per-package turbo.json', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const ids = plan.tasks.map((t) => t.node.id).sort()
       expect(ids, log.lines.join('\n')).toEqual(['app#build', 'lib#build'])
+      // No package has a `lint` script: Turbo's no-op node, in lib alone.
       const lint = await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(lint.tasks.map((t) => t.node.id)).toEqual([])
+      expect(lint.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual([])
       expect(app.config.cache!.inputs.files).toEqual(['**/*', '!src/gen/**'])
