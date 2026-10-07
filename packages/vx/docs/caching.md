@@ -119,8 +119,10 @@ over (in order):
    `passThrough` leaves an unset name out). A name holding a NUL is
    refused at load.
 8. **`cache.inputs.runtime` resolved output** — `[command, output]`
-   pairs, where `output` is the combined, trimmed stdout + stderr of
-   each command run via `sh -c` in the **project dir** at hash time.
+   pairs, where `output` is the trimmed stdout of each command run via
+   `sh -c` in the **project dir** at hash time; a command with stderr
+   (or a NUL in stdout) folds `\0<stdout length>\0<stdout><stderr>`,
+   so bytes moved between the streams move the key.
    The runtime-output analog of step 7: the command _strings_ are in
    the resolved config (step 5), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.

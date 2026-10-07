@@ -72,6 +72,8 @@ export interface ScheduleOptions {
   continueMode?: ContinueMode
   /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
   serverDied?: (id: string) => boolean
+  /** Called once, when 'never' stops dispatch: a task in flight starts no retry. */
+  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void

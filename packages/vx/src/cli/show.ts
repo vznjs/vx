@@ -21,7 +21,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 
-export interface ShowArgs {
+interface ShowArgs {
   target?: string
   format: 'pretty' | 'json'
   error?: string

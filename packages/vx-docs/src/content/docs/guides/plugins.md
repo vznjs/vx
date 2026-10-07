@@ -49,7 +49,7 @@ runs and is stored on this machine.
 | project     | `project(config, ctx)` | a project's tasks: add, remove, rewrite                   |
 | graph       | `graph(nodes, ctx)`    | the run's edges                                           |
 | key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
-| fingerprint | `fingerprint`          | a lockfile keyed per project instead of per workspace     |
+| fingerprint | `fingerprint`          | a root file it keys itself, such as a lockfile            |
 | schedule    | `schedule(nodes, ctx)` | which ready task runs first                               |
 | admit       | `admit(task, ctx)`     | whether a ready task starts now, beside what runs here    |
 | execute     | `executor(ctx)`        | where one task's command runs                             |
@@ -80,6 +80,58 @@ interface VxPlugin {
   teardown?(): void | Promise<void>
 }
 ```
+
+## Workspace and projects
+
+`config` edits the workspace config before vx reads it. Here, two
+workers on CI:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function ciConcurrency(): VxPlugin {
+  return definePlugin(import.meta, {
+    config(workspace) {
+      if (process.env.CI) workspace.concurrency = 2
+    },
+  })
+}
+```
+
+`discover` makes a directory no member glob lists a project; its
+`vx.config.ts` gives it tasks:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function scriptsProject(): VxPlugin {
+  return definePlugin(import.meta, {
+    discover: () => [{ dir: 'scripts', name: 'scripts' }],
+  })
+}
+```
+
+`fingerprint` claims a root file the plugin reads. An edit to it makes
+`--affected` ask `affected` which projects it touches (`undefined`: all of
+them) and re-runs `vx watch`. Fold its bytes into the key with `key`:
+
+```ts
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function toolVersions(): VxPlugin {
+  const file = '.tool-versions'
+  return definePlugin(import.meta, {
+    key: (_task, ctx) => ({ [file]: readFileSync(path.join(ctx.workspaceRoot, file), 'utf8') }),
+    fingerprint: { files: [file], affected: () => undefined },
+  })
+}
+```
+
+A lockfile is claimed the same way, and core then leaves it out of every
+task's key: [`@vzn/vx-lockfile`](../configure/#lockfiles) keys each project
+on its own dependencies.
 
 ## Keys and order
 

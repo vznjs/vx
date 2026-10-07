@@ -293,6 +293,47 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     expect(await Promise.all(pids.map((p) => waitForDead(p, 1_000)))).toEqual([true, true])
   }, 20_000)
 
+  // WD-3: a kept dependency that exits 0 is a daemon that forked and
+  // returned; it ended the wait and the dev server with it.
+  it('a dependency daemon that exits 0 leaves the requested server held', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        db: { exec: { command: 'echo up', persistent: {} } },
+        dev: {
+          dependsOn: ['db'],
+          exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } },
+        },
+      } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+      }),
+    )
+    let out = ''
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    const err = new Response(proc.stderr).text()
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const deadline = Date.now() + 10_000
+    while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+    // db was gone before the summary; the old wait ended at once.
+    const exitedEarly = await Promise.race([proc.exited.then(() => true), Bun.sleep(500)])
+    expect([exitedEarly ?? false, isAlive(pid)]).toEqual([false, true])
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(130)
+    await reading
+    const said = (out + (await err)).split('\n').filter((l) => l.startsWith('vx: '))
+    expect(said).toEqual([])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   // C-60: a run that failed held its healthy servers for good: a script's
   // `vx run dev --all` hung, and the Ctrl-C that ended it read 130.
   const failing = (bad: string) => `export default { tasks: {
