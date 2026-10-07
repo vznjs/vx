@@ -277,3 +277,10 @@ time (bugs, correctness, simplification, the plugin seams).
   prefix: an ignored file inside a configured project nested under such
   a root ran the root's cycle. The judgement now applies the X-42 fence.
   Row: `watch-judge-fence.test.ts` (X-43).
+- **X-44.** `vx reset`, cli.md's zero-bound note and the migrate guide's
+  `nx reset` row said to remove the cache directory to drop the whole
+  cache, but entries live in the shared store (`~/.vx/<id>/cache`), so
+  a reader who did so kept every hit. All three now say "delete the
+  cache store `vx info` names", as the prune refusal does. Row:
+  `nx-reset-hint.unsafe.test.ts` › "vx reset says it exactly; the guide
+  row and cli.md say the same" (X-44).

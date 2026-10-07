@@ -1490,8 +1490,8 @@ write `10G`, or `10B` when bytes really are the unit.
 evict every entry in the cache, which is far more often a
 computed-to-zero retention than an intent — and no flag combination
 expresses "wipe the cache" (running with neither flag is an error, not a
-full prune). Delete the cache directory when that is really what you
-want.
+full prune). Delete the cache store `vx info` names when that is really
+what you want: the entries live there, not in the workspace's `.vx`.
 
 ```
 $ vx cache prune --older-than 30d
