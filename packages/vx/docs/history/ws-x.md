@@ -34,8 +34,10 @@ time (bugs, correctness, simplification, the plugin seams).
   `static/*` through it: containment only asked that the real directory
   be inside the project. The clean now removes nothing whose directory
   is reached through a link; the save still follows one
-  (turborepo#13042). Row: `inputs-resolution.test.ts` › "a clean never
-  deletes through a symlinked output dir".
+  (turborepo#13042). Superseded by X-88: a link inside the project is
+  cleaned through; one out of it is still never deleted through. Row:
+  `inputs-resolution.test.ts` › "a recorded row is never removed through
+  a link that leaves the project (X-5)".
 - **X-6.** A config with two syntax errors (`export default {{`)
   reached the user as an `AggregateError` stack with no position, and
   `vx watch` leaked the internal `?vx-held=` query. The first error is
@@ -517,3 +519,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-88.** An output directory linked inside its project
+  (`dist -> real-out`, `outputs.files: ['dist/**']`) was skipped by the
+  clean (X-5) but followed by the save, so the entry for one key held
+  the files another key's run left, and a hit for `one` left `two.js`
+  beside `one.js`. The clean now follows a link whose target is inside
+  the project, so the target is the output and each entry holds only its
+  own run's files; one resolving outside the project refuses the task,
+  naming the link (it used to save an empty entry under a warning, M-61),
+  and nothing is deleted through it. No `CACHE_VERSION` bump: no key or
+  stored layout moved; an entry saved for this shape since X-5 may still
+  hold another run's files until evicted. Rows: `output-shape.test.ts` ›
+  "each entry holds only its own run's files, and a hit leaves no other
+  entry's (X-88)", `inputs-resolution.test.ts` › "a clean follows a
+  symlinked output dir that points INSIDE the project", "a symlinked
+  output dir that leaves the project is refused by name …",
+  `cache-declaration-warnings.test.ts` › "an output directory linked out
+  of the project refuses the task by name (M-61, X-88)".

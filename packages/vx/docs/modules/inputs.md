@@ -297,7 +297,10 @@ error.
   an owner-rejected non-goal.
 - Doesn't follow symlinks. Inputs come from git, which reports a link as
   a link; the OUTPUT scan yields symlinks as outputs (captured as the
-  target's bytes, unlinked on clean) and never descends through one.
+  target's bytes, unlinked on clean) and never descends through one below
+  a glob's literal head. A link IN that head (`dist -> real-out` for
+  `dist/**`) is followed by the scan and the clean alike; one resolving
+  outside the project is a `UserError` naming it (X-88).
 
 ## Tests
 

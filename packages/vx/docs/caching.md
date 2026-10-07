@@ -723,9 +723,9 @@ artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or an output directory that is a symlink out
-of the project (`workspaceFiles`: out of the workspace), whose files vx
-drops as outside. `outputs.files: []` is a deliberate cached
+writes never reached disk, or a `workspaceFiles` directory that is a
+symlink out of the workspace, whose files vx drops as outside (a project
+output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
@@ -1292,9 +1292,11 @@ project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). Each refusal names
 the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed, and nothing is removed through a symlinked directory: a
-`public -> static` link in the project took the tracked `static/*`
-with it, X-5) and prunes the directories it emptied (before a miss it keeps
+followed). An output directory that is a symlink (`dist -> real-out`) is
+followed by the clean as by the save and restore, so its target is the
+output and an entry holds only what its run wrote (X-88); one that
+resolves outside the project refuses the task, naming the link, and
+nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
