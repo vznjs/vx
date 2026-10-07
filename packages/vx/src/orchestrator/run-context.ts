@@ -13,7 +13,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { executablePath, ulid, xxh3hex } from '../util/index.js'
+import { executablePath, relPosix, ulid, xxh3hex } from '../util/index.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -410,7 +410,7 @@ function workTreePath(root: string): string | undefined {
   const abs = path.resolve(root)
   for (let dir = abs; ;) {
     if (fs.existsSync(path.join(dir, '.git'))) {
-      return path.relative(dir, abs).split(path.sep).join('/') || '.'
+      return relPosix(dir, abs) || '.'
     }
     const up = path.dirname(dir)
     if (up === dir) return undefined

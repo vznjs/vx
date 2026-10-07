@@ -243,8 +243,7 @@ export async function resolveFilters(
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
-  // `a...[ref]` walks dependents too: without the config edges it missed
-  // a dependency named only by `dependsOn`.
+  // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
   const walksGraph = parsed.some(
     (f) => f.withDeps || f.withDependents || f.onlyDeps || f.sinceViaDeps === true,
   )

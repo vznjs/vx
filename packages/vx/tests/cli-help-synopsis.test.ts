@@ -55,3 +55,19 @@ describe("each verb's help usage is its cli.md synopsis", () => {
     })
   }
 })
+
+// A flag on a verb's usage line is a promise its own help explains it:
+// `vx init --help` listed `--mjs` and said nothing of what it does.
+describe("each usage flag is explained in the verb's own help", () => {
+  for (const verb of CORE_VERBS) {
+    it(`vx ${verb}`, () => {
+      const prose = verbHelpText(verb)
+        .split('\n\n')
+        .filter((b) => !b.startsWith('Usage:'))
+        .join('\n')
+      const flags = usage(verb).flatMap((l) => l.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? [])
+      const unexplained = flags.filter((f) => !new RegExp(`${f}(?![a-zA-Z-])`).test(prose))
+      expect(unexplained).toEqual([])
+    })
+  }
+})

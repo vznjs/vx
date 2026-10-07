@@ -508,6 +508,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
@@ -522,12 +523,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   pnpm skips a falsy list. It now defers to `package.json` as a file
   with no `packages:` does (item 984). Row: `workspace.test.ts` › "an
   empty `packages:` key defers to package.json, as pnpm reads it".
-- **X-75.** `--filter 'e2e...[HEAD]'` selected nothing when e2e's only
-  link to the changed `app` was a config `dependsOn: ['app#build']`,
-  while `...[HEAD]` selected e2e: the selection loaded the configs' task
-  edges for `...` walks but not for `<name>...[ref]`, whose dependents
-  walk then read the manifest graph alone. Row: `select.test.ts` ›
-  "selects the named project when a task-edge dependency changed".
+- **X-75.** Unused: its `<name>...[ref]` task-edge fix landed first
+  from another lane (#2869).
 - **X-76.** A config split into its own helper (`vx.config.mjs` imports
   `./tasks.mjs`, which imports `../../shared/preset.mjs`) was not
   selected by `--affected` when the preset changed: the import walk
@@ -542,3 +539,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   default. `export =` now sends the config down Bun's own path. Row:
   `config-commonjs-hint.test.ts` › "each name that makes Bun run a
   config as CommonJS keeps it CommonJS" (`assign.cts`, `assignts.ts`).
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".

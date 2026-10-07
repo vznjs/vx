@@ -16,6 +16,7 @@ import {
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
+  relPosix,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
@@ -395,7 +396,7 @@ async function countLoadableTasks(
           ? bare.slice(where.length + 1).trimStart()
           : raw
         errors.push({
-          path: path.relative(root, where).split(path.sep).join('/'),
+          path: relPosix(root, where),
           message,
         })
       }

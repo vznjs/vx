@@ -188,33 +188,35 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
   })
 })
 
-describe('resolveFilters — `<name>...[<since>]` over a task edge', () => {
+describe('resolveFilters — `<name>...[ref]` over a task edge', () => {
   let ws = ''
   beforeAll(async () => {
-    ws = realpathSync(await makeWorkspace({ prefix: 'vx-select-since-deps-' }))
-    await addProject(ws, 'app', {
+    ws = realpathSync(await makeWorkspace({ prefix: 'vx-select-via-' }))
+    await addProject(ws, 'lib', {
       config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+      files: { 'src/a.ts': '1\n' },
     })
-    // e2e depends on app through its config alone, no manifest entry.
+    // e2e names lib only in a `dependsOn`, never in its package.json.
     await addProject(ws, 'e2e', {
-      config: `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['app#build'] } } }\n`,
+      config: `export default { tasks: { test: { dependsOn: ['lib#build'], exec: { command: 'true' } } } }\n`,
     })
     const git = gitIn(ws)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')
-    await Bun.write(path.join(ws, 'packages', 'app', 'new.txt'), 'x\n')
+    await Bun.write(path.join(ws, 'packages', 'lib', 'src', 'a.ts'), '2\n')
+    git('commit', '-qam', 'lib')
   })
   afterAll(async () => {
     await rm(ws, { recursive: true, force: true })
   })
 
-  it('selects the named project when a task-edge dependency changed', async () => {
-    // `...[HEAD]` selected e2e and `e2e...[HEAD]` did not: the walk read a
-    // package graph built without the config edges.
-    const { value } = await quiet(() => resolveFilters(ws, ['e2e...[HEAD]']))
+  it('selects a project that depends on the changed one through a cross-project dependsOn', async () => {
+    // `e2e...[HEAD~1]` walks dependents without a walk flag, so the task
+    // edges were never loaded and e2e did not depend on lib.
+    const { value } = await quiet(() => resolveFilters(ws, ['e2e...[HEAD~1]']))
     expect('names' in value ? value.names : value).toEqual(['e2e'])
-    // CONTROL: e2e itself changed nothing.
-    const own = (await quiet(() => resolveFilters(ws, ['e2e[HEAD]']))).value
-    expect(own).toEqual({ empty: expect.stringMatching(/^nothing affected since HEAD/) })
+    // CONTROL: the dependents walk loads the task edges and reaches e2e.
+    const dents = (await quiet(() => resolveFilters(ws, ['...[HEAD~1]']))).value
+    expect('names' in dents ? dents.names : dents).toEqual(['e2e', 'lib'])
   })
 })
