@@ -165,7 +165,8 @@ export function markSurfacedDeps(nodes: Map<string, TaskNode>): number {
  *
  *   - Bare task names (`'build'`) → one entry per project in
  *     `candidates` that declares the task. Missing in a given project
- *     is silent (sparse tasks are normal across a workspace).
+ *     is silent (sparse tasks are normal across a workspace). A task
+ *     `unselected` holds (the default `build`) is no match.
  *   - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
  *     `candidates`. Silently dropped if pkg/task doesn't exist (the
  *     CLI's pre-validation catches malformed strings).
@@ -176,6 +177,7 @@ export function expandRequested(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): Array<{ project: string; task: string }> {
   const seen = new Set<string>()
   const out: Array<{ project: string; task: string }> = []
@@ -194,7 +196,7 @@ export function expandRequested(
       continue
     }
     for (const name of candidates) {
-      if (declaresTask(projects, name, spec)) push(name, spec)
+      if (selectsTask(projects, name, spec, unselected)) push(name, spec)
     }
   }
   return out
@@ -219,6 +221,17 @@ function declaresTask(projects: Map<string, ProjectEntry>, project: string, task
   return declaredTask(projects.get(project)?.config, task) !== undefined
 }
 
+/** What a bare name matches: a declared task `unselected` leaves alone. */
+function selectsTask(
+  projects: Map<string, ProjectEntry>,
+  project: string,
+  task: string,
+  unselected: ((task: TaskConfig) => boolean) | undefined,
+): boolean {
+  const config = declaredTask(projects.get(project)?.config, task)
+  return config !== undefined && unselected?.(config) !== true
+}
+
 /**
  * The requested specs `expandRequested` silently dropped — each one
  * matched NO project, so nothing it asked for will run.
@@ -235,6 +248,7 @@ export function unresolvedRequests(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -244,7 +258,8 @@ export function unresolvedRequests(
     const resolved =
       idx >= 0
         ? declaresTask(projects, spec.slice(0, idx), spec.slice(idx + 1))
-        : candidates.length === 0 || candidates.some((name) => declaresTask(projects, name, spec))
+        : candidates.length === 0 ||
+          candidates.some((name) => selectsTask(projects, name, spec, unselected))
     if (resolved) continue
     seen.add(spec)
     out.push(spec)

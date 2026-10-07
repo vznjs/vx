@@ -125,10 +125,8 @@ describe('vx init source detection', () => {
         expect(lint.code).toBe(0)
         expect(await Bun.file(path.join(root, 'lint.out')).text()).toBe('linted\n')
         const build = await vx(root, ['run', 'build', '--all', '--dry=json'])
-        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual([
-          'a#build',
-          'fixture-root#build',
-        ])
+        // The root's default build is no match for a bare name (X-102).
+        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual(['a#build'])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

@@ -108,7 +108,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -1401,7 +1404,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a

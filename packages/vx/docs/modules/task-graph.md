@@ -72,15 +72,20 @@ export function undeclaredDepsError(taskId: string, name: string): UserError
 
 // Which `{project, task}` pairs a run's requested names resolve to, and
 // which resolve to nothing (`vx run`'s "every requested name must resolve").
+// A bare name matches no task `unselected` holds: `prepareRun` passes
+// `isDefaultBuild`, so `vx run build` in a project declaring none is
+// refused like any undeclared name, and `lib#build` still plans it (X-102).
 export function expandRequested(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): Array<{ project: string; task: string }>
 export function unresolvedRequests(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): string[]
 
 // Flags the display-only `surfaced` tasks a requested GROUP stands for;

@@ -44,6 +44,7 @@ import {
   secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
+import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -1601,8 +1602,11 @@ function didYouMean(
   elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
+  // What a bare name can select: a default `build` is no match (X-102).
   const allTasks = new Set<string>()
-  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  for (const p of projects.values()) {
+    for (const t of tasksOf(p)) if (!isDefaultBuild(p.config.tasks![t])) allTasks.add(t)
+  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near

@@ -545,3 +545,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   15 s → 0.2 s. Rows: `input-overlap.test.ts` › "4,000 readers of one
   shared input pair none of them" and "the reader-writer index finds
   every pair the rule refuses" (twenty).
+- **X-102.** Every project has a `build` since the default one
+  (2026-10-04), so a bare `vx run build` matched it: at a root that
+  declares none it ran 0 tasks, exit 0, where any other name said
+  "only projects outside the selection declare it — pass --all", and in
+  a workspace with no `build` at all it ran nothing green. A bare name
+  no longer selects a default `build` (`expandRequested` /
+  `unresolvedRequests` take `unselected`; `undeclaredIn` and the
+  did-you-mean list skip it); `lib#build` still plans it and `^build`
+  still reaches it. Rows: `bare-name-default-build.test.ts` (four); the
+  root rows of `task-selection.test.ts` and `configless-fence.test.ts`
+  no longer list a default build as requested.
