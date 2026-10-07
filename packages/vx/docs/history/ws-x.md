@@ -239,3 +239,10 @@ time (bugs, correctness, simplification, the plugin seams).
   later cycle runs the requested task across the scope fixed at start
   and the cache keys decide. Row: `watch-affected.test.ts` › "an edit
   after the start runs the task the startup diff left out (X-37)".
+- **X-38.** `vx watch` took its watched projects from the bare tasks'
+  scope alone, so `vx watch lib#build` watched every project and
+  `vx watch test other#test` run in `lib` never heard an edit in
+  `other`. The scope is now the bare tasks' scope plus each `pkg#task`'s
+  project, and only those when every task is anchored; the empty-scope
+  refusal waits for the initial run, so an unknown `pkg` still gets its
+  "did you mean". Rows: `watch-anchored-scope.test.ts` (X-38).

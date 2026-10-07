@@ -138,11 +138,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closing reaches the loop alone, and the loop passes it on.
   process.once('SIGHUP', () => stop.abort('SIGHUP'))
 
-  // Enumerate projects-in-scope so we know what dirs to watch.
-  // `opts.projects` is the resolved scope; undefined means "every
-  // project". The watched set is what a cycle can RUN: the scope plus
-  // its transitive dependencies (a cycle runs `lib#build` for
-  // `app#build`'s `^build`, so a `lib` edit is an edit) — the same
+  // Enumerate projects-in-scope so we know what dirs to watch: the bare
+  // tasks' scope (`opts.projects`; undefined means "every project", or
+  // nothing when every task is anchored) and each `pkg#task`'s own
+  // project, which no scope reaches. The watched set is what a cycle can
+  // RUN: the scope plus its transitive dependencies (a cycle runs
+  // `lib#build` for `app#build`'s `^build`, so a `lib` edit is an edit) — the same
   // closure `--filter 'app...'` walks, computed below once the initial
   // run has staged the configs. Plus the workspace root, for lockfile
   // changes.
@@ -150,14 +151,16 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const workspaceRoot = await findWorkspaceRoot(cwd, reads)
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const allProjects = await discoverCliProjects(workspace)
+  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
+  const named =
+    anchored.length === opts.tasks.length
+      ? new Set(anchored)
+      : opts.projects === undefined
+        ? undefined
+        : new Set([...opts.projects, ...anchored])
   const inScope = (all: readonly ProjectMeta[]): ProjectMeta[] =>
-    opts.projects === undefined ? [...all] : all.filter((p) => opts.projects!.includes(p.name))
+    named === undefined ? [...all] : all.filter((p) => named.has(p.name))
   const scope = inScope(allProjects)
-
-  if (scope.length === 0) {
-    process.stderr.write(`vx watch: no projects in scope\n`)
-    return 1
-  }
 
   // Initial run — same code path as `vx run`.
   //
@@ -198,6 +201,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     return 0
   }
   if (refusedToStart) return 1
+  // After the initial run, so a `pkg#task` naming no project gets the
+  // run's own refusal and its "did you mean".
+  if (scope.length === 0) {
+    await held?.stop()
+    process.stderr.write(`vx watch: no projects in scope\n`)
+    return 1
+  }
   // `--affected`'s diff is the tree at start; judged again, it held every
   // later edit out of the scope it picked. A cycle is an edit, and the
   // cache keys decide what in the scope it re-runs.

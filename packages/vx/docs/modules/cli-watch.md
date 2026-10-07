@@ -147,7 +147,10 @@ are refused too: they format one run's result.
    Same scope resolution as `vx run`.
 3. Enumerate projects in the resolved scope via `discoverCliProjects`
    (discovery plus the plugins' `discover` stage, as `vx run` lists
-   them). Empty scope → exit 1.
+   them): `opts.projects` (every project when undefined) plus each
+   `pkg#task`'s project, or only those when every task is anchored
+   (`tests/watch-anchored-scope.test.ts`). Empty scope → exit 1, judged
+   after the initial run so an unknown `pkg` gets the run's refusal.
 4. **Initial run.** Print `vx watch: initial run...`; call
    `orchestrator.run(opts)`. One that ran nothing and failed (a task
    no project declares) exits 1. Then `opts.affected` and
@@ -354,6 +357,7 @@ The loop's own suites: `tests/watch-rules.test.ts` (the ignore rules
 and the root event filter), `tests/watch-loop.test.ts` (cycles end to
 end), `tests/watch-loop-members.test.ts` (a package coming or going),
 `tests/watch-affected.test.ts` (`--affected` past the first cycle),
+`tests/watch-anchored-scope.test.ts` (what `pkg#task` watches),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
 settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
