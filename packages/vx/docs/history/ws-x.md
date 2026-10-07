@@ -223,3 +223,9 @@ time (bugs, correctness, simplification, the plugin seams).
   whose key folds the writer keeps the shared answer. Row:
   `in-run-writes.test.ts` › "seeds A, B, B, A build A, B, B, A: a
   project probe waits for the upstream".
+- **X-35.** `CACHE_VERSION` `vx-cache-v40`. X-32, X-33 and X-34 each
+  fixed a run that stored wrong bytes under a key that does not change:
+  an additive task's entry that a hit replayed over a file the task had
+  removed, one that missed a same-size rewrite, and a runtime probe
+  answered before its upstream wrote. Entries saved before them could
+  replay that output, so every cached task misses once and re-saves.
