@@ -524,3 +524,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   grant and the file, the placeholders swept. Row:
   `sandbox-request.test.ts` › "a file where a grant needs a directory is
   refused by name, its placeholders swept".
+- **X-82.** `mkdir -p src` under `read: ['src']` failed a clean task
+  with a sandbox violation: SRT's write observer records the attempt,
+  which met EEXIST and wrote nothing. `refusedWrites` now also passes a
+  `mkdir` of a path the sandbox shows through a read grant (one at or
+  under it that exists, or one holding it where it exists); a mkdir of a
+  new directory is still refused and reported. Rows:
+  `sandbox-mkdir-ancestor.unsafe.test.ts` › "refusedWrites › a mkdir of a
+  directory the task can see", "mkdir -p of a directory a read grant
+  shows passes; of a new one, fails".
