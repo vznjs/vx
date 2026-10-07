@@ -14,7 +14,7 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { killGraceMs, settleWithin } from '../util/index.js'
+import { claimExitForSignal, killGraceMs, settleWithin } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
@@ -131,6 +131,7 @@ export function forwardSignals(args: {
     // that ended the run.
     if (stopping !== undefined) exit(stopping)
     stopping = signal
+    claimExitForSignal()
     // Clear the live worker/status region BEFORE exiting so a TTY isn't
     // left with a frozen region in the scrollback. runEnd is idempotent
     // and a no-op for non-TTY loggers.
