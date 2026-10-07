@@ -252,10 +252,10 @@ Run the task only in projects whose files changed since `<base>`.
   itself and names the two bases you probably meant
   (`--affected=origin/main`, `--affected=HEAD~1`).
 - Without git on PATH, every shape is one line — `vx requires git:
-  failed to spawn 'git' … Install git and re-run` — the same the input
+failed to spawn 'git' … Install git and re-run` — the same the input
   enumeration prints; a minimal image met a stack here before
   (2026-09-16). Outside a git work tree every shape says `vx requires
-  git: <root> is not inside a git work tree`, as a plain run does, and a
+git: <root> is not inside a git work tree`, as a plain run does, and a
   repository with no commit yet says so, not "a shallow clone?" (X-52).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
@@ -647,7 +647,7 @@ What the shapes mean in each column:
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
   everything, the blocker included (`⊘ skipped app#deploy • blocked by
-  lib#build`; a fail-fast skip, which nothing blocked, carries no
+lib#build`; a fail-fast skip, which nothing blocked, carries no
   suffix). Every view that lists tasks prints it, a dependency's
   included: nothing prints below the footer. `--report` reads the same fact into the status cell,
   `skipped (blocked by lib#build)`.
@@ -705,7 +705,7 @@ tracks the run live. Top to bottom:
    first of them — exits; the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
-   other persistent task`), and a non-zero exit makes the run exit 1
+other persistent task`), and a non-zero exit makes the run exit 1
    and is what `vx last` records.
    A Ctrl-C prints no such line: the server ended because it was
    stopped, and vx exits 130. A run with a failure elsewhere (a task
@@ -1228,7 +1228,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour. The line `vx watch: initial
-   run...` precedes it.
+run...` precedes it.
 2. **Watch loop.** After the initial run finishes, the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
@@ -1321,7 +1321,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
    1016). A
    watcher whose probe is not heard within 2 s is replaced by a poller
    that checks every 250 ms, with the notice `vx watch: <dir>: no OS
-   watch events within 2000 ms; polling every 250 ms instead`.
+watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** The triggering path is logged
    (`vx watch: <project> <relpath>; re-running...`): the first changed
    path that still exists, so an editor's temporary file renamed away
@@ -2270,14 +2270,14 @@ vx-lock.json:     yes
   `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
   declared sandbox whose runtime cannot start fails the task at run
   time rather than downgrading, so `unavailable — <why>; 3 tasks declare
-  exec.sandbox and will fail` says it first: root inside a container
+exec.sandbox and will fail` says it first: root inside a container
   (the runtime's seccomp helper cannot create its nested user namespace;
   run as a non-root user or set `sandbox.weakerWhenNested: true`), a
   missing bubblewrap, socat or ripgrep, a nested seatbelt on macOS.
   On Linux an available sandbox that cannot report the reads it denies
   (no `strace` on PATH, one whose `--version` fails, or one that may not
   attach) adds `, untraced — <why>, so the reads it denies go
-  unreported`: the sandbox still enforces, but a task that tolerates a
+unreported`: the sandbox still enforces, but a task that tolerates a
   denied read passes and caches with no word of it. The `--format json` fact is
   `sandbox.untraced`, the reason or `null`.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
@@ -2289,7 +2289,7 @@ vx-lock.json:     yes
   `vx.workspace.ts`'s `concurrency` when set, else the cores this
   process may use — the CPU count, capped by the cgroup CPU quota a
   container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
-  8 cores`). `memory` is what a memory-packing policy budgets
+8 cores`). `memory` is what a memory-packing policy budgets
   (`@vzn/vx-schedule-history`): the machine's total, capped by the
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
@@ -2322,16 +2322,16 @@ vx-lock.json:     yes
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
   `configErrors` (`[{ path, message }]`, the configs that did not load,
   empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
-  cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
+cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-  cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
   (null when the cache dir holds the entries), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
   outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,
-  declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
+declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
   `untraced` the reason denied reads go unreported or null). The
   pretty rows render this object;
   there is no second source.
