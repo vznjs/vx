@@ -454,19 +454,31 @@ async function runRuntimeCommand(
   let stdout, stderr, exitCode
   try {
     ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      new Response(proc.stdout).bytes(),
+      new Response(proc.stderr).bytes(),
       proc.exited,
     ])
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
   }
-  const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
+    const lossy = new TextDecoder()
+    const output = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
         (output ? `\n${output}` : ''),
+    )
+  }
+  let output: string
+  try {
+    output = `${FATAL_UTF8.decode(stdout)}${FATAL_UTF8.decode(stderr)}`.trim()
+  } catch {
+    // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
+    // folded the same output and replayed each other's build.
+    throw new UserError(
+      `cache.inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+        `Pipe it through a hash or od.`,
     )
   }
   return output
