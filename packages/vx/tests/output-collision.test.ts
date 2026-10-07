@@ -476,7 +476,7 @@ describe('what must NOT be refused — a false positive breaks a working build',
       graph({ app: { a: task(['./dist/a/**']), b: task(['dist//b/**']) } }),
     ).not.toThrow()
     expect(() =>
-      graph({ app: { a: task(['./dist/*.js']), b: task(['dist/**/*.js']) } }),
+      graph({ app: { a: task(['./dist/*.js']), b: task(['dist/**/*.map']) } }),
     ).not.toThrow()
   })
 
@@ -489,15 +489,28 @@ describe('what must NOT be refused — a false positive breaks a working build',
     ).not.toThrow()
   })
 
-  it('allows two undecidable globs that are not identical', () => {
-    // Glob-vs-glob intersection is not decided here. `dist/*.js` and
-    // `dist/**/*.js` very likely overlap, but proving it needs a general
-    // algorithm, so the check lets them through rather than risk refusing a
-    // working config. Pinned so the conservatism is a decision, not an
-    // accident — widening this is where a future intersection algorithm goes.
-    expect(() =>
-      graph({ app: { a: task(['dist/*.js']), b: task(['dist/**/*.js']) } }),
-    ).not.toThrow()
+  it('refuses two globs a path both match proves overlapping (X-51)', () => {
+    // `dist/*.js` and `dist/**/*.js` both match `dist/x.js`; neither is a
+    // subtree holding the other's prefix, so only a built path decides it.
+    // M (2026-10-07): two tasks never share an output.
+    for (const [a, b] of [
+      ['dist/*.js', 'dist/**/*.js'],
+      ['dist/**/*.js', 'dist/sth/**'],
+      ['**/*.d.ts', 'dist/**'],
+    ]) {
+      expect(() => graph({ app: { a: task([a!]), b: task([b!]) } })).toThrow('vx cleans a task')
+    }
+  })
+
+  it('allows two globs no built path joins, when they are disjoint', () => {
+    // CONTROL for the row above: the same shapes, disjoint sets.
+    for (const [a, b] of [
+      ['dist/*.js', 'dist/sth/**'],
+      ['dist/**/*.js', 'dist/**/*.map'],
+      ['lib/**', 'dist/**/*.js'],
+    ]) {
+      expect(() => graph({ app: { a: task([a!]), b: task([b!]) } })).not.toThrow()
+    }
   })
 
   it('allows a task with no declared outputs beside one that has them', () => {

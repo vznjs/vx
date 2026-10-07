@@ -684,6 +684,10 @@ export function excludeDependencies(
  * 445). One rule, one place: the copy is gone.
  */
 export function outputsOverlap(rawA: string, rawB: string): boolean {
+  // A built path proves overlap only between globs as written: a literal's
+  // `/**` twin reads it as a directory, and `dist/types.d.ts` met
+  // `dist/**/*.js` at `dist/types.d.ts/x.js`, a file no one can write.
+  const bothGlobs = !isLiteralPattern(rawA) && !isLiteralPattern(rawB)
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
       if (isLiteralPattern(a) && isLiteralPattern(b)) {
@@ -692,7 +696,41 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
         if (taskGlob(b).match(a)) return true
       } else if (isLiteralPattern(b)) {
         if (taskGlob(a).match(b)) return true
-      } else if (a === b || covers(a, b) || covers(b, a)) return true
+      } else if (a === b || covers(a, b) || covers(b, a) || (bothGlobs && witnessed(a, b)))
+        return true
+    }
+  }
+  return false
+}
+
+/** `staticPrefix` names the project root `.`; a path built under it starts bare. */
+const rootless = (prefix: string): string => (prefix === '.' ? '' : prefix)
+
+/**
+ * Do two globs both match a path built from them? Each candidate is a
+ * real path, so a hit proves the overlap and a miss decides nothing. The
+ * path sits under the deeper of the two literal prefixes and ends in
+ * either glob's last segment with its wildcards filled: a glob for every
+ * `.js` file under `dist` beside `dist/sth/**` meets at `dist/sth/x.js`,
+ * a pair `covers` cannot decide since neither is a subtree holding the
+ * other's prefix.
+ */
+function witnessed(a: string, b: string): boolean {
+  const pa = rootless(staticPrefix(a))
+  const pb = rootless(staticPrefix(b))
+  const nested = (outer: string, inner: string): boolean =>
+    outer === '' || inner === outer || inner.startsWith(`${outer}/`)
+  if (!nested(pa, pb) && !nested(pb, pa)) return false
+  const deeper = pa.length >= pb.length ? pa : pb
+  const ga = taskGlob(a)
+  const gb = taskGlob(b)
+  for (const glob of [a, b]) {
+    const last = glob.slice(glob.lastIndexOf('/') + 1)
+    if (/[[\]{}()!+@]/.test(last)) continue
+    const leaf = last.replace(/\*+|\?/g, 'x')
+    for (const mid of ['', 'x/']) {
+      const candidate = deeper === '' ? `${mid}${leaf}` : `${deeper}/${mid}${leaf}`
+      if (ga.match(candidate) && gb.match(candidate)) return true
     }
   }
   return false
@@ -951,6 +989,19 @@ function overlapCandidates<T>(
   for (const list of globs.values()) {
     for (let x = 0; x < list.length; x++) {
       for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
+    }
+  }
+  // `witnessed`: two globs meet only when one's literal prefix is the
+  // other's or under it, so each looks up the globs filed at its prefix
+  // and at each ancestor.
+  const byPrefix = new Map<string, number[]>()
+  for (const [i, prefix] of prefixes) file(byPrefix, rootless(prefix), i)
+  for (const [i, raw] of prefixes) {
+    const prefix = rootless(raw)
+    for (const j of byPrefix.get(prefix) ?? []) pair(i, j)
+    if (prefix !== '') for (const j of byPrefix.get('') ?? []) pair(i, j)
+    for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
+      for (const j of byPrefix.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, prefix] of prefixes) {

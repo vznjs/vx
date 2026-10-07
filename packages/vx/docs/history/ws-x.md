@@ -329,3 +329,15 @@ time (bugs, correctness, simplification, the plugin seams).
   invocation recorded and no task row it now says no recorded run
   executed a task and to ask about one the group depends on. Row:
   `why.test.ts` › "vx why after a run of only a group (X-50)".
+- **X-51.** Two tasks' output globs that overlap without either being a
+  subtree holding the other's prefix went through: `dist/**/*.js` beside
+  `dist/sth/**`, `dist/*.js` beside `dist/**/*.js`, `**/*.d.ts` beside
+  `dist/**`, so each task's clean deleted the other's files under a green
+  run. `outputsOverlap` now also builds a path under the deeper literal
+  prefix ending in either glob's last segment, wildcards filled, and a
+  path both match proves the overlap (M, 2026-10-07: two tasks never
+  share an output). Only globs as written take part: a literal's `/**`
+  twin met `dist/**/*.js` at a path no one can write. The path index
+  pairs globs whose prefixes nest. Rows: `output-collision.test.ts` ›
+  "refuses two globs a path both match …", "allows two globs no built
+  path joins …" (X-51).

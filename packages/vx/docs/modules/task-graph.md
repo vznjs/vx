@@ -232,8 +232,9 @@ stays a real one (item 980), and no edge names a task that left (C-71).
 `tests/output-collision.test.ts` covers the overlapping-output refusal:
 what is refused, the spellings that name one path (`./dist/**` against
 `dist/**`), the literal that is a whole tree (`dist` against
-`dist/app.js`) with the clean that proves it, the limit where the tree
-rule meets the undecided glob-vs-glob case, and the false-positive
+`dist/app.js`) with the clean that proves it, two globs a path built
+from them proves overlapping (`dist/*.js` against `dist/**/*.js` meet at
+`dist/x.js`, X-51) beside disjoint pairs of the same shapes, and the false-positive
 controls — the refusal aborts the run, so a widening breaks a build that
 works today. It also holds the path index: a row per way an index could
 miss a pair (a literal deep under a glob's head, a wildcard or brace in
