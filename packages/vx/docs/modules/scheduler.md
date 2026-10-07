@@ -115,6 +115,14 @@ been running ahead of those deps, so running its command in the
 restore slot would build from outputs they have not written.
 `onStart` fires once; its dependents wait for the second dispatch.
 
+A persistent task neither requested nor surfaced whose every dependant
+is in the restore tier is idle (X-59): due, it goes dormant instead of
+dispatching, asking no admission policy and taking no slot. A demoted
+dependant starts it, and that dependant runs once it is ready. Once
+every dependant has an outcome it settles with none of its own and
+releases them, so it is never spawned and the returned map lacks it.
+Its own deps still run first and a failed one skips it as before.
+
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the
 browser (through `packages/vx-bench/schedule-policy.ts`), and
@@ -221,7 +229,8 @@ A failed task does not stop the scheduler: its transitive exec-tier
 dependents get `skipped`, through a restore-tier hit between them too
 (the hit stays a `cache-hit`, its key being its deps' inputs, and passes
 the block down with the root); unrelated tasks continue; the promise
-resolves only after every task has _some_ outcome. This is Turbo's
+resolves only after every task has _some_ outcome (an idle server
+excepted, above). This is Turbo's
 middle `--continue` setting, `deps-ok`, as the default; `never` stops
 dispatch at the first failure (in-flight tasks finish, everything not
 yet started — restores included — completes `skipped`); `always` runs
