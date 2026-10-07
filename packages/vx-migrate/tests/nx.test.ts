@@ -187,6 +187,40 @@ describe('nx(): a wildcard-first output', () => {
   )
 })
 
+describe('nx(): a dependency fileset that matches nothing', () => {
+  it(
+    'its twin warns of nothing, and the file appearing still re-keys the reader',
+    async () => {
+      const graph = structuredClone(GRAPH) as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      graph.graph.nodes['app']!.data.targets['test'] = {
+        executor: 'nx:run-commands',
+        options: { command: 'echo t' },
+        inputs: [
+          '{projectRoot}/src/**/*',
+          { fileset: '{projectRoot}/tsconfig.spec.json', dependencies: true },
+        ],
+        cache: true,
+      }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const go = async () => {
+        const log = silent()
+        const r = await run({ cwd: root, tasks: ['app#test'], log, handleSignals: false })
+        return { r, lines: log.lines.filter((l) => l.includes('matched no files')) }
+      }
+      const first = await go()
+      expect(status(first.r, 'app#test')).toBe('success')
+      expect(first.lines).toEqual([])
+      expect(status((await go()).r, 'app#test')).toBe('cache-hit')
+      await writeFile(path.join(root, 'packages', 'lib', 'tsconfig.spec.json'), '{}\n')
+      expect(status((await go()).r, 'app#test')).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('nx()', () => {
   it(
     'a ^target no project has is no edge, as under Nx',

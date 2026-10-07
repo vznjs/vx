@@ -336,7 +336,15 @@ export function planNxUpstream(
         if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges)
         else if (u.name !== name) fold(node, u.name, peers, inputs, todos, edges)
       }
-      const cacheInputs: Record<string, unknown> = { files: inputs.files }
+      // Nx hashes a fileset that matches nothing as nothing; core warns of
+      // an input set that resolves to no file. The project's package.json
+      // is in every key already, so listing it moves no key and the twin of
+      // an absent `tsconfig.spec.json` (or a dependency's unbuilt `*.d.ts`)
+      // is quiet; the file appearing still re-keys it.
+      const files = inputs.files.includes('package.json')
+        ? inputs.files
+        : ['package.json', ...inputs.files]
+      const cacheInputs: Record<string, unknown> = { files }
       if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
       if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
       if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds

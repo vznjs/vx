@@ -493,9 +493,14 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     inputs: (t?.task?.['cache'] as { inputs: unknown } | undefined)?.inputs,
     todos: t?.todos,
   })
-  const twin = (dependsOn: string[] | undefined, inputs: Record<string, unknown>) => ({
+  // A twin lists its package.json first: in every key already, it keeps
+  // a fileset that matches nothing from core's "matched no files".
+  const twin = (
+    dependsOn: string[] | undefined,
+    inputs: { files: string[]; [k: string]: unknown },
+  ) => ({
     dependsOn,
-    inputs,
+    inputs: { ...inputs, files: ['package.json', ...inputs.files] },
     todos: [],
   })
 
