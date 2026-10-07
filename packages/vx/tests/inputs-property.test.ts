@@ -138,7 +138,9 @@ async function build(rand: () => number): Promise<Fixture> {
     entries.set('sub/package.json', true)
   }
   // Files under `ign/` are tracked by force; their siblings stay ignored.
-  for (const rel of tracked) git(pkg, 'add', '-f', '--', rel)
+  // Literal: `*.ts` is a pathspec glob, and CI's git 2.55 force-added every
+  // ignored `.ts` it matched (2.43 took the exact name alone).
+  for (const rel of tracked) git(pkg, '--literal-pathspecs', 'add', '-f', '--', rel)
   return { root, pkg, nested, entries }
 }
 
