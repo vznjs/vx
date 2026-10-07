@@ -103,8 +103,6 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: string[]
   nestedProjectDirs: string[]
-  /** Before a miss: prune only below each wildcard glob's root. */
-  beforeMiss?: boolean
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -275,14 +273,15 @@ pass for `outputs.workspaceFiles`, anchored at the workspace root and
 deliberately without the project-dir exclusion.
 
 `cleanOutputs` removes every match, then the directories it emptied,
-bottom-up and never the root itself (a directory left standing where
-the cached entry holds a file of the same name blocks the restore).
-Before a miss (`beforeMiss`, `cleanWorkspaceOutputs` too) it prunes
-only below the directory each wildcard glob is rooted at: the root
-stays, since the task writes under it and removing it cost an rmdir and
-the task's mkdir (B-49), and a directory above it or holding a literal
-output stays, since a sibling task running beside it may have just made
-it and not yet written into it. A
+bottom-up, but only inside the trees the task declared (before a miss
+and before a restore alike; `cleanWorkspaceOutputs` too): below each
+wildcard glob's root, and at or below each literal output (a directory
+left standing where the entry or the task needs a file of the same name
+blocks it). The glob's root stays, since the task writes under it and
+removing it cost an rmdir and the task's mkdir (B-49). A directory above
+it or holding a literal output (`out` for `out/a.txt`) stays, since a
+sibling task running beside this one may have just made it and not yet
+written into it. A
 declared output the process cannot remove — another user's `dist/`, a
 read-only checkout — is a `UserError` naming the path, not an internal
 error.

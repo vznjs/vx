@@ -1502,28 +1502,24 @@ describe('the clean empties a tree without reaching past it', () => {
     expect(await tree(projectDir)).toEqual(['dist/', 'dist/keep/', 'dist/keep/stray.txt'])
   })
 
-  it('before a miss, the clean prunes only below each glob’s root (B-49)', async () => {
+  it('the clean prunes only the declared trees: below a glob’s root, at a literal (B-49)', async () => {
     const w = async (rel: string) => {
       await mkdir(path.dirname(path.join(projectDir, rel)), { recursive: true })
       await writeFile(path.join(projectDir, rel), 'x')
     }
-    const seed = async () => {
-      await rm(projectDir, { recursive: true, force: true })
-      await w('dist/a/x.js')
-      await w('build/out/y.js')
-      await w('gen/z.txt')
-    }
+    await rm(projectDir, { recursive: true, force: true })
+    await w('dist/a/x.js')
+    await w('build/out/y.js')
+    await w('gen/z.txt')
+    await w('lit/x/y.txt')
     // A literal's directory (`gen`), a glob root's parent (`build`) and a
     // glob rooted at the project (`*.map`) keep everything: a sibling task
-    // may have just made the directory to write into.
-    const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', '*.map']
-    await seed()
-    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [], beforeMiss: true })
-    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/', 'gen/'])
-    // CONTROL: without the flag (a restore) every emptied directory goes.
-    await seed()
+    // may have just made the directory to write into. Below a glob's root
+    // (`dist/a`) and a literal tree itself (`lit`) go: the entry or the
+    // task may need a file there.
+    const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', 'lit/', '*.map']
     await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [] })
-    expect(await tree(projectDir)).toEqual([])
+    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/', 'gen/'])
   })
 
   it('a sibling whose name EXTENDS the project’s is outside it', async () => {
