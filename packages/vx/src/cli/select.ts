@@ -356,6 +356,14 @@ export async function resolveFilters(
     if (unmatched.length === 0 && emptyWalks.length > 0) {
       return { error: `no projects selected: ${emptyWalks.join('; ')}` }
     }
+    // Every pattern matched and an exclusion took them all back: "no
+    // projects matched filter(s): one, !one" read as a typo of `one`.
+    const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
+    if (unmatched.length === 0 && negations.length > 0) {
+      return {
+        error: `no projects selected: ${negations.join(', ')} excluded every project the other filters matched`,
+      }
+    }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
     // hint a typo needs.

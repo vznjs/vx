@@ -95,3 +95,7 @@ time (bugs, correctness, simplification, the plugin seams).
   "plugin 'p' failed in graph: a#build's deps is null, not an array of
   task ids". Row: `plugin-pipeline.test.ts` › "a graph hook that nulls
   deps or a node is refused naming the task".
+- **X-16.** `--filter one --filter '!one'` refused with "no projects
+  matched filter(s): one, !one", which reads as a typo of `one`. It now
+  says the exclusion took back every match. Row: `cli.test.ts` › "an
+  exclusion that takes back every match says so".
