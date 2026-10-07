@@ -525,3 +525,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `EBUSY` line now gets a hint naming the grant and `rm -rf dist/*`.
   Rows: `sandbox-grant-remove.unsafe.test.ts` (three removal spellings,
   the hinted removal, a near-miss control).
+- **X-91.** A `localBinding` port bridge's task side always dialled
+  127.0.0.1, so a server bound to `::1` alone (Vite's `localhost` on a
+  host that resolves `::1` first) was unreachable from the host. Each
+  connection now runs a dial script that reads the namespace's listen
+  tables and dials `::1` when only `::1` holds the port, else 127.0.0.1;
+  the choice is made before any byte moves, so nothing is retried
+  halfway. Rows: `port-bridge-dial.test.ts` (fixture tables, stub
+  socat), `sandbox-runtime.unsafe.test.ts` › "a server bound to ::1
+  alone is reachable through the bridge" (skips without IPv6; not run
+  on the authoring box, which has none).

@@ -890,9 +890,17 @@ shipping a build that depended on it.
 A `localBinding` port LIST is bridged out of the task's network namespace
 (`bwrap --unshare-net` sees no host port either way). `wrapSandboxedCommand`
 prefixes the sandboxed command with `portBridgeInner`: one
-`socat UNIX-LISTEN:<tmpdir>/vx-port-<tag>-<port>.sock,fork TCP:127.0.0.1:<port>`
+`socat UNIX-LISTEN:<tmpdir>/vx-port-<tag>-<port>.sock,fork 'SYSTEM:sh <tmpdir>/vx-port-dial-<tag>.sh <port>'`
 per port, backgrounded and reaped with the shell (as SRT starts its own
-proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
+proxy bridges). The dial script (`PORT_DIAL_SCRIPT`, written beside the
+sockets) reads the namespace's `/proc/net/tcp` and `tcp6` per
+connection, before any byte moves, and dials `::1` when only `::1`
+listens on the port, else 127.0.0.1: a fixed 127.0.0.1 dial refused a
+server bound to `::1` alone, Vite's `localhost` on a host that resolves
+`::1` first (X-91, `port-bridge-dial.test.ts`; the live `::1` row in
+`sandbox-runtime.unsafe.test.ts` skips on a box with no IPv6). It is a
+file, not inline, so the socat address holds no `:` or `,` of its own.
+vx then spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
 per port, socat resolved on vx's PATH. The task starts once each host
 socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not

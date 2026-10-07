@@ -1188,6 +1188,7 @@ export async function wrapSandboxedCommand(
   // user command, so it goes INTO the sandboxed command; the host side is
   // spawned here and released when the task's process ends.
   const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
+  if (ports.length > 0) writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1477,17 +1478,39 @@ export function portBridgeSocket(tag: string, port: number): string {
 }
 
 /**
+ * Which loopback a bridged connection dials, chosen per connection from
+ * the namespace's listen tables (`$1` the port, `$2` the tables' directory):
+ * `::1` when only it holds the port, else 127.0.0.1. A server bound to
+ * `localhost` on a host that resolves `::1` first (Vite's default) listens
+ * on `::1` alone, and a fixed 127.0.0.1 dial was refused. Read before any
+ * byte moves, so a connection is never retried halfway through.
+ */
+export const PORT_DIAL_SCRIPT = `p=$1 n=\${2:-/proc/net}
+h=$(printf %04X "$p")
+if grep -qsE "^ *[0-9]+: 0{24}01000000:$h [0-9A-F]+:0{4} 0A" "$n/tcp6" &&
+  ! grep -qsE "^ *[0-9]+: (0100007F|0{8}):$h [0-9A-F]+:0{4} 0A" "$n/tcp"; then
+  exec socat - "TCP6:[::1]:$p"
+fi
+exec socat - "TCP4:127.0.0.1:$p"
+`
+
+/** Where the dial script lives: beside the bridge's sockets, written by `wrapSandboxedCommand`. */
+function portDialScript(tag: string): string {
+  return path.join(taskTmpdir(tag), `vx-port-dial-${tag}.sh`)
+}
+
+/**
  * The task's side of the bridge, in front of the user command inside the
  * sandbox: one socat per port, listening on the unix socket and relaying
- * into the namespace's loopback. Backgrounded and reaped with the shell,
- * exactly as SRT starts its own proxy bridges. `unlink-early` clears a
- * socket a killed task left behind; `>/dev/null` keeps its chatter out
- * of the task's frame.
+ * into the namespace's loopback through `PORT_DIAL_SCRIPT`. Backgrounded
+ * and reaped with the shell, exactly as SRT starts its own proxy bridges.
+ * `unlink-early` clears a socket a killed task left behind; `>/dev/null`
+ * keeps its chatter out of the task's frame.
  */
 export function portBridgeInner(ports: readonly number[], tag: string): string {
   const cmds = ports.map(
     (p) =>
-      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early TCP:127.0.0.1:${p} >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early ${shellQuote(`SYSTEM:sh ${portDialScript(tag)} ${p}`)} >/dev/null 2>&1 &`,
   )
   return `${cmds.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT;`
 }
