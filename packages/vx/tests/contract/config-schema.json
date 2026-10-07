@@ -865,7 +865,7 @@
         ]
       },
       "tasks.*.exec.env.passThrough": {
-        "ok": ["<absent>", "[]", "[\"x\"]", "[\"/x\"]", "[\"../x\"]", "[\".\"]", "[\"CI\"]"],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"CI\"]"],
         "$CONFIG: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)": [
           "null",
           "true",
@@ -889,14 +889,23 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
+        "$CONFIG: tasks.t.exec.env.passThrough: \"/x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "[\"/x\"]"
+        ],
         "$CONFIG: tasks.t.exec.env.passThrough: \"!/x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave /x out": [
           "[\"!/x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.env.passThrough: \"../x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "[\"../x\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough: \"!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave x out": [
           "[\"!x\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough: \"!!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave !x out": [
           "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: tasks.t.exec.env.passThrough: \".\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "[\".\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got \"**\") — list explicit env var names instead": [
           "[\"**\"]"
@@ -2389,7 +2398,21 @@
         "$CONFIG: tasks.t.exec.env.define: \"\" is not an env var name (non-empty, no '=' or NUL)": [
           "\"\""
         ],
-        "ok": ["\" x\"", "\"x#y\"", "\"x*\"", "\"^x\"", "\"!x\""],
+        "$CONFIG: tasks.t.exec.env.define: \" x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "\" x\""
+        ],
+        "$CONFIG: tasks.t.exec.env.define: \"x#y\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "\"x#y\""
+        ],
+        "$CONFIG: tasks.t.exec.env.define: \"x*\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "\"x*\""
+        ],
+        "$CONFIG: tasks.t.exec.env.define: \"^x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "\"^x\""
+        ],
+        "$CONFIG: tasks.t.exec.env.define: \"!x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
+          "\"!x\""
+        ],
         "$CONFIG: tasks.t.exec.env.define: \"A=B\" is not an env var name (non-empty, no '=' or NUL)": [
           "\"A=B\""
         ]

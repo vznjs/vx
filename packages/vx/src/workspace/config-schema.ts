@@ -442,6 +442,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `(got "${wild}") — list explicit env var names instead`,
             )
           }
+          for (const n of passThrough as string[])
+            assertShellName(n, `${where}.exec.env.passThrough`)
         }
         const secret = (env as { secret?: unknown }).secret
         if (
@@ -468,6 +470,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
               )
             }
+            assertShellName(k, `${where}.exec.env.define`)
             if (typeof val !== 'string' || val.includes('\0')) {
               throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
             }
@@ -1331,6 +1334,19 @@ function specForm(spec: string): SpecForm {
  * was dropped; a NUL failed the spawn with a hint about exit 127 (item
  * 999). Refused at load, where the config is named.
  */
+/**
+ * The task runs under `sh -c`, and dash (Linux's `sh`) drops a variable whose
+ * name is no shell identifier from the environment it hands the command:
+ * `my.var` reached a task under macOS's bash and nothing on Linux.
+ */
+function assertShellName(name: string, field: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new UserError(
+      `${field}: ${JSON.stringify(name)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+    )
+  }
+}
+
 function isEnvName(name: unknown): name is string {
   return typeof name === 'string' && name.length > 0 && !name.includes('=') && !name.includes('\0')
 }
