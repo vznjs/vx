@@ -7,11 +7,9 @@ import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
-  outcomeLabel,
   projectOutcome,
   run as runOrchestrator,
   shellQuote,
-  type OutcomeView,
   type RunOptions,
   type RunResult,
 } from '../orchestrator/index.js'
@@ -567,6 +565,7 @@ export async function resolveRunOptions(
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
+    ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
     ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
@@ -707,7 +706,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
-  if (parsed.verbosity > 0) printSummary(result)
   // Report generation is post-run, gated on the flags — zero cost when
   // both are absent. Rendered once, however many sinks asked for it.
   if (parsed.report === 'markdown' || parsed.reportFile !== undefined) {
@@ -741,36 +739,4 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     }
   }
   return result.ok ? 0 : 1
-}
-
-function printSummary(summary: RunResult): void {
-  const rows = summary.outcomes.map((o) => formatRow(o))
-  if (rows.length === 0) return
-  const widths = {
-    task: Math.max(4, ...rows.map((r) => r.task.length)),
-    status: Math.max(6, ...rows.map((r) => r.status.length)),
-    duration: Math.max(8, ...rows.map((r) => r.duration.length)),
-  }
-  const header =
-    'TASK'.padEnd(widths.task) +
-    '  ' +
-    'STATUS'.padEnd(widths.status) +
-    '  ' +
-    'DURATION'.padStart(widths.duration)
-  process.stdout.write(`\n${header}\n`)
-  process.stdout.write('-'.repeat(header.length) + '\n')
-  for (const r of rows) {
-    process.stdout.write(
-      r.task.padEnd(widths.task) +
-        '  ' +
-        r.status.padEnd(widths.status) +
-        '  ' +
-        r.duration.padStart(widths.duration) +
-        '\n',
-    )
-  }
-}
-
-function formatRow(o: OutcomeView): { task: string; status: string; duration: string } {
-  return { task: o.taskId, status: outcomeLabel(o), duration: `${o.durationMs}ms` }
 }

@@ -839,6 +839,41 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('one#hello')
   })
 
+  it('--verbosity 1: the table lists no group and prints above the footer', async () => {
+    const { writeFile } = await import('node:fs/promises')
+    const path = await import('node:path')
+    await writeFile(
+      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          hello: {
+            exec: { command: "echo hello-cli" },
+            cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+          },
+          all: { dependsOn: ['hello'] },
+        },
+      }`,
+    )
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    expect(await run(['run', '--all', '--verbosity', '1', 'all'])).toBe(0)
+    const lines = stdout.split('\n')
+    const header = lines.findIndex((l) => l.startsWith('TASK'))
+    const rows = lines.slice(header + 2, lines.indexOf('', header))
+    // The footer and --report count no group; a `success 0ms` row for one
+    // invented a task with no command.
+    expect(rows.map((r) => r.split(/\s+/)[0])).toEqual(['one#hello'])
+    // Nothing prints below the footer (owner rule).
+    const footer = lines.findIndex((l) => l.startsWith('─ vx '))
+    expect(header).toBeGreaterThan(-1)
+    expect(footer).toBeGreaterThan(header)
+  })
+
   it('exits 1 when a task fails', async () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
