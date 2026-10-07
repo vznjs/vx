@@ -10,6 +10,7 @@
 // too. `--report-file` is the sink that carries the property end to end.
 
 import { failedLabel, skippedLabel, type OutcomeView } from './events.js'
+import { neverStarted } from './summary.js'
 
 /**
  * One finished run, reduced to what a report needs. Used to live in
@@ -35,8 +36,10 @@ import { tallyViews, type Tally } from './tally.js'
  * a row claiming `success | miss | 0ms`.
  */
 interface ReportTally extends Tally {
-  /** Wall-clock ms summed over tasks that actually executed (misses). */
+  /** Wall-clock ms summed over tasks that ran a command, an aborted one's time so far included. */
   executedMs: number
+  /** The aborted tasks the stop reached before they ran, as the terminal splits them. */
+  notRun: number
   /**
    * Ms of work the cache SKIPPED — the sum of the hits' STORED exec times.
    * Deliberately not `durationMs`, which for a hit is the restore this run
@@ -46,13 +49,17 @@ interface ReportTally extends Tally {
 }
 
 function tally(outcomes: readonly OutcomeView[]): ReportTally {
-  const t: ReportTally = { ...tallyViews(outcomes), executedMs: 0, savedMs: 0 }
+  const t: ReportTally = { ...tallyViews(outcomes), executedMs: 0, savedMs: 0, notRun: 0 }
   for (const o of outcomes) {
     if (o.isGroup === true) continue
     switch (o.status) {
       case 'success':
       case 'failed':
         t.executedMs += o.durationMs
+        break
+      case 'aborted':
+        if (neverStarted(o)) t.notRun++
+        else t.executedMs += o.durationMs
         break
       case 'cache-hit':
       case 'cache-hit-remote':
@@ -78,6 +85,8 @@ function statusWord(o: OutcomeView): string {
       return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
     case 'skipped':
       return skippedLabel(o.blockedBy)
+    case 'aborted':
+      return neverStarted(o) ? 'not run' : 'aborted'
     default:
       return o.status
   }
@@ -145,12 +154,21 @@ export function formatRunReportMarkdown(result: RunResult): string {
       : '0 cached',
   ]
   if (t.skipped > 0) parts.push(`${t.skipped} skipped`)
-  if (t.aborted > 0) parts.push(`${t.aborted} aborted`)
   parts.push(`${fmtDuration(t.executedMs)} total`)
   if (t.savedMs > 0) parts.push(`${fmtDuration(t.savedMs)} saved`)
+  // The terminal summary's words: neither is in `total`, and a task the stop
+  // reached before it ran was never aborted.
+  const aborted = t.aborted - t.notRun
+  const uncounted: string[] = []
+  if (aborted > 0) uncounted.push(`${aborted} aborted`)
+  if (t.notRun > 0) uncounted.push(`${t.notRun} not run`)
+  if (uncounted.length > 0) parts.push(`not counted: ${uncounted.join(', ')}`)
 
+  // Only a stop (a signal, `RunOptions.signal`) makes an `aborted` outcome,
+  // so one is how an interrupted run tells itself from a failed one.
+  const heading = t.aborted > 0 ? 'interrupted' : result.ok ? 'passed' : 'failed'
   const lines: string[] = []
-  lines.push(`## vx run — ${result.ok ? 'passed' : 'failed'}`)
+  lines.push(`## vx run — ${heading}`)
   lines.push('')
   lines.push(parts.join(' · '))
   lines.push('')
@@ -163,7 +181,7 @@ export function formatRunReportMarkdown(result: RunResult): string {
     if (o.isGroup === true) continue
     lines.push(
       `| ${cell(o.taskId)} | ${cell(statusWord(o))} | ${cell(cacheWord(o))} | ${cell(
-        fmtDuration(o.durationMs),
+        neverStarted(o) ? '—' : fmtDuration(o.durationMs),
       )} |`,
     )
   }
