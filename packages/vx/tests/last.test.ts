@@ -440,9 +440,37 @@ describe('parseLastArgs', () => {
     expect(pick(['01a0dee9-run', '--list']).error).toBe(
       'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
     )
-    expect(pick(['--list=3', 'r1']).error).toBe(
-      'a run id and --list do not combine: replay r1, or list runs',
+    expect(pick(['--list=3', '0199b2c4-5e6f']).error).toBe(
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
     )
+  })
+
+  it('--list takes a bad count as its count, and an extra word is unexpected (X-29)', () => {
+    // Each read as a run id beside --list: "a run id and --list do not combine".
+    const error = (args: string[]) => parseLastArgs(args).error
+    expect([
+      error(['--list', '1.5']),
+      error(['--list', 'abc']),
+      error(['--list', '-3']),
+      error(['--list', '2', 'extra']),
+      error(['extra', '--list']),
+    ]).toEqual([
+      'invalid --list: 1.5 (expected 1..500)',
+      'invalid --list: abc (expected 1..500)',
+      'invalid --list: -3 (expected 1..500)',
+      'unexpected argument: extra (see `vx last --help`)',
+      'unexpected argument: extra (see `vx last --help`)',
+    ])
+    // CONTROL: a run id, whole or as `--list` prints it, still names the clash.
+    expect([
+      error(['--list', '0199b2c4-5e6f']),
+      error(['--list', '0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d']),
+      error(['--list', '--failed']),
+    ]).toEqual([
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
+      'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs',
+      undefined,
+    ])
   })
 })
 

@@ -175,3 +175,10 @@ time (bugs, correctness, simplification, the plugin seams).
   `--plugin` is now refused, and the hint names the workspace file a run
   reads. Row: `init.test.ts` › "names the workspace file that exists and
   refuses --mjs (X-28)".
+- **X-29.** `vx last --list 1.5`, `--list abc` and `--list 2 extra`
+  each said "a run id and --list do not combine": the space form took
+  only a bare integer as its count. It now takes any next argument that
+  is no flag and no run id (eight hex digits at least), so a bad count
+  is refused as one, and a word beside `--list` no run id could be is an
+  unexpected argument. Row: `last.test.ts` › "--list takes a bad count
+  as its count, and an extra word is unexpected (X-29)".
