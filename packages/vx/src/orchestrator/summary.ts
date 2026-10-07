@@ -6,7 +6,7 @@
 import type { TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
-import { outcomeLabel, projectOutcome } from './events.js'
+import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import { formatElapsed } from '../util/index.js'
 
@@ -356,9 +356,7 @@ export function formatRunSummary(
   // distinction — it never consulted the cache, so it is not a miss.
   const noCache = outcomes.filter(
     (o) =>
-      !isGroupTask(o.node) &&
-      (o.status === 'success' || o.status === 'failed') &&
-      o.node.config.cache === undefined,
+      !isGroupTask(o.node) && (o.status === 'success' || o.status === 'failed') && ranNoCache(o),
   ).length
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran

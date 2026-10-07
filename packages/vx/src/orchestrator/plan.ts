@@ -12,7 +12,8 @@
 // side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
-import { FULL_CACHE_POLICY } from '../cache/index.js'
+import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
+import { ranNoCache } from './events.js'
 import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { HistoryProvider } from './history.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
@@ -156,9 +157,8 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       // policy-aware cache layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
-      const writes = policy.localWrite || policy.remoteWrite
       let status: CacheStatus
-      if (node.config.cache === undefined || (!reads && !writes)) {
+      if (ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
         status = 'no-cache'
       } else if (!reads) {
         status = 'miss'

@@ -995,9 +995,10 @@ exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
 outcome bucket or `total`, but they make the run red, so they are
 listed separately and counted as `summary.aborted`.
 
-**`noCache: true`** marks a task that declares no `cache` block — it
-executes every run by design, so a hit rate should leave it out of the
-denominator. The key is present only when true; every other row is
+**`noCache: true`** marks a task no cache answered for: it declares no
+`cache` block (it executes every run by design), or the run's `--cache`
+read and wrote nothing (`--no-cache`), so a hit rate should leave it out
+of the denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
@@ -1095,8 +1096,9 @@ signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
 task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
-`Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
-block, which never consulted it / `local` / `remote` / `up-to-date` /
+`Cache` is its provenance (`miss` / `no-cache` for a task no cache
+answered for — no `cache` block, or a `--no-cache` / `--cache=local:` run —
+which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
@@ -2715,8 +2717,10 @@ task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
-red run. A task with no `cache` block could never hit, so it is
-counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and
+red run. A task with no `cache` block, or any task of a run whose
+`--cache` reads and writes nothing (`--no-cache`), could never hit, so it
+is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
+`--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);

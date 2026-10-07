@@ -5,7 +5,13 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  cachesNothing,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -1004,6 +1010,7 @@ async function runOnBus(
     // is one probe of the failed-row index.
     const flaky: FlakyFinding[] = []
     const historyDb = prepared.localCache.dbHandle()
+    const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
       const candidates = flakyCandidates([o])
       if (candidates.length === 0) return
@@ -1030,6 +1037,7 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        if (cacheOff) o.cacheOff = true
         taint.settled(o)
         judgeFlaky(o)
         log.taskComplete(o.node, o)

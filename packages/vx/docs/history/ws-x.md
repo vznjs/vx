@@ -533,3 +533,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   Rows: `plugin-capabilities.test.ts` › "an executor's throw reaches the
   task's own stderr …", "one error an executor rejects two tasks with is
   named once in each"; `executor-error-secret-mask.test.ts`.
+- **X-71.** `--dry --no-cache` and `--dry --cache=local:` called a
+  cacheable task `no-cache (would exec)`, while the run itself called it
+  `miss` in its frame, report and `--summarize` row and counted `1 miss`
+  and `0 cached (0%)` in the footer. A miss is a lookup that failed, and
+  that run looked nothing up, so `no-cache` is the word: `ranNoCache`
+  (`events.ts`) is the one predicate the plan and every run surface ask,
+  and `run()` marks each outcome of a run whose policy reads and writes
+  nothing `cacheOff`. Rows: `cli.test.ts` › "--no-cache: the plan and the
+  run both call the task no-cache", the same for `--cache=local:`.

@@ -2208,6 +2208,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'

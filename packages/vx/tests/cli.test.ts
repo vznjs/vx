@@ -516,6 +516,32 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).not.toContain('hello-cli')
   })
 
+  // `--dry` called a cacheable task under a policy that reads and writes
+  // nothing `no-cache`, the real run `miss` and its footer "1 miss": a
+  // miss is a lookup that failed, and this run looked nothing up.
+  for (const flag of ['--no-cache', '--cache=local:']) {
+    it(`${flag}: the plan and the run both call the task no-cache`, async () => {
+      const { readFile } = await import('node:fs/promises')
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
+      expect(stdout).toContain('no-cache (would exec)')
+      stdout = ''
+      const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
+      expect(await run(args)).toBe(0)
+      expect(stdout).toContain('| one#hello | success | no-cache |')
+      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).not.toContain('miss')
+      const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
+      expect([row.id, row.noCache]).toEqual(['one#hello', true])
+    })
+  }
+
   it('--dry-run --json emits parseable JSON', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
