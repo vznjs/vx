@@ -1,4 +1,3 @@
-import { Console } from 'node:console'
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
@@ -661,13 +660,29 @@ export async function loadProjectConfigs(
 
 /**
  * Every route to fd 1 sent to stderr while configs evaluate in this
- * process; returns the undo. A verb's stdout is its output (`vx show
+ * process; returns the release. A verb's stdout is its output (`vx show
  * --format json`), and a config's `console.log` came out ahead of the
  * JSON. The worker does the same for a repeat load (D-64), `vx mcp` for
- * its whole serve. Installed before the built-in snapshot and undone after
- * its check, so the guard sees no change of vx's own.
+ * its whole serve. Taken before a round's built-in snapshot and released
+ * after its check, so the guard sees no change of vx's own.
+ *
+ * Counted, because rounds overlap (`--affected`'s per-file sweep loads each
+ * config in a round of its own): a second install over the first moved
+ * `Bun.write` and `console` under the first round's snapshot, which refused
+ * the loads, and the undos ran out of order and left a redirect in place
+ * for good. The first taker installs; the last release restores.
  */
+let redirectHolders = 0
+let undoRedirect = (): void => {}
+
 function stdoutToStderr(): () => void {
+  if (redirectHolders++ === 0) undoRedirect = installRedirect()
+  return () => {
+    if (--redirectHolders === 0) undoRedirect()
+  }
+}
+
+function installRedirect(): () => void {
   const out = process.stdout
   const ownWrite = Object.getOwnPropertyDescriptor(out, 'write')
   const ownConsole = globalThis.console
@@ -684,8 +699,10 @@ function stdoutToStderr(): () => void {
   ;(Bun.stdout as { writer: typeof Bun.stdout.writer }).writer = ((
     ...args: Parameters<typeof Bun.stderr.writer>
   ) => Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
-  // Bun's console adds `write`, which the node Console lacks.
-  globalThis.console = Object.assign(new Console(process.stderr, process.stderr), {
+  // The global's own `Console`, not `node:console`'s: the playground bundles
+  // this module for the browser, where that specifier is a stub. Bun's
+  // console adds `write`, which a constructed Console lacks.
+  globalThis.console = Object.assign(new ownConsole.Console(process.stderr, process.stderr), {
     write: (...data: string[]) => {
       const text = data.join('')
       process.stderr.write(text)

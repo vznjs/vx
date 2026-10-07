@@ -459,6 +459,47 @@ describe('a first load in process: what a config prints', () => {
       err: 'log\nwrite\nbun\nwriter\n'.repeat(2),
     })
   }, 20_000)
+
+  it('rounds that overlap all load, and the last one out puts the routes back', async () => {
+    // `--affected`'s per-file sweep loads each config in a round of its own:
+    // a second redirect installed over the first moved `Bun.write` under the
+    // first round's snapshot, every load was refused, and the out-of-order
+    // undos left stdout on stderr.
+    const configs = await Promise.all(
+      ['a', 'b', 'c'].map(async (name) => {
+        const dir = path.join(root, name)
+        await mkdir(dir)
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(
+          file,
+          "await Bun.sleep(5)\nconsole.log('log')\n" +
+            "export default { tasks: { t: { exec: { command: 'true' } } } }\n",
+        )
+        return file
+      }),
+    )
+    const driver = path.join(root, 'overlap.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfigs } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const routes = () => [process.stdout.write, Bun.write, Bun.stdout.writer, console]\n` +
+        `const before = routes()\n` +
+        `const loaded = await Promise.allSettled(${JSON.stringify(configs)}.map((c) => loadProjectConfigs([c])))\n` +
+        `const back = routes().every((r, i) => r === before[i])\n` +
+        `process.stdout.write(loaded.map((r) => r.status).join(' ') + ' back ' + back + '\\n')\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, out, err] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    expect({ code, out, err }).toEqual({
+      code: 0,
+      out: 'fulfilled fulfilled fulfilled back true\n',
+      err: 'log\n'.repeat(3),
+    })
+  }, 20_000)
 })
 
 describe('evaluateConfigFresh: errors cross the boundary', () => {
