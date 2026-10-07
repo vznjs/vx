@@ -573,7 +573,7 @@ export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
   query:
     '`turbo query` has no vx form: `vx run <task> --dry=json` prints the planned graph as JSON',
   reset:
-    '`nx reset` is `vx cache prune --older-than <age>` here, or remove the cache directory `vx info` names to drop it all',
+    '`nx reset` is `vx cache prune --older-than <age>` here, or delete the cache store `vx info` names to drop it all',
   daemon: 'vx has no daemon: there is nothing to start or stop',
   login: TURBO_LOGIN,
   logout: TURBO_LOGIN,
