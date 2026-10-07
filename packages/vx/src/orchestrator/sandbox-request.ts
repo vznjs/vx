@@ -468,11 +468,13 @@ async function prepareOutputsForBind(
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }
-    if (hasWildcard || g.endsWith('/')) {
-      const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
-      await mkdir(abs, { recursive: true })
-    } else {
-      const abs = path.join(projectDir, g)
+    const dir = hasWildcard || g.endsWith('/')
+    const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
+    try {
+      if (dir) {
+        await mkdir(abs, { recursive: true })
+        continue
+      }
       // Whatever is already there is what the task meant — a grant on the
       // project dir itself is a directory, and touching it as a file is
       // an EISDIR, not a missing bind. `lstat`, and an exclusive create: a
@@ -482,9 +484,31 @@ async function prepareOutputsForBind(
       await mkdir(path.dirname(abs), { recursive: true })
       await writeFile(abs, '', { flag: 'wx' })
       placeholders.push({ path: abs, mtimeMs: (await lstat(abs)).mtimeMs })
+    } catch (err) {
+      await sweepPlaceholders(placeholders)
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'ENOTDIR') throw err
+      // A file stands where the grant needs a directory: `out.txt/` over a
+      // file, or `a.txt/x/*.js`. It reached the user as an internal error.
+      const blocker = await fileOnPath(projectDir, dir ? abs : path.dirname(abs))
+      throw new UserError(
+        `exec.sandbox.allow.write: "${g}" needs a directory at ${blocker}, and a file is ` +
+          `there — remove the file, or grant a path beside it`,
+      )
     }
   }
   return placeholders
+}
+
+/** The first path from `from` down to `to` that exists and is not a directory. */
+async function fileOnPath(from: string, to: string): Promise<string> {
+  let at = from
+  for (const part of path.relative(from, to).split(path.sep)) {
+    at = path.join(at, part)
+    const st = await lstat(at).catch(() => undefined)
+    if (st !== undefined && !st.isDirectory()) return at
+  }
+  return to
 }
 
 /**

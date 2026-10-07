@@ -164,7 +164,10 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   survive every later clean (2026-09-16). They are made before the walls
   judge the binds, so a directory grant naming nothing yet is judged as
   the directory, not its parent (a root project's `dist/` was refused for
-  `.git`, X-61); a refused grant's placeholders are taken back.
+  `.git`, X-61); a refused grant's placeholders are taken back. A file
+  where a grant needs a directory (`out.txt/` over a file, `a.txt/x/*.js`)
+  refuses the task with the grant and the file named, its placeholders
+  taken back; it was an internal error (X-81).
 
 ## Tests
 

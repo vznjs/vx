@@ -10,6 +10,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   stat,
@@ -277,6 +278,18 @@ describe('a write grant is pre-created for the bind', () => {
     const r = await requestFor(['dist'])
     expect(await kind(path.join(dir, 'dist'))).toBe('dir')
     expect(r.placeholders).toEqual([])
+  })
+
+  it('a file where a grant needs a directory is refused by name, its placeholders swept', async () => {
+    await writeFile(path.join(dir, 'a.txt'), 'x')
+    for (const grant of ['a.txt/', 'a.txt/x/*.js', 'a.txt/out']) {
+      await expect(requestFor(['gen.txt', grant])).rejects.toThrow(
+        `exec.sandbox.allow.write: "${grant}" needs a directory at ${path.join(dir, 'a.txt')}, ` +
+          `and a file is there — remove the file, or grant a path beside it`,
+      )
+      expect(await kind(path.join(dir, 'gen.txt'))).toBe('none')
+    }
+    expect(await readFile(path.join(dir, 'a.txt'), 'utf8')).toBe('x')
   })
 
   it('the request itself is unchanged by the spelling: `dist/` grants `dist`', async () => {

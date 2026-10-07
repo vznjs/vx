@@ -517,3 +517,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-81.** A write grant that needs a directory where a file stands
+  (`out.txt/` over a file, `a.txt/x/*.js`, `a.txt/out`) failed the task
+  as `[vx] internal error … EEXIST` or `ENOTDIR` from the pre-create, and
+  left the placeholders made before it. It is now a refusal naming the
+  grant and the file, the placeholders swept. Row:
+  `sandbox-request.test.ts` › "a file where a grant needs a directory is
+  refused by name, its placeholders swept".
