@@ -1060,6 +1060,31 @@ describe('migrateScripts', () => {
     ])
   })
 
+  it('a cd into a member whose dir holds a backslash-escaped space runs the members', () => {
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      escaped: 'cd packages/my\\ app && vitest run',
+      escapedParen: 'cd packages/my\\ app\\ \\(v2\\)/src && tsc',
+      quoted: 'cd "packages/my app" && vitest run',
+      // CONTROL: an escaped space into no member stays a root task.
+      other: 'cd docs/my\\ notes && make',
+    })
+    const a = meta('a', '/w/packages/my app', { build: 'tsc' })
+    const b = meta('b', '/w/packages/my app (v2)', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a, b]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['b', ['build']],
+      ['root', ['other']],
+    ])
+  })
+
   it('a root script reaching a member-running one through a script runner is left out (D-95)', () => {
     // lexical's `ci-check` (`npm-run-all --parallel … tsc-website …`) ran
     // `pnpm --filter @lexical/website run tsc` again as a root task.
