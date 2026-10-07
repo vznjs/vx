@@ -13,6 +13,7 @@ export {
   runPersistent,
   PersistentReadyError,
   withForwardArgs,
+  shellQuote,
   signalExitCode,
   exitSignal,
   type CaptureConfig,

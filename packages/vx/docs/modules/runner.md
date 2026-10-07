@@ -130,7 +130,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
   capture, no callbacks.
 - **forwardArgs** are appended to `command` after a single space, each
-  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe), by
+  quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe; a
+  `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
   line), so no comment can swallow them. The sandbox wrapper and the

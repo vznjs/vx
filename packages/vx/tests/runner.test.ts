@@ -659,6 +659,10 @@ describe('shellQuote', () => {
     expect(shellQuote('a/b.c=1')).toBe('a/b.c=1')
   })
 
+  it('leaves a `#` past the first character bare; a leading one opens a comment (X-45)', () => {
+    expect([shellQuote('app#build'), shellQuote('#c')]).toEqual(['app#build', `'#c'`])
+  })
+
   it('wraps strings with spaces in single quotes', () => {
     expect(shellQuote('hello world')).toBe(`'hello world'`)
   })
@@ -688,6 +692,8 @@ describe('shellQuote', () => {
         `"hello" world`, // mixed quoting
         `a 'b' c`, // single quotes inside
         `a\\b`, // backslash literal
+        `a#b`, // mid-word hash
+        `#c`, // leading hash
         `multi
 line`, // embedded newline
       ]
