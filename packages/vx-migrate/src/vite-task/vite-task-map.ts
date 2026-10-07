@@ -34,6 +34,9 @@ const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies'] as co
 type DepField = (typeof DEP_FIELDS)[number]
 
 /** npm's own verbs' hooks: the package manager runs them, never `vp run`'s task list. */
+/** A command segment that runs Vite Task: `vp run`, `vpr`, through a package runner too. */
+const VP_RUN = /^(?:(?:pnpm(?: exec)?|npx|bunx|yarn)\s+)?(?:vp\s+run|vpr)(?:\s|$)/
+
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
 type Glob = string | { pattern?: unknown; base?: unknown; auto?: unknown }
@@ -118,7 +121,7 @@ const asStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 
 /**
- * `metas` plus the workspace root when its config declares tasks and no
+ * `metas` plus the workspace root when it has tasks or scripts and no
  * member is the root: `vp run -w` runs them, so it is a project here.
  */
 export async function viteTaskProjects(
@@ -131,14 +134,15 @@ export async function viteTaskProjects(
   const run = file === null ? null : await readRunConfig(file, root)
   const pkg = (await Bun.file(path.join(root, 'package.json'))
     .json()
-    .catch(() => ({}))) as { name?: unknown }
-  const hasTasks = Object.keys(run?.tasks ?? {}).length > 0
+    .catch(() => ({}))) as { name?: unknown; scripts?: unknown }
+  const scripts = typeof pkg.scripts === 'object' && pkg.scripts !== null ? pkg.scripts : {}
+  const hasTasks = Object.keys(run?.tasks ?? {}).length > 0 || Object.keys(scripts).length > 0
   if (!hasTasks) return { metas: [...metas], notes: [] }
   if (typeof pkg.name !== 'string' || pkg.name === '' || metas.some((m) => m.name === pkg.name))
     return {
       metas: [...metas],
       notes: [
-        `${relPosix(root, file!)} declares tasks for the workspace root, which has no package.json "name" of its own; vx names a project by it — give it one and re-run vx-migrate`,
+        'the workspace root has tasks or scripts `vp run -w` runs, and no package.json "name" of its own (or one a member takes); vx names a project by it — give it one and re-run vx-migrate',
       ],
     }
   return {
@@ -180,6 +184,84 @@ export async function mapViteTaskWorkspace(
     const deps = (m.packageJson as unknown as Record<string, unknown>)[field]
     if (typeof deps !== 'object' || deps === null) return []
     return Object.keys(deps).filter((n) => byName.has(n) && n !== m.name)
+  }
+
+  const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
+
+  /**
+   * A `vp run` inside a command: Vite Task inlines it into its graph. A
+   * leading chain of them becomes `dependsOn` edges, and the task a group
+   * when nothing else is left; a form with no edge spelling is a TODO.
+   */
+  function inlineRuns(t: GeneratedTask, self: ProjectMeta): void {
+    const exec = t.task?.['exec'] as { command?: unknown } | undefined
+    if (typeof exec?.command !== 'string') return
+    const parts = exec.command.split('&&').map((p) => p.trim())
+    if (!parts.some((p) => VP_RUN.test(p))) return
+    const edges: string[] = []
+    let i = 0
+    for (; i < parts.length && VP_RUN.test(parts[i]!); i++) {
+      const e = /[|;()`$<>'"\\\n]/.test(parts[i]!) ? null : runEdges(parts[i]!, self, t.name)
+      if (e === null) break
+      edges.push(...e)
+    }
+    if (parts.slice(i).some((p) => VP_RUN.test(p))) {
+      const seg = parts.find((p, j) => j >= i && VP_RUN.test(p))!
+      t.todos.push(
+        `\`${seg}\` runs Vite Task inside the command, which \`vp run\` inlined into its graph: name the tasks it runs under dependsOn and drop it from the command`,
+      )
+      return
+    }
+    const deps = (t.task!['dependsOn'] as string[] | undefined) ?? []
+    t.task!['dependsOn'] = [...new Set([...deps, ...edges])]
+    const rest = parts.slice(i).join(' && ')
+    if (rest === '') delete t.task!['exec']
+    else exec.command = rest
+  }
+
+  /** The edges one `vp run` stands for, or null when it has none. */
+  function runEdges(segment: string, self: ProjectMeta, own: string): string[] | null {
+    const words = segment.split(/\s+/)
+    words.splice(0, words.indexOf(words[0] === 'vpr' ? 'vpr' : 'run') + 1)
+    let recursive = false
+    let workspace = false
+    const filters: string[] = []
+    const specs: string[] = []
+    for (let k = 0; k < words.length; k++) {
+      const w = words[k]!
+      if (w === '-r' || w === '--recursive') recursive = true
+      else if (w === '-w' || w === '--workspace-root') workspace = true
+      else if (w === '-F' || w === '--filter') filters.push(words[++k] ?? '')
+      else if (w.startsWith('--filter=')) filters.push(w.slice('--filter='.length))
+      else if (w === '--log' || w === '--concurrency-limit') k++
+      else if (['-v', '--verbose', '--cache', '--no-cache', '--fail-if-no-match'].includes(w))
+        continue
+      else if (w.startsWith('-')) return null
+      else specs.push(w)
+    }
+    // One task and no forwarded arguments: an edge passes none.
+    if (specs.length !== 1) return null
+    const spec = specs[0]!
+    const hash = spec.indexOf('#')
+    if (hash !== -1) {
+      const m = byName.get(spec.slice(0, hash))
+      return recursive || workspace || filters.length > 0 || m === undefined ? null : [spec]
+    }
+    let picked: ProjectMeta[]
+    if (filters.length > 0) {
+      // Package names only: pnpm's directory, glob and graph selectors are not.
+      if (filters.some((f) => !byName.has(f))) return null
+      picked = filters.map((f) => byName.get(f)!)
+    } else if (recursive) picked = [...metas]
+    else if (workspace) {
+      if (rootMeta === undefined) return null
+      picked = [rootMeta]
+    } else return defines(self, spec) && spec !== own ? [spec] : null
+    // Vite Task prunes the task's own reference (a root `build: vp run -r build`).
+    return picked
+      .filter((m) => defines(m, spec) && !(m === self && spec === own))
+      .map((m) => `${m.name}#${spec}`)
+      .sort()
   }
 
   const projects: GeneratedProject[] = []
@@ -240,6 +322,7 @@ export async function mapViteTaskWorkspace(
         task: { exec: { command } },
       })
     }
+    for (const t of tasks) inlineRuns(t, meta)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
   return { projects, notes: [] }
