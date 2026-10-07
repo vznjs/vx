@@ -42,6 +42,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   renameSync,
   writeFileSync,
 } from 'node:fs'
@@ -373,7 +374,7 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * it there", and the ignore file is created exclusively instead of probed
  * first. An existing cache costs three calls; it cost six.
  */
-function openCacheDir(cacheDir: string): string | null {
+function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
   const ignore = path.join(cacheDir, '.gitignore')
   try {
     accessSync(cacheDir, constants.W_OK)
@@ -390,7 +391,7 @@ function openCacheDir(cacheDir: string): string | null {
     // A FILE at `cacheDir` passed the `access` above; mkdir names it.
     if (code === 'ENOTDIR') makeCacheDir(cacheDir)
     if (code !== 'ENOENT') return errorText(err)
-    refuseManifestDir(cacheDir)
+    refuseManifestDir(cacheDir, workspaceRoot)
   }
   try {
     writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
@@ -456,20 +457,49 @@ const IGNORE_ALL = '*\n'
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
  * matched nothing and a changed source replayed the old output, and the
- * artifacts landed among the sources (item 997). Asked only when there is
- * no index yet, so an open cache pays nothing for it.
+ * artifacts landed among the sources (item 997). A directory that holds
+ * projects (`'packages'`) or the workspace (`'..'`, `'/'`) does the same
+ * one level up. Asked only when there is no index yet, so an open cache
+ * pays nothing for it.
  */
-function refuseManifestDir(cacheDir: string): void {
-  for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
-    if (!existsSync(path.join(cacheDir, manifest))) continue
+function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined): void {
+  const manifestIn = (dir: string): string | undefined =>
+    MANIFESTS.find((m) => existsSync(path.join(dir, m)))
+  const own = manifestIn(cacheDir)
+  if (own !== undefined) {
     throw new UserError(
-      `cache directory ${cacheDir} holds a ${manifest}: it is the workspace's or a project's own ` +
+      `cache directory ${cacheDir} holds a ${own}: it is the workspace's or a project's own ` +
         `directory, and vx would keep its index there under a \`*\` .gitignore that hides every file ` +
-        `in it from git and from the cache keys. Point \`cacheDir\` in vx.workspace.ts (or ` +
-        `--cache-dir) at a directory of its own, such as .vx/cache.`,
+        `in it from git and from the cache keys. ${OWN_DIR_HINT}`,
+    )
+  }
+  let held: string | undefined
+  if (workspaceRoot !== undefined) {
+    const rel = path.relative(cacheDir, workspaceRoot)
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) held = workspaceRoot
+  }
+  if (held === undefined) {
+    for (const entry of readdirSync(cacheDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const sub = path.join(cacheDir, entry.name)
+      if (manifestIn(sub) !== undefined) {
+        held = sub
+        break
+      }
+    }
+  }
+  if (held !== undefined) {
+    throw new UserError(
+      `cache directory ${cacheDir} holds ${held}, a project or workspace directory, and vx would keep ` +
+        `its index there under a \`*\` .gitignore that hides it from git and from the cache keys. ` +
+        OWN_DIR_HINT,
     )
   }
 }
+
+const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
+const OWN_DIR_HINT =
+  'Point `cacheDir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -658,7 +688,7 @@ export class Cache implements CacheLayer {
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
     const absent = mode === 'inspect' && !existsSync(dbFile)
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
+    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     try {
       this.db = new Database(absent ? ':memory:' : dbFile, { create: true })

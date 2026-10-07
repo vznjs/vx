@@ -7,7 +7,7 @@
 import type { Database } from 'bun:sqlite'
 import { Cache } from '../cache/index.js'
 import { formatBytes } from './format.js'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import {
   exitSignal,
   getInvocation,
@@ -70,16 +70,8 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       continue
     }
     if (a === '--format' || a.startsWith('--format=')) {
-      const fv = a === '--format' ? args[++i] : a.slice(9)
-      if (fv !== 'pretty' && fv !== 'json') {
-        return {
-          ...out,
-          error:
-            fv === undefined || fv === ''
-              ? '--format requires a value (pretty | json)'
-              : `invalid --format: ${fv} (expected pretty | json)`,
-        }
-      }
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'last')
+      if (typeof fv === 'object') return { ...out, ...fv }
       out.format = fv
       continue
     }

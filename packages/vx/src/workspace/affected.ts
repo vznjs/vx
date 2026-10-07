@@ -570,7 +570,7 @@ async function workspaceConfigChanged(
   if (config === undefined) return false
   const root = realpathSync(workspaceRoot)
   for (const file of await configImports(config)) {
-    if (set.has(path.relative(root, file).split(path.sep).join('/'))) return true
+    if (set.has(relPosix(root, file))) return true
   }
   return false
 }
@@ -613,7 +613,10 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
 /** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
   const proc = spawnGit([...cmd], workspaceRoot)
-  const stdout = await new Response(proc.stdout).text()
+  // `Response.text()` strips a leading U+FEFF, the first path's own.
+  const stdout = new TextDecoder('utf-8', { ignoreBOM: true }).decode(
+    await new Response(proc.stdout).bytes(),
+  )
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
   if (exit !== 0) {
