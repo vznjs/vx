@@ -543,15 +543,6 @@ export class Cache implements CacheLayer {
   readonly storeDir: string | undefined
 
   /**
-   * The store this open was asked for and could not use, with why: the
-   * entries went to a store inside `cacheDir` instead.
-   */
-  readonly storeFallback: string | null = null
-
-  /** Set when this open moved a workspace index's own entries out for a shared store. */
-  readonly storeMoved: { from: string; to: string } | null = null
-
-  /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
    * reports null. vx prints nothing for it: the cache is vx's to keep
@@ -817,8 +808,6 @@ export class Cache implements CacheLayer {
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
-          // Said by the open that falls back; the ones after it find it recorded.
-          if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
           storeDir = fallback
           openCacheDir(fallback)
         }
@@ -835,13 +824,11 @@ export class Cache implements CacheLayer {
             .get() != null,
       )
       if (holds) {
-        const had = this.db.prepare('SELECT 1 FROM main.entries LIMIT 1').get() != null
         this.db
           .transaction(() => {
             for (const t of STORE_TABLES) this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
           })
           .immediate()
-        if (had) this.storeMoved = { from: cacheDir, to: storeDir }
       }
     }
     this.storeDir = storeDir
@@ -2179,9 +2166,7 @@ export class Cache implements CacheLayer {
       for (const b of phantoms.values()) phantomBytes += b
       let remaining = totalRow.bytes - phantomBytes - bytesFreed
       if (remaining > maxBytes) {
-        // Exclude already-picked victims in JS, not via a SQL NOT-IN —
-        // an IN-list over tens of thousands of TTL victims would blow
-        // SQLite's bound-parameter ceiling (see flushAccessed's 900 cap).
+        // Already-picked victims are skipped in JS: they are a Set here.
         const candidates = (
           this.db
             .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
@@ -2199,9 +2184,9 @@ export class Cache implements CacheLayer {
     // Delete DB rows in a single transaction (one fsync; ON DELETE
     // CASCADE clears `output_files`) and unlink artifacts in parallel.
     // Replaces N round-trips + serialized rm with one transaction + a
-    // Promise.all over the unlinks. The IN-list is chunked at 900 like
-    // flushAccessed so a huge eviction stays under any build's
-    // bound-parameter ceiling.
+    // Promise.all over the unlinks. The hash list binds as one `json_each`
+    // parameter, so a huge eviction stays under any build's bound-parameter
+    // ceiling.
     if (dryRun) {
       const orphans = await this.orphanStats()
       return {
