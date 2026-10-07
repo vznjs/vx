@@ -4,6 +4,7 @@
 
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -367,8 +368,10 @@ async function runOnBus(
   // its tasks escape the schedule, the concurrency budget and this task's
   // cache key. The markers `taskEnv` sets on every child (exec/env.ts)
   // name the task; the check is on the root so both shapes are caught.
+  // Compared canonical: a root reached through a symlink (`run({ cwd })`,
+  // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
-  if (outerRoot !== undefined && path.resolve(outerRoot) === path.resolve(prepared.workspaceRoot)) {
+  if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
     prepared.cache.close()
     throw new UserError(
@@ -1709,4 +1712,13 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
     })
   }
   return out
+}
+
+/** `dir` with its links resolved; as written when it is gone (a stale marker). */
+function canonical(dir: string): string {
+  try {
+    return realpathSync(dir)
+  } catch {
+    return path.resolve(dir)
+  }
 }
