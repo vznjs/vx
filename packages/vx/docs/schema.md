@@ -1235,7 +1235,9 @@ A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. So
 is one whose bind would make `.git`, `.vx`, the cache directory or a
 nested project writable:
-a file grant at a single-package workspace's root binds the root.
+a file grant at a single-package workspace's root binds the root. A
+directory grant is judged as the directory, made before the judgement
+when it does not exist yet, so `dist/` or `dist/**` at that root stands.
 
 **A write grant is readable, and on Linux it reads WIDER than it looks.**
 A write path is readable too (`tsc --incremental` re-reads its own

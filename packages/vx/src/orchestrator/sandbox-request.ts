@@ -240,12 +240,18 @@ export async function sandboxRequestFor(
       ? [cacheDir]
       : []),
   ].map(toRealPath)
-  const config = wallOff(
-    resolveSandboxConfig(sandbox, node.projectDir, walls),
-    workspaceRoot,
-    walls,
-  )
+  const resolved = resolveSandboxConfig(sandbox, node.projectDir, walls)
+  // Made before the walls judge the binds: a directory grant naming nothing
+  // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
+  // a root project's was refused for `.git`.
   const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
+  let config: ResolvedSandboxConfig
+  try {
+    config = wallOff(resolved, workspaceRoot, walls)
+  } catch (err) {
+    await sweepPlaceholders(placeholders)
+    throw err
+  }
   const request: NonNullable<ExecuteRequest['sandbox']> = {
     // Only what the task declared, plus node_modules. Write paths are
     // readable too: a task that writes `dist/x` expects to read it back

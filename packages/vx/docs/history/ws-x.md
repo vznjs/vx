@@ -444,3 +444,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   a variable, clears the positional parameters, and evals the body with
   them appended. Row: `migration.test.ts` › "appends the args as text, as
   npm does: no part sees them as $1 (hunt 8)".
+- **X-61.** A write grant for a directory not yet made was judged as a
+  file, so its bind was its parent: in a single-package workspace
+  `write: ['dist/']` (or `'dist/**'`) was refused for making `.git`
+  writable, the message recommending `"dist/"` itself, and a nested
+  project's `'../../coverage/'` the same. The outputs are now made before
+  the walls judge the binds, and a refused grant's placeholders are taken
+  back. Rows: `sandbox-request.test.ts` › "a directory grant not yet made
+  is judged as the directory it names", "a refused file grant leaves no
+  placeholder behind".
