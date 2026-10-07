@@ -37,6 +37,7 @@ import {
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
+import { withLernaOrder } from './lerna.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
   dotenvCandidates,
@@ -304,7 +305,17 @@ export async function mapNxWorkspace(
   graph: NxGraph,
   opts: MapNxOptions,
 ): Promise<NxMapping> {
-  const nodeMap = graph.nodes
+  const byRel = new Map(metas.map((m) => [normRel(relPosix(root, m.dir)), m.packageJson]))
+  const nodeMap = await withLernaOrder(
+    root,
+    graph.nodes,
+    (await readNxJson(root).catch(() => null))?.json,
+    async (rel) =>
+      (byRel.get(normRel(rel)) as Record<string, unknown> | undefined) ??
+      (await Bun.file(path.join(root, rel, 'package.json'))
+        .json()
+        .catch(() => undefined)),
+  )
   const g = graph
 
   const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)

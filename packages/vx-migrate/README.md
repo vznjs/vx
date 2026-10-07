@@ -165,6 +165,10 @@ Two cached tasks on one workspace path cannot both keep their cache, and the fir
 
 `maxCacheSize` (or `NX_MAX_CACHE_SIZE`, above it as in Nx) is the run's `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention, in Nx's grammar (`10GB`, `1.5 GB`, bare bytes); `0` is no cap.
 
+### Lerna
+
+`lerna run build` (Lerna 6+ runs it on Nx's task runner) runs each package's `build` after its dependencies' `build`, unless the repo configures Nx's task dependencies: nx.json `targetDefaults` (or the legacy `targetDependencies`), or an `nx` key in the `package.json` of a package that has the target. Beside a `lerna.json` with neither, each target's `dependsOn` is its `^` self (`build` → `^build`), in place of any other, as Lerna hands it to Nx; the exported graph holds no such edge. A migration writes the same.
+
 ### Project tags
 
 An Nx project's `tags` are its vx `tags`, so `vx run build --filter tag:scope:web` (or Nx's `--projects tag:scope:web`) selects what `nx run-many -t build -p tag:scope:web` does. A package whose `vx.config` declares `tags` keeps its own. A blank tag is dropped (vx refuses one).
