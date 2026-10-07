@@ -157,6 +157,37 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
   )
 
   it(
+    'a never-ready server whose shell dies on SIGTERM is dead before the task returns',
+    async () => {
+      // The shell exits on the TERM at once; its background server ignores
+      // it and holds its port until the SIGKILL a grace later. The task
+      // returned on the shell's exit, so the server outlived run() into the
+      // next `vx watch` cycle.
+      const dir = await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "sh -c \\"trap '' TERM; exec sleep 30\\" & echo $! > pid.txt; wait",
+                timeout: 1000,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+      expect(r.outcomes[0]!.notReady).toBe('timeout')
+      const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
+      expect(isAlive(pid)).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'never-matching readyWhen + timeout → run fails fast, child is killed',
     async () => {
       const dir = await addProject(

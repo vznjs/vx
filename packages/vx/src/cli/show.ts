@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../orchestrator/index.js'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
@@ -21,7 +21,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 
-export interface ShowArgs {
+interface ShowArgs {
   target?: string
   format: 'pretty' | 'json'
   error?: string
@@ -47,10 +47,9 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else out.target = a
 
     if (format !== undefined) {
-      if (format !== 'pretty' && format !== 'json') {
-        return { ...out, error: '--format must be pretty or json' }
-      }
-      out.format = format
+      const fv = formatValue(format, 'show')
+      if (typeof fv === 'object') return { ...out, ...fv }
+      out.format = fv
     }
   }
   return out
