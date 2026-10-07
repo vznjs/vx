@@ -1367,13 +1367,14 @@ when its task next asks for its key (below).
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'config_evals_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
 -- The config-evaluation cache (§ Config evaluation cache): the validated,
 -- JSON-serialised result of a provably pure config, keyed by everything
--- the evaluation could have observed. Machine-local.
+-- the evaluation could have observed. Machine-local. Rows not written in
+-- 30 days are swept at most once a day (`config_evals_swept_at`).
 CREATE TABLE config_evals (
   key        TEXT PRIMARY KEY,
   json       TEXT NOT NULL,

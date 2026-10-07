@@ -27,7 +27,7 @@ and key derivation logic live here.
   object format.
 - `config-evals.ts` — `ConfigEvalTable`: the `config_evals` /
   `config_closures` tables behind the `ConfigEvalStore` contract, with
-  their retention.
+  their retention (a daily sweep: no index covers `created_at`).
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
