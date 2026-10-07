@@ -439,6 +439,8 @@ export async function pickTask(
   cwd: string,
   io: { input?: NodeJS.ReadableStream; output?: NodeJS.WritableStream } = {},
   load: CliLoadOptions = {},
+  /** The projects `--filter` / `--affected` selected; every project when absent. */
+  only?: ReadonlySet<string>,
 ): Promise<PickedTask | null | 'interrupted'> {
   const projects = await loadWorkspaceProjects(cwd)
   // The staged load: a task a `project` plugin gave a config-less package
@@ -446,6 +448,7 @@ export async function pickTask(
   const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
   const entries: PickedTask[] = []
   for (const meta of projects) {
+    if (only !== undefined && !only.has(meta.name)) continue
     const config = staged.get(meta.name)?.config
     if (config === undefined) continue
     const taskNames = Object.keys(config.tasks ?? {})
@@ -455,6 +458,12 @@ export async function pickTask(
       const desc = config.tasks?.[t]?.description
       entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })
     }
+  }
+  if (entries.length === 0 && only !== undefined) {
+    process.stderr.write(
+      `vx run: no tasks declared in the selected projects (${[...only].sort().join(', ')})\n`,
+    )
+    return null
   }
   if (entries.length === 0) {
     process.stderr.write(

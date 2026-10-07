@@ -164,6 +164,51 @@ describe('the picker with stdout redirected', () => {
   }, 20_000)
 })
 
+// `--filter` scopes the menu as it scopes a bare task: the picker listed
+// every project, and an anchored pick ran outside the filter.
+describe('the picker under --filter', () => {
+  it('lists only the selected projects and runs the pick', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-filter-' })
+    try {
+      for (const name of ['alpha', 'beta']) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: { exec: { command: 'echo BUILT-${name}' } } } }`,
+        })
+      }
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', '--filter', 'beta', '--output-logs=full'],
+        {
+          cwd: root,
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+          terminal: {
+            data: (term, data) => {
+              screen += new TextDecoder().decode(data)
+              if (!typed && screen.includes('Pick a task [')) {
+                typed = true
+                term.write('1\r')
+              }
+            },
+          },
+        },
+      )
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const lines = screen.split(/\r?\n/)
+      expect({
+        code,
+        menu: lines.filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim()),
+        ran: lines.filter((l) => l.startsWith('BUILT-')),
+      }).toEqual({ code: 0, menu: ['1. beta#build'], ran: ['BUILT-beta'] })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
 describe('a vx that paints its own output on a terminal', () => {
   let root: string
   beforeEach(async () => {

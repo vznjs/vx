@@ -110,7 +110,8 @@ the project's upstream workspace deps run too. Override with `--all`,
 If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
-  across the workspace, prints `description` next to each, prompts
+  across the workspace (only the selected projects' under `--filter` /
+  `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
   for a number, runs the chosen one. The menu and prompt go to stderr,
   so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
@@ -2088,7 +2089,7 @@ copy to the source.
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
-| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project                                                                                         |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)                               |
 | nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
 | nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
 | nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
@@ -2498,8 +2499,9 @@ their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
-`vx last --list` prints the N most recent runs (default 10) with their
-run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
+`vx last --list` prints the N most recent runs (default 10), one per
+line in aligned columns (verdict, start, run id, counts, duration,
+command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last <runId>` replays a

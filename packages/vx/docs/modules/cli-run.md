@@ -123,7 +123,9 @@ When `tasks.length === 0`:
 picker; tasks here: …)`: `taskNamesHere(cwd)` (`cli/task-verb.ts`) names
   the cwd project's tasks, else every project's, twelve then `and N more`;
   with no workspace, `vx run <task>, e.g. vx run build`.
-- TTY → `pickTask(cwd)` loads every project's tasks, prints a numbered
+- TTY → `pickTask(cwd)` loads every project's tasks (only the projects
+  `--filter` / `--affected` select, through `scopeFilters` and
+  `resolveFilters`, the scope a bare task gets), prints a numbered
   list with `description` next to each id on stderr (a redirected stdout
   hid it), reads a 1-based index via `readline/promises`, emits one
   anchored `pkg#task` into `tasks`.
