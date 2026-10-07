@@ -1040,8 +1040,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // 258) — and an exit above 128 is a signal's number and nothing
     // about what sent it (259). One frame line names the rule. A spawn that
     // threw ran no shell: its 127 is vx's, and the line would send the
-    // reader after a command that exists (A-41).
-    if (!res.timedOut && res.spawnFailed !== true) {
+    // reader after a command that exists (A-41). A run's stop killed it
+    // itself: the SIGKILL past the grace read as the OOM killer's.
+    if (!res.timedOut && res.spawnFailed !== true && args.stopSignal?.aborted !== true) {
       const verdict = shellVerdict({
         code,
         command: step.command,

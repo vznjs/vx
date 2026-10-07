@@ -517,3 +517,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-85.** A task that ignored the stop's SIGTERM and died to vx's
+  SIGKILL past the grace was reported `aborted`, and its frame still
+  carried `[vx] exit 137 is how the shell reports a death by SIGKILL:
+… the kernel's OOM killer …`, sending the reader after memory for a
+  kill vx sent. The verdict line is now left out while the run is
+  stopping. Row: `signal-handling.test.ts` › "a child that ignores
+  SIGTERM is SIGKILLed after the grace; vx still exits 143".
