@@ -1061,7 +1061,9 @@ Workspace-root-relative globs for outputs the task writes OUTSIDE its
 project dir (e.g. a root-level generated file). Same capture / restore
 / wipe semantics as `files`, anchored at the workspace root; packed
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
-namespace so project and workspace outputs never collide.
+namespace so project and workspace outputs never collide. A project
+`outputs.files` glob under a top-level `workspace-outputs/` is refused
+at load: that name is the namespace.
 
 ```ts
 outputs: {
@@ -1830,6 +1832,7 @@ lists the messages a user meets most:
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's `package.json` or its own `vx.config.*` (`**`, `*.json`): the clean before a run would delete them. A `!` entry that takes the file back (`!package.json`) lets it load.             |
+| `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |

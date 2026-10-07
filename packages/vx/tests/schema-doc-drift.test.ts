@@ -337,6 +337,18 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    'cache.outputs.files: "<glob>" is under workspace-outputs/',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: { inputs: { files: [] }, outputs: { files: ['workspace-outputs/**'] } },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs.files: every entry is a negation, which selects NOTHING',
     () =>
       validated({

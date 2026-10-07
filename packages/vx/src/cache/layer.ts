@@ -329,7 +329,8 @@ export interface PruneResult {
  * the full `workspace-outputs/<rel-to-root>` tar entry name as the
  * discriminator — least-invasive row format, no schema change. A
  * project output dir literally named `workspace-outputs/` would
- * collide with the namespace; the name is reserved.
+ * collide with the namespace; the name is reserved, and a project
+ * output glob under it is refused at load (config-schema.ts).
  */
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
