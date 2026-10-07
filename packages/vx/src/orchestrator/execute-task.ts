@@ -523,6 +523,20 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Ready only once the stop had landed: a trap that prints the marker on
+  // the way down, or a race with the signal. The stop is killing it (it
+  // is in `liveChildren`), and it served nobody, as a one-shot that exits
+  // 0 on the stop is aborted (item 962).
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal!.reason)),
+      durationMs: spawn.readyMs(),
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   args.persistentRegistry?.set(node.id, spawn.child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot)) args.fingerprintWatch?.wrote()

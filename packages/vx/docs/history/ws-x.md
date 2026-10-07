@@ -508,6 +508,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-86.** A server whose `readyWhen` matched only after the run's stop
+  (its `trap` printed the marker on the way down, or the line raced the
+  signal) was reported `success` and registered, so a Ctrl-C'd run's
+  footer counted it a success, where a one-shot that exits 0 on the
+  stop is `aborted` (item 962). It is now `aborted`, and left to the
+  teardown already killing it. Row: `abort.test.ts` › "a server that
+  turns ready after the run stops is aborted, not a success".
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash

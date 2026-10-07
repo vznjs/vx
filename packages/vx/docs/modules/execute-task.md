@@ -65,7 +65,10 @@ anything beneath it changes.
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
    return `failed` with the captured streams.
-6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
+6. On resolve → return `success` with `durationMs = spawn.readyMs()`,
+   unless the run's stop has landed: a server that matched `readyWhen`
+   only on the way down (a trap that prints the marker) is `aborted`,
+   as a one-shot that exits 0 on the stop is, and is not registered.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches.

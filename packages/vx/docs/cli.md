@@ -1006,7 +1006,8 @@ the kill's, 143 or 137 after the grace, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
-`aborted`, not failed, as any task the stop kills.
+`aborted`, not failed, as any task the stop kills; so is one that
+became ready only after the stop.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes

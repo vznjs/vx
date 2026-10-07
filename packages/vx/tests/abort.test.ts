@@ -262,6 +262,42 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // A server whose readyWhen matches only once the stop has landed (its
+  // trap prints the marker on the way down) read `success`, where a
+  // one-shot that exits 0 on the stop is aborted (item 962).
+  it('a server that turns ready after the run stops is aborted, not a success', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        srv: { exec: {
+          command: "trap 'echo READY; exit 0' TERM; echo $$ > pid.txt; while :; do sleep 0.05; done",
+          persistent: { readyWhen: 'READY' },
+        } },
+        e2e: { dependsOn: ['srv'], exec: { command: 'true' } },
+      } }`,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['e2e'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    ac.abort()
+    const r = await running
+    expect(
+      r.outcomes.map((o) => [o.node.id, o.status]).sort((a, b) => (a[0]! < b[0]! ? -1 : 1)),
+    ).toEqual([
+      ['app#e2e', 'aborted'],
+      ['app#srv', 'aborted'],
+    ])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   // C-65: probes are the run's own. Two runs in one process (an embedder's
   // daemon, the `inflight` case): stopping one kills its probe, not the
   // other's, whose task still answers.
