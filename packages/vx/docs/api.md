@@ -676,9 +676,13 @@ first that fails, as npm stops. The parts sit in a function the
 forwarded `--` args are appended to, and only the body takes them, as
 npm appends them to the script and never to its hooks. A plain ` && `
 join handed them to the post hook, and `test -f x && echo A; echo B` ran
-`echo B` after a failed pre hook and went green (item 905). Each part
-ends on its own line, so a trailing `# comment` cannot swallow the
-paren. A script with no hooks is its body, verbatim.
+`echo B` after a failed pre hook and went green (item 905). npm appends
+them as TEXT: no part sees them as `$1`…, so the function quotes them
+into `vx_a`, clears its positional parameters, and evals the body with
+`vx_a` after it; `"$@"` on the body made a script's `$1` the first
+forwarded arg and its `$*` print them twice. Each part ends on its own
+line, so a trailing `# comment` cannot swallow the paren. A script with
+no hooks is its body, verbatim.
 
 ```ts
 export function foldScriptHooks(
