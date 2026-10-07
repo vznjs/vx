@@ -715,6 +715,24 @@ describe('archive restore — mixed valid + malicious entries', () => {
     expect(await readFile(path.join(dest, 'dist2', 'keep.txt'), 'utf8')).toBe('theirs')
   })
 
+  it('abort prunes a created chain whose deeper directory a later entry created', async () => {
+    // `dist/` is created for entry 1, `dist/sub/` for entry 2. Pruned in
+    // staging order, `dist/` was tried while `dist/sub/` still held it and
+    // stayed behind, empty.
+    const body = makeDataBlock(new TextEncoder().encode('ok\n'))
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/a.txt', size: 3, typeFlag: '0' }),
+      body,
+      makeHeader({ name: 'outputs/dist/sub/b.txt', size: 3, typeFlag: '0' }),
+      body,
+      makeHeader({ name: 'outputs/../evil.txt', size: 3, typeFlag: '0' }),
+      body,
+      EOF_BLOCKS,
+    ])
+    await expect(restore(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
+    expect(await readdir(dest)).toEqual([])
+  })
+
   it('abort prunes the target a dangling link led it to create, and keeps the link', async () => {
     // Item 748: an entry under a dangling in-project link is written
     // through it, its target created at the link's resolved path. The

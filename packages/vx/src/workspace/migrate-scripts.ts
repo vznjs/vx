@@ -41,6 +41,7 @@ import {
   cacheTodo,
   pruneOrphanPersistentNotes,
 } from './migration.js'
+import { relPosix } from '../util/index.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
 // serialises the two for nothing (the init walkthrough, 2026-09-04).
@@ -127,10 +128,24 @@ function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
       : manager === 'npm'
         ? !set('ignore-scripts', 'true')
         : manager === 'pnpm'
-          ? !set('enable-pre-post-scripts', 'false') &&
-            !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
+          ? !set('enable-pre-post-scripts', 'false') && !pnpmSkipsHooks(read('pnpm-workspace.yaml'))
           : true
   return runs ? manager : null
+}
+
+/**
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml`, read as pnpm reads
+ * it, as YAML: a line regex missed `false # hooks off` and a flow mapping,
+ * which pnpm 10 honours, and folded hooks pnpm does not run.
+ */
+function pnpmSkipsHooks(yaml: string | undefined): boolean {
+  if (yaml === undefined) return false
+  try {
+    const parsed = Bun.YAML.parse(yaml) as { enablePrePostScripts?: unknown } | null
+    return parsed?.enablePrePostScripts === false
+  } catch {
+    return false
+  }
 }
 
 /** The package manager that owns a directory, and the directory that says so. */
@@ -789,7 +804,7 @@ export function migrateScripts(
   } else if (clash !== undefined && outsideDir !== undefined && unnamedMaps().length > 0) {
     const would = unnamedMaps()
     notes.push(
-      `${clash.name} (the workspace root) not mapped: ${path.relative(outsideDir, clash.dir).split(path.sep).join('/')} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
+      `${clash.name} (the workspace root) not mapped: ${relPosix(outsideDir, clash.dir)} has the same "name", and vx names a project by it; rename the root's and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName === 'package.json' && outsideDir !== undefined && unnamedMaps().length > 0) {
     // react's nameless root: "its scripts run the workspace" was not why,

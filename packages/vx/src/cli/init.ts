@@ -11,7 +11,7 @@ import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
-import { isUserError, UserError } from '../util/index.js'
+import { isUserError, relPosix, UserError } from '../util/index.js'
 import {
   applyMigration,
   discoverProjects,
@@ -379,7 +379,7 @@ function namelessNotes(root: string, dirs: readonly string[]): string[] {
         Object.values(scripts).some((v) => typeof v === 'string' && v !== '')
       )
     })
-    .map((dir) => path.relative(root, dir).split(path.sep).join('/'))
+    .map((dir) => relPosix(root, dir))
     .sort()
     // The root's own manifest is the empty relative path: a nameless
     // single-package repo read `not mapped:  — its package.json…` (M-54).
