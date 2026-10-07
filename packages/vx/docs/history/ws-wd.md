@@ -1,8 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-14.** `vx watch` re-read the watched set after a config edit, but
-  not after an edit to a module the config imports from inside its own
-  project: a `workspaceFiles` input added in `./inputs.mjs` ran one cycle,
-  and the root file it named was ignored until a restart. Now that import
-  counts as the config. Row: `tests/watch-loop-members.test.ts` › "a module
-  the config imports from inside its project reshapes the set like the config".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
