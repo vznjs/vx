@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
-import { UserError } from '../src/util/index.js'
+import { relPosix, UserError } from '../src/util/index.js'
 
 let top: string
 let root: string
@@ -32,7 +32,7 @@ afterEach(async () => {
 const list = async (globs: string[]) => {
   await manifest(root, { name: 'r', workspaces: globs })
   return listProjects(await loadWorkspace(root)).then(
-    (ps) => ps.map((p) => path.relative(root, p.dir)),
+    (ps) => ps.map((p) => relPosix(root, p.dir)),
     (e: unknown) => e as Error,
   )
 }
