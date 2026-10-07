@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v39'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1730,8 +1730,10 @@ this doc (history), `docs/modules/cache.md` (the quoted version, and the
 key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
 version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
-was not), the cache tests, and `tests/contract/stored-format.json`
-(regenerated, above).
+was not), the cache tests, `tests/contract/stored-format.json`
+(regenerated, above), and
+`packages/vx-docs/src/content/docs/guides/upgrading.md` (the bump's
+breaking footer).
 
 ### History
 

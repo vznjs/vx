@@ -2222,7 +2222,7 @@ workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
-cache versions:   keys vx-cache-v39 · index schema v32
+cache versions:   keys vx-cache-v40 · index schema v32
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
