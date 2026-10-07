@@ -293,8 +293,8 @@ export interface ScheduleOptions {
    * to start on this machine, with the ids of the exec-tier tasks running
    * here right now (added on dispatch, so two asks in one tick see each
    * other). `false` parks the task until something finishes. Undefined →
-   * count-only, the legacy path byte for byte. Restore-tier hits and
-   * pooled tasks hold no local resources and are never asked.
+   * count-only, the legacy path byte for byte. Restore-tier hits, pooled
+   * tasks and groups hold no local resources: never asked, never listed.
    */
   admit?: (id: string, running: ReadonlySet<string>) => boolean
   /**
@@ -582,8 +582,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
   }
   // The policy sees exec-tier local tasks only; a restore is a tar
-  // extract and a pooled task runs on someone else's capacity.
-  const local = (id: string): boolean => !inRestoreTier(id) && poolOf?.(id) === undefined
+  // extract, a pooled task runs on someone else's capacity, and a group
+  // runs nothing, so a packing policy that counted one parked work for it.
+  const local = (id: string): boolean =>
+    !inRestoreTier(id) && poolOf?.(id) === undefined && !isGroupTask(nodes.get(id) as TaskNode)
   const admits = (id: string): boolean => !local(id) || admitPolicy!(id, running)
   // With no policy nothing reads `running`, so nothing is tracked: the
   // count-only dispatch allocates no closure and touches no set per task.

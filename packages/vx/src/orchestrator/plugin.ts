@@ -142,9 +142,9 @@ export interface VxPlugin {
    * many times per run, so it must be cheap and synchronous; a throw, or
    * an answer that is a Promise, is reported once and the plugin admits
    * from then on — a policy never
-   * breaks a run. Restore-tier hits and tasks on an executor pool hold no
-   * local resources and are never asked. When several plugins answer, all
-   * must admit. Core keeps no notion of what a task needs: a plugin that
+   * breaks a run. Restore-tier hits, tasks on an executor pool and groups
+   * hold no local resources: never asked, never in `ctx.running`. When
+   * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
    * packs memory or CPU learns or declares the numbers itself
    * (`@vzn/vx-schedule-history` packs what past executions used).
    */

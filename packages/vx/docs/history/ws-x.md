@@ -524,3 +524,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-96.** An `admit` policy was asked about group tasks and saw a
+  dispatched group in `ctx.running`, so a packing policy could park real
+  work behind a group that runs nothing. Groups now bypass `admit` and
+  are never listed. Row: `scheduler.test.ts` › "a group is never asked
+  by an admit policy and never listed as running".
