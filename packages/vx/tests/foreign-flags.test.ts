@@ -58,6 +58,11 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
   ],
   [['--projects=a'], ['--filter', 'a']],
   [
+    ['-p', '!b,a'],
+    ['--filter', '*', '--filter', '!b', '--filter', 'a'],
+  ],
+  [['--projects=a,!b'], ['--filter', 'a', '--filter', '!b']],
+  [
     ['--exclude', 'a,b'],
     ['--filter', '!a', '--filter', '!b'],
   ],

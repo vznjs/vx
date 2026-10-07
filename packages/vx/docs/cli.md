@@ -2082,7 +2082,7 @@ copy to the source.
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
-| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project                                                                                         |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)                               |
 | nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
 | nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
 | nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
