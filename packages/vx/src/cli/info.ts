@@ -5,7 +5,7 @@
 // too; this file parses the flags and renders the rows.
 
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
-import { flagHint, refusedWord, seeHelp } from './help.js'
+import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 import { MIN_BUN } from '../util/index.js'
@@ -22,10 +22,8 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--format' || a?.startsWith('--format=')) {
-      const v = a === '--format' ? args[++i] : a.slice('--format='.length)
-      if (v !== 'pretty' && v !== 'json') {
-        return { ...out, error: `--format must be pretty or json${seeHelp('info')}` }
-      }
+      const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'info')
+      if (typeof v === 'object') return { ...out, ...v }
       out.format = v
       continue
     }

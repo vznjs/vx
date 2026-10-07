@@ -7,7 +7,7 @@
 
 import path from 'node:path'
 import { Cache } from '../cache/index.js'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
@@ -70,17 +70,8 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       continue
     }
     if (a === '--format' || a.startsWith('--format=')) {
-      const fv = a === '--format' ? args[++i] : a.slice(9)
-      if (fv !== 'pretty' && fv !== 'json') {
-        // An omitted value reads as empty, not as the literal word "undefined".
-        return {
-          ...out,
-          error:
-            fv === undefined || fv === ''
-              ? '--format requires a value (pretty | json)'
-              : `invalid --format: ${fv} (expected pretty | json)`,
-        }
-      }
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'why')
+      if (typeof fv === 'object') return { ...out, ...fv }
       out.format = fv
       continue
     }
