@@ -187,3 +187,34 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
     ])
   })
 })
+
+describe('resolveFilters — `<name>...[<since>]` over a task edge', () => {
+  let ws = ''
+  beforeAll(async () => {
+    ws = realpathSync(await makeWorkspace({ prefix: 'vx-select-since-deps-' }))
+    await addProject(ws, 'app', {
+      config: `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+    })
+    // e2e depends on app through its config alone, no manifest entry.
+    await addProject(ws, 'e2e', {
+      config: `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['app#build'] } } }\n`,
+    })
+    const git = gitIn(ws)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await Bun.write(path.join(ws, 'packages', 'app', 'new.txt'), 'x\n')
+  })
+  afterAll(async () => {
+    await rm(ws, { recursive: true, force: true })
+  })
+
+  it('selects the named project when a task-edge dependency changed', async () => {
+    // `...[HEAD]` selected e2e and `e2e...[HEAD]` did not: the walk read a
+    // package graph built without the config edges.
+    const { value } = await quiet(() => resolveFilters(ws, ['e2e...[HEAD]']))
+    expect('names' in value ? value.names : value).toEqual(['e2e'])
+    // CONTROL: e2e itself changed nothing.
+    const own = (await quiet(() => resolveFilters(ws, ['e2e[HEAD]']))).value
+    expect(own).toEqual({ empty: expect.stringMatching(/^nothing affected since HEAD/) })
+  })
+})

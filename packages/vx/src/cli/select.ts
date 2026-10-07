@@ -243,7 +243,11 @@ export async function resolveFilters(
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) }
   }
-  const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // `a...[ref]` walks dependents too: without the config edges it missed
+  // a dependency named only by `dependsOn`.
+  const walksGraph = parsed.some(
+    (f) => f.withDeps || f.withDependents || f.onlyDeps || f.sinceViaDeps === true,
+  )
   // A filter that diffs against git starts the run's whole-tree walk now:
   // the diff reads its untracked files from it (one walk where it spawned
   // its own), and the run reuses it with the discovery (I-26).

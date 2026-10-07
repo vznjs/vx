@@ -522,3 +522,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   pnpm skips a falsy list. It now defers to `package.json` as a file
   with no `packages:` does (item 984). Row: `workspace.test.ts` › "an
   empty `packages:` key defers to package.json, as pnpm reads it".
+- **X-75.** `--filter 'e2e...[HEAD]'` selected nothing when e2e's only
+  link to the changed `app` was a config `dependsOn: ['app#build']`,
+  while `...[HEAD]` selected e2e: the selection loaded the configs' task
+  edges for `...` walks but not for `<name>...[ref]`, whose dependents
+  walk then read the manifest graph alone. Row: `select.test.ts` ›
+  "selects the named project when a task-edge dependency changed".
