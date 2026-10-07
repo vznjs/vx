@@ -426,6 +426,9 @@ Forwarded args are folded into the cache key — different args produce
 different cache entries. They scope to user-requested tasks only;
 dependsOn-pulled deps don't see them (so upstream cache identity
 stays clean).
+A group (a task with no command) takes none, so a request that names
+only groups is refused (`args after \`--\` reach no task`) rather
+than run with the args unheard.
 
 ### Flags
 
