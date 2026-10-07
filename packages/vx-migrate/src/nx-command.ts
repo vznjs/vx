@@ -40,6 +40,8 @@ interface NxCommandContext {
   readonly projectRel: string
   /** The Nx project name, what `{projectName}` expands to. */
   readonly projectName: string
+  /** Whether a vx task runs Nx project `project`'s `target`: what a leading `nx <target> <project>` may become. */
+  readonly isTarget?: (project: string, target: string) => boolean
 }
 
 /** The line `nx-env --ready-when` prints once every string is seen (`READY` in nx-env.cjs). */
@@ -60,7 +62,17 @@ export interface RunCommandsLine {
   readonly readyAll?: readonly string[]
   /** `envFile` as declared: workspace-root-relative, or absolute. */
   readonly envFile: string | undefined
+  /**
+   * The Nx targets the line's leading `nx <target> <project>` /
+   * `nx run <project>:<target>` commands ran, taken out of the line: each
+   * is a dependency edge instead.
+   */
+  readonly nxCalls?: readonly { readonly project: string; readonly target: string }[]
 }
+
+/** `nx <target> <project>` or `nx run <project>:<target>`, through a package runner or not, with nothing else. */
+const NX_CALL =
+  /^(?:(?:npx|bunx|pnpm(?: exec)?|yarn)\s+)?nx\s+(?:run\s+([\w@./-]+):([\w:.-]+)|([\w:.-]+)\s+([\w@./-]+))$/
 
 /** The options run-commands consumes itself; every other one is forwarded to each command. */
 const PROP_KEYS: ReadonlySet<string> = new Set([
@@ -306,8 +318,6 @@ export function mapRunCommands(
       'nx:run-commands: per-command `prefix` / `color` output decoration is not reproduced',
     )
   }
-  if (entries.length === 0) return { command: NOOP, env, readyWhen: undefined, envFile }
-
   const argsOption = Array.isArray(options['args'])
     ? options['args'].join(' ')
     : typeof options['args'] === 'string'
@@ -327,6 +337,27 @@ export function mapRunCommands(
       : typeof options['forwardAllArgs'] === 'boolean'
         ? options['forwardAllArgs']
         : true
+
+  // A command that runs another target under Nx, ahead of the rest of a
+  // serial line (ngrx's `build` opens with `nx build-package <project>`),
+  // ran Nx inside the task and kept two cached tasks on one output with no
+  // edge between them; as an edge, the target runs first as Nx ran it. One
+  // Nx would hand options or arguments to stays a command.
+  const nxCalls: { project: string; target: string }[] = []
+  if ((!parallel || entries.length === 1) && readyWhen.length === 0 && ctx.isTarget) {
+    while (entries.length > 0) {
+      const e = entries[0]!
+      const m = NX_CALL.exec(e.command.trim())
+      if (m === null || (forwardAll(e) && (unknown.length > 0 || argsOption))) break
+      const project = m[1] ?? m[4]!
+      const target = m[2] ?? m[3]!
+      if (!ctx.isTarget(project, target)) break
+      nxCalls.push({ project, target })
+      entries.shift()
+    }
+  }
+  const calls = nxCalls.length > 0 ? { nxCalls } : {}
+  if (entries.length === 0) return { command: NOOP, env, readyWhen: undefined, envFile, ...calls }
 
   const commands: Interpolated[] = []
   let named = false
@@ -384,7 +415,7 @@ export function mapRunCommands(
   const only = commands.length === 1 ? commands[0]! : undefined
   if (only !== undefined && only.runtime === 'append' && only.baked.length === 0) {
     const line = only.tail === undefined ? only.text : `${only.text} ${only.tail}`
-    return { command: `${cd}${line}`, env, readyWhen: pattern, envFile, ...ready }
+    return { command: `${cd}${line}`, env, readyWhen: pattern, envFile, ...ready, ...calls }
   }
   // A subshell per command, as Nx gives each a shell of its own; a comment
   // in one must not swallow the `)` that closes it.
@@ -437,6 +468,7 @@ export function mapRunCommands(
     readyWhen: pattern,
     envFile,
     ...ready,
+    ...calls,
   }
 }
 
