@@ -1500,7 +1500,8 @@ interface WorkspaceRules {
   `VX_CACHE_DIR`, or by `--cache-dir`, the directory holds the whole
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
-  root; absolute paths are used as-is. `vx run`, `vx cache prune`,
+  root, `~/` against the home directory; absolute paths are used
+  as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
