@@ -30,6 +30,8 @@ export {
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
 export {
+  addedInput,
+  type InputListing,
   cleanOutputs,
   cleanWorkspaceOutputs,
   declaresInput,

@@ -453,3 +453,19 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   back. Rows: `sandbox-request.test.ts` › "a directory grant not yet made
   is judged as the directory it names", "a refused file grant leaves no
   placeholder behind".
+- **X-62.** A file added under a task's input glob while its command ran
+  was read by the command and folded by nothing: the re-check before a
+  save looked only at the files the key folded, so the output was saved
+  under the old key and replayed as a green hit once the file was gone
+  (`vx watch` too, through the same save). The save now also looks for
+  an added input (`addedInput`): the listing's directories a glob
+  reaches are `lstat`ed, one whose ctime moved since the listing is
+  read, and a new matching name or unlisted directory is asked of
+  `git ls-files`; a literal input absent from the key and present now
+  is asked too. The entry is withheld with the changed-after-key line
+  naming the file. Blind to a file added inside a directory that held
+  no listed file and was not itself created mid-run. Cost on a forced
+  1,000-task save run: `miss: recheck inputs` summed 28–37 ms → 59–65
+  ms (~30 µs a save, no git spawn); warm run unchanged (min 1055 →
+  979 ms, A/A 915, 15 rounds, noisy box). Rows: `inputs-moved.test.ts`
+  › "an input file added during the run" (three rows and a control).

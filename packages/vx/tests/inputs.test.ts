@@ -853,7 +853,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     expect(await resolve({ files: ['**/*'] }, git, files)).toEqual(['src.ts'])
     expect(files.size).toBe(1)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     expect(await resolve({ files: ['**/*'] }, git, files)).toEqual([
       path.relative(projectDir, '/planted.ts'),
     ])
@@ -899,7 +899,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     const files: ProjectFilesCache = new Map()
     await resolve({ files: ['**/*'] }, git, files)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     // Same project, same snapshot, a narrower glob: a different question.
     expect(await resolve({ files: ['src.ts'] }, git, files)).toEqual(['src.ts'])
     // And the same glob with the file declared as this task's own output —
@@ -912,7 +912,7 @@ describe('resolveInputs — gitFilesCache memoization', () => {
     const files: ProjectFilesCache = new Map()
     await resolve({ files: ['**/*'] }, git, files)
     const [key, entry] = [...files][0]!
-    files.set(key, { snapshot: entry.snapshot, result: ['/planted.ts'] })
+    files.set(key, { ...entry, result: ['/planted.ts'] })
     // What a mid-run write does: the project's snapshot is replaced (a new
     // array, even for the same contents), so the planted list must NOT come
     // back — this is the half that keeps a task from keying on a file set

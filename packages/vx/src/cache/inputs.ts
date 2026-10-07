@@ -24,6 +24,7 @@ import {
   anyTaskGlob,
   asTrees,
   isExecutableMissing,
+  isInstalledPath,
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
@@ -35,6 +36,7 @@ import {
   UserError,
 } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
+import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the
@@ -93,6 +95,8 @@ const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
 export interface ResolvedInputs {
   files: string[]
+  /** What `files` was filtered from, for {@link addedInput}. */
+  listings: InputListing[]
   envValues: Array<[name: string, value: string | undefined]>
   runtimeValues: Array<[command: string, output: string]>
   workspaceRuntimeValues: Array<[command: string, output: string]>
@@ -177,7 +181,7 @@ export type ProjectFilesCache = Map<
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const projectFiles = await resolveFiles({
+  const { files: projectFiles, listing } = await resolveFiles({
     projectDir: args.projectDir,
     workspaceRoot: args.workspaceRoot,
     files: args.inputs?.files,
@@ -187,15 +191,18 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
   })
   let files = projectFiles
+  const listings = listing === undefined ? [] : [listing]
   const wsDecl = args.inputs?.workspaceFiles
   if (wsDecl !== undefined && wsDecl.length > 0) {
-    const wsFiles = await resolveWorkspaceFiles({
+    const ws = resolveWorkspaceFiles({
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: wsDecl,
       ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.workspaceFilesCache !== undefined ? { memo: args.workspaceFilesCache } : {}),
     })
+    if (ws !== undefined) listings.push(ws.listing)
+    const wsFiles = ws === undefined ? [] : await ws.files
     // Dedupe: when the project dir IS the workspace root (or a glob
     // overlaps), the same absolute path can arrive via both lists —
     // it must contribute to the key exactly once.
@@ -228,6 +235,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
         ])
   return {
     files,
+    listings,
     envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
     runtimeValues,
     workspaceRuntimeValues,
@@ -245,13 +253,13 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
  * codegen); the hard boundary continues to apply to project-relative
  * `files` globs only.
  */
-async function resolveWorkspaceFiles(args: {
+function resolveWorkspaceFiles(args: {
   workspaceRoot: string
   workspaceFiles: readonly string[]
   ownWorkspaceOutputs: readonly string[]
   gitFilesCache?: GitFilesCache
   memo?: WorkspaceFilesCache
-}): Promise<string[]> {
+}): { files: Promise<string[]>; listing: InputListing } | undefined {
   const positive: string[] = []
   const negative: string[] = []
   refuseOneAlternativeBrace(args.workspaceFiles, 'workspaceFiles')
@@ -259,7 +267,7 @@ async function resolveWorkspaceFiles(args: {
     if (entry.startsWith('!')) negative.push(entry.slice(1))
     else positive.push(entry)
   }
-  if (positive.length === 0) return []
+  if (positive.length === 0) return undefined
 
   const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
   // A path the task's own outputs take back with `!` is no output, so it
@@ -285,20 +293,30 @@ async function resolveWorkspaceFiles(args: {
     args.memo === undefined
       ? undefined
       : JSON.stringify([positive, negative, args.ownWorkspaceOutputs])
+  let isPositive: ((rel: string) => boolean) | undefined
+  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel)
+  const listing: InputListing = {
+    root: args.workspaceRoot,
+    listed: gitFiles,
+    isInput: (rel) => (isPositive ??= anyTaskGlob(asTrees(positive)))(rel) && !excluded(rel),
+    nested: () => false,
+    ...reachOf(positive),
+  }
   if (memoKey !== undefined) {
     const hit = args.memo!.get(memoKey)
-    if (hit !== undefined && hit.snapshot === gitFiles) return hit.result
+    if (hit !== undefined && hit.snapshot === gitFiles) return { files: hit.result, listing }
   }
+  isPositive ??= anyTaskGlob(asTrees(positive))
   const result = resolveWorkspaceFilesOver(
     args,
     gitFiles,
     positive,
-    anyTaskGlob(asTrees(positive)),
-    (rel) => isExcluded(rel) || ownOutput(rel),
+    isPositive,
+    excluded,
     undecodable,
   )
   if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
-  return result
+  return { files: result, listing }
 }
 
 async function resolveWorkspaceFilesOver(
@@ -1160,6 +1178,8 @@ interface FilesPlan {
   isPositive: (rel: string) => boolean
   /** The literal entries, each naming one path (see `unanswered`). */
   literals: string[]
+  /** The directories a positive entry reaches; see `InputListing`. */
+  prefixes: string[]
   /**
    * Whether a project-relative path is an input by the declaration alone:
    * a positive glob selects it, and no exclude and no own output takes it
@@ -1208,7 +1228,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: anyTaskGlob(asTrees(positive)),
-          literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+          ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
@@ -1264,9 +1284,11 @@ function workspaceMatcher(
   return m
 }
 
-async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
+async function resolveFiles(
+  args: ResolveFilesArgs,
+): Promise<{ files: string[]; listing?: InputListing }> {
   const plan = filesPlan(args.files, args.ownOutputs)
-  if (plan === null) return []
+  if (plan === null) return { files: [] }
   const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
@@ -1289,7 +1311,12 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     // Identity, not equality: a re-enumeration hands back a new array even
     // when the file set is unchanged, and that is exactly when this task's
     // inputs must be walked again.
-    if (memo !== undefined && memo.snapshot === gitFiles) return [...memo.result]
+    if (memo !== undefined && memo.snapshot === gitFiles) {
+      return {
+        files: [...memo.result],
+        listing: listingFor(args.projectDir, gitFiles, plan, nested),
+      }
+    }
   }
   if (gitFiles === undefined) {
     // Mid-run re-enumeration — or a project the workspace-wide populate
@@ -1365,7 +1392,23 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
-  return [...resolved]
+  return { files: [...resolved], listing: listingFor(args.projectDir, gitFiles, plan, nested) }
+}
+
+function listingFor(
+  root: string,
+  listed: readonly string[],
+  plan: FilesPlan,
+  nested: (rel: string) => boolean,
+): InputListing {
+  return {
+    root,
+    listed,
+    isInput: (rel) => inPlan(plan, rel),
+    nested,
+    prefixes: plan.prefixes,
+    literals: plan.literals,
+  }
 }
 
 /**
@@ -1415,6 +1458,135 @@ function undecodableOnDisk(abs: string): boolean {
     }
   }
   return false
+}
+
+/**
+ * The listing a task's input files were filtered from, and what reading it
+ * again takes: {@link addedInput} looks for a file the listing lacked.
+ */
+export interface InputListing {
+  root: string
+  /** Root-relative paths, as git listed them. */
+  listed: readonly string[]
+  isInput: (rel: string) => boolean
+  nested: (rel: string) => boolean
+  /** Root-relative directories a positive entry reaches, `''` for the root. */
+  prefixes: readonly string[]
+  /** The literal entries, each naming one path. */
+  literals: readonly string[]
+}
+
+function reachOf(positive: readonly string[]): { prefixes: string[]; literals: string[] } {
+  const prefixes = new Set<string>()
+  for (const p of asTrees(positive)) {
+    if (isLiteralPattern(p)) continue
+    const prefix = staticPrefix(p)
+    prefixes.add(prefix === '.' ? '' : prefix)
+  }
+  return {
+    prefixes: [...prefixes],
+    literals: positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
+  }
+}
+
+/** Every directory holding a listed path, `''` for the root, once per listing. */
+const listedDirsMemo = new WeakMap<readonly string[], Set<string>>()
+function listedDirs(listed: readonly string[]): Set<string> {
+  let dirs = listedDirsMemo.get(listed)
+  if (dirs !== undefined) return dirs
+  dirs = new Set([''])
+  for (const rel of listed) {
+    for (let i = rel.lastIndexOf('/'); i > 0; i = rel.lastIndexOf('/', i - 1)) {
+      const dir = rel.slice(0, i)
+      if (dirs.has(dir)) break
+      dirs.add(dir)
+    }
+  }
+  listedDirsMemo.set(listed, dirs)
+  return dirs
+}
+
+function reaches(prefixes: readonly string[], rel: string): boolean {
+  return prefixes.some(
+    (p) => p === '' || rel === p || rel.startsWith(`${p}/`) || p.startsWith(`${rel}/`),
+  )
+}
+
+/**
+ * An input file that exists now and that the key did not fold, or undefined.
+ * The facts re-check only the files the key folded, so a file ADDED under
+ * an input glob while the command ran — and read by it — was saved under a
+ * key without it, and replayed once the file was gone.
+ *
+ * Adding a name changes its directory's ctime, so the listing's directories
+ * that a positive entry reaches are stat'ed, and only one changed since
+ * `listedAt` (the listing's time, less the racy window) is read. A name
+ * there that the key lacks and the declaration matches, or an unlisted
+ * directory, is asked of git, which alone knows what is ignored; so is a
+ * missing literal that now exists. Not seen: a file added inside a
+ * directory that held no listed file before (only ignored ones, or none)
+ * and was not itself created during the run — its parent's ctime stays.
+ */
+export function addedInput(
+  listings: readonly InputListing[],
+  keyFiles: ReadonlySet<string>,
+  listedAt: number,
+): string | undefined {
+  for (const l of listings) {
+    const found = addedTo(l, keyFiles, listedAt)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+function addedTo(
+  l: InputListing,
+  keyFiles: ReadonlySet<string>,
+  listedAt: number,
+): string | undefined {
+  const candidates: string[] = []
+  for (const lit of l.literals) {
+    if (l.nested(lit) || keyFiles.has(path.resolve(l.root, lit))) continue
+    if (existsOnDisk(path.resolve(l.root, lit))) candidates.push(lit)
+  }
+  const known = listedDirs(l.listed)
+  for (const dir of known) {
+    if (!reaches(l.prefixes, dir) || (dir !== '' && l.nested(`${dir}/`))) continue
+    const abs = dir === '' ? l.root : path.resolve(l.root, dir)
+    let entries
+    try {
+      const st = lstatSync(abs, { throwIfNoEntry: false })
+      if (st === undefined) continue
+      if (st.ctimeMs < listedAt - racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) continue
+      entries = readdirSync(abs, { withFileTypes: true })
+    } catch {
+      // Unreadable here: git answers for the whole directory instead.
+      candidates.push(dir)
+      continue
+    }
+    for (const e of entries) {
+      const rel = dir === '' ? e.name : `${dir}/${e.name}`
+      if (e.isDirectory()) {
+        if (known.has(rel) || e.name === 'node_modules' || l.nested(`${rel}/`)) continue
+        if (reaches(l.prefixes, rel)) candidates.push(rel)
+      } else if (
+        l.isInput(rel) &&
+        !l.nested(rel) &&
+        !isInstalledPath(rel) &&
+        !keyFiles.has(path.resolve(abs, e.name))
+      ) {
+        candidates.push(rel)
+      }
+    }
+  }
+  if (candidates.length === 0) return undefined
+  for (const rel of runGitLsFiles(l.root).files) {
+    if (!candidates.some((c) => c === '' || rel === c || rel.startsWith(`${c}/`))) continue
+    if (isInstalledPath(rel) || l.nested(rel) || !l.isInput(rel)) continue
+    const abs = path.resolve(l.root, rel)
+    if (!keyFiles.has(abs) && isInputOnDisk(abs)) return abs
+  }
+  return undefined
 }
 
 const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })

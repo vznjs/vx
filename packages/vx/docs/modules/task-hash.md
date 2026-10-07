@@ -55,9 +55,13 @@ export interface ComputeHashArgs {
 }
 
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string>
-export async function describeTaskInputs(
-  args: ComputeHashArgs,
-): Promise<{ hash: string; inputs: TaskInputs; facts: InputFact[]; describedAt: number }>
+export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
+  hash: string
+  inputs: TaskInputs
+  facts: InputFact[]
+  describedAt: number
+  added: () => string | undefined // an input file the key did not fold that exists now
+}>
 
 // A file the key folded, its digest, and since when that digest is known true (ms epoch).
 export interface InputFact {
@@ -89,7 +93,10 @@ export function computeGroupKey(args: ComputeHashArgs): Promise<string>
   its rows are persisted. Its `facts` date each digest: an index OID
   from the git enumeration's start (`GitFilesCache.enumeratedAtMs`), a
   hashed file from the describe's own start (`describedAt`), the
-  `package.json` digest (a per-run memo) from the enumeration.
+  `package.json` digest (a per-run memo) from the enumeration. Its
+  `added` runs inputs.md's `addedInput` over the listings the key was
+  filtered from, dated from the enumeration's start (the describe's
+  own start with no run cache).
 - `movedInput` — the post-command re-check (item 743): one `lstat` per
   fact; a file whose ctime is not older than its fact by
   `FILE_HASH_RACY_MS` (plus a second for a whole-second stamp, two

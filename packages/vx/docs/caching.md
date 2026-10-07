@@ -681,10 +681,18 @@ is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
 declare what it writes as an output, which the status line says when it
 names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). Not seen: a file ADDED under an input glob
-mid-run (the listing is not taken again; the next run's key holds the
-file, so a stale hit needs it to vanish again). Cost: one `lstat` per
-input on a miss that saves; a hit runs no command and checks nothing.
+`routeTree.gen.ts`, rewritten by every build). A file ADDED under an
+input glob since the listing the key filtered (`addedInput`) withholds
+the save the same way, named on the same line: the listing's
+directories a glob reaches are `lstat`ed, one whose ctime moved since
+the listing is read, and a new name the declaration matches (or an
+unlisted directory) is asked of git, which alone knows what is ignored;
+a literal input absent then and present now is asked too. Not seen: a
+file added inside a directory that held no listed file before (only
+ignored ones, or none) and was not itself created mid-run. Cost: one
+`lstat` per input and per reached directory on a miss that saves, a
+`readdir` per directory that changed, and a `git ls-files` only when a
+candidate turned up; a hit runs no command and checks nothing.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
