@@ -29,6 +29,17 @@ const list = (v: string | undefined): string[] =>
     .map((s) => s.trim())
     .filter((s) => s !== '')
 
+// Nx's `--projects` labels (find-matching-projects, 23.2.1): `name:` and
+// `directory:` say which match to make; vx's filter says it by form. `tag:`
+// is a filter form already.
+const nxPattern = (p: string): string => {
+  const neg = p.startsWith('!') ? '!' : ''
+  const s = neg === '' ? p : p.slice(1)
+  if (s.startsWith('name:')) return `${neg}${s.slice(5)}`
+  if (s.startsWith('directory:')) return `${neg}./${s.slice(10)}`
+  return p
+}
+
 const GRAPH_IMAGE = /\.(svg|png|jpe?g|pdf|json|html|mermaid)$/i
 
 export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
@@ -396,8 +407,8 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['-p', '--projects'],
     value: true,
     outcome: 'alias',
-    vx: '`--filter <pattern>`, one per project',
-    to: (v) => list(v).flatMap((p) => ['--filter', p]),
+    vx: '`--filter <pattern>`, one per project (`directory:<d>` is `./<d>`, `name:<n>` is `<n>`)',
+    to: (v) => list(v).flatMap((p) => ['--filter', nxPattern(p)]),
   },
   {
     runner: 'nx',
@@ -405,7 +416,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: true,
     outcome: 'alias',
     vx: "`--filter '!<pattern>'`, one per project",
-    to: (v) => list(v).flatMap((p) => ['--filter', `!${p}`]),
+    to: (v) => list(v).flatMap((p) => ['--filter', `!${nxPattern(p)}`]),
   },
   {
     runner: 'nx',

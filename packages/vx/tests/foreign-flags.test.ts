@@ -61,6 +61,15 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
     ['--exclude', 'a,b'],
     ['--filter', '!a', '--filter', '!b'],
   ],
+  // Nx's `name:` and `directory:` labels matched nothing.
+  [
+    ['-p', 'directory:apps/*,name:web,!directory:apps/old,tag:x'],
+    ['--filter', './apps/*', '--filter', 'web', '--filter', '!./apps/old', '--filter', 'tag:x'],
+  ],
+  [
+    ['--exclude', 'directory:apps/*,name:web'],
+    ['--filter', '!./apps/*', '--filter', '!web'],
+  ],
   [
     ['--parallel', '3'],
     ['--concurrency', '3'],
