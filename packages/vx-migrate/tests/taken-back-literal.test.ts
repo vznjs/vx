@@ -21,6 +21,16 @@ describe('withoutTakenBack', () => {
       ['!src/gen', 'src/a.ts'],
     ],
     [['package.json', '!*.json'], ['!*.json']],
+    // A repeat once, with an exclusion and without (TanStack Query's
+    // `eslint.config.js`, from `sharedGlobals` and the target's own).
+    [
+      ['eslint.config.js', 'tsconfig.json', 'eslint.config.js'],
+      ['eslint.config.js', 'tsconfig.json'],
+    ],
+    [
+      ['src/**', '!src/gen/**', 'src/**', '!src/gen/**'],
+      ['src/**', '!src/gen/**'],
+    ],
     // Controls: a glob, a file the exclusion leaves, no exclusion.
     [
       ['src/**', '!src/gen/**'],
