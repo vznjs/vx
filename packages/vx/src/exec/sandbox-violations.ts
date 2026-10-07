@@ -7,7 +7,7 @@
 import { statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
-import { bindableReads } from './sandbox-binds.js'
+import { bindableReads, bindableWrites } from './sandbox-binds.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -321,17 +321,22 @@ export async function parseStraceViolations(
   const text = await Bun.file(logPath).text()
   if (text.length === 0) return []
 
-  // Treat every baseAllow + sandbox.allowRead path as "this was
-  // explicitly permitted; any -ENOENT here is the user's own missing
-  // file, not a sandbox-induced denial". Same for absolute denyRead
-  // checks below. Canonical on BOTH sides — the policy is expressed in
-  // real paths (see `canonicalBaselines`), so comparing a link-path here
-  // would report an explicitly-allowed read as a violation.
+  // Treat every baseAllow + sandbox.allowRead + allowWrite path as "this
+  // was explicitly permitted; any -ENOENT here is the user's own missing
+  // file, not a sandbox-induced denial". A write grant counts: GNU cp
+  // opens its destination before creating it, and tsc probes its
+  // buildinfo. Same for absolute denyRead checks below. Canonical on BOTH
+  // sides — the policy is expressed in real paths (see
+  // `canonicalBaselines`), so comparing a link-path here would report an
+  // explicitly-allowed read as a violation.
   const allowAbs = new Set<string>(
-    // A grant SRT could not mount (`bindableReads`) permits nothing.
-    [...baselines.allowRead, ...bindableReads(args.config.allowRead)].map((p) =>
-      toRealPath(absolutize(p)),
-    ),
+    // A grant SRT could not mount (`bindableReads`, `bindableWrites`)
+    // permits nothing.
+    [
+      ...baselines.allowRead,
+      ...bindableReads(args.config.allowRead),
+      ...args.config.allowWrite.filter((w) => bindableWrites([w]).length > 0),
+    ].map((p) => toRealPath(absolutize(p))),
   )
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
   // A read under a widened write grant's directory is never refused, so it

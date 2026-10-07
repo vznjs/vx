@@ -449,7 +449,11 @@ into a directory no grant holds failed with no violation, and
 `cd src || …` passed and cached (B-67). A path is
 strace's C string, decoded: read raw, `q"t.txt` was cut at `q\` and
 `é.txt` named `\303\251.txt`, so the report and every `ignore` pattern
-missed the file (B-54). Without `strace`
+missed the file (B-54). A miss under a grant is the task's own missing
+file, not a denial, and is not reported: a read grant's, and a write
+grant's (GNU `cp` opens its destination before creating it, tsc probes
+its buildinfo; counted until X-63). A grant the sandbox mounts no bind
+for permits nothing. Without `strace`
 on PATH, or one whose `--version` fails, the sandbox still ENFORCES; only
 the structured list is lost, and that is said once on stderr (B-51):
 before, a task that tolerated the miss passed and cached with no word.
