@@ -1332,7 +1332,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
    and the cache keys decide what executes (the startup diff, asked
    again, kept an edit made since out of every cycle). Events arriving
    while a run is in flight queue and drain after the current cycle.
-   Re-runs are debounced ~150ms after the last event.
+   Re-runs are debounced ~150ms after the last event, and wait at most
+   1 s after the first, so a writer that never pauses holds no edit back.
 4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
 
 ### Path filtering
