@@ -127,10 +127,24 @@ function runsScriptHooks(dir: string, memo: Map<string, Owner>): string | null {
       : manager === 'npm'
         ? !set('ignore-scripts', 'true')
         : manager === 'pnpm'
-          ? !set('enable-pre-post-scripts', 'false') &&
-            !/^enablePrePostScripts:\s*false\s*$/m.test(read('pnpm-workspace.yaml') ?? '')
+          ? !set('enable-pre-post-scripts', 'false') && !pnpmSkipsHooks(read('pnpm-workspace.yaml'))
           : true
   return runs ? manager : null
+}
+
+/**
+ * `enablePrePostScripts: false` in `pnpm-workspace.yaml`, read as pnpm reads
+ * it, as YAML: a line regex missed `false # hooks off` and a flow mapping,
+ * which pnpm 10 honours, and folded hooks pnpm does not run.
+ */
+function pnpmSkipsHooks(yaml: string | undefined): boolean {
+  if (yaml === undefined) return false
+  try {
+    const parsed = Bun.YAML.parse(yaml) as { enablePrePostScripts?: unknown } | null
+    return parsed?.enablePrePostScripts === false
+  } catch {
+    return false
+  }
 }
 
 /** The package manager that owns a directory, and the directory that says so. */
