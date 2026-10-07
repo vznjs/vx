@@ -341,7 +341,12 @@ export interface FingerprintContext extends BaseContext {
 }
 
 export interface AdmitContext {
-  /** The tasks executing on this machine right now, in dispatch order. */
+  /**
+   * The tasks holding a worker on this machine right now, in dispatch
+   * order. A persistent task leaves at ready, when it gives its worker
+   * back: it runs until the graph ends, so a policy that counted it would
+   * hold its dependants with no completion left to ask again.
+   */
   readonly running: readonly TaskNode[]
   /** The run's worker count — the ceiling the count gate already applies. */
   readonly concurrency: number

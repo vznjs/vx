@@ -292,7 +292,8 @@ export interface ScheduleOptions {
    * Admission over the worker count: asked for every exec-tier task about
    * to start on this machine, with the ids of the exec-tier tasks running
    * here right now (added on dispatch, so two asks in one tick see each
-   * other). `false` parks the task until something finishes. Undefined →
+   * other; removed when `execute` resolves, which for a persistent task is
+   * at ready). `false` parks the task until something finishes. Undefined →
    * count-only, the legacy path byte for byte. Restore-tier hits, pooled
    * tasks and groups hold no local resources: never asked, never listed.
    */

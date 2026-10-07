@@ -1021,6 +1021,55 @@ describe('admit stage', () => {
   )
 
   it(
+    'a ready server leaves the running set, so a solo policy still admits what depends on it',
+    async () => {
+      // The server keeps running, but it gave its worker back at ready and
+      // never finishes before its dependants: listed, it would hold "solo"
+      // closed with no completion left to ask again.
+      await pkg(
+        'a',
+        `export default { tasks: {
+          srv: { exec: { command: 'echo ready; while true; do sleep 0.05; done', persistent: { readyWhen: 'ready' } } },
+          x: { dependsOn: ['srv'], exec: { command: 'sleep 0.1' } },
+          y: { dependsOn: ['srv'], exec: { command: 'sleep 0.1' } },
+        } }\n`,
+      )
+      await workspace([
+        pluginSource(
+          'org/solo',
+          `{ admit(task, ctx) { (globalThis.__vxAsked ??= []).push([task.id, ctx.running.map((r) => r.id)]); return ctx.running.length === 0 } }`,
+        ),
+      ])
+      const status: string[] = []
+      const log = { ...silent(), status: (m: string) => status.push(m) } as Logger
+      const summary = await run({
+        cwd: root,
+        tasks: ['a#x', 'a#y'],
+        concurrency: 4,
+        log,
+        handleSignals: false,
+      })
+      const asked = (globalThis as { __vxAsked?: [string, string[]][] }).__vxAsked ?? []
+      delete (globalThis as { __vxAsked?: unknown }).__vxAsked
+      expect({
+        ok: summary.ok,
+        asked,
+        overridden: status.filter((m) => m.includes("'org/solo'")),
+      }).toEqual({
+        ok: true,
+        asked: [
+          ['a#srv', []],
+          ['a#x', []],
+          ['a#y', ['a#x']],
+          ['a#y', []],
+        ],
+        overridden: [],
+      })
+    },
+    TIMEOUT,
+  )
+
+  it(
     'only an explicit `false` refuses — a policy that returns nothing admits',
     async () => {
       // The stage tests `=== false`, and that strictness is what keeps the

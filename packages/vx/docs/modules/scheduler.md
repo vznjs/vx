@@ -178,9 +178,11 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    paid only when one exists. `admit(id, running)` is that predicate for
    local exec-tier nodes: asked after the count gate with the set of
    local exec-tier tasks running right now (tracked only while a policy
-   exists), a `false` parks the node; restore-tier, pooled and group
-   nodes are never asked and never in the set. Core passes the plugins'
-   `admit` stage here
+   exists; a persistent task leaves it at ready, with its slot, since it
+   never finishes before its dependants and a policy that counted it
+   would hold them with no completion left to ask again), a `false` parks
+   the node; restore-tier, pooled and group nodes are never asked and
+   never in the set. Core passes the plugins' `admit` stage here
    (`plugin-host.buildAdmission`) and holds no costs of its own. A
    task a policy refused while a worker was free is timed from that
    first refusal to its dispatch, and its outcome carries the wait as

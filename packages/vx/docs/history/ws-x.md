@@ -536,3 +536,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `server-death-properties.test.ts` › "a dead server is found behind a
   50,000-deep chain of groups", "a ladder of group diamonds asks of each
   node once".
+- **X-98.** `AdmitContext.running` said "executing on this machine right
+  now", but a persistent task leaves it at ready, with its worker slot.
+  Intended: the server never finishes before its dependants, so a policy
+  that counted it would hold them with no completion left to ask again
+  (with it listed, a solo policy hung the run). The doc now says so. Row:
+  `plugin-pipeline.test.ts` › "a ready server leaves the running set, so
+  a solo policy still admits what depends on it".
