@@ -33,10 +33,10 @@ const VITE_CONFIG_FILES = [
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies'] as const
 type DepField = (typeof DEP_FIELDS)[number]
 
-/** npm's own verbs' hooks: the package manager runs them, never `vp run`'s task list. */
 /** A command segment that runs Vite Task: `vp run`, `vpr`, through a package runner too. */
 const VP_RUN = /^(?:(?:pnpm(?: exec)?|npx|bunx|yarn)\s+)?(?:vp\s+run|vpr)(?:\s|$)/
 
+/** npm's own verbs' hooks: the package manager runs them, never `vp run`'s task list. */
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
 type Glob = string | { pattern?: unknown; base?: unknown; auto?: unknown }
