@@ -425,7 +425,7 @@ export async function resolveFilters(
   }
 }
 
-export interface PickedTask {
+interface PickedTask {
   project: string
   task: string
   description?: string

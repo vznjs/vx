@@ -5090,6 +5090,47 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(r.stderr).toContain('[vx] failed to spawn sandboxed task')
   })
 
+  // bwrap stubs each absent mandatory deny under a write grant on the host
+  // (`.bashrc`, `.vscode`, … at the runtime's cwd), and the runtime removes
+  // them only once every wrap has been cleaned up. A wrap with no spawn
+  // after it kept every later task's stubs on the host until the reset.
+  it.each(['spawn', 'abort', 'held'])(
+    'a wrap that never ran (%s) leaves no later task its bwrap stubs',
+    async (mode) => {
+      const ws = path.join(dir, 'ws')
+      await mkdir(ws)
+      const script = [
+        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+        `import { readdirSync } from 'node:fs'`,
+        `const dir = process.cwd()`,
+        `const args = (command, extra = {}) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir), ...extra })`,
+        `await initSandbox()`,
+        `const mode = ${JSON.stringify(mode)}`,
+        `if (mode === 'spawn') await runSandboxed(args('true', { cwd: dir + '/gone' }))`,
+        `if (mode === 'abort') await runSandboxed(args('true', { signal: AbortSignal.abort() }))`,
+        `if (mode === 'held') {`,
+        `  const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })`,
+        `  await runSandboxed(args('true', { config: { ...args('').config, localBinding: [l.port] } })).catch(() => {})`,
+        `  l.stop(true)`,
+        `}`,
+        `const r = await runSandboxed(args('ls -A'))`,
+        `console.log(JSON.stringify([r.stdout.split('\\n').includes('.bashrc'), readdirSync(dir)]))`,
+        `await resetSandbox()`,
+      ].join('\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, '-e', script],
+        cwd: ws,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect([p.stdout.toString().trim(), p.stderr.toString()]).toEqual([
+        JSON.stringify([true, []]),
+        '',
+      ])
+    },
+    20_000,
+  )
+
   it('the child leads its own process group, and is a live child only while it runs', async () => {
     const live = new Set<ReturnType<typeof Bun.spawn>>()
     const seen: boolean[] = []
@@ -5203,6 +5244,24 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         false,
       ])
       expect([r.cpuMs, r.peakRssBytes]).toEqual([undefined, undefined])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  // Listed for the exit hook alone, a `vx watch` kept one log per failed
+  // spawn until it quit.
+  it('a spawn that throws leaves neither its trace log nor its task directory', async () => {
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+    try {
+      const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
+      const { argv, tag } = traced(spy.mock.calls)
+      expect([
+        r.spawnFailed,
+        argv !== undefined,
+        existsSync(path.join(taskRoot(), `vx-strace-${tag}.log`)),
+        existsSync(path.join(taskRoot(), `vx-task-${process.pid}-${tag}`)),
+      ]).toEqual([true, true, false, false])
     } finally {
       spy.mockRestore()
     }

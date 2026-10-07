@@ -16,7 +16,7 @@
 import { lstatSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { relPosix, UserError } from '../util/index.js'
 import { atOrUnder, MOUNT_WILDCARDS } from './sandbox-paths.js'
 
 /** SRT's `rg --max-depth` for the scan (`DEFAULT_MANDATORY_DENY_SEARCH_DEPTH`). */
@@ -126,7 +126,7 @@ export function scopedMandatoryDenies(
     }
   }
   for (const root of roots) {
-    const rel = path.relative(cwd, root).split(path.sep).join('/')
+    const rel = relPosix(cwd, root)
     const depth = rel === '' ? 0 : rel.split('/').length
     if (depth > SEARCH_DEPTH) continue
     let dir: boolean
