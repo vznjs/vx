@@ -293,9 +293,10 @@ function matchSelector(
  * Compile a name pattern where `*` is the sole metacharacter and means "any
  * characters" — pnpm's rule. A path glob would treat `/` as a separator, so
  * `*` could never cross the `@scope/` boundary: `--filter '*'` would select
- * only UNSCOPED packages, and `*core*` would match nothing at all.
+ * only UNSCOPED packages, and `*core*` would match nothing at all. Task
+ * patterns share it: it mirrors the graph's `compileTaskPattern`.
  */
-function compileNameGlob(pattern: string): RegExp {
+export function compileNameGlob(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
   return new RegExp(`^${escaped}$`)
 }
