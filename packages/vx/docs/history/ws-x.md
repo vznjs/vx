@@ -266,3 +266,9 @@ time (bugs, correctness, simplification, the plugin seams).
   through `withForwardArgs`, as they ran; a dependency's line has none.
   Row: `forward-args-frame.test.ts` › "the requested task's frame shows
   the args it ran with (X-41)".
+- **X-42.** `vx watch` on a root project watched its whole tree, so an
+  edit inside a nested project the root's key leaves out ran a cycle.
+  Both arms now drop a path inside a configured project nested under a
+  watched one (`makeFence`), save that project's own config, which
+  moves the boundary; a config-less package fences no key and stays an
+  edit. Rows: `watch-nested-boundary.test.ts` (X-42).

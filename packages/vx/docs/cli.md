@@ -1226,7 +1226,9 @@ run...` precedes it.
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
    anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
-   `dependsOn` edges included — is watched recursively. The workspace root is
+   `dependsOn` edges included — is watched recursively, less any project
+   with a config nested inside it (a root project's key leaves a nested
+   project's files out, so an edit there is no cycle; X-42). The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any

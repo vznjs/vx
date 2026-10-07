@@ -229,6 +229,7 @@ export function makeRootEventFilter(
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
   claimedRootFiles: ReadonlySet<string> = new Set(),
+  fenced: (ownDir: string, abs: string) => boolean = () => false,
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
   const globs = workspaceInputs
@@ -257,9 +258,30 @@ export function makeRootEventFilter(
       return true
     }
     const abs = path.resolve(workspaceRoot, filename)
-    for (const d of dirs) if (abs === d || abs.startsWith(d + path.sep)) return true
+    for (const d of dirs)
+      if (abs === d || (abs.startsWith(d + path.sep) && !fenced(d, abs))) return true
     for (const g of globs) if (g.match(rel)) return true
     return false
+  }
+}
+
+/**
+ * Whether `abs`, under the project at `ownDir`, lies inside another
+ * project nested there: the key's boundary (`computeNestedProjectDirs`)
+ * leaves such a file out, so it is no edit of `ownDir`'s. A root project
+ * watched its whole tree and ran a cycle for every edit in a nested one
+ * (X-42). The fences are the projects with a config, which fence a key
+ * whatever the plugins; a config-less one may not, and an edit there
+ * still counts. The fence's own config is let through: it coming or going
+ * moves the boundary, and the cycle it starts re-reads the set.
+ */
+export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean {
+  const fences = fenceDirs.map((d) => path.resolve(d))
+  return (ownDir, abs) => {
+    const config = PROJECT_CONFIGS.has(path.basename(abs)) ? path.dirname(abs) : undefined
+    return fences.some(
+      (f) => f !== config && f.startsWith(ownDir + path.sep) && abs.startsWith(f + path.sep),
+    )
   }
 }
 
