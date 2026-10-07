@@ -832,6 +832,19 @@ export async function namedProject(
   if (typeof named?.name !== 'string' || named.name === '' || typeof named.dir !== 'string') {
     throw new UserError(`${where} ${JSON.stringify(named)}: expected { dir: string, name: string }`)
   }
+  // The rules `parsePackageJson` holds a manifest's name to: a plugin's name
+  // for a directory with no `name` of its own skipped them, and `a#b` planned
+  // under `--all` while no run spec or dependsOn could reach it.
+  if (named.name.trim() !== named.name) {
+    throw new UserError(
+      `${where} ${JSON.stringify(named.name)}: the name has surrounding whitespace`,
+    )
+  }
+  if (named.name.includes('#')) {
+    throw new UserError(
+      `${where} "${named.name}": the name holds "#" — vx addresses a task as <name>#<task>`,
+    )
+  }
   const dir = path.resolve(workspace.root, named.dir)
   const rel = relPosix(workspace.root, dir)
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
