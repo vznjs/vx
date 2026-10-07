@@ -28,9 +28,10 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  relPosix,
   shellArgv,
-  splitNegations,
   slashBraceExpansions,
+  splitNegations,
   staticPrefix,
   taskGlob,
   UserError,
@@ -454,19 +455,31 @@ async function runRuntimeCommand(
   let stdout, stderr, exitCode
   try {
     ;[stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      new Response(proc.stdout).bytes(),
+      new Response(proc.stderr).bytes(),
       proc.exited,
     ])
   } finally {
     liveProbes.delete(proc)
     mine?.delete(proc)
   }
-  const output = `${stdout}${stderr}`.trim()
   if (exitCode !== 0) {
+    const lossy = new TextDecoder()
+    const output = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
     throw new UserError(
       `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
         (output ? `\n${output}` : ''),
+    )
+  }
+  let output: string
+  try {
+    output = `${FATAL_UTF8.decode(stdout)}${FATAL_UTF8.decode(stderr)}`.trim()
+  } catch {
+    // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
+    // folded the same output and replayed each other's build.
+    throw new UserError(
+      `cache.inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+        `Pipe it through a hash or od.`,
     )
   }
   return output
@@ -701,7 +714,7 @@ export async function cleanOutputs(args: {
   )
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
-  return files.map((f) => path.relative(args.projectDir, f).split(path.sep).join('/'))
+  return files.map((f) => relPosix(args.projectDir, f))
 }
 
 /**
@@ -839,7 +852,7 @@ const SYNC_CLEAN_MAX = 128
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = notThroughLink(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
-    const rel = path.relative(root, f).split(path.sep).join('/')
+    const rel = relPosix(root, f)
     return new UserError(
       `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
         `declared outputs before it runs and before a restore; make the path removable ` +
@@ -1002,7 +1015,7 @@ export async function cleanWorkspaceOutputs(args: {
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
   await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
-  return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
+  return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
 function stripTrailingSlash(p: string): string {
@@ -1136,7 +1149,7 @@ function refuseUndecodable(
   if (undecodable === undefined || undecodable.size === 0) return
   const bad = candidates.filter((abs) => undecodable.has(abs) && undecodableOnDisk(abs))
   if (bad.length === 0) return
-  const names = bad.map((abs) => JSON.stringify(path.relative(root, abs).split(path.sep).join('/')))
+  const names = bad.map((abs) => JSON.stringify(relPosix(root, abs)))
   throw new UserError(
     `cache.inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
       `(shown with \ufffd), and vx cannot read a file by it. Rename it, or exclude it with a ` +
@@ -1676,9 +1689,7 @@ function globFor(pattern: string): Bun.Glob {
  */
 function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
   if (nestedDirs.length === 0) return () => false
-  const dirs = new Set(
-    nestedDirs.map((d) => path.relative(projectDir, d).split(path.sep).join('/')),
-  )
+  const dirs = new Set(nestedDirs.map((d) => relPosix(projectDir, d)))
   return (rel) => {
     for (let i = rel.indexOf('/'); i !== -1; i = rel.indexOf('/', i + 1)) {
       if (dirs.has(rel.slice(0, i))) return true

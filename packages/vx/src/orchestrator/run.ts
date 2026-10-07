@@ -427,7 +427,7 @@ async function runOnBus(
   let telemetry: TelemetryHandle | undefined
   try {
     disposePlugins = await installPlugins({
-      plugins: prepared.plugins as never,
+      plugins: prepared.plugins,
       bus,
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
