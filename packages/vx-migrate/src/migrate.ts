@@ -23,7 +23,7 @@ import {
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
-import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL, type NxWorkspaceField } from './migrate-nx.js'
 import { exportGraph } from './nx/export-graph.js'
 import {
   type AdoptionMode,
@@ -161,10 +161,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
   let source: string
   let plan: MigrationPlan
+  let workspaceFields: readonly NxWorkspaceField[] | undefined
   if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas, format)
+      const nxPlan = await migrateNx(root, metas, format)
+      plan = nxPlan
+      workspaceFields = nxPlan.workspaceFields
     } else {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
@@ -180,7 +183,9 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, format, snapshot)
+        const nxPlan = await migrateNx(root, metas, format, snapshot)
+        plan = nxPlan
+        workspaceFields = nxPlan.workspaceFields
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -202,17 +207,29 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
   // No workspace file yet: write one declaring the plugins the repo calls
-  // for, and drop the note that told the user to declare the lockfile one.
-  const plugins = workspaceFileAt(root) === undefined ? workspacePlugins(root) : []
-  if (plugins.length > 0) {
+  // for and nx.json's run settings, and drop the note that told the user to
+  // declare the lockfile one. With one there, each setting is a note.
+  const fresh = workspaceFileAt(root) === undefined
+  const plugins = fresh ? workspacePlugins(root) : []
+  const fields = workspaceFields ?? []
+  if (plugins.length > 0 || (fresh && fields.length > 0)) {
     plan = {
       ...plan,
       headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
       extraFiles: [
         ...plan.extraFiles,
-        { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
+        {
+          relPath: `vx.workspace.${format}`,
+          contents: renderWorkspaceFile(
+            plugins,
+            format,
+            fields.map((f) => f.field),
+          ),
+        },
       ],
     }
+  } else if (fields.length > 0) {
+    plan = { ...plan, notes: [...plan.notes, ...fields.map((f) => f.note)] }
   }
   const headerNotes = refused
     ? []

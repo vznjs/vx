@@ -45,12 +45,15 @@ function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] 
 export function renderWorkspaceFile(
   plugins: readonly WorkspacePlugin[],
   format: 'ts' | 'mjs',
+  /** Top-level fields, each a rendered `key: value` (nx.json's run settings). */
+  fields: readonly string[] = [],
 ): string {
   return [
     ...(format === 'ts' ? ["import type { WorkspaceConfig } from '@vzn/vx/config'"] : []),
     ...importLines(plugins),
     '',
     'export default {',
+    ...fields.map((f) => `  ${f},`),
     '  plugins: [',
     ...entries(plugins, '    '),
     '  ],',
