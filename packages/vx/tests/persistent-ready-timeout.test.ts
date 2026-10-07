@@ -156,6 +156,74 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
     TIMEOUT,
   )
 
+  // The frame reads `(<duration>) failed (never ready: timed out)`: the
+  // duration was taken once the child had exited, so a server that traps
+  // TERM reported the readiness timeout plus the whole kill grace.
+  it(
+    'a never-ready server reports the time it was waited on, not the kill grace after',
+    async () => {
+      await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "trap '' TERM; echo wrong-banner && exec sleep 30",
+                timeout: 500,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      process.env['VX_KILL_GRACE_MS'] = '2000'
+      try {
+        const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+        const { exitCode, durationMs } = r.outcomes[0]!
+        expect({ exitCode, waited: durationMs >= 500 && durationMs < 1500 }).toEqual({
+          exitCode: 137,
+          waited: true,
+        })
+      } finally {
+        process.env['VX_KILL_GRACE_MS'] = '200'
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a never-ready server whose shell dies on SIGTERM is dead before the task returns',
+    async () => {
+      // The shell exits on the TERM at once; its background server ignores
+      // it and holds its port until the SIGKILL a grace later. The task
+      // returned on the shell's exit, so the server outlived run() into the
+      // next `vx watch` cycle.
+      const dir = await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "sh -c \\"trap '' TERM; exec sleep 30\\" & echo $! > pid.txt; wait",
+                timeout: 1000,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+      expect(r.outcomes[0]!.notReady).toBe('timeout')
+      const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
+      expect(isAlive(pid)).toBe(false)
+    },
+    TIMEOUT,
+  )
+
   it(
     'never-matching readyWhen + timeout → run fails fast, child is killed',
     async () => {

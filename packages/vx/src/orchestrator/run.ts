@@ -4,6 +4,7 @@
 
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -18,6 +19,7 @@ import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
 import {
   deadServerBehind,
+  declaredTask,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -366,8 +368,10 @@ async function runOnBus(
   // its tasks escape the schedule, the concurrency budget and this task's
   // cache key. The markers `taskEnv` sets on every child (exec/env.ts)
   // name the task; the check is on the root so both shapes are caught.
+  // Compared canonical: a root reached through a symlink (`run({ cwd })`,
+  // macOS's /var/folders) and the inner vx's realpath'd cwd are one tree.
   const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
-  if (outerRoot !== undefined && path.resolve(outerRoot) === path.resolve(prepared.workspaceRoot)) {
+  if (outerRoot !== undefined && canonical(outerRoot) === canonical(prepared.workspaceRoot)) {
     await teardown()
     prepared.cache.close()
     throw new UserError(
@@ -395,7 +399,8 @@ async function runOnBus(
     const reachedNone =
       options.affected !== undefined &&
       [...prepared.projects.values()].some(
-        (p) => inScope.has(p.name) && options.tasks.some((t) => p.config.tasks?.[t] !== undefined),
+        (p) =>
+          inScope.has(p.name) && options.tasks.some((t) => declaredTask(p.config, t) !== undefined),
       )
     log.status(
       reachedNone
@@ -930,6 +935,9 @@ async function runOnBus(
     const explainMiss =
       telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
     const lateProbes = probesAfterWrites(nodes, workspaceRoot)
+    // The scheduler's fail-fast stop, as the retry loop of a task already
+    // in flight sees it.
+    const failFast = new AbortController()
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
@@ -977,6 +985,7 @@ async function runOnBus(
         deferSave: saveLane.defer,
         deferredSaves,
         stopSignal: stopRun.signal,
+        failFast: failFast.signal,
       }
     }
 
@@ -1025,6 +1034,7 @@ async function runOnBus(
       ...(holders.size > 0 ? { exclusive: holders } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       serverDied,
+      onFailFast: () => failFast.abort(),
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
@@ -1371,9 +1381,20 @@ async function runOnBus(
       }
     }
     if (keepAlive.children.length > 0) {
-      const first = await Promise.race(
-        keepAlive.children.map((c, i) => c.exited.then((code) => ({ code, i }))),
-      )
+      // A server kept only as a dependency that exits 0 is a daemon that
+      // forked and returned (schema.md), not the end of the session: a
+      // `db: 'docker compose up -d'` under `app#dev` stopped the dev server
+      // right after the summary (WD-3). It ends the wait only as the last.
+      const first = await new Promise<{ code: number; i: number }>((resolve) => {
+        let left = keepAlive.children.length
+        keepAlive.children.forEach((c, i) => {
+          void c.exited.then((code) => {
+            left--
+            const n = keepAlive.nodes[i]!
+            if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })
+          })
+        })
+      })
       const node = keepAlive.nodes[first.i]!
       const others = keepAlive.nodes.length - 1
       // Not when the run was stopped: the server ended because the user
@@ -1652,7 +1673,7 @@ export function nxProjectTarget(
   if (colon <= 0 || spec.includes('#')) return undefined
   const [typed, task] = [spec.slice(0, colon), spec.slice(colon + 1)]
   const project = projectNamed(typed, projects)
-  return project === undefined || projects.get(project)?.config.tasks?.[task] === undefined
+  return project === undefined || declaredTask(projects.get(project)?.config, task) === undefined
     ? undefined
     : `${project}#${task}`
 }
@@ -1691,4 +1712,13 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
     })
   }
   return out
+}
+
+/** `dir` with its links resolved; as written when it is gone (a stale marker). */
+function canonical(dir: string): string {
+  try {
+    return realpathSync(dir)
+  } catch {
+    return path.resolve(dir)
+  }
 }

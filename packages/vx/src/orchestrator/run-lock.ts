@@ -388,6 +388,6 @@ export async function acquireRunLock(
         opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
       }
     }
-    await new Promise((r) => setTimeout(r, POLL_MS))
+    await Bun.sleep(POLL_MS)
   }
 }
