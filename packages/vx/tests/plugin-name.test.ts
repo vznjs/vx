@@ -51,6 +51,28 @@ describe('definePlugin — the name is the package name', () => {
       // and the key material a `key` hook contributes as nothing at all.
       writeFileSync(path.join(unnamed, 'package.json'), JSON.stringify({ name: '' }))
       expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
+      // X-20: malformed JSON was a SyntaxError and a stack naming no file;
+      // `null` a TypeError.
+      const said = (text: string): [string, string] => {
+        writeFileSync(path.join(unnamed, 'package.json'), text)
+        try {
+          definePlugin({ dir: unnamed }, {})
+          return ['', '']
+        } catch (err) {
+          return [(err as Error).name, (err as Error).message]
+        }
+      }
+      const file = path.join(unnamed, 'package.json')
+      expect([said('{"name": "p",}'), said('null')]).toEqual([
+        [
+          'UserError',
+          `definePlugin: failed to parse ${file}: JSON Parse error: Property name must be a string literal`,
+        ],
+        [
+          'UserError',
+          `definePlugin: ${file} has no name — a plugin is a package, and its name is the package's`,
+        ],
+      ])
     } finally {
       rmSync(bare, { recursive: true, force: true })
       rmSync(unnamed, { recursive: true, force: true })

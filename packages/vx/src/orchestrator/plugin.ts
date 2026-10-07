@@ -445,7 +445,17 @@ function pluginPackageName(dir: string): string {
       /* not here; look one level up */
     }
     if (text !== undefined) {
-      const name = (JSON.parse(text) as { name?: unknown }).name
+      // A bare JSON.parse reached the user as a SyntaxError and a stack,
+      // naming no file (X-20).
+      let pkg: { name?: unknown } | null
+      try {
+        pkg = JSON.parse(text) as { name?: unknown } | null
+      } catch (err) {
+        throw new UserError(
+          `definePlugin: failed to parse ${path.join(d, 'package.json')}: ${(err as Error).message}`,
+        )
+      }
+      const name = pkg?.name
       if (typeof name !== 'string' || name.length === 0) {
         throw new UserError(
           `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,

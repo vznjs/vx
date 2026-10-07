@@ -118,3 +118,8 @@ time (bugs, correctness, simplification, the plugin seams).
   unheard. The workspace schema now refuses it, hinting the nearest
   hook. Row: `config-schema-refusals.test.ts` › "a key that names no
   hook is refused, the nearest hinted".
+- **X-20.** A plugin package whose `package.json` did not parse reached
+  the user as `vx: SyntaxError: …` and a stack, naming no file;
+  `definePlugin` now refuses it naming the file. Row:
+  `plugin-name.test.ts` › "refuses a module with no package above it, and
+  a package with no name".
