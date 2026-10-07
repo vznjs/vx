@@ -462,6 +462,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     armedAt,
     held: () => held !== undefined,
     uncached: () => uncached,
+    fenced: (ownDir, abs) => fenced(ownDir, abs),
     ...(existedAtArm !== undefined ? { existedAtArm } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */

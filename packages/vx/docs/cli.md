@@ -1286,7 +1286,8 @@ run...` precedes it.
    timestamped log) is either git-ignored — a git-ignored path never
    starts a cycle, since no cache key can see it (a user's edit to one
    still does in a project with a task that has a command and no cache,
-   which reads what it likes, item 947) — or declared an
+   which reads what it likes, item 947, outside any project nested
+   in it) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long

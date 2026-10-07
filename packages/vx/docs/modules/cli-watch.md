@@ -49,6 +49,7 @@ export interface JudgeContext {
   armedAt: number
   held(): boolean
   uncached(): ReadonlySet<string>
+  fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
 }
 export class ChangeJudge {

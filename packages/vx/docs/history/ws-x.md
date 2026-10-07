@@ -272,3 +272,8 @@ time (bugs, correctness, simplification, the plugin seams).
   watched one (`makeFence`), save that project's own config, which
   moves the boundary; a config-less package fences no key and stays an
   edit. Rows: `watch-nested-boundary.test.ts` (X-42).
+- **X-43.** A user's edit to a git-ignored file counts under a project
+  with an uncached task (item 947), and that test was a plain directory
+  prefix: an ignored file inside a configured project nested under such
+  a root ran the root's cycle. The judgement now applies the X-42 fence.
+  Row: `watch-judge-fence.test.ts` (X-43).
