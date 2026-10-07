@@ -1772,8 +1772,9 @@ named instead: vx does not speak its wire, so runs cache locally.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
-`{ plugins: [] }` whose comment says running and caching here are the
-floor, so it declares no executor or cache. `@vzn/vx-migrate` takes the
+`{ plugins: [] }`: running and caching here are the floor, so it
+declares no executor or cache, and the file carries no comment (it is
+the user's). `@vzn/vx-migrate` takes the
 same `--dry` / `--force` flags but reads a runner's config (turbo, nx);
 package.json scripts are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
