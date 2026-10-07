@@ -84,6 +84,10 @@ function parseArgs(argv: readonly string[]): Args | null {
       const v = a === '--out-dir' ? argv[++i] : a.slice('--out-dir='.length)
       if (v === undefined || v === '')
         throw new UserError(`vx prune: --out-dir needs a path\n${USAGE}`)
+      // `--out-dir --docker` wrote to a directory named `--docker` and lost
+      // docker mode; a path that starts with '-' is spelt `--out-dir=-x`.
+      if (a === '--out-dir' && v.startsWith('-'))
+        throw new UserError(`vx prune: --out-dir needs a path, got the flag ${v}\n${USAGE}`)
       outDir = v
     } else if (a.startsWith('-')) throw new UserError(`vx prune: unknown flag ${a}\n${USAGE}`)
     else projects.push(a)

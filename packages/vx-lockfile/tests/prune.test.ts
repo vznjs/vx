@@ -295,6 +295,24 @@ export default { plugins: [bun(), npm()] }
     ])
   })
 
+  it('a flag after --out-dir is refused, not taken as the path', async () => {
+    const root = await bare()
+    expect(vx(root, 'prune', 'a', '--out-dir', '--docker')).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        'vx prune: --out-dir needs a path, got the flag --docker\nusage: vx prune <project...> [--out-dir <dir>] [--docker]\n',
+    })
+    expect((await readdir(root)).sort()).toEqual(['package.json', 'packages', 'vx.workspace.mjs'])
+    // CONTROL: the `=` form names a path that starts with '-'.
+    expect(vx(root, 'prune', 'a', '--out-dir=-x').code).toBe(0)
+    expect(await files(path.join(root, '-x'))).toEqual([
+      'package.json',
+      'packages/a/package.json',
+      'vx.workspace.mjs',
+    ])
+  })
+
   it('a workspace package a copied vx config imports comes along, with its closure', async () => {
     // The config loads before any task: without its local plugin, `vx run`
     // in the image cannot start. The import is never evaluated here.
