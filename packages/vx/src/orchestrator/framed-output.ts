@@ -25,6 +25,7 @@
 // price is no live progress within a task. This matches Turbo's
 // `--ui=stream` mode.
 
+import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
@@ -82,6 +83,7 @@ export function formatTaskBlock(
   // tasks set this so a requested task's frame is identical whether it
   // ran or was cached — you asked for it, you see what it would run.
   forceCommand = false,
+  forwardArgs: readonly string[] = [],
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
   // organizational nodes the user wrote so a `vx run ci` invocation
@@ -105,11 +107,7 @@ export function formatTaskBlock(
   if (forceCommand || outcome.status === 'success' || outcome.status === 'failed') {
     // No section label for the command (owner cut it) — the dim `$ `
     // line under the header reads as the command on its own.
-    lines.push(
-      '',
-      corner(`$ ${maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)}`),
-      '',
-    )
+    lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
   pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
@@ -444,9 +442,13 @@ export function formatTaskAbortedLine(
  * formatTaskBlock, but emitted in real time around the live stream
  * instead of buffered.
  */
-export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
+export function formatFrameOpen(
+  node: TaskNode,
+  colors: ColorSupport = NO_COLOR,
+  forwardArgs: readonly string[] = [],
+): string {
   const corner = (t: string) => paint('', t, colors, { dim: true })
-  const cmd = maskedCommand(node.config.exec?.command ?? '', node.config.exec?.env)
+  const cmd = shownCommand(node, forwardArgs)
   const mark = isPersistentNode(node) ? `${paint(ACCENT, '▸', colors)} ` : ''
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
@@ -492,6 +494,15 @@ export function formatFrameClose(
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
 
+/** What ran: a requested task gets the args after `--`, as execute-task.ts appends them. */
+function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
+  const exec = node.config.exec
+  return maskedCommand(
+    withForwardArgs(exec?.command ?? '', node.requested ? forwardArgs : []),
+    exec?.env,
+  )
+}
+
 function isPersistentNode(node: TaskNode): boolean {
   return node.config.exec?.persistent !== undefined
 }
@@ -512,11 +523,12 @@ export function formatPersistentTailBlock(
   body: TaskBlockBody,
   dropped: { stdout?: number; stderr?: number } = {},
   colors: ColorSupport = NO_COLOR,
+  forwardArgs: readonly string[] = [],
 ): string {
   const stdout = body.stdout ?? ''
   const stderr = body.stderr ?? ''
   if (stdout.trim().length === 0 && stderr.trim().length === 0) return ''
-  const lines: string[] = [formatFrameOpen(node, colors)]
+  const lines: string[] = [formatFrameOpen(node, colors, forwardArgs)]
   pushStreamSection(lines, stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0, colors)
   pushStreamSection(lines, stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0, colors)
   lines.push(formatFrameClose(node, outcome, colors))
