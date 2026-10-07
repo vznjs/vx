@@ -503,6 +503,10 @@ once the root and the workspace config are found so both refusals stay
 as fast; the two git facts are asked while it runs. 100 projects, 40
 rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
 
+I-64. A task's RSS floor reads `/proc/self/status` only when the last
+`VmHWM` cannot decide the peak (it never falls). 500 cold tasks: 500
+reads → 3, ~17 ms of the scheduler's thread (~35 µs a read in vx).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
