@@ -113,7 +113,12 @@ otel({
   ran how many files its key read (`vx.task.input_files`) and what its key
   changed since the last entry the cache saved for it
   (`vx.cache.miss.change_count`, and `vx.cache.miss.changes`, the first ten
-  as `changed file packages/a/src/x.ts`). A
+  as `changed file packages/a/src/x.ts`), and what the cache cost: the
+  artifact's size (`vx.cache.artifact_bytes`, a hit's entry or the one a
+  miss saved), a miss's save (`vx.cache.save_ms`) and a remote hit's
+  download (`vx.cache.fetch_ms`). The run span adds the remote uploads
+  once they settled (`vx.cache.upload.count`, `.bytes`, `.ms` summed,
+  `.failed`). A
   failed task sets span status
   `ERROR`. A task span links to the spans of the tasks it waited on (a
   group seen through to the tasks behind it), and carries an event per
@@ -144,8 +149,9 @@ backend adds runs rather than reading each as the series' new total.
 `vx.task.duration` (ms, with `vx.cache.source`), and for a task the runner
 measured `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes), on a
 hit `vx.task.time_saved` (ms), `vx.task.admission_held` (ms) when an
-`admit` policy held it, and `vx.task.queued` (ms) when it waited for a
-worker; a skipped task sends none. While a task runs, its process tree is sampled
+`admit` policy held it, `vx.task.queued` (ms) when it waited for a
+worker, `vx.task.artifact_size` (bytes), `vx.task.cache_save` and
+`vx.task.cache_fetch` (ms); a skipped task sends none. While a task runs, its process tree is sampled
 each second: `vx.task.cpu_usage` (cores busy since the last sample, 1 =
 one core) and `vx.task.memory` (resident bytes). Sampling runs only while
 metrics export; a remote task, or a task under 1 s, has no samples.

@@ -22,7 +22,14 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
-import { LocalHistoryProvider, planRun, prepareRun, run } from '../src/orchestrator/index.js'
+import {
+  LocalHistoryProvider,
+  planRun,
+  prepareRun,
+  run,
+  type RunSummaryRecord,
+  type TelemetryRecord,
+} from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
 /**
@@ -1282,6 +1289,72 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
         expect(second.ok).toBe(true)
         expect(mem.gets).toBeGreaterThanOrEqual(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a sink hears each artifact's size, a save's and a fetch's time, and the run's uploads",
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const mem = memoryLayer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const runOnce = async () => {
+          let end: TelemetryRecord | undefined
+          let summary: RunSummaryRecord | undefined
+          await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: mem.layer,
+            telemetrySinks: [
+              {
+                onRecord: (r) => void (r.kind === 'task.end' && (end = r)),
+                onRunSummary: (s) => void (summary = s),
+              },
+            ],
+          })
+          const t = end?.kind === 'task.end' ? end : undefined
+          return {
+            source: t?.cacheSource,
+            bytes: t?.artifactBytes,
+            saved: t?.saveMs !== undefined,
+            fetched: t?.fetchMs !== undefined,
+            uploads: summary?.uploads,
+          }
+        }
+        const miss = await runOnce()
+        const size = mem.store.values().next().value!.byteLength
+        expect(size).toBeGreaterThan(0)
+        expect(miss).toEqual({
+          source: 'miss',
+          bytes: size,
+          saved: true,
+          fetched: false,
+          uploads: { count: 1, bytes: size, ms: miss.uploads!.ms, failed: 0 },
+        })
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        expect(await runOnce()).toEqual({
+          source: 'remote',
+          bytes: size,
+          saved: false,
+          fetched: true,
+          uploads: undefined,
+        })
+        expect(await runOnce()).toEqual({
+          source: 'local',
+          bytes: size,
+          saved: false,
+          fetched: false,
+          uploads: undefined,
+        })
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

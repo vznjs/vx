@@ -47,8 +47,13 @@ export interface SaveMissArgs {
   peakRssBytes?: number | undefined
   outputDirSnapshots?: OutputDirSnapshot[] | undefined // queued for run end when present
   deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined // the run's save lane; resolves when the save lands
+  measure?: boolean | undefined // a telemetry sink listens: time the save, stat its artifact
 }
-export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }>
+export interface SaveFacts {
+  saveMs?: number // the save's own time (pack, write, index)
+  artifactBytes?: number // the artifact it wrote
+}
+export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }>
 
 export type UnsavedArgs = Pick<
   SaveMissArgs,

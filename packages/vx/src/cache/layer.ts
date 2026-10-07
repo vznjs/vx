@@ -159,6 +159,10 @@ export interface CacheEntry {
    * them work vs. a stale-local replay.
    */
   source?: 'local' | 'remote'
+  /** The artifact's compressed size, when the index knows it. */
+  sizeBytes?: number
+  /** On a remote hit this run pulled: how long the download and its ingest took. */
+  fetchMs?: number
 }
 
 export interface RunRecord {

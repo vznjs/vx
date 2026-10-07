@@ -65,7 +65,7 @@ import {
   type WithheldLink,
   withheldLinkLine,
 } from './sandbox-request.js'
-import { markUnsaved, saveMiss, type OutputDirSnapshot } from './miss-save.js'
+import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
 import type { MissExplainer } from './miss-reason.js'
@@ -211,7 +211,7 @@ export interface ExecuteArgs {
    * in-flight join (admission.ts): a duplicate of this task in another run
    * must not probe the cache before the entry is there.
    */
-  deferredSaves?: Map<string, Promise<void>>
+  deferredSaves?: Map<string, Promise<SaveFacts>>
   /**
    * `continueMode: 'always'` let this task run although an upstream —
    * directly or through a chain of successes — failed or aborted. It still
@@ -1261,6 +1261,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
       outputDirSnapshots: args.outputDirSnapshots,
       deferSave: args.deferSave,
+      // A sink listens: say what the save cost.
+      measure: args.explainMiss !== undefined,
     })
     args.deferredSaves?.set(node.id, landed)
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {

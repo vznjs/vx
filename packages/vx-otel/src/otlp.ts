@@ -151,6 +151,13 @@ const VX_ATTR = {
   taskQueuedMs: 'vx.task.queued_ms',
   taskInputFiles: 'vx.task.input_files',
   missChangeCount: 'vx.cache.miss.change_count',
+  artifactBytes: 'vx.cache.artifact_bytes',
+  fetchMs: 'vx.cache.fetch_ms',
+  saveMs: 'vx.cache.save_ms',
+  uploadCount: 'vx.cache.upload.count',
+  uploadBytes: 'vx.cache.upload.bytes',
+  uploadMs: 'vx.cache.upload.ms',
+  uploadFailed: 'vx.cache.upload.failed',
   missChanges: 'vx.cache.miss.changes',
   ciJob: 'vx.ci.job',
   ciAttempt: 'vx.ci.attempt',
@@ -406,6 +413,14 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
       boolAttr(VX_ATTR.runExitOk, summary.exitOk),
       strAttr(SEMCONV.pipelineResult, pipelineResult(summary)),
     )
+    if (summary.uploads !== undefined) {
+      attrs.push(
+        intAttr(VX_ATTR.uploadCount, summary.uploads.count),
+        intAttr(VX_ATTR.uploadBytes, summary.uploads.bytes),
+        intAttr(VX_ATTR.uploadMs, summary.uploads.ms),
+        intAttr(VX_ATTR.uploadFailed, summary.uploads.failed),
+      )
+    }
   }
   return attrs
 }
@@ -520,6 +535,9 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     attrs.push(intAttr(VX_ATTR.taskAdmissionHeldMs, t.admissionHeldMs))
   if (t.queuedMs !== undefined) attrs.push(intAttr(VX_ATTR.taskQueuedMs, t.queuedMs))
   if (t.inputFiles !== undefined) attrs.push(intAttr(VX_ATTR.taskInputFiles, t.inputFiles))
+  if (t.artifactBytes !== undefined) attrs.push(intAttr(VX_ATTR.artifactBytes, t.artifactBytes))
+  if (t.fetchMs !== undefined) attrs.push(intAttr(VX_ATTR.fetchMs, t.fetchMs))
+  if (t.saveMs !== undefined) attrs.push(intAttr(VX_ATTR.saveMs, t.saveMs))
   if (t.inputChanges !== undefined) {
     // `changed file src/a.ts`: what moved the key since the last saved entry.
     attrs.push(
@@ -725,6 +743,9 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
     if (t.storedDurationMs !== undefined) add('vx.task.time_saved', 'ms', at(t.storedDurationMs))
     if (t.admissionHeldMs !== undefined) add('vx.task.admission_held', 'ms', at(t.admissionHeldMs))
     if (t.queuedMs !== undefined) add('vx.task.queued', 'ms', at(t.queuedMs))
+    if (t.artifactBytes !== undefined) add('vx.task.artifact_size', 'By', at(t.artifactBytes))
+    if (t.fetchMs !== undefined) add('vx.task.cache_fetch', 'ms', at(t.fetchMs))
+    if (t.saveMs !== undefined) add('vx.task.cache_save', 'ms', at(t.saveMs))
   }
   return [...series].map(([name, { unit, dataPoints }]) => ({ name, unit, gauge: { dataPoints } }))
 }

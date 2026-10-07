@@ -42,7 +42,7 @@ import {
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { prepareSandbox } from './sandbox-request.js'
-import type { OutputDirSnapshot } from './miss-save.js'
+import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
@@ -800,7 +800,7 @@ async function runOnBus(
     const saveLane = createSaveLane(2 * concurrency, (err) =>
       log.status(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
     )
-    const deferredSaves = new Map<string, Promise<void>>()
+    const deferredSaves = new Map<string, Promise<SaveFacts>>()
 
     // Focused flow: a requested GROUP has no output of its own, so
     // surface the same-project, non-group tasks it chains (one level)
@@ -1209,27 +1209,6 @@ async function runOnBus(
       log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
     }
     mark('record history')
-    // Hand the per-run summary to the telemetry sinks + drain them. Only
-    // when a sink is active (telemetry !== undefined) — otherwise this
-    // whole block is skipped and the run is byte-identical to before.
-    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
-    // the run; flush is the sink's last chance to ship buffered records.
-    if (telemetry !== undefined && runContextRecord !== undefined) {
-      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
-        startedAt: endedAtMsAtStart,
-        endedAt: endedAtMs,
-        totalDurationMs: Math.round(totalMs),
-        exitOk: ok,
-        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
-        stages: stageTimes(),
-      })
-      telemetry.emitSummary(summary)
-      await telemetry.flush()
-    }
-    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
-    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
-    // fail nor hang the run. Here on the normal path, after the drains
-    // below; every other exit takes it through `teardown` too.
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -1252,6 +1231,30 @@ async function runOnBus(
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
+    // Hand the per-run summary to the telemetry sinks + drain them. Only
+    // when a sink is active (telemetry !== undefined) — otherwise this
+    // whole block is skipped and the run is byte-identical to before.
+    // emitSummary/flush are crash-isolated, so a faulty sink can't fail
+    // the run; flush is the sink's last chance to ship buffered records.
+    // After the drain, so the summary says what the uploads moved; a live
+    // sink's task records went out as each task ended.
+    if (telemetry !== undefined && runContextRecord !== undefined) {
+      const summary = assembleRunSummary(runContextRecord, records.telemetryTasks, {
+        startedAt: endedAtMsAtStart,
+        endedAt: endedAtMs,
+        totalDurationMs: Math.round(totalMs),
+        exitOk: ok,
+        abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
+        stages: stageTimes(),
+        uploads: prepared.localCache.uploads,
+      })
+      telemetry.emitSummary(summary)
+      await telemetry.flush()
+    }
+    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
+    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
+    // fail nor hang the run. Here on the normal path, after the drains
+    // above; every other exit takes it through `teardown` too.
     // The miss path's output-directory snapshots, taken now that the
     // directories are old enough for the snapshot's racy window (see
     // miss-save.ts). A few at a time: each is an lstat + readdir per

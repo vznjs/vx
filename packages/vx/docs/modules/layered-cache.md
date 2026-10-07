@@ -14,9 +14,13 @@ via `RunOptions.remoteCache`.
   body into local, return with `source: 'remote'`.
 - **Write-through with async upload**: write to local synchronously,
   then PUT to remote in the background (bounded at 4 concurrent;
-  `run()` awaits `drainUploads()` before `cache.close()`). Remote
+  `run()` awaits `drainUploads()` before `cache.close()`, and before the
+  telemetry summary, which reports them). Each upload is tallied on the
+  local `Cache` it wraps (`uploads`: count, bytes, summed ms, failed),
+  so a plugin's own `LayeredCache` reports without a seam method. Remote
   errors are logged, not thrown — the task already succeeded; failed
-  uploads shouldn't fail the user's run.
+  uploads shouldn't fail the user's run. A remote hit this run pulled
+  carries `fetchMs`, its download and ingest.
 - **Prefetch + in-flight dedup**: `prefetch(hash)` warms local from
   remote in the background; an in-flight map shared with `get`
   guarantees **at most one remote GET per key**, and a settled miss

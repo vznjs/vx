@@ -115,6 +115,9 @@ interface TaskTelemetry {
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
   inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
+  artifactBytes?: number // the artifact's compressed size: a hit's entry, or a miss's save
+  fetchMs?: number // a remote hit this run pulled: download + ingest
+  saveMs?: number // a miss that saved: the save's own time
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
   wallclockStartNs?: string // bigint ns from the run's start, as a decimal string
   wallclockEndNs?: string
@@ -138,6 +141,7 @@ interface RunSummaryRecord {
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
   stages?: readonly RunStage[] // VX_TIMING's stages; those before the run lock end before startedAt
+  uploads?: { count: number; bytes: number; ms: number; failed: number } // remote uploads once settled; ms summed
 }
 
 interface FailedAttempt {

@@ -133,6 +133,9 @@ async function summarizeJson(): Promise<unknown> {
     sandboxViolationLines: ['deny file-read /x'],
     queuedMs: 2,
     inputFiles: 1,
+    artifactBytes: 3,
+    fetchMs: 2,
+    saveMs: 1,
     inputChanges: { count: 1, first: [{ kind: 'file', name: 'src/a.ts', change: 'changed' }] },
   }
   const flaky: FlakyFinding = {

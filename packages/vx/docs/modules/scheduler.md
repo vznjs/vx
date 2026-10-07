@@ -11,7 +11,9 @@ so up to twice `N` run at once while exec-tier work keeps the cap
 (at `--concurrency 1` the two lanes share one slot). An outcome may still owe
 something before its dependents start — `settledOf(outcome)`, the
 orchestrator's off-slot cache save landing — and the scheduler frees
-the slot at the outcome and unblocks the dependents at the settle.
+the slot at the outcome and unblocks the dependents at the settle. What
+the settle resolves with (the save's time and size) is merged into the
+outcome the dependents and observers see.
 
 ## Public surface
 
@@ -36,6 +38,9 @@ export interface TaskOutcome {
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
+  artifactBytes?: number // a hit's entry size, or (sink listening) the size a miss's save wrote
+  fetchMs?: number // a remote hit this run pulled: download + ingest
+  saveMs?: number // a miss that saved, sink listening: the save's own time
   inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
   cpuMs?: number
   peakRssBytes?: number
@@ -73,7 +78,7 @@ export interface ScheduleOptions {
   /** Where a rejected `execute`'s line goes, before its outcome; default stderr. */
   onError?: (node: TaskNode, line: string) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
-  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
+  settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
