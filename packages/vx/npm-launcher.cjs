@@ -37,8 +37,15 @@ const SUPPORTED = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64']
 const key = `${process.platform}-${process.arch}`
 const args = process.argv.slice(2)
 
+// The prebuilt Linux binaries link glibc. On musl (Alpine) the loader they
+// name is absent, execve fails with ENOENT on a file that exists, and the
+// user read "failed to launch (spawn … ENOENT)". Treated as no binary here,
+// so Bun runs the source when present and the error names the cause.
+const GLIBC_LOADER = { x64: '/lib64/ld-linux-x86-64.so.2', arm64: '/lib/ld-linux-aarch64.so.1' }
+const noGlibc = process.platform === 'linux' && !existsSync(GLIBC_LOADER[process.arch] ?? '/')
+
 function platformBinary() {
-  if (!SUPPORTED.includes(key)) return undefined
+  if (!SUPPORTED.includes(key) || noGlibc) return undefined
   const platformPkg = `${name}-${key}`
   try {
     // No `exports` restriction on the platform packages, so package.json
@@ -119,7 +126,7 @@ if (bin !== undefined) {
 } else {
   const supported = SUPPORTED.join(', ')
   process.stderr.write(
-    `${base}: no prebuilt binary for ${key}.\n` +
+    `${base}: no prebuilt binary for ${key}${noGlibc ? ' without glibc (musl)' : ''}.\n` +
       `  Supported platforms: ${supported}.\n` +
       `  If your platform should be supported, reinstall so npm fetches the\n` +
       `  matching ${name}-${key} optionalDependency, or install Bun (>=1.4) to\n` +
