@@ -20,9 +20,9 @@
 //     the lockfile moves, which the workspace fingerprint already covers.
 //     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
 //     from disk (D-27).
-//   - Descend only through files owned by NO project, or by a ROOT project
+//   - Descend only through files owned by NO project, by a ROOT project
 //     (whose own files are the shared tooling that is otherwise unowned,
-//     D-41). A config reaching into another project (say a site's
+//     D-41), or by the importing file's own project. A config reaching into another project (say a site's
 //     `vx.config.ts` importing `../core/src/index.ts`) records that edge
 //     and STOPS there — following it would drag substantially all of that
 //     project's `src/` into the closure, and the containment channel
@@ -486,16 +486,18 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
       if (entry === null) continue
       const { file, source } = entry
       const loader = TS_EXT.has(path.extname(file)) ? 'ts' : 'js'
+      const from = ownerOf(file, dirToName)
       for (const target of scanLocalImports(source, path.dirname(file), loader, tsconfigs)) {
         if (!target.startsWith(workspaceRoot + path.sep)) continue
         if (target.split(path.sep).includes('node_modules')) continue
         const list = importedBy.get(target)
         if (list) list.push(file)
         else importedBy.set(target, [file])
-        // Descend ONLY through unowned files, or the root project's own:
-        // see the header.
+        // Descend ONLY through unowned files, the root project's own, or
+        // the importer's own project's (a config split into `./tasks.mjs`
+        // that imports shared tooling): see the header.
         const owner = ownerOf(target, dirToName)
-        if (owner === undefined || owner === rootOwner) frontier.push(target)
+        if (owner === undefined || owner === rootOwner || owner === from) frontier.push(target)
       }
     }
   }

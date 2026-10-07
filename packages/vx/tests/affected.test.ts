@@ -1796,6 +1796,24 @@ describe('affectedProjects: config import closures', () => {
     ).toEqual(['lib', 'x'])
   })
 
+  it("PIN: through the config's own helper file to an orphan", async () => {
+    // lib's config imports its own `tasks.mjs`, which imports a shared
+    // file. The walk stopped at `tasks.mjs` as owned, and an edit to the
+    // shared file left lib out while its resolved config moved.
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { T } from './tasks.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + T } } } }\n`,
+    )
+    await writeFile(
+      path.join(root, 'packages/lib/tasks.mjs'),
+      `import { O } from '../../shared/own.mjs'\nexport const T = O\n`,
+    )
+    await writeFile(path.join(root, 'shared/own.mjs'), `export const O = 1\n`)
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'own helper')
+    expect(await editThenSelect('shared/own.mjs', `export const O = 2\n`)).toEqual(['lib'])
+  })
+
   it('CONTROL: an orphan module NO config imports selects the exact empty set', async () => {
     // The refutation of "any root-level .mjs change affects everything".
     expect(await editThenSelect('tools/build-helper.mjs', `export const helper = 2\n`)).toEqual([])

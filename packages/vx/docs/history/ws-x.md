@@ -528,3 +528,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   edges for `...` walks but not for `<name>...[ref]`, whose dependents
   walk then read the manifest graph alone. Row: `select.test.ts` ›
   "selects the named project when a task-edge dependency changed".
+- **X-76.** A config split into its own helper (`vx.config.mjs` imports
+  `./tasks.mjs`, which imports `../../shared/preset.mjs`) was not
+  selected by `--affected` when the preset changed: the import walk
+  stopped at `tasks.mjs` as a file some project owns. It now also
+  descends through the importing file's own project; a hop into another
+  project still stops. Row: `affected.test.ts` › "PIN: through the
+  config's own helper file to an orphan".
