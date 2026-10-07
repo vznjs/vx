@@ -2148,7 +2148,9 @@ has that name) and `vx show project <name>` say `vx show` and
 No target: one line per project — name, root-relative dir, task count,
 and a `(no vx config)` marker for config-less packages; one whose
 tasks all come from plugins reads `N tasks (no vx config; from
-plugins)`; a project's `tags` follow in brackets. With `--format json`
+plugins)`, and one a configured project depends on reads `1 task (no
+vx config; default build)`: a run loads it for that dependant's
+`^build` (X-48). A project's `tags` follow in brackets. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 ```

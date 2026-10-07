@@ -9,6 +9,7 @@
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
+import { isDefaultBuild } from '../orchestrator/index.js'
 import { flagHint, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
@@ -103,7 +104,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const bareTask = projectName !== undefined && taskName === undefined && !byName.has(projectName)
   const scope = projectName === undefined || bareTask ? 'all' : [projectName]
 
-  const projects = await loadCliProjects(root, metas, scope, { noCreate: true })
+  const projects = await loadCliProjects(root, metas, scope, { noCreate: true, closure: true })
 
   if (parsed.target === undefined) {
     process.stdout.write(renderList(root, metas, projects, parsed.format))
@@ -221,13 +222,17 @@ function renderList(
   projects: ReadonlyMap<string, ProjectEntry>,
   format: 'pretty' | 'json',
 ): string {
-  const rows = metas.map((meta) => ({
-    name: meta.name,
-    dir: projectDir(root, meta),
-    tags: projects.get(meta.name)?.config.tags ?? [],
-    tasks: Object.keys(projects.get(meta.name)?.config.tasks ?? {}),
-    configured: meta.configPath !== null,
-  }))
+  const rows = metas.map((meta) => {
+    const tasks = projects.get(meta.name)?.config.tasks ?? {}
+    return {
+      name: meta.name,
+      dir: projectDir(root, meta),
+      tags: projects.get(meta.name)?.config.tags ?? [],
+      tasks: Object.keys(tasks),
+      onlyDefault: Object.values(tasks).every((t) => isDefaultBuild(t)),
+      configured: meta.configPath !== null,
+    }
+  })
   if (format === 'json') {
     return `${JSON.stringify(
       rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
@@ -240,12 +245,15 @@ function renderList(
   const lines = rows.map((r) => {
     const n = r.tasks.length
     const count = `${n} task${n === 1 ? '' : 's'}`
-    // A package with no config file only has tasks a plugin gave it.
+    // A package with no config file has only tasks a plugin gave it, or the
+    // default `build` a configured dependant's closure gave it.
     const tasks = r.configured
       ? count
-      : n > 0
-        ? `${count} (no vx config; from plugins)`
-        : '(no vx config)'
+      : n === 0
+        ? '(no vx config)'
+        : r.onlyDefault
+          ? `${count} (no vx config; default build)`
+          : `${count} (no vx config; from plugins)`
     const tags = r.tags.length > 0 ? `  [${r.tags.join(', ')}]` : ''
     return `${r.name.padEnd(nameW)}  ${r.dir.padEnd(dirW)}  ${tasks}${tags}`
   })
