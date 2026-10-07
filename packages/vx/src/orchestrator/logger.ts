@@ -450,6 +450,12 @@ export function defaultLogger(
       writer.settle()
     },
     status(line) {
+      // A live-streamed server keeps writing after its frame closes, so a
+      // summary row or "exited with code" can follow its partial line.
+      if (streamMidLine) {
+        writer.write('\n')
+        streamMidLine = false
+      }
       writer.write(`${line}\n`)
     },
     runStart(info) {

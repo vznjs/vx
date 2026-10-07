@@ -528,6 +528,30 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
     expect(s.chunks.length).toBe(len)
   })
+
+  it('a status line after a kept server partial line starts on its own line', () => {
+    // The requested server streams raw past its frame close and the summary,
+    // so `vx: … exited with code` read `partialvx: web#dev exited with code 2`.
+    const s = pipe()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })
+    log.runStart?.({ total: 1, concurrency: 1 })
+    const dev = mkNode('web#dev', { requested: true, persistent: true })
+    log.taskStart?.(dev)
+    log.taskStdout(dev, 'ready\n')
+    log.taskComplete(dev, mkOutcome(dev, 'success'))
+    log.runEnd?.()
+    log.taskStdout(dev, 'partial')
+    log.status('vx: web#dev exited with code 2')
+    log.taskStdout(dev, 'next\n')
+    log.status('vx: done')
+    expect(s.chunks.slice(-5)).toEqual([
+      'partial',
+      '\n',
+      'vx: web#dev exited with code 2\n',
+      'next\n',
+      'vx: done\n',
+    ])
+  })
 })
 
 describe('formatStatusRegion', () => {
