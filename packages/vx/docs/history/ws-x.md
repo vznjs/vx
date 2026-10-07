@@ -525,3 +525,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-100.** The default `build` (2026-10-04) made a task cycle out of a
+  package cycle: `a` (`build` on `^build`) and `b` (no `build`)
+  depending on each other refused `vx run build` with
+  `Cycle detected in task graph: a#build -> b#build -> a#build`, where
+  `b` used to be passed through. The `^build` walk now finds package
+  cycles (Tarjan over `directDeps`, on first ask): a default `build`
+  passes through the projects on its cycle, and a walk meeting one on a
+  cycle takes its edge and goes on past it. Rows: `task-graph.test.ts` ›
+  "default builds on a package cycle make no task cycle", "a default
+  build on a cycle keeps the builds behind it for its dependants", and
+  the off-cycle control.

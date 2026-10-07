@@ -109,6 +109,11 @@ export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
 }
 
+/** The default `build` (orchestrator/projects.ts): a config cannot key a group, so it is the one keyed group. */
+function isKeyedGroup(task: TaskConfig): boolean {
+  return task.exec === undefined && task.cache !== undefined
+}
+
 /**
  * Mark, for focused-flow display, the real tasks a requested GROUP
  * stands for. A group has no output of its own, so `vx run build`
@@ -380,6 +385,55 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return declared.has(name)
   }
 
+  // Package cycles, for the default `build` (`isKeyedGroup`): each project
+  // on one maps to its strongly connected component, found on the first ask
+  // (iterative Tarjan over `directDeps`, the order the `^name` walk reads).
+  const component = new Map<string, number>()
+  const cyclic = new Set<number>()
+  let components = 0
+  function componentOf(start: string): number {
+    const known = component.get(start)
+    if (known !== undefined) return known
+    const index = new Map<string, number>()
+    const low = new Map<string, number>()
+    const open: string[] = []
+    const work: Array<[name: string, next: number]> = []
+    const enter = (name: string): void => {
+      index.set(name, index.size)
+      low.set(name, index.size - 1)
+      open.push(name)
+      work.push([name, 0])
+    }
+    enter(start)
+    while (work.length > 0) {
+      const top = work[work.length - 1]!
+      const deps = packageGraph.directDeps(top[0])
+      if (top[1] < deps.length) {
+        const dep = deps[top[1]++]!
+        if (component.has(dep)) continue
+        if (!index.has(dep)) enter(dep)
+        else low.set(top[0], Math.min(low.get(top[0])!, index.get(dep)!))
+        continue
+      }
+      work.pop()
+      const name = top[0]
+      const parent = work[work.length - 1]
+      if (parent !== undefined) low.set(parent[0], Math.min(low.get(parent[0])!, low.get(name)!))
+      if (low.get(name) !== index.get(name)) continue
+      const id = components++
+      let size = 0
+      for (let member = ''; member !== name; size++) {
+        member = open.pop()!
+        component.set(member, id)
+      }
+      if (size > 1) cyclic.add(id)
+    }
+    return component.get(start)!
+  }
+  const onCycle = (name: string): boolean => cyclic.has(componentOf(name))
+  const sameCycle = (a: string, b: string): boolean =>
+    onCycle(a) && componentOf(a) === componentOf(b)
+
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
   function resolveEntry(frame: Frame, raw: string): void {
     const { node } = frame
@@ -451,7 +505,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // shape), and a cycle walks the frontier straight back to the
       // origin. Mirrors the self-pattern rule above — a task can never
       // depend on itself.
+      //
+      // The default `build` sits on every project, so on a package cycle it
+      // would make a task cycle no config declares. Its own walk passes
+      // through the projects on its cycle (each of their builds reaches it),
+      // and a walk that meets it on a cycle takes the edge and goes on past
+      // it, so the builds it could not depend on still come first.
       const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
+      const keyed = isKeyedGroup(node.config)
       const visited = new Set<string>([projectName])
       const frontier = [...packageGraph.directDeps(projectName)]
       let held = false
@@ -460,8 +521,15 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         if (visited.has(target)) continue
         visited.add(target)
         if (re === null) {
-          if (visit(frame, target, spec.task, false)) held = true
-          else frontier.push(...packageGraph.directDeps(target))
+          if (keyed && sameCycle(projectName, target)) {
+            frontier.push(...packageGraph.directDeps(target))
+          } else if (visit(frame, target, spec.task, false)) {
+            held = true
+            const task = declaredTask(projects.get(target)!.config, spec.task)!
+            if (isKeyedGroup(task) && onCycle(target)) {
+              frontier.push(...packageGraph.directDeps(target))
+            }
+          } else frontier.push(...packageGraph.directDeps(target))
         } else {
           const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
             re.test(n),

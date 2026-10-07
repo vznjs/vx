@@ -115,6 +115,15 @@ entry is parsed via [`dependency-spec.ts`](./dependency-spec.md):
 The micro-syntax parser is shared with `cache.inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
 
+**The default `build` on a package cycle** (X-100). Every project the
+loader gives the default `build` (the one keyed group, `isKeyedGroup`)
+holds `build`, so on a package cycle (`directDeps`' strongly connected
+components, found on the first ask) `^build` closed a task cycle no
+config declares. A default `build`'s own walk passes through the
+projects on its cycle, and a walk that meets one on a cycle adds its
+edge and goes on past it, so the builds it cannot depend on still come
+first. Off a cycle it is a holder like any other.
+
 **`requested: true`** marks the user-requested set. A node added via
 dependsOn expansion is `requested: false`. If a node is later named
 explicitly (or the user passed both `build` AND `pkg#build`), it gets
@@ -229,7 +238,8 @@ project check in milliseconds.
 - zero-dependency single node
 - `'name'` (self) expansion + missing-task error
 - `'^name'` frontier expansion: nearest holder, sparse bridging,
-  stop-at-holder, shared-subtree dedup
+  stop-at-holder, shared-subtree dedup; default builds on a package
+  cycle make no task cycle and keep the builds past them
 - `'pkg#name'` cross-project edge (missing throws)
 - `'^name'` no project declares throws `undeclaredDepsError`'s message;
   the controls — declared only off the dependency path, declared by the
