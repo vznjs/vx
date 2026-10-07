@@ -20,17 +20,27 @@ afterEach(async () => {
 
 async function map(
   turbo: unknown,
-  pkgs: Record<string, { scripts: Record<string, unknown>; turbo?: unknown }>,
+  pkgs: Record<
+    string,
+    {
+      scripts: Record<string, unknown>
+      turbo?: unknown
+      dependencies?: Record<string, string>
+      /** The workspace root's own package. */
+      root?: true
+    }
+  >,
   envNames?: readonly string[],
 ) {
   await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo))
   const metas: ProjectMeta[] = []
   for (const [name, p] of Object.entries(pkgs)) {
-    const dir = path.join(root, 'packages', name)
+    const dir = p.root === true ? root : path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })
     if (p.turbo !== undefined)
       await writeFile(path.join(dir, 'turbo.json'), JSON.stringify(p.turbo))
-    metas.push({ name, dir, packageJson: { name, scripts: p.scripts } as never, configPath: null })
+    const packageJson = { name, scripts: p.scripts, dependencies: p.dependencies }
+    metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
   }
   return mapTurboWorkspace(root, metas, envNames === undefined ? opts : { ...opts, envNames })
 }
@@ -1417,14 +1427,52 @@ describe('turbo-map: `with`', () => {
   })
 
   // vx's own examples/turbo: `test` depends on `build`, and `lib` has no
-  // tests. No package reaches `lib#test`, so it is no group (a migration
-  // wrote it as a fourth task).
+  // tests. No package reaches `lib#test`, and `app`'s `^build` builds lib,
+  // so it is no group (a migration wrote it as a fourth task).
   it('a no-script node no other package reaches is no group', async () => {
     const m = await map(
       { tasks: { build: { dependsOn: ['^build'] }, test: { dependsOn: ['build'] } } },
-      { lib: { scripts: { build: 'b' } }, app: { scripts: { build: 'b', test: 't' } } },
+      {
+        lib: { scripts: { build: 'b' } },
+        app: { scripts: { build: 'b', test: 't' }, dependencies: { lib: 'workspace:*' } },
+      },
     )
     expect(m.projects.find((p) => p.name === 'lib')!.tasks.map((t) => t.name)).toEqual(['build'])
+  })
+
+  // vercel/ai: `turbo run type-check` built each example through its
+  // script-less `type-check: [build]`, and nothing depends on an example,
+  // so no `^build` reached it: vx built none. The root's dependency is no
+  // reach: the root runs only its `//#` tasks.
+  it('a no-script node in a package nothing but the root depends on is a group', async () => {
+    const m = await map(
+      {
+        tasks: {
+          build: { dependsOn: ['^build'] },
+          'type-check': { dependsOn: ['^build', 'build'] },
+        },
+      },
+      {
+        root: { scripts: {}, dependencies: { tool: 'workspace:*' }, root: true },
+        tool: { scripts: { build: 'b' } },
+        example: { scripts: { build: 'b' } },
+        lib: { scripts: { build: 'b', 'type-check': 't' } },
+        app: { scripts: { build: 'b' }, dependencies: { lib: 'workspace:*' } },
+      },
+    )
+    const groups = Object.fromEntries(
+      m.projects.map((p) => [
+        p.name,
+        p.tasks.filter((t) => t.name === 'type-check').map((t) => t.task?.['dependsOn']),
+      ]),
+    )
+    expect(groups).toEqual({
+      root: [],
+      tool: [['^build', 'build']],
+      example: [['^build', 'build']],
+      lib: [['^build', 'build']],
+      app: [['^build', 'build']],
+    })
   })
 
   // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }` with no `ci`
@@ -1542,8 +1590,9 @@ describe('turbo-map: a transit node', () => {
       (transit.task!['exec'] as { command: string }).command,
       transit.task?.['dependsOn'],
       transit.task?.['cache'] !== undefined,
-      // cfg's `build` is core's default, not a written one.
-    ]).toEqual([['build', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
+      // cfg's `build` is core's default, not a written one. Nothing depends
+      // on lib, so its script-less `test` is the group that builds it.
+    ]).toEqual([['build', 'test', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
   })
 })
 

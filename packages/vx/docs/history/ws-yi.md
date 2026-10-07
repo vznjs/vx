@@ -1,0 +1,3 @@
+# Workstream YI — Nx/Turbo parity (2026-10-07)
+
+- **YI-2.** `turbo()` wrote no group for a script-less node no other package reaches, so its own edges never ran: vercel/ai's `turbo run type-check` builds each of its 16 examples through `type-check: [^build, build]`, and vx built none. In a package nothing but the root depends on, no dependant's `^` edge runs them, so such a node is now a group there; a package something depends on keeps the old rule (vx's examples/turbo `lib#test`). ai's `type-check`, `test` and `publint` plans now match `turbo --dry=json` task for task. Rows: `packages/vx-migrate/tests/turbo-map-sweep.test.ts` › "a no-script node in a package nothing but the root depends on is a group", "a no-script node no other package reaches is no group".

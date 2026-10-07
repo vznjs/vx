@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
+import { buildPackageGraph, pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
 import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -1049,9 +1049,20 @@ export async function mapTurboWorkspace(
   // edge to a task of its own package or another (with-tailwind's
   // `ui#build` → `build:styles`), is lost when
   // another package reaches the node, and a persistent `with` sidecar
-  // whenever the node is run: such a node is a group task (below). One no
-  // other package reaches stays none (a `test: [build]` in a package with
-  // no tests adds nothing Turbo's `^` would not).
+  // whenever the node is run: such a node is a group task (below). So are
+  // the edges of a package nothing depends on: no `^` reaches its `build`,
+  // and `turbo run type-check` built ai's 16 examples through their
+  // script-less `type-check: [build]` while vx built none. One no other
+  // package reaches in a package something depends on stays none (a
+  // `test: [build]` in a package with no tests adds nothing its
+  // dependants' `^build` does not).
+  let graph: ReturnType<typeof buildPackageGraph> | undefined
+  // The root runs only its `//#` tasks, so its dependencies are no reach
+  // (ai's root dev-depends on `konsistent-provider`).
+  const depended = (pkg: string): boolean =>
+    (graph ??= buildPackageGraph([...metas]))
+      .transitiveDependents(pkg)
+      .some((d) => d !== rootMeta?.name)
   const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
@@ -1079,7 +1090,9 @@ export async function mapTurboWorkspace(
       })
       const reached = caretNames.has(name) || crossIds.has(`${meta.name}#${name}`)
       if (sidecar) sidecarGroups.add(`${meta.name}#${name}`)
-      if (sidecar || (local && reached)) emitted.get(meta.name)!.add(name)
+      // A name no package has a script for is the entry rule's (below).
+      const leaf = (): boolean => scripted.has(name) && !depended(meta.name)
+      if (sidecar || (local && (reached || leaf()))) emitted.get(meta.name)!.add(name)
       // A name no package has a script for is an entry point of its own:
       // `turbo run ci` over `ci: { dependsOn: ["lint", "build"] }`, or
       // cal.com's `deploy` → `@calcom/web#build`, runs its edges, and vx
