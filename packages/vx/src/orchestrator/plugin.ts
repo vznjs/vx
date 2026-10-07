@@ -294,7 +294,11 @@ export interface ProjectHookContext extends BaseContext {
 }
 
 export interface GraphHookContext extends BaseContext {
-  /** Task ids the user asked for (the rest were pulled in by `dependsOn`). */
+  /**
+   * Task ids the user asked for (the rest were pulled in by `dependsOn`).
+   * Under `--affected` this is every candidate: the selection reads the
+   * graph the hooks leave and cuts it down afterwards.
+   */
   readonly requested: readonly string[]
 }
 

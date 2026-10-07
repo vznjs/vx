@@ -104,6 +104,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    narrows the schedule (`excludeDependencies`) and
    `keyExcludedDependencies` keys each dropped dependency on that whole
    graph, so the dependant folds the key a full run gives it.
+   Under `--affected` the selection (`affected-tasks.md`) prunes the
+   graph; with a `graph` plugin the hooks run before it, so it sees
+   their edges and inputs, else after the git enumeration.
 
 The cache + fingerprint are constructed even when the result will be
 empty so callers always have a uniform `try { ... } finally {

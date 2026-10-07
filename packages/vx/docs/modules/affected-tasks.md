@@ -23,6 +23,19 @@ passes through a package it loaded no config for reaches it the same way:
 any change there reaches the task. An anchored `pkg#task` always runs. `prepareRun` drops the rest
 and returns `empty: 'none-affected'` when nothing is left.
 
+A cached task's `workspaceFiles` is asked of every node, not only of the
+changed projects' (whose owners the selection found from the staged
+configs), so an input a `graph` hook gave it counts.
+
+With a `graph` plugin the selection follows the FINAL graph: `prepareRun`
+runs the hooks first, over every candidate (the CLI widens the
+candidates to every project), asks `affectedRoots` of the edited nodes,
+and prunes the graph to the `dependsOn` closure of the kept requests
+plus what a hook added or marked requested; a request only a kept task
+pulls in is demoted, as a rebuild from the kept requests would leave it.
+Without one the graph is rebuilt from the kept requests and the hooks
+run after.
+
 ## Public surface
 
 ```ts

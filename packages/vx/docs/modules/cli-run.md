@@ -105,7 +105,9 @@ projects and their dependents, the candidates (#446) — put first in
 `filterStrings` before `resolveFilters` runs, which keeps that filter's
 diff per path (`affectedChanges`) as `RunOptions.affected`; `prepare`
 then keeps a bare request only when the diff reaches its `dependsOn`
-closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). The no-value form takes
+closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). With a
+`graph` plugin the candidates are every project once anything changed:
+the plugin's edges exist only in the run's graph. The no-value form takes
 the workspace's `affectedBase` (a plugin's `config` stage may set it),
 else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
 `origin/main`, `origin/master`, `main`, `master` that is not HEAD, else

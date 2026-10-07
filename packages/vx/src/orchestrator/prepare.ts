@@ -521,9 +521,43 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           : {}),
       })
     let nodes = graphOf(requested)
+    const hasGraphHook = hasHook(plugins, 'graph')
+    const graphStage = async (): Promise<void> => {
+      // A hook edits each node's config in place, as `project` does, so the
+      // edit is held to what the loader accepts from a user: a misspelled
+      // `exec` field ran as an empty command and failed with no reason.
+      const configPaths = new Map(projectMetas.map((m) => [m.name, m.configPath]))
+      await applyGraphHooks(
+        plugins,
+        nodes,
+        {
+          workspaceRoot,
+          cacheDir,
+          warn: (m) => log.status(m),
+          requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
+        },
+        (plugin) => {
+          for (const n of nodes.values()) {
+            if (isDefaultBuild(n.config)) continue
+            const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
+            validateProjectConfig(
+              { tasks: { [n.taskName]: n.config } },
+              `${where} (after plugin '${plugin.name}')`,
+            )
+          }
+        },
+        workspaceConfig?.rules,
+      )
+    }
+    // `--affected` selects over the FINAL graph: an edge or an input a
+    // `graph` hook adds moves a key, so the hooks run first, over every
+    // candidate, and the selection prunes what they left.
+    const hooksFirst = hasGraphHook && options.affected !== undefined
     // `--affected` keeps a bare request only when the diff reaches its
     // closure; a `pkg#task` the user named runs as it always does.
     if (options.affected !== undefined) {
+      const before = hooksFirst ? new Set(nodes.keys()) : null
+      if (hooksFirst) await graphStage()
       const named = new Set(tasks.filter((t) => t.includes('#')))
       const outright = new Set(options.selectedOutright)
       const ids = requested.map((r) => `${r.project}#${r.task}`)
@@ -532,7 +566,20 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         (r, i) => named.has(ids[i]!) || outright.has(r.project) || reached.has(ids[i]!),
       )
       if (kept.length === 0) return emptyRun('none-affected')
-      if (kept.length < requested.length) {
+      if (before !== null) {
+        const asked = new Set(ids)
+        // What a hook added or asked for is the plugin's choice, kept as it
+        // would be on a run without the diff.
+        const roots = [
+          ...kept.map((r) => `${r.project}#${r.task}`),
+          ...[...nodes.values()]
+            .filter((n) => !before.has(n.id) || (n.requested && !asked.has(n.id)))
+            .map((n) => n.id),
+        ]
+        pruneToClosure(nodes, new Set(roots))
+        for (let i = unproven.length - 1; i >= 0; i--)
+          if (!nodes.has(unproven[i]![0])) unproven.splice(i, 1)
+      } else if (kept.length < requested.length) {
         unproven.length = 0
         nodes = graphOf(kept)
       }
@@ -605,33 +652,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
     )
     mark('git enumeration')
-    if (hasHook(plugins, 'graph')) {
-      // A hook edits each node's config in place, as `project` does, so the
-      // edit is held to what the loader accepts from a user: a misspelled
-      // `exec` field ran as an empty command and failed with no reason.
-      const configPaths = new Map(projectMetas.map((m) => [m.name, m.configPath]))
-      await applyGraphHooks(
-        plugins,
-        nodes,
-        {
-          workspaceRoot,
-          cacheDir,
-          warn: (m) => log.status(m),
-          requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
-        },
-        (plugin) => {
-          for (const n of nodes.values()) {
-            if (isDefaultBuild(n.config)) continue
-            const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
-            validateProjectConfig(
-              { tasks: { [n.taskName]: n.config } },
-              `${where} (after plugin '${plugin.name}')`,
-            )
-          }
-        },
-        workspaceConfig?.rules,
-      )
-    }
+    if (hasGraphHook && !hooksFirst) await graphStage()
     // Args after `--` go to requested commands only; with none among them
     // they reached nothing and the run passed, the `--watch` unheard.
     if ((options.forwardArgs?.length ?? 0) > 0) {
@@ -765,5 +786,25 @@ async function refuseUndeclaredDeps(
   }
   for (const [id, name] of unproven) {
     if (!declared.has(name)) throw undeclaredDepsError(id, name)
+  }
+}
+
+/**
+ * Drops every node outside the `dependsOn` closure of `roots`, and demotes a
+ * requested one only a kept task pulls in: what a rebuild from the kept
+ * requests would hold, with the `graph` hooks' edits kept.
+ */
+function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>): void {
+  const keep = new Set<string>()
+  const stack = [...roots]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (keep.has(id)) continue
+    keep.add(id)
+    stack.push(...nodes.get(id)!.deps)
+  }
+  for (const [id, n] of nodes) {
+    if (!keep.has(id)) nodes.delete(id)
+    else if (!roots.has(id)) n.requested = false
   }
 }
