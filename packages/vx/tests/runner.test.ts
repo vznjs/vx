@@ -741,6 +741,25 @@ describe('withForwardArgs', () => {
     expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
   })
 
+  // X-12: appended to the terminator, the heredoc never closed. Compared as
+  // text: a shell writes a heredoc to a temp file, which macOS's sandboxed
+  // shard refuses, so running these printed nothing there.
+  it.each([
+    ['a command ending in a heredoc', 'xargs echo <<X\nhi\nX', "xargs echo <<X --fix 'a b'\nhi\nX"],
+    [
+      'a quoted, tab-stripped heredoc',
+      "xargs echo <<-'X'\n\thi\n\tX\n",
+      "xargs echo <<-'X' --fix 'a b'\n\thi\n\tX",
+    ],
+    [
+      'control: a command after a heredoc',
+      'xargs echo <<X\nhi\nX\necho done',
+      "xargs echo <<X\nhi\nX\necho done --fix 'a b'",
+    ],
+  ])('%s', (_name, command, forwarded) => {
+    expect(withForwardArgs(command, ['--fix', 'a b'])).toBe(forwarded)
+  })
+
   it('a # after a separator opens a comment', () => {
     expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
   })
