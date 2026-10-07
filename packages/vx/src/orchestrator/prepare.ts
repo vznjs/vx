@@ -45,6 +45,7 @@ import {
   buildTaskGraph,
   excludeDependencies,
   expandRequested,
+  isGroupTask,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,
@@ -626,6 +627,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           }
         },
       )
+    }
+    // Args after `--` go to requested commands only; with none among them
+    // they reached nothing and the run passed, the `--watch` unheard.
+    if ((options.forwardArgs?.length ?? 0) > 0) {
+      const requestedNodes = [...nodes.values()].filter((n) => n.requested)
+      if (requestedNodes.length > 0 && requestedNodes.every(isGroupTask)) {
+        const ids = requestedNodes.map((n) => n.id)
+        const named = ids.length > 3 ? `${ids.slice(0, 3).join(', ')}, …` : ids.join(', ')
+        throw new UserError(
+          `args after \`--\` reach no task: ${named} ${ids.length === 1 ? 'has' : 'have'} no command (a group); name the task that runs one`,
+        )
+      }
     }
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })

@@ -85,3 +85,7 @@ time (bugs, correctness, simplification, the plugin seams).
   missing value. Rows: `root-project.test.ts` › "//#task with no root
   project says so rather than hinting a member", `cli.test.ts` ›
   "rejects missing flag value".
+- **X-14.** `vx run build -- --watch` where `build` is a group ran its
+  dependencies without the args and passed: a group takes none and the
+  args reached nothing. A request whose tasks are all groups is now
+  refused, naming them. Row: `forward-args-group.test.ts`.
