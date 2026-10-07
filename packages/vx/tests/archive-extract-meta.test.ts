@@ -74,6 +74,37 @@ describe('extractArtifactStream', () => {
     }
     expect(statSync(path.join(dest, 'a.txt')).mode & 0o777).toBe(0o644)
   })
+
+  // A small entry's temp is made by `writeFile` (0666 & ~umask), a large
+  // one's by Bun's file writer (0664 & ~umask). Under umask 000 they differ,
+  // and the chmod skip read the first entry's temp mode for all of them:
+  // the other kind came back with the wrong mode, and every later hit
+  // restored it again.
+  for (const [order, mode] of [
+    [['small.txt', 'big.bin'], 0o666],
+    [['big.bin', 'small.txt'], 0o664],
+  ] as const) {
+    it(`restores each mode under umask 000, ${order.join(' before ')}`, async () => {
+      // Both carry the mode the FIRST entry's temp is made with, so the
+      // second is the one whose temp differs from it.
+      const srcDir = fresh()
+      writeFileSync(path.join(srcDir, 'small.txt'), 's')
+      writeFileSync(path.join(srcDir, 'big.bin'), new Uint8Array(4 * 1024 * 1024 + 1))
+      for (const f of order) chmodSync(path.join(srcDir, f), mode)
+      const tar = await packArtifact({
+        stdout: '',
+        outputs: new Map(order.map((f) => [`outputs/${f}`, path.join(srcDir, f)])),
+      })
+      const dest = fresh()
+      const saved = process.umask(0)
+      try {
+        await extractArtifactStream(streamOf(tar), dest, undefined)
+      } finally {
+        process.umask(saved)
+      }
+      expect(order.map((f) => statSync(path.join(dest, f)).mode & 0o777)).toEqual([mode, mode])
+    })
+  }
 })
 
 const META = JSON.stringify({ version: 1, files: { 'outputs/a.txt': [0, 1_700_000_000_000] } })
