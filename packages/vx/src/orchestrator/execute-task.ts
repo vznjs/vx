@@ -923,13 +923,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const endReq = span('miss: build request')
     const req = await buildRequest()
     endReq()
-    // An executor that THROWS produces no captured output, so the task's
-    // frame would print the command and nothing else while the reason went
-    // straight to stderr and scrolled away in a broad run. Put it in the
-    // task's own stream first: the frame is where a reader looks for why a
-    // task failed, and a remote executor's failures are exactly the ones with
-    // no other trace. Rethrown unchanged — the scheduler still classifies it,
-    // and still prints it plainly for a UserError.
+    // An executor that THROWS produces no captured output. Rethrown: the
+    // scheduler classifies it and prints its one line into the task's own
+    // stream (run()'s onError), where the frame reads it; a copy written
+    // here too printed the reason twice.
     const endExec = span('miss: execute')
     let res = await boundAfterAbort(args.executor.execute(req), req.signal)
       .then((r: unknown) => {
@@ -955,15 +952,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
         const err = nameExecutorFailure(args.executor, raw)
         // A remote executor's message carries the server's own text, which
-        // may echo the env it was sent: masked here, where it is printed,
-        // and on the error the scheduler prints with its cause (L-39).
+        // may echo the env it was sent: masked on the error the scheduler
+        // prints with its cause (L-39).
         if (secrets !== null) {
           for (const e of [err, err instanceof Error ? err.cause : undefined])
             if (e instanceof Error) e.message = secrets.mask(e.message)
         }
-        const message =
-          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
-        log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
       })

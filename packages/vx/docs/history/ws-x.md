@@ -525,3 +525,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   when a kept server's exit changed the outcomes (C-53). Row:
   `cli.test.ts` › "--report and the --verbosity table print above the
   footer".
+- **X-70.** A plugin executor's throw printed twice in the task's
+  frame: `execute-task.ts` wrote the message to the task's stderr and
+  rethrew, and the scheduler's `onError` wrote `[vx] <id>: <message>`
+  into the same stream. The first copy is gone; a second task failing on
+  the same error now reads `as <id> above`, as every other refusal does.
+  Rows: `plugin-capabilities.test.ts` › "an executor's throw reaches the
+  task's own stderr …", "one error an executor rejects two tasks with is
+  named once in each"; `executor-error-secret-mask.test.ts`.
