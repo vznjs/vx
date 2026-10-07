@@ -30,6 +30,9 @@ import {
 import { execDigestFor } from './cache.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
 
+// A default decoder strips a leading U+FEFF, which is part of a path.
+const PATH_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+
 /**
  * Split a coarse output directory into the paths its GLOB actually names.
  *
@@ -346,7 +349,7 @@ function decodeOutputFile(buf: Uint8Array): {
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
-      if (field === 1) out.path = new TextDecoder().decode(slice)
+      if (field === 1) out.path = PATH_UTF8.decode(slice)
       else if (field === 2) out.digest = decodeDigest(slice)
       else if (field === 5 && len > 0) out.contents = slice
     } else if (wire === 0) {
@@ -370,8 +373,8 @@ function decodeOutputSymlink(buf: Uint8Array): { path: string; target: string } 
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (key >>> 3 === 1) out.path = new TextDecoder().decode(slice)
-    else if (key >>> 3 === 2) out.target = new TextDecoder().decode(slice)
+    if (key >>> 3 === 1) out.path = PATH_UTF8.decode(slice)
+    else if (key >>> 3 === 2) out.target = PATH_UTF8.decode(slice)
   }
   return out
 }
@@ -445,7 +448,7 @@ function decodeOutputDirectory(buf: Uint8Array): { path: string; tree_digest: Di
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (field === 1) out.path = new TextDecoder().decode(slice)
+    if (field === 1) out.path = PATH_UTF8.decode(slice)
     else if (field === 3) out.tree_digest = decodeDigest(slice)
   }
   return out

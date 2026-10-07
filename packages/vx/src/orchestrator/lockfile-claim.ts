@@ -15,7 +15,7 @@
 
 import path from 'node:path'
 import { rename, stat } from 'node:fs/promises'
-import { xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -270,8 +270,7 @@ function digestFor(importers: ReadonlyMap<string, string>, importer: string): st
 
 /** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */
 function importerOf(workspaceRoot: string, projectDir: string): string {
-  const rel = path.relative(workspaceRoot, projectDir)
-  return rel === '' ? '.' : rel.split(path.sep).join('/')
+  return relPosix(workspaceRoot, projectDir) || '.'
 }
 
 async function readMemo(

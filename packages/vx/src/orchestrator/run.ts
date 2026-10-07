@@ -433,7 +433,7 @@ async function runOnBus(
   let telemetry: TelemetryHandle | undefined
   try {
     disposePlugins = await installPlugins({
-      plugins: prepared.plugins as never,
+      plugins: prepared.plugins,
       bus,
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
@@ -936,6 +936,9 @@ async function runOnBus(
     const explainMiss =
       telemetry === undefined ? undefined : createMissExplainer(prepared.localCache.dbHandle())
     const lateProbes = probesAfterWrites(nodes, workspaceRoot)
+    // The scheduler's fail-fast stop, as the retry loop of a task already
+    // in flight sees it.
+    const failFast = new AbortController()
     const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
@@ -983,6 +986,7 @@ async function runOnBus(
         deferSave: saveLane.defer,
         deferredSaves,
         stopSignal: stopRun.signal,
+        failFast: failFast.signal,
       }
     }
 
@@ -1032,6 +1036,7 @@ async function runOnBus(
       ...(holders.size > 0 ? { exclusive: holders } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       serverDied,
+      onFailFast: () => failFast.abort(),
       signal: stopRun.signal,
       onStart: (node) => {
         log.taskStart?.(node)
