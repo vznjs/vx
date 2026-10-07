@@ -2494,7 +2494,9 @@ prints `no recorded runs`, exit 0), and past green runs only,
 `--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded).
+vx run app#test -- …`, with the arguments the run forwarded). The
+replayed `$ vx run …` line and that one keep each argument shell-quoted
+(`-- 'a b'`), so either pastes back as it ran.
 
 `vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules

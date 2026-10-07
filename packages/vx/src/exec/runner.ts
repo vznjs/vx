@@ -106,7 +106,8 @@ function taskStdio(terminal: boolean | undefined, stdin: 'ignore' | 'pipe') {
 
 export function shellQuote(arg: string): string {
   if (arg === '') return `''`
-  if (/^[A-Za-z0-9_\-.,/=:@%+]+$/.test(arg)) return arg
+  // A `#` opens a comment only at a word's start, so `app#build` stays bare.
+  if (/^[A-Za-z0-9_\-.,/=:@%+][A-Za-z0-9_\-.,/=:@%+#]*$/.test(arg)) return arg
   return `'${arg.replace(/'/g, `'\\''`)}'`
 }
 

@@ -284,3 +284,13 @@ time (bugs, correctness, simplification, the plugin seams).
   cache store `vx info` names", as the prune refusal does. Row:
   `nx-reset-hint.unsafe.test.ts` › "vx reset says it exactly; the guide
   row and cli.md say the same" (X-44).
+- **X-45.** `vx last` printed the run's command and its "re-run what
+  failed:" line with the args joined bare, so `-- "a b" 'c;echo X'`
+  pasted back as three args and a second command. `vx run` now records
+  each arg through `shellQuote`, which leaves a `#` past a word's first
+  character bare (`app#build`); the secret mask also matches a value's
+  `'\''` spelling, or a quoted value holding a `'` was stored plain.
+  `vx watch` still joins its args bare (`watch.ts`, out of this slice).
+  Rows: `last.test.ts` › "the replayed command and its re-run line keep
+  the args shell-quoted (X-45)", `invocation-secret-mask.test.ts`,
+  `runner.test.ts` › `shellQuote` (X-45).

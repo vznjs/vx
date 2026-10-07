@@ -10,6 +10,7 @@ import {
   outcomeLabel,
   projectOutcome,
   run as runOrchestrator,
+  shellQuote,
   type OutcomeView,
   type RunOptions,
   type RunResult,
@@ -649,8 +650,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
-  // show what was actually run. `args` is everything after `run`.
-  opts.command = ['vx', 'run', ...args].join(' ')
+  // show what was actually run. `args` is everything after `run`, quoted
+  // so `vx last` replays one paste-able line.
+  opts.command = ['vx', 'run', ...args.map(shellQuote)].join(' ')
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.

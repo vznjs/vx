@@ -234,6 +234,21 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    'the replayed command and its re-run line keep the args shell-quoted (X-45)',
+    async () => {
+      // Joined bare, `a b` read back as two args and `c;echo X` as a second
+      // command for whoever pasted the line.
+      await vx(root, ['run', 'boom', '--all', '--', 'a b', 'c;echo X'])
+      const lines = (await vx(root, ['last'])).out.trimEnd().split('\n')
+      expect([lines[1], lines.at(-1)]).toEqual([
+        `  $ vx run boom --all -- 'a b' 'c;echo X'`,
+        `  re-run what failed: vx run app#boom -- 'a b' 'c;echo X'`,
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task killed by a signal replays with the exit code and the signal it stands for',
     async () => {
       const r1 = await vx(root, ['run', 'killed', '--all'])

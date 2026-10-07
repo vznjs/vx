@@ -65,6 +65,9 @@ export function secretMask(
   const add = (value: string | undefined): void => {
     if (value === undefined || value.length < MIN_SECRET_CHARS) return
     values.add(value)
+    // A value with a `'` reaches a printed command spelled as shellQuote
+    // spells it (`'\''`), which the plain value does not match (X-45).
+    if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
     // Actions does: a tool that indents or reflows it prints no copy of the
     // whole value, and every line leaked (L-36).
