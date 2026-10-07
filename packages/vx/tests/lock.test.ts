@@ -68,9 +68,9 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       // Control: every project configured — no note on either line.
       const lockAll = await vx(root, ['lock'], {})
-      expect(lockAll.out).toBe('vx: locked 1 project config → vx-lock.json\n')
+      expect(lockAll.out).toBe('vx lock: locked 1 project config → vx-lock.json\n')
       expect((await vx(root, ['lock', '--check'], {})).out).toBe(
-        'vx: lock is up to date (1 project)\n',
+        'vx lock --check: up to date (1 project)\n',
       )
       // A bare package (a plugin's tasks, or none): nothing to freeze there,
       // and `--frozen` still loads it live — say so instead of `0 configs`.
@@ -78,12 +78,12 @@ describe('vx lock (e2e)', () => {
       const lock = await vx(root, ['lock'], {})
       expect(lock.code).toBe(0)
       expect(lock.out).toBe(
-        'vx: locked 1 project config → vx-lock.json (1 project has no vx.config; their tasks are never frozen)\n',
+        'vx lock: locked 1 project config → vx-lock.json (1 project has no vx.config; their tasks are never frozen)\n',
       )
       const check = await vx(root, ['lock', '--check'], {})
       expect(check.code).toBe(0)
       expect(check.out).toBe(
-        'vx: lock is up to date (1 project; 1 without a vx.config not audited)\n',
+        'vx lock --check: up to date (1 project; 1 without a vx.config not audited)\n',
       )
     },
     TIMEOUT,
