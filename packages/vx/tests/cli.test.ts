@@ -2320,10 +2320,16 @@ describe('formatRunReportMarkdown', () => {
       ok: true,
       outcomes: [
         { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 10 },
-        { taskId: 'web#dev', status: 'aborted', exitCode: 143, durationMs: 99 },
+        {
+          taskId: 'web#dev',
+          status: 'aborted',
+          exitCode: 143,
+          durationMs: 99,
+          wallclockStartNs: '1',
+        },
       ],
     })
-    // Aborted did no work, so it joins no outcome bucket and no total. It is
+    // Aborted finished no work, so it joins no outcome bucket and no task count. It is
     // still named: a run carrying one exits non-zero, and a report that shows
     // only green rows leaves that red undiagnosable.
     expect(md).toContain('**1 task**')

@@ -146,3 +146,10 @@ time (bugs, correctness, simplification, the plugin seams).
   (143, or 137 after the grace). Row: `persistent-ready-timeout.test.ts`
   › "never-matching readyWhen + timeout → run fails fast, child is
   killed".
+- **X-25.** `--report` on a Ctrl-C'd run said `failed`, called a task the
+  stop reached before it ran `aborted`, and left the killed task's time out
+  of its total, while the terminal said `aborted` / `not run`. Now the
+  heading is `interrupted`, the status is `aborted` or `not run`, the header
+  ends `not counted: 1 aborted, 1 not run`, and the total holds the aborted
+  task's time. Row: `run-report.test.ts` › "renders an interrupted run,
+  byte for byte".

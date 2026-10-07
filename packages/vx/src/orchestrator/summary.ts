@@ -381,7 +381,9 @@ export function formatRunSummary(
  * it an invented exit 1; only a started task carries a wall-clock start, so
  * that is what tells "never ran" from "killed" (item 1062).
  */
-export function neverStarted(o: TaskOutcome): boolean {
+export function neverStarted(
+  o: Pick<TaskOutcome, 'status'> & { wallclockStartNs?: unknown },
+): boolean {
   return o.status === 'aborted' && o.wallclockStartNs === undefined
 }
 

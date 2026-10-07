@@ -1082,17 +1082,20 @@ task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
-`—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
-still get a row and an `N aborted` count, so a red report with no failing
-row still says why. Group tasks (no `exec`) get neither — they are not
+`—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
+and its tasks keep the terminal's words: one the signal killed is
+`aborted` with its time so far, one the stop reached before it ran is
+`not run` with no time. Neither joins the counts; the header names them
+after the total, `not counted: 1 aborted, 1 not run`, so a red report
+with no failing row still says why. Group tasks (no `exec`) get neither — they are not
 work, and the header's counts match the terminal summary and
 `--summarize` exactly.
 
 The two durations in the header mean different things, and the
 distinction is the point:
 
-- **`N total`** sums `Duration` over the tasks that actually EXECUTED —
-  the time this run spent.
+- **`N total`** sums `Duration` over the tasks that actually EXECUTED,
+  an aborted task's time so far included — the time this run spent.
 - **`N saved`** sums the exec times the cache hits SKIPPED, read from
   each entry as it was stored (above, 2.01s and 640ms). It is
   deliberately not the hits' `Duration` column, which is the restore
