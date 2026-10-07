@@ -28,7 +28,7 @@ describe('an adopt beside another process sweeping orphans', () => {
         outputFiles: [outFile],
         entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
       })
-      saver.dbHandle().prepare('DELETE FROM entries WHERE hash = ?').run(hash)
+      saver.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
       saver.close()
       const artifact = path.join(dir, `${hash}.tar.zst`)
       const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
