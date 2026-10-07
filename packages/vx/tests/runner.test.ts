@@ -737,16 +737,27 @@ describe('withForwardArgs', () => {
     ['control: a line continuation', 'echo args: \\\n', 'args: --fix a b\n'],
     ['control: an escaped trailing space', 'echo a\\ ', 'a  --fix a b\n'],
     ['control: an escaped backslash before the newline', 'echo a\\\\\n', 'a\\ --fix a b\n'],
-    // X-12: appended to the terminator, the heredoc never closed.
-    ['a command ending in a heredoc', 'xargs echo <<X\nhi\nX', '--fix a b hi\n'],
-    ['a quoted, tab-stripped heredoc', "xargs echo <<-'X'\n\thi\n\tX\n", '--fix a b hi\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  // X-12: appended to the terminator, the heredoc never closed. Compared as
+  // text: a shell writes a heredoc to a temp file, which macOS's sandboxed
+  // shard refuses, so running these printed nothing there.
+  it.each([
+    ['a command ending in a heredoc', 'xargs echo <<X\nhi\nX', "xargs echo <<X --fix 'a b'\nhi\nX"],
+    [
+      'a quoted, tab-stripped heredoc',
+      "xargs echo <<-'X'\n\thi\n\tX\n",
+      "xargs echo <<-'X' --fix 'a b'\n\thi\n\tX",
+    ],
     [
       'control: a command after a heredoc',
       'xargs echo <<X\nhi\nX\necho done',
-      'hi\ndone --fix a b\n',
+      "xargs echo <<X\nhi\nX\necho done --fix 'a b'",
     ],
-  ])('%s', (_name, command, printed) => {
-    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  ])('%s', (_name, command, forwarded) => {
+    expect(withForwardArgs(command, ['--fix', 'a b'])).toBe(forwarded)
   })
 
   it('a # after a separator opens a comment', () => {
