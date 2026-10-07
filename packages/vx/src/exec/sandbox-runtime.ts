@@ -1409,9 +1409,11 @@ function literalReadPaths(
  * it the pattern, and SRT compiles any spelling holding `[` as a regex in
  * which a backslash is a literal one, so `pages/\[id\].tsx` matched no
  * file and the route could not be granted. `[[]` is a class of one `[`; a
- * lone `]` is plain text (B-65).
+ * lone `]` is plain text (B-65). A deny path is a real directory, never a
+ * pattern: a nested project's wall under `[legacy]/` compiled as a class,
+ * matched nothing, and the root task read it.
  */
-function seatbeltBrackets(
+export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
@@ -1422,6 +1424,7 @@ function seatbeltBrackets(
     ...config,
     filesystem: {
       ...fs,
+      denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
       allowWrite: literal(fs.allowWrite),
       ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
     },
