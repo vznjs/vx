@@ -533,3 +533,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `sandbox-mkdir-ancestor.unsafe.test.ts` › "refusedWrites › a mkdir of a
   directory the task can see", "mkdir -p of a directory a read grant
   shows passes; of a new one, fails".
+- **X-83.** A sandboxed server whose wrap was refused (a `localBinding`
+  port the host holds) left the empty placeholder vx made for its literal
+  write grant in the project: the request had made it, and only the
+  server's exit swept, which never came. The persistent path now sweeps
+  when the wrap throws. Row: `sandbox-port-held.unsafe.test.ts` › "a
+  server refused for the port leaves no placeholder behind".
