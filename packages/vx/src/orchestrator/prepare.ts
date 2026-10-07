@@ -357,12 +357,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const { projects, configured: projectsWithConfigs } = loaded
   mark('load configs')
 
-  // Boundary geometry considers every config-bearing project in the
-  // workspace, loaded or not — an out-of-scope nested project must
-  // still fence its files off from its parent's globs.
-  const nestedDirsByProject = computeNestedProjectDirs(
-    projectsWithConfigs.map((m) => ({ name: m.name, dir: m.dir })),
-  )
+  // Boundary geometry considers every workspace project, loaded or not,
+  // config or not: `--affected` gives a changed path to the deepest project
+  // dir, and a config-less one keys its files under its default `build`, so
+  // a parent's glob that folded (or cleaned) them crossed a boundary the
+  // selection drew (X-57).
+  const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
 
   const candidateProjects = options.projects
     ? options.projects.filter((p) => projects.has(p))

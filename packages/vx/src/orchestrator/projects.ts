@@ -155,8 +155,7 @@ export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
   /**
    * Every project that can carry tasks: it has a config file, or a plugin
-   * fills the `project` stage and may give it tasks. Boundary geometry
-   * fences all of them, loaded or not.
+   * fills the `project` stage and may give it tasks.
    */
   configured: readonly ProjectMeta[]
 }
@@ -179,7 +178,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // scripts mapped onto packages that never wrote a `vx.config.ts`). It
   // then loads as `{ tasks: {} }` — nothing to evaluate, nothing to freeze
   // — and the stage runs on that like on any loaded config. With no
-  // `project` plugin a plain run never seeds (or fences) a config-less
+  // `project` plugin a plain run never seeds a config-less
   // package, but loads one a loaded project's closure reaches: it gets the
   // default `build`, so a dependant bundling its source is keyed on it
   // behind `^build`. Left out, its edit replayed the dependant's stale

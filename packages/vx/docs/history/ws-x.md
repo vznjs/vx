@@ -399,3 +399,21 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   ended with a hint naming `$API_TOKEN` whatever variable leaked. It now
   names the first leaked variable. Row: `lock-secret.test.ts` › "the
   hint names the variable that leaked, not a fixed one".
+- **X-57.** The key's and the output clean's fence held only the
+  config-bearing projects, while `--affected` gives a changed path to
+  the deepest project dir, config or not. A root `build` over `**`
+  folded a config-less member's files, so its edit moved the root's key
+  and `--affected` did not select the root (a CI gate went green past
+  it); a root `outputs.files: ['**/*.js']` cleaned the member's tracked
+  source. The fence (`prepare.ts`, the playground's planner and the
+  watch loop's `makeFence`) is now every workspace project: a
+  config-less package keys its own files under its default `build`
+  (X-9), so a parent reaches them only through `dependsOn`, as for any
+  project. A sandboxed root task's read of such a member is walled the
+  same way. Keys move only for a parent whose globs covered one; the
+  old key folded those files, so the new one differs and misses: no
+  `CACHE_VERSION` bump. Supersedes the 2026-09 stance that a bare
+  manifest under a project is part of it. Rows:
+  `configless-fence.test.ts`, `watch-nested-boundary.test.ts` › "a
+  nested project's config stays an edit; a config-less package's file
+  is none (X-57)".

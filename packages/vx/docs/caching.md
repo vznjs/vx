@@ -877,8 +877,12 @@ A project's `cache.inputs.files` globs **never** reach into another
 project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
-directories (projects rooted inside this one) once per `vx run`, and
-every glob pass drops a path under one of them (an ancestor lookup,
+directories (projects rooted inside this one) once per `vx run`. A
+workspace package counts whether or not it has a vx config: it is the
+project `--affected` gives its files to, and its default `build` keys
+them (X-57). The same set fences the output clean, so a root
+`outputs.files: ['**/*.js']` never removes a member's source. Every
+glob pass drops a path under one of them (an ancestor lookup,
 A-11). The only way
 for project A to depend on project B's state via project-relative
 globs is `dependsOn` + upstream-hash propagation (step 10).
