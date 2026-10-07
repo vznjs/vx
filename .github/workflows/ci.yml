@@ -252,35 +252,33 @@ jobs:
           sleep 5
           docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
 
-      # The suite is `@vzn/vx-reapi#test`, one bun process per file (the
-      # task's own comment says why), run through vx with the endpoints in
-      # its environment; the task passes them through and folds them into
-      # its key, so this live-mode run never hits the plain gate's skip-mode
-      # entry. BOTH require flags are set: a skip is a silent pass, and
-      # these suites are the only proof the cache wire and the execution
-      # wire work.
-      - name: vx run test (@vzn/vx-reapi, live)
+      # `@vzn/vx-reapi#test.live` runs only the files that dial a server
+      # (the `ci` job runs every file, these in skip mode), uncached, with
+      # the endpoints passed through. BOTH require flags are set: a skip is
+      # a silent pass, and these suites are the only proof the cache wire
+      # and the execution wire work.
+      - name: vx run test.live (@vzn/vx-reapi)
         env:
           VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
           VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
           VX_REQUIRE_REAPI_EXEC: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-reapi
+        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-reapi
 
       # `@vzn/vx-migrate`'s `nx-exec` is a Node bin over Nx's own
       # `runExecutor`, and the fake-Nx suite cannot prove Nx's side of that
       # contract. A real install lives INSIDE the package (gitignored
-      # `.nx-live/`), so the sandboxed `test` task reads it under its own
+      # `.nx-live/`), so the sandboxed `test.live` task (only the
+      # `*-live.test.ts` files; `ci` runs every file) reads it under its own
       # grant; the env names it and, like the REAPI flags, makes an absent
-      # install a failure. The task folds both variables into its key, so
-      # this live run never lands on the plain gate's skip-mode entry.
+      # install a failure. Uncached: `nx@22` is unpinned.
       - name: Install Nx for the nx-exec live suite
         run: npm install --no-audit --no-fund --prefix packages/vx-migrate/.nx-live nx@22 @nx/js@22 typescript@5
-      - name: vx run test (@vzn/vx-migrate, live nx-exec)
+      - name: vx run test.live (@vzn/vx-migrate, nx-exec)
         env:
           VX_NX_MODULES: ${{ github.workspace }}/packages/vx-migrate/.nx-live
           VX_REQUIRE_NX: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-migrate
+        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-migrate
 
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
