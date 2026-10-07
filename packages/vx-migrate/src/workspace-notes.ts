@@ -24,7 +24,7 @@ export function lockfilePlugin(root: string): { file: string; factory: string } 
   return lock === undefined ? undefined : { file: lock[0], factory: lock[1] }
 }
 
-export interface AdoptedTool {
+interface AdoptedTool {
   /** The adoption plugin `vx init` declares: `turbo`, `nx`. */
   readonly plugin: string
   /** The file it reads every run: `turbo.json`, `nx.json`. */

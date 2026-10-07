@@ -110,7 +110,8 @@ the project's upstream workspace deps run too. Override with `--all`,
 If no task name is given:
 
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
-  across the workspace, prints `description` next to each, prompts
+  across the workspace (only the selected projects' under `--filter` /
+  `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
   for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
@@ -269,7 +270,10 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   `<base>` itself, not the merge base. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
-  the history (`git fetch --unshallow`, `fetch-depth: 0`).
+  the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
+  a path inside a commit (`main:packages`) is refused, naming the commit
+  to pass: its paths lack the prefix, so the diff would select the wrong
+  projects. A root tree (`main^{tree}`) is still a base.
 - A member whose directory is a symlink to a place elsewhere under the
   workspace root (`packages/b -> ../ext/b`) is selected by a change at
   that real place too: git names the files where they live, not by the
@@ -702,7 +706,8 @@ tracks the run live. Top to bottom:
    visible evidence the dev server is still alive. After the summary,
    a requested persistent task keeps vx in the foreground, with the
    persistent tasks it depends on, until it — or, with several, the
-   first of them — exits; the rest are then torn
+   first of them — exits (one kept only as a dependency that exits 0,
+   a daemon that forked and returned, does not end it); the rest are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1
@@ -2083,7 +2088,7 @@ copy to the source.
 | turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
 | turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
 | nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
-| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project                                                                                         |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)                               |
 | nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
 | nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
 | nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
@@ -2493,8 +2498,9 @@ their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
-`vx last --list` prints the N most recent runs (default 10) with their
-run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
+`vx last --list` prints the N most recent runs (default 10), one per
+line in aligned columns (verdict, start, run id, counts, duration,
+command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last <runId>` replays a

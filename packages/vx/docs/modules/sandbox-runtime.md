@@ -386,7 +386,12 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      log monitor (macOS only — see the Linux row below for why the
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
-     then calls `SandboxManager.cleanupAfterCommand()`.
+     then calls `SandboxManager.cleanupAfterCommand()`. A wrap that
+     spawned nothing (a spawn that failed, a stop before it) calls it
+     too: SRT removes the empty mount-point stubs bwrap made on the host
+     (`.bashrc`, `.vscode`, … under a write grant) only once every wrap
+     has, and one missed call kept every later task's stubs until the
+     reset. A held `localBinding` port is refused before the wrap.
    - On Linux, an attempt whose stderr holds a line of strace's own
      (strace names itself by its argv[0], `/usr/bin/strace: …`) is run
      once more unless it timed out or the run is stopping: the trace
@@ -560,7 +565,9 @@ next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
 `vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
 tag (SRT keys violations by the first 100 characters), created before the
-spawn and removed with the task's bridges at its end, or at exit. A
+spawn and removed with the task's bridges at its end, or at exit; a wrap
+that throws (a held port) removes it at once, as a failed spawn does its
+strace log, or a `vx watch` kept one per refusal until it quit. A
 `kill -9` runs no exit hook and leaves it. A sweep of the directories whose
 owner's pid is gone was tried and refused: a nested vx (this repo's own
 test shards) sees another pid namespace, where the outer vx's pid reads as

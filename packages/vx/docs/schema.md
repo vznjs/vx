@@ -403,7 +403,8 @@ Semantics:
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
-  fine (a daemon that forks and returns).
+  fine (a daemon that forks and returns), and one kept only as a
+  dependency does not end the foreground hold (WD-3).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
   to every persistent subprocess it does not keep, and waits for them to
@@ -862,7 +863,7 @@ the names, and each value, with "unset" folded apart from every value
 
 ##### `inputs.runtime` (optional, default `[]`)
 
-Shell commands whose **combined, trimmed stdout + stderr** is folded
+Shell commands whose **trimmed stdout and stderr, kept apart,** are folded
 into the cache key — the runtime-output analog of `inputs.env`. It runs
 in the project dir; the Nx
 [`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs),

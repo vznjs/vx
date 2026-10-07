@@ -76,6 +76,10 @@ describe('a task typed as a verb', () => {
     expect(run(root, 'app:nope', '--all')[2]).toBe(
       'vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n',
     )
+    // Nor does one the project inherits from Object.prototype.
+    expect(run(root, 'app:toString')[2]).toBe(
+      'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+    )
   })
 
   // nx-examples names `@nx-example/cart` `cart`, and its users type
