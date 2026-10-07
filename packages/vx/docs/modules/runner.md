@@ -234,7 +234,9 @@ Bun's shape into our schema:
   `/proc/self/status` after the child exits (the mark is monotonic, so
   it covers the task's span; elsewhere the current RSS is the bound in
   hand), and `peakRssBytes` is set only more than `RSS_FLOOR_SLACK_BYTES`
-  (4 MiB) above it — unknown, bounded by vx's own footprint, otherwise. The
+  (4 MiB) above it — unknown, bounded by vx's own footprint, otherwise.
+  The read is skipped when the last one already decides: a peak within
+  the slack of an older mark is within it of the current one. The
   slack is there because a light child reads ON the floor by construction
   and the kernel's per-thread RSS counters lag by pages between syncs: an
   exact comparison reported 376 MB for `true` on one CI run in twelve

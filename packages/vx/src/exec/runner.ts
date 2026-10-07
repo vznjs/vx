@@ -807,7 +807,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...resourceUsageToCpuRss(proc.resourceUsage(), ownRssHighWater()),
+    ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
   }
 }
 
@@ -832,12 +832,28 @@ export function ownRssHighWater(): number {
   if (process.platform === 'linux') {
     try {
       const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
-      if (m !== null) return Number(m[1]) * 1024
+      if (m !== null) return (highWaterSeen = Number(m[1]) * 1024)
     } catch {
       // /proc unreadable: fall through to the current RSS.
     }
   }
   return process.memoryUsage.rss()
+}
+
+/** The last `VmHWM` read, in bytes; 0 until one is. */
+let highWaterSeen = 0
+
+/**
+ * The floor for a child's `peak`, read only when the last `VmHWM` cannot
+ * decide it: the mark never falls, so a peak within the slack of an older
+ * reading is within the slack of the current one, and goes unreported
+ * either way. A light task reads vx's own mark as its peak, so after the
+ * first such task the rest skip the read, which cost ~35 µs of the
+ * scheduler's thread per task (500 cold tasks, 2026-10-07). A current-RSS
+ * fallback is not monotonic and is never reused.
+ */
+function rssFloorFor(peak: number): number {
+  return peak <= highWaterSeen + RSS_FLOOR_SLACK_BYTES ? highWaterSeen : ownRssHighWater()
 }
 
 /**
@@ -1014,8 +1030,8 @@ export function peakRssBytes(maxRSS: number): number {
  */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
-  /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */
-  floorBytes = 0,
+  /** The parent's own high-water mark (`ownRssHighWater`), or a function of the peak that answers it; a peak at or under it is inherited, not the child's, and is not reported. */
+  floorBytes: number | ((peak: number) => number) = 0,
 ): { cpuMs?: number; peakRssBytes?: number } {
   if (!usage) return {}
   // cpuTime.total is microseconds as a bigint → ms.
@@ -1028,5 +1044,6 @@ export function resourceUsageToCpuRss(
   // parent's (see `ownRssHighWater`, `RSS_FLOOR_SLACK_BYTES`): the child's
   // peak is unknown, bounded by it.
   const peak = peakRssBytes(usage.maxRSS)
-  return peak > floorBytes + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
+  const floor = typeof floorBytes === 'number' ? floorBytes : floorBytes(peak)
+  return peak > floor + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
 }
