@@ -37,6 +37,7 @@ import {
   isWorkspaceConfigFile,
   gitFiles,
   isWorkspaceFingerprintFile,
+  makeFence,
   makeRootEventFilter,
   makeWatchIgnore,
   shapesWatchedSet,
@@ -242,6 +243,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     workspaceConfigImports: swept.workspaceConfigImports,
     memberBases: memberBaseDirs(workspace),
     packageDirs: new Set(allProjects.map((p) => p.dir)),
+    fenceDirs: fenceDirs(allProjects),
     // The workspace as the cycle that just ran saw it: a package added or
     // removed since the loop armed joins or leaves the watched set. The
     // scope is the one resolved at start; a new package joins it only as a
@@ -266,6 +268,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         configImports: sweep.configImports,
         workspaceConfigImports: sweep.workspaceConfigImports,
         packageDirs: new Set(all.map((p) => p.dir)),
+        fenceDirs: fenceDirs(all),
       }
     },
     // Under --frozen every cycle's configs are the lock's, so a re-lock is
@@ -312,9 +315,14 @@ interface WatchLoopArgs {
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
   packageDirs: ReadonlySet<string>
+  /** Every project with a config, in scope or not: a project's key leaves out what lies in one nested under it. */
+  fenceDirs: readonly string[]
   /** The watched set again, after a cycle that followed an event which can change it. */
   rediscover: () => Promise<Rediscovered>
 }
+
+const fenceDirs = (all: readonly ProjectMeta[]): string[] =>
+  all.filter((p) => p.configPath !== null).map((p) => p.dir)
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]
@@ -328,6 +336,7 @@ interface Rediscovered {
   configImports: readonly string[]
   workspaceConfigImports: readonly string[]
   packageDirs: ReadonlySet<string>
+  fenceDirs: readonly string[]
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
@@ -424,7 +433,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
   let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-  let matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
+  let fenced = makeFence(args.fenceDirs)
+  let matters = makeRootEventFilter(
+    workspaceRoot,
+    projectDirs,
+    workspaceInputs,
+    claimedRootFiles,
+    fenced,
+  )
   /** Since the last cycle, a member came or went, or a file that shapes the watched set changed (`shapesWatchedSet`). */
   let reread = false
 
@@ -472,9 +488,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   const armProject = (proj: ProjectMeta): void => {
     try {
       const handle = arm(proj.dir, true, (filename) => {
-        if (isIgnoredPath(proj.dir, filename)) return
+        const abs = path.join(proj.dir, filename)
+        if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
         if (shapesWatchedSet(filename)) reread = true
-        trigger(`${proj.name} ${filename}`, path.join(proj.dir, filename))
+        trigger(`${proj.name} ${filename}`, abs)
       })
       perProject.set(proj.dir, handle)
       armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
@@ -659,7 +676,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     memberBases = next.memberBases
     armBases()
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
-    matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs, claimedRootFiles)
+    fenced = makeFence(next.fenceDirs)
+    matters = makeRootEventFilter(
+      workspaceRoot,
+      projectDirs,
+      workspaceInputs,
+      claimedRootFiles,
+      fenced,
+    )
     if (next.workspaceWide !== workspaceWide) {
       // A task started or stopped declaring `workspaceFiles`: the other
       // arm's shape. Until item 891 the choice was made once, at start, and
