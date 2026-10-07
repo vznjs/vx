@@ -25,6 +25,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
@@ -364,6 +365,7 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  private readonly breaker = new OutageBreaker()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
   constructor(
@@ -408,20 +410,24 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
     const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
-    const res = await withRetry(
-      () =>
-        this.fetchImpl(this.url(pathname), {
-          method,
-          headers: this.headers(init.headers),
-          ...(init.body === undefined ? {} : { body: init.body }),
-          // 0 is Turbo's "no deadline".
-          ...(timeoutMs === 0 ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
-        }),
-      this.config.retries,
-      this.wait,
-    ).catch((err: unknown) => {
-      throw deadlineNamed(err, timeoutMs)
-    })
+    const res = await this.breaker
+      .send(() =>
+        withRetry(
+          () =>
+            this.fetchImpl(this.url(pathname), {
+              method,
+              headers: this.headers(init.headers),
+              ...(init.body === undefined ? {} : { body: init.body }),
+              // 0 is Turbo's "no deadline".
+              ...(timeoutMs === 0 ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
+            }),
+          this.config.retries,
+          this.wait,
+        ),
+      )
+      .catch((err: unknown) => {
+        throw deadlineNamed(err, timeoutMs)
+      })
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
