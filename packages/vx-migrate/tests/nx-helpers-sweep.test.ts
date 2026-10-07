@@ -148,6 +148,29 @@ describe('expandNxInputs', () => {
 
 // analogjs's 32 `eslint:lint` tasks each carried the todo for `eslint`, a
 // root devDependency every task's key already holds.
+describe('a {workspaceRoot} input on the root project', () => {
+  // Nx globs it over the whole workspace; a vx project glob stops at the
+  // root project's own files, so sherif's `{workspaceRoot}/**/package.json`
+  // missed every package's manifest (TanStack Query). CONTROL: a
+  // `{projectRoot}` glob there is the project's own, as in Nx.
+  it("is a workspace glob; a {projectRoot} one stays the project's", () => {
+    const into = emptyNxInputs()
+    const todos: string[] = []
+    expandNxInputs(
+      ['{workspaceRoot}/**/package.json', '!{workspaceRoot}/**/*.md', '{projectRoot}/src/**/*'],
+      {},
+      { rel: '', name: 'root' },
+      into,
+      todos,
+    )
+    expect([into.files, into.wsFiles, todos]).toEqual([
+      ['src/**/*'],
+      ['**/package.json', '!**/*.md'],
+      [],
+    ])
+  })
+})
+
 describe('externalDependencies the root declares', () => {
   const run = (names: string[], rootDeps: string[]) => {
     const todos: string[] = []
