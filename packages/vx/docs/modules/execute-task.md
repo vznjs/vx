@@ -64,6 +64,7 @@ anything beneath it changes.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
+   stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
 6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
