@@ -34,6 +34,12 @@ interface LastArgs {
   error?: string
 }
 
+/**
+ * A run id as typed beside `--list`: a UUIDv7's first group (8 hex digits)
+ * at least, whole or cut as `--list` prints it.
+ */
+const RUN_ID_SHAPE = /^[0-9a-f]{8}(?:-|$)/i
+
 export function parseLastArgs(args: readonly string[]): LastArgs {
   const out: LastArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
@@ -41,10 +47,15 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (a === '--list' || a.startsWith('--list=')) {
       // `--list 5` is the count, like every other value flag's space form:
       // it read as a run id, which `--list` then ignored, and ten runs came
-      // back (item 899). A run id is never a bare integer, so the next
-      // argument is taken only when it is one.
+      // back (item 899). The next argument is the count unless it is a flag
+      // or has a run id's shape: `1.5`, `-3` and `abc` read as run ids and
+      // were told a run id does not combine with --list (X-29).
       const next = args[i + 1]
-      const spaced = a === '--list' && next !== undefined && /^\d+$/.test(next)
+      const spaced =
+        a === '--list' &&
+        next !== undefined &&
+        (/^\d+$/.test(next) ||
+          (!RUN_ID_SHAPE.test(next) && (!next.startsWith('-') || /^-\d/.test(next))))
       const lv = a === '--list' ? (spaced ? next : '10') : a.slice(7)
       if (spaced) i++
       const n = Number(lv)
@@ -86,6 +97,10 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     out.runId = a
   }
   // One run's replay or a list of runs, not both: the id was dropped.
+  // Beside --list, a word no run id could be is just an extra one.
+  if (out.runId !== undefined && out.list !== undefined && !RUN_ID_SHAPE.test(out.runId)) {
+    return { ...out, error: `unexpected argument: ${out.runId}${seeHelp('last')}` }
+  }
   if (out.runId !== undefined && out.list !== undefined) {
     return {
       ...out,

@@ -2464,8 +2464,11 @@ prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
-and `--list=5` alike); `vx last <runId>` replays a
-specific one, and the two do not combine. `--failed` replays the latest
+and `--list=5` alike; the space form takes the next argument as the
+count unless it is a flag or a run id, eight hex digits at least, so
+`--list 1.5` is refused as a count); `vx last <runId>` replays a
+specific one, and the two do not combine (a word beside `--list` no run
+id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting, and `--list --format json`
