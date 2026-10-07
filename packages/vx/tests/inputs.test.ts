@@ -1346,7 +1346,7 @@ describe('inputs.ts edges', () => {
     await writeFile(path.join(root, 'dist', 'same-mtime'), 'bbbbbbbb')
     await utimes(path.join(root, 'dist', 'same-mtime'), old, old) // new size, same mtime
     const own = await ownOutputsSince(args, before)
-    expect(own.map((f) => relPosix(root, f)).sort()).toEqual(['dist/same-mtime', 'dist/same-size'])
+    expect(own?.map((f) => relPosix(root, f)).sort()).toEqual(['dist/same-mtime', 'dist/same-size'])
   })
 
   it('a clean never removes the project directory itself, even when it empties it', async () => {

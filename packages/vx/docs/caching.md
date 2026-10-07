@@ -806,6 +806,10 @@ Then the order is fixed, and the dependant is **additive**: twenty's
   trusts — and only that set is saved; `outputs.workspaceFiles` are
   stamped the same way (until A-43 its miss cleaned them by glob, deleting
   a same-tree upstream's root-anchored files before it read them);
+- a run that **removes** a file it found (a bundler deleting the
+  upstream's intermediate) saves nothing: an artifact holds what a run
+  wrote, never what it took away, and the upstream's restore puts the
+  file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
   before a restore (its rows only);

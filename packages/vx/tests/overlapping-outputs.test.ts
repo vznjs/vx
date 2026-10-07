@@ -424,3 +424,87 @@ describe('overlapping outputs: the run-end snapshot of each side', () => {
     TIMEOUT,
   )
 })
+
+// An additive task that REMOVES a file its upstream wrote (a bundler
+// deleting its intermediate). An artifact holds what a run wrote, never
+// what it took away, so a hit cannot replay the removal: the upstream's
+// restore brought the file back and the dependant's own rows left it.
+describe('overlapping outputs: a dependant that removes an upstream file', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js && echo mid > dist/tmp.js' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        post: {
+          dependsOn: ['build'],
+          exec: { command: 'rm dist/tmp.js && echo bundle > dist/bundle.js' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('A1', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    'its removal is never undone by a hit: the dependant saves nothing and re-runs',
+    async () => {
+      const cold = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+      expect(statusOf(cold)).toEqual({ build: 'success', post: 'success' })
+      const want: Array<[string, string]> = [
+        ['dist/a.js', 'A1'],
+        ['dist/bundle.js', 'bundle\n'],
+      ]
+      expect(tree(ws.app)).toEqual(want)
+      for (let i = 0; i < 2; i++) {
+        const warm = await run({ cwd: ws.root, tasks: ['post'], log: silent })
+        expect(tree(ws.app)).toEqual(want)
+        expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'success' })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the same at the workspace root: a root-anchored removal is never undone by a hit',
+    async () => {
+      const rootWs = await workspace(
+        'A1',
+        'B1',
+        `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/a.js && echo mid > ../../gen/tmp.js' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+            },
+            post: {
+              dependsOn: ['build'],
+              exec: { command: 'rm ../../gen/tmp.js && echo bundle > ../../gen/bundle.js' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['gen'] } },
+            },
+          },
+        }
+      `,
+      )
+      try {
+        const gen = (): string[] => readdirSync(path.join(rootWs.root, 'gen')).sort()
+        expect((await run({ cwd: rootWs.root, tasks: ['post'], log: silent })).ok).toBe(true)
+        expect(gen()).toEqual(['a.js', 'bundle.js'])
+        const warm = await run({ cwd: rootWs.root, tasks: ['post'], log: silent })
+        expect(gen()).toEqual(['a.js', 'bundle.js'])
+        expect(statusOf(warm)).toEqual({ build: 'cache-hit+restored', post: 'success' })
+      } finally {
+        await rm(rootWs.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

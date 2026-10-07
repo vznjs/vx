@@ -739,11 +739,15 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * a current tree, so no new trust is introduced. A file the run rewrote
  * with identical bytes counts as its own (the mtime moved), which is the
  * rewrite-in-place cost the design note records.
+ *
+ * Undefined when the run REMOVED a file it found: an artifact holds what a
+ * run wrote, never what it took away, and the upstream's restore puts the
+ * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
   args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
 }
 
@@ -751,15 +755,16 @@ export async function ownOutputsSince(
 export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
 }
 
 function changedSince(
   after: readonly string[],
   before: ReadonlyMap<string, OutputStamp>,
-): string[] {
+): string[] | undefined {
   const own: string[] = []
+  let kept = 0
   for (const f of after) {
     const was = before.get(f)
     if (was === undefined) {
@@ -768,12 +773,13 @@ function changedSince(
     }
     try {
       const st = lstatSync(f)
+      kept++
       if (st.size !== was.size || st.mtimeMs !== was.mtimeMs) own.push(f)
     } catch {
-      // Vanished since the walk: not an output.
+      // Vanished since the walk: removed, as one the walk missed is.
     }
   }
-  return own
+  return kept < before.size ? undefined : own
 }
 
 /**
