@@ -1058,7 +1058,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // no edge to the producer fails naming only the file (A-48).
       if (code !== 0) {
         for (const c of (args.gitFilesCache?.trackedCleansMissing(node.id) ?? []).slice(0, 3)) {
-          const rel = path.relative(args.workspaceRoot, c.path).split(path.sep).join('/')
+          const rel = relPosix(args.workspaceRoot, c.path)
           log.taskStderr(
             node,
             `\n[vx] ${rel} is tracked by git, and ${c.by} removed it as an output before its run; it is still missing. A task that reads it needs dependsOn on ${c.by}.\n`,

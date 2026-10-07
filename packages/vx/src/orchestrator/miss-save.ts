@@ -17,7 +17,14 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { asTrees, span, staticPrefix, taskGlob, wholeSubtreePrefixes } from '../util/index.js'
+import {
+  asTrees,
+  relPosix,
+  span,
+  staticPrefix,
+  taskGlob,
+  wholeSubtreePrefixes,
+} from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { TaskInputComponent } from './task-hash.js'
 
@@ -272,7 +279,7 @@ function markWritten(
   if (outputFiles.length > 0) {
     a.gitFilesCache?.markOutputsChanged(
       projectDir,
-      outputFiles.map((p) => path.relative(projectDir, p).split(path.sep).join('/')),
+      outputFiles.map((p) => relPosix(projectDir, p)),
     )
   }
   // Declared workspace outputs may have landed inside OTHER projects' dirs
@@ -281,7 +288,7 @@ function markWritten(
   if (wsOutputFiles.length > 0) {
     a.gitFilesCache?.markWorkspaceOutputsChanged(
       a.workspaceRoot,
-      wsOutputFiles.map((f) => path.relative(a.workspaceRoot, f).split(path.sep).join('/')),
+      wsOutputFiles.map((f) => relPosix(a.workspaceRoot, f)),
     )
   }
   // The workspace-wide partition (when one exists) spans this project's
