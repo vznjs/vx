@@ -432,7 +432,17 @@ async function dependentsAtBase(
     ) {
       continue
     }
-    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    // Today's catalogs, or both graphs would differ on every `catalog:`
+    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
+    // edit, which the fingerprint widening and the root's own change answer.
+    const catalogs = projects[0]?.catalogs
+    byDir.set(dir, {
+      name: pkg.name,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+      ...(catalogs === undefined ? {} : { catalogs }),
+    })
     if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])

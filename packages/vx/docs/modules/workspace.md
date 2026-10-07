@@ -61,6 +61,7 @@ export interface PackageJson {
 export interface Workspace {
   root: string
   packageGlobs: string[] // patterns relative to root
+  catalogs?: Catalogs // catalog name ('default' for `catalog:`) → key → spec
 }
 
 export interface ProjectMeta {
@@ -68,6 +69,7 @@ export interface ProjectMeta {
   dir: string // absolute project directory
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
+  catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
@@ -189,6 +191,13 @@ Reads the package-glob list (through `reads`, so the manifest
 | npm / yarn / bun (new) | `package.json` `workspaces: string[]`                            |
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
+
+From the same parsed manifests it takes the catalogs a `catalog:` spec
+resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
+without that file, the root `package.json`'s, at the top level or under
+`workspaces` (bun). Discovery hands them to every `ProjectMeta`, so each
+package graph built from the metas resolves `catalog:` alike
+(`package-graph.md`).
 
 ### `listProjects(workspace)`
 
