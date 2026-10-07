@@ -417,7 +417,11 @@ async function runRuntimeCommand(
   owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
-  const prefix = binDirs.join(path.delimiter)
+  // As the task's PATH does (exec/env.ts): a dir holding the delimiter
+  // splits into an entry relative to the probe's cwd.
+  const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
+    .filter((entry) => entry)
+    .join(path.delimiter)
   let proc
   try {
     // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
@@ -425,7 +429,7 @@ async function runRuntimeCommand(
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
+      env: { ...process.env, PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
