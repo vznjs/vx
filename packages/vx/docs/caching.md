@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v41'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1767,6 +1767,12 @@ breaking footer).
 
 ### History
 
+- **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
+  output directory linked inside its project was never cleaned, so an
+  entry could hold files a run of another key left there. The fix
+  cannot reach an entry already saved that way.
+- **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
+  X-34).
 - **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the

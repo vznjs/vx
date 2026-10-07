@@ -536,3 +536,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   output dir that leaves the project is refused by name …",
   `cache-declaration-warnings.test.ts` › "an output directory linked out
   of the project refuses the task by name (M-61, X-88)".
+- **X-89.** `CACHE_VERSION` `vx-cache-v41`. X-88 fixed a run that stored
+  another key's files in an entry whose output directory is a link
+  inside its project; entries saved before it could replay them, so
+  every cached task misses once and re-saves.
