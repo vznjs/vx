@@ -350,6 +350,7 @@ async function linkedDeps(
   keyed: ReadonlySet<string> | undefined,
 ): Promise<{ granted: string[]; withheld: WithheldLink[] }> {
   const [self, root] = await Promise.all([realpath(projectDir), realpath(workspaceRoot)])
+  const realDirs = dirs.map(toRealPath)
   const scan = async (dir: string, scope: string): Promise<Array<[string, string, string]>> => {
     const found: Array<[target: string, link: string, name: string]> = []
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -359,7 +360,7 @@ async function linkedDeps(
         const target = await realpath(full).catch(() => undefined)
         if (
           target !== undefined &&
-          !dirs.some((d) => atOrUnder(target, d)) &&
+          !realDirs.some((d) => atOrUnder(target, d)) &&
           !atOrUnder(self, target)
         ) {
           found.push([target, full, scope + e.name])
