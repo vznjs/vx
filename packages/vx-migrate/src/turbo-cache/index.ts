@@ -535,7 +535,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       timeoutMs: this.config.uploadTimeoutMs,
     })
     if (res === undefined) return
-    if (res.status !== 200 && res.status !== 202) throw new Error(`HTTP ${res.status}`)
+    // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
+    // 204 stored the artifact and was counted a failed upload.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
   }
 }
 
