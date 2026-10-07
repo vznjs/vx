@@ -70,7 +70,9 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder()
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
+    ignoreBOM: true,
+  })
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -427,8 +429,10 @@ function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string>
   return { text, undecodable }
 }
 
-const LOSSY_UTF8 = new TextDecoder()
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+// A default decoder strips a leading U+FEFF: the first path git lists
+// would lose it and name no file.
+const LOSSY_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 

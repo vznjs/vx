@@ -185,7 +185,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
     }
     // Each record: source, line, pattern, path. No source: no pattern
     // matched; a `!` pattern: re-included. Either way not ignored.
-    const fields = new TextDecoder().decode(proc.stdout).split('\0')
+    const fields = new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')
     const records = Math.floor(fields.length / 4)
     for (let i = 0; i < records; i++) {
       const [source, , pattern, p] = fields.slice(i * 4, i * 4 + 4)
@@ -359,7 +359,7 @@ export function gitFiles(workspaceRoot: string): Set<string> | undefined {
   }
   if (proc.exitCode !== 0) return undefined
   const files = new Set<string>()
-  for (const p of new TextDecoder().decode(proc.stdout).split('\0')) {
+  for (const p of new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')) {
     if (p.length === 0) continue
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
