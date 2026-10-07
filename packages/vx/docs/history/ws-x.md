@@ -294,3 +294,13 @@ time (bugs, correctness, simplification, the plugin seams).
   Rows: `last.test.ts` › "the replayed command and its re-run line keep
   the args shell-quoted (X-45)", `invocation-secret-mask.test.ts`,
   `runner.test.ts` › `shellQuote` (X-45).
+- **X-46.** `vx why` blamed `--no-cache / --force` for a re-run on an
+  unchanged key whose previous run's cache save had failed, under a
+  recorded `lR,lW` policy that shows neither flag. No row records a
+  failed save, so the note reads its trace: a previous run that executed
+  and succeeded with no entry holding the key says its save failed or a
+  prune took it, or that its policy wrote no cache; past that, a
+  recorded read policy says vx cannot name the cause, and only a run
+  with no recorded policy names the flags. Row: `metrics.test.ts` ›
+  "names why an unchanged key re-executed, from the evidence the index
+  holds" (X-46).
