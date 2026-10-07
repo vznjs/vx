@@ -2019,7 +2019,7 @@ vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
 `--skipNxCache`), which Nx's parser takes and its docs print, is its
-kebab-case row. `vx run-many` and `vx affected` name the
+kebab-case row. A `[=<bool>]` row takes `=true` (the flag bare) and `=false` (left out), as Turbo's and Nx's parsers do. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
 either tool name what does it here: `graph` (`--graph`), `ls`
 (`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
@@ -2043,9 +2043,9 @@ copy to the source.
 | turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                          |
 | turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                           |
 | turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                        |
-| turbo  | `--force`                                         | same    | `--force`: skip cache reads, keep writes                                                                                      |
+| turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                      |
 | turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                         |
-| turbo  | `--summarize`                                     | same    | `--summarize[=<path>]`                                                                                                        |
+| turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                        |
 | turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
 | turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
 | turbo  | `--no-cache`                                      | same    | `--no-cache`                                                                                                                  |
@@ -2065,8 +2065,8 @@ copy to the source.
 | turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
 | turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
 | turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
-| turbo  | `--remote-only`                                   | refuse  | use `--cache local:,remote:rw`                                                                                                |
-| turbo  | `--remote-cache-read-only`                        | refuse  | use `--cache local:rw,remote:r`                                                                                               |
+| turbo  | `--remote-only[=<bool>]`                          | refuse  | use `--cache local:,remote:rw`                                                                                                |
+| turbo  | `--remote-cache-read-only[=<bool>]`               | refuse  | use `--cache local:rw,remote:r`                                                                                               |
 | turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                           |
 | turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                           |
 | turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                            |
@@ -2088,15 +2088,15 @@ copy to the source.
 | nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
 | nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
 | nx     | `--head <v>`                                      | refuse  | vx compares `--affected=<base>` with the working tree: check out the head first                                               |
-| nx     | `--skip-nx-cache`                                 | alias   | `--force`                                                                                                                     |
+| nx     | `--skip-nx-cache[=<bool>]`                        | alias   | `--force`                                                                                                                     |
 | nx     | `--all`                                           | same    | `--all`                                                                                                                       |
-| nx     | `--nx-bail`                                       | alias   | `--continue=never`                                                                                                            |
+| nx     | `--nx-bail[=<bool>]`                              | alias   | `--continue=never`                                                                                                            |
 | nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
 | nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
 | nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
 | nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                           |
-| nx     | `--exclude-task-dependencies`                     | alias   | `--exclude-dependencies`                                                                                                      |
-| nx     | `--skip-remote-cache`                             | alias   | `--cache local:rw,remote:`                                                                                                    |
+| nx     | `--exclude-task-dependencies[=<bool>]`            | alias   | `--exclude-dependencies`                                                                                                      |
+| nx     | `--skip-remote-cache[=<bool>]`                    | alias   | `--cache local:rw,remote:`                                                                                                    |
 | nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                              |
 | nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                 |
 | nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                         |
