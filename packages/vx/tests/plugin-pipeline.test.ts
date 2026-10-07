@@ -125,6 +125,32 @@ describe('config stage', () => {
   )
 
   it(
+    'every load in one process hands the hooks the declared config, not the last edit',
+    async () => {
+      // Bun keeps one module per specifier, so the workspace file's export
+      // is one object per process: the CLI's selection pass and the run
+      // (and each `vx watch` cycle) handed the hooks what the last load's
+      // hooks had edited, and a run of `vx run` used 8 workers, not 4.
+      await pkg('a', build)
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource('org/double', `{ config(ws) { ws.concurrency = ws.concurrency * 2 } }`),
+        ]).replace('export default {', 'export default { concurrency: 2,'),
+      )
+      const seen: Array<number | undefined> = []
+      for (let i = 0; i < 3; i++) {
+        const log = silent()
+        const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
+        expect(summary.ok).toBe(true)
+        seen.push(log.concurrency)
+      }
+      expect(seen).toEqual([4, 4, 4])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin that produces an invalid workspace config is refused like a user would be',
     async () => {
       // Unchecked, `concurrency: -3` hung the run, `timeout: 'x'` timed

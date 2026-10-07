@@ -531,3 +531,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
   50,000-deep chain seeded at its bottom reaches its top", plus a
   diamond control that passes both ways.
+- **X-93.** The `config` stage ran on the workspace file's export
+  itself, which Bun keeps as one object per process, so every load after
+  the first handed the hooks the last load's edits: `ws.concurrency *= 2`
+  over a declared 2 ran `vx run` on 8 workers (the CLI's selection pass,
+  then the run) and doubled again per `vx watch` cycle. The hooks now
+  edit a copy (data cloned, plugins kept). Row: `plugin-pipeline.test.ts`
+  › "every load in one process hands the hooks the declared config, not
+  the last edit".
