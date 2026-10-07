@@ -1,7 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-8.** In a workspace git does not track, `vx run` on a terminal
-  showed the picker and only refused ("vx requires git") after a choice.
-  The refusal now comes before the menu (`gitRefusal`, free via the
-  memoized `repoFacts` when git tracks the root). Row:
-  `tests/terminal.unsafe.test.ts` › "is never shown: the refusal comes first".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
