@@ -46,6 +46,26 @@ describe('an empty command in any spelling', () => {
   })
 })
 
+// X-22: whitespace alone made a directory of spaces, or a no-op probe.
+describe('whitespace-only values', () => {
+  it('a cacheDir or runtime probe of spaces is refused', () => {
+    expect([refusal({ cacheDir: '   ' }), refusal({ cacheDir: '.vx/c' })]).toEqual([
+      `${WS}: \`cacheDir\` is only whitespace — name a directory`,
+      null,
+    ])
+    const probe = (runtime: string[]) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        cache: { inputs: { files: ['src/**'], runtime }, outputs: { files: [] } },
+      })
+    expect([probe(['   ']), probe(['\t\n']), probe(['node -v'])]).toEqual([
+      `${CFG}: tasks.t.cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
+      `${CFG}: tasks.t.cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)

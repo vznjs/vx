@@ -110,6 +110,15 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
     throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
   }
+  // `'   '` made a directory named three spaces at the root, hidden by the
+  // cache's own `.gitignore` (X-22).
+  if (
+    typeof config.cacheDir === 'string' &&
+    config.cacheDir !== '' &&
+    config.cacheDir.trim() === ''
+  ) {
+    throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
+  }
   if (config.timeout !== undefined) {
     if (
       typeof config.timeout !== 'number' ||
@@ -728,7 +737,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (list !== undefined) {
           if (
             !Array.isArray(list) ||
-            list.some((s) => typeof s !== 'string' || s.length === 0 || s.includes('\0'))
+            // Whitespace alone ran as a no-op probe that folds nothing, as
+            // a blank `exec.command` did before item 1099 (X-22).
+            list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
           ) {
             throw new UserError(
               `${where}.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,

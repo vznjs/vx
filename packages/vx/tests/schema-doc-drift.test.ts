@@ -460,6 +460,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
+  ['cacheDir is only whitespace — name a directory', workspaceConfig('{ cacheDir: "   " }')],
   [
     "affectedBase must be a git ref like 'origin/main'",
     workspaceConfig('{ affectedBase: "--output=x" }'),
