@@ -76,6 +76,15 @@ describe('a task typed as a verb', () => {
     expect(run(root, 'app:nope', '--all')[2]).toBe(
       'vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n',
     )
+    // Object.prototype's names are no declared task either (item 897's class).
+    for (const name of ['toString', 'constructor']) {
+      expect(run(root, `app:${name}`)[2]).toBe(
+        'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+      )
+      expect(run(root, `app:${name}`, '--all')[2]).toBe(
+        `vx run: no projects declare task(s): app:${name}. Tasks: build, dev.\n`,
+      )
+    }
   })
 
   // nx-examples names `@nx-example/cart` `cart`, and its users type

@@ -18,6 +18,7 @@ import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
 import {
   deadServerBehind,
+  declaredTask,
   isGroupTask,
   markSurfacedDeps,
   runGraph,
@@ -1652,7 +1653,7 @@ export function nxProjectTarget(
   if (colon <= 0 || spec.includes('#')) return undefined
   const [typed, task] = [spec.slice(0, colon), spec.slice(colon + 1)]
   const project = projectNamed(typed, projects)
-  return project === undefined || projects.get(project)?.config.tasks?.[task] === undefined
+  return project === undefined || declaredTask(projects.get(project)?.config, task) === undefined
     ? undefined
     : `${project}#${task}`
 }
