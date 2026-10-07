@@ -525,7 +525,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
-- **X-94.** `--affected` over a deep `dependsOn` chain ended in
+- **X-92.** `--affected` over a deep `dependsOn` chain ended in
   `RangeError` and a stack: `affectedRoots` recursed once per edge, and
   ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
   closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
@@ -547,3 +547,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `projectDir` absolute, refused by the plugin's name. Row:
   `plugin-pipeline.test.ts` › "a node a graph hook adds is refused,
   naming the field, when it lacks a project or a task".
+- **X-95.** The scheduler counts a pooled executor's slots by its pool
+  name, which was the executor's name, and one package declared twice
+  (`@vzn/vx-reapi` against two clusters) names both executors alike: two
+  pools of 2 ran 2 tasks at once between them. `poolOfPlacement` now
+  gives each executor its own pool, a taken name taking `#2`, `#3`.
+  Rows: `plugin-capabilities.test.ts` › "capacity: two pooled executors
+  that share a name each keep their own capacity",
+  `placement.test.ts` › "two executors that share a name get two pools;
+  one executor keeps one".
