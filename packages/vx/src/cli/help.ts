@@ -267,6 +267,20 @@ export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
 }
 
+/** `--format`'s value, or the one refusal every verb gives for a bad one. */
+export function formatValue(
+  v: string | undefined,
+  verb: string,
+): 'pretty' | 'json' | { error: string } {
+  if (v === 'pretty' || v === 'json') return v
+  return {
+    error:
+      v === undefined || v === ''
+        ? `--format requires a value: pretty or json${seeHelp(verb)}`
+        : `--format must be pretty or json (got ${v})${seeHelp(verb)}`,
+  }
+}
+
 /** How a verb names a word it refuses: a flag, or a positional it takes no more of. */
 export function refusedWord(arg: string): string {
   return arg.startsWith('-') ? 'unknown flag' : 'unexpected argument'
