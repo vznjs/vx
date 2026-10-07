@@ -28,6 +28,7 @@ export interface SummaryStats {
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
+  emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
 }
 
 export interface RunContext {
