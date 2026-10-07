@@ -1434,6 +1434,37 @@ type · `src/config.ts`
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
 ```
 
+## `PluginHookHandlers`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface PluginHookHandlers {
+  onRunStart: (info: RunStartInfo) => void | Promise<void>
+  onTaskStart: (node: TaskNode) => void | Promise<void>
+  onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onRunStatus: (line: string) => void | Promise<void>
+  onRunEnd: () => void | Promise<void>
+}
+```
+
+## `PluginHookName`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export type PluginHookName =
+  | 'onRunStart'
+  | 'onTaskStart'
+  | 'onTaskStdout'
+  | 'onTaskStderr'
+  | 'onTaskComplete'
+  | 'onRunStatus'
+  | 'onRunEnd'
+```
+
 ## `PluginHooks`
 
 type · `src/orchestrator/plugin.ts`
@@ -1477,8 +1508,12 @@ export interface PluginOrigin {
 
 type · `src/orchestrator/plugin.ts`
 
+What `setup` receives: the run's lifecycle, observe-only.
+
 ```ts
-export interface PluginSetupContext extends BaseContext {}
+export interface PluginSetupContext extends BaseContext {
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 ```
 
 ## `PreparedRun`
@@ -1901,6 +1936,22 @@ seam is gone (a run always executes in-process — see
 export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
+}
+```
+
+## `RunStartInfo`
+
+type · `src/orchestrator/events.ts`
+
+Payload of the `run:start` event — mirrors the Logger.runStart hook.
+
+```ts
+export interface RunStartInfo {
+  total: number
+  concurrency?: number
+  requestedCount?: number
+  context?: RunContext
+  startedAtMs?: number
 }
 ```
 

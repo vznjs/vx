@@ -318,6 +318,44 @@ describe('DECODER round-trip — protobufjs encodes, we decode', () => {
     expect(d.result?.execution_metadata?.worker).toBe('worker-7')
   })
 
+  // A default TextDecoder strips a leading U+FEFF, so a name that opens
+  // with one was restored under another name.
+  it('a path or name that opens with U+FEFF keeps it', async () => {
+    const { decodeExecuteResponseBytes } = await import('../src/executor.js')
+    const { decodeDirectory } = await import('../src/merkle.js')
+    const b = '﻿x'
+    const digest = sha256(new TextEncoder().encode('a'))
+    const decode = (result: object) =>
+      decodeExecuteResponseBytes(new Uint8Array(refNonEmpty('ExecuteResponse', { result }))).result
+    const d = decode({
+      output_files: [{ path: b, digest }],
+      output_directories: [{ path: b, tree_digest: digest }],
+      output_symlinks: [{ path: b, target: b }],
+    })
+    const legacy = decode({ output_file_symlinks: [{ path: b, target: b }] })
+    expect([
+      d?.output_files?.[0]?.path,
+      d?.output_directories?.[0]?.path,
+      d?.output_symlinks?.[0]?.path,
+      d?.output_symlinks?.[0]?.target,
+      legacy?.output_symlinks?.[0]?.path,
+      legacy?.output_symlinks?.[0]?.target,
+    ]).toEqual([b, b, b, b, b, b])
+    const dir = decodeDirectory(
+      encodeDirectory({
+        files: [{ name: b, digest, is_executable: false }],
+        directories: [{ name: b, digest }],
+        symlinks: [{ name: b, target: b }],
+      }),
+    )
+    expect([
+      dir.files[0]?.name,
+      dir.directories[0]?.name,
+      dir.symlinks[0]?.name,
+      dir.symlinks[0]?.target,
+    ]).toEqual([b, b, b, b])
+  })
+
   // F-48: a v2.0 server names its links only in the deprecated
   // output_file_symlinks (10) and output_directory_symlinks (11); they were
   // dropped, so the link was never restored or recorded. A v2.1 server

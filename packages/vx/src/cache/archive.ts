@@ -837,7 +837,9 @@ class Extractor {
     await Promise.allSettled(this.inflight)
     this.inflight = []
     await Promise.all(this.staged.map((s) => unlink(s.tmp).catch(() => undefined)))
-    for (const s of this.staged) {
+    // Newest first: a later entry's chain can sit inside an earlier one's
+    // (`dist/` then `dist/sub/`), never the reverse.
+    for (const s of this.staged.toReversed()) {
       if (s.created === undefined) continue
       let dir = path.dirname(s.target)
       const top = path.resolve(s.created)

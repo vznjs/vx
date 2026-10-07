@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { definePlugin } from '../src/index.js'
 import { createEventBus, installPlugins, type Plugin } from '../src/orchestrator/index.js'
 
 function fakeNode(id = 'a#b'): TaskNode {
@@ -403,5 +404,28 @@ describe('Plugin API', () => {
     })
     bus.emit({ kind: 'run:status', line: 'a footer line' })
     expect(lines).toEqual(['a footer line'])
+  })
+
+  it('types a definePlugin setup ctx.on from the public surface', async () => {
+    // The type-check is the row: `PluginSetupContext` once had no `on`.
+    const bus = createEventBus()
+    const seen: string[] = []
+    const plugin = definePlugin(import.meta, {
+      setup(ctx) {
+        ctx.on('onTaskComplete', (node, outcome) => {
+          seen.push(`${node.id}:${outcome.status}`)
+        })
+      },
+    })
+    const dispose = await installPlugins({
+      plugins: [plugin],
+      workspaceRoot: '/ws',
+      cacheDir: '/c',
+      bus,
+    })
+    const node = fakeNode()
+    bus.emit({ kind: 'task:complete', node, outcome: fakeOutcome(node) })
+    dispose()
+    expect(seen).toEqual(['a#b:success'])
   })
 })
