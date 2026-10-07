@@ -508,3 +508,58 @@ describe('overlapping outputs: a dependant that removes an upstream file', () =>
     TIMEOUT,
   )
 })
+
+// The rewrite-in-place shape where size and mtime hold: a dependant that
+// rewrites its upstream's file to bytes of the same length and stamps the
+// mtime back (a tool honouring SOURCE_DATE_EPOCH). Judged by size + mtime,
+// the rewrite was not its own, so its hit restored only what it added and
+// left the upstream's restored bytes in place.
+describe('overlapping outputs: a same-size rewrite that keeps the mtime', () => {
+  const config = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cat src/a.txt > dist/a.txt && touch -t 200101010000 dist/a.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+        types: {
+          dependsOn: ['build'],
+          exec: {
+            command:
+              'tr a-z A-Z < dist/a.txt > dist/up && cat dist/up > dist/a.txt && rm dist/up && ' +
+              'touch -t 200101010000 dist/a.txt && echo t > dist/types.d.ts',
+          },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  let ws: Ws
+  beforeEach(async () => {
+    ws = await workspace('hello', 'B1', config)
+  })
+  afterEach(async () => {
+    await rm(ws.root, { recursive: true, force: true })
+  })
+
+  it(
+    "the rewrite is the dependant's own, so a warm run leaves its bytes",
+    async () => {
+      const want: Array<[string, string]> = [
+        ['dist/a.txt', 'HELLO'],
+        ['dist/types.d.ts', 't\n'],
+      ]
+      expect((await run({ cwd: ws.root, tasks: ['types'], log: silent })).ok).toBe(true)
+      expect(tree(ws.app)).toEqual(want)
+      for (let i = 0; i < 2; i++) {
+        const warm = await run({ cwd: ws.root, tasks: ['types'], log: silent })
+        expect(tree(ws.app)).toEqual(want)
+        expect(statusOf(warm)).toEqual({
+          build: 'cache-hit+restored',
+          types: 'cache-hit+restored',
+        })
+      }
+    },
+    TIMEOUT,
+  )
+})

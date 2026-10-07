@@ -801,7 +801,7 @@ Then the order is fixed, and the dependant is **additive**: twenty's
 `dist` as `build`. For the dependant:
 
 - its **own output set** is what its run added or changed under its
-  declared outputs — the outputs are stamped (size, mtime) before the
+  declared outputs — the outputs are stamped (size, mtime, inode, ctime) before the
   run and diffed after, the same proof a hit's "already current" check
   trusts — and only that set is saved; `outputs.workspaceFiles` are
   stamped the same way (until A-43 its miss cleaned them by glob, deleting
@@ -824,7 +824,8 @@ dependant restores or runs after — and its "already current" check
 ignores strays a dependant's glob could have added, so a warm run stays
 a no-op for both. A file the dependant rewrites in place (refine's
 `types` regenerating `build`'s `.d.ts`) counts as the dependant's own
-(the mtime moved), which is correct and costs the upstream a restore on
+(its ctime moved, even where a tool stamps the size and mtime back; X-33),
+which is correct and costs the upstream a restore on
 the next warm run; the design note keeps that shape out of scope.
 
 ## Invalidation paths

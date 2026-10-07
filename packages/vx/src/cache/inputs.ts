@@ -692,10 +692,17 @@ export async function cleanOutputPaths(args: {
   await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
 }
 
-/** A file's identity for the additive diff: what the hit path's fingerprint trusts too. */
+/**
+ * A file's identity for the additive diff: what the hit path's
+ * `isOutputsCurrent` trusts too. Size and mtime alone missed a rewrite to
+ * bytes of the same length with the mtime stamped back; the inode and
+ * ctime are what no task sets (item 886).
+ */
 export interface OutputStamp {
   size: number
   mtimeMs: number
+  ino: number
+  ctimeMs: number
 }
 
 /**
@@ -724,7 +731,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
   for (const f of files) {
     try {
       const st = lstatSync(f)
-      out.set(f, { size: st.size, mtimeMs: st.mtimeMs })
+      out.set(f, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs })
     } catch {
       // Gone between the walk and the stat: not a file the task found.
     }
@@ -734,10 +741,10 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
 
 /**
  * The files an additive task's run ADDED or CHANGED under its declared
- * outputs: every selected file that was not in `before`, or whose size or
- * mtime moved. Size + mtime is the proof the hit path already trusts for
- * a current tree, so no new trust is introduced. A file the run rewrote
- * with identical bytes counts as its own (the mtime moved), which is the
+ * outputs: every selected file that was not in `before`, or whose stamp
+ * (`OutputStamp`) moved — the proof the hit path trusts for a current
+ * tree, so no new trust is introduced. A file the run rewrote, even with
+ * identical bytes, counts as its own (its ctime moved), which is the
  * rewrite-in-place cost the design note records.
  *
  * Undefined when the run REMOVED a file it found: an artifact holds what a
@@ -774,7 +781,13 @@ function changedSince(
     try {
       const st = lstatSync(f)
       kept++
-      if (st.size !== was.size || st.mtimeMs !== was.mtimeMs) own.push(f)
+      if (
+        st.size !== was.size ||
+        st.mtimeMs !== was.mtimeMs ||
+        st.ino !== was.ino ||
+        st.ctimeMs !== was.ctimeMs
+      )
+        own.push(f)
     } catch {
       // Vanished since the walk: removed, as one the walk missed is.
     }

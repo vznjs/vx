@@ -204,3 +204,11 @@ time (bugs, correctness, simplification, the plugin seams).
   it found saves nothing and runs again. Row:
   `overlapping-outputs.test.ts` › "its removal is never undone by a hit:
   the dependant saves nothing and re-runs".
+- **X-33.** An additive task's own set was judged by size and mtime, so a
+  rewrite of its upstream's file to bytes of the same length with the
+  mtime stamped back was not its own, and every warm hit left the
+  upstream's restored bytes. Its comment called that the hit path's proof,
+  which item 886 had already widened. Now the stamp is size, mtime, inode
+  and ctime, as `isOutputsCurrent` checks. Row:
+  `overlapping-outputs.test.ts` › "the rewrite is the dependant's own, so a
+  warm run leaves its bytes".
