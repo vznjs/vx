@@ -31,6 +31,8 @@ export function relPosix(from: string, to: string): string {
  */
 export function packageScripts(meta: ProjectMeta): Record<string, unknown> {
   const raw = (meta.packageJson as unknown as { scripts?: unknown }).scripts
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
-  return raw as Record<string, unknown>
+  return isRecord(raw) ? raw : {}
 }
+
+export const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)

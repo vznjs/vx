@@ -36,7 +36,7 @@ import {
   wildcardTodo,
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
-import { packageScripts, relPosix } from '../paths.js'
+import { isRecord, packageScripts, relPosix } from '../paths.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
   dotenvCandidates,
@@ -141,9 +141,6 @@ const LEGACY: Readonly<Record<string, string>> = {
   '@nrwl/workspace:run-script': 'nx:run-script',
   '@nx/workspace:run-script': 'nx:run-script',
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** Every dependency name the root package.json declares; none without one. */
 async function rootDependencies(root: string): Promise<ReadonlySet<string>> {

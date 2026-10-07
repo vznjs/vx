@@ -521,7 +521,7 @@ async function graphInputKey(
   if (changed === null) return null
   // The cache dir holds the snapshot itself: a workspace that does not
   // ignore it would see the export move the key it was keyed on.
-  const cacheRel = path.relative(root, cacheDir).split(path.sep).join('/')
+  const cacheRel = relPosix(root, cacheDir)
   const inCache = (p: string): boolean =>
     cacheRel !== '' &&
     !cacheRel.startsWith('..') &&
@@ -537,7 +537,7 @@ async function graphInputKey(
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
   // A `project.json` anywhere: a new one is a project no root lists yet.
-  const roots = dirs.map((d) => path.relative(root, d).split(path.sep).join('/'))
+  const roots = dirs.map((d) => relPosix(root, d))
   const graphFile = (p: string): boolean =>
     p === 'project.json' ||
     p.endsWith('/project.json') ||
