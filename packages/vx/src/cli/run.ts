@@ -239,14 +239,26 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.timeout = n
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
+      if (v === undefined || v === '') {
+        return {
+          ...out,
+          error: `--output-logs requires a value (full, errors-only, hash-only, or none)`,
+        }
+      }
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
-        return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
+        return {
+          ...out,
+          error: `--output-logs must be full, errors-only, hash-only, or none, got: ${v}`,
+        }
       }
       out.outputLogs = v
     } else if (a === '--download' || a?.startsWith('--download=')) {
       const v = a === '--download' ? before[++i] : a.slice('--download='.length)
+      if (v === undefined || v === '') {
+        return { ...out, error: `--download requires a value (all, toplevel, or none)` }
+      }
       if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
-        return { ...out, error: `--download must be all, toplevel, or none` }
+        return { ...out, error: `--download must be all, toplevel, or none, got: ${v}` }
       }
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
@@ -301,8 +313,11 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.continueMode = 'always'
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
+      if (v === '') {
+        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+      }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
-        return { ...out, error: `--continue must be never, deps-ok, or always` }
+        return { ...out, error: `--continue must be never, deps-ok, or always, got: ${v}` }
       }
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
