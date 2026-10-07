@@ -240,6 +240,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
+  Nor is a task in flight when `--continue=never` stops the run: its
+  attempt finishes, and its failure is the last.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
@@ -1503,7 +1505,8 @@ interface WorkspaceRules {
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
-  root) is refused before anything is written, since its `*`
+  root), whose subdirectory does (`'packages'`), or that holds the
+  workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys.
 - **`cacheRetention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for

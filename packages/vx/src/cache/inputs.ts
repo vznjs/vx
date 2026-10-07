@@ -28,9 +28,10 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  relPosix,
   shellArgv,
-  splitNegations,
   slashBraceExpansions,
+  splitNegations,
   staticPrefix,
   taskGlob,
   UserError,
@@ -417,7 +418,11 @@ async function runRuntimeCommand(
   owner: RuntimeMemo | undefined,
 ): Promise<string> {
   const ambient = process.env['PATH']
-  const prefix = binDirs.join(path.delimiter)
+  // As the task's PATH does (exec/env.ts): a dir holding the delimiter
+  // splits into an entry relative to the probe's cwd.
+  const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
+    .filter((entry) => entry)
+    .join(path.delimiter)
   let proc
   try {
     // vx's own `sh`, resolved on its PATH before the probe's: Bun.spawn looks
@@ -425,7 +430,7 @@ async function runRuntimeCommand(
     // `node_modules/.bin`, so a dependency's `sh` bin ran every probe (J-69).
     proc = Bun.spawn(shellArgv(command), {
       cwd,
-      env: { ...process.env, PATH: ambient ? `${prefix}${path.delimiter}${ambient}` : prefix },
+      env: { ...process.env, PATH },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -713,7 +718,7 @@ export async function cleanOutputs(args: {
   )
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
-  return files.map((f) => path.relative(args.projectDir, f).split(path.sep).join('/'))
+  return files.map((f) => relPosix(args.projectDir, f))
 }
 
 /**
@@ -851,7 +856,7 @@ const SYNC_CLEAN_MAX = 128
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
   const files = notThroughLink(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
-    const rel = path.relative(root, f).split(path.sep).join('/')
+    const rel = relPosix(root, f)
     return new UserError(
       `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
         `declared outputs before it runs and before a restore; make the path removable ` +
@@ -1014,7 +1019,7 @@ export async function cleanWorkspaceOutputs(args: {
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
   await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
-  return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
+  return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
 function stripTrailingSlash(p: string): string {
@@ -1148,7 +1153,7 @@ function refuseUndecodable(
   if (undecodable === undefined || undecodable.size === 0) return
   const bad = candidates.filter((abs) => undecodable.has(abs) && undecodableOnDisk(abs))
   if (bad.length === 0) return
-  const names = bad.map((abs) => JSON.stringify(path.relative(root, abs).split(path.sep).join('/')))
+  const names = bad.map((abs) => JSON.stringify(relPosix(root, abs)))
   throw new UserError(
     `cache.inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
       `(shown with \ufffd), and vx cannot read a file by it. Rename it, or exclude it with a ` +
@@ -1460,7 +1465,7 @@ function undecodableOnDisk(abs: string): boolean {
   } catch {
     return false
   }
-  const lossy = new TextDecoder()
+  const lossy = new TextDecoder('utf-8', { ignoreBOM: true })
   for (const name of raw) {
     if (lossy.decode(name) !== next) continue
     try {
@@ -1601,7 +1606,7 @@ function addedTo(
   return undefined
 }
 
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 /**
  * Union of the OUTPUT files matching any positive pattern in `cwd`, minus
@@ -1688,9 +1693,7 @@ function globFor(pattern: string): Bun.Glob {
  */
 function inNestedProject(projectDir: string, nestedDirs: string[]): (rel: string) => boolean {
   if (nestedDirs.length === 0) return () => false
-  const dirs = new Set(
-    nestedDirs.map((d) => path.relative(projectDir, d).split(path.sep).join('/')),
-  )
+  const dirs = new Set(nestedDirs.map((d) => relPosix(projectDir, d)))
   return (rel) => {
     for (let i = rel.indexOf('/'); i !== -1; i = rel.indexOf('/', i + 1)) {
       if (dirs.has(rel.slice(0, i))) return true
