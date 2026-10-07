@@ -1375,7 +1375,9 @@ async function runOnBus(
         keepAlive.children.map((c, i) => c.exited.then((code) => ({ code, i }))),
       )
       const node = keepAlive.nodes[first.i]!
-      const others = keepAlive.nodes.length - 1
+      // Only the ones still up are stopped: a kept server already dead was
+      // counted as one (WD-11).
+      const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
       // Not when the run was stopped: the server ended because the user
       // stopped it, and "exited with code 130" read as a crash after every
       // Ctrl-C once a stop let run() finish its own path (item 852).
