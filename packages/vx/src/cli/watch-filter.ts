@@ -185,7 +185,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
     }
     // Each record: source, line, pattern, path. No source: no pattern
     // matched; a `!` pattern: re-included. Either way not ignored.
-    const fields = new TextDecoder().decode(proc.stdout).split('\0')
+    const fields = new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')
     const records = Math.floor(fields.length / 4)
     for (let i = 0; i < records; i++) {
       const [source, , pattern, p] = fields.slice(i * 4, i * 4 + 4)
@@ -232,10 +232,11 @@ export function makeRootEventFilter(
   fenced: (ownDir: string, abs: string) => boolean = () => false,
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
-  const globs = workspaceInputs
-    .map(normalizeGlob)
-    .filter((g) => !g.startsWith('!'))
-    .map((g) => taskGlob(g))
+  // A literal is its tree, as the key resolves it: `shared` matched only
+  // the directory's own event and no edit under it ran a cycle (WD-2).
+  const globs = asTrees(workspaceInputs.filter((g) => !normalizeGlob(g).startsWith('!'))).map((g) =>
+    taskGlob(g),
+  )
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
     // The depth test is a READING AID, not a guard: both predicates below
@@ -359,7 +360,7 @@ export function gitFiles(workspaceRoot: string): Set<string> | undefined {
   }
   if (proc.exitCode !== 0) return undefined
   const files = new Set<string>()
-  for (const p of new TextDecoder().decode(proc.stdout).split('\0')) {
+  for (const p of new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')) {
     if (p.length === 0) continue
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
