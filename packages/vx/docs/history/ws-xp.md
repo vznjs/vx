@@ -9,6 +9,3 @@ differences, binaries and install across platforms.
   loader now counts as having no prebuilt binary, so Bun runs the source
   when present and otherwise the error names musl. Rows:
   `npm-launcher.test.ts` › "without glibc (musl)".
-- **XP-60.** `--affected` matched git's NFC paths against project dirs as
-  discovered; a macOS dir stored NFD selected nothing. Both sides compare
-  NFC. Row: `affected-unicode.test.ts`.
