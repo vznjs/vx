@@ -10,7 +10,7 @@ import { existsSync, rmSync, statSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { resolveStoreRoot } from '../src/workspace/index.js'
@@ -359,6 +359,39 @@ describe('repoIdOf', () => {
       ['origin', 'a'],
       ['up', 'c'],
     ])
+  })
+
+  /** The `git remote` spawns `repoIdOf(root)` makes. */
+  async function remoteSpawns(root: string): Promise<number> {
+    const spawn = spyOn(Bun, 'spawn')
+    try {
+      await repoIdOf(root)
+      expect(spawn.mock.calls.length).toBeGreaterThan(0)
+      return spawn.mock.calls.filter((c) => (c[0] as string[]).includes('remote')).length
+    } finally {
+      spawn.mockRestore()
+    }
+  }
+
+  // Nx asks git whenever the config file names no remote it can parse: a
+  // url rewrite (`insteadOf`) in a config vx does not read may turn it into one.
+  it('asks git when no remote url in the config file parses', async () => {
+    expect(await remoteSpawns((await workspace('hi\n', 'gh:acme/app')).root)).toBe(1)
+  })
+
+  it('asks git when config.worktree may hold the remote', async () => {
+    const f = await workspace('hi\n', null)
+    const git = gitIn(f.root)
+    git('config', 'extensions.worktreeConfig', 'true')
+    git('config', '--worktree', 'remote.origin.url', ORIGIN)
+    const plain = await workspace()
+    expect(await repoIdOf(f.root)).toBe(await repoIdOf(plain.root))
+  })
+
+  it('a remote-less config spawns no `git remote`', async () => {
+    const f = await workspace('hi\n', null)
+    expect(await repoIdOf(f.root)).toBeNull()
+    expect(await remoteSpawns(f.root)).toBe(0)
   })
 
   // X-17: with `.vx/cache` deleted the prune and `vx info` read no index,

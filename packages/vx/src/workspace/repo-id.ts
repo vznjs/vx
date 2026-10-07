@@ -108,11 +108,40 @@ function readOwnedFile(p: string): string | null {
   }
 }
 
-/** The remote's identity from the config file, else from `git remote -v`. */
+/**
+ * The remote's identity from the config file, else from `git remote -v`
+ * when the file cannot settle it: a remote none of whose urls parse (a
+ * rewrite may live in a file vx does not read, as Nx asks git), or
+ * remotes git could read from `config.worktree`.
+ */
 async function remoteIdentity(root: string, commonDir: string): Promise<string | null> {
   const config = readOwnedFile(path.join(commonDir, 'config'))
   const remotes = config === null ? null : parseGitConfigRemotes(config)
-  const urls = remotes ?? (await remotesFromGit(root))
+  if (remotes !== null) {
+    const picked = pickRemote(remotes)
+    // A remote-less repo with nothing to pull one from elsewhere spawns
+    // nothing: git would answer the same, and that spawn was a cost per run.
+    if (picked !== null || (remotes.length === 0 && !worktreeConfigOn(config!))) return picked
+  }
+  return pickRemote(await remotesFromGit(root))
+}
+
+/** `extensions.worktreeConfig` set: git reads `config.worktree` too. */
+function worktreeConfigOn(contents: string): boolean {
+  let inExtensions = false
+  for (const raw of contents.split('\n')) {
+    const line = raw.trim()
+    if (line.startsWith('[')) {
+      inExtensions = /^\[\s*extensions\s*\]/i.test(line)
+      continue
+    }
+    const m = /^worktreeconfig\s*(?:=\s*(\S*))?/i.exec(line)
+    if (inExtensions && m !== null && !/^(false|no|off|0)$/i.test(m[1] ?? 'true')) return true
+  }
+  return false
+}
+
+function pickRemote(urls: [string, string][]): string | null {
   const found = new Map<string, string>()
   let first: string | null = null
   for (const [name, url] of urls) {

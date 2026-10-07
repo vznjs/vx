@@ -247,8 +247,11 @@ Resolves the cache directory:
 Where the repository's shared store lives: `~/.vx/<id>/cache` on every
 platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
 (`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
-git is spawned only for a repository with no parseable remote: one
-`rev-list` for its root commit, asynchronously, so `prepareRun` asks it
+git is spawned only when the config file cannot settle it: `remote -v`
+when it names a remote none of whose urls parse, holds an `include` or
+`url` rewrite, or sets `extensions.worktreeConfig` (as Nx; a remote-less
+config spawns none of it), then `rev-list` for a root commit,
+asynchronously, so `prepareRun` asks it
 before discovery and awaits it when the cache opens; shallow is read from
 the common dir's `shallow` file). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
