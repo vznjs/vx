@@ -1329,6 +1329,8 @@ async function runOnBus(
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    const above = options.beforeFooter?.(list, ok)
+    if (above) log.status(above.replace(/\n$/, ''))
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a

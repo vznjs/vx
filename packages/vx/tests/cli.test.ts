@@ -953,6 +953,26 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
   })
 
+  // Nothing prints below the footer (owner): the report came after its
+  // `result` row. The table (X-64) prints first, then the report.
+  it('--report and the --verbosity table print above the footer', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report=markdown', '--verbosity=1'])
+    expect(code).toBe(0)
+    const report = stdout.indexOf('| Task | Status | Cache | Duration |')
+    const table = stdout.indexOf('TASK')
+    const footer = stdout.indexOf('  result')
+    expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
+    expect([table < report, report < footer]).toEqual([true, true])
+    expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
+  })
+
   it('bare --report defaults to markdown', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {

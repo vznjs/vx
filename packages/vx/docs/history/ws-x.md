@@ -517,3 +517,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-69.** `--report=markdown` printed to stdout after the run
+  returned, below the footer, which is the run's last word.
+  `RunOptions.beforeFooter` returns text `run()` prints just above the
+  footer, after the `--verbosity` table (X-64); the CLI renders the
+  report there. `--report-file` still writes after the run, re-rendered
+  when a kept server's exit changed the outcomes (C-53). Row:
+  `cli.test.ts` › "--report and the --verbosity table print above the
+  footer".
