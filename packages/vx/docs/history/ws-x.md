@@ -246,3 +246,9 @@ time (bugs, correctness, simplification, the plugin seams).
   project, and only those when every task is anchored; the empty-scope
   refusal waits for the initial run, so an unknown `pkg` still gets its
   "did you mean". Rows: `watch-anchored-scope.test.ts` (X-38).
+- **X-39.** With only `pkg#task` names, `--filter typo`,
+  `--filter '[badref]'` and `--affected=badref` were never resolved, so
+  the typo ran in silence; beside a bare task the same flags refused the
+  run. The filters are now resolved first, refused alike, and their
+  scope dropped as before. Row: `task-selection.test.ts` › "only
+  pkg#task args still refuse %p as a bare task beside them does (X-39)".
