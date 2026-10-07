@@ -102,6 +102,7 @@ async function makeWorkspace(): Promise<string> {
       typecheck: { command: 'tsc --noEmit', cache: { input: [{ auto: true }, '!dist/**'], output: [] } },
       all: { command: [], dependsOn: ['build', 'e2e'] },
       lintAll: 'eslint .',
+      gen: { command: 'node gen.mjs', env: ['API'], input: ['gen/**'], output: ['out/**'] },
     },
   },
 })
@@ -182,6 +183,14 @@ describe('vx-migrate (vite-task)', () => {
     expect(result.out).toContain(
       'cache: Vite Task traced this task\'s inputs and vx infers none — add `cache: { inputs: { files: [...] }, outputs: { files: [...] } }` with the real ones (declared so far: `{"outputs":{"files":[]}}`)',
     )
+  })
+
+  it('maps vite-plus 0.x’s cache fields, which sit on the task itself', async () => {
+    const app = await load('app')
+    expect(app['gen']).toEqual({
+      exec: { command: 'node gen.mjs', env: { passThrough: ['API'] } },
+      cache: { inputs: { files: ['gen/**'], env: ['API'] }, outputs: { files: ['out/**'] } },
+    })
   })
 
   it('a root task keys the workspace’s files', async () => {

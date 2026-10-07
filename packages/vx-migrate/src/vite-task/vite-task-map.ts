@@ -2,6 +2,8 @@
 // `run` block and its package.json scripts, as the projects a migration
 // plan writes. The schema is vite-plus's `RunConfig` (1.1): a task is a
 // command string, an array of them, or `{ command, cwd, dependsOn, cache }`.
+// vite-plus 0.x put `env`, `untrackedEnv`, `input` and `output` on the task
+// itself beside `cache: true | false`; both shapes map.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -36,7 +38,7 @@ const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepubli
 
 type Glob = string | { pattern?: unknown; base?: unknown; auto?: unknown }
 
-interface TaskDef {
+interface TaskDef extends CacheDef {
   command?: unknown
   cwd?: unknown
   dependsOn?: unknown
@@ -293,7 +295,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
       ? null
       : typeof def.cache === 'object' && def.cache !== null
         ? (def.cache as CacheDef)
-        : {}
+        : def
 
   const env = envNames('cache.env', cache?.env, todos)
   const pass = [...new Set([...env, ...envNames('cache.untrackedEnv', cache?.untrackedEnv, todos)])]
