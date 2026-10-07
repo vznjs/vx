@@ -478,13 +478,22 @@ describe('name rejections', () => {
     )
   })
 
-  it('rejects backslash separators', async () => {
-    // A producer on Windows might emit `\` separators or a `C:\...`
-    // drive letter. On POSIX those become one legal-but-surprising
-    // filename; refuse rather than materialize it.
-    await expect(
-      restore(tarWithEntry('outputs\\foo\\bar.txt', new Uint8Array(1)), dest),
-    ).rejects.toThrow(/windows|backslash|unsafe/i)
+  // On Linux and macOS a backslash is a name character, not a separator:
+  // `a\..\..\evil.txt` is one file name. Refusing it made an output like
+  // `dist/back\slash` uncacheable (the save scans its own artifact).
+  it('a backslash lands as a literal name inside the anchor', async () => {
+    const names = ['outputs/a\\..\\..\\evil.txt', 'outputs/dir\\file.txt']
+    const body = new TextEncoder().encode('x')
+    const tar = concatTar([
+      ...names.flatMap((name) => [
+        makeHeader({ name, size: body.length, typeFlag: '0' }),
+        makeDataBlock(body),
+      ]),
+      EOF_BLOCKS,
+    ])
+    expect([...(await restore(tar, dest))].sort()).toEqual(names.sort())
+    expect((await readdir(dest)).sort()).toEqual(['a\\..\\..\\evil.txt', 'dir\\file.txt'])
+    expect(await readdir(path.dirname(dest))).not.toContain('evil.txt')
   })
 
   it('rejects a Windows drive-letter prefix', async () => {
