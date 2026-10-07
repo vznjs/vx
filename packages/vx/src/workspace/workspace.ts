@@ -161,7 +161,15 @@ function claimsMember(root: string, below: readonly string[], globs: readonly st
     // `.` means the root itself is the project — never a directory below it.
     if (normalized === '' || normalized === '.') continue
     const glob = new Bun.Glob(normalized)
-    if (rels.some((rel) => glob.match(rel))) return true
+    const literal = normalized.split('/')
+    // `memberDirs` never lists a `node_modules` path, nor a dot-dir a
+    // wildcard reached (`dot: false`), but `match` reads `*` over `.tpl`:
+    // `packages/.tpl` was claimed and `vx run` there found no project.
+    const listable = (rel: string) =>
+      rel
+        .split('/')
+        .every((s) => s !== 'node_modules' && (!s.startsWith('.') || literal.includes(s)))
+    if (rels.some((rel) => listable(rel) && glob.match(rel))) return true
   }
   return false
 }
