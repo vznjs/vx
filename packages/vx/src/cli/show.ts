@@ -266,8 +266,11 @@ function renderProject(
     return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config: shown })), null, 2)}\n`
   }
   const tags = config?.tags ?? []
-  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}`
   const tasks = Object.entries(config?.tasks ?? {})
+  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}${
+    // A config-less package a dependant reaches has the default `build` (X-9).
+    hasConfigFile || tasks.length === 0 ? '' : '\n  (no vx config)'
+  }`
   if (tasks.length === 0)
     return `${head}\n  ${hasConfigFile ? '(no tasks declared)' : '(no vx config)'}\n`
   const blocks = tasks.map(([taskName, task]) => taskBlock(taskName, task))

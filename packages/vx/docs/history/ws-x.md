@@ -52,3 +52,11 @@ time (bugs, correctness, simplification, the plugin seams).
   to either selected a project whose key it leaves unchanged. The copy
   (`workspaceGlobsMatch`) is gone; selection asks `declaresInput`. Row:
   `affected.test.ts` › "reads a glob as the key does".
+- **X-9.** With no `project` plugin a package with no vx config was
+  never loaded, so it never got the default `build` and a dependant
+  that bundles its source (`dependsOn: ['^build']`) replayed stale
+  output after an edit to it, while `--affected` selected the
+  dependant. A loaded project's closure now loads such a package as
+  `{ tasks: {} }`; `'all'` seeds stay the config-bearing ones, and
+  `vx show <it>` marks `(no vx config)` above its default build. Row:
+  `configless-default-build.test.ts`.
