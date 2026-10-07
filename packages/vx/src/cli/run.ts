@@ -500,19 +500,24 @@ export async function resolveRunOptions(
   let selectedByDiff = false
   let affected: RunOptions['affected']
   let outright: string[] | undefined
+  // Resolved even when every task is anchored and the scope goes unused:
+  // a filter or ref the user typed is judged, as it is beside a bare task.
+  const resolved =
+    filterStrings.length > 0
+      ? await resolveFilters(
+          cwd,
+          filterStrings,
+          {
+            ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
+            ...(parsed.frozen ? { frozen: true } : {}),
+          },
+          affectedFilter,
+        )
+      : undefined
+  if (resolved !== undefined && 'error' in resolved) return { error: resolved.error }
   if (bareTasks.length === 0) {
     projects = undefined
-  } else if (filterStrings.length > 0) {
-    const resolved = await resolveFilters(
-      cwd,
-      filterStrings,
-      {
-        ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-        ...(parsed.frozen ? { frozen: true } : {}),
-      },
-      affectedFilter,
-    )
-    if ('error' in resolved) return { error: resolved.error }
+  } else if (resolved !== undefined) {
     if ('empty' in resolved) {
       // "Nothing changed" is a clean exit for the BARE tasks the filter
       // scopes — but it must never cancel an explicitly anchored

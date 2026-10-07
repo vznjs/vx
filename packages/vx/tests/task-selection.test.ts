@@ -259,6 +259,28 @@ describe('task selection', () => {
     TIMEOUT,
   )
 
+  it.each([[['--filter', 'typo']], [['--filter', '[badref]']], [['--affected=badref']]])(
+    'only pkg#task args still refuse %p as a bare task beside them does (X-39)',
+    async (flags) => {
+      await addProject('a', ['build'])
+      git('add', '-A')
+      git('commit', '-qm', 'init')
+      const resolve = async (args: string[]) => {
+        const parsed = parseRunArgs(args)
+        expect(parsed.error).toBeUndefined()
+        return await resolveRunOptions(parsed, root, parsed.tasks)
+      }
+      const mixed = await resolve(['build', 'a#build', ...flags])
+      if (!('error' in mixed)) throw new Error(`the mixed run was not refused`)
+      expect(await resolve(['a#build', ...flags])).toEqual({ error: mixed.error })
+      // CONTROL: a filter that resolves is checked and its scope dropped.
+      const ok = await resolve(['a#build', '--filter', 'a'])
+      if ('error' in ok || 'nothingSelected' in ok) throw new Error('unreachable')
+      expect(ok.projects).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+
   // Turbo cross-products `web#lint build --filter docs` into web#build too;
   // vx gives the bare name the filter's scope only (docs/comparison.md's
   // flag map). The anchor's project is loaded, so it is in the graph's

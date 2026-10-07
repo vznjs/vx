@@ -404,6 +404,9 @@ applies to bare names only, so `vx run app#deploy build
 --affected=origin/main` with nothing changed still runs `app#deploy`
 (vx notes `nothing affected since <ref> — running app#deploy only` on
 stderr). Only a bare-name-only invocation short-circuits to exit 0.
+With only `pkg#task` names the scope goes unused, but `--filter` and
+`--affected` are still resolved: a pattern that matches nothing or a ref
+git does not know refuses the run as it does beside a bare name.
 
 ### Argument forwarding (`--`)
 
