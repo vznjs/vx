@@ -277,6 +277,12 @@ export function assertExecuteResult(
   for (const key of ['exitCode', 'durationMs']) {
     if (typeof r[key] !== 'number') fail(`${key} is ${typeof r[key]} (expected a number)`)
   }
+  // NaN passed as a number, printed `failed (exit NaN)` and failed the run
+  // history's NOT NULL write (X-11).
+  if (!Number.isInteger(r['exitCode']) || (r['exitCode'] as number) < 0)
+    fail(`exitCode is ${String(r['exitCode'])} (expected a non-negative integer)`)
+  if (!Number.isFinite(r['durationMs']) || (r['durationMs'] as number) < 0)
+    fail(`durationMs is ${String(r['durationMs'])} (expected a non-negative number)`)
   for (const key of ['stdout', 'stderr']) {
     if (typeof r[key] !== 'string') fail(`${key} is ${typeof r[key]} (expected a string)`)
   }
