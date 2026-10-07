@@ -1472,50 +1472,24 @@ describe('the preset, exactly', () => {
     }
   }
 
-  it('a preset of globalEnv alone is written with its one section, ending in a newline', async () => {
-    const plan = await preset({ globalEnv: ['MODE'], tasks: { build: {} } })
+  // Generated files carry no explanatory comments (owner, 2026-10-07).
+  it('a preset is its exports alone, one per line, ending in a newline', async () => {
+    const plan = await preset({
+      globalDependencies: ['x.json'],
+      globalEnv: ['MODE'],
+      globalPassThroughEnv: ['AWS'],
+      tasks: { build: {} },
+    })
     expect(plan.extraFiles).toEqual([
       {
         relPath: 'vx-preset.ts',
         contents: [
-          "// TypeScript composition replaces turbo's global fields: each vx.config.ts imports these",
-          '// arrays and spreads them into the matching task fields.',
-          '',
-          '// From globalEnv: cache inputs AND passed through to every task',
-          '// (vx child environments are isolated; see docs/schema.md).',
+          "export const globalInputs = ['x.json']",
           "export const globalEnvInputs = ['MODE']",
+          "export const globalPassThroughEnv = ['AWS']",
           '',
         ].join('\n'),
       },
-    ])
-  })
-
-  it('a preset of globalPassThroughEnv alone is written with its one section', async () => {
-    const plan = await preset({ globalPassThroughEnv: ['AWS'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
-      [
-        '',
-        '// From globalPassThroughEnv: forwarded to every task, never hashed.',
-        "export const globalPassThroughEnv = ['AWS']",
-        '',
-      ],
-    ])
-  })
-
-  // G-131/G-133 put the root's workspace dependencies and microfrontends
-  // configs in the same list; the section said they came from
-  // globalDependencies, which named neither.
-  it('a preset of global inputs says where they come from', async () => {
-    const plan = await preset({ globalDependencies: ['x.json'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
-      [
-        '',
-        '// From globalDependencies and what Turbo adds to them (the packages the',
-        '// root depends on, microfrontends configs) — workspace-root-relative,',
-        '// spread into each task’s cache.inputs.workspaceFiles.',
-        "export const globalInputs = ['x.json']",
-        '',
-      ],
     ])
   })
 
