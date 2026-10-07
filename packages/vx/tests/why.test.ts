@@ -690,6 +690,26 @@ describe('vx why in a workspace that never ran (E-39)', () => {
   }, 30_000)
 })
 
+describe('vx why after a run of only a group (X-50)', () => {
+  it('says no run executed a task, instead of "nothing has run here yet"', async () => {
+    const root = await makeWorkspace()
+    try {
+      // No config: `lib` has only the default `build`, a group.
+      const lib = path.join(root, 'packages', 'lib')
+      await mkdir(lib, { recursive: true })
+      await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
+      expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
+      const r = await vx(root, ['why', 'lib#build'])
+      expect({ code: r.code, err: r.err }).toEqual({
+        code: 1,
+        err: 'vx why: no recorded runs for "lib#build"; no recorded run executed a task (a group records none: ask about a task it depends on)\n',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
 describe('vx why — what to do', () => {
   it('covers exactly the kinds the key fold captures', () => {
     // From the source of truth, not from the map: every `kind: '…'` the

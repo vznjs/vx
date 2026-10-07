@@ -106,7 +106,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
  * every recorded id (the same rule `vx run` hints with) and the hint is
  * the runnable `project#task`; an anchored query is matched whole.
  */
-function suggest(query: string, ids: readonly string[]): string {
+function suggest(query: string, ids: readonly string[], invoked: boolean): string {
   let hits: string[]
   if (query.includes('#')) {
     hits = nearMatches(query, ids)
@@ -120,9 +120,12 @@ function suggest(query: string, ids: readonly string[]): string {
   }
   if (hits.length > 0) return ` — did you mean ${hits.slice(0, 3).join(', ')}?`
   // No near name: say where to look, or that there is nothing yet.
-  return ids.length === 0
-    ? `; nothing has run here yet (vx run ${query}, then vx why)`
-    : '; `vx last --list` shows what has run'
+  // A run of only group tasks records no task row: "nothing has run" was
+  // false there, and its advice re-ran the group to the same answer.
+  if (ids.length > 0) return '; `vx last --list` shows what has run'
+  return invoked
+    ? '; no recorded run executed a task (a group records none: ask about a task it depends on)'
+    : `; nothing has run here yet (vx run ${query}, then vx why)`
 }
 
 /**
@@ -151,8 +154,9 @@ async function resolveTarget(
     .query('SELECT DISTINCT project, task FROM runs ORDER BY project, task')
     .all() as Array<{ project: string; task: string }>
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
+  const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (target.includes('#')) {
-    throw new UserError(`vx why: no recorded runs for "${target}"${suggest(target, ids)}`)
+    throw new UserError(`vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`)
   }
   const matches = ids.filter((id) => id.endsWith(`#${target}`))
   if (matches.length === 1) return matches[0]!
@@ -164,7 +168,9 @@ async function resolveTarget(
         matches.map((m) => `  ${m}`).join('\n'),
     )
   }
-  throw new UserError(`vx why: no recorded runs for task "${target}"${suggest(target, ids)}`)
+  throw new UserError(
+    `vx why: no recorded runs for task "${target}"${suggest(target, ids, invoked)}`,
+  )
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()

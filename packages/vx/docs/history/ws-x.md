@@ -322,3 +322,10 @@ time (bugs, correctness, simplification, the plugin seams).
   when pasted. It now records each arg through `shellQuote`, as `vx run`
   does (X-45). Row: `watch-loop.test.ts` › "the recorded command keeps
   its args shell-quoted, as `vx run` records them" (X-49).
+- **X-50.** After a run of only group tasks (the default `build` of a
+  config-less package), `vx why <it>` said "nothing has run here yet
+  (vx run <it>, then vx why)": false, and the advice re-ran the group
+  to the same answer, since a group records no task row. With an
+  invocation recorded and no task row it now says no recorded run
+  executed a task and to ask about one the group depends on. Row:
+  `why.test.ts` › "vx why after a run of only a group (X-50)".
