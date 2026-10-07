@@ -2356,7 +2356,8 @@ name resolves when exactly one project ran it (several → the project
 the current directory is in, as `vx run` picks, else an error listing
 the candidates; unknown → include-match suggestions, or, with
 none near, a pointer to `vx last --list`, or word that nothing has run
-yet).
+yet; after runs of only groups, which record no task row, that no run
+executed a task and to ask about one the group depends on, X-50).
 
 A control character in a component's name (a file named with an
 escape or a carriage return) prints as `\xNN`, so no file name drives
