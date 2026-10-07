@@ -1,4 +1,4 @@
-// `vx last [runId]` — replay a recorded run's summary from the terminal,
+// `vx last [RUNID]` — replay a recorded run's summary from the terminal,
 // without re-executing anything. Comparison gap #12: with the dashboard's
 // run-detail page gone (the 2026-08-23 cloud removal), the local run
 // history in cache.db is the only replay surface, and this verb reads it.

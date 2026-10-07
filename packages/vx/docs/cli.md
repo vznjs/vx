@@ -34,9 +34,9 @@ vx lock [--check]
 vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
-vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
-vx upgrade [tag]      # self-update a compiled binary
+vx upgrade [TAG]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
 # Meta
@@ -1708,7 +1708,7 @@ version in a comment; bump the SHA and the comment together.
 Self-update the compiled binary in place: asks the GitHub release API
 for this platform's asset and the SHA-256 digest it publishes,
 downloads the asset, verifies the digest, and atomically replaces the
-running executable (`vx upgrade <tag>` pins a specific release; default
+running executable (`vx upgrade TAG` pins a specific release; default
 latest; a second tag is refused, not dropped). A download that does not match the digest replaces nothing —
 `the download did not match the release's SHA-256 … nothing replaced` —
 and a release that publishes no digest for the asset is refused before
@@ -2348,11 +2348,11 @@ per-component input fingerprints core persists on every miss. Read-only over the
 `cache.db`: no config evaluation, no re-hash.
 
 ```
-vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 ```
 
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run <id>` pins a specific run (a unique
+immediately-previous run; `--run RUNID` pins a specific run (a unique
 prefix of the id is enough; a task that run did not run is refused,
 pointing at `vx last --list`, and so is an id no run carries). History is
 the cache directory's, not the checkout's: worktrees that share one
@@ -2496,7 +2496,7 @@ a hit's row tells. `--format json` lists every row.
 run ids, each cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
-`--list 1.5` is refused as a count); `vx last <runId>` replays a
+`--list 1.5` is refused as a count); `vx last RUNID` replays a
 specific one, and the two do not combine (a word beside `--list` no run
 id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only
