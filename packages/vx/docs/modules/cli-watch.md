@@ -54,7 +54,7 @@ export interface JudgeContext {
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
-  lastCycle: { start: number; end: number } | undefined
+  lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
   constructor(ctx: JudgeContext)
   judge(): string | undefined // the first changed path's label, or none
 }
