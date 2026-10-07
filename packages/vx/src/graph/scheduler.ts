@@ -394,19 +394,26 @@ class ReadyHeap {
 /**
  * The dead server a dependency stands for: itself, or one a group reaches.
  * A group is a name for its deps, and it finished the moment the server
- * was ready, so a task behind it ran against the dead one.
+ * was ready, so a task behind it ran against the dead one. Walked with a
+ * stack and a seen set: recursion threw `RangeError` on a deep chain of
+ * groups, and re-walked a group each path reached it by.
  */
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
   id: string,
 ): string | undefined {
-  if (serverDied(id)) return id
-  const n = nodes.get(id)
-  if (n === undefined || !isGroupTask(n)) return undefined
-  for (const d of n.deps) {
-    const dead = deadServerBehind(nodes, serverDied, d)
-    if (dead !== undefined) return dead
+  const stack = [id]
+  const seen = new Set<string>()
+  while (stack.length > 0) {
+    const at = stack.pop()!
+    if (seen.has(at)) continue
+    seen.add(at)
+    if (serverDied(at)) return at
+    const n = nodes.get(at)
+    if (n === undefined || !isGroupTask(n)) continue
+    // Reversed, so the first dep is walked first, as the order it names them.
+    for (let i = n.deps.length - 1; i >= 0; i--) stack.push(n.deps[i]!)
   }
   return undefined
 }

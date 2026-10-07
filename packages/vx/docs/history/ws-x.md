@@ -529,3 +529,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   work behind a group that runs nothing. Groups now bypass `admit` and
   are never listed. Row: `scheduler.test.ts` › "a group is never asked
   by an admit policy and never listed as running".
+- **X-97.** `deadServerBehind` walked groups by recursion: a
+  50,000-deep chain of groups over a server threw `RangeError`, and a
+  ladder of group diamonds re-walked each group once per path (2^n).
+  It now walks with a stack and a seen set, in the same dep order. Rows:
+  `server-death-properties.test.ts` › "a dead server is found behind a
+  50,000-deep chain of groups", "a ladder of group diamonds asks of each
+  node once".

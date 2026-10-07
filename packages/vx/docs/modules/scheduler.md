@@ -96,6 +96,7 @@ export interface ScheduleOptions {
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 
 // The dead server a dependency stands for: itself, or one a group reaches.
+// Iterative, each node once: a deep chain of groups does not overflow.
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
