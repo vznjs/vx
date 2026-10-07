@@ -1,3 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-3.** A persistent task kept only as a dependency that exited 0 (a daemon that forked and returned, `docker compose up -d`) ended the foreground hold: the requested dev server was stopped right after the summary and vx exited 0. Now such an exit ends the hold only as the last kept server; a requested one, or a non-zero exit, ends it as before. Row: `tests/keep-alive.test.ts` › "a dependency daemon that exits 0 leaves the requested server held".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
