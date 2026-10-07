@@ -806,3 +806,56 @@ describe('an extglob in a task glob', () => {
     expect(taskRefusal(task({ files: ['**', '!(group)/**'] }))).toBeNull()
   })
 })
+
+// X-67: a Windows spelling loaded with only a "matched no files" warning,
+// so the task's key never saw its source and an edit replayed the old output.
+describe('a backslash separator or a drive letter in a task glob', () => {
+  const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
+    exec: { command: 'x' },
+    cache: { inputs, outputs },
+  })
+  const sep = (field: string, g: string, write: string, base = 'project') =>
+    `${CFG}: tasks.t.cache.${field}: "${g}" uses a backslash as a path separator — task globs ` +
+    `are ${base}-relative with forward slashes: write "${write}"`
+  const drive = (field: string, g: string, write: string, base = 'project') =>
+    `${CFG}: tasks.t.cache.${field}: "${g}" starts with a Windows drive — task globs ` +
+    `are ${base}-relative with forward slashes: write "${write}"`
+
+  it('is refused in every task glob list, with the forward-slash spelling', () => {
+    expect(taskRefusal(task({ files: ['src\\**'] }))).toBe(sep('inputs.files', 'src\\**', 'src/**'))
+    expect(taskRefusal(task({ files: ['src\\lib\\*.ts'] }))).toBe(
+      sep('inputs.files', 'src\\lib\\*.ts', 'src/lib/*.ts'),
+    )
+    expect(taskRefusal(task({ files: ['src\\'] }))).toBe(sep('inputs.files', 'src\\', 'src/'))
+    expect(taskRefusal(task({ files: ['**', '!src\\gen\\**'] }))).toBe(
+      sep('inputs.files', '!src\\gen\\**', '!src/gen/**'),
+    )
+    expect(taskRefusal(task({ files: ['C:\\src\\**'] }))).toBe(
+      drive('inputs.files', 'C:\\src\\**', 'src/**'),
+    )
+    expect(taskRefusal(task({ files: ['C:/src/**'] }))).toBe(
+      drive('inputs.files', 'C:/src/**', 'src/**'),
+    )
+    expect(taskRefusal(task({ files: ['{c:/x,src}/**'] }))).toBe(
+      drive('inputs.files', '{c:/x,src}/**', '{x,src}/**'),
+    )
+    expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['config\\*.json'] }))).toBe(
+      sep('inputs.workspaceFiles', 'config\\*.json', 'config/*.json', 'workspace-root'),
+    )
+    expect(taskRefusal(task({ files: ['**'] }, { files: ['dist\\**'] }))).toBe(
+      sep('outputs.files', 'dist\\**', 'dist/**'),
+    )
+    expect(
+      taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['D:\\out\\**'] })),
+    ).toBe(drive('outputs.workspaceFiles', 'D:\\out\\**', 'out/**', 'workspace-root'))
+  })
+
+  it('leaves an escape and a colon in a name alone', () => {
+    // CONTROL: a backslash before a glob character escapes it (Turbo's
+    // `app/\[id\]/**`), and a colon past a drive's one letter is a name.
+    expect(
+      taskRefusal(task({ files: ['app/\\[id\\]/**', 'src/\\{b\\}.ts', '\\!x', 'x\\\\y'] })),
+    ).toBeNull()
+    expect(taskRefusal(task({ files: ['src/C:/x', 'ab:/x', 'src/**'] }))).toBeNull()
+  })
+})

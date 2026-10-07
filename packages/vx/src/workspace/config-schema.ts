@@ -663,6 +663,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `let cleanOutputs delete files outside it)`,
           )
         }
+        assertPosixGlob(g, `${where}.cache.outputs.files`, 'project')
         assertNoForeignToken(g, `${where}.cache.outputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
@@ -714,6 +715,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
           )
         }
+        assertPosixGlob(g, `${where}.cache.inputs.files`, 'project')
         assertNoForeignToken(g, `${where}.cache.inputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
@@ -1196,6 +1198,39 @@ function isAbsoluteGlob(glob: string): boolean {
   return g.startsWith('/') || (g.includes('{') && /[{,]\//.test(g))
 }
 
+const DRIVE = /(^|[{,])[A-Za-z]:[\\/]+/g
+
+/**
+ * True when a backslash in the glob is a Windows separator. One before a
+ * bracket, a brace, a `!` or a backslash is an escape (`app/\[id\]`,
+ * `\{b\}`); one before anything else is a separator — `a\*b` reads as
+ * `a/*b` on Windows far more often than as a file named with a star, which
+ * `a?b` still selects.
+ */
+function hasBackslashSeparator(body: string): boolean {
+  for (let i = body.indexOf('\\'); i !== -1; i = body.indexOf('\\', i + 2)) {
+    if (!'[]{}!\\'.includes(body[i + 1] ?? '/')) return true
+  }
+  return false
+}
+
+/**
+ * A Windows spelling (`src\**`, `C:/src/**`) loaded with only a "matched no
+ * files" warning, and a task keyed on it never saw its source (X-67).
+ */
+function assertPosixGlob(glob: string, where: string, base: string): void {
+  const neg = glob.startsWith('!') ? '!' : ''
+  const body = glob.slice(neg.length)
+  DRIVE.lastIndex = 0
+  const drive = DRIVE.test(body)
+  if (!drive && !hasBackslashSeparator(body)) return
+  const write = neg + body.replace(DRIVE, '$1').replace(/\\(?![[\]{}!\\])/g, '/')
+  throw new UserError(
+    `${where}: "${glob}" ${drive ? 'starts with a Windows drive' : 'uses a backslash as a path separator'} — ` +
+      `task globs are ${base}-relative with forward slashes: write "${write}"`,
+  )
+}
+
 /**
  * `!!x` INVERTS the input set instead of double-negating it.
  *
@@ -1405,6 +1440,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
           `entries are workspace-root-relative and must stay within the workspace root`,
       )
     }
+    assertPosixGlob(g, where, 'workspace-root')
     assertNoForeignToken(g, where)
     if (namesDirItself(g)) {
       throw new UserError(
