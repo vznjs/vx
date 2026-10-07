@@ -877,7 +877,10 @@ class BoundedCapture {
   private dropped = 0
 
   push(chunk: string): void {
-    if (this.head.length < CAPTURE_HEAD_CHARS) {
+    // Once the tail has begun the head is closed, even a unit short of its
+    // bound (the surrogate case below): a later short chunk fit there and
+    // was retained ahead of the chunk before it.
+    if (this.tailLen === 0 && this.head.length < CAPTURE_HEAD_CHARS) {
       let room = CAPTURE_HEAD_CHARS - this.head.length
       if (chunk.length <= room) {
         this.head += chunk
