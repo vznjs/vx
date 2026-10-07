@@ -69,8 +69,9 @@ export function loadResolvedProjects(
 
 1. **Who can carry tasks.** A project with a config file; and, when
    any plugin declares `project`, every package — it loads as
-   `{ tasks: {} }` for the stage to fill. `configured` is that set;
-   boundary geometry fences all of them, loaded or not.
+   `{ tasks: {} }` for the stage to fill. `configured` is that set.
+   Boundary geometry fences every workspace project, configured or not
+   (`prepare.ts`, X-57).
 2. **Seeds.** `'all'` is `configured`; named seeds load as named. With
    `closure`, each seed's `packageGraph.transitiveDeps` join, a
    config-less one too: it loads as `{ tasks: {} }` and gets the

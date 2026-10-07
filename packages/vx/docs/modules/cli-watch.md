@@ -166,12 +166,12 @@ are refused too: they format one run's result.
      the cross-project `dependsOn` edges `taskEdges` collects — what
      `vx run` would run for the same filter), `fs.watch(dir,
 { recursive: true })`. Bun supports recursive watch on every
-     platform. A path inside a project with a config nested under the
+     platform. A path inside a project nested under the
      watched one is dropped (`makeFence`): its key leaves that file
      out (`computeNestedProjectDirs`), so a root project ran a cycle
-     for every edit in a nested one (X-42). The nested project's own
-     config still passes, since it moves the boundary; a config-less
-     package fences no key and stays an edit.
+     for every edit in a nested one (X-42). The fences are every
+     project, config or not (X-57). The nested project's own config
+     still passes, since it may give the project tasks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …) and
      the workspace config (`vx.workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)

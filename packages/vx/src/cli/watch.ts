@@ -316,14 +316,13 @@ interface WatchLoopArgs {
   memberBases: readonly string[]
   /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
   packageDirs: ReadonlySet<string>
-  /** Every project with a config, in scope or not: a project's key leaves out what lies in one nested under it. */
+  /** Every project, in scope or not: a project's key leaves out what lies in one nested under it. */
   fenceDirs: readonly string[]
   /** The watched set again, after a cycle that followed an event which can change it. */
   rediscover: () => Promise<Rediscovered>
 }
 
-const fenceDirs = (all: readonly ProjectMeta[]): string[] =>
-  all.filter((p) => p.configPath !== null).map((p) => p.dir)
+const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.dir)
 
 interface Rediscovered {
   projects: readonly ProjectMeta[]

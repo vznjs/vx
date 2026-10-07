@@ -1543,11 +1543,9 @@ describe('the widest glob still stops at the project boundary', () => {
           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
         } } }`,
       })
-      // A workspace MEMBER nested inside a. Both halves are load-bearing:
-      // without the second workspace glob it is not a member at all, and
-      // without its own config it is not config-bearing — the boundary
-      // geometry is built from config-bearing projects (prepare.ts), so a
-      // bare package.json under `a` is deliberately just part of `a`.
+      // A workspace MEMBER nested inside a: without the second workspace
+      // glob it is not a member, and a bare package.json under `a` is just
+      // part of `a`. A member fences with or without a config (X-57).
       await writeFile(
         path.join(fixture.root, 'pnpm-workspace.yaml'),
         'packages:\n  - "packages/*"\n  - "packages/a/nested"\n',

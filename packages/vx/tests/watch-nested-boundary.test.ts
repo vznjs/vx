@@ -87,7 +87,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     await edits()
   }, 40_000)
 
-  it("a nested project's own config and a config-less package stay edits (X-42)", async () => {
+  it("a nested project's config stays an edit; a config-less package's file is none (X-57)", async () => {
     await writeFile(path.join(root, 'vx.config.mjs'), rootConfig(`{ files: ['**/*.txt'] }`))
     await addProject(root, 'b', { files: { 'src/b.txt': 'b1\n' } })
     watch = startWatch(root, ['--filter', 'fixture-root'])
@@ -97,14 +97,14 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     const config = path.join(root, 'packages', 'a', 'vx.config.mjs')
     await writeFile(config, `${await readFile(config, 'utf8')}// edited\n`)
     await until(() => w.cycles() === 1, 'the cycle the nested config edit starts')
-    // No config, no fence: the root's key reads `packages/b/src/b.txt`.
+    // A config-less package is a project too: the root's key leaves
+    // `packages/b/src/b.txt` out, so its edit is no cycle.
     await writeFile(path.join(root, 'packages', 'b', 'src', 'b.txt'), 'b2\n')
-    await until(() => w.cycles() === 2, 'the cycle the config-less edit starts')
-    await until(async () => (await ran()).length === 2, 'the root build the edit runs')
     await Bun.sleep(SETTLE_MS)
-    expect({ cycles: w.cycles(), ran: await ran() }).toEqual({
-      cycles: 2,
-      ran: ['root', 'root'],
-    })
+    expect({ cycles: w.cycles(), ran: await ran() }).toEqual({ cycles: 1, ran: ['root'] })
+    // CONTROL: the root's own file is still heard.
+    await writeFile(path.join(root, 'src', 'r.txt'), 'r2\n')
+    await until(() => w.cycles() === 2, 'the cycle the root edit starts')
+    await until(async () => (await ran()).length === 2, 'the root build the edit runs')
   }, 40_000)
 })

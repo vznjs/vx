@@ -270,10 +270,9 @@ export function makeRootEventFilter(
  * project nested there: the key's boundary (`computeNestedProjectDirs`)
  * leaves such a file out, so it is no edit of `ownDir`'s. A root project
  * watched its whole tree and ran a cycle for every edit in a nested one
- * (X-42). The fences are the projects with a config, which fence a key
- * whatever the plugins; a config-less one may not, and an edit there
- * still counts. The fence's own config is let through: it coming or going
- * moves the boundary, and the cycle it starts re-reads the set.
+ * (X-42). The fences are every project, config or not, as the key's are
+ * (X-57). The fence's own config is let through: it may give the project
+ * tasks, and the cycle it starts re-reads the set.
  */
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean {
   const fences = fenceDirs.map((d) => path.resolve(d))
