@@ -1,6 +1,3 @@
 # Workstream WD — watch, dev servers, persistent tasks (2026-10-07)
 
-- **WD-15.** A `vx watch` cycle whose server never matched `readyWhen`, with no
-  `exec.timeout`, never ended, so every later edit (the fix included) waited behind
-  it. An edit while the cycle waits on readiness alone now stops it and starts the
-  next; a cycle running other work is not stopped. Row: `tests/watch-ready-interrupt.test.ts` › "an edit stops a cycle waiting on a server that never becomes ready".
+- **WD-2.** The workspace-wide watcher read a literal `inputs.workspaceFiles` entry (`shared`, `conf/`) as one path, so no edit under that directory ran a cycle while the key read the tree. The root event filter now compiles entries through `asTrees`, the key's rule. Row: `tests/watch-rules.test.ts` › "a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)".
