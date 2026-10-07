@@ -555,6 +555,7 @@ export function checkGraph(
   }
   detectCycle(nodes)
   detectOutputCollisions(nodes, workspaceRoot, rules?.exclusiveOutputs !== false)
+  if (rules?.upfrontKeys !== false) detectInputOverlaps(nodes, workspaceRoot)
 }
 
 /**
@@ -1102,6 +1103,136 @@ function collide(
       }
       throw new UserError(
         `${head} and the run still reports success. Give each task its own output path.`,
+      )
+    }
+  }
+}
+
+/**
+ * Does the `!` set `negatives` take back every path the output glob
+ * `output` can select? Each of the output's `asTrees` forms must be one of
+ * the negatives' forms, sit inside a negative whole subtree (`covers`), or,
+ * as a literal, be matched by one. Sound and no more: an output only partly
+ * taken back answers false.
+ */
+export function outputTakenBack(output: string, negatives: readonly string[]): boolean {
+  if (negatives.length === 0) return false
+  const neg = asTrees(negatives)
+  return asTrees([output]).every((t) =>
+    neg.some((n) => n === t || covers(n, t) || (isLiteralPattern(t) && taskGlob(n).match(t))),
+  )
+}
+
+/** One task's inputs (`reads`) or outputs in one namespace, for `detectInputOverlaps`. */
+interface Side {
+  node: TaskNode
+  globs: readonly string[]
+  reads: boolean
+  /** The project's root-relative dir for a rebased `files` output. */
+  rel?: string
+}
+
+/**
+ * `rules.upfrontKeys` (X-54): refuse a task whose input globs can match
+ * another task's declared outputs. Such a key reads bytes a producer writes
+ * this run, so it is not known until the producer ran (`stable-keys.ts`
+ * keeps it waiting); refused, every key reads only what no task writes and
+ * can be derived before anything runs (M, 2026-10-07: "hash ahead of time,
+ * not waterfall"). A dependency's own key already cascades through
+ * `dependsOn`, so the bytes it wrote add nothing a key needs.
+ *
+ * Proven overlaps only (`outputsOverlap`), as for outputs: a pair the rule
+ * cannot decide passes, and the stability gate still keeps it waiting. The
+ * scope mirrors `detectOutputCollisions`: `inputs.files` against another
+ * same-project task's `outputs.files`; root-anchored `inputs.workspaceFiles`
+ * against every other task's `outputs.workspaceFiles` and, with the root
+ * known, its `outputs.files` rebased to the root. A task's own outputs are
+ * already subtracted from its inputs, and an output the reader's `!` entries
+ * take back whole is no overlap. A keyed group is exempt: the default
+ * `build` reads `**` of a config-less dependency and runs nothing, and its
+ * key waits as before.
+ */
+function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+  const byProject = new Map<string, Side[]>()
+  const rooted: Side[] = []
+  const filesWriters: TaskNode[] = []
+  let projectReaders = false
+  let rootReaders = false
+  const bucket = (name: string): Side[] => {
+    let list = byProject.get(name)
+    if (list === undefined) byProject.set(name, (list = []))
+    return list
+  }
+  for (const n of nodes.values()) {
+    const cache = n.config.cache
+    if (cache === undefined) continue
+    const outFiles = splitNegations(cache.outputs.files).positive
+    const outWs = splitNegations(cache.outputs.workspaceFiles ?? []).positive
+    if (outFiles.length > 0) {
+      bucket(n.projectName).push({ node: n, globs: outFiles, reads: false })
+      filesWriters.push(n)
+    }
+    if (outWs.length > 0) rooted.push({ node: n, globs: outWs, reads: false })
+    if (isGroupTask(n)) continue
+    const inFiles = splitNegations(cache.inputs.files).positive
+    const inWs = splitNegations(cache.inputs.workspaceFiles ?? []).positive
+    if (inFiles.length > 0) {
+      bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
+      projectReaders = true
+    }
+    if (inWs.length > 0) {
+      rooted.push({ node: n, globs: inWs, reads: true })
+      rootReaders = true
+    }
+  }
+  if (projectReaders) {
+    for (const sides of byProject.values()) {
+      if (sides.length < 2) continue
+      for (const [i, j] of overlapCandidates(sides, (s) => s.globs)) {
+        readsOutputs(sides[i]!, sides[j]!, 'files')
+      }
+    }
+  }
+  if (!rootReaders) return
+  if (workspaceRoot !== undefined) {
+    for (const node of filesWriters) {
+      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const globs = splitNegations(node.config.cache!.outputs.files).positive.map((g) =>
+        rel === '' ? g : `${rel}/${g}`,
+      )
+      rooted.push({ node, globs, reads: false, rel })
+    }
+  }
+  for (const [i, j] of overlapCandidates(rooted, (s) => s.globs)) {
+    readsOutputs(rooted[i]!, rooted[j]!, 'workspaceFiles')
+  }
+}
+
+function readsOutputs(x: Side, y: Side, field: 'files' | 'workspaceFiles'): void {
+  if (x.reads === y.reads || x.node === y.node) return
+  const [reader, writer] = x.reads ? [x, y] : [y, x]
+  const cache = reader.node.config.cache!
+  // What the reader's key never reads: its `!` entries and its own outputs.
+  const takeBack = [
+    ...splitNegations(field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []))
+      .negative,
+    ...splitNegations(
+      field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
+    ).positive,
+  ]
+  for (const go of writer.globs) {
+    if (outputTakenBack(go, takeBack)) continue
+    for (const gi of reader.globs) {
+      if (!outputsOverlap(gi, go)) continue
+      const shown =
+        writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
+      throw new UserError(
+        `${reader.node.id} reads ${JSON.stringify(gi)} in cache.inputs.${field}, which matches ` +
+          `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
+          `another task's outputs (the dependency's key already cascades through dependsOn). ` +
+          `Exclude it: add ${JSON.stringify(`!${go}`)} to ${reader.node.id}'s ` +
+          `cache.inputs.${field}, or set rules: { upfrontKeys: false } in vx.workspace.ts to ` +
+          `let it wait for its producer.`,
       )
     }
   }

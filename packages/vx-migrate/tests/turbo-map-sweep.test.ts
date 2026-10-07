@@ -995,7 +995,8 @@ describe('turbo-map: a package config that extends another package', () => {
       app: [
         ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B', 'C'], []],
         ['check', ['check/**'], [], [], []],
-        ['test', ['**/*'], [], [], []],
+        // `test` reads the package: `build`'s outputs are taken back (X-54).
+        ['test', ['**/*', '!dist/**', '!out/**'], [], [], []],
       ],
       mid: [
         ['build', ['src/**', 'mid/**'], ['dist/**', 'out/**'], ['B'], []],
@@ -1008,7 +1009,7 @@ describe('turbo-map: a package config that extends another package', () => {
       ],
       other: [
         ['build', ['src/**'], ['dist/**'], ['A'], []],
-        ['check', ['**/*'], [], [], ['build']],
+        ['check', ['**/*', '!dist/**'], [], [], ['build']],
         ['test', ['test/**'], [], [], []],
       ],
     })

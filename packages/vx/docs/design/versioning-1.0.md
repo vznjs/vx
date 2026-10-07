@@ -47,7 +47,7 @@ the values it takes and each refusal's exact words are recorded in
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
 | (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `concurrency`, `plugins`, `rules`, `timeout` |
 | `cacheRetention` | `maxSize`, `olderThan`                                                                                   |
-| `rules`          | `exclusiveOutputs`                                                                                       |
+| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                        |
 
 `vx.config.ts`:
 

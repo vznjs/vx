@@ -506,7 +506,7 @@ describe('the stability gate reads the reach', () => {
     async () => {
       expect(
         await throughChain(
-          `fmt: { exec: { command: 'true' }, cache: { inputs: { files: ['**'] }, outputs: { files: [] } } },
+          `fmt: { exec: { command: 'true' }, cache: { inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] } } },
            mid: { dependsOn: ['fmt'], ...${QUIET} },
            mid2: { dependsOn: ['mid'], ...${QUIET} },`,
           "['mid2']",
@@ -525,7 +525,7 @@ describe('the stability gate reads the reach', () => {
         await throughChain(
           `fmt: {
              exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../other/**'] } } },
-             cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+             cache: { inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] } },
            },
            mid: { dependsOn: ['fmt'], ...${QUIET} },`,
           "['mid']",

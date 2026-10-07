@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import type { GeneratedTask } from '@vzn/vx'
-import { resolveSharedOutputs, resolveSharedWorkspaceOutputs } from '../src/shared-outputs.js'
+import {
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
+  resolveSharedOutputs,
+  resolveSharedWorkspaceOutputs,
+} from '../src/shared-outputs.js'
 
 function task(name: string, outputs: string[], dependsOn: string[] = []): GeneratedTask {
   return {
@@ -162,5 +167,83 @@ describe('resolveSharedWorkspaceOutputs — the clashes the prefix index finds',
         { name: 'b', tasks: b },
       ]),
     ).toEqual(expected)
+  })
+})
+
+const reader = (name: string, files: string[], workspaceFiles?: string[]): GeneratedTask => ({
+  name,
+  todos: [],
+  task: {
+    exec: { command: name },
+    cache: { inputs: { files, ...(workspaceFiles ? { workspaceFiles } : {}) } },
+  },
+})
+const inputsOf = (t: GeneratedTask) =>
+  (t.task!['cache'] as { inputs: Record<string, string[]> } | undefined)?.inputs
+
+describe('excludeSiblingOutputs — no key reads a sibling output (X-54)', () => {
+  it('takes back each overlapping output once, and uncaches a literal reader', () => {
+    const tasks = excludeSiblingOutputs([
+      task('build', ['dist/**']),
+      reader('test', ['**/*', '!dist/**']),
+      reader('lint', ['src/**', 'dist/index.js']),
+      // CONTROL: disjoint inputs stay as they are.
+      reader('fmt', ['src/**']),
+    ])
+    expect([
+      inputsOf(tasks[0]!)?.['files'],
+      inputsOf(tasks[1]!)?.['files'],
+      inputsOf(tasks[2]!),
+      tasks[2]!.todos,
+      inputsOf(tasks[3]!)?.['files'],
+    ]).toEqual([
+      ['**/*'],
+      ['**/*', '!dist/**'],
+      undefined,
+      [
+        'reads "dist/index.js", which "build" writes — vx keys a task only on files no other ' +
+          'task writes, so it runs uncached; read the source instead in a vx.config to cache it',
+      ],
+      ['src/**'],
+    ])
+  })
+
+  it('a reader over the whole package gains the sibling output', () => {
+    const tasks = excludeSiblingOutputs([task('build', ['dist/**']), reader('test', ['**/*'])])
+    expect(inputsOf(tasks[1]!)?.['files']).toEqual(['**/*', '!dist/**'])
+  })
+})
+
+describe('excludeWorkspaceOutputs — workspace inputs against every output (X-54)', () => {
+  it('takes back workspace and rebased project outputs, skips its own', () => {
+    const gen: GeneratedTask = {
+      name: 'gen',
+      todos: [],
+      task: {
+        exec: { command: 'gen' },
+        cache: {
+          inputs: { files: ['**/*'], workspaceFiles: ['tools/**'] },
+          outputs: { workspaceFiles: ['tools/out/**'] },
+        },
+      },
+    }
+    const r = reader('test', ['src/**'], ['packages/**', 'tools/**', 'other/**'])
+    excludeWorkspaceOutputs('/w', [
+      { name: 'a', dir: '/w/packages/a', tasks: [task('build', ['dist/**'])] },
+      { name: 'b', dir: '/w/packages/b', tasks: [r, gen] },
+    ])
+    expect([inputsOf(r)?.['workspaceFiles'], inputsOf(gen)?.['workspaceFiles']]).toEqual([
+      ['packages/**', 'tools/**', 'other/**', '!packages/a/dist/**', '!tools/out/**'],
+      ['tools/**'],
+    ])
+  })
+
+  it('uncaches a literal workspace reader', () => {
+    const r = reader('test', ['src/**'], ['packages/a/dist/index.js'])
+    excludeWorkspaceOutputs('/w', [
+      { name: 'a', dir: '/w/packages/a', tasks: [task('build', ['dist/**'])] },
+      { name: 'b', dir: '/w/packages/b', tasks: [r] },
+    ])
+    expect([inputsOf(r), r.todos.length]).toEqual([undefined, 1])
   })
 })

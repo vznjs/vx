@@ -24,6 +24,7 @@ import type { Logger, RunSummary } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 const MOVED = /changed after its key was taken/
@@ -480,6 +481,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
       commit()
+      await waitForProducers(root)
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')

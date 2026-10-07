@@ -61,8 +61,11 @@ export function declaredTask(
 export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
-  rules?: WorkspaceRules, // `exclusiveOutputs` refuses an edge-ordered overlap (X-53)
-): void // id keys, deps, cycle, output collisions
+  rules?: WorkspaceRules, // `exclusiveOutputs`: edge-ordered overlap; `upfrontKeys`: inputs over outputs
+): void // id keys, deps, cycle, output collisions, inputs reading outputs
+// Does `negatives` (an input list's `!` entries, `!` stripped) take back
+// every path `output` can select? (X-54)
+export function outputTakenBack(output: string, negatives: readonly string[]): boolean
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 export function undeclaredDepsError(taskId: string, name: string): UserError
@@ -187,6 +190,21 @@ so the refusal names the same pair and the marks land in the same
 order. One project of 4,000 tasks with outputs built its graph in
 10.0 s (distinct literals) and now in 10 ms (item 746).
 
+## Inputs that read outputs
+
+While `rules.upfrontKeys` is on (the default, X-54), `detectInputOverlaps`
+refuses a cached task whose input globs can match another task's
+declared outputs: `inputs.files` against the same project's
+`outputs.files`, and `inputs.workspaceFiles` against every
+`outputs.workspaceFiles` and every other project's `outputs.files` at its
+workspace path. The test is `outputsOverlap`, so only a proven overlap is
+refused; the stability gate keeps the "may reach" cases preliminary. An
+output the reader's own `!` entries take back whole (`outputTakenBack`)
+does not count, nor do its own outputs. A group has no outputs and no
+key of its own, so the default build (`**`) is exempt. Each domain runs
+through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
+project check in milliseconds.
+
 ## What this does NOT do
 
 - It doesn't check that `cache.inputs.tasks` names resolve to declared
@@ -249,6 +267,13 @@ the first segment, an escape in the head), the first refusal and the
 marks in all-pairs order, 3,000 random configs against the all-pairs
 loop, and a time bound at 4,000 tasks in one project that the old loop
 misses tenfold.
+
+`tests/input-overlap.test.ts` covers the input refusal: the exact
+message, each shape refused and loaded with the rule off, edge or no
+edge, both workspace domains, the `!` take-back and a partial one that
+is still refused, the exemptions (own outputs, uncached, group, the
+default build), a run refused and the same run with the rule off, a
+non-boolean value, and a time bound at 4,000 tasks.
 
 ## Replacing this module
 

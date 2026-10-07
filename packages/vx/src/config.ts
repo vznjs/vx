@@ -70,6 +70,12 @@ export interface WorkspaceRules {
    * overlapping tasks with no edge are refused either way.
    */
   exclusiveOutputs?: boolean
+  /**
+   * Refuse a task whose input globs can match another task's declared
+   * outputs, so every key is derived before any task runs. Off, such a key
+   * waits for its producer (`caching.md` § Local restore tier).
+   */
+  upfrontKeys?: boolean
 }
 
 /**

@@ -32,6 +32,33 @@ const SUITE_ENV = { ...GIT_HERMETIC, FORCE_COLOR: '0', VX_CACHE_DIR: '.vx/cache'
 const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
 const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
 const BUN_VERSION = ['bun --version']
+// A key reads no other task's outputs (`rules.upfrontKeys`, X-54): the
+// compiled binaries land in `dist/`, so every `**/*` here takes it back.
+// `dist/` is gitignored, so no key read it before either.
+const SOURCES = ['**/*', '!dist/**']
+// The same for the other packages `test.bun.unsafe` reads: what
+// @vzn/vx-docs' `build`, `build.playground` and `import` write
+// (packages/vx-docs/vx.config.ts), all gitignored.
+const OTHER_OUTPUTS = [
+  'vx/dist/**',
+  'vx-docs/dist/**',
+  'vx-docs/public/playground/planner.js',
+  ...[
+    'architecture',
+    'benchmarks',
+    'caching',
+    'cli',
+    'comparison',
+    'execution',
+    'flows',
+    'optimizations',
+    'overview',
+    'patterns',
+    'schema',
+  ].map((page) => `vx-docs/src/content/docs/${page}.md`),
+  'vx-docs/src/content/docs/modules/**',
+  'vx-docs/src/content/docs/design/**',
+].map((g) => `!packages/${g}`)
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({
   description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
@@ -55,7 +82,7 @@ const shardTask = (i: number) => ({
   },
   cache: {
     inputs: {
-      files: ['**/*'],
+      files: SOURCES,
       workspaceFiles: ['README.md'],
     },
     outputs: { files: [] as string[] },
@@ -374,7 +401,7 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['**/*'],
+          files: SOURCES,
           // The repo-wide laws in this suite read every package, the
           // workflows and the root files (bins, boundaries, exports, the
           // runner, the site's samples); until item 613 the key saw only
@@ -389,6 +416,7 @@ export default defineProject({
             'README.md',
             'vx.config.ts',
             'vx.workspace.ts',
+            ...OTHER_OUTPUTS,
           ],
         },
         outputs: { files: [] },
@@ -409,7 +437,7 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['**/*'],
+          files: SOURCES,
         },
         outputs: { files: [] },
       },
@@ -429,7 +457,7 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['**/*'],
+          files: SOURCES,
         },
         outputs: { files: [] },
       },
@@ -478,7 +506,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
@@ -502,7 +530,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
@@ -526,7 +554,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
@@ -550,7 +578,7 @@ export default defineProject({
         },
       },
       cache: {
-        inputs: { files: ['**/*'], runtime: BUN_VERSION },
+        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },

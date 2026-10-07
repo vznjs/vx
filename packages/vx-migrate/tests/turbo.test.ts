@@ -103,7 +103,8 @@ describe('turbo()', () => {
       // `^build` reached lib, `codegen` is a same-package edge.
       expect(app.deps.sort()).toEqual(['app#codegen', 'lib#build'])
       const cache = app.config.cache!
-      expect(cache.inputs.files).toEqual(['**/*', '!**/*.md'])
+      // `codegen`'s outputs taken back (core X-54).
+      expect(cache.inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**'])
       // globalDependencies and the $TURBO_ROOT$/ input both name the
       // file; the mapper sees both strings and lists it once.
       expect(cache.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
@@ -895,7 +896,7 @@ describe('per-package turbo.json', () => {
       expect(lint.tasks.map((t) => t.node.id)).toEqual([])
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual([])
-      expect(app.config.cache!.inputs.files).toEqual(['**/*'])
+      expect(app.config.cache!.inputs.files).toEqual(['**/*', '!src/gen/**'])
     },
     TIMEOUT,
   )
@@ -922,7 +923,7 @@ describe('per-package turbo.json', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       const cache = app.config.cache!
-      expect(cache.inputs.files).toEqual(['src/**'])
+      expect(cache.inputs.files).toEqual(['src/**', '!src/gen/**'])
       expect(cache.inputs.workspaceFiles).toEqual([
         'tsconfig.base.json',
         'packages/lib/src/**',

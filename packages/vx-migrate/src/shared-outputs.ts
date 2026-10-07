@@ -231,6 +231,106 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
 }
 
 /**
+ * Two globs can match one path only when one's literal prefix is a
+ * directory of the other's (`packages/*\/dist/**` and `packages/a/dist/**`),
+ * so an indexed glob is a candidate only along its prefix's chain. Every
+ * pair was compared: 1,000 packages' builds and tests took 9 s to map.
+ * `candidates` is a superset of the indexed entries a glob can overlap.
+ */
+function prefixIndex(): {
+  index: (i: number, globs: readonly string[]) => void
+  candidates: (globs: readonly string[]) => number[]
+} {
+  const at = new Map<string, number[]>()
+  const under = new Map<string, number[]>()
+  const chain = (g: string): string[] => {
+    const segs: string[] = []
+    for (const seg of g.split('/')) {
+      if (/[*?{}[\]()!]/.test(seg)) break
+      segs.push(seg)
+    }
+    return segs.map((_, i) => segs.slice(0, i + 1).join('/'))
+  }
+  return {
+    index(i, globs) {
+      for (const g of globs) {
+        const c = chain(g)
+        const push = (m: Map<string, number[]>, k: string) => {
+          const list = m.get(k)
+          if (list === undefined) m.set(k, [i])
+          else if (list.at(-1) !== i) list.push(i)
+        }
+        push(at, c.at(-1) ?? '')
+        for (const k of ['', ...c]) push(under, k)
+      }
+    },
+    candidates(globs) {
+      const found = new Set<number>()
+      for (const g of globs) {
+        const c = chain(g)
+        for (const k of ['', ...c]) for (const i of at.get(k) ?? []) found.add(i)
+        for (const i of under.get(c.at(-1) ?? '') ?? []) found.add(i)
+      }
+      return [...found].sort((a, b) => a - b)
+    },
+  }
+}
+
+/** A task's cached `inputs` block, when it has one with a `files` list. */
+function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown } | undefined {
+  const inputs = (t.task?.['cache'] as { inputs?: { files?: unknown } } | undefined)?.inputs
+  return Array.isArray(inputs?.files)
+    ? (inputs as { files: string[]; workspaceFiles?: unknown })
+    : undefined
+}
+
+/**
+ * Core refuses a task whose inputs can match another task's declared
+ * outputs (`rules.upfrontKeys`, on by default, core X-54): such a key
+ * reads what a producer writes this run and cannot be known before it ran.
+ * Turbo and Nx default a task's inputs to every file of its package
+ * (`**\/*`), which matches a sibling build's `dist`. Each overlapping
+ * output is taken back with a `!` entry, in place: Turbo and Nx hash the
+ * files git tracks, and a build's outputs are not, so the adopted tool
+ * never keyed them either. A literal input another task writes cannot be
+ * taken back (core refuses a `!` over a literal input), so that task runs
+ * uncached with a todo. Committed files under an output are the tracked
+ * pass's (`spareTrackedOutputs`).
+ */
+export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
+  const writers = tasks.flatMap((t, index) => {
+    const c = cachedOutputs(t, index)
+    return c === null ? [] : [c]
+  })
+  if (writers.length === 0) return tasks
+  tasks.forEach((t, index) => {
+    const inputs = inputsOf(t)
+    if (inputs === undefined) return
+    const positive = inputs.files.filter((g) => typeof g === 'string' && !g.startsWith('!'))
+    for (const w of writers) {
+      if (w.index === index) continue
+      for (const out of w.files) {
+        if (inputs.files.includes(`!${out}`)) continue
+        const read = positive.filter((g) => outputsOverlap(g, out))
+        if (read.length === 0) continue
+        const literal = read.find((g) => isLiteralPattern(g))
+        if (literal !== undefined) {
+          delete t.task!['cache']
+          t.todos.push(
+            `reads ${JSON.stringify(literal)}, which ${JSON.stringify(w.name)} writes — vx keys a ` +
+              'task only on files no other task writes, so it runs uncached; read the source ' +
+              'instead in a vx.config to cache it',
+          )
+          return
+        }
+        inputs.files.push(`!${out}`)
+      }
+    }
+  })
+  return tasks
+}
+
+/**
  * The same across projects, for workspace outputs: cal.com's shared
  * `post-install` writes `../../node_modules/@prisma/client/**` from every
  * package that has the script, one workspace path, and core refused the
@@ -255,41 +355,7 @@ export function resolveSharedWorkspaceOutputs(
       ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
       : []
   const kept: { id: string; project: string; ws: string[]; own: string[] }[] = []
-  // Two globs can match one path only when one's literal prefix is a
-  // directory of the other's (`packages/*/dist/**` and `packages/a/dist/**`),
-  // so a kept glob is a candidate only along its prefix's chain. Every pair
-  // was compared: 1,000 packages' builds and tests took 9 s to map.
-  const at = new Map<string, number[]>()
-  const under = new Map<string, number[]>()
-  const chain = (g: string): string[] => {
-    const segs: string[] = []
-    for (const seg of g.split('/')) {
-      if (/[*?{}[\]()!]/.test(seg)) break
-      segs.push(seg)
-    }
-    return segs.map((_, i) => segs.slice(0, i + 1).join('/'))
-  }
-  const index = (i: number, globs: readonly string[]): void => {
-    for (const g of globs) {
-      const c = chain(g)
-      const push = (m: Map<string, number[]>, k: string) => {
-        const list = m.get(k)
-        if (list === undefined) m.set(k, [i])
-        else if (list.at(-1) !== i) list.push(i)
-      }
-      push(at, c.at(-1) ?? '')
-      for (const k of ['', ...c]) push(under, k)
-    }
-  }
-  const candidates = (globs: readonly string[]): number[] => {
-    const found = new Set<number>()
-    for (const g of globs) {
-      const c = chain(g)
-      for (const k of ['', ...c]) for (const i of at.get(k) ?? []) found.add(i)
-      for (const i of under.get(c.at(-1) ?? '') ?? []) found.add(i)
-    }
-    return [...found].sort((a, b) => a - b)
-  }
+  const { index, candidates } = prefixIndex()
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
     for (const t of p.tasks) {
@@ -328,6 +394,79 @@ export function resolveSharedWorkspaceOutputs(
           "on one path would delete each other's work; this one runs uncached. Give it its own " +
           'output path to cache it.',
       )
+    }
+  }
+}
+
+/**
+ * `excludeSiblingOutputs` for root-anchored `cache.inputs.workspaceFiles`:
+ * every other task's `outputs.workspaceFiles`, and its `outputs.files` at
+ * their workspace path, is taken back from a reader's workspace inputs
+ * (Turbo's `globalDependencies` and `$TURBO_ROOT$` entries, Nx's
+ * `{workspaceRoot}` filesets). Run after `resolveSharedWorkspaceOutputs`,
+ * over what stays cached.
+ */
+export function excludeWorkspaceOutputs(
+  root: string,
+  projects: readonly {
+    readonly name: string
+    readonly dir: string
+    readonly tasks: GeneratedTask[]
+  }[],
+): void {
+  const positive = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
+      : []
+  const writers: { task: GeneratedTask; id: string; globs: string[] }[] = []
+  const { index, candidates } = prefixIndex()
+  for (const p of projects) {
+    const rel = relPosix(root, p.dir)
+    for (const t of p.tasks) {
+      const outputs = (
+        t.task?.['cache'] as { outputs?: { files?: unknown; workspaceFiles?: unknown } } | undefined
+      )?.outputs
+      const globs = [
+        ...positive(outputs?.workspaceFiles),
+        ...positive(outputs?.files).map((g) =>
+          rel === '' ? g.replace(/^(\.\/)+/, '') : `${rel}/${g.replace(/^(\.\/)+/, '')}`,
+        ),
+      ]
+      if (globs.length === 0) continue
+      index(writers.length, globs)
+      writers.push({ task: t, id: `${p.name}#${t.name}`, globs })
+    }
+  }
+  if (writers.length === 0) return
+  for (const p of projects) {
+    for (const t of p.tasks) {
+      const inputs = (t.task?.['cache'] as { inputs?: { workspaceFiles?: unknown } } | undefined)
+        ?.inputs
+      if (inputs === undefined || !Array.isArray(inputs.workspaceFiles)) continue
+      const files = inputs.workspaceFiles as string[]
+      const reads = positive(files)
+      if (reads.length === 0) continue
+      for (const i of candidates(reads)) {
+        const w = writers[i]!
+        if (w.task === t) continue
+        for (const out of w.globs) {
+          if (files.includes(`!${out}`)) continue
+          const read = reads.filter((g) => outputsOverlap(g, out))
+          if (read.length === 0) continue
+          const literal = read.find((g) => isLiteralPattern(g))
+          if (literal !== undefined) {
+            delete t.task!['cache']
+            t.todos.push(
+              `reads ${JSON.stringify(literal)}, which ${w.id} writes — vx keys a task only on ` +
+                'files no other task writes, so it runs uncached; read the source instead in a ' +
+                'vx.config to cache it',
+            )
+            break
+          }
+          files.push(`!${out}`)
+        }
+        if (t.task?.['cache'] === undefined) break
+      }
     }
   }
 }

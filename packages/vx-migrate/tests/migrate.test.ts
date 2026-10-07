@@ -261,7 +261,9 @@ describe('vx migrate (turbo)', () => {
       // both root-relative → inputs.workspaceFiles, listed once as the live
       // `turbo()` lists it: the preset spread holds the explicit entry, and
       // written twice the migrated config keyed apart from the live run.
-      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
+      // `codegen`'s and `test`'s outputs taken back: no key reads another
+      // task's outputs (core X-54).
+      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
       expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
@@ -274,7 +276,7 @@ describe('vx migrate (turbo)', () => {
       // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
       const codegen = tasks.codegen!
       expect(codegen.exec?.command).toBe('node gen.js')
-      expect(codegen.cache?.inputs.files).toEqual(['**/*'])
+      expect(codegen.cache?.inputs.files).toEqual(['**/*', '!dist/**', '!coverage/**'])
       expect(codegen.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(codegen.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
       expect(codegen.cache?.outputs.files).toEqual(['src/gen/**'])
@@ -698,7 +700,13 @@ describe('vx migrate (nx)', () => {
       // no inputs → files ['**/*'].
       const test = tasks.test!
       expect(test.exec?.command).toBe('jest')
-      expect(test.cache?.inputs.files).toEqual(['**/*'])
+      expect(test.cache?.inputs.files).toEqual([
+        '**/*',
+        '!dist',
+        '!build/main.js',
+        '!coverage/lcov.info',
+        '!.output',
+      ])
 
       // Any executor runs as itself through nx-exec; dependsOn/cache parts kept.
       const serve = tasks.serve!

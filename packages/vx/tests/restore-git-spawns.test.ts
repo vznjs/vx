@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -162,6 +162,7 @@ describe('restore-path git spawns', () => {
       // stale snapshot here would surface as a spurious re-execution.
       await addProject(fixture.root, 'a', `['**']`)
       await addProject(fixture.root, 'b', `['**']`)
+      await waitForProducers(fixture.root)
       await warmThenWipe(fixture)
 
       expect(await vx(fixture, true)).toBe(0)
