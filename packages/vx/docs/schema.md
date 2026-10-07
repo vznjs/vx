@@ -862,7 +862,7 @@ the names, and each value, with "unset" folded apart from every value
 
 ##### `inputs.runtime` (optional, default `[]`)
 
-Shell commands whose **combined, trimmed stdout + stderr** is folded
+Shell commands whose **trimmed stdout and stderr, kept apart,** are folded
 into the cache key — the runtime-output analog of `inputs.env`. It runs
 in the project dir; the Nx
 [`runtime` input](https://nx.dev/recipes/running-tasks/configure-inputs),

@@ -1185,6 +1185,23 @@ describe('resolveInputs — runtime values', () => {
     expect(r.runtimeValues[0]![1]).toContain('err')
   })
 
+  it('keeps the stdout/stderr split: moving bytes between the streams moves the output', async () => {
+    const outputs = new Set<string>()
+    for (const cmd of [
+      'printf ab',
+      'printf a; printf b 1>&2',
+      'printf b 1>&2',
+      'printf "\\0" ; printf 1 1>&2',
+    ]) {
+      const r = await resolveInputs(args({ runtime: [cmd] }))
+      outputs.add(r.runtimeValues[0]![1])
+    }
+    // A stdout that itself spells the framing stays apart from the framed pair.
+    const r = await resolveInputs(args({ runtime: [`printf '\\0001\\0001'`] }))
+    outputs.add(r.runtimeValues[0]![1])
+    expect(outputs.size).toBe(5)
+  })
+
   it('sorts runtime pairs by command for deterministic folding', async () => {
     const r = await resolveInputs(args({ runtime: ['echo b', 'echo a'] }))
     expect(r.runtimeValues.map(([c]) => c)).toEqual(['echo a', 'echo b'])
