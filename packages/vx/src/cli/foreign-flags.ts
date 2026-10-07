@@ -357,7 +357,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--preflight'],
     value: false,
     outcome: 'refuse',
-    vx: '`turboCache()` sends no CORS preflight: drop it',
+    vx: 'set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
   },
   {
     runner: 'turbo',

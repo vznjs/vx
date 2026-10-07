@@ -129,7 +129,10 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     "--json (turbo): use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
   ],
   [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
-  [['--preflight'], '--preflight (turbo): `turboCache()` sends no CORS preflight: drop it'],
+  [
+    ['--preflight'],
+    '--preflight (turbo): set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
+  ],
   [
     ['--remote-cache-timeout', 'x'],
     '--remote-cache-timeout (turbo): set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`',
