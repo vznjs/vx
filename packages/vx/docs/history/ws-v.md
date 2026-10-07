@@ -63,6 +63,18 @@ the rounds run with `GIT_CONFIG_GLOBAL=/dev/null`.
   they load where a summary file is set (`require`: the telemetry hook is
   sync). The renderer stays eager: `renderJobSummary` is a frozen export. `@vzn/vx-schedule-history` loads `vx history`'s table with
   the verb. Rows: each package's `tests/lazy-load.test.ts`.
+- **V-9.** A repository with no remote is named by its root commit, and
+  every run spawned `rev-parse --is-shallow-repository` then `rev-list`
+  synchronously to find it (~5 ms). Shallow is now the common
+  dir's `shallow` file, and `rev-list` runs asynchronously, asked before
+  discovery and awaited when the cache opens. A 10-package workspace:
+  102.6 → 98.6 ms median of 40, interleaved. Row: `shared-store.test.ts`
+  (the shallow clone).
+- **V-10.** A plan snapshot (the last run's discovery and evaluated
+  configs, reused while stamps hold) was built and measured, not shipped:
+  ~11 ms of ~150 at 500 projects, none at 1,000 frozen. Discovery and the
+  config load already overlap the whole-tree git enumeration, which the
+  run then waits on instead.
 
 Left: `workspace config` is mostly the plugin packages' transpile, half of
 it `@vzn/vx-otel` (owned by another thread); `git enumeration` is now the

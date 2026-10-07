@@ -183,7 +183,7 @@ describe('the shared store', () => {
   it('makes each level of the store owner-only', async () => {
     const a = await workspace()
     await build(a)
-    const root = path.join(home, '.vx', repoIdOf(a.root)!)
+    const root = path.join(home, '.vx', (await repoIdOf(a.root))!)
     for (const d of [path.join(home, '.vx'), root, path.join(root, 'cache')]) {
       expect((statSync(d).mode & 0o777).toString(8)).toBe('700')
     }
@@ -262,14 +262,16 @@ describe('resolveStoreRoot', () => {
   it('is ~/.vx/<repo id>/cache on every platform', async () => {
     process.env['XDG_CACHE_HOME'] = '/elsewhere'
     const a = await workspace()
-    expect(resolveStoreRoot(a.root, null)).toBe(path.join(home, '.vx', repoIdOf(a.root)!, 'cache'))
+    expect(await resolveStoreRoot(a.root, null)).toBe(
+      path.join(home, '.vx', (await repoIdOf(a.root))!, 'cache'),
+    )
   })
 
   it('is null when the workspace names its cache dir', async () => {
     const a = await workspace()
-    expect(resolveStoreRoot(a.root, { cacheDir: '.cache/vx' })).toBeNull()
+    expect(await resolveStoreRoot(a.root, { cacheDir: '.cache/vx' })).toBeNull()
     process.env['VX_CACHE_DIR'] = '.cache/vx'
-    expect(resolveStoreRoot(a.root, null)).toBeNull()
+    expect(await resolveStoreRoot(a.root, null)).toBeNull()
   })
 })
 
@@ -283,7 +285,7 @@ describe('repoIdOf', () => {
       'ssh://git@github.com:22/acme/app.git',
     ]) {
       const f = await workspace('hi\n', url)
-      ids.add(repoIdOf(f.root))
+      ids.add(await repoIdOf(f.root))
     }
     expect([...ids]).toHaveLength(1)
     expect([...ids][0]).toMatch(/^[0-9a-f]{16}$/)
@@ -292,8 +294,8 @@ describe('repoIdOf', () => {
   it('tells workspaces in one repository apart by their path in it', async () => {
     const f = await workspace()
     const sub = path.join(f.root, 'packages', 'app')
-    expect(repoIdOf(sub)).not.toBeNull()
-    expect(repoIdOf(sub)).not.toBe(repoIdOf(f.root))
+    expect(await repoIdOf(sub)).not.toBeNull()
+    expect(await repoIdOf(sub)).not.toBe(await repoIdOf(f.root))
   })
 
   it('is the first commit with no remote, which a clone shares and a shallow clone lacks', async () => {
@@ -304,15 +306,15 @@ describe('repoIdOf', () => {
     made.push(clone)
     gitIn(tmp)('clone', '-q', a.root, clone)
     gitIn(clone)('remote', 'remove', 'origin')
-    expect(repoIdOf(clone)).toBe(repoIdOf(a.root))
-    expect(repoIdOf(a.root)).toMatch(/^[0-9a-f]{16}$/)
+    expect(await repoIdOf(clone)).toBe(await repoIdOf(a.root))
+    expect(await repoIdOf(a.root)).toMatch(/^[0-9a-f]{16}$/)
     const shallow = path.join(tmp, `vx-shallow-${process.pid}-${Date.now()}`)
     made.push(shallow)
     gitIn(tmp)('clone', '-q', '--depth=1', `file://${a.root}`, shallow)
     gitIn(shallow)('remote', 'remove', 'origin')
-    expect(repoIdOf(shallow)).toBeNull()
+    expect(await repoIdOf(shallow)).toBeNull()
     const b = await workspace('hi\n', null)
-    expect(repoIdOf(b.root)).toBeNull()
+    expect(await repoIdOf(b.root)).toBeNull()
   })
 
   it('a worktree is its repository', async () => {
@@ -321,13 +323,13 @@ describe('repoIdOf', () => {
     const wt = path.join(await realpath(os.tmpdir()), `vx-wt-${process.pid}-${Date.now()}`)
     made.push(wt)
     gitIn(a.root)('worktree', 'add', '-q', wt)
-    expect(repoIdOf(wt)).toBe(repoIdOf(a.root))
+    expect(await repoIdOf(wt)).toBe(await repoIdOf(a.root))
   })
 
   it('is null outside git', async () => {
     const d = await mkdtemp(path.join(os.tmpdir(), 'vx-nogit-'))
     made.push(d)
-    expect(repoIdOf(d)).toBeNull()
+    expect(await repoIdOf(d)).toBeNull()
   })
 
   it('reads origin, then upstream, then base, then the first remote', async () => {
@@ -335,12 +337,12 @@ describe('repoIdOf', () => {
     const git = gitIn(f.root)
     git('remote', 'add', 'fork', 'https://github.com/me/fork.git')
     git('remote', 'add', 'base', 'https://github.com/acme/base.git')
-    const id = repoIdOf(f.root)
+    const id = await repoIdOf(f.root)
     git('remote', 'remove', 'base')
     git('remote', 'add', 'base', 'git@github.com:Acme/base.git')
-    expect(repoIdOf(f.root)).toBe(id)
+    expect(await repoIdOf(f.root)).toBe(id)
     git('remote', 'remove', 'base')
-    expect(repoIdOf(f.root)).not.toBe(id)
+    expect(await repoIdOf(f.root)).not.toBe(id)
   })
 
   it('leaves to git a config it cannot read whole', () => {

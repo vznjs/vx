@@ -385,17 +385,21 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
  * `VX_CACHE_DIR`): that directory then holds everything, as one
  * workspace's alone. Null with no repository identity or no home.
  */
-export function resolveStoreRoot(root: string, config: WorkspaceConfig | null): string | null {
+export async function resolveStoreRoot(
+  root: string,
+  config: WorkspaceConfig | null,
+): Promise<string | null> {
   if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
   // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
   const home = process.env['HOME'] || homedir()
   if (!path.isAbsolute(home)) return null
   let id = repoIds.get(root)
   if (id === undefined) repoIds.set(root, (id = repoIdOf(root)))
-  return id === null ? null : path.join(home, '.vx', id, 'cache')
+  const resolved = await id
+  return resolved === null ? null : path.join(home, '.vx', resolved, 'cache')
 }
 
-const repoIds = new Map<string, string | null>()
+const repoIds = new Map<string, Promise<string | null>>()
 
 /**
  * Read the workspace's package-glob list, supporting all common

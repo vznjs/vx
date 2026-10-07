@@ -224,6 +224,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
+  // Asked now, read when the cache opens: a repository with no remote is
+  // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
   const projectMetas =
     reused !== undefined
@@ -286,7 +288,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     workspaceRoot,
     options.artifactCeiling,
     'open',
-    storeRoot,
+    await storeRoot,
   )
   localCache.assertWritable()
   // Two digests from one read: the config-evaluation cache keys on every
