@@ -233,3 +233,9 @@ time (bugs, correctness, simplification, the plugin seams).
   contributed layer is kept and chained in declaration order (a lookup
   walks them until one hits, a save reaches each), as `ChainedCache`
   does. Doc only.
+- **X-37.** `vx watch <task> --affected` judged every cycle against the
+  diff it read at start, so an edit to an input the startup diff left
+  out never ran the task. Now only the initial run reads the diff; a
+  later cycle runs the requested task across the scope fixed at start
+  and the cache keys decide. Row: `watch-affected.test.ts` › "an edit
+  after the start runs the task the startup diff left out (X-37)".

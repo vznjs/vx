@@ -150,7 +150,10 @@ are refused too: they format one run's result.
    them). Empty scope → exit 1.
 4. **Initial run.** Print `vx watch: initial run...`; call
    `orchestrator.run(opts)`. One that ran nothing and failed (a task
-   no project declares) exits 1.
+   no project declares) exits 1. Then `opts.affected` and
+   `opts.selectedOutright` are dropped: the `--affected` diff is the
+   tree at start, so a later cycle runs the requested task across the
+   scope and the keys decide (`tests/watch-affected.test.ts`).
 5. **Watch loop** (`runWatchLoop`):
    - For each project a cycle can run (`watchedProjects`: the scope
      plus its transitive dependencies through `buildPackageGraph` with
@@ -350,6 +353,7 @@ non-persistent tasks where each cycle should re-run cleanly.
 The loop's own suites: `tests/watch-rules.test.ts` (the ignore rules
 and the root event filter), `tests/watch-loop.test.ts` (cycles end to
 end), `tests/watch-loop-members.test.ts` (a package coming or going),
+`tests/watch-affected.test.ts` (`--affected` past the first cycle),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by
 settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT

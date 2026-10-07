@@ -198,6 +198,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     return 0
   }
   if (refusedToStart) return 1
+  // `--affected`'s diff is the tree at start; judged again, it held every
+  // later edit out of the scope it picked. A cycle is an edit, and the
+  // cache keys decide what in the scope it re-runs.
+  delete opts.affected
+  delete opts.selectedOutright
 
   const load: CliLoadOptions = {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
