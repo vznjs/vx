@@ -409,7 +409,7 @@ Semantics:
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
   as its `128 + n` code), at once while the graph still runs (`… while
-  the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
+the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
   fine (a daemon that forks and returns), and one kept only as a
   dependency does not end the foreground hold (WD-3).
@@ -927,7 +927,7 @@ Semantics:
 - The command **runs whenever a task's key is derived** — that's every
   run (warm runs included, since the key decides hit vs miss), plus
   `vx run --dry` / `--graph` (which predict the key) and `vx run
-  --no-cache` (which still derives the key). Keep runtime commands pure
+--no-cache` (which still derives the key). Keep runtime commands pure
   probes with no side effects.
 - The command runs as part of **hash derivation, before** the task's
   `exec` — so it is **not** constrained by the task's own `sandbox`
@@ -1556,7 +1556,7 @@ interface WorkspaceRules {
 - **`cacheScope`** — where this run's remote cache writes land.
   `'trusted'` reads and writes the task keys: the default branch's CI.
   `'read-only'` reads them and writes nothing: a laptop. Omitted, `vx
-  run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
+run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   `'trusted'` on CI or when `--cache` names the remote; `run()` takes
   `RunOptions.defaultCacheScope`, else `'trusted'`.
   Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the scope's key, then
@@ -1576,8 +1576,8 @@ interface WorkspaceRules {
   - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
     overlap are refused even when a `dependsOn` edge orders them:
     `<a> and <b> both declare the output "<glob>" … Give each task its
-    own output path, or set rules: { exclusiveOutputs: false } in
-    vx.workspace.ts to let a dependant add to its upstream's outputs.`
+own output path, or set rules: { exclusiveOutputs: false } in
+vx.workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
@@ -1586,9 +1586,9 @@ interface WorkspaceRules {
     `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
     or another project's `outputs.files` read from the root, is refused,
     edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
-    which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-    to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:
-    false } in vx.workspace.ts to let it wait for its producer.` Such a key
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:
+false } in vx.workspace.ts to let it wait for its producer.` Such a key
     reads what the producer writes this run, so vx cannot know it before
     the producer ran: it is not probed, prefetched or restored ahead of
     the schedule (`caching.md` § Local restore tier). The upstream's key
