@@ -94,7 +94,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field
   ("returned an invalid result for <task>: exitCode is undefined (expected
-  a number) — a plugin bug, not a task failure"), in the task's frame,
+  a number) — a plugin bug, not a task failure"; an `exitCode` that is
+  no non-negative integer, or a `durationMs` that is no non-negative
+  finite number, the same, X-11), in the task's frame,
   never a TypeError inside core. `where` is the
   executor-reported placement label (a REAPI worker id); absent = this
   host. Rides `TaskOutcome.where` into telemetry only (OTel:

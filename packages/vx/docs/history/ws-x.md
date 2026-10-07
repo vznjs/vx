@@ -67,3 +67,8 @@ time (bugs, correctness, simplification, the plugin seams).
   pass as `RunOptions.selectedOutright` and keep their tasks; an
   exclude still removes them. Row: `affected-base-notes.test.ts` › "a
   `--filter` beside --affected adds its projects".
+- **X-11.** An executor that resolved `exitCode: NaN` (or `1.5`, `-1`)
+  passed the result check, printed `failed (exit NaN)` and failed the
+  run history's write. The check now wants a non-negative integer
+  exit code and a non-negative finite duration. Row: `executor.test.ts`
+  › "an exitCode or durationMs that is a number but no count".
