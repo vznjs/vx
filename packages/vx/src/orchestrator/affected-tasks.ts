@@ -49,8 +49,9 @@ function wholeProjects(
 /**
  * The task ids of `ids` whose closure the change reaches, in their order.
  * A group seeds nothing (it runs nothing) unless it is keyed, as the default
- * `build` is; an uncached task seeds whenever its project changed; a cached
- * one when a changed path is one of its declared inputs. A `^name` edge the
+ * `build` is; an uncached task seeds when a changed path lies in its project
+ * (or the whole project is reached); a cached one when a changed path is one
+ * of its declared inputs. A `^name` edge the
  * graph passes through a package it loaded no config for reaches it as the
  * default `build` would: any change there reaches the task.
  */
@@ -90,7 +91,11 @@ export function affectedRoots(
     if (!changes.projects.has(n.projectName)) return false
     const cache = n.config.cache
     // A group runs nothing; only the default `build` (projects.ts) is keyed.
-    if (cache === undefined) return !isGroupTask(n)
+    // An uncached task reads its project: a root file another task of it
+    // declares (`workspaceFiles`) is no change there.
+    if (cache === undefined) {
+      return !isGroupTask(n) && (whole.has(n.projectName) || changes.paths.has(n.projectName))
+    }
     if (whole.has(n.projectName)) return true
     if ((changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))) {
       return true

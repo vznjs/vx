@@ -6,7 +6,10 @@
 (`affectedChanges`, affected.md) seeds tasks:
 
 - a group seeds nothing (it runs nothing), but for the default `build`;
-- an uncached task seeds when its project changed;
+- an uncached task seeds when a changed path lies in its project
+  (`changes.paths`) or the project is reached whole, never only because
+  another task of it declares a changed root file (`workspaceFiles`
+  owners join `changes.projects` alone);
 - a cached task seeds when a changed path is one of its declared inputs
   (`declaresInput`, inputs.md), or when its project is reached whole: the
   diff named it whole, a changed path is `package.json` or a `vx.config.*`,

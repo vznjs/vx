@@ -288,7 +288,9 @@ change seeds tasks in the projects it touches:
   changed, or that holds a changed path no cached task of its declares
   (vx cannot prove that path re-keys nothing), or that a lockfile
   claim, a manifest edge at the base or a config import names;
-- an uncached task whenever its project changed. A group seeds nothing.
+- an uncached task when a changed path lies in its project or the
+  project is reached whole; a root file another task of its declares
+  (`workspaceFiles`) is no change there. A group seeds nothing.
 
 A requested task runs when its `dependsOn` closure holds a seeded task,
 so a change reaches another project only along a task edge. With
