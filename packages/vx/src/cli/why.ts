@@ -18,6 +18,7 @@ import {
 } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
+import { findCwdProject } from './select.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface WhyArgs {
@@ -127,9 +128,14 @@ function suggest(query: string, ids: readonly string[]): string {
 /**
  * Resolve a positional target to a full `project#task` id against the runs
  * table. A `pkg#task` form is used as-is; a bare task name matches every
- * project that ran it — unique → resolved, several → error listing them.
+ * project that ran it — unique → resolved, several → the project the cwd
+ * sits in, as `vx run build` there picks (X-18), else an error listing them.
  */
-function resolveTarget(cache: Cache, target: string): string {
+async function resolveTarget(
+  cache: Cache,
+  target: string,
+  cwdProject: () => Promise<string | null>,
+): Promise<string> {
   const db = cache.dbHandle()
   if (target.includes('#')) {
     // An exact id needs one row, and its newest is where a scan from the
@@ -151,6 +157,8 @@ function resolveTarget(cache: Cache, target: string): string {
   const matches = ids.filter((id) => id.endsWith(`#${target}`))
   if (matches.length === 1) return matches[0]!
   if (matches.length > 1) {
+    const here = await cwdProject()
+    if (here !== null && matches.includes(`${here}#${target}`)) return `${here}#${target}`
     throw new UserError(
       `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
         matches.map((m) => `  ${m}`).join('\n'),
@@ -187,11 +195,19 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
   try {
     const db = cache.dbHandle()
-    const taskId = resolveTarget(cache, await rootSpelled(root, parsed.target))
-    const runId =
-      parsed.runId !== undefined
-        ? (resolveRunId(db, parsed.runId, 'vx why') ?? parsed.runId)
-        : latestRunId(db, taskId)
+    const taskId = await resolveTarget(cache, await rootSpelled(root, parsed.target), () =>
+      findCwdProject(process.cwd()),
+    )
+    let runId: string | null
+    if (parsed.runId !== undefined) {
+      runId = resolveRunId(db, parsed.runId, 'vx why')
+      // An unknown id read as a known run missing the task (X-18).
+      if (runId === null) {
+        throw new UserError(
+          `vx why: no recorded run ${parsed.runId} (vx last --list shows recent runs)`,
+        )
+      }
+    } else runId = latestRunId(db, taskId)
 
     if (runId === null) {
       // Runs exist (resolveTarget passed) but predate run ids — fall back to
@@ -245,7 +261,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       // The key moved and the diff says by what: the verdict names it, so
       // an env-only change reads as one line, not "inputs differ" above a
       // table to scan.
-      const moved = diff.entries.map((e) => `${e.kind} ${printable(e.name)}`)
+      // The config component is kind and name `config`: it read "config config".
+      const moved = diff.entries.map((e) =>
+        e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
+      )
       lines.push(
         `  verdict    ${
           why.hashChanged === true && moved.length > 0
