@@ -86,7 +86,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     writer.close()
     // A row-less artifact: what `adopt` indexes on a hit.
     const db = new Database(path.join(cacheDir, 'cache.db'))
-    db.prepare("DELETE FROM entries WHERE hash = 'bb'").run()
+    db.query("DELETE FROM entries WHERE hash = 'bb'").run()
     db.close()
     const ctx = (hash: string): CacheGetContext => ({
       taskId: `p#${hash}`,
