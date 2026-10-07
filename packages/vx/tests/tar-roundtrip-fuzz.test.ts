@@ -43,22 +43,49 @@ function mulberry32(seed: number): () => number {
 }
 
 const ATOMS = ['a', 'Z', '0', '_', '.', ' ', '-', '=', 'é', '日', '😀', '\uFEFF']
+// APFS stores names NFD: `é` decomposes, so a name's bytes on disk are not
+// the ones written. The on-disk row draws only atoms whose NFC is their NFD.
+const DISK_ATOMS = ATOMS.filter((a) => a.normalize('NFD') === a)
 const SIZES = [0, 1, 99, 100, 101, 511, 512, 513, 1023, 1024, 1025, 4096, 512 * 7, 512 * 7 + 1]
 
-function segment(rnd: () => number, maxBytes: number): string {
+const nfdBytes = (s: string): number => enc.encode(s.normalize('NFD')).byteLength
+
+function segment(rnd: () => number, atoms: readonly string[], maxBytes: number): string {
   const len = 1 + Math.floor(rnd() * (rnd() < 0.2 ? 120 : 12))
   let s = rnd() < 0.15 ? '-' : rnd() < 0.15 ? '\uFEFF' : ''
-  for (let i = 0; i < len; i++) s += ATOMS[Math.floor(rnd() * ATOMS.length)]!
-  while (enc.encode(s).byteLength > maxBytes) s = s.slice(0, -2)
+  const picks = [s]
+  for (let i = 0; i < len; i++) picks.push(atoms[Math.floor(rnd() * atoms.length)]!)
+  // Trim whole atoms: a slice by UTF-16 unit can split a surrogate pair.
+  while (nfdBytes(picks.join('')) > maxBytes) picks.pop()
+  s = picks.join('')
   // `.` and `..` name no file of their own.
   return s === '' || s === '.' || s === '..' ? 'f' : s
 }
 
 function name(rnd: () => number): string {
   const depth = 1 + Math.floor(rnd() * (rnd() < 0.3 ? 20 : 4))
-  const parts = Array.from({ length: depth }, () => segment(rnd, 255))
-  return parts.join('/')
+  return Array.from({ length: depth }, () => segment(rnd, ATOMS, 255)).join('/')
 }
+
+/**
+ * A name a real file system holds: components well under NAME_MAX (255
+ * bytes, NFD), and the whole path under macOS's PATH_MAX (1024) once the
+ * temp root is in front of it.
+ */
+function diskName(rnd: () => number): string {
+  const depth = 1 + Math.floor(rnd() * (rnd() < 0.3 ? 8 : 4))
+  const parts: string[] = []
+  let total = 0
+  for (let i = 0; i < depth; i++) {
+    const part = segment(rnd, DISK_ATOMS, 200)
+    if (total + nfdBytes(part) + 1 > 600) break
+    parts.push(part)
+    total += nfdBytes(part) + 1
+  }
+  return parts.length === 0 ? 'f' : parts.join('/')
+}
+
+const isAppleDouble = (n: string): boolean => n.split('/').some((c) => c.startsWith('._'))
 
 function bytes(rnd: () => number, n: number): Uint8Array {
   const b = new Uint8Array(n)
@@ -121,9 +148,14 @@ describe('tarPack → tarEntries, seeded', () => {
       for (const [n, f] of files)
         expect(same(got.get(n)!, f.data), `${ctx}: ${JSON.stringify(n)}`).toBe(true)
 
+      // libarchive on darwin takes a `._` component for AppleDouble metadata
+      // and drops the entry, so the oracle is asked only about the others;
+      // vx's own reader above is held to every name.
+      const plain = [...files.keys()].filter((n) => !isAppleDouble(n))
       const oracle = await new Bun.Archive(tar).files()
-      expect([...oracle.keys()].sort(), ctx).toEqual([...files.keys()].sort())
-      for (const [n, f] of files) {
+      expect([...oracle.keys()].filter((n) => !isAppleDouble(n)).sort(), ctx).toEqual(plain.sort())
+      for (const n of plain) {
+        const f = files.get(n)!
         const file = oracle.get(n)!
         expect(
           same(new Uint8Array(await file.arrayBuffer()), f.data),
@@ -163,7 +195,7 @@ describe('packArtifact → extractArtifactStream, seeded, on disk', () => {
       const count = 1 + Math.floor(rnd() * 5)
       for (let i = 0; i < count; i++) {
         // A directory per file keeps one output's name from being another's parent.
-        const rel = `${i}/${name(rnd)}`
+        const rel = `${i}/${diskName(rnd)}`
         const abs = path.join(src, rel)
         mkdirSync(path.dirname(abs), { recursive: true })
         const data = bytes(rnd, size(rnd))
