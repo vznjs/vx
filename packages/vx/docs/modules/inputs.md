@@ -111,6 +111,8 @@ export function asTrees(patterns: readonly string[]): string[]
 export interface OutputStamp {
   size: number
   mtimeMs: number
+  ino: number
+  ctimeMs: number
 }
 export async function stampOutputs(args: {
   projectDir: string
