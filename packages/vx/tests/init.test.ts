@@ -694,6 +694,23 @@ describe('migrateScripts', () => {
           'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: false\n',
         }),
       ).toEqual(apart)
+      // pnpm 10 reads the YAML, so a trailing comment or a flow mapping is
+      // the same setting; a line regex missed both and folded the hook.
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: false # hooks off\n',
+        }),
+      ).toEqual(apart)
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': '{packages: [], enablePrePostScripts: false}\n',
+        }),
+      ).toEqual(apart)
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: true # hooks on\n',
+        }),
+      ).toEqual(['build'])
       // CONTROL: the setting a manager ignores, or none, folds the hook.
       expect(await at('pnpm-lock.yaml', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])
       expect(await at('bun.lock', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])

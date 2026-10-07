@@ -382,13 +382,13 @@ describe('npm_execpath', () => {
       },
     }
   `
-  async function seen(pm: string | undefined, config: string): Promise<[string, string]> {
+  async function seen(pm: string | undefined, config: string, bom = ''): Promise<[string, string]> {
     const root = await makeWorkspace({ prefix: 'vx-env-pm-' })
     try {
       if (pm !== undefined) {
         await writeFile(
           path.join(root, 'package.json'),
-          JSON.stringify({ name: 'r', private: true, packageManager: pm }),
+          bom + JSON.stringify({ name: 'r', private: true, packageManager: pm }),
         )
       }
       const bin = path.join(root, 'node_modules', '.bin')
@@ -407,6 +407,12 @@ describe('npm_execpath', () => {
 
   it('is the workspace manager found on its node_modules/.bin', async () => {
     const [value, stub] = await seen('pnpm@9.15.0', probe())
+    expect([PM_EXEC_ENV, value]).toEqual(['npm_execpath', stub])
+  })
+
+  it('is found when package.json opens with a byte-order mark', async () => {
+    // JSON.parse threw on the BOM npm and discovery strip, and no manager was set.
+    const [value, stub] = await seen('pnpm@9.15.0', probe(), '\uFEFF')
     expect([PM_EXEC_ENV, value]).toEqual(['npm_execpath', stub])
   })
 
