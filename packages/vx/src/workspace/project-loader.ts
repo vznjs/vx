@@ -269,6 +269,9 @@ interface BuildPosition {
   column?: number
 }
 
+/** A stack frame naming a file path, as a config's own throw has. */
+const NAMED_FRAME = /\n\s+at .*[\\/]/
+
 /**
  * Turn the two errors Bun's own loader throws into user errors naming the
  * file the user wrote; every other throw is the config's own and already
@@ -301,6 +304,13 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
     return configLoadError(errors[0], configPath, kind)
   }
   if (typeof message !== 'string') return null
+  // Bun's JSON loader throws a `SyntaxError` whose stack, when it has one,
+  // holds no file frame: a malformed `import data from './data.json'`
+  // printed `vx: JSON Parse error: Expected '}'` and named nothing. A
+  // config's own `JSON.parse` has its line in the stack and passes through.
+  if (name === 'SyntaxError' && !NAMED_FRAME.test(String((err as { stack?: unknown }).stack))) {
+    return new UserError(`${kind} config ${configPath}: an import does not parse: ${message}`)
+  }
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what = spec === undefined ? message.replace(BUST_QUERY, '') : `cannot find '${spec}'`
