@@ -535,3 +535,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   descends through the importing file's own project; a hop into another
   project still stops. Row: `affected.test.ts` › "PIN: through the
   config's own helper file to an orphan".
+- **X-77.** A `vx.config.cts` (or `.ts`) written with TypeScript's
+  CommonJS export, `export = { tasks: … }`, was refused as "did not
+  export a default object", though Bun loads it: it spells no CommonJS
+  name, so vx served its bytes as a module, where the assignment has no
+  default. `export =` now sends the config down Bun's own path. Row:
+  `config-commonjs-hint.test.ts` › "each name that makes Bun run a
+  config as CommonJS keeps it CommonJS" (`assign.cts`, `assignts.ts`).

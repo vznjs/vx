@@ -127,10 +127,12 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
 }
 
 // What makes Bun run a file as CommonJS is one of these names at the top
-// level (an escaped `\u006dodule` too, so any backslash counts). Source
+// level (an escaped `\u006dodule` too, so any backslash counts), or
+// TypeScript's `export =`, which spells none of them. Source
 // with none of them runs as a module whichever path loads it, so it skips
 // the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
-const COMMONJS_HINT = /\b(?:module|exports|require|this|__dirname|__filename)\b|\\/
+const COMMONJS_HINT =
+  /\b(?:module|exports|require|this|__dirname|__filename)\b|\\|\bexport\s*=(?!=)/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
 const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g

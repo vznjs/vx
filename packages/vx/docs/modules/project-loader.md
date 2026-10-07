@@ -220,7 +220,8 @@ What `onLoad` source cannot be, it is not handed:
   `exports`, `require`, `this` or `__dirname` at the top) would lose its
   exports. `hasEsmExport` (config-imports.ts) asks Bun's own parser for
   an ESM `export`; without one, the config takes Bun's path, `?vx-bust=`.
-  Source that spells none of those names and holds no backslash (an
+  Source that spells none of those names, no TypeScript `export =`
+  (CommonJS to Bun, with no ESM `export`) and no backslash (an
   escaped `\u006dodule` is CommonJS to Bun too) is a module on either
   path and skips the parse: 18–20 ms off 1,000 cold configs (median of
   30, interleaved, 2026-10-03). A syntax error then reaches the served
