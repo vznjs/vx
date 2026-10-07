@@ -19,7 +19,7 @@ export interface Blob {
   data: Uint8Array
 }
 
-export interface InputTree {
+interface InputTree {
   /** Digest of the root `Directory` — goes in `Action.input_root_digest`. */
   root: Digest
   /** Every blob the server needs: file contents plus the Directory nodes. */
