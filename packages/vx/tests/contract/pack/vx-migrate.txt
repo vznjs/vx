@@ -27,6 +27,7 @@ src/nx/nx-outputs.ts
 src/nx/nx-upstream.ts
 src/paths.ts
 src/plugin-gaps.ts
+src/remote-breaker.ts
 src/remote-deadline.ts
 src/remote-retry.ts
 src/remote-token.ts
