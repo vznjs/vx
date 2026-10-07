@@ -4,7 +4,7 @@
 // built it, not from git or Bun.Glob. Both routes into `resolveFiles` are
 // driven, the run's populated partition and the per-project git spawn.
 
-import { lstatSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,8 +27,22 @@ function mulberry32(seed: number): () => number {
 
 // U+FFFF leads a name on purpose: the partition's upper bound once was
 // `dir/` + U+FFFF, and such a file fell out of every project's inputs.
-const DIRS = ['src', 'lib', '[id]', '.hidden', 'node_modules', 'ign', '￿d']
-const FILES = ['a.ts', '.env', 'b.md', '*.ts', 'x.log', '[id].ts', '￿.ts', 'c d.ts']
+// APFS refuses the name (EILSEQ), so no such file exists there to lose;
+// U+FFFD keeps the tree's shape on a file system that says so.
+const HI = ((): string => {
+  const probe = mkdtempSync(path.join(os.tmpdir(), 'vx-iprop-'))
+  try {
+    mkdirSync(path.join(probe, '\uffff'))
+    return '\uffff'
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EILSEQ') throw e
+    return '\ufffd'
+  } finally {
+    rmSync(probe, { recursive: true, force: true })
+  }
+})()
+const DIRS = ['src', 'lib', '[id]', '.hidden', 'node_modules', 'ign', `${HI}d`]
+const FILES = ['a.ts', '.env', 'b.md', '*.ts', 'x.log', '[id].ts', `${HI}.ts`, 'c d.ts']
 
 const segs = (r: string): string[] => r.split('/')
 const base = (r: string): string => segs(r).at(-1)!
@@ -46,20 +60,23 @@ const POSITIVE: Array<[string, (r: string) => boolean, string?]> = [
   ['*.md', (r) => !r.includes('/') && r.endsWith('.md')],
   ['{src,lib}/**', (r) => r.startsWith('src/') || r.startsWith('lib/')],
   ['**/[id]/*', (r) => segs(r).at(-2) === '[id]'],
-  ['￿d', tree('￿d'), '￿d'],
+  [`${HI}d`, tree(`${HI}d`), `${HI}d`],
 ]
 const NEGATIVE: Array<[string, (r: string) => boolean]> = [
   ['!**/*.md', (r) => r.endsWith('.md')],
   ['!lib', tree('lib')],
   ['!./src/.*', (r) => segs(r).length === 2 && r.startsWith('src/.')],
-  ['!**/￿*', (r) => base(r).startsWith('￿')],
+  [`!**/${HI}*`, (r) => base(r).startsWith(HI)],
 ]
 
 interface Fixture {
   root: string
   pkg: string
   nested: string | undefined
-  /** Project-relative path → whether git can see it (tracked, or untracked and not ignored). */
+  /**
+   * Project-relative path → whether the enumeration lists it: tracked, or
+   * untracked and neither ignored nor under a `node_modules` (an install).
+   */
   entries: Map<string, boolean>
 }
 
@@ -83,7 +100,7 @@ async function build(rand: () => number): Promise<Fixture> {
   // Siblings whose names sort right next to `pkg/`: never this project's. A
   // sibling file under a name the project also has is how a leak shows, as
   // the probe that drops a phantom path finds the project's own file there.
-  for (const sib of ['pkg-b', 'pkg.c', 'pkg0', 'pkg￿']) {
+  for (const sib of ['pkg-b', 'pkg.c', 'pkg0', `pkg${HI}`]) {
     mkdirSync(path.join(root, sib))
     writeFileSync(path.join(root, sib, 'package.json'), sib)
   }
@@ -97,9 +114,10 @@ async function build(rand: () => number): Promise<Fixture> {
     if (link === undefined) writeFileSync(abs, rel)
     else symlinkSync(link, abs)
     const ignored = segs(rel).includes('ign') || rel.endsWith('.log')
+    const installed = segs(rel).includes('node_modules')
     const track = rand() < 0.5
     if (track) tracked.push(rel)
-    entries.set(rel, track || !ignored)
+    entries.set(rel, track || (!ignored && !installed))
   }
   add('package.json', undefined)
   const n = 6 + Math.floor(rand() * 14)
@@ -133,7 +151,6 @@ function oracle(
   for (const [rel, visible] of fx.entries) {
     if (!visible) continue
     if (fx.nested !== undefined && rel.startsWith('sub/')) continue
-    if (segs(rel).includes('node_modules')) continue
     if (!pos.some((p) => p(rel)) || neg.some((p) => p(rel))) continue
     out.push(rel)
   }
