@@ -5,7 +5,7 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
-import { type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -1177,38 +1177,48 @@ async function runOnBus(
     // entry's save transaction (miss path only), so a warm all-cache-hit
     // run does no extra recording work. The telemetry mirror is built in
     // the same pass, only when a sink is active.
-    const records = assembleRunRecords({
-      outcomes: list,
-      runId,
-      startedAtMs: endedAtMsAtStart,
-      endedAtMs,
-      totalMs,
-      ok,
-      // The invocation is stored and `vx last` prints it: a secret passed
-      // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
-      // own output masks it, so cache.db holds no plaintext value.
-      command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
-      requestedTasks: options.tasks,
-      cachePolicy: compactCachePolicy(policy),
-      concurrency,
-      flow: options.flow ?? null,
-      forwardArgs: options.forwardArgs,
-      tags: maskTags(options.tags ?? {}),
-      git: gitContext,
-      ci: ciContext,
-      host: hostContext,
-      withTelemetry: telemetry !== undefined,
-    })
-    try {
-      if (stoppedBy === undefined) cache.recordRunBundle(records)
-    } catch (err) {
-      // History is observability: a full cache disk at the very end must
-      // not turn a finished run's verdict into a stack and exit 1 (seen as
-      // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
-      // what happened; `vx last` and the flaky list will not know this one.
-      const message = err instanceof Error ? err.message : String(err)
-      log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
+    const recordsOf = (final: TaskOutcome[], runOk: boolean) =>
+      assembleRunRecords({
+        outcomes: final,
+        runId,
+        startedAtMs: endedAtMsAtStart,
+        endedAtMs,
+        totalMs,
+        ok: runOk,
+        // The invocation is stored and `vx last` prints it: a secret passed
+        // after `--` (`-- --token=$NPM_TOKEN`) is masked here as the task's
+        // own output masks it, so cache.db holds no plaintext value.
+        command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
+        requestedTasks: options.tasks,
+        cachePolicy: compactCachePolicy(policy),
+        concurrency,
+        flow: options.flow ?? null,
+        forwardArgs: options.forwardArgs,
+        tags: maskTags(options.tags ?? {}),
+        git: gitContext,
+        ci: ciContext,
+        host: hostContext,
+        withTelemetry: telemetry !== undefined,
+      })
+    const records = recordsOf(list, ok)
+    const recordHistory = (write: () => void): void => {
+      try {
+        write()
+      } catch (err) {
+        // History is observability: a full cache disk at the very end must
+        // not turn a finished run's verdict into a stack and exit 1 (seen as
+        // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
+        // what happened; `vx last` and the flaky list will not know this one.
+        const message = err instanceof Error ? err.message : String(err)
+        log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
+      }
     }
+    // A server kept in the foreground can still fail the run after the
+    // cache closes: its history is written once the wait has decided, or it
+    // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
+    const historyAfterWait = keepAlive.children.length > 0 && !hold && stoppedBy === undefined
+    if (stoppedBy === undefined && !historyAfterWait)
+      recordHistory(() => cache.recordRunBundle(records))
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
@@ -1317,7 +1327,7 @@ async function runOnBus(
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every
-    // bookkeeping sense — summary printed, history recorded — but the
+    // bookkeeping sense — summary printed, the cache closed — but the
     // server is still up and that's the point. Stay in the foreground
     // until ONE of them exits: Ctrl-C hits the whole process group (the
     // server dies; our SIGINT handler also exits 130), and a crash ends
@@ -1378,6 +1388,16 @@ async function runOnBus(
       if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
       const final = [...outcomes.values()]
       await summarize(ok && first.code === 0, final)
+      if (historyAfterWait) {
+        recordHistory(() => {
+          const local = Cache.inspect(prepared.cacheDir)
+          try {
+            local.recordRunBundle(recordsOf(final, ok && first.code === 0))
+          } finally {
+            local.close()
+          }
+        })
+      }
       return { ok: ok && first.code === 0, outcomes: final }
     }
 

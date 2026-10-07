@@ -134,3 +134,9 @@ time (bugs, correctness, simplification, the plugin seams).
   nothing into the key. Both are refused. Row:
   `config-schema-refusals.test.ts` › "a cacheDir or runtime probe of
   spaces is refused".
+- **X-23.** A server `vx run` held in the foreground that exited
+  non-zero failed the run, the summary and the report, but the history,
+  written before the wait, said `ok` and `success`, and the flaky list
+  read it. Such a run's history is now written after the wait. Row:
+  `keep-alive.test.ts` › "a server exiting 1 tears the other down and vx
+  exits 1".
