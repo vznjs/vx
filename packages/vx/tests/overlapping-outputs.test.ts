@@ -1,7 +1,9 @@
 // The addition shape of docs/design/overlapping-outputs-2026-09.md, end to
 // end (item 588): `build` fills `dist`, `individual` depends on it and adds
 // `dist/individual` (twenty's twenty-ui; storybook's sandbox/build is the
-// same shape). Before 588 the pair was refused at graph build. Every row
+// same shape). Before 588 the pair was refused at graph build, and since
+// X-53 it is again unless the workspace sets `rules: { exclusiveOutputs:
+// false }`, which every fixture here does (`additive`). Every row
 // compares the tree under `dist` byte for byte with a COLD run of the same
 // sources in a fresh workspace, which is the design note's acceptance:
 // whatever the cache did, the tree is what the two commands produce.
@@ -16,6 +18,16 @@ import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.j
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
+
+/** A fixture workspace whose `vx.workspace.mjs` turns `exclusiveOutputs` off. */
+async function additive(opts: { prefix: string }): Promise<string> {
+  const root = await makeWorkspace(opts)
+  await writeFile(
+    path.join(root, 'vx.workspace.mjs'),
+    'export default { rules: { exclusiveOutputs: false } }\n',
+  )
+  return root
+}
 const TIMEOUT = 30_000
 
 // Two shapes of the same pair. SUBDIRECTORY (twenty): the dependant
@@ -57,7 +69,7 @@ interface Ws {
 }
 
 async function workspace(a: string, b: string, config: string): Promise<Ws> {
-  const root = await makeWorkspace({ prefix: 'vx-ovl-' })
+  const root = await additive({ prefix: 'vx-ovl-' })
   const app = await addProject(root, 'app', { files: { 'src/a.txt': a, 'srcb/b.txt': b }, config })
   return { root, app }
 }
@@ -100,6 +112,28 @@ const statusOf = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
   Object.fromEntries(
     r.outcomes.map((o) => [o.node.taskName, o.status + (o.restored ? '+restored' : '')]),
   )
+
+describe('overlapping outputs under the default rules', () => {
+  it(
+    'a run refuses the edge-ordered pair before any task runs (X-53)',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-ovl-rule-' })
+      try {
+        const app = await addProject(root, 'app', {
+          files: { 'src/a.txt': 'A1', 'srcb/b.txt': 'B1' },
+          config: configFor(SHAPES.subdirectory),
+        })
+        await expect(run({ cwd: root, tasks: TASKS, log: silent })).rejects.toThrow(
+          /app#build and app#individual both declare the output .* rules: \{ exclusiveOutputs: false \}/,
+        )
+        expect(tree(app)).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
 
 describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s', (_shape, outs) => {
   const config = configFor(outs)
@@ -326,7 +360,7 @@ describe("overlapping outputs: a root-anchored upstream under a project's depend
   it(
     'both hit up-to-date: the upstream keeps its own rows under what the dependant adds',
     async () => {
-      root = await makeWorkspace({ prefix: 'vx-ovl-ws-' })
+      root = await additive({ prefix: 'vx-ovl-ws-' })
       await addProject(root, 'a', {
         files: { 'src/a.txt': 'A1' },
         config: `export default { tasks: { build: {

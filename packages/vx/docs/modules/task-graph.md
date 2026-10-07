@@ -36,6 +36,7 @@ export interface BuildGraphOptions {
   // `projects` declares is handed here instead of refused (see below).
   undeclaredDeps?: (taskId: string, name: string) => void
   workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
+  rules?: WorkspaceRules | undefined // the workspace's `rules`; each on unless false (X-53)
 }
 
 export function taskId(project: string, task: string): string
@@ -57,7 +58,11 @@ export function declaredTask(
   config: ProjectConfig | null | undefined,
   name: string,
 ): TaskConfig | undefined
-export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void // id keys, deps, cycle, output collisions
+export function checkGraph(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot?: string,
+  rules?: WorkspaceRules, // `exclusiveOutputs` refuses an edge-ordered overlap (X-53)
+): void // id keys, deps, cycle, output collisions
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 export function undeclaredDepsError(taskId: string, name: string): UserError
@@ -165,8 +170,10 @@ detected. Throws as `UserError` so the CLI prints cleanly.
 ## Overlapping outputs
 
 Last, `detectOutputCollisions` refuses two tasks whose declared outputs
-overlap (`outputsOverlap`) with no edge between them, and marks the
-pair that has one as the addition shape. It never compares all pairs:
+overlap (`outputsOverlap`) with no edge between them. A pair with one is
+refused too while `rules.exclusiveOutputs` is on (the default, X-53), its
+message naming the rule; off, the pair is marked as the addition shape.
+It never compares all pairs:
 `outputs.files` is compared only within a project and
 `outputs.workspaceFiles` only among its declarers, and within each
 domain a path index (`overlapCandidates`) names the pairs that can

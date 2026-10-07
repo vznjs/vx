@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ProjectConfig, TaskConfig } from '../config.js'
+import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
@@ -267,6 +267,8 @@ export interface BuildGraphOptions {
    * with other root-anchored ones.
    */
   workspaceRoot?: string
+  /** The workspace's `rules`; each is on unless set to `false`. */
+  rules?: WorkspaceRules | undefined
 }
 
 /**
@@ -519,7 +521,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
-  checkGraph(nodes, options.workspaceRoot)
+  checkGraph(nodes, options.workspaceRoot, options.rules)
   return nodes
 }
 
@@ -534,7 +536,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
  * marks are derived here, so they are cleared first and follow the edges
  * the graph has now.
  */
-export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+export function checkGraph(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot?: string,
+  rules?: WorkspaceRules,
+): void {
   for (const [key, node] of nodes) {
     if (node.id !== key) {
       throw new Error(`the task ${node.id} is stored under '${key}', not its own id`)
@@ -548,7 +554,7 @@ export function checkGraph(nodes: Map<string, TaskNode>, workspaceRoot?: string)
     delete node.outputsAddedToBy
   }
   detectCycle(nodes)
-  detectOutputCollisions(nodes, workspaceRoot)
+  detectOutputCollisions(nodes, workspaceRoot, rules?.exclusiveOutputs !== false)
 }
 
 /**
@@ -770,7 +776,11 @@ function covers(tree: string, glob: string): boolean {
  * project boundaries by design, so ANY two tasks can. No cache key changes —
  * this only refuses a graph that was already destroying files.
  */
-function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
+function detectOutputCollisions(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot: string | undefined,
+  exclusive: boolean,
+): void {
   // Does `from` reach `to` through deps? Asked only for a colliding pair,
   // so the walk is rare; memoised per source across the detector's calls.
   const reachMemo = new Map<string, Set<string>>()
@@ -834,14 +844,14 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: st
     for (const [i, j] of overlapCandidates(bucket, filesOf)) {
       const a = bucket[i]!
       const b = bucket[j]!
-      collide(a, b, filesOf(a), filesOf(b), 'files', reaches)
+      collide(a, b, filesOf(a), filesOf(b), 'files', reaches, exclusive)
     }
   }
   if (wsDeclarers.length >= 2) {
     for (const [i, j] of overlapCandidates(wsDeclarers, wsFilesOf)) {
       const a = wsDeclarers[i]!
       const b = wsDeclarers[j]!
-      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches)
+      collide(a, b, wsFilesOf(a), wsFilesOf(b), 'workspaceFiles', reaches, exclusive)
     }
   }
   // A root-anchored output that reaches into ANOTHER project's `files`
@@ -870,7 +880,7 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>, workspaceRoot?: st
     const y = entries[j]!
     if ((x.rel === undefined) === (y.rel === undefined) || x.node === y.node) continue
     const [ws, files] = x.rel === undefined ? [x, y] : [y, x]
-    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches)
+    collideAcross(ws.node, ws.globs, files.node, files.globs, files.rel!, reaches, exclusive)
   }
 }
 
@@ -889,11 +899,20 @@ function collideAcross(
   rebased: readonly string[],
   rel: string,
   reaches: (from: string, to: string) => boolean,
+  exclusive: boolean,
 ): void {
   if (neverWritesLocally(ws) || neverWritesLocally(files)) return
   for (const ga of wsGlobs) {
     for (const gb of rebased) {
       if (!outputsOverlap(ga, gb)) continue
+      const head =
+        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
+        `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
+        `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
+        `cache-hit restore, so whichever of these runs second DELETES the other's output`
+      if (exclusive && (reaches(files.id, ws.id) || reaches(ws.id, files.id))) {
+        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
+      }
       if (reaches(files.id, ws.id)) {
         ;(files.addsToOutputsOf ??= []).push(ws.id)
         ;(ws.outputsAddedToBy ??= []).push(...rebased)
@@ -910,12 +929,8 @@ function collideAcross(
         }
       }
       throw new UserError(
-        `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
-          `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
-          `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
-          `cache-hit restore, so whichever of these runs second DELETES the other's output and ` +
-          `the run still reports success. Give each task its own output path, or make one ` +
-          `depend on the other.`,
+        `${head} and the run still reports success. Give each task its own output path` +
+          (exclusive ? '.' : ', or make one depend on the other.'),
       )
     }
   }
@@ -1039,6 +1054,15 @@ function neverWritesLocally(n: TaskNode): boolean {
   return n.config.exec?.remote === 'only'
 }
 
+/**
+ * The way out of an edge-ordered overlap under `rules.exclusiveOutputs`: an
+ * ordered pair is correct (the addition shape, item 588), only slower to
+ * clean and restore, so the rule may be turned off.
+ */
+const EXCLUSIVE_OUTPUTS_FIX =
+  'Give each task its own output path, or set rules: { exclusiveOutputs: false } in ' +
+  "vx.workspace.ts to let a dependant add to its upstream's outputs."
+
 function collide(
   a: TaskNode,
   b: TaskNode,
@@ -1046,17 +1070,26 @@ function collide(
   bGlobs: readonly string[] | undefined,
   field: 'files' | 'workspaceFiles',
   reaches: (from: string, to: string) => boolean,
+  exclusive: boolean,
 ): void {
   if (neverWritesLocally(a) || neverWritesLocally(b)) return
   for (const ga of aGlobs ?? []) {
     for (const gb of bGlobs ?? []) {
       if (!outputsOverlap(ga, gb)) continue
+      const head =
+        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
+        (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
+        ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
+        `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
+        `output`
       // An overlap WITH an edge is the addition shape (item 588): the
       // dependant runs after its upstream and adds to that tree, so the
       // order is fixed and the dependant's own set can be told apart from
-      // what it found. Marked on both, and the pair is allowed. Without an
-      // edge the two run in either order, and the refusal below stands.
+      // what it found. Marked on both, and the pair is allowed when
+      // `rules.exclusiveOutputs` is off (X-53). Without an edge the two run
+      // in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
+      if (up !== undefined && exclusive) throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
       if (up !== undefined && down !== undefined) {
         const downGlobs = splitNegations(
           (field === 'files'
@@ -1068,11 +1101,7 @@ function collide(
         return
       }
       throw new UserError(
-        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
-          (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
-          ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
-          `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
-          `output and the run still reports success. Give each task its own output path.`,
+        `${head} and the run still reports success. Give each task its own output path.`,
       )
     }
   }

@@ -33,7 +33,7 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     }
   })
 
-  it('keeps a dependant cached: an edge orders the pair, and core caches what it adds (item 588)', () => {
+  it('uncaches a dependant too: the default rules refuse the pair edge or not (X-53)', () => {
     // twenty: build → dist, build:individual depends on build → dist/individual;
     // and strapi's chain, build:types depending on build, both on dist/**.
     const twenty = resolveSharedOutputs([
@@ -42,7 +42,7 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     ])
     expect(twenty.map((t) => [t.name, t.task!['cache'] !== undefined, t.todos.length])).toEqual([
       ['build', true, 0],
-      ['build:individual', true, 0],
+      ['build:individual', false, 1],
     ])
     const strapi = resolveSharedOutputs([
       task('build', ['dist/**'], ['^build']),
@@ -51,17 +51,10 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     ])
     expect(strapi.map((t) => [t.name, t.task!['cache'] !== undefined])).toEqual([
       ['build', true],
-      ['build:types', true],
+      ['build:types', false],
       ['build:code', false],
     ])
-    expect(strapi[2]!.todos[0]).toContain('or a dependsOn edge on "build"')
-    // The edge is read through a hop, and in either direction.
-    const hop = resolveSharedOutputs([
-      task('types', ['dist/**'], ['mid']),
-      { name: 'mid', todos: [], task: { dependsOn: ['build'] } },
-      task('build', ['dist/**'], ['^build']),
-    ])
-    expect(hop[0]!.task!['cache']).toBeDefined()
+    expect(strapi[1]!.todos[0]).toEndWith('Give it its own output path to cache it.')
   })
 
   it('keeps the first declared when no task has a ^ edge', () => {

@@ -45,7 +45,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
  │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (concurrency /
  │       cacheDir / timeout / cacheRetention / affectedBase / cacheScope /
- │       plugins),
+ │       rules / plugins),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package

@@ -350,3 +350,17 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   input enumeration) or that there is no commit yet. A base that resolves
   spawns nothing more. Rows: `affected-base-notes.test.ts` › "outside a
   git work tree …", "a repository with no commit yet …" (X-52).
+- **X-53.** Two tasks whose declared outputs overlap were allowed when a
+  `dependsOn` edge ordered them (item 588's additive shape): correct, but
+  each run of the dependant paid a stamp, a diff and a clean by rows. A
+  workspace rule now refuses it, `rules: { exclusiveOutputs }` in
+  `vx.workspace.ts`, on unless set to `false` (M, 2026-10-07: one path,
+  one task; a rule that only buys speed is configurable, on by default).
+  The refusal names the rule; off, the additive path runs as before. A
+  pair with no edge is refused either way. `@vzn/vx-migrate` maps for
+  the default: an edge-ordered task on a kept task's outputs now runs
+  uncached with a todo. Rows: `output-collision.test.ts` ›
+  "rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)",
+  `overlapping-outputs.test.ts` › "a run refuses the edge-ordered pair
+  before any task runs (X-53)", `contract/config-schema.json` (the
+  field's values and refusals) (X-53).

@@ -30,6 +30,7 @@ config, measured 2026-09-10). The scaffolds still write the type-only
 // Types
 export interface ProjectConfig
 export interface WorkspaceConfig
+export interface WorkspaceRules // `rules`: graph checks, each on unless false (X-53)
 export interface TaskConfig
 export interface ExecConfig
 export interface ExecEnv

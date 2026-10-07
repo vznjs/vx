@@ -1094,9 +1094,10 @@ overlap (`dist/*` and `dist/sub/**`) are let through; there, last
 restore wins. A workspace output is also compared with every other
 project's `files` outputs, read from the root: `packages/b/dist/a.txt`
 collides with `b`'s `dist/**` (item 1088). An overlap
-between two tasks one of which depends on the other is not refused: the
-dependant is additive and owns only what its run adds to the tree
-(`caching.md` § Additive outputs, item 588). Across the two namespaces
+between two tasks one of which depends on the other is refused too,
+unless the workspace sets `rules: { exclusiveOutputs: false }` (X-53);
+then the dependant is additive and owns only what its run adds to the
+tree (`caching.md` § Additive outputs, item 588). Across the two namespaces
 an upstream `files` task is told the dependant's globs in its own
 project's terms, so a workspace glob that does not start inside that
 project (`**/a.txt`) is refused even with the edge.
@@ -1445,8 +1446,15 @@ interface WorkspaceConfig {
   affectedBase?: string
   /** Where remote writes land: 'trusted' (default), 'read-only', or an untrusted scope name. */
   cacheScope?: string
+  /** Graph rules checked before anything runs; each on unless set to false. */
+  rules?: WorkspaceRules
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
+}
+
+interface WorkspaceRules {
+  /** Refuse overlapping outputs even across a dependsOn edge. Default true. */
+  exclusiveOutputs?: boolean
 }
 ```
 
@@ -1513,6 +1521,18 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.
+- **`rules`** — checks on the task graph, each on unless set to
+  `false`. Turning one off allows a shape vx runs correctly but more
+  slowly; never folded into a cache key. A value that is not a boolean,
+  or a rule vx does not know, is refused.
+  - **`exclusiveOutputs`** (X-53) — two tasks whose declared outputs
+    overlap are refused even when a `dependsOn` edge orders them:
+    `<a> and <b> both declare the output "<glob>" … Give each task its
+own output path, or set rules: { exclusiveOutputs: false } in
+vx.workspace.ts to let a dependant add to its upstream's outputs.`
+    Off, the dependant adds to its upstream's tree (item 588;
+    `caching.md` § Additive outputs). Two overlapping tasks with no
+    edge are refused either way.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain

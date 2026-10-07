@@ -147,6 +147,10 @@ for (const [spelling, glob] of spellings) {
     // judged its tree current, and the stray outlived strict ownership.
     it("an upstream's hit sets aside the route a dependant adds, and nothing else", async () => {
       root = await makeWorkspace({ prefix: 'vx-brackets-' })
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        'export default { rules: { exclusiveOutputs: false } }\n',
+      )
       const dir = await addProject(root, 'p', {
         config: `
           export default {

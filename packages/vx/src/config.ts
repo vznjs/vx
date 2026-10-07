@@ -47,12 +47,29 @@ export interface WorkspaceConfig {
    */
   cacheScope?: string
   /**
+   * Graph rules a run checks before it schedules anything. Each is on unless
+   * set to `false`; turning one off allows a shape vx handles correctly but
+   * more slowly. Never folded into a cache key.
+   */
+  rules?: WorkspaceRules
+  /**
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
    * below, and core's own executor and cache store sit at the tail of
    * every list. See `docs/design/pipeline-2026-09.md`.
    */
   plugins?: readonly Plugin[]
+}
+
+/** `WorkspaceConfig.rules`. */
+export interface WorkspaceRules {
+  /**
+   * Refuse two tasks whose declared outputs overlap even when a `dependsOn`
+   * edge orders them. Off, the dependant adds to its upstream's tree and
+   * owns only what its run added (`caching.md` § Additive outputs). Two
+   * overlapping tasks with no edge are refused either way.
+   */
+  exclusiveOutputs?: boolean
 }
 
 /**

@@ -515,6 +515,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         packageGraph,
         requested: req,
         workspaceRoot,
+        rules: workspaceConfig?.rules,
         ...(projects.size < projectsWithConfigs.length
           ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
           : {}),
@@ -628,6 +629,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
             )
           }
         },
+        workspaceConfig?.rules,
       )
     }
     // Args after `--` go to requested commands only; with none among them

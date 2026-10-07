@@ -54,8 +54,24 @@ const WORKSPACE_FIELDS = new Set([
   'cacheRetention',
   'affectedBase',
   'cacheScope',
+  'rules',
   'plugins',
 ])
+
+const RULE_FIELDS = new Set(['exclusiveOutputs'])
+
+function validateRules(rules: unknown, configPath: string): void {
+  const where = `${configPath}: \`rules\``
+  if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
+    throw new UserError(`${where} must be { exclusiveOutputs?: boolean }`)
+  }
+  assertKnownFields(rules as Record<string, unknown>, RULE_FIELDS, where)
+  for (const [name, value] of Object.entries(rules)) {
+    if (value !== undefined && typeof value !== 'boolean') {
+      throw new UserError(`${where}.${name} must be true or false`)
+    }
+  }
+}
 
 const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
@@ -142,6 +158,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   if (config.cacheScope !== undefined && !isCacheScope(config.cacheScope)) {
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
+  if (config.rules !== undefined) validateRules(config.rules, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)

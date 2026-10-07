@@ -923,6 +923,7 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
       ),
       packageGraph: packageGraph({}),
       requested: [{ project: 'a', task: 'extra' }],
+      rules: { exclusiveOutputs: false },
     })
     const extra = nodes.get('a#extra')!
     expect(extra.addsToOutputsOf).toEqual(['a#gen'])
@@ -932,7 +933,7 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
       ...extra.config,
       cache: { inputs: { files: [] }, outputs: { files: ['out/**'] } },
     }
-    checkGraph(nodes)
+    checkGraph(nodes, undefined, { exclusiveOutputs: false })
     expect([extra.addsToOutputsOf, nodes.get('a#gen')!.outputsAddedToBy]).toEqual([
       undefined,
       undefined,
