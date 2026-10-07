@@ -371,8 +371,12 @@ async function keepLerna(
  * exports, nx.json or not, unless lerna.json says `useNx: false`; Lerna 5
  * ran its own unless it said `useNx: true`. Lerna is the installed one,
  * else the root manifest's range; with neither, the lerna.json is another
- * tool's (lerna-lite reads it too, and runs no Nx).
+ * tool's (lerna-lite reads it too, and runs no Nx). A repo whose root
+ * scripts never `lerna run` runs its tasks some other way and publishes
+ * with Lerna (webdriverio: `run-s`, `pnpm -r`): its scripts are the source.
  */
+const LERNA_RUN = /(?:^|[\s;&|(])lerna\s+run\s/
+
 function lernaOnNx(root: string): boolean {
   const json = (file: string): Record<string, unknown> | undefined => {
     try {
@@ -390,6 +394,12 @@ function lernaOnNx(root: string): boolean {
     .find((v): v is string => typeof v === 'string')
   const version = typeof installed === 'string' ? installed : declared
   if (version === undefined) return false
+  const scripts = manifest?.['scripts']
+  const runs =
+    scripts !== null &&
+    typeof scripts === 'object' &&
+    Object.values(scripts).some((v) => typeof v === 'string' && LERNA_RUN.test(v))
+  if (!runs) return false
   if (typeof config['useNx'] === 'boolean') return config['useNx']
   const major = /\d+/.exec(version)?.[0]
   return major === undefined || Number(major) >= 6

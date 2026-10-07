@@ -632,9 +632,12 @@ describe('vx migrate (lerna)', () => {
       dependencies: { 'pkg-a': [] },
     },
   }
+  const installed = (v: string) => JSON.stringify({ name: 'lerna', version: v })
+  const runs = (deps: object = {}) =>
+    JSON.stringify({ scripts: { build: 'lerna run build' }, devDependencies: deps })
   async function lernaRepo(files: Record<string, string>): Promise<string> {
     const root = await makeRoot('vx-migrate-lerna-')
-    for (const [rel, text] of Object.entries(files)) {
+    for (const [rel, text] of Object.entries({ 'package.json': runs(), ...files })) {
       await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
       await writeFile(path.join(root, rel), text)
     }
@@ -643,25 +646,17 @@ describe('vx migrate (lerna)', () => {
     await fakeNxCli(root)
     return root
   }
-  const installed = (v: string) => JSON.stringify({ name: 'lerna', version: v })
 
+  const lerna9 = { 'node_modules/lerna/package.json': installed('9.0.7') }
   for (const [label, files, mapped] of [
-    [
-      'Lerna installed',
-      { 'lerna.json': '{}', 'node_modules/lerna/package.json': installed('9.0.7') },
-      true,
-    ],
-    [
-      'lerna.json with no Lerna (lerna-lite reads it too)',
-      { 'lerna.json': '{ "useNx": true }' },
-      false,
-    ],
+    ['Lerna installed', { 'lerna.json': '{}', ...lerna9 }, true],
+    ['Lerna 9 declared', { 'lerna.json': '{}', 'package.json': runs({ lerna: '^9.0.7' }) }, true],
     [
       'Lerna 5 that opts in',
       { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },
       true,
     ],
-    ['useNx: false', { 'lerna.json': '{ "useNx": false }' }, false],
+    ['useNx: false', { 'lerna.json': '{ "useNx": false }', ...lerna9 }, false],
     [
       'Lerna 5 installed',
       { 'lerna.json': '{}', 'node_modules/lerna/package.json': installed('5.6.2') },
@@ -669,13 +664,22 @@ describe('vx migrate (lerna)', () => {
     ],
     [
       'Lerna 5 declared, none installed',
-      { 'lerna.json': '{}', 'package.json': '{ "devDependencies": { "lerna": "^5.5.2" } }' },
+      { 'lerna.json': '{}', 'package.json': runs({ lerna: '^5.5.2' }) },
       false,
     ],
     [
-      'Lerna 9 declared',
-      { 'lerna.json': '{}', 'package.json': '{ "devDependencies": { "lerna": "^9.0.7" } }' },
-      true,
+      'lerna.json with no Lerna (lerna-lite reads it too)',
+      { 'lerna.json': '{ "useNx": true }' },
+      false,
+    ],
+    [
+      'root scripts that never `lerna run` (Lerna publishes)',
+      {
+        'lerna.json': '{}',
+        ...lerna9,
+        'package.json': '{ "scripts": { "build": "pnpm -r build" } }',
+      },
+      false,
     ],
   ] as const) {
     it(
