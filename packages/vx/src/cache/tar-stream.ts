@@ -11,7 +11,7 @@
 // short entry. Non-regular entries are reported with their type and their
 // bodies skipped; the caller decides what to materialise (nothing but `0`).
 
-export interface TarEntry {
+interface TarEntry {
   name: string
   size: number
   /** POSIX typeflag: '0' regular, '5' directory, '2' symlink, … */

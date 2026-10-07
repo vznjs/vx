@@ -168,7 +168,7 @@ export interface ExecUsage {
 }
 
 /** One regular file in an artifact, with its restore metadata resolved. */
-export interface ArchiveEntry {
+interface ArchiveEntry {
   /** Full archive-relative name, e.g. `outputs/dist/index.js`. */
   name: string
   size: number
@@ -192,7 +192,7 @@ export class ArchiveSecurityError extends Error {
 }
 
 /** What `packArtifactStream` packs: stdout plus archive name → absolute source path. */
-export interface PackArgs {
+interface PackArgs {
   /** The cache key, recorded in the sidecar (item 943); ingest refuses an artifact without it. */
   key?: string
   stdout: string
