@@ -493,14 +493,14 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     inputs: (t?.task?.['cache'] as { inputs: unknown } | undefined)?.inputs,
     todos: t?.todos,
   })
-  // A twin lists its package.json first: in every key already, it keeps
-  // a fileset that matches nothing from core's "matched no files".
+  // A twin lists its manifests first: Nx keys each task on them, and they
+  // keep a fileset that matches nothing from core's "matched no files".
   const twin = (
     dependsOn: string[] | undefined,
     inputs: { files: string[]; [k: string]: unknown },
   ) => ({
     dependsOn,
-    inputs: { ...inputs, files: ['package.json', ...inputs.files] },
+    inputs: { ...inputs, files: ['package.json', 'project.json', ...inputs.files] },
     todos: [],
   })
 

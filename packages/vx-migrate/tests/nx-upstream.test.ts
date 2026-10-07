@@ -86,7 +86,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
   it('a dependency’s env and runtime inputs key its twin', async () => {
     const t = await graph({ inputs: ['^production'], libNamed })
     expect(inputsOf(t.get('lib#nx-input:production'))).toEqual({
-      files: ['package.json', 'src/**'],
+      files: ['package.json', 'project.json', 'src/**'],
       env: ['LIB_MODE'],
       workspaceRuntime: ['node -v'],
     })
@@ -168,7 +168,7 @@ describe('an input inside the project’s own outputs', () => {
   it('is dropped from a dependency’s twin, with a todo', async () => {
     const t = await graph({ inputs: ['^public'], libNamed, libTargets })
     const twin = t.get('lib#nx-input:public')
-    expect(inputsOf(twin)).toEqual({ files: ['package.json', 'src/**'] })
+    expect(inputsOf(twin)).toEqual({ files: ['package.json', 'project.json', 'src/**'] })
     expect(twin?.todos).toEqual([TODO('{projectRoot}/dist'), TODO('{projectRoot}/out/x.js')])
   })
 
