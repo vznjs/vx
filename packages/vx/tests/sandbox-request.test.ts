@@ -504,6 +504,47 @@ describe('a root project stops at the walls: nested projects, .git, .vx', () => 
     expect(r.sandbox.config.allowWrite).toEqual([path.join(root, 'packages/c')])
   })
 
+  // A directory grant naming nothing yet was judged as a FILE, so its bind
+  // was its parent: a root project's `dist/` was refused for `.git`, with
+  // the message recommending `dist/` itself, and a nested project's
+  // `../coverage/` the same. The directory is made before the judgement.
+  it('a directory grant not yet made is judged as the directory it names', async () => {
+    await walled()
+    for (const grant of ['dist/', 'dist/**']) {
+      await rm(path.join(root, 'dist'), { recursive: true, force: true })
+      const r = await sandboxRequestFor(
+        rootNode(),
+        { allow: { write: [grant] } },
+        root,
+        undefined,
+        nested(),
+      )
+      expect(r.sandbox.config.allowWrite).toEqual([path.join(root, 'dist')])
+      expect(await kind(path.join(root, 'dist'))).toBe('dir')
+    }
+    const up = await sandboxRequestFor(
+      node(),
+      { allow: { write: ['../coverage/'] } },
+      root,
+      undefined,
+    )
+    expect(up.sandbox.config.allowWrite).toEqual([path.join(root, 'coverage')])
+    expect(await kind(path.join(root, 'coverage'))).toBe('dir')
+  })
+
+  // The refusal still stands for a file grant, and the placeholder made
+  // for its bind does not outlive it.
+  it.skipIf(process.platform !== 'linux')(
+    'a refused file grant leaves no placeholder behind',
+    async () => {
+      await walled()
+      await expect(
+        sandboxRequestFor(rootNode(), { allow: { write: ['out.txt'] } }, root, undefined, []),
+      ).rejects.toThrow(`the grant binding ${root} would make ${path.join(root, '.git')} writable`)
+      expect(await kind(path.join(root, 'out.txt'))).toBe('none')
+    },
+  )
+
   // The sweep of sandbox-binds.ts (B-7): `punchWalls` could lose the
   // separator in its "under" test with the suite green. A wall that only
   // shares a grant's name prefix is not under it, and the grant stays whole.
