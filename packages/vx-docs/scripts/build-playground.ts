@@ -14,7 +14,7 @@
 // --target=browser`, needed for the aliasing plugin. The three platform
 // specifiers the plan reads are aliased to the VFS-backed shims,
 // `node:path` is left to Bun's browser polyfill, every other one the graph
-// names links against a stub, and `Bun` / `process` are rewritten to the
+// names links against a stub, and `Bun` / `process` / `Buffer` are rewritten to the
 // shim's objects.
 //
 // One fixed file name, not a content hash: the task's output is that name
@@ -129,7 +129,7 @@ export async function buildPlayground(): Promise<PlaygroundBuild> {
     minify: true,
     sourcemap: 'none',
     metafile: true,
-    define: { Bun: '__vxBun', process: '__vxProcess' },
+    define: { Bun: '__vxBun', process: '__vxProcess', Buffer: '__vxBuffer' },
     plugins: [platformPlugin],
   })
   if (!result.success) {

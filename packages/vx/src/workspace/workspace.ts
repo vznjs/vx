@@ -374,6 +374,11 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
+  // No shell expands `~` in a config string or a quoted variable, and
+  // `'~/.cache/vx'` made a directory named `~` in the workspace.
+  if (rel.startsWith('~/')) {
+    return path.join(process.env['HOME'] || homedir(), rel.slice(1))
+  }
   return path.resolve(root, rel)
 }
 
