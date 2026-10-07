@@ -63,8 +63,8 @@ export interface SaveMissArgs {
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined
   /** Declared `cache.outputs.files` / `.workspaceFiles`. */
-  outputs: string[]
-  wsOutputs: string[]
+  outputs: readonly string[]
+  wsOutputs: readonly string[]
   /**
    * An ADDITIVE task's own set (item 588): the files its run added or
    * changed under its declared outputs, resolved by execute-task against

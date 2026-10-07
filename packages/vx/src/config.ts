@@ -292,10 +292,10 @@ export interface SandboxConfig {
 
 /** The denials `sandbox.ignore` can leave out of the report: patterns per class. */
 export interface SandboxIgnore {
-  read?: string[]
-  write?: string[]
-  systemInfo?: string[]
-  network?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[]
 }
 
 export interface SandboxGrants {
@@ -304,29 +304,29 @@ export interface SandboxGrants {
    * `node_modules`, NOT `cache.inputs.files`. A task that reads its own
    * source in the sandbox says so here.
    */
-  read?: string[]
+  read?: readonly string[]
   /**
    * Writable paths or globs. The task can write NOTHING without these:
    * declaring `cache.outputs.files` grants no write, and a task whose
    * only declaration is its outputs writes into a tmpfs that evaporates
    * (vx then warns that `cache.outputs` matched no files).
    */
-  write?: string[]
+  write?: readonly string[]
   /**
    * Reachable domains, `['*.example.com']` a pattern. The proxy is the
    * run's: it filters every sandboxed task against the union of the lists
    * the run's tasks declare, so `true` adds no domain and reaches only
    * those (none in a run with no list). Omitted adds none either.
    */
-  network?: true | string[]
+  network?: true | readonly string[]
   /**
    * Kernel information the task may query, by info type — the name that
    * appears in a denial, e.g. `vfs.disk-space` (every Bun and git process
    * probes free space at startup).
    */
-  systemInfo?: string[]
+  systemInfo?: readonly string[]
   /** Unix socket paths the task may connect to. `true` allows any. */
-  unixSockets?: true | string[]
+  unixSockets?: true | readonly string[]
   /**
    * Bind and reach localhost ports — a test that boots a server for
    * itself. A port LIST additionally makes those ports reachable from
@@ -335,9 +335,9 @@ export interface SandboxGrants {
    * namespace, each listed port is bridged out to the host's loopback;
    * on macOS the host already sees them and the list means `true`.
    */
-  localBinding?: boolean | number[]
+  localBinding?: boolean | readonly number[]
   /** macOS: Mach service names the task may look up. */
-  machLookup?: string[]
+  machLookup?: readonly string[]
   /** Acquire a TTY. Rare outside interactive tools. */
   pty?: boolean
   /** Write to `.git/config`. Most build tools should not. */
@@ -346,7 +346,7 @@ export interface SandboxGrants {
 
 export interface SandboxDenials {
   /** Domains blocked even if `allow.network` would admit them. */
-  network?: string[]
+  network?: readonly string[]
 }
 
 export interface ExecConfig {
@@ -458,7 +458,7 @@ export interface ExecEnv {
    * folded into the cache key — for things like CI flags, regional
    * vars, secrets that change between machines without affecting output.
    */
-  passThrough?: string[]
+  passThrough?: readonly string[]
   /**
    * Explicit `name: value` pairs. The values are set on the child AND
    * folded into the cache key (they are literal in your config, captured
@@ -471,7 +471,7 @@ export interface ExecEnv {
    * hold `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL`
    * are masked without it; this reaches `GH_PAT`, `NPM_AUTH`.
    */
-  secret?: string[]
+  secret?: readonly string[]
 }
 
 export interface CacheConfig {
@@ -488,7 +488,7 @@ export interface CacheOutputs {
    * Outputs are not filtered through gitignore — typical artifact dirs
    * like `dist/` and `coverage/` are captured normally even when ignored.
    */
-  files: string[]
+  files: readonly string[]
   /**
    * Files produced OUTSIDE the project dir, as workspace-root-relative
    * globs (the Turbo `$TURBO_ROOT$` / Nx `{workspaceRoot}` escape
@@ -500,7 +500,7 @@ export interface CacheOutputs {
    * like overlapping `files` (vx cleans declared outputs before a run
    * and before a restore, so the second would delete the first's).
    */
-  workspaceFiles?: string[]
+  workspaceFiles?: readonly string[]
 }
 
 export interface CacheInputs {
@@ -514,7 +514,7 @@ export interface CacheInputs {
    * automatically — a task cannot invalidate itself, and cannot read
    * across project boundaries.
    */
-  files: string[]
+  files: readonly string[]
   /**
    * Workspace-root-relative globs (the Turbo `$TURBO_ROOT$` / Nx
    * `{workspaceRoot}` equivalent), for inputs that live outside the
@@ -528,7 +528,7 @@ export interface CacheInputs {
    * Declared `outputs.workspaceFiles` are excluded automatically (a
    * task cannot invalidate itself).
    */
-  workspaceFiles?: string[]
+  workspaceFiles?: readonly string[]
   /**
    * Env var names whose runtime values from parent `process.env` are
    * folded into the cache key. **Independent of `exec.env`** — declaring
@@ -536,7 +536,7 @@ export interface CacheInputs {
    * invalidation. To both forward AND track, list the name in both
    * `exec.env.passThrough` and here.
    */
-  env?: string[]
+  env?: readonly string[]
   /**
    * Which upstream tasks' cache keys participate in this task's key.
    * Uses the same Turbo/Nx micro-syntax as `dependsOn`, plus
@@ -565,7 +565,7 @@ export interface CacheInputs {
    * lock, the OUTPUT is resolved live every run — correct under
    * `--frozen`. Use for project-specific runtime probes.
    */
-  runtime?: string[]
+  runtime?: readonly string[]
   /**
    * Like `runtime`, but commands run at the WORKSPACE ROOT and are
    * deduped GLOBALLY per command across the whole run — a `node -v`
@@ -573,7 +573,7 @@ export interface CacheInputs {
    * analog of `workspaceFiles`: per-task, root-anchored. Use for global
    * tool versions, OS info, etc.
    */
-  workspaceRuntime?: string[]
+  workspaceRuntime?: readonly string[]
 }
 
 /**
