@@ -8,3 +8,8 @@
   of it at the head’s end or the tail’s start of the entry",
   `secret-mask.test.ts` › "maskCut masks the pieces a cut leaves, a
   whole value across one, and nothing else".
+- **CC-1.** A refused restore left an empty directory behind when a later
+  entry had created a deeper one (`dist/` then `dist/sub/`): abort pruned in
+  staging order and tried `dist/` while `dist/sub/` still held it. Abort now
+  prunes newest first. Row (`archive-security.test.ts`):
+  `abort prunes a created chain whose deeper directory a later entry created`.
