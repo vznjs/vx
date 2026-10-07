@@ -3,6 +3,7 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
+  relPosix,
   splitNegations,
   staticPrefix,
   taskGlob,
@@ -872,7 +873,7 @@ function detectOutputCollisions(
   const entries: Entry[] = wsDeclarers.map((node) => ({ node, globs: wsFilesOf(node) ?? [] }))
   for (const bucket of byProject.values()) {
     for (const node of bucket) {
-      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const rel = relPosix(workspaceRoot, node.projectDir)
       const globs = (filesOf(node) ?? []).map((g) => (rel === '' ? g : `${rel}/${g}`))
       entries.push({ node, globs, rel })
     }
@@ -1243,7 +1244,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   if (!rootReaders) return
   if (workspaceRoot !== undefined) {
     for (const node of filesWriters) {
-      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const rel = relPosix(workspaceRoot, node.projectDir)
       const globs = splitNegations(node.config.cache!.outputs.files).positive.map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )

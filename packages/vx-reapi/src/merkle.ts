@@ -14,6 +14,9 @@ import { lstat, readlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { Digest, Directory, DirectoryNode, FileNode, SymlinkNode } from './wire.js'
 
+// A default decoder strips a leading U+FEFF, which is part of a name.
+const PATH_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+
 export interface Blob {
   digest: Digest
   data: Uint8Array
@@ -740,7 +743,7 @@ function decodeFileNode(buf: Uint8Array): FileNode {
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
-      if (field === 1) f.name = new TextDecoder().decode(slice)
+      if (field === 1) f.name = PATH_UTF8.decode(slice)
       else if (field === 2) f.digest = decodeDigestBytes(slice)
       else if (field === 6) f.node_properties = decodeNodeProperties(slice)
     } else if (wire === 0) {
@@ -802,7 +805,7 @@ function decodeDirectoryNode(buf: Uint8Array): DirectoryNode {
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (key >>> 3 === 1) d.name = new TextDecoder().decode(slice)
+    if (key >>> 3 === 1) d.name = PATH_UTF8.decode(slice)
     else if (key >>> 3 === 2) d.digest = decodeDigestBytes(slice)
   }
   return d
@@ -819,8 +822,8 @@ function decodeSymlinkNode(buf: Uint8Array): SymlinkNode {
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (key >>> 3 === 1) sl.name = new TextDecoder().decode(slice)
-    else if (key >>> 3 === 2) sl.target = new TextDecoder().decode(slice)
+    if (key >>> 3 === 1) sl.name = PATH_UTF8.decode(slice)
+    else if (key >>> 3 === 2) sl.target = PATH_UTF8.decode(slice)
   }
   return sl
 }
