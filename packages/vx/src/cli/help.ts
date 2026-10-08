@@ -161,6 +161,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --graph[=<path>]     Emit Graphviz DOT (stdout if no path).',
     '',
     'Artifacts (for run):',
+    '      --format <fmt>        pretty (default) | json: print the --summarize document',
+    '                            on stdout when the run ends; every other line goes to stderr.',
     '      --summarize[=<path>]  Write per-run JSON to <cacheDir>/runs/<run_id>.json.',
     '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
     '      --report[=markdown]   Print a markdown run report to stdout after the run.',
@@ -355,6 +357,7 @@ export const WATCH_REFUSED_FLAGS: readonly string[] = [
   '--report',
   '--report-file',
   '--verbosity',
+  '--format',
 ]
 
 /**

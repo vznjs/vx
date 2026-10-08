@@ -111,7 +111,12 @@ import {
   shutdownPersistent,
   takeHeldServers,
 } from './persistent.js'
-import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
+import {
+  runSummaryJson,
+  writeRunProfile,
+  writeRunSummary,
+  type RunSummaryJson,
+} from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
@@ -316,11 +321,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // See docs/design/event-stream-2026-06.md.
   const terminal =
     options.log === undefined
-      ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
-          coalesce: true,
-          ...(options.tty === true ? { tty: true } : {}),
-          ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
-        })
+      ? defaultLogger(
+          colors,
+          resolveOutputView(options),
+          options.json === true ? process.stderr : process.stdout,
+          {
+            coalesce: true,
+            ...(options.tty === true ? { tty: true } : {}),
+            ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+          },
+        )
       : null
   const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
@@ -1232,7 +1242,20 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
+    let json: RunSummaryJson | undefined
     const summarize = async (runOk: boolean, final = list): Promise<void> => {
+      if (options.json === true) {
+        json = runSummaryJson({
+          runId,
+          startedAtMs: endedAtMsAtStart,
+          endedAtMs,
+          totalMs,
+          ok: runOk,
+          ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
+          outcomes: final,
+          flaky,
+        })
+      }
       if (options.summarize === undefined) return
       // The rewrite after the keep-alive wait says nothing: the footer is
       // the run's last word.
@@ -1534,10 +1557,10 @@ async function runOnBus(
           }
         })
       }
-      return { ok: ok && first.code === 0, outcomes: final }
+      return { ok: ok && first.code === 0, outcomes: final, ...(json && { json }) }
     }
 
-    return { ok, outcomes: list }
+    return { ok, outcomes: list, ...(json && { json }) }
   } finally {
     // Idempotent. The status-line ticker starts in runStart, and every
     // call between it and the success path's runEnd is crash-isolated

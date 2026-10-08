@@ -1226,3 +1226,10 @@ reaches no build task.` The plan now carries the run's own line
   (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
   ^name and an --exclude-dependencies name only that project declares";
   each site's old test reddens its own field.
+
+- **X-195.** `vx run --format json` (roadmap: AI first): the
+  `--summarize` document (`schemas/summary.json`) alone on stdout when
+  the run ends; the frame and the tasks' output move to stderr; the exit
+  code is unchanged. Refuses `--dry`, a bare `--graph` and
+  `--report=markdown` beside it; `vx watch` refuses it. Turbo's `--json`
+  now points here. Rows: `run-format-json.test.ts`.
