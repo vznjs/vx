@@ -87,6 +87,29 @@ export function repoFacts(dir: string): RepoFacts | null {
   return facts
 }
 
+/**
+ * The refusal a run would meet at its enumeration, asked up front by a
+ * verb that waits on the user first (the picker); undefined when git
+ * tracks `dir`. Free when it does: `repoFacts` is the answer the run
+ * reuses.
+ */
+export function gitRefusal(dir: string): UserError | undefined {
+  if (repoFacts(dir) !== null) return undefined
+  let proc
+  try {
+    proc = Bun.spawnSync({
+      cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+      cwd: dir,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    })
+  } catch {
+    return gitSpawnRefusal(dir)
+  }
+  if (proc.exitCode === 0) return undefined
+  return notAWorkTree(dir, new TextDecoder().decode(proc.stderr).trim())
+}
+
 /** Variables that move where git finds the repository or its index: with any set, git is asked. */
 const GIT_LOCATION_ENV = [
   'GIT_INDEX_FILE',
@@ -1304,8 +1327,11 @@ export async function startGitEnumeration(
   const facts = repoFacts(workspaceRoot)
   // The blob-size check's verdict is a function of the index's entries, so
   // the index file's bytes key it: one read, where `ls-files --debug` and a
-  // lookup per entry cost 550 ms at 100,000 files (A-60).
-  const pathspecKey = xxh3hex(pathspecs.join('\0'))
+  // lookup per entry cost 550 ms at 100,000 files (A-60). The verdict's
+  // paths are workspace-relative, so the repo→workspace prefix keys it too:
+  // a nested workspace sharing the cache read the outer one's verdict and
+  // trusted a resized blob.
+  const pathspecKey = xxh3hex([facts?.prefix ?? '', ...pathspecs].join('\0'))
   const indexFile =
     facts === null || facts.indexFile === ''
       ? undefined
@@ -1521,9 +1547,10 @@ export async function applyGitEnumeration(
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
-  // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
-  // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
-  // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
+  // ~9k files; ~5 ms this way). Every path under `dir/` sorts in
+  // [`dir/`, `dir0`): '0' is the code unit after '/'. An upper bound of
+  // `dir/` + U+FFFF left out a file whose name starts with U+FFFF, and
+  // it never entered the key.
   // Git lists in order; a list that already is skips the sort.
   let inOrder = true
   for (let i = 1; i < all.length; i++) {
@@ -1575,7 +1602,7 @@ export async function applyGitEnumeration(
     }
     const prefix = `${relPrefix}/`
     const start = lowerBound(prefix)
-    const end = lowerBound(`${prefix}￿`)
+    const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
     const projOids = new Map<string, string>()
     const projAbs =

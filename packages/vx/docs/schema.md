@@ -80,7 +80,9 @@ and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
-Each is a non-empty string; anything else is refused at load. A
+Each is a non-empty string a tag filter can name, or it is refused at
+load: no surrounding whitespace, no `*` (a pattern), and no ending in
+`...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
 changes no task's behaviour, so editing one re-runs nothing.
@@ -108,7 +110,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -191,7 +196,9 @@ no limit.
 build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time. A task
+- For a **normal task**, `timeout` bounds the total run time, counted
+  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -201,9 +208,10 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 - On a **plugin executor**, the timeout aborts the request's `signal`
-  instead (core cannot kill a process the executor spawned); a non-zero
-  exit after it is reported timed out, and an executor still running
-  after the kill grace is abandoned (H-12, H-14).
+  instead (core cannot kill a process the executor spawned); any exit
+  after it is reported timed out, a 0 from a child that trapped the stop
+  included (X-125), and an executor still running after the kill grace
+  is abandoned (H-12, H-14).
 
 **Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
 the largest delay a timer can hold. A larger value does _not_ mean "no
@@ -241,7 +249,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
   Nor is a task in flight when `--continue=never` stops the run: its
-  attempt finishes, and its failure is the last.
+  attempt finishes, and its failure is the last, even when its retry
+  was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
@@ -460,9 +469,9 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
 
 ```ts
 interface ExecEnv {
-  passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
+  passThrough?: readonly string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
-  secret?: string[] // names whose values are masked (`***`) whatever the name; see Masking
+  secret?: readonly string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
 
@@ -472,7 +481,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
@@ -532,7 +542,12 @@ exec: {
 Every name in these lists (and in `cache.inputs.env`) must be one an
 environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
-child split at its `=` or not at all.
+child split at its `=` or not at all. A `passThrough` or `define` name is
+also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
+`sh -c`, and dash (Linux's `sh`) drops any other name from the environment
+it hands the command, so `my.var` reached a task on macOS and never on
+Linux. `cache.inputs.env` takes any such name: the key reads it from vx's
+own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
@@ -545,7 +560,7 @@ the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to 
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and `TMPDIR` values over these names:
+proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
@@ -692,11 +707,11 @@ to revisit the config. The cost of a single forgotten cache miss
 
 ```ts
 interface CacheInputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
-  env?: string[] // optional
-  runtime?: string[] // optional; project-dir shell commands
-  workspaceRuntime?: string[] // optional; workspace-root shell commands
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
+  env?: readonly string[] // optional
+  runtime?: readonly string[] // optional; project-dir shell commands
+  workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
 ```
@@ -725,7 +740,9 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
+what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
+plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
@@ -818,7 +835,8 @@ backslash stays an escape.
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
-`outputs.workspaceFiles` (a task never invalidates itself).
+outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
+in its own project (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
 watches the workspace root recursively (any file can be an input once
@@ -1007,8 +1025,8 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 
 ```ts
 interface CacheOutputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
 }
 ```
 
@@ -1038,7 +1056,10 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, a dangling one, or
+it (never following it). An output DIRECTORY that is a symlink
+(`dist -> real-out`) is followed: its target is cleaned, saved and
+restored as the output; one that resolves outside the project refuses
+the task, naming the link. A link to a directory, a dangling one, or
 one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
@@ -1092,7 +1113,8 @@ project dir (e.g. a root-level generated file). Same capture / restore
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
 namespace so project and workspace outputs never collide. A project
 `outputs.files` glob under a top-level `workspace-outputs/` is refused
-at load: that name is the namespace.
+at load: that name is the namespace. A file another glob matches there
+(`**/*.js`) is refused at save, and the task is not cached.
 
 ```ts
 outputs: {
@@ -1146,22 +1168,22 @@ interface SandboxConfig {
 }
 
 interface SandboxGrants {
-  read?: string[] // paths or globs, project-relative or absolute
-  write?: string[] // paths or globs; a write grant is readable too
-  network?: true | string[] // an allowlist of domains; `true` adds none (below)
-  systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
-  unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
-  machLookup?: string[] // mach global-names (macOS)
+  read?: readonly string[] // paths or globs, project-relative or absolute
+  write?: readonly string[] // paths or globs; a write grant is readable too
+  network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
+  systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
+  unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
+  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host or another running task already holds fails the task)
+  machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
 }
 
 interface SandboxIgnore {
-  read?: string[] // denied reads to leave out of the report
-  write?: string[]
-  systemInfo?: string[]
-  network?: string[] // '<host>:<port>'
+  read?: readonly string[] // denied reads to leave out of the report
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[] // '<host>:<port>'
 }
 ```
 
@@ -1298,18 +1320,24 @@ no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
 966).
 The one exception is where tools keep credentials, denied unless a
-grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
+grant names one (`read: ['.', '~/.npmrc']` for a publish; a write grant at
+or inside a store frees that path alone), since a
 dependency the task ran could copy a key into an output the cache
 shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
-`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`.
+`~/.git-credentials`, `~/.npmrc`, `~/.yarnrc.yml`, `~/.pypirc`,
+`~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
+`~/.cargo/credentials.toml`, `~/.gem/credentials`, `~/.config/hub`,
+`~/.config/containers/auth.json`, `~/.terraform.d/credentials.tfrc.json`,
+`~/.vault-token`, `~/.pgpass`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
-real path of every workspace package linked there. A project never names
+real path of every workspace package linked there, and in turn in each
+such package's own `node_modules`. A project never names
 a sibling to import what its `package.json` already depends on. A link
 back to the task's own project, or to a directory holding it, is not
 followed: npm and Yarn link every workspace package at the root, the
@@ -1342,6 +1370,11 @@ and exited 0 (B-5; before it, both Linux shapes passed with nothing
 reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
+
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -1402,7 +1435,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1503,7 +1537,7 @@ interface WorkspaceRules {
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
@@ -1522,7 +1556,7 @@ interface WorkspaceRules {
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
-  orphan sweep (artifacts no index row counts, older than an hour —
+  orphan sweep (artifacts no index row counts, judged by file time —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
@@ -1631,7 +1665,7 @@ machinery by design.
 import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
-defineProject<T extends ProjectConfig>(config: T): T
+defineProject<const T extends ProjectConfig>(config: T): T
 defineWorkspace<T extends WorkspaceConfig>(config: T): T
 ```
 
@@ -1640,11 +1674,11 @@ autocomplete for task names in `dependsOn` against your declared
 tasks, strict validation against the schema, errors at edit time
 rather than at `vx run` time.
 
-They cost one runtime import of `@vzn/vx` per config file — a second
-copy of core loaded into every run (~17 ms on a two-package workspace,
-measured 2026-09-09; the `vx` process already holds the first). The
-type-only form gives the same editor checking for free, and is what
-`vx init` / `@vzn/vx-migrate` write:
+They cost one runtime import of `@vzn/vx/config` per config file:
+`src/config.ts`, which imports nothing, so it is cheap, but it must
+resolve from the config's directory. The type-only form gives the same
+editor checking with no runtime import, and is what `vx init` /
+`@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
@@ -1908,6 +1942,7 @@ lists the messages a user meets most:
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
+| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
@@ -1940,17 +1975,18 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
-| Symptom                                                                              | Cause                                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `failed to parse <file>: <why>`                                                      | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
-| `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
-| `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
-| `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
-| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
-| `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
-| `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
-| `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
-| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read` | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
+| Symptom                                                                                                      | Cause                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                                                              | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
+| `<file>: packages must be an array of glob strings`                                                          | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
+| `<file>: must be a JSON object`                                                                              | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
+| `<file>: "name" must be a string with no surrounding whitespace`                                             | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`                                      | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
+| `<file>: must be a mapping (packages: and pnpm's settings)`                                                  | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:`, or an empty one (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                    |
+| `<file>: workspaces must be an array of glob strings`                                                        | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
+| `workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root` | A member glob (`../ext/*`, an absolute path) reached a package outside the root. npm and pnpm take one; `--affected` asks git from the root and missed edits there. Move the root up to a directory that holds every member.                               |
+| `<file>: workspaces.packages must be an array of glob strings`                                               | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
+| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`                         | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
 Workspace-config errors:
 
@@ -1960,6 +1996,7 @@ Workspace-config errors:
 | `timeout must be a positive integer (milliseconds)`                                                                                                          | Workspace `timeout` is ≤ 0, NaN, or not an int.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `cacheDir must be a string`                                                                                                                                  | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `cacheDir is only whitespace — name a directory`                                                                                                             | A `cacheDir` of spaces: it made a directory named so at the root, hidden by the cache's own `.gitignore`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `cacheDir holds a NUL, which no path can carry`                                                                                                              | No path can hold a NUL; the cache directory's creation failed and blamed the workspace's permissions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }`                                                                                              | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `cacheRetention names neither olderThan nor maxSize`                                                                                                         | An empty policy would evict nothing and read as one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'`                                                                              | The `vx cache prune --older-than` spelling, or not a string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1967,7 +2004,7 @@ Workspace-config errors:
 | `cacheRetention.olderThan of 0 evicts every entry after every run`                                                                                           | Every run would evict what it just saved; `vx cache prune --older-than 0` is refused too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `cacheRetention.maxSize of 0 evicts every entry after every run`                                                                                             | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')`                                                                        | A bare number is bytes; a cache capped at `10` bytes is a typo for `10G`. `10B` still loads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `affectedBase must be a git ref like 'origin/main'`                                                                                                          | Not a string, empty, holding whitespace, or opening with `-` (git would read an option).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `affectedBase must be a git ref like 'origin/main'`                                                                                                          | Not a string, empty, holding whitespace or a NUL, or opening with `-` (git would read an option).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `cacheScope must be 'trusted', 'read-only', or a scope name of <rule>`                                                                                       | Not a string, or a scope name holding a character outside letters, digits and `. _ - / @`, or longer than 128.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`                                                                                        | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `rules.<name> must be true or false`                                                                                                                         | A rule set to something other than a boolean (`'off'`, `0`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -1985,3 +2022,4 @@ Workspace-config errors:
 | `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                                  | A fingerprint claim without its file list or its `affected` answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `plugin '<name>' claims fingerprint file "<file>", which is not a file name at the workspace root`                                                           | A claim names a path, or no name: a claim is a bare file at the root (`vx watch`'s root arm is not recursive).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                                     | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once`                  | One plugin package declared twice (`plugins: [bun(), bun()]`); the message named it as two plugins (D-158).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |

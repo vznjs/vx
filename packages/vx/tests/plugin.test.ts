@@ -428,4 +428,80 @@ describe('Plugin API', () => {
     dispose()
     expect(seen).toEqual(['a#b:success'])
   })
+
+  it('a throwing bus subscriber warns once and disables its plugin', async () => {
+    // The bus swallowed it: no warning, and the plugin's handlers ran on.
+    const bus = createEventBus()
+    const warns: string[] = []
+    let heard = 0
+    await installPlugins({
+      plugins: [
+        {
+          name: 'org/bus',
+          setup(ctx) {
+            ctx.bus.subscribe(() => {
+              throw new Error('bus boom')
+            })
+            ctx.on('onTaskStart', () => void heard++)
+          },
+        },
+      ],
+      bus,
+      workspaceRoot: '/ws',
+      cacheDir: '/c',
+      warn: (m) => warns.push(m),
+    })
+    bus.emit({ kind: 'task:start', node: fakeNode() })
+    bus.emit({ kind: 'task:start', node: fakeNode() })
+    expect(warns).toEqual([
+      "[vx] plugin 'org/bus' threw in a bus subscriber; disabled for this run: bus boom",
+    ])
+    expect(heard).toBe(0)
+  })
+
+  it('one plugin disabled leaves another of the same package running', async () => {
+    const bus = createEventBus()
+    const seen: string[] = []
+    const plugins: Plugin[] = [
+      {
+        name: 'pkg',
+        setup(c) {
+          c.on('onTaskStart', () => {
+            throw new Error('x')
+          })
+        },
+      },
+      { name: 'pkg', setup: (c) => c.on('onTaskStart', () => void seen.push('b')) },
+    ]
+    await installPlugins({ plugins, bus, workspaceRoot: '/ws', cacheDir: '/c', warn: () => {} })
+    bus.emit({ kind: 'task:start', node: fakeNode() })
+    bus.emit({ kind: 'task:start', node: fakeNode() })
+    expect(seen).toEqual(['b', 'b'])
+  })
+
+  it("a setup that throws releases earlier plugins' subscriptions", async () => {
+    // The caller never gets the disposer; a bus that outlives the run kept them.
+    const bus = createEventBus()
+    const seen: string[] = []
+    const plugins: Plugin[] = [
+      {
+        name: 'org/a',
+        setup(c) {
+          c.on('onTaskStart', () => void seen.push('on'))
+          c.bus.subscribe(() => void seen.push('bus'))
+        },
+      },
+      {
+        name: 'org/b',
+        setup() {
+          throw new Error('no')
+        },
+      },
+    ]
+    await expect(
+      installPlugins({ plugins, bus, workspaceRoot: '/ws', cacheDir: '/c' }),
+    ).rejects.toThrow("plugin 'org/b' failed in setup: no")
+    bus.emit({ kind: 'task:start', node: fakeNode() })
+    expect(seen).toEqual([])
+  })
 })

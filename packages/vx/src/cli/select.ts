@@ -12,6 +12,7 @@ import {
   refIsHead,
   applyFilters,
   buildPackageGraph,
+  defaultAffectedBase,
   findWorkspaceRoot,
   type LoadReads,
   type FingerprintClaims,
@@ -26,7 +27,7 @@ import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { declaresInput } from '../cache/index.js'
-import { listed, maskedLine, nearest, UserError } from '../util/index.js'
+import { isUserError, listed, maskedLine, nearest, UserError } from '../util/index.js'
 import {
   claimedAffected,
   fingerprintClaims,
@@ -226,6 +227,30 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
     if (targets.size > 0) out.set(p.name, [...targets].sort())
   }
   return out
+}
+
+/**
+ * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
+ * projects and their dependents. An empty base is the workspace's
+ * `affectedBase` (or a plugin's `config` stage, from nx.json's
+ * `defaultBase` or `TURBO_SCM_BASE`), then the guess.
+ */
+export async function affectedFilterFor(
+  cwd: string,
+  affected: string,
+): Promise<string | { error: string }> {
+  const root = await findWorkspaceRoot(cwd)
+  let base = affected
+  if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
+  if (base === '') {
+    try {
+      base = await defaultAffectedBase(root)
+    } catch (err) {
+      if (!isUserError(err)) throw err
+      return { error: err.message }
+    }
+  }
+  return `...[${base}]`
 }
 
 export async function resolveFilters(
@@ -471,7 +496,9 @@ export async function pickTask(
     )
     return null
   }
-  const out = io.output ?? process.stdout
+  // The menu is a conversation with the terminal, not the run's output: on
+  // stdout, `vx run > out.txt` put it in the file and asked a blank screen.
+  const out = io.output ?? process.stderr
   const numW = String(entries.length).length
   const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
   out.write('Tasks:\n')
@@ -486,7 +513,7 @@ export async function pickTask(
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({
     input: io.input ?? process.stdin,
-    output: io.output ?? process.stdout,
+    output: out,
   })
   // On a terminal readline takes Ctrl-C and Ctrl-D itself, raw, and
   // rejects the pending question with an AbortError — which reached the

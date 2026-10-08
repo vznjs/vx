@@ -1,9 +1,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
-import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
@@ -13,12 +13,16 @@ import {
   type RunOptions,
   type RunResult,
 } from '../orchestrator/index.js'
-import type { ContinueMode } from '../graph/index.js'
-import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { findCwdSelection, pickTask, resolveFilters } from './select.js'
+import type { ContinueMode, TaskOutcome } from '../graph/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  gitRefusal,
+  parseCachePolicy,
+} from '../cache/index.js'
+import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { loadCliWorkspace } from './workspace-config.js'
-import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -461,20 +465,9 @@ async function scopeFilters(
   const filterStrings = [...parsed.filters]
   let affectedFilter: string | undefined
   if (parsed.affected !== undefined) {
-    const root = await findWorkspaceRoot(cwd)
-    let base = parsed.affected
-    // The workspace's `affectedBase` — or a plugin's `config` stage, from
-    // nx.json's `defaultBase` or `TURBO_SCM_BASE` — comes before the guess.
-    if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
-    if (base === '') {
-      try {
-        base = await defaultAffectedBase(root)
-      } catch (err) {
-        if (!isUserError(err)) throw err
-        return { error: err.message }
-      }
-    }
-    affectedFilter = `...[${base}]`
+    const f = await affectedFilterFor(cwd, parsed.affected)
+    if (typeof f === 'object') return f
+    affectedFilter = f
     filterStrings.unshift(affectedFilter)
   }
   return { filterStrings, ...(affectedFilter !== undefined ? { affectedFilter } : {}) }
@@ -499,6 +492,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -570,8 +564,7 @@ export async function resolveRunOptions(
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
-        error:
-          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+        error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
     projects = [cwdProject.name]
@@ -649,6 +642,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(
         `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
+      return 1
+    }
+    // Every run needs git: refused here, not after the user has chosen.
+    const refusal = gitRefusal(await findWorkspaceRoot(cwd))
+    if (refusal !== undefined) {
+      process.stderr.write(`${refusal.message}\n`)
       return 1
     }
     const load = {
@@ -739,6 +738,25 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
+  // The report prints above the footer: nothing prints below it (owner).
+  // Rendered once, however many sinks asked for it; a kept server's crash
+  // after the footer re-renders the file's copy (C-53).
+  const wantsReport = parsed.report === 'markdown' || parsed.reportFile !== undefined
+  let reported: { outcomes: readonly TaskOutcome[]; md: string } | undefined
+  if (wantsReport) {
+    opts.beforeFooter = (outcomes, ok) => {
+      reported = {
+        outcomes,
+        md: formatRunReportMarkdown({ ok, outcomes: outcomes.map(projectOutcome) }),
+      }
+      // `--report` writes stdout. The report ITSELF is machine-clean, but
+      // stdout is not vx's alone — the status logger writes there too, so
+      // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
+      // meter bar and `::group::` command above the table. `--report-file`
+      // is the redirect-free form.
+      return parsed.report === 'markdown' ? reported.md : ''
+    }
+  }
   // A run executes in THIS process, always. Where an individual task's
   // command runs is the `executor` capability's business (per task, with
   // the scheduler, cache, retries and telemetry unchanged above it); there
@@ -748,17 +766,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx run: ${summary.refused}\n`)
     return 1
   }
-  const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
-  // Report generation is post-run, gated on the flags — zero cost when
-  // both are absent. Rendered once, however many sinks asked for it.
-  if (parsed.report === 'markdown' || parsed.reportFile !== undefined) {
-    const md = formatRunReportMarkdown(result)
-    // `--report` writes stdout. The report ITSELF is machine-clean, but
-    // stdout is not vx's alone — the status logger writes there too, so
-    // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
-    // meter bar and `::group::` command above the table. `--report-file`
-    // is the redirect-free form.
-    if (parsed.report === 'markdown') process.stdout.write(md)
+  if (wantsReport) {
+    const md =
+      reported?.outcomes === summary.outcomes
+        ? reported.md
+        : formatRunReportMarkdown({
+            ok: summary.ok,
+            outcomes: summary.outcomes.map(projectOutcome),
+          })
     if (parsed.reportFile !== undefined) {
       const target = path.resolve(cwd, parsed.reportFile)
       try {
@@ -781,5 +796,5 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
     }
   }
-  return result.ok ? 0 : 1
+  return summary.ok ? 0 : 1
 }

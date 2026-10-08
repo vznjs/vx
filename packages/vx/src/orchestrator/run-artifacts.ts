@@ -18,6 +18,7 @@ import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes, type Tally } from './tally.js'
 import type { FlakyFinding } from './failure-mode.js'
 import { isCacheHit } from './telemetry.js'
+import { ranNoCache } from './events.js'
 
 export interface SummarizeArgs {
   /** Empty string → default path; otherwise the explicit file path. */
@@ -92,9 +93,9 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): SummaryTaskJson {
     // the flag a consumer computing a hit rate cannot tell a miss from a
     // task that could never hit (its `hash` is still set — dependents fold
     // it). Present only when true, so every other row is byte-identical.
-    ...(o.node.config.cache === undefined ? { noCache: true } : {}),
-    // Present only when the run proved the task flaky: this exact key has
-    // both passed and failed on record (this run counted), or the task
+    ...(ranNoCache(o) ? { noCache: true } : {}),
+    // Present only when the run proved the task flaky: this exact key
+    // failed after it had passed (this run counted), or the task
     // needed a retry. A consumer gating on `failed` can tell a break from a
     // flake without the history; every other row is byte-identical.
     ...(flaky !== undefined

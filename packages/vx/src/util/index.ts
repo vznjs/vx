@@ -43,13 +43,20 @@ export {
   relPosix,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   anyTaskGlob,
   isInstalledPath,
   taskGlob,
   wholeSubtreePrefixes,
   slashBraceExpansions,
 } from './paths.js'
-export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
+export {
+  claimExitForSignal,
+  exitClaimedBySignal,
+  killGraceMs,
+  settleWithin,
+  teardownTimeoutMs,
+} from './settle.js'
 export { formatBytes, parseDuration, parseSize } from './size.js'
 export {
   cgroupCpuQuota,

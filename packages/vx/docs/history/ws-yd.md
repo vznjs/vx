@@ -1,5 +1,14 @@
 # Workstream YD — Nx/Turbo parity (2026-10-07)
 
+- **YD-2.** Nx's `--projects` matches an entry by name, then by project
+  root; `-p 'apps/*'` matched nothing. A filter name holding a `/`
+  outside a scope that names no project now reads as `./<pattern>`.
+  Rows: `filter.test.ts` › "a name holding a `/` outside a scope that
+  names no project is a directory".
+- **YD-4.** Nx's `--projects` / `--exclude` labels `directory:<d>` and
+  `name:<n>` matched nothing. The aliases now emit `./<d>` and `<n>`.
+  Rows: `foreign-flags.test.ts` › "an alias parses exactly as its vx
+  spelling".
 - **YD-3.** The parity table called Turbo's `--no-cache` the same as
   vx's. Turbo's still reads (its help: `--cache=local:r,remote:r`);
   vx's reads nothing. The row and parity.md now say so. Docs only.

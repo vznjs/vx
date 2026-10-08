@@ -19,11 +19,18 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatDuration, formatSummarySection, neverStarted, type RunContext } from './summary.js'
+import { formatSummarySection, neverStarted, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
-import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
+import {
+  appendTail,
+  createTail,
+  formatElapsed,
+  resetTail,
+  tailText,
+  type Tail,
+} from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
-import { failedLabel, outcomeWord } from './events.js'
+import { failedLabel, outcomeWord, ranNoCache } from './events.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -139,8 +146,7 @@ function ghaFence(body: string, token: string): string {
   return `::stop-commands::${token}\n${body}::${token}::\n`
 }
 
-const cacheWordOf = (n: TaskNode): 'miss' | 'no-cache' =>
-  n.config.cache === undefined ? 'no-cache' : 'miss'
+const cacheWordOf = (o: TaskOutcome): 'miss' | 'no-cache' => (ranNoCache(o) ? 'no-cache' : 'miss')
 
 export function resolveOutputView(
   options: {
@@ -440,7 +446,7 @@ export function defaultLogger(
     (view.mode === 'focused' && isPrimary(node) && !isGroupTask(node) && requestedCount <= 1)
 
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
-    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)) +
+    formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome)) +
     flakyNote(outcome, colors)
 
   return {
@@ -453,6 +459,12 @@ export function defaultLogger(
       // A kept server's held partial line is older than this line: held
       // past it, a server's last words printed below its own exit notice.
       flushKept()
+      // A live-streamed server keeps writing after its frame closes, so a
+      // summary row or "exited with code" can follow its partial line.
+      if (streamMidLine) {
+        writer.write('\n')
+        streamMidLine = false
+      }
       writer.write(`${line}\n`)
     },
     runStart(info) {
@@ -654,7 +666,7 @@ export function defaultLogger(
         done++
         if (outcome.status === 'failed') {
           failed++
-          if (node.config.cache === undefined) noCache++
+          if (ranNoCache(outcome)) noCache++
         } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
@@ -678,7 +690,7 @@ export function defaultLogger(
         switch (outcome.status) {
           case 'success':
             succeeded++
-            if (node.config.cache === undefined) noCache++
+            if (ranNoCache(outcome)) noCache++
             break
           case 'cache-hit':
             if (outcome.restored === false) upToDate++
@@ -875,7 +887,7 @@ export function defaultLogger(
             } else {
               emitBlock(
                 `::group::${ghaData(
-                  `${node.id} (${outcomeWord(outcome)} ${formatDuration(outcome.durationMs)})`,
+                  `${node.id} (${outcomeWord(outcome)} ${formatElapsed(outcome.durationMs)})`,
                 )}\n${body}::endgroup::\n`,
               )
             }

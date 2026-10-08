@@ -203,12 +203,12 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheInputs {
-  files: string[]
-  workspaceFiles?: string[]
-  env?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  env?: readonly string[]
   tasks?: readonly string[]
-  runtime?: string[]
-  workspaceRuntime?: string[]
+  runtime?: readonly string[]
+  workspaceRuntime?: readonly string[]
 }
 ```
 
@@ -274,8 +274,8 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheOutputs {
-  files: string[]
-  workspaceFiles?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
 }
 ```
 
@@ -425,6 +425,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T
 ```
@@ -488,9 +489,9 @@ type · `src/config.ts`
 
 ```ts
 export interface ExecEnv {
-  passThrough?: string[]
+  passThrough?: readonly string[]
   define?: Record<string, string>
-  secret?: string[]
+  secret?: readonly string[]
 }
 ```
 
@@ -1612,6 +1613,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 ```
 
@@ -1860,6 +1862,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -2056,7 +2059,7 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxDenials {
-  network?: string[]
+  network?: readonly string[]
 }
 ```
 
@@ -2066,13 +2069,13 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxGrants {
-  read?: string[]
-  write?: string[]
-  network?: true | string[]
-  systemInfo?: string[]
-  unixSockets?: true | string[]
-  localBinding?: boolean | number[]
-  machLookup?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  network?: true | readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
 }
@@ -2255,6 +2258,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -2534,6 +2538,18 @@ function · `src/orchestrator/metrics.ts`
 
 ```ts
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+```
+
+## `withForwardArgs`
+
+function · `src/exec/runner.ts`
+
+The command a task runs with the args after `--` appended, shell-quoted.
+They go before a trailing comment: appended after it, `echo args: # show`
+ran without them and said nothing (item 1060). Trailing blanks go first.
+
+```ts
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 ```
 
 ## `WorkspaceConfig`

@@ -4,7 +4,7 @@
 // task's owner can act on — inside the project, minus the loopback denial
 // no grant can avoid, minus what the task chose to ignore.
 
-import { statSync } from 'node:fs'
+import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import { bindableReads, bindableWrites } from './sandbox-binds.js'
@@ -24,6 +24,7 @@ import type {
  *   <pid> openat(AT_FDCWD, "<path>", <flags>) = -1 ENOENT (...)
  *   <pid> access("<path>", <mode>) = -1 EACCES (...)
  *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
+ *   <pid> execve("<path>", ["<argv0>", ...], <envp>) = -1 ENOENT (...)
  *
  * …but ONLY when the syscall completes without another traced process
  * interleaving. Under `-f` strace splits an interrupted call across two
@@ -40,21 +41,26 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|access|statx|newfstatat'
+const SYSCALLS = 'openat|execve|faccessat2|faccessat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
 // a quote (`4</ws/q"d>`). Captured: a relative path is in that directory.
 const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
+// The rest of the call: an `execve`'s argv strings may hold a `)`
+// (`sh -c "f()"`), so it reads to the result at the line's end.
+const ARGS = '.*'
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
 const STRACE_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*<unfinished`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}<unfinished`,
 )
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
+/** The calls that ask whether a path is there rather than read it. */
+const PROBES = new Set(['execve', 'faccessat2', 'faccessat', 'access', 'statx', 'newfstatat'])
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
@@ -352,7 +358,16 @@ export async function parseStraceViolations(
       ...args.config.allowWrite.filter((w) => bindableWrites([w]).length > 0),
     ].map((p) => toRealPath(absolutize(p))),
   )
+  // A write glob no mount holds is a write grant too (`refusedWrites`
+  // counts its scratch): cp's probe of its destination there failed a task
+  // on its own output. One a read bind holds is readable; one outside the
+  // workspace, never reported.
+  const pendingWrites = (args.config.pendingWrites ?? []).map((g) => new Bun.Glob(g))
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
+  const mounted = new Set([
+    ...allowAbs,
+    ...bindableWrites(args.config.allowWrite).map((p) => toRealPath(absolutize(p))),
+  ])
   // A read under a widened write grant's directory is never refused, so it
   // is reported when it succeeds: an entry that was there at the start and
   // no grant covers is an input the key never saw, and so is the
@@ -377,13 +392,20 @@ export async function parseStraceViolations(
     baselines.cwd,
     widened.size > 0,
   )) {
-    const abs = toRealPath(absolutize(rawPath, dir ?? baselines.cwd))
+    const lexical = absolutize(rawPath, dir ?? baselines.cwd)
+    const abs = toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
-    if (isUnderAny(abs, allowAbs)) continue
+    if (isUnderAny(abs, allowAbs) && !hiddenByLink(lexical, abs, mounted, denyAnchors)) continue
+    if (underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
+    // A hidden path answers ENOENT, as a missing one does: a probe
+    // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
+    // the host has the file.
+    if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatSync(abs, { throwIfNoEntry: false }))
+      continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -401,14 +423,47 @@ export async function parseStraceViolations(
             timestamp: new Date(),
             target: abs,
             path: abs,
-            // The trace is `-e trace=openat`, and an openat is a read or a
-            // write depending on flags the trace does not carry — so either
-            // list can silence it.
+            // An openat is a read or a write depending on flags the parse
+            // does not keep, and `access` may ask either — so either list
+            // can silence it.
             ignorable: ['read', 'write'],
           },
     )
   }
   return out
+}
+
+/**
+ * A granted file the task could not open because a link on the path it
+ * opened is not in the sandbox. A grant is mounted at its real path and
+ * bwrap mounts no link, so `read: ['config.json']` over `config.json ->
+ * conf/real.json` bound the target and left the name the task opens out;
+ * judged by its real path, the ENOENT was granted and dropped, and a tool
+ * that fell back on the missing file was cached green. The link is there
+ * when the directory holding it is mounted; a target missing on the host
+ * is missing outside the sandbox too, and outside the deny anchor the
+ * host is mounted, links and all.
+ */
+function hiddenByLink(
+  lexical: string,
+  real: string,
+  mounted: Set<string>,
+  anchors: readonly string[],
+): boolean {
+  if (lexical === real || !existsSync(real)) return false
+  let at = lexical
+  const links: string[] = []
+  for (let up = path.dirname(at); up !== at; at = up, up = path.dirname(at)) {
+    try {
+      if (lstatSync(at).isSymbolicLink()) links.push(at)
+    } catch {
+      // Not on the host by this spelling: no link to judge here.
+    }
+  }
+  return links.some((l) => {
+    const holder = toRealPath(path.dirname(l))
+    return anchors.some((a) => atOrUnder(holder, a)) && !isUnderAny(holder, mounted)
+  })
 }
 
 /**
@@ -418,7 +473,10 @@ export async function parseStraceViolations(
  * /path/x`, `deny(1) system-info vfs.disk-space` — so the operation picks
  * the list and the target is matched against its patterns. Anything
  * unparseable is NOT ignored: a record we cannot classify is exactly the
- * one worth seeing.
+ * one worth seeing. A file list matches the record's `path`, where it
+ * lands, as `read` and `write` patterns are anchored and as the report's
+ * own boundary judges it: a seatbelt record named through a link was
+ * reported and its pattern never matched.
  */
 function matchesIgnore(
   v: SandboxViolation,
@@ -428,7 +486,8 @@ function matchesIgnore(
   for (const which of v.ignorable) {
     const patterns = ignore[which]
     if (patterns === undefined) continue
-    if (patterns.some((pat) => pat === v.target || new Bun.Glob(pat).match(v.target!))) return true
+    const subject = which === 'read' || which === 'write' ? (v.path ?? v.target) : v.target
+    if (patterns.some((pat) => pat === subject || new Bun.Glob(pat).match(subject))) return true
   }
   return false
 }
@@ -685,6 +744,8 @@ export function refusedWrites(
   writable: readonly string[],
   /** Write globs whose writes land in the sandbox's scratch (`scratchWrites`): granted. */
   scratch: readonly string[] = [],
+  /** What the sandbox mounts readable, canonical: a mkdir of what is there is no write. */
+  readable: readonly string[] = [],
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
   const globs = scratch.map((g) => new Bun.Glob(g))
@@ -705,7 +766,9 @@ export function refusedWrites(
     // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
     // `node_modules/.cache/` met EEXIST on `node_modules`, wrote nothing,
     // and the attempt failed a clean task (2026-10-03).
-    if (syscall.startsWith('mkdir') && [...binds].some((b) => atOrUnder(b, abs))) continue
+    // So does one a read grant shows, or holds: `mkdir -p src` under
+    // `read: ['src']` failed a clean task the same way (X-82).
+    if (syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -718,6 +781,29 @@ export function refusedWrites(
     })
   }
   return out
+}
+
+/**
+ * `abs` exists inside the sandbox: a write bind lies at or under it (vx
+ * made each before the spawn), a read grant that exists does, or a read
+ * grant holds it and it exists. A read grant naming nothing is not
+ * mounted, so neither it nor its ancestors are there.
+ */
+function inSandbox(abs: string, binds: Set<string>, readable: readonly string[]): boolean {
+  return (
+    [...binds].some((b) => atOrUnder(b, abs)) ||
+    readable.some((r) => atOrUnder(r, abs) && exists(r)) ||
+    (readable.some((r) => atOrUnder(abs, r)) && exists(abs))
+  )
+}
+
+function exists(p: string): boolean {
+  try {
+    lstatSync(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** `p`, or a directory holding it, matches one of `globs`. */

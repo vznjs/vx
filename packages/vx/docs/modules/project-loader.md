@@ -90,7 +90,14 @@ readers that reach it here.
   `Bun.stdout.writer()`): the parent's stdout may be `vx mcp`'s
   JSON-RPC stream, whose own redirect covers only the parent thread, and
   a second tool call's config output landed between two responses
-  (D-64). The first load prints where the process's stdout points.
+  (D-64). The first load, in process, sends them to stderr too while
+  the round evaluates: a verb's stdout is its output, and a config's
+  `console.log` came out ahead of `vx show --format json`'s JSON.
+- A config that throws something other than an Error (`throw 'no'`, a
+  plain object) fails as a user error naming the config, on both paths:
+  "Project config <path> threw "no", which is not an Error". It
+  printed `vx: no`, naming no file, and a null-prototype object crashed
+  vx's error printer.
 - A config that calls `process.exit` while it evaluates fails the load,
   at the config's line, on both paths: "process.exit(0) in a config: a
   config exports its object; it cannot end the run". In process
@@ -221,7 +228,8 @@ What `onLoad` source cannot be, it is not handed:
   `exports`, `require`, `this` or `__dirname` at the top) would lose its
   exports. `hasEsmExport` (config-imports.ts) asks Bun's own parser for
   an ESM `export`; without one, the config takes Bun's path, `?vx-bust=`.
-  Source that spells none of those names and holds no backslash (an
+  Source that spells none of those names, no TypeScript `export =`
+  (CommonJS to Bun, with no ESM `export`) and no backslash (an
   escaped `\u006dodule` is CommonJS to Bun too) is a module on either
   path and skips the parse: 18–20 ms off 1,000 cold configs (median of
   30, interleaved, 2026-10-03). A syntax error then reaches the served

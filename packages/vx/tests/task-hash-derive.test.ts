@@ -28,7 +28,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import type { CacheLayer } from '../src/cache/index.js'
-import { computeTaskHash } from '../src/orchestrator/task-hash.js'
+import { computeGroupKey, computeTaskHash } from '../src/orchestrator/task-hash.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -326,6 +326,27 @@ describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => 
     const a = await key({ node: node({ requested: true }), forwardArgs: ['--watch'] })
     const b = await key({ node: node({ requested: true }), forwardArgs: ['--coverage'] })
     expect(a).not.toBe(b)
+  })
+
+  it('a requested default build ignores them: it runs no command', async () => {
+    // `vx run lib#build app#e2e -- --x`: the args reach no command of
+    // lib's default build, yet its key folded them, and so did every task
+    // keyed on it that never saw them (app#build, not requested).
+    const defaultBuild: TaskNode = {
+      ...node({ requested: true }),
+      config: { dependsOn: ['^build'], cache: { inputs: { files: [] }, outputs: { files: [] } } },
+    }
+    const groupKey = (forwardArgs: readonly string[]) =>
+      computeGroupKey({
+        node: defaultBuild,
+        upstream: [],
+        workspaceRoot: root,
+        workspaceFingerprint: 'ws-fp',
+        cache,
+        nestedProjectDirs: [],
+        forwardArgs,
+      })
+    expect(await groupKey(['--x'])).toBe(await groupKey([]))
   })
 
   it('an EMPTY forwardArgs array matches passing none', async () => {
