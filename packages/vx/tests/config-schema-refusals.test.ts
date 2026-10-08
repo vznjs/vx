@@ -66,6 +66,23 @@ describe('whitespace-only values', () => {
   })
 })
 
+// A NUL in a workspace path or ref loaded, then failed the run with
+// Node's argument error: the cache dir's message blamed the workspace's
+// permissions, and affectedBase's named `args[3]` and nothing in the config.
+describe('a NUL in a workspace string', () => {
+  it('is refused in cacheDir and affectedBase', () => {
+    expect([
+      refusal({ cacheDir: 'a\0b' }),
+      refusal({ affectedBase: 'main\0x' }),
+      refusal({ affectedBase: 'origin/main' }),
+    ]).toEqual([
+      `${WS}: \`cacheDir\` holds a NUL, which no path can carry`,
+      `${WS}: \`affectedBase\` must be a git ref like 'origin/main'`,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)
@@ -159,6 +176,22 @@ describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
       `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got 1048576)`,
     )
     expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
+  })
+
+  it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
+    // The workspace file has no JSON rule before its schema; the fuzz found it.
+    expect(refusal({ cacheRetention: { olderThan: 30n } })).toBe(
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30n)`,
+    )
+    expect(refusal({ cacheRetention: { maxSize: Symbol('s') } })).toBe(
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got Symbol(s))`,
+    )
+    const p = testPlugin('fz-fp-bigint', {
+      fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: plugin 'fz-fp-bigint' claims fingerprint file 1n, which is not a file name at the workspace root`,
+    )
   })
 })
 

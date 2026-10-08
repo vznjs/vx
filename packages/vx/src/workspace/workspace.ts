@@ -290,6 +290,11 @@ async function readRootManifests(
     )
   }
   if (ws === undefined || ws === null) return { globs: ['.'], catalogs }
+  // bun's `{ catalog }` and yarn's `{ nohoist }` name no members, and both
+  // managers run the root alone; vx refused them as no array (D-151).
+  if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) {
+    return { globs: ['.'], catalogs }
+  }
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
     const packages = (ws as { packages?: unknown }).packages
     // Yarn 1 and 4 run the root alone under `packages: null`; read as an
@@ -454,12 +459,20 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
+  const home = process.env['HOME'] || homedir()
   // No shell expands `~` in a config string or a quoted variable, and
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
-  if (rel.startsWith('~/')) {
-    return path.join(process.env['HOME'] || homedir(), rel.slice(1))
+  const dir =
+    rel === '~' || rel.startsWith('~/') ? path.join(home, rel.slice(1)) : path.resolve(root, rel)
+  // The cache writes a `*` .gitignore beside its index: a bare `~` made a
+  // directory named `~`, and expanded it would land in home itself (D-153).
+  if (path.resolve(dir) === path.resolve(home)) {
+    const source = config?.cacheDir !== undefined ? 'cacheDir' : 'VX_CACHE_DIR'
+    throw new UserError(
+      `${source} ${JSON.stringify(rel)} is the home directory itself, where the cache's \`*\` .gitignore and index would land — name a directory under it, like '~/.cache/vx'`,
+    )
   }
-  return path.resolve(root, rel)
+  return dir
 }
 
 /**

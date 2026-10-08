@@ -249,6 +249,10 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // WD-16: a stop after the summary signalled once by the abort, then again
   // by the wait's own teardown once another kept server went: a server that
   // reads a second signal as "quit now" lost its graceful shutdown.
+  // The sleep forks before the traps: a child forked after them holds the
+  // trap until it resets or execs, and on macOS CI the row read two lines
+  // where vx sends one signal (X-117). Every later fork is exposed only to
+  // a second signal, which the leader records anyway.
   for (const [signal, sent, code] of [
     ['SIGTERM', 'T', 143],
     ['SIGINT', 'I', 130],
@@ -262,7 +266,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           fast: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
           slow: {
             exec: {
-              command: "trap 'echo T >> sigs' TERM; trap 'echo I >> sigs' INT; echo $$ > pid.txt; echo READY; while true; do sleep 30 & wait; done",
+              command: "sleep 30 & trap 'echo T >> sigs' TERM; trap 'echo I >> sigs' INT; echo $$ > pid.txt; echo READY; while true; do wait; sleep 30 & done",
               persistent: { readyWhen: 'READY' },
             },
           },

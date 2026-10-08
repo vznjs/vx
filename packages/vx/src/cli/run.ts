@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
 import {
@@ -13,7 +14,12 @@ import {
   type RunResult,
 } from '../orchestrator/index.js'
 import type { ContinueMode, TaskOutcome } from '../graph/index.js'
-import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  gitRefusal,
+  parseCachePolicy,
+} from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
@@ -175,7 +181,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (n === null)
         return {
           ...out,
-          error: `invalid concurrency: ${v} (a positive integer, or a share of the cores such as 50%)`,
+          error: `--concurrency must be a positive integer, or a share of the cores such as 50% (got ${v})`,
         }
       out.concurrency = n
     } else if (a === '--all') {
@@ -261,14 +267,17 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
       // otherwise create a directory literally named `--force` and drop
       // the flag. A path starting with `-` needs the `=` form.
       if (a === '--cache-dir' && v.startsWith('-')) {
-        return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--cache-dir requires a path (got flag ${v}; a path that starts with - needs --cache-dir=${v})`,
+        }
       }
       out.cacheDir = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
@@ -323,14 +332,15 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined)
         return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
-      if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
+      if (n === null)
+        return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `invalid --dry value: ${fmt} (text or json)` }
+        return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--graph') {
@@ -358,7 +368,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
       // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
       const eq = raw.indexOf('=')
-      if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
+      if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
     } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
       const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
@@ -367,7 +377,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       // nothing about its shape rejects a swallowed flag. A path starting
       // with `-` needs the `=` form.
       if (a === '--report-file' && v.startsWith('-')) {
-        return { ...out, error: `--report-file requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--report-file requires a path (got flag ${v}; a path that starts with - needs --report-file=${v})`,
+        }
       }
       out.reportFile = v
     } else if (a === '--report') {
@@ -375,7 +388,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (a?.startsWith('--report=')) {
       const fmt = a.slice('--report='.length)
       if (fmt !== 'markdown') {
-        return { ...out, error: `invalid --report value: ${fmt} (only markdown)` }
+        return { ...out, error: `--report must be markdown (got ${fmt})` }
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
@@ -486,6 +499,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -557,8 +571,7 @@ export async function resolveRunOptions(
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
-        error:
-          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+        error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
     projects = [cwdProject.name]
@@ -636,6 +649,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(
         `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
+      return 1
+    }
+    // Every run needs git: refused here, not after the user has chosen.
+    const refusal = gitRefusal(await findWorkspaceRoot(cwd))
+    if (refusal !== undefined) {
+      process.stderr.write(`${refusal.message}\n`)
       return 1
     }
     const load = {

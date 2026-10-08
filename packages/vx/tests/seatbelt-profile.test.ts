@@ -281,3 +281,73 @@ describe('a seatbelt wall whose name holds a bracket', () => {
     expect(regexes(['/ws', '/ws/app/legacy'])).toEqual([])
   })
 })
+
+// A baseline read (a `node_modules`, a linked dependency's directory) is a
+// name the filesystem handed back, never a pattern, yet it reached SRT raw
+// beside the task's grants: a dependency under `packages/[legacy]/`
+// compiled as a class that matched `packages/l` and never the directory,
+// and even spelled `[[]` a regex grants the entry alone, not its files.
+// `darwinWallRules` took such a baseline for a glob too, so a root task's
+// wall on that dependency carved nothing out. Linux binds it whole.
+describe('a seatbelt baseline whose name holds a bracket', () => {
+  const allowRegexes = (names: string[], grants: string[]): RegExp[] => {
+    const cfg = seatbeltBrackets(
+      {
+        filesystem: {
+          denyRead: ['/ws'],
+          allowRead: [...names, ...grants],
+          allowWrite: [],
+          denyWrite: [],
+        },
+      },
+      names,
+    )!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    return [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith('^/ws/'))
+      .map((r) => new RegExp(r))
+  }
+  const granted = (rx: RegExp[], p: string): boolean => rx.some((r) => r.test(p))
+
+  it('grants the directory and its subtree, and not a class member', () => {
+    const rx = allowRegexes(['/ws/packages/[legacy]', '/ws/packages/odd]'], [])
+    expect([
+      granted(rx, '/ws/packages/[legacy]'),
+      granted(rx, '/ws/packages/[legacy]/src/index.ts'),
+      granted(rx, '/ws/packages/odd]/index.ts'),
+      granted(rx, '/ws/packages/l'),
+      granted(rx, '/ws/packages/l/index.ts'),
+    ]).toEqual([true, true, true, false, false])
+  })
+
+  it("CONTROL: a task's grant keeps its spelling: an escape is a name, a bracket a class", () => {
+    const rx = allowRegexes([], ['/ws/app/pages/\\[id\\].tsx', '/ws/app/[ab].ts'])
+    expect([
+      granted(rx, '/ws/app/pages/[id].tsx'),
+      granted(rx, '/ws/app/pages/i.tsx'),
+      granted(rx, '/ws/app/a.ts'),
+      granted(rx, '/ws/app/[ab].ts'),
+    ]).toEqual([true, false, true, false])
+  })
+
+  it('carves the baseline out of a wall a glob reaches', () => {
+    expect(
+      darwinWallRules(
+        {
+          allowRead: ['/w/**/*.ts'],
+          allowWrite: [],
+          wallsReached: { read: ['/w/[b]'], write: [] },
+        },
+        ['/w/[b]'],
+      ),
+    ).toEqual([
+      '(deny file-read-data (require-all (subpath "/w/[b]") (require-not (subpath "/w/[b]"))))',
+    ])
+  })
+})

@@ -66,6 +66,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }>
 ```
 

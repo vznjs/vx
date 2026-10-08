@@ -640,6 +640,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T {
   return config

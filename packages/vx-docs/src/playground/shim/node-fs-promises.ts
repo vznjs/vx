@@ -1,14 +1,11 @@
 // `node:fs/promises` for the playground bundle; see node-fs.ts.
 
+import { notInPlayground } from './unavailable.js'
 import { enoent, vfs, type VfsDirent, type VfsStats } from './vfs.js'
 
-function notInPlayground(name: string): () => Promise<never> {
-  return () =>
-    Promise.reject(
-      new Error(
-        `playground: node:fs/promises ${name} is not available (the plan should not reach it)`,
-      ),
-    )
+function rejects(name: string): () => Promise<never> {
+  const call = notInPlayground(name, 'node:fs/promises')
+  return async () => call()
 }
 
 export async function stat(p: string): Promise<VfsStats> {
@@ -39,20 +36,20 @@ export async function realpath(p: string): Promise<string> {
   return p
 }
 
-export const writeFile = notInPlayground('writeFile')
-export const mkdir = notInPlayground('mkdir')
-export const rm = notInPlayground('rm')
-export const rmdir = notInPlayground('rmdir')
-export const rename = notInPlayground('rename')
-export const unlink = notInPlayground('unlink')
-export const open = notInPlayground('open')
-export const mkdtemp = notInPlayground('mkdtemp')
-export const symlink = notInPlayground('symlink')
-export const readlink = notInPlayground('readlink')
-export const chmod = notInPlayground('chmod')
-export const utimes = notInPlayground('utimes')
-export const appendFile = notInPlayground('appendFile')
-export const access = notInPlayground('access')
-export const cp = notInPlayground('cp')
+export const writeFile = rejects('writeFile')
+export const mkdir = rejects('mkdir')
+export const rm = rejects('rm')
+export const rmdir = rejects('rmdir')
+export const rename = rejects('rename')
+export const unlink = rejects('unlink')
+export const open = rejects('open')
+export const mkdtemp = rejects('mkdtemp')
+export const symlink = rejects('symlink')
+export const readlink = rejects('readlink')
+export const chmod = rejects('chmod')
+export const utimes = rejects('utimes')
+export const appendFile = rejects('appendFile')
+export const access = rejects('access')
+export const cp = rejects('cp')
 
 export default { stat, lstat, readdir, readFile, realpath }

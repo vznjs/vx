@@ -34,8 +34,10 @@ time (bugs, correctness, simplification, the plugin seams).
   `static/*` through it: containment only asked that the real directory
   be inside the project. The clean now removes nothing whose directory
   is reached through a link; the save still follows one
-  (turborepo#13042). Row: `inputs-resolution.test.ts` › "a clean never
-  deletes through a symlinked output dir".
+  (turborepo#13042). Superseded by X-88: a link inside the project is
+  cleaned through; one out of it is still never deleted through. Row:
+  `inputs-resolution.test.ts` › "a recorded row is never removed through
+  a link that leaves the project (X-5)".
 - **X-6.** A config with two syntax errors (`export default {{`)
   reached the user as an `AggregateError` stack with no position, and
   `vx watch` leaked the internal `?vx-held=` query. The first error is
@@ -525,6 +527,27 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-88.** An output directory linked inside its project
+  (`dist -> real-out`, `outputs.files: ['dist/**']`) was skipped by the
+  clean (X-5) but followed by the save, so the entry for one key held
+  the files another key's run left, and a hit for `one` left `two.js`
+  beside `one.js`. The clean now follows a link whose target is inside
+  the project, so the target is the output and each entry holds only its
+  own run's files; one resolving outside the project refuses the task,
+  naming the link (it used to save an empty entry under a warning, M-61),
+  and nothing is deleted through it. No `CACHE_VERSION` bump: no key or
+  stored layout moved; an entry saved for this shape since X-5 may still
+  hold another run's files until evicted. Rows: `output-shape.test.ts` ›
+  "each entry holds only its own run's files, and a hit leaves no other
+  entry's (X-88)", `inputs-resolution.test.ts` › "a clean follows a
+  symlinked output dir that points INSIDE the project", "a symlinked
+  output dir that leaves the project is refused by name …",
+  `cache-declaration-warnings.test.ts` › "an output directory linked out
+  of the project refuses the task by name (M-61, X-88)".
+- **X-89.** `CACHE_VERSION` `vx-cache-v41`. X-88 fixed a run that stored
+  another key's files in an entry whose output directory is a link
+  inside its project; entries saved before it could replay them, so
+  every cached task misses once and re-saves.
 - **X-74.** Unused: its empty `packages:` fix landed first from another
   lane (D-149).
 - **X-75.** Unused: its `<name>...[ref]` task-edge fix landed first
@@ -786,3 +809,72 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-117.** "a SIGHUP after the summary signals a kept server once" read
+  `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
+  (`terminateChildren` dedups; the keep-alive wait defers to the abort),
+  so the second line came from a second trap holder: the fixture forked
+  `sleep 30 &` after installing its traps, and a child between fork and
+  its trap reset holds the parent's trap. Unproven on bash 3.2 (macOS's
+  sh; no copy reachable here); bash 5.2 and dash ran a hammered group
+  TERM only in the leader (495 and 7 of 3,000, all leader). The sleep now
+  forks before the traps, so the first signal finds only the leader
+  holding one; a real double send still writes two lines (reverting
+  WD-16's guard in `run.ts` reddens all three rows). Row:
+  `keep-alive.test.ts` › "a SIGHUP after the summary signals a kept
+  server once".
+- **X-118.** A default `build` on a package cycle (X-100) passed
+  through every project on its cycle, a declared `build` that never
+  reaches it included: with `p` (default `build`) and `t` (`build` on
+  no `^build`) depending on each other, `p#build` took no edge to
+  `t#build`, so `p#test` on `build` ran beside `t#build` and its key
+  folded nothing of `t`: a stale hit after `t` changed. A default `build`
+  on a cycle now walks once the rest of the graph is built and passes
+  through only the builds that reach it. Rows: `task-graph.test.ts` › "a
+  default build on a cycle keeps the edge to a build that never reaches
+  it", "a default build on a cycle passes a build that reaches it through
+  another task".
+- **X-119.** A requested default `build` (the one keyed group) folded
+  the args after `--` into its key though it runs no command: in
+  `vx run lib#build app#e2e -- --x`, `app#build`, which never sees
+  `--x`, folds `lib#build`'s key, so it missed for every new set of args
+  and saved under a key no run without them derives. A group's key now
+  folds no forwarded args. Row: `task-hash-derive.test.ts` › "a
+  requested default build ignores them: it runs no command".
+- **X-120.** An edge by name (`build`, `pkg#build`) to a default
+  `build` on a package cycle stopped there, where a `^build` walk goes on
+  past it (X-100): with `a` and `b` on the default build depending on
+  each other, neither build folds the other, so `a#test` on `build`
+  folded nothing of `b` and hit after `b` changed. Such an edge now goes
+  on past it as `^build` does. A request whose closure then reaches a
+  task cycle among declared builds is refused, as a run of those builds
+  already was. Row: `task-graph.test.ts` › "an edge by name to a default
+  build on a cycle goes on past it, as ^build does".
+- **X-123.** A task left remote (`--download=none`) whose inputs moved
+  between its key and the describe before the command was saved under
+  the old key once a local consumer fetched it: the remote built over the
+  edit, and once the edit was reverted the next run hit those bytes. The
+  eager save withheld it (item 743); the deferred one asked nothing. It
+  now takes the same check, and a moved key registers the fetch with no
+  key, so the consumer still gets the bytes and nothing is saved. Rows:
+  `execute-task.test.ts` › "the DEFERRED save site refuses a key the
+  inputs no longer match (X-123)", `download-policy.test.ts` › "an entry
+  with no key is fetched for its consumer but saves nothing (X-123)".
+- **X-124.** A hit the up-front probe found was restored after a task
+  had rewritten the lockfile the workspace fingerprint folds: its key named
+  the install the run started on, so a task with no edge to `install`
+  that restored after it put back bytes built against the old install,
+  while the lazy path refuses to probe past that move (item 750). Such a
+  hit now goes back to the scheduler as a vanished one does and runs
+  once its deps are done. Row: `execute-task.test.ts` › "a preProbed HIT
+  is not restored once a task rewrote the lockfile (X-124)".
+- **X-125.** On a plugin executor, a task whose child trapped the
+  timeout's stop and exited 0 passed: core recorded `timedOut` only for a
+  non-zero exit, so the partial outputs were saved and the next run
+  replayed them as a green hit. The local executor fails the same child
+  as timed out. Any exit after the timeout's abort is now a timeout on a
+  plugin executor; the local one keeps its runner's own verdict, since
+  core's request timer starts before the spawn. Rows:
+  `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
+  abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".

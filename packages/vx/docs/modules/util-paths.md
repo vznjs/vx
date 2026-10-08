@@ -25,6 +25,7 @@ export function asTrees(patterns: readonly string[]): string[]
 export function splitNegations(globs: readonly string[]): { positive: string[]; negative: string[] }
 export function outputMatcher(globs: readonly string[]): (rel: string) => boolean
 export function isLiteralPattern(glob: string): boolean
+export function stripTrailingSlash(p: string): string
 export function taskGlob(pattern: string): Bun.Glob
 export function anyTaskGlob(patterns: readonly string[]): (rel: string) => boolean
 // A path inside an install (`node_modules/` at any depth): untracked, it is

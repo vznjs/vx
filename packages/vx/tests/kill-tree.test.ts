@@ -11,7 +11,7 @@ import { afterAll, afterEach, describe, expect, it } from 'bun:test'
 import {
   closeSignalChannel,
   killTree,
-  markGroupIfGone,
+  releaseServerGroup,
   signalThrough,
   untilGroupsGone,
   type Child,
@@ -99,7 +99,7 @@ describe('killTree', () => {
     stubKill(() => {
       throw errno('ESRCH')
     })
-    markGroupIfGone(gone)
+    releaseServerGroup(gone)
     stubKill(() => {})
     killTree(gone, 'SIGKILL')
     expect([calls, gone.signals]).toEqual([[], []])

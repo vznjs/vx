@@ -73,7 +73,10 @@ anything beneath it changes.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches. A readiness timeout returns once the server's process group is
-gone (SIGTERM, grace, SIGKILL), not when its shell exits.
+gone (SIGTERM, grace, SIGKILL), not when its shell exits: `ready`
+rejects only then (runner.md), and the group gets one SIGTERM. A second
+one, sent here a turn after the runner's, killed a server with a
+one-shot handler mid-cleanup.
 
 ### C. Normal task
 
@@ -118,9 +121,13 @@ gone (SIGTERM, grace, SIGKILL), not when its shell exits.
      before scheduling, so every attempt of a task runs in the same
      place. With no executor plugin declared that is the local floor —
      `runCommand` / `runSandboxed` exactly as before. The request's
-     `signal`, which arms `exec.timeout`, is made last, once the
-     sandbox is armed: armed first, a 60 ms `echo` timed out unrun
-     under the runtime's ~200 ms probe.
+     `signal`, which arms a plugin executor's `exec.timeout`, is made
+     last, once the sandbox is armed: armed first, a 60 ms `echo` timed
+     out unrun under the runtime's ~200 ms probe. A local request's
+     signal carries no timeout: the runner times the task from its
+     spawn, and a clock on the signal also timed the sandbox's wrap, so
+     a wrap slower than the timeout failed and retried a task that never
+     ran.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one

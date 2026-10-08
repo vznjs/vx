@@ -3,13 +3,8 @@
 // bundle links; calling one is a claim the plan path is wrong about, so it
 // throws with the name.
 
+import { notInPlayground } from './unavailable.js'
 import { enoent, vfs, type VfsStats } from './vfs.js'
-
-function notInPlayground(name: string): () => never {
-  return () => {
-    throw new Error(`playground: node:fs ${name} is not available (the plan should not reach it)`)
-  }
-}
 
 export function lstatSync(p: string, opts?: { throwIfNoEntry?: boolean }): VfsStats | undefined {
   const st = vfs().stat(p)
@@ -32,27 +27,27 @@ export function readFileSync(p: string, enc?: string): Uint8Array | string {
   return enc === undefined ? bytes : new TextDecoder().decode(bytes)
 }
 
-export const readlinkSync = notInPlayground('readlinkSync')
-export const accessSync = notInPlayground('accessSync')
-export const mkdirSync = notInPlayground('mkdirSync')
-export const writeFileSync = notInPlayground('writeFileSync')
-export const readdirSync = notInPlayground('readdirSync')
-export const realpathSync = notInPlayground('realpathSync')
-export const rmdirSync = notInPlayground('rmdirSync')
-export const rmSync = notInPlayground('rmSync')
-export const renameSync = notInPlayground('renameSync')
-export const writeSync = notInPlayground('writeSync')
-export const closeSync = notInPlayground('closeSync')
-export const unlinkSync = notInPlayground('unlinkSync')
-export const symlinkSync = notInPlayground('symlinkSync')
-export const linkSync = notInPlayground('linkSync')
-export const chmodSync = notInPlayground('chmodSync')
-export const mkdtempSync = notInPlayground('mkdtempSync')
-export const appendFileSync = notInPlayground('appendFileSync')
-export const utimesSync = notInPlayground('utimesSync')
-export const openSync = notInPlayground('openSync')
-export const fstatSync = notInPlayground('fstatSync')
-export const watch = notInPlayground('watch')
+export const readlinkSync = notInPlayground('readlinkSync', 'node:fs')
+export const accessSync = notInPlayground('accessSync', 'node:fs')
+export const mkdirSync = notInPlayground('mkdirSync', 'node:fs')
+export const writeFileSync = notInPlayground('writeFileSync', 'node:fs')
+export const readdirSync = notInPlayground('readdirSync', 'node:fs')
+export const realpathSync = notInPlayground('realpathSync', 'node:fs')
+export const rmdirSync = notInPlayground('rmdirSync', 'node:fs')
+export const rmSync = notInPlayground('rmSync', 'node:fs')
+export const renameSync = notInPlayground('renameSync', 'node:fs')
+export const writeSync = notInPlayground('writeSync', 'node:fs')
+export const closeSync = notInPlayground('closeSync', 'node:fs')
+export const unlinkSync = notInPlayground('unlinkSync', 'node:fs')
+export const symlinkSync = notInPlayground('symlinkSync', 'node:fs')
+export const linkSync = notInPlayground('linkSync', 'node:fs')
+export const chmodSync = notInPlayground('chmodSync', 'node:fs')
+export const mkdtempSync = notInPlayground('mkdtempSync', 'node:fs')
+export const appendFileSync = notInPlayground('appendFileSync', 'node:fs')
+export const utimesSync = notInPlayground('utimesSync', 'node:fs')
+export const openSync = notInPlayground('openSync', 'node:fs')
+export const fstatSync = notInPlayground('fstatSync', 'node:fs')
+export const watch = notInPlayground('watch', 'node:fs')
 export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 }
 export const promises = {}
 

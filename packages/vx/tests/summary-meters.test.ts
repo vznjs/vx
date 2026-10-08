@@ -300,7 +300,7 @@ describe('the projects bar', () => {
   // impossible input would be pinning a shape the product cannot produce.
 })
 
-describe('formatDuration', () => {
+describe('formatElapsed', () => {
   // Small, but it is the number a user reads on every single run, and the
   // unit switch is the kind of boundary that silently regresses.
   it.each([
@@ -312,7 +312,7 @@ describe('formatDuration', () => {
     [59_999, '60.00s'],
     [3_600_000, '3600.00s'],
   ])('%dms renders as %s', async (ms, expected) => {
-    const { formatDuration } = await import('../src/orchestrator/summary.js')
-    expect(formatDuration(ms)).toBe(expected)
+    const { formatElapsed } = await import('../src/util/index.js')
+    expect(formatElapsed(ms)).toBe(expected)
   })
 })
