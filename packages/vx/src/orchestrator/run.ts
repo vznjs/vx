@@ -1408,7 +1408,11 @@ async function runOnBus(
               : ''),
         )
       }
-      await terminateChildren(() => keepAlive.children)
+      // Under a stop the abort is already taking them down with the stop's
+      // signal; a second SIGTERM in its grace cut short the graceful
+      // shutdown of a server that reads it as "quit now" (WD-16).
+      if (stopRun.signal.aborted) await aborting?.catch(() => {})
+      else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed:
       // the rewritten summary said `ok: false` over every task `success`
       // and `failed: 0`, and so did the outcomes `--report` renders (C-53).
