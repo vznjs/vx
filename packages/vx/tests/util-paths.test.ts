@@ -804,12 +804,29 @@ describe('a bracket is a literal in a task glob (item 667)', () => {
       expect([g.match('src/a.ts'), g.match('a/node_modules/b')]).toEqual([false, true])
       expect([any('src/a.ts'), any('a.json'), any('lib/a.ts')]).toEqual([true, true, false])
       expect(native).toHaveBeenCalledTimes(0)
-      // The control: a brace is Bun.Glob's to answer.
-      taskGlob('{a,b}').match('a')
+      // The control: an escape is Bun.Glob's to answer.
+      taskGlob('a\\*b').match('a*b')
       expect(native).toHaveBeenCalledTimes(1)
     } finally {
       native.mockRestore()
     }
+  })
+
+  it('a brace alternative ending in ** matches below its first directory', () => {
+    // Bun.Glob's own match reads that ** as one name, so the nested file
+    // fell out of the key and an edit to it was a stale hit.
+    const rows = ['src/a.ts', 'src/deep/a.ts', 'lib/x/y/z.ts', 'lib', 'other/a.ts', 'x/a/b']
+    const g = taskGlob('{src/**,lib/**}')
+    const any = anyTaskGlob(['{src/**,lib/**}', 'zz/never'])
+    const bare = taskGlob('{x,**}')
+    expect(rows.map((r) => [g.match(r), any(r), bare.match(r)])).toEqual([
+      [true, true, true],
+      [true, true, true],
+      [true, true, true],
+      [false, false, true],
+      [false, false, true],
+      [false, false, true],
+    ])
   })
 
   it("the globs vx does not own keep Bun.Glob's own alphabet, the class included", () => {

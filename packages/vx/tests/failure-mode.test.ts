@@ -703,6 +703,19 @@ describe('flakyTasks', () => {
     })
   })
 
+  it('lists a key that passed only on a retry, its failed attempts as failures', async () => {
+    const rows = [
+      mkRun({ hash: 'R', project: 'web', task: 'test', attempts: 3 }),
+      // A retried run that failed in the end proves no pass: a break.
+      mkRun({ hash: 'S', project: 'web', task: 'lint', status: 'failed', attempts: 2 }),
+    ]
+    await withRuns(rows, (db) => {
+      expect(flakyTasks(db)).toEqual([
+        { taskId: 'web#test', project: 'web', task: 'test', keys: 1, passes: 1, failures: 2 },
+      ])
+    })
+  })
+
   it('breaks a failure tie by passes, then project, then task', async () => {
     const mixed = (project: string, task: string, passes: number) => [
       ...Array.from({ length: passes }, () => mkRun({ hash: `${project}-${task}`, project, task })),

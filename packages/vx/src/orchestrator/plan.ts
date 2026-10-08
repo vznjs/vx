@@ -12,8 +12,15 @@
 // side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
-import { FULL_CACHE_POLICY } from '../cache/index.js'
-import { isGroupTask, runGraph, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
+import { ranNoCache } from './events.js'
+import {
+  idleServers,
+  isGroupTask,
+  runGraph,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import type { HistoryProvider } from './history.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
 import { keyUpstream } from './upstream.js'
@@ -24,6 +31,7 @@ export type CacheStatus =
   | 'miss' // caching enabled but no entry — would execute
   | 'no-cache' // task opts out of caching (no `cache` block) or --no-cache
   | 'group' // no `exec`; just an aggregator
+  | 'not-started' // a server every dependant of which restores early: the run never spawns it
 
 export interface PlannedTask {
   node: TaskNode
@@ -108,6 +116,12 @@ export interface PlanArgs {
   history?: HistoryProvider
   /** Placement lookup (`placement.ts`): >1 executor declared, or a `noop` task. */
   executorOf?: (id: string) => string | undefined
+  /**
+   * The tasks the run's short-circuit would restore ahead of their deps on
+   * a local hit (stable key, no workspace-output reach). A server whose
+   * every dependant is one of those and a local hit is never spawned.
+   */
+  restorable?: ReadonlySet<string>
 }
 
 /**
@@ -156,9 +170,8 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       // policy-aware cache layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
-      const writes = policy.localWrite || policy.remoteWrite
       let status: CacheStatus
-      if (node.config.cache === undefined || (!reads && !writes)) {
+      if (ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
         status = 'no-cache'
       } else if (!reads) {
         status = 'miss'
@@ -170,6 +183,17 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       return planOutcome(node, hash)
     },
   })
+
+  if (args.restorable !== undefined) {
+    const restoreTier = new Set(
+      [...args.restorable].filter((id) => cacheStatusById.get(id) === 'hit-local'),
+    )
+    const dependents = new Map<string, string[]>()
+    for (const node of args.nodes.values())
+      for (const dep of node.deps) dependents.set(dep, [...(dependents.get(dep) ?? []), node.id])
+    for (const id of idleServers(args.nodes, dependents, restoreTier))
+      cacheStatusById.set(id, 'not-started')
+  }
 
   const tasks: PlannedTask[] = []
   for (const id of args.nodes.keys()) {

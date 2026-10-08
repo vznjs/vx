@@ -35,8 +35,8 @@ export interface SaveMissArgs {
   workspaceRoot: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache | undefined
-  outputs: string[] // declared cache.outputs.files
-  wsOutputs: string[] // declared cache.outputs.workspaceFiles
+  outputs: readonly string[] // declared cache.outputs.files
+  wsOutputs: readonly string[] // declared cache.outputs.workspaceFiles
   ownOutputFiles?: string[] | undefined // an ADDITIVE task's own set, in place of the glob walk (item 588)
   ownWsOutputFiles?: string[] | undefined // the same for `workspaceFiles` (A-43)
   captured: readonly TaskInputComponent[] // Tier-3 rows from the pre-exec describe

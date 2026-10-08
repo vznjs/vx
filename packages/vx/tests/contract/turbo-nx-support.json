@@ -87,7 +87,7 @@
   {
     "key": "turbo.json remoteCache",
     "status": "mapped",
-    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options."
+    "reason": "`turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `preflight`, `timeout` and `uploadTimeout`, below env vars and options."
   },
   {
     "key": "turbo.json tags",
@@ -97,7 +97,7 @@
   {
     "key": "turbo.json tasks",
     "status": "supported",
-    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below). A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
+    "reason": "Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below); a task no package has a script for is a group task in each package that defines it, as Turbo runs a no-op node there and exits 0. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it."
   },
   {
     "key": "turbo.json ui",
@@ -201,8 +201,8 @@
   },
   {
     "key": "turbo.json remoteCache.preflight",
-    "status": "not-supported",
-    "reason": "Ignored; `turboCache()` sends no CORS preflight."
+    "status": "supported",
+    "reason": "`true` sends Turbo's `OPTIONS` preflight and follows its `Location`, below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`."
   },
   {
     "key": "turbo.json remoteCache.signature",

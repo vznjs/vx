@@ -6,7 +6,13 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  cachesNothing,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -44,6 +50,7 @@ import {
   secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
+import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -87,8 +94,12 @@ import {
   detectCi,
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
-import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
-import { probesAfterWrites } from './stable-keys.js'
+import {
+  restoreTierExclusions,
+  startLocalShortCircuit,
+  type ShortCircuit,
+} from './local-shortcircuit.js'
+import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
 import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
@@ -1013,6 +1024,7 @@ async function runOnBus(
     // is one probe of the failed-row index.
     const flaky: FlakyFinding[] = []
     const historyDb = prepared.localCache.dbHandle()
+    const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
       const candidates = flakyCandidates([o])
       if (candidates.length === 0) return
@@ -1040,6 +1052,7 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        if (cacheOff) o.cacheOff = true
         taint.settled(o)
         judgeFlaky(o)
         log.taskComplete(o.node, o)
@@ -1086,8 +1099,6 @@ async function runOnBus(
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
 
     mark('run graph')
-    // Clear the status line for good before the summary prints.
-    log.runEnd?.()
 
     // A server that died on its own before the stop failed, whatever its
     // outcome said when it became ready: the footer counted it a success
@@ -1097,8 +1108,11 @@ async function runOnBus(
     const failServer = (id: string, code: number | string): void => {
       const o = outcomes.get(id)
       if (o === undefined) return
-      const exitCode = typeof code === 'number' ? code : signalExitCode(code)
-      outcomes.set(id, { ...o, status: 'failed', exitCode })
+      // In place: the renderer holds this outcome (events carry live refs)
+      // and closes the server's output block from it at runEnd, where a
+      // copy left it reading `running` under its exit line (WD-10).
+      o.status = 'failed'
+      o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
     }
     for (const c of crashedPersistent) failServer(c.id, c.code)
     keepAlive.nodes.forEach((n, i) => {
@@ -1107,6 +1121,8 @@ async function runOnBus(
       if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
       failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
     })
+    // Clear the status line for good before the summary prints.
+    log.runEnd?.()
     const list = [...outcomes.values()]
     const ok = list.every((o) => isPassStatus(o.status))
 
@@ -1339,6 +1355,8 @@ async function runOnBus(
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    const above = options.beforeFooter?.(list, ok)
+    if (above) log.status(above.replace(/\n$/, ''))
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
@@ -1396,7 +1414,9 @@ async function runOnBus(
         })
       })
       const node = keepAlive.nodes[first.i]!
-      const others = keepAlive.nodes.length - 1
+      // Only the ones still up are stopped: a kept server already dead was
+      // counted as one (WD-11).
+      const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
       // Not when the run was stopped: the server ended because the user
       // stopped it, and "exited with code 130" read as a crash after every
       // Ctrl-C once a stop let run() finish its own path (item 852).
@@ -1408,7 +1428,11 @@ async function runOnBus(
               : ''),
         )
       }
-      await terminateChildren(() => keepAlive.children)
+      // Under a stop the abort is already taking them down with the stop's
+      // signal; a second SIGTERM in its grace cut short the graceful
+      // shutdown of a server that reads it as "quit now" (WD-16).
+      if (stopRun.signal.aborted) await aborting?.catch(() => {})
+      else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed:
       // the rewritten summary said `ok: false` over every task `success`
       // and `failed: 0`, and so did the outcomes `--report` renders (C-53).
@@ -1417,7 +1441,9 @@ async function runOnBus(
       await summarize(ok && first.code === 0, final)
       if (historyAfterWait) {
         recordHistory(() => {
-          const local = Cache.inspect(prepared.cacheDir)
+          // A writer's open: another vx version may have reset the index
+          // to its schema during the session, and a mismatch resets silently.
+          const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && first.code === 0))
           } finally {
@@ -1522,12 +1548,13 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
+    const policy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     const planned = await plan({
       nodes: prepared.nodes,
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       cache: prepared.cache,
-      cachePolicy: effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer),
+      cachePolicy: policy,
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
@@ -1544,6 +1571,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
       ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
     return planned
@@ -1557,6 +1585,39 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     // real repo that has no install and no cache to run against.
     mark('close')
     printTimings()
+  }
+}
+
+/**
+ * What the run's short-circuit would restore ahead of its deps, so the plan
+ * can tell a server nobody needs from one that starts: `--dry` called a
+ * server every dependant of which was a local hit `would exec`, and the run
+ * never spawned it. The run's own gates (`shouldShortCircuit`, stable keys,
+ * workspace-output reach), asked only when a server could idle.
+ */
+async function planRestorable(
+  prepared: PreparedRun,
+  policy: CachePolicy,
+  forwardArgs: readonly string[] | undefined,
+): Promise<{ restorable?: Set<string> }> {
+  const { nodes } = prepared
+  const serves = [...nodes.values()].some(
+    (n) => n.config.exec?.persistent !== undefined && !n.requested && n.surfaced !== true,
+  )
+  if (!serves || !shouldShortCircuit(nodes, policy, prepared.cache)) return {}
+  const keptOut = restoreTierExclusions(nodes, prepared.workspaceRoot)
+  const stable = await deriveStableKeys({
+    nodes,
+    cache: prepared.cache,
+    workspaceRoot: prepared.workspaceRoot,
+    workspaceFingerprint: prepared.workspaceFingerprint,
+    forwardArgs,
+    nestedDirsByProject: prepared.nestedDirsByProject,
+    gitFilesCache: prepared.gitFilesCache,
+    hashCache: prepared.hashCache,
+  })
+  return {
+    restorable: new Set(stable.map((k) => k.node.id).filter((id) => !keptOut.has(id))),
   }
 }
 
@@ -1601,8 +1662,11 @@ function didYouMean(
   elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
+  // What a bare name can select: a default `build` is no match (X-102).
   const allTasks = new Set<string>()
-  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  for (const p of projects.values()) {
+    for (const t of tasksOf(p)) if (!isDefaultBuild(p.config.tasks![t])) allTasks.add(t)
+  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near

@@ -27,7 +27,7 @@ and key derivation logic live here.
   object format.
 - `config-evals.ts` — `ConfigEvalTable`: the `config_evals` /
   `config_closures` tables behind the `ConfigEvalStore` contract, with
-  their retention.
+  their retention (a daily sweep: no index covers `created_at`).
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
@@ -166,7 +166,7 @@ export interface PruneOptions {
 export interface PruneResult {
   evicted: number
   bytesFreed: number
-  orphans: number // artifacts / temps with no index row, an hour old or more
+  orphans: number // row-less artifacts the policy takes by file time, and temps an hour old
   orphanBytes: number
 }
 
@@ -328,6 +328,7 @@ export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 // The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
+export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
 ```
 
 ## Key derivation (`Cache.key`)
@@ -385,10 +386,21 @@ Determinism notes:
 
 ## Storage layout
 
+By default the entries and artifacts live in the repository's shared
+store (`storeRoot`, `~/.vx/<id>/cache`, `workspace/resolveStoreRoot`)
+and the workspace's `.vx/cache` holds only its own index, which attaches
+`store.db` as `store`. A named `cacheDir` (`storeRoot` null) holds
+everything in `cache.db`.
+
 ```
-<cacheDir>/
-├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-└── <hash>.tar.zst           # per-entry artifact (tar + zstd, vx's own streaming tar code):
+~/.vx/<id>/cache/            # the shared store (unversioned: keys are seeded with CACHE_VERSION)
+├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta
+└── <hash>.tar.zst
+
+<root>/.vx/cache/            # or a named <cacheDir>, which then also holds the store's tables and artifacts
+└── cache.db                 # SQLite (with cache.db-wal, cache.db-shm): runs, memos, output stamps
+
+<hash>.tar.zst               # per-entry artifact (tar + zstd, vx's own streaming tar code):
     ├── stdout               #   captured stdout (always present)
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
@@ -424,6 +436,9 @@ SQLite stores metadata only:
   so the `accessed_at` bump does not rewrite it (v29).
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
+- **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
+  version drops the store's tables, prints nothing, and keeps every
+  artifact, indexed again from its own bytes when its task next hits.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
   tables and recreate (pre-alpha; no migration code). An open that does
   not read the current version re-reads it under `BEGIN IMMEDIATE`
@@ -536,9 +551,9 @@ Surfaced by `vx info`.
 - Doesn't garbage-collect old entries unasked. Eviction is
   `vx cache prune --older-than <d>` / `--max-size <s>` (calls into
   `Cache.prune`), or the workspace's `cacheRetention` at the end of a
-  run (`Cache.evictIfDue`); both sweep artifacts and temps the index
-  has no row for, once they are an hour old (`docs/caching.md`
-  § Storage layout). `evictIfDue` runs that sweep on its own when the
+  run (`Cache.evictIfDue`); both sweep artifacts the index has no row
+  for by the same policy, on file times, and temps once an hour old
+  (`docs/caching.md` § Storage layout). `evictIfDue` runs that sweep on its own when the
   policy has nothing due but the last sweep (`schema_meta`
   `orphans_swept_at`, stamped by every sweep) is an hour old: the
   policy sums index rows, so orphans never make it due.

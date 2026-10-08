@@ -246,6 +246,90 @@ describe('Cache.evictIfDue', () => {
     }
   })
 
+  // Two vx versions share one store, and each open drops the other's rows:
+  // a row-less artifact may be in use. It is judged by its file time
+  // against the age limit, as a row is by `accessed_at`, never by a
+  // one-hour grace.
+  it('a row-less artifact younger than the age limit survives the sweep', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      const recent = await orphan('00000000000000a1', 1024, 3 * 3_600_000)
+      // A hit renews a file time only once it is an hour old, so the last
+      // use may be up to an hour after it.
+      const edge = await orphan('00000000000000a3', 1024, DAY + 1_800_000)
+      const old = await orphan('00000000000000a2', 1024, 2 * DAY)
+      expect(await cache.evictIfDue({ maxAgeMs: DAY })).toEqual({
+        evicted: 0,
+        bytesFreed: 0,
+        orphans: 1,
+        orphanBytes: 1024,
+      })
+      expect([recent, edge, old].map((f) => existsSync(f))).toEqual([true, true, false])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a row-less artifact counts toward maxSize, oldest use first with the rows', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await seed(cache, ['aa'])
+      age('aa', Date.now() - 2 * DAY)
+      const one = (
+        cache.dbHandle().query('SELECT size_bytes AS s FROM entries').get() as {
+          s: number
+        }
+      ).s
+      const recent = await orphan('00000000000000a1', 1024, 3 * 3_600_000)
+      const old = await orphan('00000000000000a2', 1024, 3 * DAY)
+      // Room for the recent artifact alone: the older artifact and the row go.
+      expect(await cache.prune({ maxBytes: 1024 + one - 1 })).toEqual({
+        evicted: 1,
+        bytesFreed: one,
+        orphans: 1,
+        orphanBytes: 1024,
+      })
+      expect([existsSync(recent), existsSync(old)]).toEqual([true, false])
+      expect(hashes(cache)).toEqual([])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a hit or an adopt renews the artifact file time another version judges by', async () => {
+    // Names the sweep may take: a key `foldKey` prints.
+    const keys = ['00000000000000b1', '00000000000000b2', '00000000000000b3', '00000000000000b4']
+    const [hit, hitMany, adopted] = keys as [string, string, string, string]
+    const writer = new Cache(cacheDir)
+    try {
+      await seed(writer, keys)
+      const when = new Date(Date.now() - 2 * DAY)
+      for (const h of keys) await utimes(path.join(cacheDir, `${h}.tar.zst`), when, when)
+      expect(await writer.get(hit)).not.toBeNull()
+      expect((await writer.getMany([hitMany])).size).toBe(1)
+      // Another version's open dropped this row; this one finds the artifact.
+      writer.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(adopted)
+      expect(await writer.get(adopted, { taskId: 'p#b3', command: 'echo b3' })).not.toBeNull()
+    } finally {
+      writer.close()
+    }
+    // The other version's open: every row gone.
+    const other = new Cache(cacheDir)
+    try {
+      other.dbHandle().query('DELETE FROM entries').run()
+      expect((await other.evictIfDue({ maxAgeMs: DAY }))?.orphans).toBe(1)
+      // CONTROL: the one never used goes.
+      expect(keys.map((h) => existsSync(path.join(cacheDir, `${h}.tar.zst`)))).toEqual([
+        true,
+        true,
+        true,
+        false,
+      ])
+    } finally {
+      other.close()
+    }
+  })
+
   it("a reading verb's handle evicts nothing, with an entry due", async () => {
     const writer = new Cache(cacheDir)
     await seed(writer, ['aa'])
@@ -293,9 +377,9 @@ describe('the cacheRetention field', () => {
       refusal({ maxSize: '0G' }),
       refusal({ maxSize: '10' }),
     ]).toEqual([
-      `${WS}: \`cacheRetention\`.olderThan of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention\`.maxSize of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention\`.maxSize '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
+      `${WS}: \`cacheRetention.olderThan\` of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention.maxSize\` of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention.maxSize\` '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
     ])
     expect(refusal({ maxSize: '10B' })).toBeNull()
   })
@@ -312,9 +396,9 @@ describe('the cacheRetention field', () => {
       `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
       `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
       `${WS}: \`cacheRetention\` names neither \`olderThan\` nor \`maxSize\``,
-      `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
-      `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
-      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '64KB'`,
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got "30 days")`,
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30)`,
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got "1.5G")`,
     ])
     expect(refusal({ maxAge: '30d' })).toContain('unknown field')
   })
@@ -408,10 +492,10 @@ describe('a run applies the workspace retention at its end', () => {
     expect(log.lines.filter((l) => l.includes('cache retention'))).toEqual([])
   })
 
-  it('reaps row-less artifacts a deleted index left, silently', async () => {
-    const cacheDir = await setup("cacheRetention: { maxSize: '1MB' }")
+  it('reaps row-less artifacts a deleted index left past the age limit, silently', async () => {
+    const cacheDir = await setup("cacheRetention: { olderThan: '1h' }")
     // The index goes (deleted by hand, or dropped by a schema reset); its
-    // artifacts stay behind, and they are old.
+    // artifacts stay behind, and their file times are past the limit.
     await rm(path.join(cacheDir, 'cache.db'))
     await rm(path.join(cacheDir, 'cache.db-wal'), { force: true })
     await rm(path.join(cacheDir, 'cache.db-shm'), { force: true })

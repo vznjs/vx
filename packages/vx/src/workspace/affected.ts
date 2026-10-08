@@ -19,7 +19,7 @@ import {
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners } from './config-imports.js'
+import { configImportOwners, realpathOr } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -174,6 +174,14 @@ export async function affectedChanges(
     throw new UserError(
       `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
+  }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
     )
   }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -432,7 +440,17 @@ async function dependentsAtBase(
     ) {
       continue
     }
-    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    // Today's catalogs, or both graphs would differ on every `catalog:`
+    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
+    // edit, which the fingerprint widening and the root's own change answer.
+    const catalogs = projects[0]?.catalogs
+    byDir.set(dir, {
+      name: pkg.name,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+      ...(catalogs === undefined ? {} : { catalogs }),
+    })
     if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])
@@ -468,8 +486,10 @@ function parentsOfNewNested(
   projects: readonly ProjectMeta[],
 ): Set<string> {
   const out = new Set<string>()
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   for (const [rel, bytes] of atBase) {
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
     if (!dirToName.has(dir)) continue
@@ -814,14 +834,6 @@ function isDirectory(abs: string): boolean {
   }
 }
 
-function realpathOr(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return p
-  }
-}
-
 function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
@@ -837,8 +849,10 @@ function projectsContaining(
   // O(files · path-depth) instead of O(files · projects): independent of the
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
@@ -849,18 +863,18 @@ function projectsContaining(
     const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    const spelled = path.resolve(workspaceRoot, rel)
-    if (spelled !== p.dir && !dirToName.has(spelled)) dirToName.set(spelled, p.name)
+    const spelled = path.resolve(workspaceRoot, rel).normalize('NFC')
+    if (!dirToName.has(spelled)) dirToName.set(spelled, p.name)
   }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
-    let dir = path.resolve(workspaceRoot, rel)
+    let dir = path.resolve(workspaceRoot, rel).normalize('NFC')
     let hit = false
     for (;;) {
       const name = dirToName.get(dir)
       if (name !== undefined) {
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel)))
+        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')))
         hit = true
         break
       }
@@ -879,7 +893,7 @@ function projectsContaining(
     // this, `--affected` after an edit inside selected none of them.
     const abs = path.resolve(workspaceRoot, rel)
     if (isDirectory(abs)) {
-      const prefix = abs + path.sep
+      const prefix = abs.normalize('NFC') + path.sep
       for (const [dir, name] of dirToName) {
         if (!dir.startsWith(prefix)) continue
         owned.add(name)

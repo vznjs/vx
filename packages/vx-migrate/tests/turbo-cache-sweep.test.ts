@@ -172,6 +172,29 @@ describe('the upload', () => {
     ])
   })
 
+  it('any 2xx is stored, as for turbo; a 3xx or 4xx is not', async () => {
+    // Turbo's client takes any 2xx (`error_for_status`); a server answering
+    // 201 or 204 stored the artifact and vx counted a failed upload.
+    const verdict = async (status: number) => {
+      const { fetchImpl } = stub(() => new Response(null, { status }))
+      return cacheWith(fetchImpl)
+        .put('aa', new Blob(['x']), { durationMs: 1 })
+        .then(
+          () => 'ok',
+          (err: Error) => err.message,
+        )
+    }
+    expect(await Promise.all([200, 201, 202, 204, 299, 304, 400].map(verdict))).toEqual([
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+      'HTTP 304',
+      'HTTP 400',
+    ])
+  })
+
   it('runs under the upload deadline, not the request one', async () => {
     // A server that answers after 300 ms: past the 50 ms request deadline,
     // inside the 10 s upload one. The HEAD is the control: same server,
@@ -244,5 +267,23 @@ describe('the signed download', () => {
     await expect(
       cacheWith(fetchImpl, { teamId: 'team_1', signatureKey: key }).get('aa'),
     ).rejects.toThrow('the artifact signature did not verify — treated as a miss')
+  })
+})
+
+describe('a read-only token or server', () => {
+  // turborepo-remote-cache under READ_ONLY (or a JWT without the write
+  // scope) answers an upload 403 and still serves reads.
+  it("an upload's 403 turns off uploads alone, said once; reads go on", async () => {
+    const { fetchImpl, calls } = stub((method) =>
+      method === 'PUT' ? new Response(null, { status: 403 }) : new Response('bytes'),
+    )
+    const c = cacheWith(fetchImpl)
+    await expect(c.put('aa', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+      'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
+    )
+    expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
+    expect(await c.has('aa')).toBe(true)
+    expect(await (await c.get('aa'))!.body.text()).toBe('bytes')
+    expect(calls.map((r) => r.method)).toEqual(['PUT', 'HEAD', 'GET'])
   })
 })

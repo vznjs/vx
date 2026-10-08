@@ -29,11 +29,13 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
  */
 function keyOutcomesSql(source: string, where = ''): string {
   return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
+       SUM(retried) AS retried_failures,
        SUM(CASE WHEN failed = 1 AND id > first_pass THEN 1 ELSE 0 END) AS relapses
-       FROM (SELECT project, task, hash, id, failed, passed,
+       FROM (SELECT project, task, hash, id, failed, passed, retried,
            MIN(CASE WHEN passed = 1 THEN id END) OVER (PARTITION BY project, task, hash) AS first_pass
          FROM (SELECT project, task, hash, id,
              CASE WHEN status = 'failed' THEN 1 ELSE 0 END AS failed,
+             CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END AS retried,
              CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
                THEN 1 ELSE 0 END AS passed
            FROM ${source}
@@ -195,14 +197,18 @@ export interface FlakyTask {
 /**
  * Every task with a key that failed after it had passed anywhere in the retained history
  * (30 days, `RunHistory.pruneOlderThan`), most failures first: the
- * doctor's list. A full scan of `runs`, which an inspection verb affords.
+ * doctor's list. A pass that took a retry mixes its key on its own: it is
+ * one `success` row whose failed attempts count as failures (`vx info`
+ * said `none` over one). A full scan of `runs`, which an inspection verb
+ * affords.
  */
 export function flakyTasks(db: Database): FlakyTask[] {
   const rows = db
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures
-       FROM (${keyOutcomesSql('runs')})
-       WHERE relapses > 0
+       FROM (SELECT project, task, passes, failures + retried_failures AS failures
+             FROM (${keyOutcomesSql('runs')})
+             WHERE relapses > 0 OR retried_failures > 0)
        GROUP BY project, task
        ORDER BY failures DESC, passes DESC, project, task`,
     )

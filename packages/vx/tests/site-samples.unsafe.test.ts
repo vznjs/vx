@@ -346,7 +346,7 @@ describe('the configure guide quotes what vx why says', () => {
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)'),
     )
-    expect(notes.length).toBe(13)
+    expect(notes.length).toBe(14)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)
@@ -1069,11 +1069,12 @@ describe('the config-in-typescript post shows what vx init writes', () => {
     expect(block).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
     expect(block).toContain('satisfies ProjectConfig')
   })
-  it('its runtime-import cost is the figure schema.md measured', () => {
-    const schema = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'schema.md'), 'utf8')
-    const m = /\(~(\d+) ms on a two-package workspace,\n?measured/.exec(schema)
-    expect(m).not.toBeNull()
-    expect(page.replace(/\s+/g, ' ')).toContain(`~${m![1]} ms on a two-package workspace`)
+  // `@vzn/vx/config` imports nothing, so its runtime import loads no
+  // copy of core; a cost figure for one was stale once it became a leaf.
+  it('claims no runtime-import cost the leaf config module lacks', () => {
+    const config = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
+    expect(config).not.toMatch(/^import\s(?!type\b)/m)
+    expect(page).not.toContain('copy of core')
   })
 })
 
@@ -1176,7 +1177,7 @@ describe('the otel guide tabulates every option the plugin takes', () => {
 })
 
 describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
-  it('are the two this repo’s configs declare', () => {
+  it('are the three this repo’s configs declare', () => {
     const stripStrings = (s: string) => s.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''")
     const found: string[] = []
     const dir = path.resolve(import.meta.dir, '..', '..')
@@ -1196,10 +1197,11 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
         if (/\bexec: \{/.test(body) && !body.includes('sandbox')) found.push(pkg)
       }
     }
-    // The parser must find the two CLAUDE.md names — if it finds none it is
-    // broken, not the docs. (The sandboxing guide no longer repeats the
-    // count: a reader wants what cannot be sandboxed, not this repo's tally.)
-    expect(found.sort()).toEqual(['vx', 'vx-reapi'])
+    // vx#test.bun.unsafe, vx-reapi#test and vx-reapi#test.live. If the
+    // parser finds none it is broken, not the docs. (The sandboxing guide no
+    // longer repeats the count: a reader wants what cannot be sandboxed, not
+    // this repo's tally.)
+    expect(found.sort()).toEqual(['vx', 'vx-reapi', 'vx-reapi'])
   })
 })
 
