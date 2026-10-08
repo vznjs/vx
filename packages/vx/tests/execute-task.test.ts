@@ -821,6 +821,51 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
     },
     TIMEOUT,
   )
+
+  // The loop asked fail-fast once, before the retry's output clean and
+  // request build; a sibling failing during those awaits still got the
+  // retry spawned. The trip lands on the retry line, past that check.
+  it('fail-fast tripped while a retry prepares starts no retry', async () => {
+    const b = await bench()
+    try {
+      const n = node(
+        b,
+        {
+          exec: { command: 'true', retries: 2 },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        },
+        'proj#flaky',
+      )
+      const drive = async (trip: boolean) => {
+        const failFast = new AbortController()
+        const log: Logger = {
+          ...capturingLogger({ root: '', out: [], err: [] }),
+          taskStderr(_n, chunk) {
+            if (trip && chunk.startsWith('vx: retrying')) failFast.abort()
+          },
+        }
+        let calls = 0
+        const failing = {
+          name: 'org/failing',
+          execute: async () => {
+            calls++
+            return { exitCode: 1, durationMs: 1, stdout: '', stderr: '', violations: [] }
+          },
+        } as never
+        const o = await executeTask({
+          ...baseArgs(b, n, log),
+          executor: failing,
+          failFast: failFast.signal,
+        })
+        return [calls, o.status, o.exitCode, o.attempts, o.failedAttempts?.length]
+      }
+      expect(await drive(true)).toEqual([1, 'failed', 1, undefined, undefined])
+      // CONTROL: no trip, every retry runs.
+      expect(await drive(false)).toEqual([3, 'failed', 1, 3, 2])
+    } finally {
+      await closeBench(b)
+    }
+  })
 })
 
 describe('execute-task — what one attempt may hand the next', () => {

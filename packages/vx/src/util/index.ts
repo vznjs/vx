@@ -43,6 +43,7 @@ export {
   relPosix,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   anyTaskGlob,
   isInstalledPath,
   taskGlob,
