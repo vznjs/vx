@@ -4,7 +4,7 @@
 // behind `^build` runs when `ui#build` (or what it depends on) is reached,
 // and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
 
-import { declaresInput } from '../cache/index.js'
+import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
 import {
   compileTaskPattern,
   isGroupTask,
@@ -91,7 +91,11 @@ export function affectedRoots(
     const cache = n.config.cache
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
-    if (cache !== undefined && changes.changed.some((rel) => declaresInput(cache, null, rel))) {
+    if (
+      cache !== undefined &&
+      (changes.changed.some((rel) => declaresInput(cache, null, rel)) ||
+        (changes.nested ?? []).some((dir) => workspaceFilesReachInto(cache, dir)))
+    ) {
       return true
     }
     if (!changes.projects.has(n.projectName)) return false
