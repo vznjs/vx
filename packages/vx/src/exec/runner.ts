@@ -1097,12 +1097,17 @@ export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 
 const mib = (n: number): string => `${(n / (1024 * 1024)).toFixed(1)} MiB`
+const size = (n: number): string => (n < 1024 * 1024 ? `${n / 1024} KiB` : mib(n))
 
 /** The line that stands where the dropped middle was. */
-export function droppedOutputLine(dropped: number): string {
+export function droppedOutputLine(
+  dropped: number,
+  headChars = CAPTURE_HEAD_CHARS,
+  tailChars = CAPTURE_TAIL_CHARS,
+): string {
   return (
-    `\n[vx] ${mib(dropped)} of output not kept — vx keeps the first ${mib(CAPTURE_HEAD_CHARS)} ` +
-    `and the last ${mib(CAPTURE_TAIL_CHARS)} of a task's output for its cache entry and replay\n`
+    `\n[vx] ${mib(dropped)} of output not kept — vx keeps the first ${size(headChars)} ` +
+    `and the last ${size(tailChars)} of a task's output\n`
   )
 }
 
@@ -1145,12 +1150,17 @@ export class BoundedCapture {
   private tailLen = 0
   private dropped = 0
 
+  constructor(
+    private readonly headChars = CAPTURE_HEAD_CHARS,
+    private readonly tailChars = CAPTURE_TAIL_CHARS,
+  ) {}
+
   push(text: string, err = false): void {
     // Once the tail has begun the head is closed, even a unit short of its
     // bound (the surrogate case below): a later short chunk fit there and
     // was retained ahead of the chunk before it.
-    if (this.tailLen === 0 && this.headLen < CAPTURE_HEAD_CHARS) {
-      let room = CAPTURE_HEAD_CHARS - this.headLen
+    if (this.tailLen === 0 && this.headLen < this.headChars) {
+      let room = this.headChars - this.headLen
       if (text.length <= room) {
         this.head.push({ text, err })
         this.headLen += text.length
@@ -1165,9 +1175,9 @@ export class BoundedCapture {
     }
     this.tail.push({ text, err })
     this.tailLen += text.length
-    while (this.tailLen > CAPTURE_TAIL_CHARS) {
+    while (this.tailLen > this.tailChars) {
       const first = this.tail[0]!
-      const excess = this.tailLen - CAPTURE_TAIL_CHARS
+      const excess = this.tailLen - this.tailChars
       if (first.text.length <= excess) {
         this.tail.shift()
         this.tailLen -= first.text.length
@@ -1185,7 +1195,14 @@ export class BoundedCapture {
   chunks(): CapturedChunk[] {
     return this.dropped === 0
       ? [...this.head, ...this.tail]
-      : [...this.head, { text: droppedOutputLine(this.dropped), err: false }, ...this.tail]
+      : [
+          ...this.head,
+          {
+            text: droppedOutputLine(this.dropped, this.headChars, this.tailChars),
+            err: false,
+          },
+          ...this.tail,
+        ]
   }
 
   text(): string {

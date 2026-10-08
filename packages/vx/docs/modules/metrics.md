@@ -29,6 +29,31 @@ CacheEntryRow       // an entries row: hash, project, task, command, exitCode, d
 InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
 ```
 
+`run-failures.ts` beside it keeps a failed run's task output in
+`<cacheDir>/failures/<runId>.json` (caching.md § Storage layout), not
+in the index:
+
+```ts
+writeRunFailures(cacheDir, runId, outcomes): void // at run end; only when an outcome carries failedOutput; newest 50 kept
+runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run
+
+export interface RunFailures {
+  runId: string
+  tasks: TaskFailure[]
+}
+export interface TaskFailure {
+  taskId: string
+  exitCode: number
+  timedOut?: true
+  output: string // '' when the run kept none
+  locations: OutputLocation[]
+}
+```
+
+`runFailures` lists the run's failed `runs` rows and fills each from the
+file; `vx last --format json` and `@vzn/vx-mcp`'s `getFailures` both
+answer from it.
+
 The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`.
 
 `run-id.ts` beside it resolves the run id a caller types:

@@ -35,6 +35,21 @@ export function formatTaskBlock(
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
+// path-links.ts: the path pattern both share
+export function linkPaths(text: string, dir: string, isFile: (abs: string) => boolean): string
+export interface OutputLocation {
+  file: string // absolute
+  line?: number
+  col?: number
+}
+// the existing files a text names, { file (absolute), line?, col? }, unique, first 50
+export function fileLocations(
+  text: string,
+  dir: string,
+  isFile: (abs: string) => boolean,
+): OutputLocation[]
+export function fileMemo(): (abs: string) => boolean
+
 // ` ⇢ <time> success local <id>` — quiet cache hit
 export function formatTaskHitLine(node, outcome, colors?): string
 

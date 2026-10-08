@@ -659,7 +659,7 @@ https://ui.perfetto.dev). See
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`; `@vzn/vx` exports
-`latestRunId`, `resolveRunId` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
+`latestRunId`, `resolveRunId`, `runFailures` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
 file is the API. Anything that wants a dashboard or an HTTP surface
 builds it on the `telemetry` capability, out of process; core never
 grows a server.

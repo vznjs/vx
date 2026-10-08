@@ -141,7 +141,25 @@
         "timedOut": { "type": ["boolean", "null"] },
         "sandboxViolations": { "type": ["integer", "null"] },
         "notReady": { "enum": ["timeout", "exited", "spawn", null] },
-        "forwarded": { "type": "boolean" }
+        "forwarded": { "type": "boolean" },
+        "output": {
+          "type": "string",
+          "description": "on a failed row: its output, plain text, bounded (first 8 KiB, last 56 KiB), secrets masked; '' when none was recorded"
+        },
+        "locations": {
+          "type": "array",
+          "description": "on a failed row: the existing files its output names, in order of first appearance",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string", "description": "absolute" },
+              "line": { "type": "integer" },
+              "col": { "type": "integer" }
+            }
+          }
+        }
       }
     }
   }
