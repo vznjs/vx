@@ -46,7 +46,7 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, restartTimings } from '../util/index.js'
+import { hangupIgnored, maskedLine, restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -428,6 +428,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         try {
           await held?.stop()
           held = undefined
+          // A Ctrl-C while the old server shut down ran a cycle anyway: a
+          // `not run` row and a footer printed above `stopped` (WD-22).
+          if (stop.aborted) break
           restartTimings()
           // On the mtime clock, as the arm is: from `Date.now()` a write the
           // run made within a tick of it carried an earlier mtime and read as
@@ -439,10 +442,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           held = cycle.persistent
           if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
           changes.lastCycle = { start, end: Date.now() }
-          if (reread && !stop.aborted) {
-            reread = false
-            await rearm()
-          }
         } catch (err) {
           // A re-run can fail catastrophically when the workspace
           // itself moved out from under us — e.g. the user deleted
@@ -451,8 +450,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // message but DON'T let it crash the watch loop; the next
           // FS event (if any) will retry. The dispose() on SIGINT
           // is the canonical exit; we don't unilaterally abort here.
-          const message = err instanceof Error ? err.message : String(err)
+          // A config's own throw or a plugin's failure may quote a secret (L-11).
+          const message = maskedLine(err instanceof Error ? err.message : String(err))
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+        }
+        // After a failed cycle too: a package added with a config that does
+        // not load yet fails its cycle, and unarmed, the fix to that config
+        // was never an event.
+        if (reread && !stop.aborted) {
+          reread = false
+          await rearm()
         }
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.

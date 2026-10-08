@@ -518,9 +518,11 @@ export function defaultLogger(
       killStatus()
       // Persistent tails first: they are context for whatever ran against
       // the server, so they read above the failures they explain. `none`
-      // and `errors-only` state their contracts absolutely (no per-task
-      // output / only failed tasks print), so they stay silent — the tail
-      // is still captured and still bounded, just never printed. Guarded
+      // prints no per-task output and `errors-only` only failed tasks: a
+      // server that died on its own before the run stopped it is failed by
+      // now (run.ts sets its outcome in place), and under `errors-only` its
+      // tail was dropped with the healthy ones', so the crash read only as a
+      // count (WD-25). The rest is still captured and bounded. Guarded
       // like the failures below: run() calls runEnd twice on the success
       // path (once before the summary, once in its finally), and though the
       // bus delivers `run:end` once (`busLogger`), a renderer an embedder
@@ -528,12 +530,13 @@ export function defaultLogger(
       if (flushedPersistent) flushKept()
       if (!flushedPersistent) {
         flushedPersistent = true
-        if (view.mode !== 'none' && view.mode !== 'errors-only') {
+        if (view.mode !== 'none') {
           for (const t of persistentTails.values()) {
             // No outcome means the task never completed — it is still
             // pre-ready, so there is no "since ready" window to render and
             // its buffered output belongs to the frame it never got.
             if (t.outcome === undefined) continue
+            if (view.mode === 'errors-only' && t.outcome.status !== 'failed') continue
             emitBlock(
               fenced(
                 formatPersistentTailBlock(

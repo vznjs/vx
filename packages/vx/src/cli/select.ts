@@ -26,8 +26,15 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { declaresInput } from '../cache/index.js'
-import { isUserError, listed, maskedLine, nearest, UserError } from '../util/index.js'
+import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
+import {
+  isUserError,
+  listed,
+  maskedCommand,
+  maskedLine,
+  nearest,
+  UserError,
+} from '../util/index.js'
 import {
   claimedAffected,
   fingerprintClaims,
@@ -60,12 +67,15 @@ export async function workspaceGlobOwners(
   load: CliLoadOptions = {},
   stagedLoad: () => Promise<ReadonlyMap<string, ProjectEntry>> = () =>
     loadCliProjects(root, projects, 'all', load),
+  /** The changed nested repositories (`AffectedChanges.nested`). */
+  nested: readonly string[] = [],
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
       const cache = task.cache
       if (cache === undefined) continue
       if (changed.some((rel) => declaresInput(cache, null, rel))) return true
+      if (nested.some((dir) => workspaceFilesReachInto(cache, dir))) return true
     }
     return false
   }
@@ -319,8 +329,8 @@ export async function resolveFilters(
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (changed: readonly string[]) =>
-          workspaceGlobOwners(root, projects, changed, load, stagedOnce),
+        workspaceGlobOwners: (changed: readonly string[], nested: readonly string[]) =>
+          workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
         ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
@@ -480,7 +490,11 @@ export async function pickTask(
       .filter((t) => !isDefaultBuild(config.tasks?.[t]))
       .sort()
     for (const t of taskNames) {
-      const desc = config.tasks?.[t]?.description
+      const task = config.tasks?.[t]
+      const desc =
+        task?.description === undefined
+          ? undefined
+          : maskedCommand(task.description, task.exec?.env)
       entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })
     }
   }

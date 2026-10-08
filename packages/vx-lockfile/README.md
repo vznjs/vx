@@ -41,7 +41,7 @@ A lockfile the parser cannot read **refuses the run**, naming the file, the reas
 
 ## Cost
 
-The claim, the per-project key, the memo and the `--affected` diff are core's `lockfileClaim`; this package is the parsers, and they are internal: it exports `pnpm`, `bun`, `npm`, `yarn` and `LockfileOptions`. A lockfile is parsed **once per content**: the digests are memoised under the cache dir (`lockfile-claims/<file>.json`) by the file's xxh3, so a warm run pays one read, one hash and one small JSON read — never a parse — and the read happens once per run, not per task. The digest is one hash per strongly connected component of the dependency graph (lockfiles carry cycles), children first, so a 1000-importer / 3000-package lockfile digests in ~20 ms when it does change.
+The claim, the per-project key, the memo and the `--affected` diff are core's `lockfileClaim`; this package is the parsers, and they are internal: it exports `pnpm`, `bun`, `npm`, `yarn` and `LockfileOptions`. A lockfile is parsed **once per content**: the digests are memoised under the cache dir (`lockfile-claims/<file>.json`) by the file's xxh3 and the claimant, so a warm run pays one read, one hash and one small JSON read — never a parse — and the read happens once per run, not per task. The digest is one hash per strongly connected component of the dependency graph (lockfiles carry cycles), children first, so a 1000-importer / 3000-package lockfile digests in ~20 ms when it does change.
 
 ## `--affected`
 

@@ -1051,7 +1051,10 @@ second run waits, saying after a second whom it waits for:
 ```
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
-land by rename); a task's OUTPUT TREE was not — both runs cleaned and
+land by rename; a transaction that reads before it writes takes the
+lock at BEGIN, since SQLite answers its later write `database is locked`
+at once: a run's history was lost so in 13 of 48 runs on one shared
+cache dir, X-105); a task's OUTPUT TREE was not — both runs cleaned and
 restored the same `dist/`, and a clean landing while the other run's
 restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root
@@ -1170,7 +1173,7 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
+in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
@@ -1372,7 +1375,10 @@ hit replays it with pure SQL, never decompressing the artifact).
 it (pre-alpha: no migrations; the index is an inventory, owner
 2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
-`output_dirs` kept an earlier vx's columns).
+`output_dirs` kept an earlier vx's columns). The check, drop, re-create
+and stamp are one write transaction, so another version's open waits
+rather than landing between them; an index already current is opened
+without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache prune --dry-run` previews the reset
 instead, item 1083).

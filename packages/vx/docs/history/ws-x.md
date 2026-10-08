@@ -696,6 +696,25 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with
@@ -809,6 +828,22 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-122.** Under `--exclude-dependencies` the sandbox's keyed set
+  stood a group in by its `deps`, which hold order-only edges and lack
+  the dropped members its hash folds (`keyUpstream`). Two groups over
+  different dropped tasks got one stand-in, the selection kept one, and
+  a sandboxed task was denied a linked sibling its key answers for. The
+  stand-in now lists the keyed members. A denial, never a stale hit:
+  units matched only where the hashes did not. Row:
+  `keyed-projects.test.ts` › "a group under --exclude-dependencies
+  stands in for the dependencies its hash folds".
+- **X-121.** Refuted: `cache.inputs.tasks: ['compile']` on a task that
+  reaches `compile` only through a group does not fold nothing at hash
+  time; the loader refuses it in all three forms ("names no task in …
+  dependsOn"), since schema.md has a selection name the group, whose
+  hash rolls its members up. Pinned so the refusal stays. Row:
+  `config-schema-refusals.test.ts` › "an inputs.tasks name reached only
+  through a group is refused, in each form".
 - **X-117.** "a SIGHUP after the summary signals a kept server once" read
   `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
   (`terminateChildren` dedups; the keep-alive wait defers to the abort),
@@ -849,6 +884,41 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   task cycle among declared builds is refused, as a run of those builds
   already was. Row: `task-graph.test.ts` › "an edge by name to a default
   build on a cycle goes on past it, as ^build does".
+- **X-126.** A submodule or embedded repository INSIDE a project left
+  tasks out of `--affected`. git reports it as one path (`vendor/lib`),
+  and per-task selection matched that path against each task's globs as
+  if it were a file: `lint` on `**` claimed it, so `build` on
+  `vendor/**/*.txt`, whose key folds the files inside, was not seeded
+  ("Nothing affected"). A project inside such a repository was never
+  selected: the owner walk stopped at the outer project. The diff now
+  reads `--raw` modes, so a gitlink on either side (a removed one took
+  its files) or an untracked `dir/` reaches the holding project whole
+  and every project under it. Row:
+  `affected-submodule.test.ts` › "a nested repository inside a project
+  reaches every task of it, and the projects inside".
+- **X-127.** A `workspaceFiles` glob reaching into a changed submodule
+  or embedded repository (`vendor/sub/**`) selected nothing: git reports
+  the repository as one path, `vendor/sub`, which the glob does not
+  match, while the key folds every file inside. A run under
+  `--affected` said "nothing affected" over a stale key. `affectedChanges`
+  now names the changed nested repositories (`AffectedChanges.nested`),
+  and both the candidate pass (`workspaceGlobOwners`) and the per-task
+  seed ask `workspaceFilesReachInto`: a positive entry whose static prefix
+  is above or inside the repository reaches it. Row:
+  `affected-workspace-files.test.ts` › "a glob reaching into a changed
+  nested repository selects its declarer".
+- **X-128.** A config importing a file of another project was left out
+  of `--affected` when a file THAT file imports changed: the config
+  import walk stopped at the first file of another project, reasoning
+  that containment selects it. Containment selects the owner, not the
+  importer, while the evaluation follows the import and the importer's
+  key moved: `site`'s config imports `core/src/index.ts`, which imports
+  `util.ts`; an edit to `util.ts` ran `core#build` alone and skipped
+  `site#build`. The walk now follows every import (200 configs into a
+  500-file library: 10 → 28 ms for one changed file). Rows:
+  `config-missing-import.test.ts` › "a config reaching into ANOTHER
+  project follows the imports of that file", `affected.test.ts` › "the
+  walk descends past a project boundary (X-128)".
 - **X-123.** A task left remote (`--download=none`) whose inputs moved
   between its key and the describe before the command was saved under
   the old key once a local consumer fetched it: the remote built over the
@@ -878,3 +948,22 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   abort is a timeout on a plugin executor too (X-125)",
   `execute-task.test.ts` › "the local executor's own timedOut decides an
   exit 0 after the request's abort (X-125)".
+
+- **X-129.** `vx run test --affected` where the changed project has no
+  vx config and another declares `test` exited 1, "no projects declare
+  task(s): test", against item 1024. The guard loaded the rest of the
+  workspace only when fewer projects were loaded than have configs; a
+  config-less project counts as loaded, so one changed member made the
+  counts equal and the declarer was never asked. It now asks by name.
+  Row: `affected-sparse-tasks.test.ts` › "exits 0 and says no affected
+  project declares the task".
+- **X-130.** The lockfile-claim memo was trusted on `version` and the
+  lockfile's hash, not on who wrote it. Two claimants of one file at the
+  same `version` (a plugin swapped in one cache dir) read each other's
+  memo; one with no `extraFiles` left an empty extras list, so the other's
+  patch edits never moved its key while the lockfile stayed put: a stale
+  hit. The memo now records the claimant (`part` and the source of
+  `digest` / `extraFiles`). A plugin release that changes its parse
+  without bumping `version` is the documented contract's breach, not this
+  path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
+  trusted".

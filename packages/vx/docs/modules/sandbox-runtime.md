@@ -272,6 +272,9 @@ export function sbplResolvedPath(value: string, field: string): string
 // request builder reads it to decide whether an output grant is a glob.
 export const MOUNT_WILDCARDS: RegExp
 export function isMountableLiteral(grant: string): boolean
+// The one path a grant names: a literal, or one whose only brackets are
+// escaped (`out/\[id\]` names `out/[id]`); undefined for a pattern.
+export function namedPath(grant: string): string | undefined
 // A path with its existing prefix realpath'd and the rest re-appended.
 export function toRealPath(p: string): string
 export function absolutize(p: string, cwd?: string): string
@@ -490,6 +493,10 @@ traced) says `check_seccomp_order_tracer: …` and traces on without the
 filter, and inside the sandbox that line was the retry key, so every
 sandboxed task ran twice. Then the plain form is probed and used if it
 is quiet; if it speaks too, tasks run untraced, said once (B-64).
+The memo is the probe's promise, not its answer: a wave of tasks that
+started together each ran their own probe before the first answer
+landed (`sandbox-runtime.unsafe.test.ts` › "tasks that start together
+ask once").
 
 A task that failed with nothing to show gets vx's own notes beside the
 failure, each a `SandboxViolation` marked `hint`: the cwd it cannot read
@@ -556,7 +563,10 @@ and `\]` as `]` there (`seatbeltBrackets`), and a deny path's `[` as
 baseline read (a `node_modules`, a linked dependency) is a name, so its
 `[` is spelled `[[]` and its subtree granted beside it: raw, a dependency
 under `packages/[legacy]/` was a class that matched `packages/l`, and an
-exact regex grants a directory's entry and none of its files. A baseline
+exact regex grants a directory's entry and none of its files. A task's
+read grant whose only brackets are escaped names one path the same way and
+gets the same subtree, as Linux's bind gives it: `out/\[id\]` read the
+directory and none of its files. A baseline
 inside a wall a glob reaches is carved out whatever its name holds. A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
 vx's own workspace wall as a class too, so it matched nothing. So is one
@@ -704,7 +714,11 @@ macOS. Each wall a glob grant reaches (one at or under the glob's literal
 head) is denied at the profile's tail, reads as `file-read-data` like
 SRT's own wall denies, writes as `file-write*`, with a literal grant at
 or inside the wall carved out, a baseline's included (`darwinWallRules`,
-B-12). A custom `cacheDir` inside a project is not a wall.
+B-12). A grant whose only brackets are escaped names one path and counts
+as a literal on both sides (`namedPath`): `packages/\[legacy\]/src`
+reaches no wall, is carved out of one, and its hit inside a wall binds on
+Linux, as `packages/legacy/src` does. A custom `cacheDir` inside a project
+is not a wall.
 
 ## A write grant that names a file
 

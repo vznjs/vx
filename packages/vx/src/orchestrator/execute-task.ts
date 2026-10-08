@@ -462,7 +462,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
           const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
           log.status(
-            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${readyWhen}/ (readyWhen)${unbounded}`,
+            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${serverSecrets?.mask(readyWhen) ?? readyWhen}/ (readyWhen)${unbounded}`,
           )
         }, noticeMs)
   if (notice !== undefined) {
@@ -867,6 +867,24 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const c of captured)
       if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
         c.hash = MASKED + c.hash
+  // A runtime probe's row is named by its command, which a TS config may
+  // build from `process.env`: the run history stored it and `vx why`
+  // printed it (L-11).
+  const nameSecrets =
+    captured.length > 0 ? secretMask([process.env, env, step.env?.define], step.env?.secret) : null
+  if (nameSecrets !== null) {
+    // Two probes that differ only by a secret mask to one name, and a row
+    // is stored once per name: numbered, the second's change still shows.
+    const seen = new Set(captured.map((c) => `${c.kind}\0${c.name}`))
+    for (const c of captured) {
+      const masked = nameSecrets.mask(c.name)
+      if (masked === c.name) continue
+      let name = masked
+      for (let n = 2; seen.has(`${c.kind}\0${name}`); n++) name = `${masked} (${n})`
+      seen.add(`${c.kind}\0${name}`)
+      c.name = name
+    }
+  }
   const inputs: TaskInputs | undefined = described?.inputs
   const inputChanges = described !== undefined ? args.explainMiss?.(node.id, captured) : undefined
   // A plugin may keep the request past the run (the cache closed): it gets
@@ -1034,15 +1052,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // An executor that stopped on the timeout's abort timed out, whatever
     // its exit: a child that traps the TERM and exits 0 left partial outputs
     // a pass would save (X-125), as the local runner's own `timedOut` says.
-    // The local executor's clock is that runner's; this one only signals it,
-    // and a 0 between the two timers is a finish, not a kill.
-    if (
-      timeoutFired &&
-      res.timedOut !== true &&
-      (res.exitCode !== 0 || !isLocalExecutor(args.executor))
-    ) {
-      res = { ...res, timedOut: true }
-    }
+    // A local request carries no timer, so the runner alone decides there.
+    if (timeoutFired && res.timedOut !== true) res = { ...res, timedOut: true }
     violations = [...res.violations]
     // A denial under a dependency the key does not answer for says only
     // ENOENT; the line beside it names the package and how to key it. Only
@@ -1500,7 +1511,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ? {
           // vx's own notes ride with the lines and are no denial (B-20).
           sandboxViolations: finalViolations.filter((v) => v.hint !== true).length,
-          sandboxViolationLines: finalViolations.map((v) => v.line),
+          // A denied path is the task's own spelling, a secret in it too.
+          sandboxViolationLines: finalViolations.map((v) => secrets?.mask(v.line) ?? v.line),
         }
       : {}),
   }

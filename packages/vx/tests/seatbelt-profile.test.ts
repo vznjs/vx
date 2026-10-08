@@ -246,6 +246,17 @@ describe('the walls a darwin config reaches', () => {
       ),
     ]).toEqual([{ read: [], write: walls }, undefined])
   })
+
+  it('a grant inside a wall spelled with escaped brackets keeps its path', () => {
+    const wall = path.join(dir, 'packages/[legacy]')
+    const grant = 'packages/\\[legacy\\]/src'
+    const r = asDarwin(() =>
+      resolveSandboxConfig({ allow: { read: [grant], write: [grant] } }, dir, [wall]),
+    )
+    expect(darwinWallRules(r, [])).toEqual([
+      `(deny file-write* (require-all (subpath "${wall}") (require-not (subpath "${wall}/src"))))`,
+    ])
+  })
 })
 
 // SRT compiles any deny path holding `[` as a regex, where the bracket
@@ -350,4 +361,142 @@ describe('a seatbelt baseline whose name holds a bracket', () => {
       '(deny file-read-data (require-all (subpath "/w/[b]") (require-not (subpath "/w/[b]"))))',
     ])
   })
+})
+
+// A task's escaped read grant names one directory, `out/[id]`. Linux scans
+// it as a glob, finds the directory and binds it whole; macOS handed SRT
+// `out/[[]id]`, an exact regex that granted the entry and none of its
+// files, so the same config read the subtree on one platform only.
+describe('an escaped directory read grant', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-esc-')))
+    await mkdir(path.join(dir, 'out/[id]/deep'), { recursive: true })
+    await mkdir(path.join(dir, 'out/i'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+  const onPlatform = <T>(platform: string, f: () => T): T => {
+    const d = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: platform })
+    try {
+      return f()
+    } finally {
+      Object.defineProperty(process, 'platform', d)
+    }
+  }
+  const probes = (): string[] =>
+    ['out/[id]', 'out/[id]/page.html', 'out/[id]/deep/a.js', 'out/i', 'out/[id]x'].map((p) =>
+      path.join(dir, p),
+    )
+  const linuxGrants = (read: string): boolean[] => {
+    const granted = onPlatform(
+      'linux',
+      () => resolveSandboxConfig({ allow: { read: [read] } }, dir).allowRead,
+    )
+    return probes().map((p) => granted.some((g) => p === g || p.startsWith(`${g}/`)))
+  }
+  const darwinGrants = (read: string): boolean[] => {
+    const resolved = onPlatform('darwin', () =>
+      resolveSandboxConfig({ allow: { read: [read] } }, dir),
+    )
+    const cfg = seatbeltBrackets({
+      filesystem: {
+        denyRead: [dir],
+        allowRead: [...resolved.allowRead],
+        allowWrite: [],
+        denyWrite: [],
+      },
+    })!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    const rx = [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith(`^${dir}/`))
+      .map((r) => new RegExp(r))
+    return probes().map((p) => rx.some((r) => r.test(p)))
+  }
+
+  it('grants the directory and its subtree on both platforms', () => {
+    const expected = [true, true, true, false, false]
+    expect([linuxGrants('out/\\[id\\]'), darwinGrants('out/\\[id\\]')]).toEqual([
+      expected,
+      expected,
+    ])
+  })
+
+  it('CONTROL: the same grant spelled with a trailing `/**`', () => {
+    const expected = [true, true, true, false, false]
+    expect([linuxGrants('out/\\[id\\]/**'), darwinGrants('out/\\[id\\]/**')]).toEqual([
+      expected,
+      expected,
+    ])
+  })
+})
+
+// A grant whose only wildcards are escaped names one path, as a plain
+// literal does: `packages/\[legacy\]/src` is the directory `[legacy]/src`.
+// Counted as a glob, it reached every wall under `packages/` and its own
+// wall was denied with no carve-out, so macOS refused the path it named;
+// Linux's scan dropped the one hit as a wall. `packages/legacy/src` binds.
+describe('an escaped literal grant and the walls', () => {
+  const escaped = '/w/packages/\\[legacy\\]/src'
+  const plain = '/w/packages/legacy/src'
+  const wallOf = (g: string): string =>
+    g === plain ? '/w/packages/legacy' : '/w/packages/[legacy]'
+
+  it('reaches no wall, as the plain literal does', () => {
+    expect([escaped, plain].map((g) => wallsGlobsReach([g], [wallOf(g), '/w/packages/b']))).toEqual(
+      [[], []],
+    )
+  })
+
+  it('is carved out of the wall a glob reaches, as the plain literal is', () => {
+    expect(
+      [escaped, plain].map((g) =>
+        darwinWallRules(
+          {
+            allowRead: ['/w/**/*.ts', g],
+            allowWrite: [g],
+            wallsReached: { read: [wallOf(g)], write: [wallOf(g)] },
+          },
+          [],
+        ),
+      ),
+    ).toEqual(
+      ['/w/packages/[legacy]', '/w/packages/legacy'].map((w) => [
+        `(deny file-read-data (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+        `(deny file-write* (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+      ]),
+    )
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    'binds on Linux inside a wall, as the plain literal does',
+    async () => {
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-esc-')))
+      try {
+        const out: (readonly string[])[] = []
+        for (const [name, grant] of [
+          ['[legacy]', 'packages/\\[legacy\\]/src'],
+          ['legacy', 'packages/legacy/src'],
+        ] as const) {
+          await mkdir(path.join(dir, 'packages', name, 'src'), { recursive: true })
+          const walls = [path.join(dir, 'packages', name)]
+          out.push(resolveSandboxConfig({ allow: { read: [grant] } }, dir, walls).allowRead)
+        }
+        expect(out).toEqual([
+          [path.join(dir, 'packages/[legacy]/src')],
+          [path.join(dir, 'packages/legacy/src')],
+        ])
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })

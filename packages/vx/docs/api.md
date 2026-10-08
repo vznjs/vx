@@ -34,6 +34,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 ```
 
@@ -398,6 +399,7 @@ free strings. Runtime behavior is unchanged (it returns its input).
 ```ts
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
@@ -1154,6 +1156,16 @@ A task's command as vx shows it: its secret values masked.
 
 ```ts
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+```
+
+## `maskedLine`
+
+function · `src/util/secret-mask.ts`
+
+A line vx prints for no one task (a plugin's warning): this process's secrets masked.
+
+```ts
+export function maskedLine(line: string): string
 ```
 
 ## `MigrationFormat`

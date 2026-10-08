@@ -63,8 +63,9 @@ graph through the SAME matcher the hash path applies — one copy of the
 rule, so what the key folds and what the sandbox believes it folds
 cannot drift. The hash path passes each upstream with its hash as the
 unit; the graph walk passes a structural stand-in (a task's id, which
-its key folds; a group's sorted member ids, since two groups over the
-same members hash alike and excluding either excludes both).
+its key folds; a group's sorted member ids as `keyUpstream` reads them,
+since two groups over the same members hash alike and excluding either
+excludes both).
 
 ## Groups are transparent to the input closure
 

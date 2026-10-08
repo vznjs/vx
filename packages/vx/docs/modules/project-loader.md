@@ -67,6 +67,12 @@ readers that reach it here.
   Content changes produce a different query string → different ESM
   module identity → fresh evaluation. Same content → cached module (the
   no-op fast path).
+- Bun's resolver reads `\` as a separator, even in a `file:` URL, so a
+  config whose path holds one (a project under `a\b`) is imported under
+  `?vx-literal=`: an `onResolve` keeps the path as written and the held
+  bytes are served, the workspace config's too. Such a config must be
+  UTF-8 ESM (else refused), and its relative imports still fail in Bun.
+  The worker serves it the same way, read from disk.
 - On a repeat load the path is evaluated in a Worker instead, and the
   resolved object comes back as JSON.
 - Configs the cache does not answer load 128 at a time (`LOAD_WIDTH`),
