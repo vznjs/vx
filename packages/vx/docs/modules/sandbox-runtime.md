@@ -322,6 +322,7 @@ export function refusedWrites(
   records: readonly string[],
   writable: readonly string[],
   scratch?: readonly string[], // pending write globs a write may land under
+  readable?: readonly string[], // what the sandbox mounts readable: a mkdir there wrote nothing
 ): SandboxViolation[]
 // the writes refused past the wall, as paths: a failed task's hint
 export function refusedWritesOutside(violations, opts: { within; linked?; config; skip }): string[]
