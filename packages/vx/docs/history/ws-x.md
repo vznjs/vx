@@ -1004,3 +1004,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   without bumping `version` is the documented contract's breach, not this
   path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
   trusted".
+
+- **X-133.** `vx watch` lost a config import whose file was deleted:
+  since #3207 a failed cycle re-reads the watch set, and the import list
+  skipped what it could not resolve, so the preset's return was no event
+  and every edit after it ran nothing until a restart. `configImports`
+  now lists an unresolvable relative import by the path it would have
+  (each extension Bun tries, when it has none). The watch row waited on
+  the failed cycle's own re-arm line; it now counts re-arms. Rows:
+  `config-cache.test.ts` › "the watch list keeps an import whose file is
+  gone", `watch-recreated-dirs.test.ts` › "an edit to a restored preset".
