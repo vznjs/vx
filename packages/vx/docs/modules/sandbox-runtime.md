@@ -355,7 +355,8 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    temp directory and the one it has is not one, point TMPDIR at a
    writable directory. The probe also refuses up front a temp directory
    whose socket path is past the OS limit (`sun_path`, 108 bytes on
-   Linux and 104 on macOS): past it the runtime said ENAMETOOLONG on
+   Linux and 104 on macOS; on Linux the longest name is the network
+   bridge's, `claude-http-<16 hex>.sock`): past it the runtime said ENAMETOOLONG on
    macOS and "Failed to create bridge sockets after 5 attempts" on
    Linux, neither naming the directory; the verdict now gives the path,
    its length, the limit and "point TMPDIR at a shorter path".
@@ -925,7 +926,11 @@ takes `server: true` from the persistent path and lists the tag as a
 live server. `resetSandbox`, which every run calls at its end, releases
 only the bridges no live server owns, and while one runs it defers SRT's
 reset. That server's `releaseBridges`, on its exit, runs the deferred
-reset. Before item 882, a foreground `vx run dev` or a `vx watch` held a
+reset, and hands SRT the server's `cleanupAfterCommand`: SRT removes
+bwrap's empty host stubs (`.bashrc`, `.vscode`, … under a write grant)
+only once every wrap has made that call, and a stopped server's never
+came, so every later task left its stubs in the workspace. Before item
+882, a foreground `vx run dev` or a `vx watch` held a
 server past a reset that had already released its port and SRT's
 proxies, and the port went dark ~40 ms after the summary.
 

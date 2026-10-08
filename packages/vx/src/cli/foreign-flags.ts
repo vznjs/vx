@@ -142,7 +142,14 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     outcome: 'same',
     vx: '`--output-logs full|errors-only|hash-only|none`',
   },
-  { runner: 'turbo', names: ['--no-cache'], value: false, outcome: 'same', vx: '`--no-cache`' },
+  {
+    runner: 'turbo',
+    names: ['--no-cache'],
+    value: false,
+    outcome: 'same',
+    // Turbo 2.11's own help: "Equivalent to `--cache=local:r,remote:r`".
+    vx: "`--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`",
+  },
   {
     runner: 'turbo',
     names: ['--cache'],

@@ -153,7 +153,10 @@ manifest can be the claimed member, as only such a directory is listed,
 so "the root that claims me" and "the root that lists me as a project"
 cannot diverge. They did until item 989: `packages/*` matched a
 manifest-less `packages/tools`, and the standalone package below it ran
-in a workspace that does not list it. A `pnpm-workspace.yaml` is a hard
+in a workspace that does not list it. Nor can a directory discovery skips
+be claimed: a `node_modules` path, or a dot-dir a wildcard reached
+(`packages/*` over `packages/.tpl`), which `vx run` there answered "not
+inside a project". A `pnpm-workspace.yaml` is a hard
 root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
@@ -197,6 +200,11 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member outside the workspace root (`../ext/*`, an absolute glob) is
+  refused naming its directory: npm and pnpm take one, but `--affected`
+  asks git from the root and saw nothing outside it, so an edit there
+  moved the task's key and selected nothing. Move the root up to a
+  directory that holds every member.
 - A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
   skipped with a stderr line naming it (D-128): `--all` said only that no
   package matched, and a run from inside it "not inside a project".

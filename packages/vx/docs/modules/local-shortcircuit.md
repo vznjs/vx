@@ -32,6 +32,11 @@ export interface ShortCircuit {
   uncachedKeys: Map<string, string> // uncached task id → its reused key
 }
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
+// The tasks a workspace-output glob keeps out of the restore tier (`planRun` asks it too).
+export function restoreTierExclusions(
+  nodes: Map<string, TaskNode>,
+  workspaceRoot: string,
+): Set<string>
 ```
 
 - `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys }`.
