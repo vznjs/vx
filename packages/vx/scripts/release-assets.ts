@@ -15,7 +15,7 @@ import { env } from './env.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
-export const NOTICES_ASSET = 'THIRD_PARTY_NOTICES.txt'
+const NOTICES_ASSET = 'THIRD_PARTY_NOTICES.txt'
 
 export interface Release {
   id: number
