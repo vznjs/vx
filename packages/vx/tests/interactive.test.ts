@@ -220,10 +220,20 @@ describe('a run', () => {
     })
     const order = readFileSync(path.join(root, 'order.log'), 'utf8').trim().split('\n')
     const at = order.indexOf('b start')
+    // Started before b and not yet ended when b started.
+    const open = new Set<string>()
+    for (const line of order.slice(0, at)) {
+      const [who, what] = line.split(' ')
+      if (what === 'start') open.add(who!)
+      else open.delete(who!)
+    }
     return {
       ok: summary.ok,
-      // b's end follows its start with nothing between: it ran alone.
-      alone: order[at + 1] === 'b end',
+      // Nothing ran when b started and nothing started before b ended. Its
+      // end following its start is not enough: b started last holds
+      // nothing, sees all three started, and ends before a and c wake
+      // (macOS CI, 2026-10-07).
+      alone: open.size === 0 && order[at + 1] === 'b end',
       said: said.filter((s) => s.startsWith('said-')).sort(),
     }
   }

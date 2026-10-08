@@ -44,6 +44,7 @@ import {
   openSync,
   readdirSync,
   renameSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
@@ -241,6 +242,30 @@ export const SCHEMA_VERSION = 'v32'
 
 /** The tables a store holds: dropped from a workspace index that held them itself. */
 const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
+
+/**
+ * An index that records a schema other than this vx's: the one an opener
+ * that writes resets. Reads the recorded version alone and touches
+ * nothing; an unreadable file is left to the open to refuse.
+ */
+function indexOfAnotherSchema(dbFile: string): boolean {
+  let found: string | undefined
+  try {
+    const db = new Database(dbFile, { readonly: true })
+    try {
+      found = (
+        db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+          value: string
+        } | null
+      )?.value
+    } finally {
+      closeDb(db)
+    }
+  } catch {
+    return false
+  }
+  return found !== undefined && found !== SCHEMA_VERSION
+}
 
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
@@ -608,41 +633,6 @@ export class Cache implements CacheLayer {
     return new Cache(cacheDir, undefined, undefined, undefined, 'inspect')
   }
 
-  /**
-   * What a real prune reaps from an index of an EARLIER schema, which it
-   * resets first, leaving every aged artifact row-less: a dry run that
-   * refused it could not preview the biggest prune there is, the one
-   * after an upgrade (item 1083). Reads the recorded version alone and
-   * touches nothing. Null for an absent, current, newer or unreadable
-   * index; `Cache.inspect` answers those.
-   */
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null> {
-    const dbFile = path.join(cacheDir, 'cache.db')
-    if (!existsSync(dbFile)) return null
-    let found: string | undefined
-    try {
-      const db = new Database(dbFile, { readonly: true })
-      try {
-        found = (
-          db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
-            value: string
-          } | null
-        )?.value
-      } finally {
-        closeDb(db)
-      }
-    } catch {
-      return null
-    }
-    if (found === undefined || found === SCHEMA_VERSION) return null
-    const aged = await scanOrphanFiles(cacheDir, () => new Set())
-    let orphanBytes = 0
-    for (const o of aged) orphanBytes += o.size
-    return { found, orphans: aged.length, orphanBytes }
-  }
-
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
@@ -655,23 +645,25 @@ export class Cache implements CacheLayer {
      */
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     /**
-     * `'inspect'`: a reading verb (`why`, `last`, `info`, a dry prune). It
-     * never resets the index: a schema it cannot read is refused, named,
-     * and left as it was.
+     * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
+     * the index: a schema it cannot read is refused, named, and left as it
+     * was. `'preview'`: a dry prune, which reads such an index as the reset
+     * the real prune does first leaves it, empty, with the store still
+     * reached, so it names what that prune takes (item 1083).
      */
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
      * The shared store's directory, unversioned: every key is seeded with
      * `CACHE_VERSION`, so two vx versions never read each other's entries,
      * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle. An `'inspect'` open reads it only where the index
+     * plugin's handle. A reading open reads it only where the index
      * records none (deleted, or never written beside a run's store).
      */
     storeRoot?: string | null,
   ) {
-    this.inspecting = mode === 'inspect'
+    this.inspecting = mode !== 'open'
     this.read = localPolicy.read
     // The directory exists before the DB opens — bun:sqlite won't create
     // parent dirs for us. A directory this user cannot write into is a
@@ -687,7 +679,9 @@ export class Cache implements CacheLayer {
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
-    const absent = mode === 'inspect' && !existsSync(dbFile)
+    const absent =
+      mode !== 'open' &&
+      (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
     this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     try {
@@ -779,7 +773,7 @@ export class Cache implements CacheLayer {
     // 2026-10-06; a newer one used to be refused, item 896). A reading verb
     // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
-      if (mode === 'inspect') {
+      if (mode !== 'open') {
         throw new UserError(
           `the cache at ${cacheDir} holds index schema ${found} from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         )
@@ -833,7 +827,7 @@ export class Cache implements CacheLayer {
         )?.value,
     )
     let storeDir =
-      mode === 'inspect'
+      mode !== 'open'
         ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
         : storeRoot === undefined
           ? recorded
@@ -877,7 +871,7 @@ export class Cache implements CacheLayer {
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
-      this.attachStore(storeDir, mode === 'inspect')
+      this.attachStore(storeDir, mode !== 'open')
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
     }
 
@@ -1222,6 +1216,12 @@ export class Cache implements CacheLayer {
       // A second name for the same bytes: the index step renames it over
       // the artifact inside its write transaction, as for a save.
       linkSync(finalPath, tmpPath)
+      // The link shares the artifact's inode and so its mtime, which an
+      // artifact that needs adopting has had for hours: another process's
+      // orphan sweep read the temp as a crashed save's and took it, and the
+      // artifact with it, while this adopt was scanning them.
+      const now = new Date()
+      utimesSync(tmpPath, now, now)
     } catch {
       return false
     }

@@ -5,7 +5,7 @@
 // renamed file the old path's verdict, trusting a blob that stands for
 // other bytes. The index file's bytes hold the path.
 
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -55,10 +55,10 @@ function memo(): BlobSizeMemo & { verdictReads: number } {
   return m
 }
 
-async function trusted(m: BlobSizeMemo): Promise<string[]> {
+async function trusted(m: BlobSizeMemo, ws: string = root): Promise<string[]> {
   const cache = new GitFilesCache()
-  await applyGitEnumeration(await startGitEnumeration(root, ['.']), root, [root], cache, false, m)
-  return [...(cache.oidsFor(root)?.keys() ?? [])].map((p) => relPosix(root, p)).sort()
+  await applyGitEnumeration(await startGitEnumeration(ws, ['.']), ws, [ws], cache, false, m)
+  return [...(cache.oidsFor(ws)?.keys() ?? [])].map((p) => relPosix(ws, p)).sort()
 }
 
 it('a verdict is read by a digest of the paths too: a renamed resized entry stays distrusted', async () => {
@@ -110,4 +110,25 @@ it('an index written as the enumeration starts asks no verdict; an older one doe
   // its key, and the memo's word is taken: the control that it is asked.
   await Bun.sleep(150)
   expect(await trusted(lying)).toEqual(['f.txt', 'keep.txt'])
+})
+
+it('a verdict is keyed by the workspace too: a nested workspace on the same index reads its own', async () => {
+  // The verdict names paths relative to the workspace root, so a nested
+  // workspace sharing the cache (`VX_CACHE_DIR`) read the outer one's
+  // `sub/f.txt` as nothing to distrust and trusted a blob for other bytes.
+  git('init', '-q')
+  await mkdir(path.join(root, 'sub'))
+  await writeFile(path.join(root, 'sub', 'keep.txt'), 'k\n')
+  await writeFile(path.join(root, 'sub', 'f.txt'), 'aa\n')
+  git('add', '-A')
+  git('commit', '-qm', 'init')
+  await writeFile(path.join(root, 'sub', 'f.txt'), 'aa\r\n')
+  const past = new Date(Date.now() - 10_000)
+  await utimes(path.join(root, 'sub', 'f.txt'), past, past)
+  git('-c', 'core.autocrlf=true', 'add', 'sub/f.txt')
+  await Bun.sleep(150)
+
+  const m = memo()
+  expect(await trusted(m)).toEqual(['sub/keep.txt'])
+  expect(await trusted(m, path.join(root, 'sub'))).toEqual(['keep.txt'])
 })

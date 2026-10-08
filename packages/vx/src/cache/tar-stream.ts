@@ -38,7 +38,9 @@ const BLOCK = 512
  * numbers; a MiB is far past any writer's.
  */
 const MAX_EXTENDED_HEADER = 1024 * 1024
-const decoder = new TextDecoder()
+// `ignoreBOM`: a default decoder drops a leading U+FEFF, and a name or
+// prefix field that began with one read back without it.
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
 
 function field(h: Uint8Array, off: number, len: number): string {
   let end = off

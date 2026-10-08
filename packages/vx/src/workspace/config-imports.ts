@@ -281,7 +281,7 @@ function tsconfigTarget(spec: string, fromDir: string, memo?: TsconfigMemo): str
 }
 
 /** A path as Bun names it: realpath'd when it exists. */
-function realpathOr(file: string): string {
+export function realpathOr(file: string): string {
   try {
     return realpathSync(file)
   } catch {

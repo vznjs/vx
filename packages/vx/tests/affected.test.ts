@@ -252,6 +252,32 @@ describe('affectedProjects', () => {
     )
   })
 
+  // `HEAD:packages` is the tree at packages/: its paths lack the prefix,
+  // and an unchanged workspace selected both projects, green.
+  it('refuses a base naming a path inside a commit; a root tree stays a base', async () => {
+    const err = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD:packages',
+      projects,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toBe(
+      'git ref "HEAD:packages" names what is at packages, not a commit: vx diffs the whole ' +
+        'workspace, so pass the commit alone ("HEAD").',
+    )
+    const sel = async (since: string) =>
+      [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
+    expect(await sel('HEAD^{tree}')).toEqual([])
+    expect(await sel('HEAD:')).toEqual([])
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+    expect(await sel('HEAD^{tree}')).toEqual(['a'])
+    // A commit found by its message (`:/<text>`) is a commit.
+    expect(await sel(':/initial')).toEqual(['a'])
+  })
+
   it('CONTROL: the base a range refusal names works on its own', async () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-rev2')
     await git(root, 'add', '.')
