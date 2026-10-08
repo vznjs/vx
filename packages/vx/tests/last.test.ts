@@ -413,7 +413,7 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--list=25']).list).toBe(25)
     expect(parseLastArgs(['--failed', '--list']).failed).toBe(true)
     expect(parseLastArgs(['01a0', '--failed']).error).toBe(
-      'a run id and --failed do not combine: replay 01a0',
+      'a run id and --failed do not combine: replay 01a0 (see `vx last --help`)',
     )
     expect(parseLastArgs(['--list=0']).error).toMatch(/from 1 to 500/)
     // The ceiling: 500 is taken, 501 is refused.
@@ -461,10 +461,10 @@ describe('parseLastArgs', () => {
       },
     ])
     expect(pick(['01a0dee9-run', '--list']).error).toBe(
-      'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
+      'a run id and --list do not combine: replay 01a0dee9-run, or list runs (see `vx last --help`)',
     )
     expect(pick(['--list=3', '0199b2c4-5e6f']).error).toBe(
-      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs (see `vx last --help`)',
     )
   })
 
@@ -490,8 +490,8 @@ describe('parseLastArgs', () => {
       error(['--list', '0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d']),
       error(['--list', '--failed']),
     ]).toEqual([
-      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs',
-      'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs',
+      'a run id and --list do not combine: replay 0199b2c4-5e6f, or list runs (see `vx last --help`)',
+      'a run id and --list do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or list runs (see `vx last --help`)',
       undefined,
     ])
   })
