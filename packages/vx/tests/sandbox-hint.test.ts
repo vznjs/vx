@@ -58,14 +58,25 @@ describe('the sandbox-unavailable hint names a field the loader accepts', () => 
 // less its NUL; the row sits on it and one byte past.
 describe('the socket-length refusal sits exactly on the limit', () => {
   const limit = process.platform === 'darwin' ? 103 : 107
-  const dirOf = (length: number): string => {
-    const tail = `/srt-mux-${process.pid}-zzz.sock`
-    return '/' + 'd'.repeat(length - tail.length - 1)
-  }
+  // Linux's longest is the network bridge's socket, `claude-http-<16 hex>.sock`.
+  const tail =
+    process.platform === 'linux'
+      ? `/claude-http-${'0'.repeat(16)}.sock`
+      : `/srt-mux-${process.pid}-zzz.sock`
+  const dirOf = (length: number): string => '/' + 'd'.repeat(length - tail.length - 1)
   it('a socket path of exactly the limit is accepted; one byte more is refused', () => {
     expect(socketPathRefusal(dirOf(limit))).toBeUndefined()
     expect(socketPathRefusal(dirOf(limit + 1))).toContain(
       `is ${limit + 1} bytes where the OS allows ${limit}`,
     )
+  })
+
+  // A temp dir whose mux socket fit but whose bridge socket did not passed
+  // the check, and every sandboxed task failed "Failed to create bridge
+  // sockets after 5 attempts", naming no directory.
+  it.skipIf(process.platform !== 'linux')('Linux counts the network bridge socket', () => {
+    const dir = '/' + 'd'.repeat(80)
+    expect(Buffer.byteLength(`${dir}/srt-mux-${process.pid}-zzz.sock`)).toBeLessThanOrEqual(limit)
+    expect(socketPathRefusal(dir)).toContain(`${dir}/claude-http-`)
   })
 })

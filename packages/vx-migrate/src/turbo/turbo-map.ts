@@ -500,6 +500,11 @@ function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
 }
 
+/** A turbo.json's own task `key`: a plain index reads `constructor` off Object. */
+function taskAt(tasks: Record<string, TurboTask>, key: string): TurboTask | undefined {
+  return Object.hasOwn(tasks, key) ? tasks[key] : undefined
+}
+
 function declares(meta: ProjectMeta, dependency: string): boolean {
   const pj = meta.packageJson as unknown as Record<string, unknown>
   // Turbo counts every kind but a peer in a monorepo.
@@ -627,7 +632,7 @@ function taskDefined(
   const cfg = files.get(at)
   if (cfg === undefined) return at === ROOT ? 'none' : taskDefined(pkgName, name, files, ROOT, seen)
   const tasks = tasksOf(cfg)
-  const def = tasks[`${pkgName}#${name}`] ?? tasks[name]
+  const def = taskAt(tasks, `${pkgName}#${name}`) ?? taskAt(tasks, name)
   if (def !== undefined) return optedOut(def) ? 'excluded' : 'found'
   if (at === ROOT) return 'none'
   for (const parent of parentsOf(cfg)) {
@@ -666,7 +671,9 @@ function taskNamesFor(
 function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]): TurboTask {
   const defs = chain.map((cfg, i) => {
     const tasks = tasksOf(cfg)
-    return i === 0 ? (tasks[`${pkgName}#${name}`] ?? tasks[name]) : tasks[name]
+    return i === 0
+      ? (taskAt(tasks, `${pkgName}#${name}`) ?? taskAt(tasks, name))
+      : taskAt(tasks, name)
   })
   let from = 0
   for (let i = defs.length - 1; i > 0; i--) {
@@ -676,14 +683,41 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
     }
   }
   let def: TurboTask = {}
+  let fromDeps: DependencyOutputs | null = null
   for (const d of defs.slice(from)) {
     if (d === undefined) continue
     const own: TurboTask = { ...d }
     delete own.extends
-    if (Array.isArray(own.inputs)) own.inputs = flatInputs(own.inputs)
+    if (Array.isArray(own.inputs)) {
+      const found = dependencyOutputsOf(own.inputs)
+      if (found !== null || !own.inputs.includes(TURBO_EXTENDS)) fromDeps = found
+      own.inputs = flatInputs(own.inputs)
+    }
     def = withOverlay(def, own)
   }
+  if (fromDeps !== null) dependencyOutputs.set(def, fromDeps)
   return def
+}
+
+/** A task's `{ mode: "dependencyOutputs" }` input: the producers it names, and which of their files. */
+interface DependencyOutputs {
+  from: readonly string[] | null
+  globs: readonly string[]
+}
+
+/** Held beside a resolved definition, out of the keys the unknown-key check reads. */
+const dependencyOutputs = new WeakMap<TurboTask, DependencyOutputs>()
+
+function dependencyOutputsOf(inputs: readonly unknown[]): DependencyOutputs | null {
+  for (const i of inputs) {
+    if (i === null || typeof i !== 'object') continue
+    const { mode, from, globs } = i as { mode?: unknown; from?: unknown; globs?: unknown }
+    if (mode !== 'dependencyOutputs') continue
+    const strings = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((g): g is string => typeof g === 'string') : []
+    return { from: Array.isArray(from) ? strings(from) : null, globs: strings(globs) }
+  }
+  return null
 }
 
 /**
@@ -1379,6 +1413,67 @@ export async function mapTurboWorkspace(
     }
     excludeSiblingOutputs(resolveSharedOutputs(tasks))
     projects.push({ name: meta.name, dir: meta.dir, tasks })
+  }
+
+  // Turbo 2.11's `dependencyOutputs` input hashes the named files after
+  // their producer ran. A cached producer's key already reaches the reader
+  // through `dependsOn`, its outputs following from it; an uncached one's
+  // (vercel/vercel's `//#generate:cache-keys`, which records the host) do
+  // not, and a test cached on one platform hit on another. The reader
+  // keys those files by a probe at the workspace root.
+  const metaNamed = new Map(metas.map((m) => [m.name, m]))
+  for (const meta of metas) {
+    const { defFor } = definitions(meta)
+    for (const t of projects.find((p) => p.name === meta.name)?.tasks ?? []) {
+      const def = defFor(t.name)
+      const dep = def === undefined ? undefined : dependencyOutputs.get(def)
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      if (dep === undefined || inputs === undefined) continue
+      const rels: string[] = []
+      const unfold = new Set<string>()
+      for (const sel of dep.from ?? def!.dependsOn ?? []) {
+        if (envDependency(sel) !== null) continue
+        const hash = sel.indexOf('#')
+        const producers: [ProjectMeta | undefined, string][] = sel.startsWith('^')
+          ? metas.filter((m) => declares(meta, m.name)).map((m) => [m, sel.slice(1)])
+          : hash === -1
+            ? [[meta, sel]]
+            : [
+                [
+                  sel.startsWith(`${ROOT}#`) ? rootMeta : metaNamed.get(sel.slice(0, hash)),
+                  sel.slice(hash + 1),
+                ],
+              ]
+        for (const [pm, task] of producers) {
+          if (pm === undefined) continue
+          const pdef = definitions(pm).defFor(task)
+          if (pdef?.cache !== false) continue
+          if (!sel.startsWith('^')) unfold.add(`${pm.name}#${task}`)
+          const at = relPosix(root, pm.dir)
+          for (const g of dep.globs.length > 0 ? dep.globs : (pdef.outputs ?? []))
+            if (!g.startsWith('!')) rels.push(at === '' ? g : `${at}/${g}`)
+        }
+      }
+      if (rels.length === 0) continue
+      const probe = rels.every(isLiteral) ? ignoredFilesProbe(rels) : dotenvGlobsProbe(rels)
+      if (probe === null) {
+        delete t.task!['cache']
+        t.todos.push(
+          `inputs read ${rels.map((r) => JSON.stringify(r)).join(', ')} from an uncached ` +
+            'dependency, a glob vx cannot key by a probe — task runs uncached; key it in a vx.config to cache it',
+        )
+        continue
+      }
+      const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
+      inputs['workspaceRuntime'] = [...probes, probe]
+      // Folded, the producer's key "covers" what it writes, and core answers
+      // the probe before it runs: the previous run's bytes. Left out of the
+      // fold, the probe waits for it (core's late probes, X-34).
+      const deps = (t.task!['dependsOn'] as string[] | undefined) ?? []
+      const id = (d: string) => (d.startsWith('^') || d.includes('#') ? d : `${meta.name}#${d}`)
+      if (deps.some((d) => unfold.has(id(d))))
+        inputs['tasks'] = deps.filter((d) => !unfold.has(id(d)))
+    }
   }
 
   if (opts.ignored !== undefined) {
