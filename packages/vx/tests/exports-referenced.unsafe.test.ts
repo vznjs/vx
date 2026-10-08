@@ -12,8 +12,9 @@
 //
 // Out of scope: `index.ts` façades (the public API, pinned by the boundary
 // tests), `bin.ts` entrypoints, and the files a framework reads by name
-// (`content.config.ts`, `vx.config.ts`, `astro.config.mjs`, and the site's
-// Starlight route middleware, whose `onRequest` Starlight imports).
+// (`content.config.ts`, `vx.config.ts`, `astro.config.mjs`, the site's
+// Starlight route middleware, whose `onRequest` Starlight imports, and a
+// site page's `getStaticPaths`, which Astro reads by name).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -23,6 +24,8 @@ const repo = path.resolve(import.meta.dir, '..', '..', '..')
 const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro)$/
 const SKIP =
   /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
+const FRAMEWORK_READ = (file: string, name: string): boolean =>
+  name === 'getStaticPaths' && /^packages\/vx-docs\/src\/pages\/.*\.(?:astro|ts)$/.test(file)
 const DECLARATION =
   /^export (?:async )?(?:function\*?|const|let|class|abstract class|enum) ([A-Za-z_$][\w$]*)/gm
 const IDENT = /[A-Za-z_$][\w$]*/g
@@ -52,6 +55,7 @@ describe('every exported value is used by another file', () => {
       if (SKIP.test(f)) continue
       for (const m of s.matchAll(DECLARATION)) {
         const name = m[1]!
+        if (FRAMEWORK_READ(f, name)) continue
         let used = false
         for (const [g, ids] of idents) {
           if (g !== f && ids.has(name)) {
