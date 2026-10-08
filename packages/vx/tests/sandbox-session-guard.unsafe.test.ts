@@ -109,6 +109,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         let sleeperPid: number | undefined
         let socats: { pid: number; socket: string }[] = []
         let held: string[] = []
+        let existed = false
         try {
           const deadline = Date.now() + 20_000
           // The task runs once the session is up and listed.
@@ -116,6 +117,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
           sleeperPid = sleeper(nonce)
           socats = bridges(proc.pid)
           held = runtimeSockets(proc.pid)
+          // Checked while vx lives: once it dies the guard may remove them
+          // before this test looks.
+          existed = [...socats.map((s) => s.socket), ...held].every((p) => existsSync(p))
         } finally {
           process.kill(proc.pid, 'SIGKILL')
         }
@@ -128,7 +132,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         expect(obs).toHaveLength(1)
         expect(mux).toHaveLength(1)
         const paths = [...new Set([...socats.map((s) => s.socket), path.dirname(obs[0]!), ...mux])]
-        for (const p of paths) expect(existsSync(p)).toBe(true)
+        expect(existed).toBe(true)
 
         await Promise.all(socats.map((s) => waitForDead(s.pid, 3_000)))
         const until = Date.now() + 3_000
