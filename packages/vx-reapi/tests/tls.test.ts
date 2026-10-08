@@ -83,7 +83,7 @@ async function probe(
   tls: { ca?: string; cert?: string; key?: string },
 ): Promise<string> {
   const client = new ReapiClient({
-    endpoint: `localhost:${fake.endpoint.split(':')[1]}`,
+    endpoint: `localhost:${fake.endpoint.split(':').at(-1)}`,
     tls: true,
     callTimeoutMs: 3000,
     ...(tls.ca === undefined ? {} : { tlsCaPem: (await text(tls.ca)).toString() }),
@@ -152,7 +152,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
     const layerFor = async (opts: Parameters<typeof reapi>[0]) => {
       const warns: string[] = []
       const p = reapi({
-        endpoint: `localhost:${mutual.endpoint.split(':')[1]}`,
+        endpoint: `localhost:${mutual.endpoint.split(':').at(-1)}`,
         callTimeoutMs: 3000,
         ...opts,
       })
@@ -178,7 +178,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
       }),
     ).toEqual([null, 0])
     // A CA alone means TLS, with no scheme on the endpoint.
-    const plainPort = plain.endpoint.split(':')[1]
+    const plainPort = plain.endpoint.split(':').at(-1)
     const caOnly = reapi({
       endpoint: `localhost:${plainPort}`,
       callTimeoutMs: 3000,
@@ -251,14 +251,18 @@ it('a TLS option wins over its env var; an env path is trimmed and an empty one 
   }
 })
 
-// The README's sample was `cache.example.com:443`, which connects in
-// plaintext and fails against the TLS server on that port (J-96): the
-// scheme, not the port, turns TLS on.
-it('a bare host:port is plaintext and grpcs:// is TLS, with no PEM to decide it', async () => {
+// A bare endpoint is TLS, as Bazel reads a schemeless `--remote_cache`:
+// the README's `cache.example.com:443` once connected in plaintext to a
+// TLS server (J-96). Plaintext is asked for by scheme or `tls: false`.
+it('a bare host:port is TLS; grpc://, http:// or tls: false is plaintext', async () => {
   const open = await startFakeReapi()
-  const port = open.endpoint.split(':')[1]
-  const reach = async (endpoint: string): Promise<string> => {
-    const client = new ReapiClient({ endpoint, callTimeoutMs: 3000 })
+  const port = open.endpoint.split(':').at(-1)
+  const reach = async (endpoint: string, tls?: boolean): Promise<string> => {
+    const client = new ReapiClient({
+      endpoint,
+      callTimeoutMs: 3000,
+      ...(tls === undefined ? {} : { tls }),
+    })
     try {
       return await client.findMissingBlobs([{ hash: 'a'.repeat(64), size_bytes: 1 }]).then(
         () => 'ok',
@@ -269,10 +273,16 @@ it('a bare host:port is plaintext and grpcs:// is TLS, with no PEM to decide it'
     }
   }
   try {
-    expect([await reach(`localhost:${port}`), await reach(`grpcs://localhost:${port}`)]).toEqual([
-      'ok',
-      'refused',
-    ])
+    expect(
+      await Promise.all([
+        reach(`localhost:${port}`),
+        reach(`grpcs://localhost:${port}`),
+        reach(`dns:localhost:${port}`),
+        reach(`grpc://localhost:${port}`),
+        reach(`http://localhost:${port}`),
+        reach(`localhost:${port}`, false),
+      ]),
+    ).toEqual(['refused', 'refused', 'refused', 'ok', 'ok', 'ok'])
   } finally {
     open.stop()
   }

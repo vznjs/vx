@@ -45,9 +45,10 @@ adds gRPC metadata to every call: a hosted server's API key goes there
 `RequestMetadata.tool_details`, and `correlatedInvocationsId` groups several
 runs as one build in a server's UI.
 
-TLS is on for a `grpcs://` or `https://` endpoint, or with any PEM below;
-a bare `host:port` is plaintext, unless `tls: true` turns it on (`tls: false`
-turns it off). It uses the system roots unless told otherwise. A server behind a private
+TLS is on unless asked off, as in Bazel: a bare `host:port`, a `grpcs://`
+or `https://` endpoint, and a `dns:`/`ipv4:`/`ipv6:` target all use it.
+Plaintext takes a `grpc://` or `http://` endpoint or `tls: false`; a `unix:`
+or `unix-abstract:` socket is plaintext (`tls: true` turns it on). It uses the system roots unless told otherwise. A server behind a private
 CA takes `tlsCertificate` (or `VX_REAPI_TLS_CERTIFICATE`), a PEM file of
 that CA; one that asks for mutual TLS takes `tlsClientCertificate` and
 `tlsClientKey` (`VX_REAPI_TLS_CLIENT_CERTIFICATE` / `VX_REAPI_TLS_CLIENT_KEY`)
@@ -335,7 +336,7 @@ server:
 docker run -d -p 19092:9092 buchgr/bazel-remote-cache:latest \
   --dir /data --max_size 1 --grpc_address 0.0.0.0:9092 --http_address 0.0.0.0:8080
 
-VX_REAPI_TEST_ENDPOINT=127.0.0.1:19092 bun test
+VX_REAPI_TEST_ENDPOINT=grpc://127.0.0.1:19092 bun test
 ```
 
 Without an endpoint those tests skip; CI sets `VX_REQUIRE_REAPI=1`, which turns
