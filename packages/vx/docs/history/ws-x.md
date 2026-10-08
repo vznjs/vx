@@ -1073,6 +1073,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   `shared-outputs.test.ts` › "takes another task's workspace output back
   from a project's own inputs".
 
+- **X-138.** A package added mid-watch was armed only after the cycle
+  it triggered had run, so an edit to it during that cycle fell in the
+  gap and ran nothing. The cycle now re-arms (quietly) before it runs;
+  the re-read after the run stays, for what the run changed. Row:
+  `watch-new-member-edit.test.ts`.
 - **X-136.** `vx watch` never heard an edit to the root `.gitignore` or
   to one in a package glob's directory (`packages/.gitignore`): inputs
   are gitignore-aware, so un-ignoring a file changed `app#build`'s key,
