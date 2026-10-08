@@ -785,6 +785,32 @@ describe('pollWatcher', () => {
     }
   })
 
+  // The key folds a link as its target string (watch-judge.ts reads it the
+  // same way), and the native watcher reports one; the poller sampled
+  // regular files alone, so a link made or retargeted was no edit to it.
+  it('sees a link made and a link retargeted', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-link-'))
+    try {
+      const seen: string[] = []
+      const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+      try {
+        await Bun.sleep(60)
+        await symlink('a.txt', path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toEqual(['cur'])
+        seen.length = 0
+        await symlink('b.txt', path.join(dir, 'cur.tmp'))
+        await rename(path.join(dir, 'cur.tmp'), path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toContain('cur')
+      } finally {
+        w.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('does not walk node_modules — the cost that makes polling viable', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-nm-'))
     await mkdir(path.join(dir, 'node_modules', 'pkg'), { recursive: true })
