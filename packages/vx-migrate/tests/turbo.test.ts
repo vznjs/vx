@@ -1194,7 +1194,7 @@ describe('turbo() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
+        out: 'vx lock: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')
