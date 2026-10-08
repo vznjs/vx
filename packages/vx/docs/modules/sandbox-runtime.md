@@ -412,7 +412,10 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    sandbox working. A record with no path (a `system-info` probe) is
    kept. The task's `ignore` patterns are applied last: each list
    silences the operations of its kind, a pattern matching a record's
-   target exactly or as a glob. A relative pattern anchors at the
+   target exactly or as a glob — for `read` and `write`, the record's
+   canonical path, which the boundary above judges too: a seatbelt
+   record named through a link was reported and its pattern, matched
+   against the path as logged, silenced nothing. A relative pattern anchors at the
    project, a `~` one at the home directory (kept as written, it matched
    no recorded path, B-13), and a pattern's literal head is canonicalized as the
    records are, so a project reached through a link (macOS's `/var`)

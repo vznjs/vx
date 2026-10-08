@@ -3673,6 +3673,49 @@ describe('reportableViolations', () => {
     }
   })
 
+  // The row above's seatbelt twin: the report judges a seatbelt record by
+  // `path`, where it lands, and `ignore` judged it by `target`, the path as
+  // logged. A record named through a link was reported inside the project
+  // and no pattern for it matched, so the denial `ignore` names failed the
+  // task.
+  it('matches an `ignore` pattern against where a seatbelt record lands', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-ignore-mac-')))
+    try {
+      await mkdir(path.join(d, 'proj'))
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const alias = path.join(d, 'alias')
+      const recorded = [
+        mac('file-write-create', `${alias}/a.bun-build`),
+        mac('file-read-data', `${alias}/gen/x.ts`),
+        mac('file-read-data', `${alias}/kept.ts`),
+        mac('network-outbound', 'example.com:443'),
+      ]
+      const cfg = resolveSandboxConfig(
+        {
+          ignore: {
+            write: ['*.bun-build'],
+            read: ['gen/**'],
+            network: ['example.com:443'],
+          },
+        },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: cfg }))).toEqual([
+        `bun(1) deny(1) file-read-data ${alias}/kept.ts`,
+      ])
+      // CONTROL: each list still silences only its own operation.
+      const swapped = resolveSandboxConfig(
+        { ignore: { read: ['*.bun-build'], write: ['gen/**'] } },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: swapped }))).toEqual(
+        recorded.map((v) => v.line),
+      )
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
+
   // A `~` pattern was kept as written and matched no target: every producer
   // records an absolute path, so `ignore: { read: ['~/.cache/*'] }`
   // silenced nothing (sweep of B-11, `ign-tilde`).
