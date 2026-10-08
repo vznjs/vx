@@ -79,6 +79,17 @@ describe('discover stage', () => {
       'its package.json names it "ws"',
     ],
     ['no such directory', () => [{ dir: 'nope', name: 'n' }], 'no such directory'],
+    // No manifest in tools/gen: the plugin's name is the only one.
+    [
+      'a padded name',
+      () => [{ dir: 'tools/gen', name: ' gen' }],
+      '" gen": the name has surrounding whitespace',
+    ],
+    [
+      'a name with "#"',
+      () => [{ dir: 'tools/gen', name: 'g#en' }],
+      '"g#en": the name holds "#" — vx addresses a task as <name>#<task>',
+    ],
     ['a malformed entry', () => [{ dir: 1 } as never], 'expected { dir: string, name: string }'],
     ['not an array', () => ({}) as never, 'failed in discover: expected an array, got an object'],
   ]

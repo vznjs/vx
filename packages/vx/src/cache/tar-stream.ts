@@ -11,7 +11,7 @@
 // short entry. Non-regular entries are reported with their type and their
 // bodies skipped; the caller decides what to materialise (nothing but `0`).
 
-export interface TarEntry {
+interface TarEntry {
   name: string
   size: number
   /** POSIX typeflag: '0' regular, '5' directory, '2' symlink, … */
@@ -38,7 +38,9 @@ const BLOCK = 512
  * numbers; a MiB is far past any writer's.
  */
 const MAX_EXTENDED_HEADER = 1024 * 1024
-const decoder = new TextDecoder()
+// `ignoreBOM`: a default decoder drops a leading U+FEFF, and a name or
+// prefix field that began with one read back without it.
+const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
 
 function field(h: Uint8Array, off: number, len: number): string {
   let end = off

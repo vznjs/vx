@@ -33,6 +33,11 @@ export const ESSENTIAL_ENV: readonly string[] = [
   'NO_COLOR',
   'CI',
   'NODE_OPTIONS',
+  // Where corepack and pnpm keep their own binaries, as HOME is: a machine
+  // path, never task output. Without them a corepack shim re-downloads its
+  // manager (offline or sandboxed: fails) and pnpm loses its global dir.
+  'COREPACK_HOME',
+  'PNPM_HOME',
 ]
 
 /**
@@ -125,11 +130,9 @@ export function packageManagerPath(root: string): string | null {
   if (known !== undefined) return known
   let name: string | undefined
   try {
-    const field = (
-      JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as {
-        packageManager?: unknown
-      }
-    ).packageManager
+    // A byte-order mark is stripped, as npm and discovery strip it.
+    const manifest = readFileSync(path.join(root, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
+    const field = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
     if (typeof field === 'string') name = MANAGERS.find((m) => field.startsWith(`${m}@`))
   } catch {}
   name ??= LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
