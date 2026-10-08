@@ -403,7 +403,8 @@ is a floor.
 above — `layers` × `perLayer` packages, ~30 deps each, three tasks
 (`build` + `installDeps` + `test`) with the **identical** shell command,
 `src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
-Turbo, and Nx across three cache states. Fairness is deliberate: vx runs
+Turbo, Nx and Vite Task across three cache states and one edit to the
+top package's source (the dev loop: two tasks miss, the rest hit). Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
 `vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
@@ -421,7 +422,9 @@ BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure fram
 ```
 
 It writes [`packages/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/packages/vx-bench/RESULTS.md)
-(committed, so the numbers can be referenced from a commit).
+(committed, so the numbers can be referenced from a commit). When the
+shape matches the committed `results.json`, it then prints each timing
+more than 10% slower than its committed twin.
 
 Since 2026-09-03 the table also carries **CPU** columns and a **baseline**
 row — the theoretical best case (an ideal schedule of the tasks, one git
