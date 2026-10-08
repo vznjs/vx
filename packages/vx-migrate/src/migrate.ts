@@ -31,17 +31,20 @@ import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   install,
+  listedPackages,
   missingPackages,
   MODE_QUESTION,
   ownVersion,
   packageManagerOf,
   parseModeAnswer,
+  uninstall,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
 import { migrateViteTask } from './migrate-vite-task.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
 import {
   extendWorkspaceFile,
+  generatedPlugins,
   undeclared,
   renderWorkspaceFile,
   workspaceFileAt,
@@ -182,9 +185,20 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   if (mode === 'keep' && runner !== 'vite-task') return keep(root, runner, hasTurbo, lerna, parsed)
 
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
-  // No workspace file yet: this run writes one, declaring the plugins the
-  // repo calls for and the run settings nx.json holds.
-  const writesWorkspace = workspaceFileAt(root) === undefined
+  // No workspace file yet, or one vx wrote (a `--keep` adoption's): this run
+  // writes it, declaring the plugins the repo calls for and the run settings
+  // nx.json holds. turbo() and nx() go: the configs written here replace them.
+  const existingWorkspace = workspaceFileAt(root)
+  const existingFormat = /\.(ts|mjs)$/.exec(existingWorkspace ?? '')?.[1] as
+    | MigrationFormat
+    | undefined
+  const adopted =
+    existingWorkspace === undefined
+      ? []
+      : existingFormat === undefined
+        ? null
+        : generatedPlugins(readFileSync(path.join(root, existingWorkspace), 'utf8'))
+  const writesWorkspace = adopted !== null
   let source: string
   let plan: MigrationPlan
   if (runner === 'vite-task') {
@@ -238,8 +252,11 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           existsSync(path.join(p.dir, configName))),
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
-  // Drop the note that told the user to declare the lockfile plugin.
-  const plugins = writesWorkspace ? workspacePlugins(root) : []
+  const kept = (adopted ?? []).filter((p) => !ADOPTION_PLUGINS.has(`${p.pkg}#${p.factory}`))
+  const plugins = writesWorkspace
+    ? [...kept, ...workspacePlugins(root).filter((p) => !kept.some((k) => k.factory === p.factory))]
+    : []
+  let workspaceText: string | undefined
   if (writesWorkspace) {
     const fields =
       runner === 'nx'
@@ -247,16 +264,18 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
             f.source === undefined ? [] : [{ field: f.field, source: f.source }],
           )
         : []
+    workspaceText = renderWorkspaceFile(plugins, existingFormat ?? format, fields)
+    // Drop the notes that told the user to declare the lockfile plugin and
+    // to remove turbo() or nx().
     plan = {
       ...plan,
-      headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
-      extraFiles: [
-        ...plan.extraFiles,
-        {
-          relPath: `vx.workspace.${format}`,
-          contents: renderWorkspaceFile(plugins, format, fields),
-        },
-      ],
+      headerNotes: plan.headerNotes.filter(
+        (n) => !n.includes('from @vzn/vx-lockfile') && !n.includes(' still declares '),
+      ),
+      extraFiles:
+        existingWorkspace === undefined
+          ? [...plan.extraFiles, { relPath: `vx.workspace.${format}`, contents: workspaceText }]
+          : plan.extraFiles,
     }
   }
   // An executor target is an `nx-exec` line and a `.env` one an `nx-env`
@@ -267,13 +286,26 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       return typeof cmd === 'string' && /^nx-(exec|env) /.test(cmd)
     }),
   )
+  // Nothing written imports vx-migrate or runs its bins: a `--keep`
+  // adoption's install of it is dropped with turbo() / nx().
+  const needsSelf =
+    runsBins ||
+    (workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')).includes(
+      "'@vzn/vx-migrate'",
+    )
   const headerNotes = refused
     ? []
-    : await prepareRepo(
-        root,
-        ['@vzn/vx', ...(runsBins ? ['@vzn/vx-migrate'] : []), ...plugins.map((p) => p.pkg)],
-        parsed,
-      )
+    : [
+        ...(existingWorkspace !== undefined && workspaceText !== undefined
+          ? await rewriteWorkspace(root, existingWorkspace, workspaceText, adopted!, parsed.dry)
+          : []),
+        ...(await prepareRepo(
+          root,
+          ['@vzn/vx', ...(needsSelf ? ['@vzn/vx-migrate'] : []), ...plugins.map((p) => p.pkg)],
+          parsed,
+          needsSelf ? [] : ['@vzn/vx-migrate'],
+        )),
+      ]
   return applyMigration({
     root,
     metas,
@@ -312,21 +344,51 @@ async function askMode(
   }
 }
 
+const ADOPTION_PLUGINS = new Set(['@vzn/vx-migrate#turbo', '@vzn/vx-migrate#nx'])
+
 /**
- * Install what the written files import. Returns the report's line;
- * installs nothing under `--dry`.
+ * A `--keep` adoption's workspace file, written over for a native one.
+ * Returns the report's line; writes nothing under `--dry`.
+ */
+async function rewriteWorkspace(
+  root: string,
+  file: string,
+  text: string,
+  before: readonly WorkspacePlugin[],
+  dry: boolean,
+): Promise<string[]> {
+  if (readFileSync(path.join(root, file), 'utf8') === text) return []
+  const dropped = before.filter((p) => ADOPTION_PLUGINS.has(`${p.pkg}#${p.factory}`))
+  const names = dropped.map((p) => `${p.factory}()`).join(', ')
+  if (dry)
+    return [`would ${dropped.length > 0 ? `drop ${names} from` : 'rewrite'} ${file} (dry run)`]
+  await Bun.write(path.join(root, file), text)
+  return [`${dropped.length > 0 ? `dropped ${names} from` : 'rewrote'} ${file}`]
+}
+
+/**
+ * Install what the written files import and remove what they no longer
+ * do. Returns the report's lines; changes nothing under `--dry`.
  */
 async function prepareRepo(
   root: string,
   wanted: readonly string[],
   args: MigrateArgs,
+  unwanted: readonly string[] = [],
 ): Promise<string[]> {
+  if (args.noInstall === true) return []
   const notes: string[] = []
   const version = ownVersion()
-  const missing = args.noInstall === true ? [] : missingPackages(root, wanted, version)
+  const missing = missingPackages(root, wanted, version)
   if (missing.length > 0) {
     if (args.dry) notes.push(`would install ${missing.join(' ')} (dry run)`)
     else notes.push(`installed ${missing.join(' ')} (${await install(root, missing, version)})`)
+  }
+  // Last: the package removed may be the one running this.
+  const listed = listedPackages(root, unwanted)
+  if (listed.length > 0) {
+    if (args.dry) notes.push(`would remove ${listed.join(' ')} (dry run)`)
+    else notes.push(`removed ${listed.join(' ')} (${await uninstall(root, listed)})`)
   }
   return notes
 }

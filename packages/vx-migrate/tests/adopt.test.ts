@@ -7,8 +7,15 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { installArgv, missingPackages, packageManagerOf, parseModeAnswer } from '../src/adopt.js'
+import {
+  installArgv,
+  missingPackages,
+  packageManagerOf,
+  parseModeAnswer,
+  removeArgv,
+} from '../src/adopt.js'
 import { parseMigrateArgs } from '../src/migrate.js'
+import { generatedPlugins } from '../src/workspace-plugins.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -43,6 +50,33 @@ describe('the adoption mode', () => {
       'keep',
       'keep',
       undefined,
+    ])
+  })
+})
+
+describe('a workspace file vx wrote', () => {
+  it("is @vzn imports and argument-less calls; anything else is the user's", () => {
+    const init = (body: string) =>
+      `import type { WorkspaceConfig } from '@vzn/vx/config'\n${body} satisfies WorkspaceConfig\n`
+    expect(
+      [
+        init("import { turbo } from '@vzn/vx-migrate'\n\nexport default { plugins: [turbo()] }"),
+        "import { nx, nxCache } from '@vzn/vx-migrate'\n\nexport default { plugins: [nx(), nxCache()] }\n",
+        'export default { plugins: [] }\n',
+        "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo({})] }\n",
+        "import { turbo } from 'my-turbo'\nexport default { plugins: [turbo()] }\n",
+        "import { turbo, x } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n",
+      ].map(generatedPlugins),
+    ).toEqual([
+      [{ pkg: '@vzn/vx-migrate', factory: 'turbo' }],
+      [
+        { pkg: '@vzn/vx-migrate', factory: 'nx' },
+        { pkg: '@vzn/vx-migrate', factory: 'nxCache' },
+      ],
+      null,
+      null,
+      null,
+      null,
     ])
   })
 })
@@ -93,6 +127,30 @@ describe('the package manager', () => {
         ['yarn', 'add', '-D', '@vzn/vx'],
         ['bun', 'add', '-d', '@vzn/vx'],
         ['npm', 'install', '-D', '@vzn/vx'],
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('removes at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
+    const root = await tmp('vx-adopt-rm-')
+    try {
+      await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
+      const yarn1 = removeArgv(root, 'yarn', ['@vzn/vx-migrate'])
+      await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
+      expect([
+        removeArgv(root, 'pnpm', ['@vzn/vx-migrate']),
+        yarn1,
+        removeArgv(root, 'yarn', ['@vzn/vx-migrate']),
+        removeArgv(root, 'bun', ['@vzn/vx-migrate']),
+        removeArgv(root, 'npm', ['@vzn/vx-migrate']),
+      ]).toEqual([
+        ['pnpm', 'remove', '-w', '@vzn/vx-migrate'],
+        ['yarn', 'remove', '-W', '@vzn/vx-migrate'],
+        ['yarn', 'remove', '@vzn/vx-migrate'],
+        ['bun', 'remove', '@vzn/vx-migrate'],
+        ['npm', 'uninstall', '@vzn/vx-migrate'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -280,6 +338,88 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           true,
           false,
         ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // owner, 2026-10-08: native after --keep left turbo() declared and
+  // @vzn/vx-migrate installed, with a note asking the user to remove them.
+  it(
+    'native after --keep drops turbo() and removes @vzn/vx-migrate; a turboCache() keeps it',
+    async () => {
+      const after = async (keepCache: boolean) => {
+        const { root, env } = await solidShaped()
+        try {
+          const keep = await migrate(root, env, ['--keep'])
+          if (keepCache) {
+            const file = path.join(root, 'vx.workspace.ts')
+            const ws = await readFile(file, 'utf8')
+            await writeFile(
+              file,
+              ws
+                .replace('{ turbo }', '{ turbo, turboCache }')
+                .replace('    turbo(),\n', '    turbo(),\n    turboCache(),\n'),
+            )
+          }
+          // What the fake pnpm did not: the root lists what --keep added.
+          const pj = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
+          pj.devDependencies = { '@vzn/vx': '*', '@vzn/vx-migrate': '*' }
+          await writeFile(path.join(root, 'package.json'), JSON.stringify(pj))
+          await rm(path.join(root, '.pnpm-calls'))
+          const r = await migrate(root, env, [])
+          const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+          return [
+            keep.code,
+            r.code,
+            (await calls(root)).split('\n').filter((l) => l.startsWith('remove')),
+            [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
+            ws.includes("from '@vzn/vx-migrate'"),
+            r.out.includes('still declares'),
+            await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
+          ]
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      }
+      expect([await after(false), await after(true)]).toEqual([
+        [
+          0,
+          0,
+          ['remove -w @vzn/vx-migrate'],
+          ['pnpm', 'scheduleHistoryPlugin'],
+          false,
+          false,
+          true,
+        ],
+        // CONTROL: turboCache() still reads Turbo's remote cache from vx-migrate.
+        [0, 0, [], ['turboCache', 'pnpm', 'scheduleHistoryPlugin'], true, false, true],
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a workspace file the user wrote is left alone, and so is @vzn/vx-migrate',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        const ws =
+          "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo({})] }\n"
+        await writeFile(path.join(root, 'vx.workspace.ts'), ws)
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'r', devDependencies: { '@vzn/vx-migrate': '*' } }),
+        )
+        const r = await migrate(root, env, [])
+        expect([
+          r.code,
+          await readFile(path.join(root, 'vx.workspace.ts'), 'utf8'),
+          (await calls(root)).includes('remove'),
+          r.out.includes('still declares turbo()'),
+        ]).toEqual([0, ws, false, true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
