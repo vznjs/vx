@@ -572,3 +572,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   the job on its stderr, the task's, printing vx's whole wrapper with its
   proxy port and paths. The wrapper's `wait` now prints nothing; the exit
   code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
+- **X-112.** An executor that runs `ExecuteRequest.command` itself joined
+  the args after `--` on its own: the `vx init --plugin executor` example
+  joined them bare (`'a b'` split, `it's` a syntax error) and
+  `@vzn/vx-reapi` appended them after a trailing comment, so
+  `printf '<%s>' # each arg` ran without them where the local executor
+  kept them. `withForwardArgs` is on `@vzn/vx` (48 names) and both use
+  it. Rows: `vx-plugin-examples` `executor.test.ts` › "puts the args after
+  -- on the command as the local executor does", `vx-reapi`
+  `executor-helpers-sweep.test.ts` › "puts the args before a trailing
+  comment, as the local executor does".

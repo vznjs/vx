@@ -326,6 +326,8 @@ export async function run(options: RunOptions): Promise<RunSummary>
 export function splitTaskId(id: string): [project: string, task: string]
 == function whyDidThisRerun (src/orchestrator/metrics.ts)
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+== function withForwardArgs (src/exec/runner.ts)
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
 export interface AdmitContext {
   readonly running: readonly TaskNode[]

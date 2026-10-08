@@ -2539,6 +2539,18 @@ function · `src/orchestrator/metrics.ts`
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
 ```
 
+## `withForwardArgs`
+
+function · `src/exec/runner.ts`
+
+The command a task runs with the args after `--` appended, shell-quoted.
+They go before a trailing comment: appended after it, `echo args: # show`
+ran without them and said nothing (item 1060). Trailing blanks go first.
+
+```ts
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
+```
+
 ## `WorkspaceConfig`
 
 type · `src/config.ts`
