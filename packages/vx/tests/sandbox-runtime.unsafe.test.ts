@@ -5504,7 +5504,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   // `which strace` is the PATH lookup (util/which.ts), `strace --version`
   // the probe.
   describe('strace detection', () => {
-    const detecting = (pathDirs: string): unknown => {
+    const detecting = (pathDirs: string, together = false): unknown => {
       const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
       const script = [
         `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
@@ -5516,7 +5516,10 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         `await initSandbox()`,
         `const dir = ${JSON.stringify(dir)}`,
         `const outs = []`,
-        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `const task = async () => (await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout`,
+        together
+          ? `outs.push(...(await Promise.all([task(), task()])))`
+          : `for (let i = 0; i < 2; i++) outs.push(await task())`,
         `console.log(JSON.stringify({ outs, calls }))`,
         `await resetSandbox()`,
       ].join('\n')
@@ -5642,6 +5645,25 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         { mode: 0o755 },
       )
       expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['which strace', 'strace --version', 'trace'],
+        said: untraced(
+          'strace cannot trace here (strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted)',
+        ),
+      })
+    })
+
+    // A run starts a wave of tasks at once, and each asked before the
+    // first answer was memoized: one probe per task, not per run.
+    it('tasks that start together ask once', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'strace'),
+        `#!/bin/sh\n[ "$1" = --version ] && exec ${Bun.which('strace')} "$@"\necho "strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted" >&2\nexit 1\n`,
+        { mode: 0o755 },
+      )
+      expect(detecting(`${bin}:${process.env['PATH']}`, true)).toEqual({
         outs: ['ok\n', 'ok\n'],
         calls: ['which strace', 'strace --version', 'trace'],
         said: untraced(
