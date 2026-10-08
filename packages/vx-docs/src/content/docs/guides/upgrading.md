@@ -16,3 +16,139 @@ Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.
 ## cache: bump CACHE_VERSION to vx-cache-v40
 
 every cached task misses once after the upgrade.
+
+## vx-ci: rename @vzn/vx-github to @vzn/vx-ci
+
+import github() from '@vzn/vx-ci' instead of '@vzn/vx-github'.
+
+## cache: keep artifacts when the store schema changes
+
+Cache.getMany and CacheLayer.getMany take an optional per-hash get context; a layer that ignores it is unchanged.
+
+## cache: share cache entries across workspaces
+
+SCHEMA_VERSION v32; existing entries miss once.
+
+## cache: count restored and up-to-date hits everywhere
+
+SCHEMA_VERSION v30 -> v31; an older index is dropped on first open and its artifacts are left for `vx cache prune`. WhyDidThisRerun's thisRun / previousRun, RunSummaryRow, InvocationDetail, RunSummaryRecord and CacheStats gain fields.
+
+## orchestrator: drop the end-of-run failure recap
+
+src/orchestrator/failure-recap.ts leaves the package, with formatFailureRecap and DefaultLogger.failureRecap.
+
+## cache: key the blob-size verdict by the index file's hash
+
+SCHEMA_VERSION v29 -> v30; an older index is dropped on first open and its artifacts are left for `vx cache prune`.
+
+## vx-migrate: run every Nx executor through nx-exec
+
+a migrated config writes nx-exec lines where it wrote jest, vite, tsc, node and other executor commands.
+
+## workspace: keep existing configs in vx init, write the rest
+
+`vx init` where configs already exist exits 0 (kept) instead of 1 (refused).
+
+## vx-reapi: inline the wire-only keys
+
+@vzn/vx-reapi's plugin-api record no longer lists the WireOnly type (it was never exported; ReapiPluginOptions is unchanged in shape).
+
+## vx-reapi: refuse the wire-form options reapi() ignored
+
+reapi() no longer accepts onWarn, tlsCaPem, tlsClientCertPem or tlsClientKeyPem; use tlsCertificate, tlsClientCertificate and tlsClientKey (PEM files).
+
+## vx-reapi: stop exporting the wire and Merkle internals
+
+@vzn/vx-reapi no longer exports ReapiClient, reapiExecutor, acceptsTask, globToOutputPath, outputPathSets, buildInputTree, canDigest, decodeDirectory, decodeTree, digestWith, encodeAction, encodeCommand, encodeDigest, encodeDirectory, encodeNodeProperties, sha256, assertBunSupportsChunking, CHUNK_BYTES, SAFE_CHUNK_BYTES, MIN_BUN, COMPRESSOR, DIGEST_FUNCTION, OUTPUT_DIRECTORY_FORMAT or the wire and Merkle types.
+
+## vx-migrate: export only the four plugins
+
+@vzn/vx-migrate no longer exports mapTurboWorkspace, mapNxWorkspace, nxExecCommand, parseNxGraph, readNxJsonFacts, TurboRemoteCache, NxRemoteCache, resolveTurboCacheConfig, resolveNxCacheConfig, turboRemoteAccess, artifactTag, VERCEL_API, MIN_SIGNATURE_KEY_LENGTH, migrateCmd, parseMigrateArgs or their types.
+
+## vx-lockfile: stop exporting the parser namespaces
+
+@vzn/vx-lockfile no longer exports the pnpmLock, bunLock, npmLock and yarnLock namespaces.
+
+## vx-otel: stop exporting the OTLP builders
+
+@vzn/vx-otel no longer exports buildLogsRequest, buildMetricsRequest, buildTraceRequest, resourceAttributes, runSpanAttributes, taskSpanAttributes, taskStatusCode, SEMCONV, VX_ATTR or the KeyValue, OtlpLogRecord and OtlpSpan types.
+
+## vx-github: stop exporting the Checks API helpers
+
+@vzn/vx-github no longer exports buildCheckRunPayload, clampSummary, postCheckRun, resolveCheckRunEnv or the CheckRunEnv type.
+
+## plugins: refuse a plugin option value of the wrong kind
+
+refuseUnknownOptions(factory, options, known) takes a PluginOptionKinds<Options> record instead of a list of option names (released in 0.0.397). Pass each option with its kind; the type checker derives the kinds from the options interface.
+
+## drop native Windows code paths
+
+tasks no longer receive SYSTEMROOT, APPDATA and the other Windows essential env vars; native Windows is unsupported.
+
+## vx: type generated configs from the @vzn/vx/config entry
+
+vx init and vx-migrate now write `import type { ProjectConfig } from '@vzn/vx/config'`, and @vzn/vx exports ./config.
+
+## vx-migrate: adopt Turbo and Nx only
+
+lage(), wireit(), workspaceScripts(), the lage-worker bin and vx-migrate --from lage|wireit|scripts are removed.
+
+## vx-migrate: drop moon support
+
+moon(), mapMoonWorkspace and vx-migrate --from moon are removed.
+
+## cli: say in vx info when the sandbox runs untraced
+
+vx info's JSON and vx mcp's getWorkspaceInfo gain sandbox.untraced (string | null).
+
+## cli: map a workspace root's repo-wide scripts in vx init
+
+No migration note.
+
+## cli: drop vx init's readiness note where nothing waits
+
+No migration note.
+
+## vx-migrate: cache an output no tracked top-level entry matches
+
+No migration note.
+
+## vx: launch the npm binary from CommonJS, not ESM
+
+No migration note.
+
+## vx-migrate: cache an untracked **/dist/** output
+
+No migration note.
+
+## config: take a bare --affected's base from affectedBase
+
+No migration note.
+
+## vx-migrate: map Turbo task tags to nothing
+
+the turbo-nx-support record moves turbo.json tasks.*.interruptible from not-supported to not-applicable.
+
+## vx-mcp: take a run id prefix in whyDidThisRerun
+
+@vzn/vx packs src/orchestrator/run-id.ts in place of src/cli/run-id.ts, and vx-mcp's whyDidThisRerun runId description now names a prefix.
+
+## vx-migrate: run Turbo root tasks with no root vx.config
+
+PLUGIN_HOOKS gains `discover` after `config`.
+
+## config: type-check unknown keys in defineWorkspace
+
+defineWorkspace rejects keys the schema does not declare at type-check time. vx already refused them at load.
+
+## config: type-check unknown keys in defineProject
+
+defineProject rejects keys the schema does not declare at type-check time. vx already refused them when it loaded the config.
+
+## cli: remove the vx stats alias before 1.0
+
+`vx stats` is removed; run `vx info`, which prints the same report.
+
+## rename to @vzn/vx; drop run: { tasks } wrapper from config
+
+No migration note.
