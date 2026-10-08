@@ -853,6 +853,22 @@ describe('streamToString', () => {
     ])
   })
 
+  // The head stops one unit short when its bound falls inside an emoji, and
+  // the chunk went to the tail; a later one-character chunk still fit the
+  // head and was retained BEFORE it: `…a😀bc` read `…ac😀b`.
+  it('keeps chunk order once the head stopped short of an emoji', async () => {
+    const chunks = ['a'.repeat(CAPTURE_HEAD_CHARS - 1), '😀b', 'c']
+    const got = await streamToString(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk))
+          c.close()
+        },
+      }),
+    )
+    expect(got.slice(-4)).toBe('😀bc')
+  })
+
   it('reads nothing from an inherited fd or no stream', async () => {
     expect([await streamToString(1), await streamToString(undefined)]).toEqual(['', ''])
   })
