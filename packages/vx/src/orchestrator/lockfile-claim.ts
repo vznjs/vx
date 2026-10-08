@@ -71,6 +71,7 @@ interface Digests {
 
 interface Memo {
   version: number
+  claimant: string
   lock: string
   /** `extraFiles` → content hash when the digests were computed. */
   extras?: Record<string, string>
@@ -120,6 +121,11 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   const { file, digest, version } = options
   const scope = options.scope ?? 'project'
   const part = options.part ?? 'deps'
+  // `version` is one claimant's counter, and another claimant of the file
+  // at the same number read this one's memo: one that named no extra file
+  // left the other's patch edits out of its key (X-130). The functions'
+  // source stands for the claimant; a rebuild that changes it is a miss.
+  const claimant = xxh3hex([part, String(digest), String(options.extraFiles ?? '')].join('\0'))
   if (scope !== 'project' && scope !== 'workspace') {
     throw new Error(`scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`)
   }
@@ -159,7 +165,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     const memoFile = path.join(cacheDir, 'lockfile-claims', `${file}.json`)
     // The extra files the last digest read, and their hashes now: a warm run
     // re-hashes the files the memo names and never parses to learn them.
-    const memo = await readMemo(memoFile, version, lockHash)
+    const memo = await readMemo(memoFile, version, claimant, lockHash)
     let extras: Record<string, string> = {}
     let extraStats: Record<string, string> = {}
     let importers: ReadonlyMap<string, string> | undefined
@@ -182,8 +188,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
           ? new Map<string, string>()
           : await computeAndMemo(
               memoFile,
-              version,
-              lockHash,
+              { version, claimant, lock: lockHash },
               extras,
               digest(text, new Map(Object.entries(extras))),
             )
@@ -273,11 +278,14 @@ function importerOf(workspaceRoot: string, projectDir: string): string {
 async function readMemo(
   memoFile: string,
   version: number,
+  claimant: string,
   lock: string,
 ): Promise<{ extras: Record<string, string>; importers: Map<string, string> } | undefined> {
   try {
     const memo = (await Bun.file(memoFile).json()) as Memo
-    if (memo.version !== version || memo.lock !== lock) return undefined
+    if (memo.version !== version || memo.claimant !== claimant || memo.lock !== lock) {
+      return undefined
+    }
     return { extras: memo.extras ?? {}, importers: new Map(Object.entries(memo.importers)) }
   } catch {
     return undefined
@@ -286,12 +294,11 @@ async function readMemo(
 
 async function computeAndMemo(
   memoFile: string,
-  version: number,
-  lock: string,
+  identity: Pick<Memo, 'version' | 'claimant' | 'lock'>,
   extras: Record<string, string>,
   importers: ReadonlyMap<string, string>,
 ): Promise<ReadonlyMap<string, string>> {
-  const memo: Memo = { version, lock, extras, importers: Object.fromEntries(importers) }
+  const memo: Memo = { ...identity, extras, importers: Object.fromEntries(importers) }
   // Write-then-rename: a reader never sees a half-written memo, and two
   // concurrent runs each land a whole one.
   const tmp = `${memoFile}.tmp-${process.pid}-${Date.now()}`

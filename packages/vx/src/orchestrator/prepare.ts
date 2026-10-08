@@ -379,9 +379,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // it, and the run said no project did (C-3). Only what is still
     // unjudged pays for the rest of the workspace.
     unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
+    // By name, not by count: a config-less project in the scope counts as
+    // loaded, and a changed one hid an unloaded `test` declarer (X-129).
     if (
-      projects.size < projectsWithConfigs.length &&
-      unresolvedTasks.some((t) => !t.includes('#'))
+      unresolvedTasks.some((t) => !t.includes('#')) &&
+      projectsWithConfigs.some((m) => !projects.has(m.name))
     ) {
       unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
         loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),

@@ -15,7 +15,7 @@ import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { nearest, UserError } from '../util/index.js'
+import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
@@ -716,7 +716,10 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       for (const d of disposers) d()
       throw new PluginSetupError(
         plugin,
-        `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
+        // Masked at the source, as plugin-host.ts's `safe()` does (L-11).
+        maskedLine(
+          `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
+        ),
       )
     }
   }

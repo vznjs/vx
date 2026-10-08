@@ -45,7 +45,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
-import { hangupIgnored, restartTimings } from '../util/index.js'
+import { hangupIgnored, maskedLine, restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -427,7 +427,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // message but DON'T let it crash the watch loop; the next
           // FS event (if any) will retry. The dispose() on SIGINT
           // is the canonical exit; we don't unilaterally abort here.
-          const message = err instanceof Error ? err.message : String(err)
+          // A config's own throw or a plugin's failure may quote a secret (L-11).
+          const message = maskedLine(err instanceof Error ? err.message : String(err))
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
         }
         // After a failed cycle too: a package added with a config that does

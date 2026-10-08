@@ -134,7 +134,20 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   guarding while the guard kept every group whose release it never got,
   and SIGKILLed them at vx's CLEAN exit. A guard vx gives up on is
   SIGKILLed with its list. A child's own `+` line meets the same queue
-  and is not retried: a group whose line hit a full queue is unlisted.
+  (it holds vx's nonblocking end): a group whose line hit a full queue
+  went unlisted and survived a `kill -9`. Its shell retries a failed
+  write until it lands or the guard's pid is gone (`kill -0`); the shell
+  cannot tell EAGAIN from EPIPE, and a guard vx gives up on is
+  SIGKILLed, so the pid ends the wait. `kill -0` counts a zombie, and
+  a guard vx had not reaped (its event loop held, or an init that
+  never reaps the orphan after vx's `kill -9`) kept the shell spinning
+  at full CPU; where /proc is vx's own (`procfsIsOwn()`) the guard's
+  state is read instead, so Z ends the wait. macOS keeps `kill -0`:
+  the spin lasts until vx's loop runs. Only a line built inside
+  `spawnGuarded` retries: any other pipe is not that guard's. The success path costs nothing
+  new. The guard lists a group once however often its line arrives: a
+  `-` strikes one entry, and a shell that keeps a failed printf
+  buffered (bash as macOS's sh, B-10) resends it with the retry.
 - The pipe is not inherited: Bun opens it close-on-exec, and a task's
   `/proc/self/fd` holds 0, 1 and 2 only (probed 2026-09-26).
 - A per-spawn watcher in the task's own shell was the first sketch and
@@ -221,7 +234,16 @@ observer directory left; red without the listing.
 `tests/kill-tree-guard-backlog.test.ts`: a task spawned after a burst of
 2,000 releases still dies with a `kill -9` (fails without the wait), and
 a released task's grandchild outlives a clean exit after a stopped guard
-overran the queue (fails without the guard's SIGKILL).
+overran the queue (fails without the guard's SIGKILL). A task that
+lists itself behind a stopped guard's full queue dies with a `kill -9`
+once the guard resumes (fails without the retry); one whose guard is
+SIGKILLed instead still runs (hangs without the `kill -0`); and a group
+listed twice is released by one release (fails without the dedupe).
+`tests/kill-tree-guard-zombie.unsafe.test.ts` (unsandboxed, for its own
+/proc): such a task runs while vx's loop is held and its dead guard is a
+zombie (hangs 10 s without the state read), and, the control, still
+lists itself once a stopped live guard resumes (fails if the read calls
+every guard dead).
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
