@@ -228,6 +228,15 @@ describe('formatRunSummary', () => {
     expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
       '  result    2 tasks · 1 failed · all cached · 1 no-cache · 50ms',
     )
+    // A hit says what it saved: its STORED exec time, not the restore.
+    const hit = (id: string, storedDurationMs: number): TaskOutcome => ({
+      ...outcome(id, 'cache-hit'),
+      durationMs: 2,
+      storedDurationMs,
+    })
+    expect(result([hit('a#x', 2010), hit('b#x', 300), miss('c#x')], 90)).toBe(
+      '  result    3 tasks · 2 cached (66%) · 2.31s saved · 90ms',
+    )
     expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
       undefined,
     )

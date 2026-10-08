@@ -119,6 +119,8 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
   /** Tasks an `admit` policy held with a worker free, and the waits summed. Absent with no hold. */
   held?: { count: number; sumMs: number }
+  /** The hits' stored exec times summed: the work the cache skipped. */
+  savedMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
 }
@@ -320,6 +322,10 @@ function resultLine(
         : `${hits} cached (${Math.floor((hits / cacheable) * 100)}%)`,
     )
   if (noCache > 0) parts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
+  // What the cache paid back, beside what the run cost: the stored exec
+  // time of every hit, never the restore this run spent on it.
+  if ((stats.savedMs ?? 0) >= 1)
+    parts.push(paint(SUCCESS, `${formatElapsed(stats.savedMs!)} saved`, colors))
   parts.push(formatElapsed(totalMs))
   return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
@@ -373,6 +379,10 @@ export function formatRunSummary(
   const durations = outcomes
     .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
     .map((o) => o.durationMs)
+  let savedMs = 0
+  for (const o of outcomes)
+    if ((o.status === 'cache-hit' || o.status === 'cache-hit-remote') && !isGroupTask(o.node))
+      savedMs += o.storedDurationMs ?? 0
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
   const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
@@ -391,6 +401,7 @@ export function formatRunSummary(
       restoredRemote: t.restoredRemote,
       miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
       noCache,
+      savedMs,
       spread:
         durations.length > 0
           ? {
