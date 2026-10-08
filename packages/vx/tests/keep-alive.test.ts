@@ -157,6 +157,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
     const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    // The held run may be writing its index right now; wait for its lock.
+    db.query('PRAGMA busy_timeout = 5000').get()
     db.query("UPDATE schema_meta SET value = 'v0-other' WHERE key = 'version'").run()
     db.close()
     writeFileSync(path.join(dir, 'go'), '')
