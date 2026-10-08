@@ -14,9 +14,13 @@ where the eye lands. See `docs/modules/summary.md`.
 ## Public surface
 
 ```ts
+export interface OutputChunk {
+  text: string
+  err: boolean // stderr: its lines render red when colour is on
+}
+
 export interface TaskBlockBody {
-  stdout?: string // rendered under `├─ STDOUT ──…`
-  stderr?: string // rendered under `├─ STDERR ──…`
+  output?: readonly OutputChunk[] // in the order written, under `├─ OUTPUT ──…`
   droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
   droppedStderr?: number
 }
@@ -80,7 +84,7 @@ export function formatPersistentList(nodes, colors?): string[] // `▸ <id> runn
 
 $ oxlint --type-aware --type-check
 
-├─ STDOUT ──────────────────────────────────────────────────
+├─ OUTPUT ──────────────────────────────────────────────────
 
 Found 0 warnings and 0 errors.
 
@@ -95,9 +99,14 @@ The block format is:
   a requested task's line carries the args after `--`, shell-quoted and
   placed as `withForwardArgs` placed them in what ran (X-41);
   cache hits replay stored output and skip it, skips never ran
-- **`├─ STDOUT ──…` / `├─ STDERR ──…` sections:** present only when the
-  stream is non-empty after trim; a blank line above and below the
-  content, and a head-dropped notice when the capture was bounded
+- **`├─ OUTPUT ──…` section:** present only when the output is
+  non-empty after trim; both streams in the order vx read them, a
+  stderr line red when colour is on (as the task wrote it when it
+  coloured the line itself, or when colour is off); a blank line above and below
+  the content, and a head-dropped notice when the capture was bounded.
+  A persistent task's tail after ready (`formatPersistentTailBlock`)
+  keeps `STDOUT (since ready)` / `STDERR (since ready)` apart, since
+  its two bounded tails hold no order
 - **`├─ SANDBOX VIOLATIONS (n)` section:** when present — unique
   lines, verbatim, with the header in error red. The buffered renderer
   and the live frame share one builder, so a focused run shows it too

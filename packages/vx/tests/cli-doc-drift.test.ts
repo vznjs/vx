@@ -297,7 +297,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
 // lowercase `├─ stdout` (the sections are `├─ STDOUT ──…`), no blank lines.
 // The page now shows one real failed block with every section; render it.
 describe('docs/cli.md — the frame sample is what the renderer prints', () => {
-  it('a failed block with command, stdout, stderr and a violation, byte for byte', async () => {
+  it('a failed block with command, interleaved output and a violation, byte for byte', async () => {
     const node = {
       id: 'app#test',
       projectName: 'app',
@@ -319,7 +319,13 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
     const rendered = formatTaskBlock(
       node,
       outcome,
-      { stdout: '2 pass\n1 fail\n', stderr: 'error: expected 3, got 2\n' },
+      {
+        output: [
+          { text: '2 pass\n', err: false },
+          { text: 'error: expected 3, got 2\n', err: true },
+          { text: '1 fail\n', err: false },
+        ],
+      },
       { enabled: false },
     ).replace(/\n$/, '')
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()

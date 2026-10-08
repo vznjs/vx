@@ -11,6 +11,7 @@ import {
   flakyNote,
   formatTaskHitLine,
   formatTaskSkippedLine,
+  type OutputChunk,
 } from './framed-output.js'
 import {
   createOutputWriter,
@@ -210,8 +211,7 @@ export function defaultLogger(
   // appending via `+=`; concatenating N small chunks via `+=` is O(N²)
   // because each `+=` allocates a fresh string of the full accumulated
   // length. Bun-friendly: join('') is a single contiguous allocation.
-  const stdoutBuffers = new Map<string, string[]>()
-  const stderrBuffers = new Map<string, string[]>()
+  const outputBuffers = new Map<string, OutputChunk[]>()
   // Separator bookkeeping: blocks are blank-line-delimited on BOTH
   // sides — raw (unprefixed) frame content must never collide with a
   // neighbouring one-liner (owner feedback). A block leaves its own
@@ -222,16 +222,16 @@ export function defaultLogger(
   // True while the live stream sits mid-line (chunk without trailing
   // newline) — the frame close must not glue onto partial output.
   let streamMidLine = false
-  const pushChunk = (buffers: Map<string, string[]>, id: string, chunk: string): void => {
-    const arr = buffers.get(id)
-    if (arr) arr.push(chunk)
-    else buffers.set(id, [chunk])
+  const pushChunk = (id: string, text: string, err: boolean): void => {
+    const arr = outputBuffers.get(id)
+    if (arr) arr.push({ text, err })
+    else outputBuffers.set(id, [{ text, err }])
   }
-  const takeChunks = (buffers: Map<string, string[]>, id: string): string => {
-    const arr = buffers.get(id)
-    if (!arr) return ''
-    buffers.delete(id)
-    return arr.length === 1 ? arr[0]! : arr.join('')
+  const takeChunks = (id: string): OutputChunk[] => {
+    const arr = outputBuffers.get(id)
+    if (!arr) return []
+    outputBuffers.delete(id)
+    return arr
   }
 
   // `none` is the ONE mode whose contract guarantees the output is
@@ -682,7 +682,7 @@ export function defaultLogger(
         else appendTail(tail.out, chunk)
         return
       }
-      pushChunk(stdoutBuffers, node.id, chunk)
+      pushChunk(node.id, chunk, false)
     },
     taskStderr(node, chunk) {
       if (discardsOutput) return
@@ -698,7 +698,7 @@ export function defaultLogger(
         else appendTail(tail.err, chunk)
         return
       }
-      pushChunk(stderrBuffers, node.id, chunk)
+      pushChunk(node.id, chunk, true)
     },
     taskComplete(node, outcome) {
       if (!statusDead) finished.add(node.id)
@@ -707,8 +707,14 @@ export function defaultLogger(
       // there — carrying how much the cap dropped, since a truncated log
       // that reads as complete is worse than one that says what it lost.
       const preReady = persistentTails.get(node.id)
-      const stdout = preReady ? tailText(preReady.out) : takeChunks(stdoutBuffers, node.id)
-      const stderr = preReady ? tailText(preReady.err) : takeChunks(stderrBuffers, node.id)
+      // In the order the task wrote it; a bounded tail kept its streams
+      // apart, so its stdout reads first.
+      const output: OutputChunk[] = preReady
+        ? [
+            { text: tailText(preReady.out), err: false },
+            { text: tailText(preReady.err), err: true },
+          ]
+        : takeChunks(node.id)
       const dropped =
         preReady && (preReady.out.dropped > 0 || preReady.err.dropped > 0)
           ? { droppedStdout: preReady.out.dropped, droppedStderr: preReady.err.dropped }
@@ -745,16 +751,9 @@ export function defaultLogger(
           emitFrameClose(formatFrameClose(node, outcome, colors))
           return
         }
-        if (framed && (stdout.length > 0 || stderr.length > 0)) {
+        if (framed && output.some((c) => c.text.length > 0)) {
           emitBlock(
-            formatTaskBlock(
-              node,
-              outcome,
-              { stdout, stderr, ...dropped },
-              colors,
-              true,
-              forwardArgs,
-            ),
+            formatTaskBlock(node, outcome, { output, ...dropped }, colors, true, forwardArgs),
           )
           return
         }
@@ -847,14 +846,7 @@ export function defaultLogger(
           if (outcome.status !== 'failed') return
           emitLine(failureRow(node, outcome))
           deferredFailures.push(
-            formatTaskBlock(
-              node,
-              outcome,
-              { stdout, stderr, ...dropped },
-              colors,
-              false,
-              forwardArgs,
-            ),
+            formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
           )
           return
         case 'broad':
@@ -866,14 +858,7 @@ export function defaultLogger(
             // ◼ row now; the full frame replays at runEnd.
             emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(
-                node,
-                outcome,
-                { stdout, stderr, ...dropped },
-                colors,
-                false,
-                forwardArgs,
-              ),
+              formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
             )
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
@@ -910,28 +895,14 @@ export function defaultLogger(
             if (outcome.status === 'failed') {
               emitLine(failureRow(node, outcome))
               deferredFailures.push(
-                formatTaskBlock(
-                  node,
-                  outcome,
-                  { stdout, stderr, ...dropped },
-                  colors,
-                  false,
-                  forwardArgs,
-                ),
+                formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
               )
               return
             }
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
             emitBlock(
-              formatTaskBlock(
-                node,
-                outcome,
-                { stdout, stderr, ...dropped },
-                colors,
-                true,
-                forwardArgs,
-              ),
+              formatTaskBlock(node, outcome, { output, ...dropped }, colors, true, forwardArgs),
             )
             return
           }
@@ -942,14 +913,7 @@ export function defaultLogger(
           } else if (outcome.status === 'failed') {
             emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(
-                node,
-                outcome,
-                { stdout, stderr, ...dropped },
-                colors,
-                false,
-                forwardArgs,
-              ),
+              formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
             )
           }
           return
@@ -960,7 +924,7 @@ export function defaultLogger(
           // replayed stdout keep their frame (the output is the
           // point); misses/failures are always framed. One-liners
           // stay outside ::group:: — there's nothing to collapse.
-          if (isHit && stdout.trim().length === 0 && stderr.trim().length === 0) {
+          if (isHit && output.every((c) => c.text.trim().length === 0)) {
             emitLine(formatTaskHitLine(node, outcome, colors))
             return
           }
@@ -971,7 +935,7 @@ export function defaultLogger(
           const block = formatTaskBlock(
             node,
             outcome,
-            { stdout, stderr, ...dropped },
+            { output, ...dropped },
             colors,
             false,
             forwardArgs,
