@@ -1760,14 +1760,14 @@ describe('parseRunArgs', () => {
     // --cache still parses its own policy spec, undisturbed.
     expect(parseRunArgs(['build', '--cache=local:r']).cacheDir).toBeUndefined()
     expect(parseRunArgs(['build']).cacheDir).toBeUndefined()
-    expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
+    expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
 
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.
     expect(parseRunArgs(['build', '--cache-dir', '--force']).error).toMatch(
-      /--cache-dir requires a path, got flag: --force/,
+      /--cache-dir requires a path \(got flag --force; a path that starts with - needs --cache-dir=--force\)/,
     )
     // The `=` form still takes a literal leading dash if someone means it.
     expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
@@ -2133,7 +2133,9 @@ describe('parseRunArgs', () => {
   it('rejects an empty or flag-shaped --report-file value', () => {
     expect(parseRunArgs(['build', '--report-file=']).error).toMatch(/--report-file requires a path/)
     expect(parseRunArgs(['build', '--report-file']).error).toMatch(/--report-file requires a path/)
-    expect(parseRunArgs(['build', '--report-file', '--all']).error).toMatch(/got flag: --all/)
+    expect(parseRunArgs(['build', '--report-file', '--all']).error).toBe(
+      '--report-file requires a path (got flag --all; a path that starts with - needs --report-file=--all)',
+    )
   })
 
   it('rejects a non-markdown --report value (json reserved)', () => {

@@ -140,13 +140,13 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return {
           error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache prune', a ?? '')}${seeHelp('cache')}`,
         }
-      if ('error' in cd) return { error: cd.error }
+      if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
     }
   }
   if (out.olderThanMs === undefined && out.maxBytes === undefined) {
-    return { error: 'must pass --older-than <duration> or --max-size <bytes>' }
+    return { error: `needs --older-than <duration> or --max-size <size>${seeHelp('cache')}` }
   }
   return out
 }

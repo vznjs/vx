@@ -267,14 +267,17 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
       // otherwise create a directory literally named `--force` and drop
       // the flag. A path starting with `-` needs the `=` form.
       if (a === '--cache-dir' && v.startsWith('-')) {
-        return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--cache-dir requires a path (got flag ${v}; a path that starts with - needs --cache-dir=${v})`,
+        }
       }
       out.cacheDir = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
@@ -374,7 +377,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       // nothing about its shape rejects a swallowed flag. A path starting
       // with `-` needs the `=` form.
       if (a === '--report-file' && v.startsWith('-')) {
-        return { ...out, error: `--report-file requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--report-file requires a path (got flag ${v}; a path that starts with - needs --report-file=${v})`,
+        }
       }
       out.reportFile = v
     } else if (a === '--report') {
