@@ -248,7 +248,9 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--older-than=30d', '--dry-run']).dryRun).toBe(true)
     expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
     expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
-    expect(parsePruneArgs(['--dry-run']).error).toMatch(/must pass --older-than/)
+    expect(parsePruneArgs(['--dry-run']).error).toBe(
+      'needs --older-than <duration> or --max-size <size> (see `vx cache --help`)',
+    )
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)

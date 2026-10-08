@@ -570,7 +570,7 @@ describe('vx info (e2e)', () => {
       // A `--cache-dir` with no path is refused, not read as "the default".
       const noDir = await vx(root, ['info', '--cache-dir'])
       expect(noDir.code).toBe(1)
-      expect(noDir.err).toBe('vx info: --cache-dir requires a path\n')
+      expect(noDir.err).toBe('vx info: --cache-dir requires a path (see `vx info --help`)\n')
       expect(noDir.out).toBe('')
     },
     TIMEOUT,
