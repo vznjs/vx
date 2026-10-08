@@ -1255,4 +1255,35 @@ describe('DeferredOutputs', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+  it('an entry with no key is fetched for its consumer but saves nothing (X-123)', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'vx-deferred-'))
+    try {
+      const appDir = path.join(root, 'app')
+      await mkdir(appDir, { recursive: true })
+      const producer = {
+        ...node('app#gen', { outputs: { files: ['out/**'] } }),
+        projectDir: appDir,
+      }
+      const consumer = node('other#use', undefined, ['app#gen'])
+      const saved: string[] = []
+      const deferred = registry(graph(producer, consumer), {
+        workspaceRoot: root,
+        localWrite: true,
+        cache: { save: async (a: { hash?: string }) => void saved.push(`${a.hash}`) } as never,
+      })
+      const { hash: _, ...unkeyed } = entry('app#gen', async () => {
+        await mkdir(path.join(appDir, 'out'), { recursive: true })
+        await writeFile(path.join(appDir, 'out', 'gen.txt'), 'GENERATED')
+      })
+      deferred.register('app#gen', unkeyed)
+      await deferred.materializeFor(consumer)
+      expect({
+        fetched: await readFile(path.join(appDir, 'out', 'gen.txt'), 'utf8'),
+        saved,
+        pending: deferred.pending(),
+      }).toEqual({ fetched: 'GENERATED', saved: [], pending: [] })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

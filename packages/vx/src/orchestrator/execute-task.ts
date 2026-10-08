@@ -807,7 +807,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     if (preProbed !== undefined) {
       if (preProbed.hit !== null) {
-        const restored = await restoreOrMiss(preProbed.hit)
+        // A key taken before a task rewrote the lockfile names an install
+        // the tree no longer holds, and the lazy path below never probes
+        // one (X-124): demoted like a vanished hit, it runs dep-gated.
+        const restored = fingerprintMoved() ? null : await restoreOrMiss(preProbed.hit)
         if (restored !== null) return restored
         // The up-front probe's hit may be restoring AHEAD of this task's
         // deps, and a command run now would build from outputs they have
@@ -1026,9 +1029,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: maskCaptured(res.stdout, secrets),
         stderr: maskCaptured(res.stderr, secrets),
       }
-    // An executor that stopped on the timeout's abort exits non-zero; say
-    // why, so the frame, the retry line and `timedOut` read as a timeout.
-    if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
+    // An executor that stopped on the timeout's abort timed out, whatever
+    // its exit: a child that traps the TERM and exits 0 left partial outputs
+    // a pass would save (X-125), as the local runner's own `timedOut` says.
+    // The local executor's clock is that runner's; this one only signals it,
+    // and a 0 between the two timers is a finish, not a kill.
+    if (
+      timeoutFired &&
+      res.timedOut !== true &&
+      (res.exitCode !== 0 || !isLocalExecutor(args.executor))
+    ) {
       res = { ...res, timedOut: true }
     }
     violations = [...res.violations]
@@ -1298,12 +1308,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // record (a row with no artifact) is exactly the corrupt-entry shape
     // `restoreOutputs` refuses, so writing none is the only clean answer.
     // The closure is what a later local consumer — or a later eager run —
-    // pulls the bytes with.
+    // pulls the bytes with. Its fetch saves them under `hash` only past the
+    // eager save's check: an input edited before the describe filed the
+    // edit's bytes under the old key (X-123).
     const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
     if (materialize !== undefined) {
+      const keyed = await keyStillTrue()
       args.deferred?.register(node.id, {
         materialize,
-        hash,
+        ...(keyed ? { hash } : {}),
         entry: {
           taskId: node.id,
           command: storedCommand,
