@@ -38,6 +38,7 @@ export interface RunPlan {
   predicted?: PlanPrediction // present when history gave something to say
   unresolvedTasks?: readonly string[] // requested specs that matched no project — an abandoned plan
   unresolvedHint?: string // what `vx run` appends to that refusal: the nearest names, or how to declare one
+  noneAffected?: string // `--affected` left nothing to run: the line the run prints, and why
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 

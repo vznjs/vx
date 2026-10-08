@@ -238,7 +238,7 @@ export interface InvocationRecord {
 // path only), via INSERT OR IGNORE.
 export interface TaskInputRow {
   entryHash: string
-  kind: string // file|env|runtime|ws-runtime|upstream|plugin|package|config|forward|workspace
+  kind: string // file|env|runtime|ws-runtime|upstream|plugin|package|config|forward|workspace|format
   name: string
   hash: string
 }

@@ -404,20 +404,7 @@ async function runOnBus(
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
-    // A changed project declares the task, so `--affected`'s task walk is
-    // what left nothing (affected-tasks.ts), not the scope.
-    const inScope = new Set(options.projects ?? [])
-    const reachedNone =
-      options.affected !== undefined &&
-      [...prepared.projects.values()].some(
-        (p) =>
-          inScope.has(p.name) && options.tasks.some((t) => declaredTask(p.config, t) !== undefined),
-      )
-    log.status(
-      reachedNone
-        ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
-        : `No affected project declares task(s): ${options.tasks.join(', ')}.`,
-    )
+    log.status(noneAffected(prepared, options))
     await teardown()
     prepared.cache.close()
     return { ok: true, outcomes: [] }
@@ -1516,6 +1503,22 @@ async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
   }
 }
 
+/** Why an `--affected` run has nothing to run, said alike by the run and its `--dry` plan. */
+function noneAffected(prepared: PreparedRun, options: RunOptions): string {
+  // A changed project declares the task, so `--affected`'s task walk is
+  // what left nothing (affected-tasks.ts), not the scope.
+  const inScope = new Set(options.projects ?? [])
+  const reachedNone =
+    options.affected !== undefined &&
+    [...prepared.projects.values()].some(
+      (p) =>
+        inScope.has(p.name) && options.tasks.some((t) => declaredTask(p.config, t) !== undefined),
+    )
+  return reachedNone
+    ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
+    : `No affected project declares task(s): ${options.tasks.join(', ')}.`
+}
+
 /**
  * Planning mode. Same setup as `run()` — workspace discovery, config
  * load, package graph, task graph — but stops short of execution.
@@ -1548,6 +1551,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
         unresolvedHint: elsewhereHint(prepared.declaredElsewhere),
       }
     }
+    if (prepared.empty === 'none-affected')
+      return { tasks: [], noneAffected: noneAffected(prepared, options) }
     if (prepared.empty !== null) return { tasks: [] }
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
