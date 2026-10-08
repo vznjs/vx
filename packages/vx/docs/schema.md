@@ -1109,7 +1109,8 @@ project dir (e.g. a root-level generated file). Same capture / restore
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
 namespace so project and workspace outputs never collide. A project
 `outputs.files` glob under a top-level `workspace-outputs/` is refused
-at load: that name is the namespace.
+at load: that name is the namespace. A file another glob matches there
+(`**/*.js`) is refused at save, and the task is not cached.
 
 ```ts
 outputs: {
