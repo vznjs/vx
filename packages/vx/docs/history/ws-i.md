@@ -530,9 +530,15 @@ and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
   for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
   thread. Every `Bun.spawn` option vx passes (env, `detached`, the extra
   fd) costs the same as a bare spawn (0.6–0.7 ms alone). Only spawning
-  off the main thread would move it.
+  off the main thread would move it: 2,000 `sh -c true` at concurrency
+  4, piped and detached, took 867–991 ms from the main thread and
+  684–767 from four Workers (startup included). Tasks that run for
+  tens of ms see a few percent; output, signals and resource usage
+  would cross threads.
 - **Any: the group guard's release line is a pipe write per task**
-  (`guardWrite`, ~80 ms of the same run). Batching the lines would
+  (`guardWrite`, ~80 ms of the same run; 4.6 µs a write in isolation,
+  so most of that is the profiler's; the guard reads ~186k lines/s, so
+  its pipe never fills). Batching the lines would
   widen the window in which a reused pgid could be killed, which
   kill-tree.ts says never happens; not taken.
 - **Owner: the close's WAL checkpoint is ~3 ms of every run.** A warm
