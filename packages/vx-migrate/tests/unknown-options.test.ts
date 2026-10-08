@@ -21,7 +21,7 @@ it('a misspelt option is refused, naming the nearest one', () => {
     'nx() has unknown option "rot" (allowed: executors, graph, root) \u2014 did you mean root?',
   )
   expect(refusal(() => turboCache({ apiURL: 'x' } as never))).toBe(
-    'turboCache() has unknown option "apiURL" (allowed: apiUrl, retries, signatureKey, teamId, teamSlug, timeoutMs, token, uploadTimeoutMs) \u2014 did you mean apiUrl?',
+    'turboCache() has unknown option "apiURL" (allowed: apiUrl, preflight, retries, signatureKey, teamId, teamSlug, timeoutMs, token, uploadTimeoutMs) \u2014 did you mean apiUrl?',
   )
   expect(refusal(() => nxCache({ severr: 'x' } as never))).toBe(
     'nxCache() has unknown option "severr" (allowed: accessToken, retries, server, timeoutMs) \u2014 did you mean server?',

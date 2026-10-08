@@ -1441,7 +1441,9 @@ async function runOnBus(
       await summarize(ok && first.code === 0, final)
       if (historyAfterWait) {
         recordHistory(() => {
-          const local = Cache.inspect(prepared.cacheDir)
+          // A writer's open: another vx version may have reset the index
+          // to its schema during the session, and a mismatch resets silently.
+          const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && first.code === 0))
           } finally {
