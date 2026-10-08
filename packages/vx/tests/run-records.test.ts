@@ -100,12 +100,28 @@ describe('assembleRunRecords', () => {
     ])
   })
 
-  it('stamps forwarded args on every row, and none when there were none', () => {
-    const outcomes = [outcome('a#test', 'success'), outcome('b#test', 'failed')]
+  it('stamps forwarded args on the requested rows only, and none when there were none', () => {
+    const requested = (id: string, status: TaskOutcome['status']): TaskOutcome => {
+      const o = outcome(id, status)
+      return { ...o, node: { ...o.node, requested: true } }
+    }
+    const outcomes = [
+      requested('a#test', 'success'),
+      requested('b#test', 'failed'),
+      outcome('c#build', 'failed'),
+    ]
     const withArgs = assembleRunRecords(input(outcomes, { forwardArgs: ['--watch'] }))
-    expect(withArgs.runs.map((r) => r.forwardArgs)).toStrictEqual([['--watch'], ['--watch']])
-    const without = assembleRunRecords(input(outcomes))
-    expect(without.runs.map((r) => 'forwardArgs' in r)).toStrictEqual([false, false])
+    expect(withArgs.runs.map((r) => r.forwardArgs)).toStrictEqual([
+      ['--watch'],
+      ['--watch'],
+      undefined,
+    ])
+    for (const forwardArgs of [undefined, []])
+      expect(
+        assembleRunRecords(input(outcomes, forwardArgs && { forwardArgs })).runs.map(
+          (r) => 'forwardArgs' in r,
+        ),
+      ).toStrictEqual([false, false, false])
   })
 
   it('writes the header row from the run, its context and its counts', () => {
