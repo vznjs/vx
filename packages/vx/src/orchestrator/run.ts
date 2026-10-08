@@ -63,10 +63,11 @@ import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
+import { defaultLogger, type DefaultLogger, resolveOutputView, type Logger } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
+import { createForecast } from './forecast.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
@@ -339,7 +340,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
   let held = false
   try {
-    const summary = await runOnBus(options, bus, colors)
+    const summary = await runOnBus(options, bus, colors, terminal)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -362,6 +363,7 @@ async function runOnBus(
   options: RunOptions,
   bus: EventBus,
   colors: ColorSupport,
+  terminal: DefaultLogger | null,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
   // A server's output goes through a cell of its own: a later watch cycle
@@ -888,6 +890,14 @@ async function runOnBus(
       requestedCount,
       context: runContext,
       startedAtMs: endedAtMsAtStart,
+    })
+    // The live region's end-of-run forecast. The logger asks only if its
+    // region is still up a second in, so a warm run never reads history.
+    terminal?.forecast(async () => {
+      const ids: string[] = []
+      for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
+      const p50s = await new LocalHistoryProvider(prepared.localCache.dbHandle()).p50sFor(ids)
+      return p50s.size === 0 ? undefined : createForecast(nodes, p50s, concurrency)
     })
 
     // Remote-only: kick off background prefetches so remote-GET latency

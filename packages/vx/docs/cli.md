@@ -741,7 +741,24 @@ other persistent task`), and a non-zero exit makes the run exit 1
    nothing ever jumps; overflow shows as `+k more`.
 4. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
-   the run progresses, under a bare `vx` wordmark rule.
+   the run progresses, under a bare `vx` wordmark rule. A second in,
+   the `time` row adds what is left (`time  1.41s · ~3s left`): each
+   unfinished task's executed p50 from local history, the longer of
+   the longest unfinished chain and that work spread over the
+   workers, a running task's spent time taken off its own. It says
+   nothing when history knows none of what is left, or once a running
+   task is 25% past its p50. A run that ends inside the second never
+   reads history for it, and the final summary never shows it.
+
+In a terminal known to read them, the region also sends zero-width
+escapes: tab or taskbar progress (OSC 9;4: Ghostty, iTerm2 3.6+,
+Windows Terminal, ConEmu), filling by the forecast or else by tasks
+done, red once a task fails, and cleared when the region goes; and a
+run of 10 s or more ends with a desktop notification (OSC 9: Ghostty,
+iTerm2, WezTerm), `vx: 12 tasks done` or `vx: 1 of 12 tasks failed`.
+The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
+`ConEmuPID`); any other, tmux included, gets neither, since there
+OSC 9 may itself be a notification.
 
 The region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the final summary prints. In the

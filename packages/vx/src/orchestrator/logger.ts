@@ -31,6 +31,13 @@ import {
 } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
+import type { Forecast } from './forecast.js'
+import {
+  notifyEscape,
+  PROGRESS_CLEAR,
+  progressEscape,
+  terminalSignals,
+} from './terminal-signals.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -71,6 +78,12 @@ export interface DefaultLogger extends Logger {
    * throw that never reached `runEnd`.
    */
   settle(): void
+  /**
+   * Hand the live region a way to predict the run's end. Called once at
+   * run start; `load` runs only if the region is still live a second in,
+   * so a run that ends sooner never reads history for it.
+   */
+  forecast(load: () => Promise<Forecast | undefined>): void
 }
 
 /**
@@ -168,6 +181,11 @@ export function resolveOutputView(
   return mk('full')
 }
 
+/** A run shorter than this never reads history for a forecast. */
+const FORECAST_AFTER_MS = 1000
+/** A run shorter than this ends without a desktop notification. */
+const NOTIFY_AFTER_MS = 10_000
+
 export function defaultLogger(
   colors: ColorSupport = detectColors(),
   view: OutputView = { mode: 'full' },
@@ -178,6 +196,8 @@ export function defaultLogger(
     tty?: boolean
     /** The args after `--`: a requested task's `$ <command>` line shows them, as it ran. */
     forwardArgs?: readonly string[]
+    /** The environment that names the terminal (`TERM_PROGRAM`, …); `process.env` by default. */
+    env?: Readonly<Record<string, string | undefined>>
   } = {},
 ): DefaultLogger {
   const forwardArgs = opts.forwardArgs ?? []
@@ -266,6 +286,18 @@ export function defaultLogger(
   let startedAtMs = Date.now()
   let ticker: ReturnType<typeof setInterval> | null = null
   let statusDead = !writer.enabled
+  // The live run's forecast (live region only). Finished ids feed it; the
+  // set is kept only where a region can show the answer.
+  const finished = new Set<string>()
+  let forecastFn: Forecast | undefined
+  let forecastTimer: ReturnType<typeof setTimeout> | null = null
+  let etaMs: number | undefined
+  let etaAtMs = 0
+  const signals = writer.enabled
+    ? terminalSignals(opts.env ?? process.env)
+    : { progress: false, notify: false }
+  let progressShown = -1
+  let progressRed = false
 
   // Every interactive view renders the fixed-height worker region:
   // one row per worker slot so a task's name never moves while it
@@ -357,6 +389,29 @@ export function defaultLogger(
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
+    const now = Date.now()
+    // Twice a second at most: one pass over the unfinished graph.
+    if (forecastFn !== undefined && (force || now - etaAtMs >= 500)) {
+      etaAtMs = now
+      const running = new Map<string, number>()
+      for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
+      for (const s of slotQueue) running.set(s.id, s.startedMs)
+      etaMs = forecastFn(finished, running, now)
+    }
+    if (signals.progress && total > 0) {
+      const elapsed = now - startedAtMs
+      const pct = Math.floor(
+        etaMs !== undefined && elapsed + etaMs > 0
+          ? (elapsed / (elapsed + etaMs)) * 100
+          : (done / total) * 100,
+      )
+      // Never backwards: a forecast that gives up falls back to the count.
+      if (pct > progressShown || failed > 0 !== progressRed) {
+        progressShown = Math.max(pct, progressShown)
+        progressRed = failed > 0
+        out.write(progressEscape(progressShown, progressRed))
+      }
+    }
     // The live summary IS the final summary's section, built from the
     // same formatter so the region visually becomes the printout.
     const summaryLines = formatSummarySection(
@@ -372,6 +427,7 @@ export function defaultLogger(
         noCache,
         savedMs,
         left: total - done,
+        ...(etaMs !== undefined ? { etaMs } : {}),
         spread:
           spreadCount > 0
             ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
@@ -399,6 +455,14 @@ export function defaultLogger(
     if (ticker !== null) {
       clearInterval(ticker)
       ticker = null
+    }
+    if (forecastTimer !== null) {
+      clearTimeout(forecastTimer)
+      forecastTimer = null
+    }
+    if (progressShown >= 0) {
+      progressShown = -1
+      out.write(PROGRESS_CLEAR)
     }
     if (statusDead) return
     statusDead = true
@@ -516,7 +580,34 @@ export function defaultLogger(
       else slotQueue.push(slot)
       refresh(true)
     },
+    forecast(load) {
+      if (statusDead || forecastTimer !== null) return
+      forecastTimer = setTimeout(() => {
+        forecastTimer = null
+        if (statusDead) return
+        load().then(
+          (f) => {
+            forecastFn = f
+            if (!statusDead) refresh(true)
+          },
+          // History is observability: an unreadable one forecasts nothing.
+          () => {},
+        )
+      }, FORECAST_AFTER_MS)
+      forecastTimer.unref?.()
+    },
     runEnd() {
+      // A long run says it ended where the user is not looking. Once:
+      // the status is dead after the first runEnd.
+      if (signals.notify && !statusDead && Date.now() - startedAtMs >= NOTIFY_AFTER_MS) {
+        out.write(
+          notifyEscape(
+            failed > 0
+              ? `vx: ${failed} of ${total} task${total === 1 ? '' : 's'} failed`
+              : `vx: ${total} task${total === 1 ? '' : 's'} done`,
+          ),
+        )
+      }
       killStatus()
       // Persistent tails first: they are context for whatever ran against
       // the server, so they read above the failures they explain. `none`
@@ -603,6 +694,7 @@ export function defaultLogger(
       pushChunk(stderrBuffers, node.id, chunk)
     },
     taskComplete(node, outcome) {
+      if (!statusDead) finished.add(node.id)
       // A persistent task buffered into its bounded tail rather than the
       // per-task buffers (see taskStart), so its frame is drained from
       // there — carrying how much the cap dropped, since a truncated log
