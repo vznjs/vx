@@ -607,6 +607,31 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-96.** An `admit` policy was asked about group tasks and saw a
+  dispatched group in `ctx.running`, so a packing policy could park real
+  work behind a group that runs nothing. Groups now bypass `admit` and
+  are never listed. Row: `scheduler.test.ts` › "a group is never asked
+  by an admit policy and never listed as running".
+- **X-97.** `deadServerBehind` walked groups by recursion: a
+  50,000-deep chain of groups over a server threw `RangeError`, and a
+  ladder of group diamonds re-walked each group once per path (2^n).
+  It now walks with a stack and a seen set, in the same dep order. Rows:
+  `server-death-properties.test.ts` › "a dead server is found behind a
+  50,000-deep chain of groups", "a ladder of group diamonds asks of each
+  node once".
+- **X-98.** `AdmitContext.running` said "executing on this machine right
+  now", but a persistent task leaves it at ready, with its worker slot.
+  Intended: the server never finishes before its dependants, so a policy
+  that counted it would hold them with no completion left to ask again
+  (with it listed, a solo policy hung the run). The doc now says so. Row:
+  `plugin-pipeline.test.ts` › "a ready server leaves the running set, so
+  a solo policy still admits what depends on it".
+- **X-99.** Under `--exclude-dependencies` + `--continue=always` the
+  taint read the key's upstream, which drops order-only edges: `t` saved
+  what it built after `a` failed (`t → gen → a`, `gen` excluded), where
+  the run without the flag withheld it. `judge` now reads the order-only
+  deps' settled outcomes too. Row: `continue-taint.test.ts` › "a task
+  ordered after a failure by --exclude-dependencies is not saved".
 - **X-92.** `--affected` over a deep `dependsOn` chain ended in
   `RangeError` and a stack: `affectedRoots` recursed once per edge, and
   ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The

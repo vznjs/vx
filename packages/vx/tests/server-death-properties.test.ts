@@ -94,3 +94,40 @@ it('a dead server stops what depends on it, over random graphs', async () => {
   // generator to producing them, or the row checks nothing.
   expect(exercised).toBeGreaterThan(100)
 }, 60_000)
+
+const group = (id: string, deps: string[]): TaskNode =>
+  ({
+    id,
+    projectName: 'p',
+    taskName: id,
+    projectDir: '/',
+    config: {},
+    deps,
+    requested: true,
+  }) as TaskNode
+
+it('a dead server is found behind a 50,000-deep chain of groups', () => {
+  const DEPTH = 50_000
+  const nodes = new Map<string, TaskNode>()
+  for (let i = 0; i < DEPTH; i++)
+    nodes.set(`g${i}`, group(`g${i}`, [i + 1 < DEPTH ? `g${i + 1}` : 'srv']))
+  expect(deadServerBehind(nodes, (x) => x === 'srv', 'g0')).toBe('srv')
+})
+
+it('a ladder of group diamonds asks of each node once', () => {
+  // Each rung's two groups both lead to the next rung: 2^20 paths, 40 nodes.
+  const RUNGS = 20
+  const nodes = new Map<string, TaskNode>()
+  for (let i = 0; i < RUNGS; i++) {
+    const next = i + 1 < RUNGS ? [`l${i + 1}`, `r${i + 1}`] : ['srv']
+    nodes.set(`l${i}`, group(`l${i}`, next))
+    nodes.set(`r${i}`, group(`r${i}`, next))
+  }
+  let asked = 0
+  const died = (): boolean => {
+    asked++
+    return false
+  }
+  expect(deadServerBehind(nodes, died, 'l0')).toBeUndefined()
+  expect(asked).toBe(2 * RUNGS)
+})
