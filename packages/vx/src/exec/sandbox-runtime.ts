@@ -1244,7 +1244,7 @@ async function wrapIn(
     process.platform === 'linux'
       ? literalReadPaths(customConfig)
       : process.platform === 'darwin'
-        ? seatbeltBrackets(customConfig)
+        ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
@@ -1450,22 +1450,32 @@ function literalReadPaths(
  * file and the route could not be granted. `[[]` is a class of one `[`; a
  * lone `]` is plain text (B-65). A deny path is a real directory, never a
  * pattern: a nested project's wall under `[legacy]/` compiled as a class,
- * matched nothing, and the root task read it.
+ * matched nothing, and the root task read it. So is each of `names`, the
+ * baseline reads: a linked dependency under `packages/[legacy]/` was a
+ * class too, and as an exact regex even `[[]` grants the directory's entry
+ * and none of its files, so its subtree is granted beside it (a trailing
+ * `/**` is stripped before the compile).
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  names: readonly string[] = [],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
   if (fs === undefined) return config
-  const literal = (paths: readonly string[]): string[] =>
-    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
+  const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
+  const read = (p: string): string[] => {
+    if (!bracketed.has(p)) return [literal(p)]
+    const at = p.replaceAll('[', '[[]')
+    return [at, `${at}/**/*`]
+  }
   return {
     ...config,
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: literal(fs.allowWrite),
-      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
+      allowWrite: fs.allowWrite.map(literal),
+      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
     },
   }
 }
@@ -2440,7 +2450,7 @@ export function darwinWallRules(
     for (const w of walls) {
       const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
       const kept = literals
-        .filter((l) => isMountableLiteral(l) && atOrUnder(l, w))
+        .filter((l) => atOrUnder(l, w))
         .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
       rules.push(
         kept.length === 0
@@ -2449,8 +2459,13 @@ export function darwinWallRules(
       )
     }
   }
-  deny('file-read-data', c.wallsReached?.read ?? [], [...c.allowRead, ...baseAllowRead])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite)
+  // A baseline is a name the filesystem handed back, never a pattern: a
+  // bracket in it does not make it a glob.
+  deny('file-read-data', c.wallsReached?.read ?? [], [
+    ...c.allowRead.filter(isMountableLiteral),
+    ...baseAllowRead,
+  ])
+  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite.filter(isMountableLiteral))
   return rules
 }
 
