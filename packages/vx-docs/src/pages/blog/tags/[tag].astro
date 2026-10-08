@@ -3,7 +3,7 @@
 // listing narrowed to it.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Listing from '../../../components/blog/Listing.astro'
-import { filters } from '../../../components/blog/posts.js'
+import { filters } from '../../../blog/posts.js'
 
 export async function getStaticPaths() {
   return (await filters()).map((f) => ({ params: { tag: f.id }, props: { label: f.label } }))

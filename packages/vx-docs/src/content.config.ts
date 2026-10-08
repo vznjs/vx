@@ -6,7 +6,7 @@ import { z } from 'astro/zod'
 export const collections = {
   // Blog posts live in the docs collection under blog/, so Starlight renders
   // their bodies (search, code frames, diagrams); these are a post's own
-  // fields, read by src/components/blog/posts.ts.
+  // fields, read by src/blog/posts.ts.
   docs: defineCollection({
     loader: docsLoader(),
     schema: docsSchema({

@@ -7,7 +7,7 @@
 // a listing and posts read one column wide (components/blog/).
 
 import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data'
-import { getImage } from 'astro:assets'
+import { ogCover } from '../blog/og-cover.js'
 import { GROUP_SECTION, type SectionId } from './sections.js'
 
 type Entry = StarlightRouteData['sidebar'][number]
@@ -32,15 +32,7 @@ export const onRequest = defineRouteMiddleware(async (context) => {
     route.hasSidebar = false
     route.toc = undefined
     route.pagination = { prev: undefined, next: undefined }
-    // A shared post's card shows its cover, not the site's.
-    const cover = route.entry.data.cover
-    if (cover) {
-      const img = await getImage({ src: cover.image, width: 1200, format: 'png' })
-      const og = route.head.find((h) => h.attrs?.['property'] === 'og:image')!
-      og.attrs = { ...og.attrs, content: new URL(img.src, context.site).href }
-      const alt = route.head.find((h) => h.attrs?.['property'] === 'og:image:alt')!
-      alt.attrs = { ...alt.attrs, content: cover.alt }
-    }
+    await ogCover(route, context.site)
     return
   }
 

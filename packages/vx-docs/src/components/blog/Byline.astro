@@ -1,7 +1,7 @@
 ---
 // The line over a headline: the version chip (a release) or the topic, the
 // date, and the authors.
-import { formatDate, label, type Post } from './posts.js'
+import { formatDate, label, type Post } from '../../blog/posts.js'
 
 type Props = { post: Post; avatars?: boolean }
 const { post, avatars = false } = Astro.props

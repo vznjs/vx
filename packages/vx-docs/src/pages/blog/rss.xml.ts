@@ -2,7 +2,7 @@
 // served it from. Written by hand: the format is a few elements, and
 // `@astrojs/rss` would be a dependency for a string template.
 import type { APIRoute } from 'astro'
-import { posts } from '../../components/blog/posts.js'
+import { posts } from '../../blog/posts.js'
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

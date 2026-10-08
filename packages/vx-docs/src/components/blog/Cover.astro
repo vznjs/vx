@@ -5,7 +5,7 @@
 // headline, the label set large). Text sizes are container units, so
 // the drawn cover scales like an image at every card width.
 import { Image } from 'astro:assets'
-import { label, tone, type Post } from './posts.js'
+import { label, tone, type Post } from '../../blog/posts.js'
 
 type Props = { post: Post; sizes: string; eager?: boolean; title?: boolean }
 const { post, sizes, eager = false, title = true } = Astro.props
