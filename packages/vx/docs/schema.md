@@ -1916,8 +1916,25 @@ and surfaces `UserError` (clean output, no stack). Every field's
 accepted values and exact refusal text are recorded in
 `tests/contract/config-schema.json`, which a test regenerates from the
 validator and compares, so a change to either is deliberate
-(`design/versioning-1.0.md` § How the contract is held). The table below
-lists the messages a user meets most:
+(`design/versioning-1.0.md` § How the contract is held).
+
+When the field a refusal names is in the file, the CLI prints the file
+at its line and column, relative to the current directory (a terminal
+opens it on click), and the lines up to it with a caret under the field
+(`util/config-frame.ts`):
+
+```
+vx: packages/b/vx.config.ts:4:15: tasks.build.exec has unknown field "comand" (allowed: …) — did you mean command?
+
+  2 |   tasks: {
+  3 |     build: {
+> 4 |       exec: { comand: 'mkdir -p dist' },
+    |               ^
+```
+
+A field the file does not hold (a required one missing, or one a plugin
+set) prints the one line as before. The table below lists the messages
+a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
