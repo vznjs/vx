@@ -41,3 +41,11 @@ and log output reads better. Each must cost the warm path nothing.
   plain output stays the task's bytes; a line the task coloured keeps its colours. The logger keeps
   one ordered buffer per task instead of two. Rows:
   `framed-output.test.ts` › "interleaved streams keep their order".
+- **DX-7.** A cache hit replays stderr too (owner, 2026-10-08: "store
+  mixed same as in output"). The entry's output is both streams in the
+  order the run printed them, one string (`output-log.ts`: RS + `e` /
+  `o` where the stream switches, a literal RS doubled), so every layer
+  carries it as it carried stdout. `execute-task.ts` keeps it from the
+  live callbacks, masked, in one `BoundedCapture`; the runner retains
+  nothing. `vx-cache-v42`. Rows: `replay-fidelity.test.ts` › "stderr
+  between two stdout lines replays between them", `output-log.test.ts`.

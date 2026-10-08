@@ -297,13 +297,11 @@ describe("execute-task — exec.remote:'only' with no remote executor", () => {
 })
 
 describe('execute-task — what the outcome and the request carry', () => {
-  it('captures stdout only when it will be SAVED, and never stderr', async () => {
-    // "cache.save is the single consumer of result.stdout, and it runs
-    // only when this task will WRITE an entry; result.stderr has no
-    // consumer at all." Both streams still reach the logger live; only
-    // the retained copy is dropped, which for a chatty task is its full
-    // byte size in heap. That is a COST, invisible in any outcome — so
-    // the executor itself records what it was asked to capture.
+  it('asks the executor to retain nothing: the entry keeps the live callbacks', async () => {
+    // The entry's output is what reached the logger, both streams in order,
+    // kept by execute-task; a copy the executor retained as well would be a
+    // second full byte size in heap for a chatty task. That is a COST,
+    // invisible in any outcome, so the executor records what it was asked.
     const b = await bench()
     try {
       const log = capturingLogger({ root: '', out: [], err: [] })
@@ -327,7 +325,7 @@ describe('execute-task — what the outcome and the request carry', () => {
         cachePolicy: NO_CACHE,
       })
       expect(seen).toEqual([
-        { stdout: true, stderr: false },
+        { stdout: false, stderr: false },
         { stdout: false, stderr: false },
       ])
     } finally {

@@ -87,7 +87,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'cache hit replays stdout (stderr is not cached)',
+    'cache hit replays stdout and stderr',
     async () => {
       await addProject(fixture.root, 'logs', {
         config: `
@@ -109,11 +109,9 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       fixture.err = []
       const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(r.outcomes[0]?.status).toBe('cache-hit')
-      // stdout is replayed from the artifact's `stdout` entry...
+      // The stored output log replays both streams.
       expect(fixture.log.join('\n')).toContain('OUT')
-      // ...but stderr is intentionally not cached. We only cache
-      // successful runs, so stderr is rarely meaningful on replay.
-      expect(fixture.err.join('\n')).not.toContain('ERR')
+      expect(fixture.err.join('\n')).toContain('ERR')
     },
     TIMEOUT,
   )
