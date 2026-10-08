@@ -72,7 +72,9 @@ It speaks revisions 2024-11-05, 2025-03-26 and 2025-06-18 (a client asking for
 another is offered the newest), and answers a request
 outside JSON-RPC 2.0's envelope with -32600 and a call to an unknown
 tool or with non-object `arguments` with -32602; a tool's own refusal
-is an `isError` result.
+is an `isError` result. Either error's text has secret values masked
+(`***`), as the CLI masks the error it ends on: a config's refusal quotes
+the config's own strings.
 
 ## Troubleshooting
 

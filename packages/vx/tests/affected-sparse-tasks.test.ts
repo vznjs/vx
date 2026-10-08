@@ -136,3 +136,23 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
     }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
   })
 })
+
+// X-129: a changed project with no vx config left the scope with no
+// project to ask, and the run refused: "no projects declare task(s): test",
+// exit 1, though `app` declares it.
+describe('--affected: a changed project with no vx config', () => {
+  it('exits 0 and says no affected project declares the task', async () => {
+    await rm(path.join(root, 'pkgs', 'docs', 'vx.config.mjs'))
+    git(root, 'commit', '-qam', 'docs has no config')
+    await writeFile(path.join(root, 'pkgs', 'docs', 'in.txt'), 'z\n')
+    git(root, 'commit', '-qam', 'docs only')
+    const run = vx(root, 'run', 'test', '--affected=HEAD~1')
+    const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
+    const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
+    expect({
+      run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
+      dry: [dry.exitCode, dry.out.includes('no affected project declares task(s): test.')],
+      typo: [typo.exitCode, typo.out.includes('vx run: no projects declare task(s): tset.')],
+    }).toEqual({ run: [0, true], dry: [0, true], typo: [1, true] })
+  })
+})

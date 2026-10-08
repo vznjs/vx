@@ -87,7 +87,12 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
 const heldSources = new Map<string, { source: string; uses: number }>()
 let serving = false
 
-const HELD_QUERY = /\?vx-held=([0-9a-f]+)$/
+const HELD_QUERY = /\?vx-(?:held|literal)=([0-9a-f]+)$/
+
+// Bun's resolver reads `\` as a separator, even in a file: URL, so a
+// config under `a\b` was looked for under `a/b`. Resolving it here keeps
+// the path as written; only the served load can take it.
+const LITERAL_QUERY = /\?vx-literal=[0-9a-f]+$/
 
 function serveHeldSources(): void {
   if (serving) return
@@ -95,6 +100,7 @@ function serveHeldSources(): void {
   Bun.plugin({
     name: 'vx-config-bytes',
     setup(build) {
+      build.onResolve({ filter: LITERAL_QUERY }, (args) => ({ path: args.path, namespace: 'file' }))
       build.onLoad({ filter: HELD_QUERY }, (args) => ({
         contents: heldSources.get(HELD_QUERY.exec(args.path)![1]!)!.source,
         loader: /\.[cm]?ts\?/.test(args.path) ? 'ts' : 'js',
@@ -136,7 +142,7 @@ const COMMONJS_HINT =
   /\b(?:module|exports|require|this|__dirname|__filename)\b|\\|\bexport\s*=(?!=)/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
-const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
+const BUST_QUERY = /\?vx-(?:bust|held|literal)=[^'"\s]*/g
 
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
 // a short content hash into the import URL as a cache-bust key so that:
@@ -157,10 +163,18 @@ async function loadDefaultExport(
   // URL yet, and a repeat load (the one that could replay an evaluation
   // made under earlier env values) re-evaluates in a worker instead
   // (`loadedConfigs`, item 678).
+  const literal = configPath.includes('\\')
   const source =
-    kind === 'Project' ? servableSource(bytes, /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js') : null
+    kind === 'Project' || literal
+      ? servableSource(bytes, /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js')
+      : null
+  if (literal && source === null) {
+    throw new UserError(
+      `${kind} config ${configPath} sits under a path that holds a backslash, which Bun loads only as an ES module in UTF-8`,
+    )
+  }
   const hash = xxh3hex(bytes)
-  const specifier = `${configPath}?vx-${source !== null ? 'held' : 'bust'}=${hash}`
+  const specifier = `${configPath}?vx-${literal ? 'literal' : source !== null ? 'held' : 'bust'}=${hash}`
   if (source !== null) {
     serveHeldSources()
     holdSource(hash, source)
