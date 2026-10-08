@@ -578,7 +578,14 @@ replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
 `cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
+secret passed after `--`) and its `--tag`s. So are every string of a
+task `vx show` prints (a runtime probe, `readyWhen`, the description),
+the description `--dry` and the task picker print, a runtime probe's
+command as the run history stores it and `vx why` names its row (two
+probes that mask alike are numbered, `echo *** (2)`), the readiness
+notice's pattern, a sandbox violation line, `vx info`'s config errors,
+the error a verb ends on (a plugin's failure, a config's own throw) and
+`vx watch`'s `cycle failed` line. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
 A value

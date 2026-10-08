@@ -215,33 +215,21 @@ function projectDir(root: string, meta: ProjectMeta): string {
 }
 
 /**
- * A task as `vx show` prints it: a secret variable's value masked
- * wherever it appears, in `env.define` and in the command a TS config
- * built from `process.env` (L-11).
+ * A task as `vx show` prints it: a secret variable's value masked in every
+ * string it holds, where a TS config that builds one from `process.env`
+ * put it (the command, `env.define`, a runtime probe, `readyWhen`, the
+ * description) (L-11).
  */
 function shownTask(task: TaskConfig): TaskConfig {
-  const exec = task.exec
-  if (exec === undefined) return task
-  const define = exec.env?.define
-  const secrets = secretMask([process.env, define], exec.env?.secret)
-  if (secrets === null) return task
-  return {
-    ...task,
-    exec: {
-      ...exec,
-      ...(exec.command !== undefined ? { command: secrets.mask(exec.command) } : {}),
-      ...(define !== undefined
-        ? {
-            env: {
-              ...exec.env,
-              define: Object.fromEntries(
-                Object.entries(define).map(([k, v]) => [k, secrets.mask(v)]),
-              ),
-            },
-          }
-        : {}),
-    },
-  }
+  const secrets = secretMask([process.env, task.exec?.env?.define], task.exec?.env?.secret)
+  return secrets === null ? task : (maskStrings(task, secrets.mask) as TaskConfig)
+}
+
+function maskStrings(value: unknown, mask: (text: string) => string): unknown {
+  if (typeof value === 'string') return mask(value)
+  if (Array.isArray(value)) return value.map((v) => maskStrings(v, mask))
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, maskStrings(v, mask)]))
 }
 
 /** A project config with each task as `shownTask` prints it. */

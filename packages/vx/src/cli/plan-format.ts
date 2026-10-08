@@ -2,6 +2,7 @@
 
 import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
 import { formatDuration } from '../orchestrator/index.js'
+import { maskedCommand } from '../util/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
@@ -48,7 +49,7 @@ export function formatPlanText(plan: RunPlan): string {
     )
     // Optional one-line description from the task config, indented
     // under the id so the eye picks up the task → blurb mapping.
-    const taskDesc = t.node.config.description
+    const taskDesc = shownDescription(t)
     if (taskDesc) {
       lines.push(`     ${' '.repeat(idWidth)}  ${taskDesc}`)
     }
@@ -104,6 +105,12 @@ export function formatPlanText(plan: RunPlan): string {
   return lines.join('\n') + '\n'
 }
 
+/** A TS config may build the description from `process.env` (L-11). */
+function shownDescription(t: RunPlan['tasks'][number]): string | undefined {
+  const { description, exec } = t.node.config
+  return description === undefined ? undefined : maskedCommand(description, exec?.env)
+}
+
 /** One task of `vx run --dry=json`: the wire, stated by `schemas/plan.json`. */
 export interface PlanTaskJson {
   id: string
@@ -122,21 +129,21 @@ export function formatPlanJson(plan: RunPlan): string {
   return (
     JSON.stringify(
       {
-        tasks: plan.tasks.map((t): PlanTaskJson => ({
-          id: t.node.id,
-          project: t.node.projectName,
-          task: t.node.taskName,
-          hash: t.hash,
-          cacheStatus: t.cacheStatus,
-          deps: t.deps,
-          ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
-          ...(t.executor !== undefined ? { executor: t.executor } : {}),
-          ...(t.download !== undefined ? { download: t.download } : {}),
-
-          ...(t.node.config.description !== undefined
-            ? { description: t.node.config.description }
-            : {}),
-        })),
+        tasks: plan.tasks.map((t): PlanTaskJson => {
+          const description = shownDescription(t)
+          return {
+            id: t.node.id,
+            project: t.node.projectName,
+            task: t.node.taskName,
+            hash: t.hash,
+            cacheStatus: t.cacheStatus,
+            deps: t.deps,
+            ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
+            ...(t.executor !== undefined ? { executor: t.executor } : {}),
+            ...(t.download !== undefined ? { download: t.download } : {}),
+            ...(description !== undefined ? { description } : {}),
+          }
+        }),
         ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
         // The gate's refusals belong on the SCRIPTING surface too: a CI job
         // asking "did --download=none actually defer anything, and if not
