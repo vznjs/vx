@@ -18,7 +18,7 @@ const PLACES: [string, string][] = [
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
 ]
-// The Docs are eight pages, no groups (design/site-short-2026-09.md's six, Troubleshooting, Upgrading).
+// The Docs are nine pages, no groups (design/site-short-2026-09.md's six, AI agents, Troubleshooting, Upgrading).
 const DOCS_PAGES: [string, string][] = [
   ['Quickstart', 'quickstart/'],
   ['Configure', 'guides/configure/'],
@@ -26,6 +26,7 @@ const DOCS_PAGES: [string, string][] = [
   ['CI and remote', 'guides/ci/'],
   ['Migrate', 'guides/migrate/'],
   ['Plugins', 'guides/plugins/'],
+  ['AI agents', 'guides/agents/'],
   ['Troubleshooting', 'guides/troubleshooting/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
