@@ -1078,3 +1078,13 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   gap and ran nothing. The cycle now re-arms (quietly) before it runs;
   the re-read after the run stays, for what the run changed. Row:
   `watch-new-member-edit.test.ts`.
+- **X-136.** `vx watch` never heard an edit to the root `.gitignore` or
+  to one in a package glob's directory (`packages/.gitignore`): inputs
+  are gitignore-aware, so un-ignoring a file changed `app#build`'s key,
+  `vx run` missed on it, and the watch ran nothing. Both arms now take
+  `.gitignore` as a cycle. Rows: `watch-root-scope.test.ts` ›
+  "un-ignoring an input in the root/a member base .gitignore re-runs".
+- **X-137.** `vx watch //#check` ran the root task, then exited 1 with
+  "no projects in scope": the anchor was taken as a project named `//`.
+  It now maps to the root project's name, as the run does (D-39). Row:
+  `watch-root-scope.test.ts` › "watches the root project".
