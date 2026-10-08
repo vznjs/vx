@@ -3,7 +3,7 @@
 // hung for good; it now exits once main has settled and both streams have
 // ended.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -14,7 +14,9 @@ const HANG_MS = 8_000
 
 let root: string
 beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'vx-exit-held-'))
+  // Canonical: macOS's tmpdir is a symlink to /private, and vx names the
+  // config by its real path.
+  root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-exit-held-')))
   await writeFile(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
