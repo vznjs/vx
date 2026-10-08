@@ -16,7 +16,7 @@
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
-import { filterUpstreamHashes, keyedDeps } from './upstream.js'
+import { filterUpstreamHashes, keyedDeps, keyedOutcome } from './upstream.js'
 
 export interface KeyExcludedArgs {
   /** The scheduled graph, after `excludeDependencies`. */
@@ -50,7 +50,7 @@ export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<vo
   // (item 737). The keys still resolve concurrently.
   const keys = new Map<string, Promise<string | undefined>>()
   const outcomes = (ids: readonly string[]): Promise<TaskOutcome[]> =>
-    Promise.all(ids.map(async (id) => synthetic(nodeOf(id), await keys.get(id)!)))
+    Promise.all(ids.map(async (id) => keyedOutcome(nodeOf(id), await keys.get(id)!)))
   const derive = async (node: TaskNode): Promise<string | undefined> => {
     const upstream = await outcomes(fullDeps(node))
     return (isGroupTask(node) ? computeGroupKey : computeTaskHash)({
@@ -138,15 +138,4 @@ function foldsExcludedKey(node: TaskNode): boolean {
     filterUpstreamHashes(excluded, node.config.cache?.inputs?.tasks, node.projectName, node.id)
       .length > 0
   )
-}
-
-/** A dependency as a key reads it: only `node` and `hash` matter. */
-function synthetic(node: TaskNode, hash: string | undefined): TaskOutcome {
-  return {
-    node,
-    status: 'success',
-    exitCode: 0,
-    durationMs: 0,
-    ...(hash !== undefined ? { hash } : {}),
-  }
 }

@@ -89,8 +89,7 @@ PIPE` covers a guard that dies after the hand-over, so the task still
 - A teardown holds its groups (`holdGroups`) until its SIGKILL sweep
   has settled: the signal stop (`terminateChildren`), the end-of-run
   persistent shutdown, and a readiness timeout, which holds until its
-  SIGKILL. That SIGKILL waits on an unref'd timer, so a vx that exits
-  inside the grace leaves the held group to the guard. The runner lets a group go when its LEADER
+  group is gone or SIGKILLed. The runner lets a group go when its LEADER
   exits, and a shell that died on the signal while its child ran out
   the grace let the group go mid-grace; a `kill -9` of vx there left
   the child under init (item 865, both reproduced). A release that
