@@ -211,6 +211,35 @@ describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal'
   })
 })
 
+describe('a cache dir named through a symlink is still the cache (XP-20)', () => {
+  // Watchers report under the real workspace root (cwd is the kernel's
+  // path); a `VX_CACHE_DIR` spelled through a link (macOS `/var` ->
+  // `/private/var`) never matched it, and the cache's own writes ran cycles.
+  let real: string
+  let link: string
+  beforeEach(async () => {
+    const base = fs.realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-watch-link-')))
+    real = path.join(base, 'real')
+    link = path.join(base, 'link')
+    await mkdir(path.join(real, 'vxc'), { recursive: true })
+    await symlink(real, link)
+  })
+  afterEach(async () => {
+    await rm(path.dirname(real), { recursive: true, force: true })
+  })
+
+  it('ignores the cache under the real root, made or not yet made', () => {
+    expect(makeWatchIgnore(path.join(link, 'vxc'))(real, path.join('vxc', 'cache.db-wal'))).toBe(
+      true,
+    )
+    expect(makeWatchIgnore(path.join(link, 'new', 'c'))(real, path.join('new', 'c', 'x'))).toBe(
+      true,
+    )
+    // CONTROL: a source file beside it is an edit.
+    expect(makeWatchIgnore(path.join(link, 'vxc'))(real, 'src.txt')).toBe(false)
+  })
+})
+
 describe('the sweep sees what a run sees', () => {
   let root: string
   beforeEach(async () => {
@@ -781,6 +810,32 @@ describe('pollWatcher', () => {
       expect(seen).not.toContain(WATCH_PROBE)
     } finally {
       w.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The key folds a link as its target string (watch-judge.ts reads it the
+  // same way), and the native watcher reports one; the poller sampled
+  // regular files alone, so a link made or retargeted was no edit to it.
+  it('sees a link made and a link retargeted', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-link-'))
+    try {
+      const seen: string[] = []
+      const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+      try {
+        await Bun.sleep(60)
+        await symlink('a.txt', path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toEqual(['cur'])
+        seen.length = 0
+        await symlink('b.txt', path.join(dir, 'cur.tmp'))
+        await rename(path.join(dir, 'cur.tmp'), path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toContain('cur')
+      } finally {
+        w.close()
+      }
+    } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })

@@ -198,7 +198,10 @@ slow path's `hashBytes` has none). Every indexed
 closure's files are identified in one call (`hashFiles`, one memo query
 per 500 paths; 1,000 point reads cost 7.7 ms of a warm run, 2026-09-09).
 A fast key that misses takes the slow path for that config, which
-re-indexes it.
+re-indexes it. A closure file that is a symlink (only a linked config
+with no relative import is indexed) has no fast key: its identity is the
+link's target string, not the bytes evaluated, so it joins the round
+lookup on its slow key.
 
 Sound because closure membership can only change by editing a listed file
 (the config, or an import that gains or drops an import), which changes

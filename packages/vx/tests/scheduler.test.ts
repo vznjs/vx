@@ -2084,6 +2084,27 @@ describe('runGraph — lanes, settles and refusals the sweep found unheld', () =
     expect(seen.flat().filter((id) => id !== 'l#x' && id !== 'l#y')).toEqual([])
   })
 
+  it('a group is never asked by an admit policy and never listed as running', async () => {
+    const group: TaskNode = { ...node('g#all'), config: {} }
+    const asked: string[] = []
+    const listed = new Set<string>()
+    await runGraph({
+      nodes: nodes(group, node('l#x'), node('l#y')),
+      concurrency: 3,
+      admit: (id, running) => {
+        asked.push(id)
+        for (const r of running) listed.add(r)
+        return true
+      },
+      execute: async (n) => {
+        await new Promise((r) => setTimeout(r, 20))
+        return success(n)
+      },
+    })
+    expect(asked.sort()).toEqual(['l#x', 'l#y'])
+    expect([...listed].sort()).toEqual(['l#x'])
+  })
+
   it('a settle promise that rejects still ends the run with every outcome', async () => {
     const out = await Promise.race([
       runGraph({

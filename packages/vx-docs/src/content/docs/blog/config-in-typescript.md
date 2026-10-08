@@ -44,9 +44,7 @@ export default defineProject({
 that exists for autocomplete and validation. The files `vx init` and
 `@vzn/vx-migrate` generate skip even that and write
 `satisfies ProjectConfig` with a type-only import: the same checking
-without a runtime import of core in every config file, which is a
-second copy of core loaded per run, ~17 ms on a two-package
-workspace.
+with no runtime import at all.
 
 ## Composition is an import
 

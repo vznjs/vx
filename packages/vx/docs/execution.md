@@ -335,7 +335,9 @@ terminal and a task succeeding or failing. Read it alongside
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
        fails when the server it started fell over. That server then reads
        `failed` with its own exit in the rewritten `--summarize` and in the
-       outcomes `--report` renders; one a Ctrl-C stopped does not. Under
+       report `--report-file` writes; one a Ctrl-C stopped does not. The
+       stdout `--report` prints above the footer, so it reads as the
+       footer does, before the wait. Under
        `holdPersistent` (the watch loop) run() instead returns them on
        `RunSummary.persistent`, still running, for the caller to stop;
        one that dies on its own after that is said, its `stop()` is not.
@@ -380,7 +382,8 @@ The child process gets, in priority order (lowest first):
 
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
-   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS` — the list is
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME` — the list is
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
@@ -402,7 +405,8 @@ The child process gets, in priority order (lowest first):
    An exit above 128 gets the same line for its signal: which one, and
    what sends it (the OOM killer, a crash in native code, an abort, a
    reader that left a pipe, a ulimit, a seccomp refusal); vx's own
-   timeout and a shutdown's SIGTERM keep their own lines.
+   timeout and a shutdown's SIGTERM keep their own lines, and a task the
+   run's stop killed (the SIGKILL past the grace too) gets none.
 
 Anything not in these four layers is invisible to the child, except
 the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a
@@ -655,7 +659,7 @@ were accepted and wrote nothing until item 992).
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
 - **`--report[=markdown]`** — a markdown table to stdout
-  after the run.
+  above the footer (CI step summaries), through `RunOptions.beforeFooter`.
 - **`--report-file <path>`** — the same report APPENDED to `<path>`
   (`$GITHUB_STEP_SUMMARY`).
 

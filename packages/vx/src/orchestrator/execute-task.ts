@@ -38,6 +38,7 @@ import {
   type TaskInputs,
   PersistentReadyError,
   sandboxReads,
+  maskCaptured,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
@@ -361,12 +362,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    // A wrap that refuses (a port the host holds) leaves the server unspawned
+    // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
       env,
       ...sb.sandbox,
       server: true,
+    }).catch(async (err: unknown) => {
+      await sweepPlaceholders(placeholders)
+      throw err
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -534,6 +540,20 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Ready only once the stop had landed: a trap that prints the marker on
+  // the way down, or a race with the signal. The stop is killing it (it
+  // is in `liveChildren`), and it served nobody, as a one-shot that exits
+  // 0 on the stop is aborted (item 962).
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal!.reason)),
+      durationMs: spawn.readyMs(),
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   args.persistentRegistry?.set(node.id, spawn.child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot)) args.fingerprintWatch?.wrote()
@@ -914,7 +934,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs({ ...cleanArgs, keepGlobRoots: true })
+      const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
       args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
@@ -934,15 +954,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const endReq = span('miss: build request')
     const req = await buildRequest()
     endReq()
-    // An executor that THROWS produces no captured output, so the task's
-    // frame would print the command and nothing else while the reason went
-    // straight to stderr and scrolled away in a broad run. Put it in the
-    // task's own stream first: the frame is where a reader looks for why a
-    // task failed, and a remote executor's failures are exactly the ones with
-    // no other trace. Rethrown unchanged — the scheduler still classifies it,
-    // and still prints it plainly for a UserError.
+    // An executor that THROWS produces no captured output. Rethrown: the
+    // scheduler classifies it and prints its one line into the task's own
+    // stream (run()'s onError), where the frame reads it; a copy written
+    // here too printed the reason twice.
     const endExec = span('miss: execute')
-    let res = await boundAfterAbort(args.executor.execute(req), req.signal)
+    // A plugin's execute may throw before returning or return a bare result:
+    // the throw is its rejection, the value its resolution, so both reach
+    // the naming catch and the cleanup in finally below.
+    let running: Promise<unknown>
+    try {
+      running = Promise.resolve(args.executor.execute(req))
+    } catch (thrown) {
+      running = Promise.reject(thrown)
+    }
+    let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
@@ -966,15 +992,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
         const err = nameExecutorFailure(args.executor, raw)
         // A remote executor's message carries the server's own text, which
-        // may echo the env it was sent: masked here, where it is printed,
-        // and on the error the scheduler prints with its cause (L-39).
+        // may echo the env it was sent: masked on the error the scheduler
+        // prints with its cause (L-39).
         if (secrets !== null) {
           for (const e of [err, err instanceof Error ? err.cause : undefined])
             if (e instanceof Error) e.message = secrets.mask(e.message)
         }
-        const message =
-          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
-        log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
       })
@@ -988,7 +1011,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     endExec()
     if (secrets !== null)
-      res = { ...res, stdout: secrets.mask(res.stdout), stderr: secrets.mask(res.stderr) }
+      res = {
+        ...res,
+        stdout: maskCaptured(res.stdout, secrets),
+        stderr: maskCaptured(res.stderr, secrets),
+      }
     // An executor that stopped on the timeout's abort exits non-zero; say
     // why, so the frame, the retry line and `timedOut` read as a timeout.
     if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
@@ -1051,8 +1078,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // 258) — and an exit above 128 is a signal's number and nothing
     // about what sent it (259). One frame line names the rule. A spawn that
     // threw ran no shell: its 127 is vx's, and the line would send the
-    // reader after a command that exists (A-41).
-    if (!res.timedOut && res.spawnFailed !== true) {
+    // reader after a command that exists (A-41). A run's stop killed it
+    // itself: the SIGKILL past the grace read as the OOM killer's.
+    if (!res.timedOut && res.spawnFailed !== true && args.stopSignal?.aborted !== true) {
       const verdict = shellVerdict({
         code,
         command: step.command,
@@ -1203,7 +1231,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             },
           }
         : {}),
-      signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
@@ -1215,7 +1242,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
     }
-    if (!userSandbox) return base
+    // The signal last: it arms `exec.timeout`, and the sandbox's arming
+    // below is vx's work, not the task's. Armed first, a 60 ms timeout
+    // expired before the spawn and failed `echo` as timed out, unrun.
+    if (!userSandbox) return { ...base, signal: requestSignal() }
     await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
@@ -1227,7 +1257,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
-    return { ...base, sandbox: sb.sandbox }
+    return { ...base, sandbox: sb.sandbox, signal: requestSignal() }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs

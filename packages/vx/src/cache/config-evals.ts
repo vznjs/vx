@@ -6,6 +6,9 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 import { lazyStatement } from './schema.js'
 
+const CONFIG_EVALS_SWEPT_AT = 'config_evals_swept_at'
+const DAY_MS = 24 * 60 * 60 * 1000
+
 export class ConfigEvalTable {
   private readonly selectConfigEval: ReturnType<Database['prepare']>
   private readonly insertConfigEval: ReturnType<Database['prepare']>
@@ -106,10 +109,22 @@ export class ConfigEvalTable {
   /**
    * Retention: a row not WRITTEN since `cutoff`. A hit does not refresh it
    * (that would be a write per config on every warm run), so a config that
-   * hit for thirty days is evaluated once more and stored again.
+   * hit for thirty days is evaluated once more and stored again. No index
+   * covers `created_at`, so each sweep reads every row with its JSON (1–6 ms
+   * at 8,000 rows, 2 MB); it runs once a day, on its own clock in
+   * `schema_meta`, as the file-hash sweep does.
    */
-  pruneOlderThan(cutoff: number): void {
-    this.db.prepare('DELETE FROM config_evals WHERE created_at < ?').run(cutoff)
-    this.db.prepare('DELETE FROM config_closures WHERE created_at < ?').run(cutoff)
+  pruneOlderThan(cutoff: number, now: number = Date.now()): void {
+    const last = this.db
+      .prepare('SELECT value FROM schema_meta WHERE key = ?')
+      .get(CONFIG_EVALS_SWEPT_AT) as { value: string } | null
+    if (last !== null && now - Number(last.value) < DAY_MS) return
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM config_evals WHERE created_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM config_closures WHERE created_at < ?').run(cutoff)
+      this.db
+        .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
+        .run(CONFIG_EVALS_SWEPT_AT, String(now))
+    })()
   }
 }
