@@ -106,7 +106,7 @@ describe('module pages state what their file does since the fix', () => {
     const verify = blocks('modules/affected.md', '`verifyRef(workspaceRoot, since)`')
     expect(verify.length).toBe(1)
     expect(verify[0]).toContain('is not asked again (#2288)')
-    const diff = blocks('modules/affected.md', '`git diff --name-only <merge-base(since, HEAD)>`')
+    const diff = blocks('modules/affected.md', '`git diff --raw <merge-base(since, HEAD)>`')
     expect(diff.length).toBe(1)
     expect(diff[0]).toContain('no `git merge-base` spawns (#2288)')
     expect(diff[0]).toContain('committed, staged and unstaged changes')

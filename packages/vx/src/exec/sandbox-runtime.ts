@@ -82,6 +82,7 @@ import {
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
+  namedPath,
   toRealPath,
   unique,
 } from './sandbox-paths.js'
@@ -2518,7 +2519,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  */
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
-    .filter((g) => !isMountableLiteral(g))
+    .filter((g) => namedPath(g) === undefined)
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
@@ -2553,11 +2554,9 @@ export function darwinWallRules(
   }
   // A baseline is a name the filesystem handed back, never a pattern: a
   // bracket in it does not make it a glob.
-  deny('file-read-data', c.wallsReached?.read ?? [], [
-    ...c.allowRead.filter(isMountableLiteral),
-    ...baseAllowRead,
-  ])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite.filter(isMountableLiteral))
+  const named = (grants: readonly string[]): string[] => grants.flatMap((g) => namedPath(g) ?? [])
+  deny('file-read-data', c.wallsReached?.read ?? [], [...named(c.allowRead), ...baseAllowRead])
+  deny('file-write*', c.wallsReached?.write ?? [], named(c.allowWrite))
   return rules
 }
 
@@ -2645,8 +2644,9 @@ function expandGrants(
       // A hit that IS a wall, or lies inside one, was matched, not named:
       // `read: ['*']` in a root project bound `.git` and `.vx`, and
       // `packages/*` a nested project its key excludes (B-1). A grant that
-      // names a wall literally never reaches this loop and stays.
-      if (walls.some((w) => atOrUnder(real, w))) continue
+      // names a wall literally never reaches this loop and stays, and one
+      // spelled with escaped brackets names it as surely.
+      if (namedPath(p) === undefined && walls.some((w) => atOrUnder(real, w))) continue
       out.push(abs)
       hits++
     }
