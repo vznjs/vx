@@ -89,7 +89,7 @@ async function readRunConfig(file: string, root: string): Promise<RunConfig | nu
     )
   }
   const run = (config as { run?: unknown } | null | undefined)?.run
-  return typeof run === 'object' && run !== null ? (run as RunConfig) : null
+  return typeof run === 'object' && run !== null ? run : null
 }
 
 /** `run.cache` at the root: what `vp run` caches with no flag. */
@@ -292,7 +292,7 @@ export async function mapViteTaskWorkspace(
     }
     for (const [name, raw] of Object.entries(own)) {
       const def: TaskDef =
-        typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : ((raw ?? {}) as TaskDef)
+        typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : (raw ?? {})
       tasks.push(
         mapTask(name, def, {
           pkgDir,
@@ -408,7 +408,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
     def.cache === false || !ctx.cacheOn
       ? null
       : typeof def.cache === 'object' && def.cache !== null
-        ? (def.cache as CacheDef)
+        ? def.cache
         : def
 
   const env = envNames('cache.env', cache?.env, todos, ctx)

@@ -458,6 +458,12 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
   the terminal's resize signal does not reach it. Ctrl-C reaches vx,
   which stops the run; a task that puts the terminal in raw mode
   reads the key itself.
+- **Its terminal modes end with it.** vx reads them (`stty -g`)
+  before the task starts and puts them back when it exits, so a task
+  killed in raw mode, or one that never undid its `stty raw -echo`,
+  leaves no terminal without echo or Ctrl-C behind it
+  (`tests/terminal.unsafe.test.ts` › "a task that leaves the terminal
+  raw"). Without `stty` on PATH the modes stay the task's.
 
 ```ts
 'db:push': {

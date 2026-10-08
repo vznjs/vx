@@ -224,4 +224,58 @@ describe('an output set past the artifact ceiling', () => {
       other.close()
     }
   })
+
+  it('an ingest that refuses a body cancels it: no refusal leaves the response held', async () => {
+    const other = new Cache(path.join(root, 'other-cache'), undefined, undefined, 1024)
+    const bound = 1024 + (1024 >> 8) + 64 * 1024
+    const meta = { taskId: 'big#build', command: 'x', durationMs: 1 }
+    const body = (headers: Record<string, string> = {}) => {
+      const seen = { cancelled: false }
+      const chunk = new Uint8Array(16 * 1024)
+      let pulled = 0
+      const response = new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            if (pulled >= 64 * 1024 * 1024) return c.close()
+            pulled += chunk.byteLength
+            c.enqueue(chunk)
+          },
+          cancel() {
+            seen.cancelled = true
+          },
+        }),
+        { headers },
+      )
+      return { response, seen }
+    }
+    try {
+      const headed = body({ 'content-length': String(bound + 1) })
+      const streamed = body()
+      const unwritable = body()
+      const refused = await Promise.all([
+        other.ingest('aa', headed.response, meta).then(
+          () => false,
+          () => true,
+        ),
+        other.ingest('bb', streamed.response, meta).then(
+          () => false,
+          () => true,
+        ),
+        // A temp name past NAME_MAX: the write fails after the pipe started.
+        other.ingest('c'.repeat(300), unwritable.response, meta).then(
+          () => false,
+          () => true,
+        ),
+      ])
+      await Bun.sleep(0)
+      expect({
+        refused,
+        headed: headed.seen.cancelled,
+        streamed: streamed.seen.cancelled,
+        unwritable: unwritable.seen.cancelled,
+      }).toEqual({ refused: [true, true, true], headed: true, streamed: true, unwritable: true })
+    } finally {
+      other.close()
+    }
+  })
 })

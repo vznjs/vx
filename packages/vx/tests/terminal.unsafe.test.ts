@@ -129,6 +129,82 @@ describe('an interactive task under a vx on a terminal', () => {
   }, 20_000)
 })
 
+// A task that holds the terminal and sets it raw, then dies without putting
+// it back: vx left the user's terminal raw, with no echo and no Ctrl-C
+// (2026-10-08). vx's stdout goes to a file: Bun puts the modes back at exit
+// when stdout is the terminal, and only then. The modes are read with
+// `stty -a` by a shell on the same pty before and after vx: Bun's
+// `localFlags` did not see the task's change.
+describe('a task that leaves the terminal raw', () => {
+  const modesAround = async (command: string, interrupt: boolean, persistent = false) => {
+    const root = await makeWorkspace({ prefix: 'vx-tty-modes-' })
+    try {
+      const marker = path.join(root, 'raw.txt')
+      const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(command.replace('MARKER', marker))}, interactive: true${persistent ? ', persistent: {}' : ''} } } } }`
+      await addProject(root, 'app', { config })
+      const vx = `sh -c 'echo $$ > vx.pid; exec "$0" "$1" run app#ask > vx.out' "${process.execPath}" "${BIN}"`
+      const proc = Bun.spawn(['sh', '-c', `stty -a > before.txt; ${vx}; stty -a > after.txt`], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: { data: () => {} },
+      })
+      if (interrupt) {
+        const raw = () =>
+          Bun.file(marker)
+            .text()
+            .catch(() => '')
+        while ((await raw()) !== 'raw\n') await Bun.sleep(10)
+        process.kill(Number(await Bun.file(path.join(root, 'vx.pid')).text()), 'SIGINT')
+      }
+      const stop = setTimeout(() => proc.kill('SIGKILL'), 15_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      // `pendin` aside: a BSD kernel (xnu's TIOCSETA) sets PENDIN whenever
+      // canonical mode is switched back on, and it stays until a read.
+      // Darwin CI read every row unrestored under a `stty -g` compare; this
+      // cause is from the kernel's source, not a probe on a mac.
+      const modes = async (name: string) =>
+        (await Bun.file(path.join(root, name)).text())
+          .split(/[\s;]+/)
+          .filter((w) => w !== '' && w !== 'pendin' && w !== '-pendin')
+          .join(' ')
+      const before = await modes('before.txt')
+      return {
+        code,
+        before: before.split(' ').includes('icanon'),
+        restored: (await modes('after.txt')) === before,
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('gets its modes back when vx is interrupted', async () => {
+    expect(await modesAround('stty raw -echo; echo raw > MARKER; sleep 30', true)).toEqual({
+      code: 0,
+      before: true,
+      restored: true,
+    })
+  }, 20_000)
+
+  it('a server gets its modes back when vx is interrupted', async () => {
+    expect(await modesAround('stty raw -echo; echo raw > MARKER; sleep 30', true, true)).toEqual({
+      code: 0,
+      before: true,
+      restored: true,
+    })
+  }, 20_000)
+
+  it('gets its modes back when the task exits', async () => {
+    expect(await modesAround('stty raw -echo', false)).toEqual({
+      code: 0,
+      before: true,
+      restored: true,
+    })
+  }, 20_000)
+})
+
 // Every run needs git, so a workspace git does not track is refused before
 // the picker asks: the menu came first and the refusal followed the choice.
 describe('the picker outside a git work tree', () => {
@@ -166,6 +242,49 @@ describe('the picker outside a git work tree', () => {
         lines: [
           `vx requires git: ${root} is not inside a git work tree. Run 'git init' in your workspace root. (git: fatal: not a git repository (or any of the parent directories): .git)`,
         ],
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
+// `vx last` prints the run's command as a line to paste: a run whose task
+// came from the picker recorded `vx run -- x`, which opens the picker again
+// and drops the choice.
+describe('a task picked on a terminal', () => {
+  it('is named in the command `vx last` replays', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-tty-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn([process.execPath, BIN, 'run', '--', 'x'], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const last = Bun.spawnSync([process.execPath, BIN, 'last'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect({ code, command: last.stdout.toString().split('\n')[1] }).toEqual({
+        code: 0,
+        command: '  $ vx run app#build -- x',
       })
     } finally {
       await rm(root, { recursive: true, force: true })
