@@ -121,6 +121,12 @@ export interface TaskOutcome {
    */
   unkeyed?: true
   /**
+   * The run's cache policy read and wrote nothing (`--no-cache`,
+   * `--cache=local:`): no cache answered for this task, so a run of it is
+   * `no-cache`, not a miss. Set by `run()`; `ranNoCache` reads it.
+   */
+  cacheOff?: true
+  /**
    * On a `skipped` outcome: the task at the ROOT of what blocked it — the
    * failed (or aborted) upstream, followed through any chain of skips
    * between. Absent when the skip was fail-fast's (no upstream failed).

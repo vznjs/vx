@@ -525,6 +525,46 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-69.** `--report=markdown` printed to stdout after the run
+  returned, below the footer, which is the run's last word.
+  `RunOptions.beforeFooter` returns text `run()` prints just above the
+  footer, after the `--verbosity` table (X-64); the CLI renders the
+  report there. `--report-file` still writes after the run, re-rendered
+  when a kept server's exit changed the outcomes (C-53). Row:
+  `cli.test.ts` › "--report and the --verbosity table print above the
+  footer".
+- **X-70.** A plugin executor's throw printed twice in the task's
+  frame: `execute-task.ts` wrote the message to the task's stderr and
+  rethrew, and the scheduler's `onError` wrote `[vx] <id>: <message>`
+  into the same stream. The first copy is gone; a second task failing on
+  the same error now reads `as <id> above`, as every other refusal does.
+  Rows: `plugin-capabilities.test.ts` › "an executor's throw reaches the
+  task's own stderr …", "one error an executor rejects two tasks with is
+  named once in each"; `executor-error-secret-mask.test.ts`.
+- **X-71.** `--dry --no-cache` and `--dry --cache=local:` called a
+  cacheable task `no-cache (would exec)`, while the run itself called it
+  `miss` in its frame, report and `--summarize` row and counted `1 miss`
+  and `0 cached (0%)` in the footer. A miss is a lookup that failed, and
+  that run looked nothing up, so `no-cache` is the word: `ranNoCache`
+  (`events.ts`) is the one predicate the plan and every run surface ask,
+  and `run()` marks each outcome of a run whose policy reads and writes
+  nothing `cacheOff`. Rows: `cli.test.ts` › "--no-cache: the plan and the
+  run both call the task no-cache", the same for `--cache=local:`.
+- **X-72.** `vx info` said `flaky tasks: none` after a task passed on a
+  retry: `flakyTasks()` listed only keys holding both a failed and a
+  passing row, and a retry's pass is one `success` row with `attempts`
+  above 1. Its failed attempts now count as failures, so such a key mixes
+  alone. Rows: `failure-mode.test.ts` › "lists a key that passed only on
+  a retry, its failed attempts as failures"; `flaky.test.ts` › "a
+  within-run retry is named as such …".
+- **X-73.** `vx why` blamed a prune ("no entry for this key was in the
+  cache when it ran (pruned or evicted)") on a clean run whose previous
+  run had executed the task past a failed dependency under `--continue`,
+  so never saved it: the taint verdict fired only when both runs ran
+  beside a failure. A previous run that executed, succeeded and ran
+  beside a failure with writes on, with no entry older than this run, is
+  now named as not saved for that reason. Row: `metrics.test.ts` ›
+  "names why an unchanged key re-executed …".
 - **X-85.** A task that ignored the stop's SIGTERM and died to vx's
   SIGKILL past the grace was reported `aborted`, and its frame still
   carried `[vx] exit 137 is how the shell reports a death by SIGKILL:

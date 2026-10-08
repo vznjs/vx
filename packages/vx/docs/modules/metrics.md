@@ -54,8 +54,10 @@ case it is.
   why, from what the index holds: the previous run on the key failed
   (saving nothing), the invocation's `cache_policy` read no cache, or
   the key's entry was created by this run (none was there when it ran),
-  or neither run saved it because each ran beside a failed task (a task
-  run past a failed dependency under `--continue` is never cached), or
+  or the previous run was not saved because it ran beside a failed task
+  (a task run past a failed dependency under `--continue` is never
+  cached; ahead of the prune verdict, and "neither run saved it" when
+  this run ran beside one too and saved nothing either), or
   the previous run executed and succeeded and no entry holds the key (its
   save failed or was pruned: no row records a failed save, only this
   trace; a previous policy that wrote nothing is named instead).

@@ -46,6 +46,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
+  cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   blockedBy?: string // skipped: the failed or aborted task at the root of the block
   timedOut?: true // failed: vx's own `timeout` killed the final attempt
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready

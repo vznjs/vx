@@ -478,7 +478,7 @@ than run with the args unheard.
 | `--summarize[=<path>]`             | optional value | off                                       | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--profile[=<path>]`               | optional value | off (`profile.json` when set)             | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--tag <k=v>`                      | repeatable     | (none)                                    | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `--report[=markdown]`              | optional value | off                                       | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--report[=markdown]`              | optional value | off                                       | At the end of the run, print a markdown run report to stdout, above the footer. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--report-file <path>`             | value          | off                                       | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Mutual exclusion:
@@ -1005,9 +1005,10 @@ exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
 outcome bucket or `total`, but they make the run red, so they are
 listed separately and counted as `summary.aborted`.
 
-**`noCache: true`** marks a task that declares no `cache` block — it
-executes every run by design, so a hit rate should leave it out of the
-denominator. The key is present only when true; every other row is
+**`noCache: true`** marks a task no cache answered for: it declares no
+`cache` block (it executes every run by design), or the run's `--cache`
+read and wrote nothing (`--no-cache`), so a hit rate should leave it out
+of the denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
@@ -1084,8 +1085,9 @@ Default path: `profile.json` (cwd-relative).
 
 ### `--report[=markdown]`
 
-After a real run completes, prints a markdown run report to **stdout**
-(not the status logger — it stays machine-clean). One header line of
+At the end of a real run, prints a markdown run report to **stdout**,
+just above the footer: nothing prints below the footer. The report
+itself is machine-clean. One header line of
 totals plus a table, one row per task:
 
 ```markdown
@@ -1105,8 +1107,9 @@ signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
 task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
-`Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
-block, which never consulted it / `local` / `remote` / `up-to-date` /
+`Cache` is its provenance (`miss` / `no-cache` for a task no cache
+answered for — no `cache` block, or a `--no-cache` / `--cache=local:` run —
+which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
@@ -2323,7 +2326,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one). `none` when the history never mixed.
+  replayed one), and a pass that took a retry mixes its key alone, its
+  failed attempts counted as failures. `none` when the history never
+  mixed.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2404,9 +2409,10 @@ no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
 (`--force`, or a `--cache` without read), no entry for the key was
-there when it ran (pruned or evicted), neither run saved it while
-each ran beside a failed task (a task run past a failed dependency under
-`--continue` is never cached), or the previous run executed and no entry
+there when it ran (pruned or evicted), the previous run was not saved
+because it ran beside a failed task (a task run past a failed dependency
+under `--continue` is never cached; said ahead of a prune, and as
+"neither run saved it" when this run ran beside one too), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
 policy wrote no cache says that instead). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
@@ -2748,8 +2754,10 @@ task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
-red run. A task with no `cache` block could never hit, so it is
-counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and
+red run. A task with no `cache` block, or any task of a run whose
+`--cache` reads and writes nothing (`--no-cache`), could never hit, so it
+is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
+`--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);

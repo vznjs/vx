@@ -1861,6 +1861,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -2256,6 +2257,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'

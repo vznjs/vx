@@ -402,7 +402,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       them; an embedder aborts through `RunOptions.signal`.
    8. Summary + optional artifacts: `--summarize` (per-run JSON),
       `--profile` (Chrome-trace JSON), `--report=markdown` (CLI-side,
-      after `run()` returns).
+      printed above the footer through `RunOptions.beforeFooter`).
    9. `cache.recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped; a run a signal stopped
