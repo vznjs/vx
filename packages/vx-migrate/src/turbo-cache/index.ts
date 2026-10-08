@@ -25,6 +25,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
@@ -378,6 +379,7 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  private readonly breaker = new OutageBreaker()
   /**
    * A `403` on an upload is a read-only token or server
    * (turborepo-remote-cache's `READ_ONLY` and its JWTs without the write
@@ -469,25 +471,29 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const signal = () => (timeoutMs === 0 ? undefined : AbortSignal.timeout(timeoutMs))
     // The batch query is never preflighted, as in Turbo.
     const preflight = this.config.preflight && method !== 'POST'
-    const res = await withRetry(
-      async () => {
-        const extra = init.headers ?? {}
-        const to = preflight
-          ? await this.preflight(this.url(pathname), method, extra, signal)
-          : { url: this.url(pathname), auth: true }
-        const s = signal()
-        return this.fetchImpl(to.url, {
-          method,
-          headers: this.headers(extra, to.auth),
-          ...(init.body === undefined ? {} : { body: init.body }),
-          ...(s === undefined ? {} : { signal: s }),
-        })
-      },
-      this.config.retries,
-      this.wait,
-    ).catch((err: unknown) => {
-      throw deadlineNamed(err, timeoutMs)
-    })
+    const res = await this.breaker
+      .send(() =>
+        withRetry(
+          async () => {
+            const extra = init.headers ?? {}
+            const to = preflight
+              ? await this.preflight(this.url(pathname), method, extra, signal)
+              : { url: this.url(pathname), auth: true }
+            const s = signal()
+            return this.fetchImpl(to.url, {
+              method,
+              headers: this.headers(extra, to.auth),
+              ...(init.body === undefined ? {} : { body: init.body }),
+              ...(s === undefined ? {} : { signal: s }),
+            })
+          },
+          this.config.retries,
+          this.wait,
+        ),
+      )
+      .catch((err: unknown) => {
+        throw deadlineNamed(err, timeoutMs)
+      })
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true

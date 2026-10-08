@@ -1645,7 +1645,7 @@ async function initHint(prepared: {
   // Single-project mode with packages the root's missing `workspaces`
   // never reaches: `vx init` would find no scripts either (item 248).
   const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
-  if (unreached.length > 0) return ` ${unreachedHint(unreached)}`
+  if (unreached.length > 0) return ` ${unreachedHint(unreached, prepared.workspaceRoot)}`
   return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 

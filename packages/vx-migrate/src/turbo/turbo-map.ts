@@ -1501,7 +1501,14 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
-  excludeWorkspaceOutputs(root, projects)
+  // A written config spreads the preset (`...globalInputs`), which the
+  // take-back pass must read as its globs: unread, opencode's configs
+  // read `packages/plugin/**` with no `!packages/plugin/dist/**` and
+  // core refused to load them.
+  const opaque = new Map<string, readonly string[]>()
+  for (const e of opts.splice('inputs', globals.inputs))
+    if (typeof e !== 'string') opaque.set(JSON.stringify(e), globals.inputs)
+  excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
