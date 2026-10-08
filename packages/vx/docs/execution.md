@@ -403,7 +403,8 @@ The child process gets, in priority order (lowest first):
    An exit above 128 gets the same line for its signal: which one, and
    what sends it (the OOM killer, a crash in native code, an abort, a
    reader that left a pipe, a ulimit, a seccomp refusal); vx's own
-   timeout and a shutdown's SIGTERM keep their own lines.
+   timeout and a shutdown's SIGTERM keep their own lines, and a task the
+   run's stop killed (the SIGKILL past the grace too) gets none.
 
 Anything not in these four layers is invisible to the child, except
 the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a

@@ -508,6 +508,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-86.** A server whose `readyWhen` matched only after the run's stop
+  (its `trap` printed the marker on the way down, or the line raced the
+  signal) was reported `success` and registered, so a Ctrl-C'd run's
+  footer counted it a success, where a one-shot that exits 0 on the
+  stop is `aborted` (item 962). It is now `aborted`, and left to the
+  teardown already killing it. Row: `abort.test.ts` › "a server that
+  turns ready after the run stops is aborted, not a success".
 - **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
@@ -518,6 +525,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-85.** A task that ignored the stop's SIGTERM and died to vx's
+  SIGKILL past the grace was reported `aborted`, and its frame still
+  carried `[vx] exit 137 is how the shell reports a death by SIGKILL:
+… the kernel's OOM killer …`, sending the reader after memory for a
+  kill vx sent. The verdict line is now left out while the run is
+  stopping. Row: `signal-handling.test.ts` › "a child that ignores
+  SIGTERM is SIGKILLed after the grace; vx still exits 143".
+- **X-87.** A sandboxed task's `exec.timeout` started before the sandbox
+  was armed (the runtime's ~200 ms probe), so the task got less than it
+  declared, and `echo` under `timeout: 60` reached the executor with its
+  signal already aborted: `failed (timed out, exit 143)` in 0 ms,
+  "killed (SIGTERM)" though nothing ran. The request's signal is now
+  made last. Row: `execute-task.test.ts` › "exec.timeout counts from the
+  executor's call, not from the sandbox's arming".
 - **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
   from another lane, which refuses it by name.
 - **X-79.** A task's own output reached through the other namespace was
