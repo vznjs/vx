@@ -25,6 +25,7 @@ export interface PlannedTask {
   p50Ms?: number // typical duration from history, on a task that would run
   executor?: string // the executor's name, when the workspace declared a choice
   download?: 'deferred' // outputs would stay remote (`--download`)
+  affected?: AffectedReason // why `--affected` kept this requested task (affected-tasks.md)
 }
 
 export interface PlanPrediction {

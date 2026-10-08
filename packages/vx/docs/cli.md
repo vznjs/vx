@@ -951,6 +951,26 @@ view's `~p50` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
 readable.
 
+**Why a task is affected.** Under `--affected`, each requested task the
+diff kept gets a line, and its JSON object an `affected` reason:
+
+```
+$ vx run build lint --affected=main --dry
+  ▶  app#build  cache miss — would exec  …
+                affected: packages/lib/src/a.ts changed (an input), via lib#build
+  ·  lib#lint   no-cache                 …
+                affected: packages/lib/src/a.ts changed (in its project)
+```
+
+`kind` is `input` (a changed `file` is a declared input), `project` (its
+project changed and the task reads it whole: an uncached task, or no
+single `file` for a lockfile claim, a manifest edge or a config import),
+`package` (a `^` edge passes a changed `project` with no such task),
+`named` (`pkg#task` beside a bare task) or `selected` (another filter
+selected its project). `via` is the `dependsOn` chain, nearest first, to
+the task the change reached. A dependency the kept tasks pull in carries
+none. The reasons are gathered only for a plan; a run pays nothing.
+
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):
 

@@ -48,6 +48,11 @@ or `affectedRoots` reaches it. `affectedTaskProjects` is `vx show <task>
 opened and no key derived, so the list is the projects the run keeps
 (X-147).
 
+Given an `AffectedExplain` (`planRun` passes one as `RunOptions.affectedReasons`),
+both record why each kept request survived: the seed's changed file or
+package, and the `dependsOn` chain that carried it. Without one no map
+is filled and the walk does what it did.
+
 ## Public surface
 
 ```ts
@@ -57,7 +62,20 @@ export function affectedRoots(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
+  explain?: AffectedExplain, // `--dry` only: fills each kept id's reason
 ): string[] // the ids whose closure the change reaches
+
+export interface AffectedReason {
+  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  file?: string // workspace-relative
+  project?: string // the changed package, kind `package`
+  via?: string[] // the `dependsOn` chain, nearest first, to the seeded task
+}
+
+export interface AffectedExplain {
+  workspaceRoot: string
+  reasons: Map<string, AffectedReason>
+}
 
 export function keptByAffected<R extends { project: string; task: string }>(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -66,6 +84,7 @@ export function keptByAffected<R extends { project: string; task: string }>(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
   keep?: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> },
+  explain?: AffectedExplain,
 ): R[] // the requests `--affected` keeps, in order
 
 export async function affectedTaskProjects(args: {

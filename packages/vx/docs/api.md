@@ -1387,6 +1387,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  affected?: AffectedReason
 }
 ```
 
@@ -1893,6 +1894,7 @@ export interface RunOptions {
   selectedByDiff?: boolean
   affected?: AffectedChanges
   selectedOutright?: readonly string[]
+  affectedReasons?: Map<string, AffectedReason>
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

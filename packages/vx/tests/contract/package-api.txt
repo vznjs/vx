@@ -343,6 +343,13 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   nested?: readonly string[]
 }
+== type AffectedReason (src/orchestrator/affected-tasks.ts)
+export interface AffectedReason {
+  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  file?: string
+  project?: string
+  via?: string[]
+}
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
   root: string
@@ -993,6 +1000,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  affected?: AffectedReason
 }
 == type PlanPrediction (src/orchestrator/plan.ts)
 export interface PlanPrediction {
@@ -1229,6 +1237,7 @@ export interface RunOptions {
   selectedByDiff?: boolean
   affected?: AffectedChanges
   selectedOutright?: readonly string[]
+  affectedReasons?: Map<string, AffectedReason>
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

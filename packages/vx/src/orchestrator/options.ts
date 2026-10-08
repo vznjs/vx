@@ -5,6 +5,7 @@
 import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
+import type { AffectedReason } from './affected-tasks.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
@@ -42,6 +43,8 @@ export interface RunOptions {
    * whether or not `affected` reaches them (X-10).
    */
   selectedOutright?: readonly string[]
+  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
+  affectedReasons?: Map<string, AffectedReason>
   /**
    * Configs a selection pass in this same process already loaded and
    * staged with the same `cacheDir` and `frozen` (the CLI walks every
