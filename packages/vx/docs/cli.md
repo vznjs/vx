@@ -1762,6 +1762,7 @@ workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
 the binary embeds Bun and npm code whose licenses must travel with it.
+The GitHub release carries the same file as an asset beside the binaries.
 After a dependency or Bun bump, `bun packages/vx/scripts/third-party-notices.ts`
 regenerates the notices; `tests/third-party-notices.unsafe.test.ts`
 fails until it does.
