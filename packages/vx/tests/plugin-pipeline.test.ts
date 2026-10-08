@@ -125,6 +125,32 @@ describe('config stage', () => {
   )
 
   it(
+    'every load in one process hands the hooks the declared config, not the last edit',
+    async () => {
+      // Bun keeps one module per specifier, so the workspace file's export
+      // is one object per process: the CLI's selection pass and the run
+      // (and each `vx watch` cycle) handed the hooks what the last load's
+      // hooks had edited, and a run of `vx run` used 8 workers, not 4.
+      await pkg('a', build)
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource('org/double', `{ config(ws) { ws.concurrency = ws.concurrency * 2 } }`),
+        ]).replace('export default {', 'export default { concurrency: 2,'),
+      )
+      const seen: Array<number | undefined> = []
+      for (let i = 0; i < 3; i++) {
+        const log = silent()
+        const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
+        expect(summary.ok).toBe(true)
+        seen.push(log.concurrency)
+      }
+      expect(seen).toEqual([4, 4, 4])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin that produces an invalid workspace config is refused like a user would be',
     async () => {
       // Unchecked, `concurrency: -3` hung the run, `timeout: 'x'` timed
@@ -1380,6 +1406,45 @@ describe('plugin-host, called directly', () => {
         "plugin 'org/edit' failed in graph: a#build's deps is null, not an array of task ids",
         "plugin 'org/edit' failed in graph: 'a#build' holds null, not a task",
         'planned',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a node a graph hook adds is refused, naming the field, when it lacks a project or a task',
+    async () => {
+      await pkg('a', build)
+      // Ran: `internal error in a#x: TypeError: The "path" property must be
+      // of type string`, or the command and its key in vx's own cwd.
+      const said = async (fields: string) => {
+        await workspace([
+          pluginSource(
+            'org/add',
+            `{ graph(nodes) {
+              const dir = nodes.get('a#build').projectDir
+              nodes.set('a#x', { id: 'a#x', config: { exec: { command: 'true' } }, deps: [], requested: true, ${fields} })
+            } }`,
+          ),
+        ])
+        return run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false }).then(
+          (s) => s.outcomes.map((o) => `${o.node.id} ${o.status}`).join(', '),
+          (e: Error) => e.message,
+        )
+      }
+      expect([
+        await said(`projectName: 'a', taskName: 'x'`),
+        await said(`projectName: 'a', taskName: 'x', projectDir: 'packages/a'`),
+        await said(`projectName: 'a', projectDir: dir`),
+        await said(`projectName: '', taskName: 'x', projectDir: dir`),
+        // CONTROL: the whole node runs.
+        await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
+      ]).toEqual([
+        "plugin 'org/add' failed in graph: a#x's projectDir is undefined, not an absolute path",
+        `plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
+        "plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name",
+        `plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        'a#build success, a#x success',
       ])
     },
     TIMEOUT,
