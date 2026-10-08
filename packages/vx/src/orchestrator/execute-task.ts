@@ -362,12 +362,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    // A wrap that refuses (a port the host holds) leaves the server unspawned
+    // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
       env,
       ...sb.sandbox,
       server: true,
+    }).catch(async (err: unknown) => {
+      await sweepPlaceholders(placeholders)
+      throw err
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
