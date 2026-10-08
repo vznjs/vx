@@ -23,7 +23,7 @@ import {
   resolveStoreRoot,
 } from '../workspace/index.js'
 
-export interface CliWorkspace {
+interface CliWorkspace {
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
   cacheDir: string

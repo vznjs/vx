@@ -43,6 +43,7 @@
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
 import { deleteDist, missingDist } from './outputs.js'
 import { listSchedule, type GraphNode } from './ideal.js'
@@ -72,11 +73,6 @@ const RUNNER_ENV = benchEnv({
   DO_NOT_TRACK: '1',
   NX_CLOUD: 'false',
 })
-
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b)
-  return s[Math.floor(s.length / 2)]!
-}
 
 /**
  * Wall time and CPU time of one invocation. CPU is the runner process plus
@@ -477,12 +473,12 @@ async function measure(r: Runner, dir: string): Promise<Row> {
   return {
     runner: r.name,
     version: r.version,
-    fresh: median(fresh),
-    warmNoRestore: median(warmNoRestore),
-    warmRestore: median(warmRestore),
-    freshCpu: median(freshCpu),
-    warmNoRestoreCpu: median(warmNoRestoreCpu),
-    warmRestoreCpu: median(warmRestoreCpu),
+    fresh: summarize(fresh).median,
+    warmNoRestore: summarize(warmNoRestore).median,
+    warmRestore: summarize(warmRestore).median,
+    freshCpu: summarize(freshCpu).median,
+    warmNoRestoreCpu: summarize(warmNoRestoreCpu).median,
+    warmRestoreCpu: summarize(warmRestoreCpu).median,
   }
 }
 

@@ -70,15 +70,10 @@ describe('sampleTrees', () => {
   })
 })
 
-it("reads ps's time column, macOS hundredths and days included", () => {
-  expect(['0:01.50', '01:02:03', '2-00:00:01', '12:34', 'x', '1'].map(psTimeMs)).toEqual([
-    1_500,
-    3_723_000,
-    172_801_000,
-    754_000,
-    undefined,
-    undefined,
-  ])
+it("reads ps's time column, macOS hundredths (either decimal point) and days included", () => {
+  expect(['0:01.50', '0:01,50', '01:02:03', '2-00:00:01', '12:34', 'x', '1'].map(psTimeMs)).toEqual(
+    [1_500, 1_500, 3_723_000, 172_801_000, 754_000, undefined, undefined],
+  )
 })
 
 const RUN: RunContextRecord = {

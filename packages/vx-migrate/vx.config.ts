@@ -1,5 +1,25 @@
 import { defineProject } from '@vzn/vx'
 
+// Fixture repos assume git's defaults; a global config may sign commits.
+// FORCE_COLOR=0: the suite reads vx's and its tasks' output as text.
+const SUITE_ENV = {
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_NOSYSTEM: '1',
+  FORCE_COLOR: '0',
+  VX_CACHE_DIR: '.vx/cache',
+}
+
+const SUITE_SANDBOX = {
+  allow: {
+    read: ['**/*'],
+    systemInfo: ['vfs.disk-space', 'net.link.addr'],
+    localBinding: true,
+  },
+  // remote-cache-degrade.test.ts dials a host that does not
+  // resolve on purpose; the proxy refuses it, and that is the row.
+  ignore: { network: ['no-such-host.invalid:80'] },
+}
+
 export default defineProject({
   tasks: {
     install: {
@@ -69,27 +89,11 @@ export default defineProject({
         // inputs: a skip-mode hit must never answer for the live run.
         // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
         // too old for reftable instead of skipping.
-        // Fixture repos assume git's defaults; a global config may sign commits.
-        // FORCE_COLOR=0: the suite reads vx's and its tasks' output as text.
         env: {
           passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
-          define: {
-            GIT_CONFIG_GLOBAL: '/dev/null',
-            GIT_CONFIG_NOSYSTEM: '1',
-            FORCE_COLOR: '0',
-            VX_CACHE_DIR: '.vx/cache',
-          },
+          define: SUITE_ENV,
         },
-        sandbox: {
-          allow: {
-            read: ['**/*'],
-            systemInfo: ['vfs.disk-space', 'net.link.addr'],
-            localBinding: true,
-          },
-          // remote-cache-degrade.test.ts dials a host that does not
-          // resolve on purpose; the proxy refuses it, and that is the row.
-          ignore: { network: ['no-such-host.invalid:80'] },
-        },
+        sandbox: SUITE_SANDBOX,
       },
       dependsOn: ['install'],
       cache: {
@@ -99,6 +103,19 @@ export default defineProject({
         },
         outputs: { files: [] },
       },
+    },
+
+    // Only the `*-live.test.ts` files, for CI's job that installs real Nx;
+    // `test` runs every file, these in skip mode. No cache: the install is
+    // an unpinned `nx@22` the key cannot see.
+    'test.live': {
+      description: 'bun test, the live Nx files (VX_NX_MODULES names an install)',
+      exec: {
+        command: 'bun test --only-failures ./tests/*-live.test.ts',
+        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX'], define: SUITE_ENV },
+        sandbox: SUITE_SANDBOX,
+      },
+      dependsOn: ['install'],
     },
   },
 })

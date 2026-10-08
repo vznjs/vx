@@ -26,7 +26,7 @@ type AnyValue =
   | { doubleValue: number }
   | { arrayValue: { values: AnyValue[] } }
 
-export interface KeyValue {
+interface KeyValue {
   key: string
   value: AnyValue
 }
@@ -196,13 +196,13 @@ export interface OtlpSpan {
   links?: OtlpSpanLink[]
 }
 
-export interface OtlpSpanEvent {
+interface OtlpSpanEvent {
   timeUnixNano: string
   name: string
   attributes: KeyValue[]
 }
 
-export interface OtlpSpanLink {
+interface OtlpSpanLink {
   traceId: string
   spanId: string
   attributes: KeyValue[]
@@ -756,7 +756,7 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
 const SEVERITY_INFO = 9
 const SEVERITY_ERROR = 17
 
-export interface OtlpLogRecord {
+interface OtlpLogRecord {
   timeUnixNano: string
   observedTimeUnixNano: string
   severityNumber: number

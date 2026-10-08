@@ -25,6 +25,24 @@ describe('buildIsolatedEnv', () => {
     expect(env.SECRET).toBeUndefined()
   })
 
+  // YF-1: a corepack shim finds its cached manager through COREPACK_HOME,
+  // and pnpm its global dir through PNPM_HOME; stripped, the shim fetched
+  // the manager again (no network in a sandbox: the task failed).
+  it("passes the package managers' home directories, not their other settings", () => {
+    const env = buildIsolatedEnv({
+      passThrough: [],
+      define: {},
+      source: {
+        COREPACK_HOME: '/c',
+        PNPM_HOME: '/p',
+        COREPACK_ENABLE_STRICT: '0',
+        npm_config_registry: 'x',
+      },
+    })
+    expect(Object.keys(env).sort()).toEqual(['COREPACK_HOME', 'FORCE_COLOR', 'PNPM_HOME'])
+    expect([env['COREPACK_HOME'], env['PNPM_HOME']]).toEqual(['/c', '/p'])
+  })
+
   it('omits essentials that are not set in source', () => {
     const env = buildIsolatedEnv({
       passThrough: [],
@@ -382,13 +400,13 @@ describe('npm_execpath', () => {
       },
     }
   `
-  async function seen(pm: string | undefined, config: string): Promise<[string, string]> {
+  async function seen(pm: string | undefined, config: string, bom = ''): Promise<[string, string]> {
     const root = await makeWorkspace({ prefix: 'vx-env-pm-' })
     try {
       if (pm !== undefined) {
         await writeFile(
           path.join(root, 'package.json'),
-          JSON.stringify({ name: 'r', private: true, packageManager: pm }),
+          bom + JSON.stringify({ name: 'r', private: true, packageManager: pm }),
         )
       }
       const bin = path.join(root, 'node_modules', '.bin')
@@ -407,6 +425,12 @@ describe('npm_execpath', () => {
 
   it('is the workspace manager found on its node_modules/.bin', async () => {
     const [value, stub] = await seen('pnpm@9.15.0', probe())
+    expect([PM_EXEC_ENV, value]).toEqual(['npm_execpath', stub])
+  })
+
+  it('is found when package.json opens with a byte-order mark', async () => {
+    // JSON.parse threw on the BOM npm and discovery strip, and no manager was set.
+    const [value, stub] = await seen('pnpm@9.15.0', probe(), '\uFEFF')
     expect([PM_EXEC_ENV, value]).toEqual(['npm_execpath', stub])
   })
 

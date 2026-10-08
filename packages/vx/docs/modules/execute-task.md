@@ -64,6 +64,7 @@ anything beneath it changes.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
+   stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
 6. On resolve → return `success` with `durationMs = spawn.readyMs()`,
    unless the run's stop has landed: a server that matched `readyWhen`
@@ -71,7 +72,8 @@ anything beneath it changes.
    as a one-shot that exits 0 on the stop is, and is not registered.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
-caches.
+caches. A readiness timeout returns once the server's process group is
+gone (SIGTERM, grace, SIGKILL), not when its shell exits.
 
 ### C. Normal task
 
@@ -160,7 +162,8 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
-An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
+`rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
