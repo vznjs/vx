@@ -10,7 +10,7 @@
 
 import { Database } from 'bun:sqlite'
 import { readFileSync, readdirSync } from 'node:fs'
-import { rm, writeFile } from 'node:fs/promises'
+import { rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type {
@@ -151,10 +151,11 @@ beforeAll(async () => {
   await writeFile(path.join(root, 'packages/lib/src/a.txt'), 'changed')
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'fail', '--filter', 'app...']).code).toBe(1)
-  // One key that failed, then passed: a flaky task for \`vx info\`.
-  expect(vx(['run', 'lib#flaky']).code).toBe(1)
+  // One key that passed, then failed: a flaky task for \`vx info\`.
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky']).code).toBe(0)
+  await unlink(path.join(root, 'flag'))
+  expect(vx(['run', 'lib#flaky']).code).toBe(1)
 
   for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
   json('info', [])

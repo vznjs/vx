@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -139,6 +140,50 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     }, 20_000)
   }
 
+  // Another vx version ran on this cache during the session and reset the
+  // index to its schema: the late history is this run's to write, and a
+  // schema mismatch resets silently. A reading handle refused it and
+  // printed "run history not recorded: ... another vx version".
+  it('records the history after another vx version reset the index mid-session', async () => {
+    const dir = await addProject(root, 'app', config(0))
+    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_KILL_GRACE_MS: '200' }
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env,
+      }),
+    )
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    // The held run may be writing its index right now; wait for its lock.
+    db.query('PRAGMA busy_timeout = 5000').get()
+    db.query("UPDATE schema_meta SET value = 'v0-other' WHERE key = 'version'").run()
+    db.close()
+    writeFileSync(path.join(dir, 'go'), '')
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect(code).toBe(0)
+    expect((out + err).split('\n').filter((l) => /history|schema|version/.test(l))).toEqual([])
+    const last = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env,
+    })
+    const json = await new Response(last.stdout).text()
+    expect(await last.exited).toBe(0)
+    const tasks = (JSON.parse(json) as { tasks: Array<{ task: string; status: string }> }).tasks
+    expect(tasks.map((t) => `${t.task}:${t.status}`).sort()).toEqual([
+      'dev:success',
+      'other:success',
+    ])
+  }, 20_000)
+
   // C-19: the teardown's default signal. No one pressed Ctrl-C here, so
   // the others get SIGTERM; a SIGINT in its place survived the suite.
   it('a server that exits stops the other with SIGTERM', async () => {
@@ -204,6 +249,10 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // WD-16: a stop after the summary signalled once by the abort, then again
   // by the wait's own teardown once another kept server went: a server that
   // reads a second signal as "quit now" lost its graceful shutdown.
+  // The sleep forks before the traps: a child forked after them holds the
+  // trap until it resets or execs, and on macOS CI the row read two lines
+  // where vx sends one signal (X-117). Every later fork is exposed only to
+  // a second signal, which the leader records anyway.
   for (const [signal, sent, code] of [
     ['SIGTERM', 'T', 143],
     ['SIGINT', 'I', 130],
@@ -217,7 +266,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           fast: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
           slow: {
             exec: {
-              command: "trap 'echo T >> sigs' TERM; trap 'echo I >> sigs' INT; echo $$ > pid.txt; echo READY; while true; do sleep 30 & wait; done",
+              command: "sleep 30 & trap 'echo T >> sigs' TERM; trap 'echo I >> sigs' INT; echo $$ > pid.txt; echo READY; while true; do wait; sleep 30 & done",
               persistent: { readyWhen: 'READY' },
             },
           },

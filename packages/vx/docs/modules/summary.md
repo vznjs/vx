@@ -24,7 +24,7 @@ export interface SummaryStats {
   restoredLocal: number
   restoredRemote: number
   miss: number
-  noCache?: number // a task with no `cache` block never consulted the cache
+  noCache?: number // a task no cache answered for (`ranNoCache`) never consulted one
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
@@ -58,8 +58,6 @@ export function formatRunSummary(
 export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[]
 
 export function neverStarted(o: TaskOutcome): boolean
-
-export function formatDuration(ms: number): string
 ```
 
 Nothing prints below the footer (owner, 2026-10-06): a task's own facts
@@ -104,7 +102,8 @@ cache mode, and `admit held N tasks · Ns` when a policy held any — a
 sum, said as one), the `time` row and the `result` row (`N tasks · N
 cached (P%) · time` over the tasks that consulted a cache (a skipped
 task never did, nor one still to run), `all cached` when each of them
-hit, `N no-cache` for the rest, `N failed` after the
+hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
+policy that reads and writes nothing), `N failed` after the
 count; none on an empty run). `projects` and `info` only
 render when a `RunContext` is passed (the final footer); the live
 region shows the meters alone. The block above is

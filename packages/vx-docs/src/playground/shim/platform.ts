@@ -20,6 +20,7 @@
 
 import { Glob } from './glob.js'
 import { satisfies } from './semver.js'
+import { notInPlayground } from './unavailable.js'
 import { vfs } from './vfs.js'
 import { bunXxHash3 } from './xxh3.js'
 
@@ -49,12 +50,6 @@ function file(p: string): {
     exists: async () => vfs().stat(p)?.isFile() === true,
     text: async () => new TextDecoder().decode(await bytes()),
     bytes,
-  }
-}
-
-function notInPlayground(name: string): () => never {
-  return () => {
-    throw new Error(`playground: ${name} is not available (the plan should not reach it)`)
   }
 }
 

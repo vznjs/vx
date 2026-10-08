@@ -8,21 +8,78 @@ on:
   # from real regressions when a main run goes red.
   workflow_dispatch:
 
-# A newer push to the same ref supersedes an older run. On a PR the running
-# one is cancelled: its old head is never merged. On main it finishes and
-# only the queued runs between it and the tip are dropped, or a busy main
-# never completes a run, never releases (auto-release.yml) and never says
-# it is red.
 # Checkout is all the token does here: a PR's code runs in these jobs, and
 # a default token may hold write access (L-29).
 permissions:
   contents: read
 
+# A newer push to the same PR supersedes an older run, which is cancelled:
+# its old head is never merged. Any other run (main, a dispatch) finishes
+# and only the queued runs between it and the tip are dropped, or a busy
+# main never completes a run, never releases (auto-release.yml) and never
+# says it is red.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which of the jobs below a pull request's diff can reach. The `ci` job
+  # runs every suite on every diff and is never gated. `plugin packages` is
+  # gated on the paths its live suites can read. The macOS job is gated
+  # narrowly: it guards platform divergence (tar, file system, SQLite),
+  # which lives in core and the plugins, so it skips only a diff confined
+  # to the site, the bench and prose; the `ci` job still runs every law
+  # that reads those files. The gated jobs also run when this job fails
+  # or is skipped (a push or a dispatch runs everything); a job skipped by
+  # `if` reports success to branch protection, where a workflow-level
+  # `paths` filter would leave a required check pending.
+  #
+  # The diff is the merge ref's own: first parent (the base tip) to the
+  # merge, the tree every job here tests. `--no-renames` lists both ends of a
+  # move. A path is safe only if neither live suite, nor the vx run that
+  # hosts it, can read it: vx-migrate's sandbox grants its own directory,
+  # vx-reapi's suites read their own files, both import core and the
+  # workspace's plugins by their source, and every run evaluates every
+  # project's vx.config.ts and installs every package.json. Anything not
+  # listed runs the job.
+  changes:
+    name: changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.diff.outputs.packages }}
+      darwin: ${{ steps.diff.outputs.darwin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: diff
+        shell: bash
+        run: |
+          changed=$(git diff --no-renames --name-only HEAD^1 HEAD)
+          echo "$changed"
+          packages=false
+          darwin=false
+          # An empty diff reads as one empty line, which `*)` runs.
+          while IFS= read -r f; do
+            case "$f" in
+              packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
+              packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
+              packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-mcp/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
+              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/*) ;;
+              *) packages=true ;;
+            esac
+            case "$f" in
+              packages/*/vx.config.ts | packages/*/package.json) darwin=true ;;
+              packages/vx-docs/* | packages/vx-bench/*) ;;
+              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | .claude/*) ;;
+              *) darwin=true ;;
+            esac
+          done <<< "$changed"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "darwin=$darwin" >> "$GITHUB_OUTPUT"
+
   ci:
     name: lint · format · test
     runs-on: ubuntu-latest
@@ -191,6 +248,8 @@ jobs:
   # reports green.
   packages:
     name: plugin packages
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -319,6 +378,8 @@ jobs:
   # stable on these runners over time, the flag can be promoted.
   core-darwin:
     name: core tests (macOS)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 20
 

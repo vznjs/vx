@@ -19,7 +19,16 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 const TOKEN = 'tok'
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
-type Mode = 'ok' | 'error' | 'hang' | 'corrupt' | 'unauthorized' | 'put413' | 'puthang' | 'flaky'
+type Mode =
+  | 'ok'
+  | 'error'
+  | 'hang'
+  | 'bodyhang'
+  | 'corrupt'
+  | 'unauthorized'
+  | 'put413'
+  | 'puthang'
+  | 'flaky'
 
 /** One server for both wires; `mode` is what the next request meets. */
 function hostileServer() {
@@ -87,6 +96,28 @@ function hostileServer() {
         // A body that is not a vx artifact at all: the restore has to fail
         // INSIDE the cache and come back a miss, not tear down the task.
         return new Response(new TextEncoder().encode('not-an-artifact'), { status: 200 })
+      }
+      if (state.mode === 'bodyhang') {
+        // The status and half the bytes arrive; the rest never does until
+        // the client gives up (or 2 s pass), as hostileServer's 'hang' lets go.
+        const half = held.subarray(0, held.length >> 1)
+        const body = new ReadableStream<Uint8Array>({
+          async start(c) {
+            c.enqueue(half)
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, 2_000)
+              req.signal.addEventListener('abort', () => {
+                clearTimeout(timer)
+                resolve()
+              })
+            })
+            c.close()
+          },
+        })
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-length': String(held.length) },
+        })
       }
       return new Response(held, { status: 200 })
     },
@@ -431,6 +462,47 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
       expect(warnings).toEqual([
         `${prefix} upload ${hash} to ${srv.url}${base} failed: no answer within 700 ms`,
       ])
+    })
+  })
+
+  describe(`a download whose body stalls names its deadline (${wire})`, () => {
+    let srv: ReturnType<typeof hostileServer>
+    let root: string
+    beforeAll(async () => {
+      srv = hostileServer()
+      const decl =
+        wire === 'turboCache'
+          ? `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
+          : `nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
+      root = await fixture(decl, wire)
+    })
+    afterAll(async () => {
+      await srv.stop()
+      await rm(root, { recursive: true, force: true })
+    })
+
+    // The deadline covers the body too, and Bun's abort there read "The
+    // operation timed out." with no deadline in it: the words item 749
+    // replaced for a request with no answer.
+    it('headers in time, body past the deadline: green, one warning naming the download and the deadline', async () => {
+      const seeded = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(srv.store.size).toBe(1)
+      const hash = seeded.outcomes[0]!.hash!
+      await coldAgain(root)
+      srv.state.mode = 'bodyhang'
+      let r: Awaited<ReturnType<typeof cliRun>>
+      try {
+        r = await cliRun(root, prefix)
+      } finally {
+        srv.state.mode = 'ok'
+      }
+      expect({ exitCode: r.exitCode, warnings: r.warnings }).toEqual({
+        exitCode: 0,
+        warnings: [
+          `${prefix} download ${hash} from ${srv.url}${base} failed: no answer within 700 ms`,
+        ],
+      })
+      expect(await Bun.file(path.join(root, OUT)).text()).toBe('console.log("app")\n')
     })
   })
 

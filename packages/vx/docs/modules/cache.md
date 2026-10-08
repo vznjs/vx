@@ -166,7 +166,7 @@ export interface PruneOptions {
 export interface PruneResult {
   evicted: number
   bytesFreed: number
-  orphans: number // artifacts / temps with no index row, an hour old or more
+  orphans: number // row-less artifacts the policy takes by file time, and temps an hour old
   orphanBytes: number
 }
 
@@ -301,7 +301,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v40' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v41' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -328,6 +328,7 @@ export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 // The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
+export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
 ```
 
 ## Key derivation (`Cache.key`)
@@ -550,9 +551,9 @@ Surfaced by `vx info`.
 - Doesn't garbage-collect old entries unasked. Eviction is
   `vx cache prune --older-than <d>` / `--max-size <s>` (calls into
   `Cache.prune`), or the workspace's `cacheRetention` at the end of a
-  run (`Cache.evictIfDue`); both sweep artifacts and temps the index
-  has no row for, once they are an hour old (`docs/caching.md`
-  § Storage layout). `evictIfDue` runs that sweep on its own when the
+  run (`Cache.evictIfDue`); both sweep artifacts the index has no row
+  for by the same policy, on file times, and temps once an hour old
+  (`docs/caching.md` § Storage layout). `evictIfDue` runs that sweep on its own when the
   policy has nothing due but the last sweep (`schema_meta`
   `orphans_swept_at`, stamped by every sweep) is an hour old: the
   policy sums index rows, so orphans never make it due.
@@ -569,7 +570,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v40'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v41'`; `SCHEMA_VERSION` is
 `'v32'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
