@@ -37,6 +37,7 @@ import {
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
+import { withLernaOrder } from './lerna.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
   dotenvCandidates,
@@ -304,7 +305,17 @@ export async function mapNxWorkspace(
   graph: NxGraph,
   opts: MapNxOptions,
 ): Promise<NxMapping> {
-  const nodeMap = graph.nodes
+  const byRel = new Map(metas.map((m) => [normRel(relPosix(root, m.dir)), m.packageJson]))
+  const nodeMap = await withLernaOrder(
+    root,
+    graph.nodes,
+    (await readNxJson(root).catch(() => null))?.json,
+    async (rel) =>
+      (byRel.get(normRel(rel)) as Record<string, unknown> | undefined) ??
+      (await Bun.file(path.join(root, rel, 'package.json'))
+        .json()
+        .catch(() => undefined)),
+  )
   const g = graph
 
   const { namedInputs, cacheable, globalSync } = await readNxJsonFacts(root)
@@ -923,7 +934,10 @@ function buildTask(
   }
   const exec: Record<string, unknown> = { command: mapped.command }
   const env: Record<string, unknown> = {}
-  if (inputs.envNames.length > 0) env.passThrough = inputs.envNames
+  // A name that is no shell identifier never reached a task (`sh` drops it)
+  // and core refuses it in passThrough; the key still reads it.
+  const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
+  if (passThrough.length > 0) env.passThrough = passThrough
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and
   // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
   // unset, it booted Nx's own task runner, which ran the target and its

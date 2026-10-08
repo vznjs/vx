@@ -166,7 +166,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
       this.disabled = true
       if (!first) return undefined
       throw new Error(
-        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (a read-only token cannot write)'}; remote cache off for this run`,
+        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (the token may not read)'}; remote cache off for this run`,
       )
     }
     return res

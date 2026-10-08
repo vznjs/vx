@@ -1629,22 +1629,33 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       // the close under test. The claim is "every exit path"; the coverage
       // was one of them.
       //
-      // The lever here is a plugin layer whose `drainUploads` throws — the
-      // one await in the normal path that is not wrapped — so the run takes
-      // its hits and then dies before its own close.
+      // The lever here is a plugin layer whose `recordOutputDirs` throws: a
+      // restoring hit snapshots its `dist/**` tree after the drain, and that
+      // write is the one plugin call in the normal path left unwrapped (its
+      // `drainUploads` was, until a plugin's upload failure became a warning).
+      // So the run takes its hits and then dies before its own close.
       const fixture = await makeFixture('vx-remote-e2e-')
       const g = globalThis as Record<string, unknown>
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
         })
         await writeFile(
           path.join(fixture.root, 'vx.workspace.mjs'),
           localWorkspaceSource(
             [
               `                ${pluginSource(
-                'test/drain-throws',
+                'test/dirs-throw',
                 `{ cache(ctx) {
                     const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
                       policy: ctx.policy,
@@ -1652,12 +1663,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                     return {
                       hasRemote: true,
                       prefetch: (h, c) => inner.prefetch(h, c),
-                      drainUploads: () => {
-                        if (globalThis.__vxDrainThrows === true) {
-                          throw new Error('drain exploded')
-                        }
-                        return inner.drainUploads()
-                      },
+                      drainUploads: () => inner.drainUploads(),
                       remoteHasMany: (h) => inner.remoteHasMany(h),
                       markRemoteAbsent: (h) => inner.markRemoteAbsent(h),
                       key: (a) => inner.key(a),
@@ -1674,7 +1680,12 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                       stats: (a) => inner.stats(a),
                       hashFile: (a) => inner.hashFile(a),
                       outputsPath: (a) => inner.outputsPath(a),
-                      recordOutputDirs: (a, b, c) => inner.recordOutputDirs?.(a, b, c),
+                      recordOutputDirs: (a, b, c, d) => {
+                        if (globalThis.__vxDirsThrow === true) {
+                          throw new Error('snapshot exploded')
+                        }
+                        return inner.recordOutputDirs?.(a, b, c, d)
+                      },
                       prune: (a) => inner.prune(a),
                       close: () => inner.close(),
                     }
@@ -1691,7 +1702,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
             `,
           ),
         )
-        g['__vxDrainThrows'] = false
+        g['__vxDirsThrow'] = false
         const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
         expect(first.ok).toBe(true)
 
@@ -1711,13 +1722,15 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         // The bump has to be distinguishable from the save's own timestamp.
         await Bun.sleep(25)
 
-        g['__vxDrainThrows'] = true
+        // A restoring hit: the output tree is gone, so the hit writes it back.
+        await rm(path.join(fixture.root, 'app', 'dist'), { recursive: true, force: true })
+        g['__vxDirsThrow'] = true
         await expect(
           run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
-        ).rejects.toThrow('drain exploded')
+        ).rejects.toThrow('snapshot exploded')
         expect(accessedAt()).toBeGreaterThan(before)
       } finally {
-        delete g['__vxDrainThrows']
+        delete g['__vxDirsThrow']
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

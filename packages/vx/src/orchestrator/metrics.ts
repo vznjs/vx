@@ -407,11 +407,18 @@ function unchangedKeyNote(
       at: number
     } | null
   )?.at
-  // Both runs executed the task and succeeded with the cache writable, no
-  // entry holds the key, and each ran beside a failure: the continue-taint
-  // (admission.ts), which runs a task downstream of a failure and never
-  // saves it. Blaming `--no-cache` / `--force` named a flag nobody passed.
-  if (createdAt === undefined && this_.status === 'success' && prev.status === 'success') {
+  // The previous run executed the task and succeeded with the cache
+  // writable beside a failure, and no entry older than this run holds the
+  // key: the continue-taint (admission.ts), which runs a task downstream of
+  // a failure and never saves it. Blaming `--no-cache` / `--force` named a
+  // flag nobody passed, and a prune when this run saved the key named an
+  // eviction that never happened.
+  if (
+    (createdAt === undefined || createdAt >= this_.startedAt) &&
+    this_.status === 'success' &&
+    prev.status === 'success' &&
+    prev.cacheHit === 0
+  ) {
     const failedWithWrites = (id: string | null): number => {
       if (id === null) return 0
       const row = db
@@ -420,9 +427,13 @@ function unchangedKeyNote(
       const writes = row?.p.split(',').some((axis) => axis === 'lW' || axis === 'rW') === true
       return writes ? (row?.f ?? 0) : 0
     }
-    const now = failedWithWrites(runId)
-    if (prev.cacheHit === 0 && now > 0 && failedWithWrites(prev.runId) > 0) {
-      return `cache key unchanged — neither run saved it: each ran beside a failed task (${now} failed in this one), and a task run past a failed dependency (--continue) is never cached`
+    const before = failedWithWrites(prev.runId)
+    if (before > 0) {
+      const now = failedWithWrites(runId)
+      if (createdAt === undefined && now > 0) {
+        return `cache key unchanged — neither run saved it: each ran beside a failed task (${now} failed in this one), and a task run past a failed dependency (--continue) is never cached`
+      }
+      return `cache key unchanged — the previous run on this key ran beside a failed task (${before} failed in it) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit`
     }
   }
   if (createdAt !== undefined && createdAt >= this_.startedAt) {

@@ -64,7 +64,7 @@ it('a directory that held listed files and is gone starts one', async () => {
   await mkdir(path.join(dir, 'packages', 'b'), { recursive: true })
   await writeFile(path.join(dir, 'packages', 'b', 'x.txt'), 'x\n')
   Bun.spawnSync(['git', 'init', '-q'], { cwd: dir })
-  const listed = gitFiles(dir)
+  const listed = gitFiles(dir)?.listed
   expect(listed?.has(path.join(dir, 'packages', 'b', 'x.txt'))).toBe(true)
   await rm(path.join(dir, 'packages', 'b'), { recursive: true })
   const judge = judgeIn(dir, listed)
@@ -81,7 +81,7 @@ it('a file gone from inside a nested repository starts one', async () => {
   Bun.spawnSync(['git', 'init', '-q'], { cwd: dir })
   Bun.spawnSync(['git', 'init', '-q'], { cwd: path.join(dir, 'vend') })
   await writeFile(path.join(dir, 'vend', 'inner.txt'), 'x\n')
-  const listed = gitFiles(dir)
+  const listed = gitFiles(dir)?.listed
   expect(listed?.has(path.join(dir, 'vend'))).toBe(true)
   await rm(path.join(dir, 'vend', 'inner.txt'))
   const judge = judgeIn(dir, listed)
