@@ -109,7 +109,9 @@ The same rule, applied at the end of every run and by the doctor:
   task as it finishes, so its row carries the note (`flakyNote`), and
   `--summarize` types them (`flaky`).
 - `flakyTasks(db)` — every task with a mixed-outcome key in the whole
-  retained history, most failures first: the `vx info` row.
+  retained history, most failures first: the `vx info` row. A pass that
+  took a retry is one `success` row; its failed attempts count as
+  failures, so it mixes its key alone.
 - Cost follows the run's colour. No candidate: no query. A green miss:
   one probe of `runs_failed`, a PARTIAL index over failed rows (the
   rare ones, so a green run's 1,000 inserts only evaluate its

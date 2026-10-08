@@ -13,6 +13,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  realpathSync,
   statSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -25,12 +26,20 @@ import path from 'node:path'
  * git: those share nothing.
  */
 export async function repoIdOf(root: string): Promise<string | null> {
-  const located = locateGitDir(root)
+  // Git walks the physical path; the logical one found no `.git` through a
+  // symlink from outside the repository, and an alias inside it another id.
+  let real: string
+  try {
+    real = realpathSync(root)
+  } catch {
+    real = path.resolve(root)
+  }
+  const located = locateGitDir(real)
   if (located === null) return null
   const identity =
     (await remoteIdentity(root, located.commonDir)) ?? (await firstCommit(located.commonDir, root))
   if (identity === null) return null
-  const rel = path.relative(located.gitRoot, path.resolve(root)).split(path.sep).join('/')
+  const rel = path.relative(located.gitRoot, real).split(path.sep).join('/')
   const key = sha256(`${identity}#${rel}`)
   return sha256(key).slice(0, 16)
 }

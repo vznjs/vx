@@ -1253,7 +1253,13 @@ async function wrapIn(
       ...macProfileRules(args.config),
       ...darwinWallRules(args.config, baselines.allowRead),
     ]
-    if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    try {
+      if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    } catch (err) {
+      releaseBridges(tag)
+      afterCommand(SandboxManager)
+      throw err
+    }
   }
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
@@ -1390,11 +1396,14 @@ function ownGroupCommand(
     .join(' ')
   const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
   const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
+  // Bash reports a job a signal killed on its stderr, the task's: a task
+  // whose shell died of SIGKILL printed this whole wrapper (X-111).
+  const wait = `wait "$c" 2>/dev/null`
   if (setsid === undefined) {
-    return { command: `${tag0} ${run} wait "$c"`, forwards: false, traced: true }
+    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
-  return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
+  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
 /** What strace stops on: the reads, and what moves or makes a process's cwd. */

@@ -7,7 +7,7 @@
 
 import { Database } from 'bun:sqlite'
 import { existsSync, rmSync, statSync } from 'node:fs'
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -296,6 +296,18 @@ describe('repoIdOf', () => {
     const sub = path.join(f.root, 'packages', 'app')
     expect(await repoIdOf(sub)).not.toBeNull()
     expect(await repoIdOf(sub)).not.toBe(await repoIdOf(f.root))
+  })
+
+  it('is one id for every path that reaches the workspace through a symlink', async () => {
+    const f = await workspace()
+    const sub = path.join(f.root, 'packages', 'app')
+    const outside = path.join(home, 'app')
+    const inside = path.join(f.root, 'alias')
+    await symlink(sub, outside)
+    await symlink(sub, inside)
+    const id = await repoIdOf(sub)
+    expect(id).toMatch(/^[0-9a-f]{16}$/)
+    expect([await repoIdOf(outside), await repoIdOf(inside)]).toEqual([id, id])
   })
 
   it('is the first commit with no remote, which a clone shares and a shallow clone lacks', async () => {

@@ -23,8 +23,8 @@ without a terminal it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
 the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
 and `github()` when `.github/workflows` exists, installing each beside vx at
-the same version. Your `package.json` scripts
-stay as they are. The steps below
+the same version (`--no-install` leaves `package.json` alone). Your
+`package.json` scripts stay as they are. The steps below
 are the same adoption one stage at a time.
 
 ## Turborepo

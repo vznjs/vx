@@ -1528,7 +1528,12 @@ describe('plugin-host, called directly', () => {
           ),
         ])
         return run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false }).then(
-          (s) => s.outcomes.map((o) => `${o.node.id} ${o.status}`).join(', '),
+          // Sorted: the two nodes share no edge, so either can finish first.
+          (s) =>
+            s.outcomes
+              .map((o) => `${o.node.id} ${o.status}`)
+              .toSorted()
+              .join(', '),
           (e: Error) => e.message,
         )
       }
