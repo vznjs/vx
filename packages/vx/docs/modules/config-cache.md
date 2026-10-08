@@ -192,7 +192,9 @@ mtime/size/ctime/inode memo — no read, no scan; a file changed within
 `FILE_HASH_RACY_MS` of its stat is hashed but not memoised, so a config
 edited moments ago is never served from a stale identity) with
 `configEvalKeyFromClosure`, whose fold is byte-identical to
-`configEvalKey`'s, so the two paths share entries. Every indexed
+`configEvalKey`'s, so the two paths share entries (an executable's
+`100755:` mode prefix is dropped: the mode moves no evaluation, and the
+slow path's `hashBytes` has none). Every indexed
 closure's files are identified in one call (`hashFiles`, one memo query
 per 500 paths; 1,000 point reads cost 7.7 ms of a warm run, 2026-09-09).
 A fast key that misses takes the slow path for that config, which

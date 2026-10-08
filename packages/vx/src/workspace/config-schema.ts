@@ -28,6 +28,7 @@ import {
   asTrees,
   isLiteralPattern,
 } from '../util/index.js'
+import { compileNameGlob } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -1286,7 +1287,7 @@ function assertFilterNamesDeclaredDeps(
 ): void {
   const declared = (dependsOn ?? []).map(specForm)
   const matches = (pattern: string, name: string): boolean =>
-    pattern.includes('*') ? taskPatternRegExp(pattern).test(name) : pattern === name
+    pattern.includes('*') ? compileNameGlob(pattern).test(name) : pattern === name
   const named = (f: SpecForm): boolean =>
     declared.some((d) => {
       if (!matches(d.task, f.task)) return false
@@ -1364,12 +1365,6 @@ export function taskNameProblem(name: string): string | null {
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
             : null
-}
-
-/** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */
-function taskPatternRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`)
 }
 
 /**
@@ -1492,6 +1487,12 @@ const IGNORE_FIELDS = new Set(['read', 'write', 'systemInfo', 'network'])
 function assertStringArray(v: unknown, where: string): void {
   if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
     throw new UserError(`${where} must be an array of non-empty strings`)
+  }
+  // No path, host or name holds a NUL; a write grant with one reached the
+  // placeholder create as an internal error.
+  const nul = (v as string[]).find((s) => s.includes('\0'))
+  if (nul !== undefined) {
+    throw new UserError(`${where}: ${JSON.stringify(nul)} holds a NUL byte`)
   }
 }
 

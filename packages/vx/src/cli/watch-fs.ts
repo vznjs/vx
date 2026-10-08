@@ -237,6 +237,12 @@ export function armWatcher(
  */
 function treeWatcher(root: string, listener: (filename: string) => void): WatchHandle {
   const watchers = new Map<string, fs.FSWatcher>()
+  // Which directory each watch holds: inotify follows the inode, so a name
+  // removed and made again before its event is handled stats as a
+  // directory still, and the watch on the deleted one heard nothing more.
+  // The birth time too: a freed inode number goes to the next directory.
+  const held = new Map<string, string>()
+  const idOf = (st: fs.Stats): string => `${st.dev}:${st.ino}:${st.birthtimeMs}`
   let closed = false
   let armed = false
   let warned = false
@@ -249,6 +255,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
       if (key !== rel && !key.startsWith(rel + '/')) continue
       w.close()
       watchers.delete(key)
+      held.delete(key)
     }
   }
   const watchDir = (rel: string, report: boolean): void => {
@@ -269,7 +276,10 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
           return
         }
         if (!st.isDirectory()) return
-        if (watchers.has(child)) return
+        if (watchers.has(child)) {
+          if (held.get(child) === idOf(st)) return
+          drop(child)
+        }
         watchDir(child, true)
       })
     } catch (err) {
@@ -289,6 +299,11 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
     }
     w.on('error', () => drop(rel))
     watchers.set(rel, w)
+    try {
+      held.set(rel, idOf(fs.statSync(abs)))
+    } catch {
+      held.set(rel, '')
+    }
     let entries: fs.Dirent[]
     try {
       entries = fs.readdirSync(abs, { withFileTypes: true })
@@ -314,6 +329,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
       closed = true
       for (const w of watchers.values()) w.close()
       watchers.clear()
+      held.clear()
     },
   }
 }

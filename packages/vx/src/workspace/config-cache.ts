@@ -410,6 +410,16 @@ function keySeed(workspaceFingerprint: string): bigint {
 const EXPLICIT_EXT = /\.(?:m?[jt]s|cjs|cts)$/
 
 /**
+ * A file's identity as the key folds it. `hashFile` names an executable
+ * `100755:<oid>`, the slow path's `hashBytes` the bare oid; the mode moves
+ * no evaluation, and with it the warm key of an executable config never
+ * met the stored one, so every load read and re-keyed it.
+ */
+function contentIdentity(identity: string): string {
+  return identity.startsWith('100755:') ? identity.slice(7) : identity
+}
+
+/**
  * The canonical directory Bun resolves `file`'s imports from: its REAL
  * path's, so a config linked in from elsewhere imports its neighbours
  * there, not beside the link (item 950). The directory is real-pathed
@@ -482,7 +492,7 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKey
     const identity = a.hashBytes
       ? a.hashBytes(bytes, file)
       : a.hashFile
-        ? await a.hashFile(file)
+        ? contentIdentity(await a.hashFile(file))
         : await hashOf(file, bytes)
     h = xxh3(`${file}\0${identity}`, h)
     closure.push(file)
@@ -570,7 +580,9 @@ export async function configEvalKeyFromClosure(a: {
     return null
   }
   if (identities.some((id) => id.startsWith(LINK_IDENTITY))) return null
-  for (let i = 0; i < a.closure.length; i++) h = xxh3(`${a.closure[i]}\0${identities[i]}`, h)
+  for (let i = 0; i < a.closure.length; i++) {
+    h = xxh3(`${a.closure[i]}\0${contentIdentity(identities[i]!)}`, h)
+  }
   return h.toString(16).padStart(16, '0')
 }
 
@@ -584,7 +596,7 @@ export function configEvalKeyFromIdentities(a: {
   for (const file of a.closure) {
     const id = a.identities.get(file)
     if (id === undefined || id.startsWith(LINK_IDENTITY)) return null
-    h = xxh3(`${file}\0${id}`, h)
+    h = xxh3(`${file}\0${contentIdentity(id)}`, h)
   }
   return h.toString(16).padStart(16, '0')
 }
