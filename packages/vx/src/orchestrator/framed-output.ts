@@ -31,6 +31,7 @@ import { formatElapsed, maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
+import { fileMemo, linkPaths } from './path-links.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -88,6 +89,8 @@ export function formatTaskBlock(
   // ran or was cached — you asked for it, you see what it would run.
   forceCommand = false,
   forwardArgs: readonly string[] = [],
+  // The terminal opens OSC 8 links: a failed task's paths become links.
+  links = false,
 ): string {
   // Group tasks (no `exec`) do no work and have no body — they're
   // organizational nodes the user wrote so a `vx run ci` invocation
@@ -113,7 +116,16 @@ export function formatTaskBlock(
     lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
-  pushOutputSection(lines, output, (body.droppedStdout ?? 0) + (body.droppedStderr ?? 0), colors)
+  const isFile = links && outcome.status === 'failed' ? fileMemo() : undefined
+  const link =
+    isFile === undefined ? undefined : (t: string) => linkPaths(t, node.projectDir, isFile)
+  pushOutputSection(
+    lines,
+    output,
+    (body.droppedStdout ?? 0) + (body.droppedStderr ?? 0),
+    colors,
+    link,
+  )
 
   lines.push(...violationSection(outcome, colors))
 
@@ -156,6 +168,7 @@ function pushOutputSection(
   output: readonly OutputChunk[],
   lost: number,
   colors: ColorSupport,
+  link?: (line: string) => string,
 ): void {
   if (output.every((c) => c.text.trim().length === 0)) return
   lines.push(sectionLine('OUTPUT', '', colors), '')
@@ -179,8 +192,9 @@ function pushOutputSection(
   }
   if (open !== null) body.push({ text: open.parts.join(''), err: open.err })
   for (const l of body) {
-    if (!l.err || !colors.enabled) lines.push(l.text)
-    else lines.push(l.text.includes('\x1b') ? l.text : paint(ERROR, l.text, colors))
+    const text = link === undefined ? l.text : link(l.text)
+    if (!l.err || !colors.enabled) lines.push(text)
+    else lines.push(l.text.includes('\x1b') ? text : paint(ERROR, text, colors))
   }
   lines.push('')
 }

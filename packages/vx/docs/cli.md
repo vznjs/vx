@@ -764,6 +764,14 @@ The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
 `ConEmuPID`); any other, tmux included, gets neither, since there
 OSC 9 may itself be a notification.
 
+In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
+VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
+tmux or screen), a failed task's frame links each path that names a
+file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, to
+that file, so a click from the workspace root opens the right one. The
+text is the task's output unchanged; a successful task's frame is never
+linked.
+
 The region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the final summary prints. In the
 focused flow it only lives while dependencies run; it disappears for
