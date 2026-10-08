@@ -97,6 +97,10 @@ gone (SIGTERM, grace, SIGKILL), not when its shell exits.
      runs it once they are done (scheduler.md; admission drops the
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
+   - If the run's stop landed during the awaits before this (the key,
+     the probe, the input description), return `aborted` with the
+     signal's exit: no clean, no executor call. The first attempt wiped
+     the last build and handed the executor a request after the stop.
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
      `dist/` doesn't survive into a fresh exec; the directory each
      wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
