@@ -36,6 +36,7 @@ export {
   cleanOutputs,
   cleanWorkspaceOutputs,
   declaresInput,
+  workspaceFilesReachInto,
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
@@ -52,6 +53,7 @@ export {
 } from './inputs.js'
 export {
   GitFilesCache,
+  gitRefusal,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,

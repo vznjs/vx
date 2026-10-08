@@ -34,6 +34,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 ```
 
@@ -398,6 +399,7 @@ free strings. Runtime behavior is unchanged (it returns its input).
 ```ts
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
@@ -425,6 +427,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T
 ```

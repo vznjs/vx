@@ -503,6 +503,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
   ['cacheDir is only whitespace — name a directory', workspaceConfig('{ cacheDir: "   " }')],
+  ['cacheDir holds a NUL, which no path can carry', workspaceConfig('{ cacheDir: "a\\0b" }')],
   [
     "affectedBase must be a git ref like 'origin/main'",
     workspaceConfig('{ affectedBase: "--output=x" }'),
@@ -578,6 +579,14 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(
       `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
         `${plugin('b', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
+    ),
+  ],
+  [
+    // `plugins: [bun(), bun()]` read "plugins 'x' and 'x' both claim" (D-158).
+    "plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once",
+    workspaceConfig(
+      `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
+        `${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
     ),
   ],
 ]

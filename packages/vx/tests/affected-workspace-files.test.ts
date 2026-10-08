@@ -253,4 +253,51 @@ describe('--affected sees a workspaceFiles change', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a glob reaching into a changed nested repository selects its declarer',
+    async () => {
+      // git reports a submodule or an embedded repository as ONE path
+      // (`vendor/sub`, `vendor/new/`), while the key folds the files inside;
+      // matched as a file, `vendor/sub/**` missed it and the run said
+      // "nothing affected" over a stale key.
+      const sub = path.join(root, 'vendor/sub')
+      await write(path.join(sub, 'f.txt'), '1')
+      git(sub, 'init', '-q')
+      git(sub, 'config', 'user.email', 't@vx.local')
+      git(sub, 'config', 'user.name', 'vx')
+      git(sub, 'add', '-A')
+      git(sub, 'commit', '-qm', 'sub')
+      for (const [name, glob] of [
+        ['tool', 'vendor/sub/**'],
+        ['gen', 'vendor/*/f.txt'],
+        ['fresh', 'vendor/new/**'],
+      ] as const) {
+        await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+        await write(
+          path.join(root, `pkgs/${name}/vx.config.mjs`),
+          `export default { tasks: { build: { exec: { command: "true" }, cache: { inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, outputs: { files: [] } } } } }\n`,
+        )
+      }
+      // `git add` of an embedded repository records a gitlink, as a submodule's.
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'readers of vendor')
+      const planned = (): string[] | string => {
+        const r = vx(root, 'run', 'build', '--affected=HEAD', '--dry=json')
+        if (r.exitCode !== 0 || !r.stdout.includes('{')) return r.stdout
+        const out = r.stdout.slice(r.stdout.indexOf('{'))
+        return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+      }
+      expect(planned()).toContain('nothing affected')
+      await write(path.join(sub, 'f.txt'), '2')
+      expect(planned()).toEqual(['gen#build', 'tool#build'])
+      await write(path.join(sub, 'f.txt'), '1')
+      const fresh = path.join(root, 'vendor/new')
+      await write(path.join(fresh, 'x.txt'), 'x')
+      git(fresh, 'init', '-q')
+      // `vendor/*/f.txt` may descend into any repository under `vendor`.
+      expect(planned()).toEqual(['fresh#build', 'gen#build'])
+    },
+    TIMEOUT,
+  )
 })

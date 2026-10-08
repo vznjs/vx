@@ -284,6 +284,11 @@ exec task starts after everything above it finished, `deps-ok` never
 runs over a failure, a skip names a failed ancestor, nothing starts
 after the stop, every lane stays under its cap; and the taint tracker
 against its definition (C-70).
+`tests/graph-pipeline-properties.test.ts` feeds `buildTaskGraph`'s
+output over random workspaces that sometimes cycle into `runGraph`: a
+refusal names a simple cycle of real edges, build and serial order
+repeat, each task runs at most once, after its deps, under the cap,
+and each `--continue` mode runs exactly the tasks it promises.
 
 ## Replacing this module
 

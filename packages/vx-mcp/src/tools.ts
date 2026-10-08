@@ -140,7 +140,7 @@ export async function handleToolCall(
   // the whole unfiltered history as if it were the filtered one.
   const def = TOOLS.find((t) => t.name === name)
   if (def !== undefined) {
-    const takes = Object.keys((def.inputSchema['properties'] ?? {}) as Record<string, unknown>)
+    const takes = Object.keys(def.inputSchema['properties'] ?? {})
     const extra = Object.keys(args).filter((k) => !takes.includes(k))
     if (extra.length > 0) {
       throw new UserError(
