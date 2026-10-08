@@ -20,6 +20,9 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from '../src/orchestrator/index.js'
 import { withSum } from './helpers/artifact-sum.js'
 
+/** How long a hit may leave `accessed_at` unrenewed (cache.ts `ACCESS_REFRESH_MS`). */
+const REFRESH = 60 * 60 * 1000
+
 /**
  * A row straight into the index, with a stand-in artifact: prune drops a
  * row whose artifact is gone without evicting it (item 975), so a fixture
@@ -1161,6 +1164,8 @@ describe('Cache storage (v10)', () => {
       outputFiles: [],
       entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
     })
+    // Old enough that the hit renews it (a row used within the hour is not).
+    cache.dbHandle().query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h-flush')
     await cache.get('h-flush')
     const readAccessed = (): number =>
       (
@@ -1230,6 +1235,61 @@ describe('Cache storage (v10)', () => {
     const result = await cache.prune({ olderThanMs: Date.now() - 60_000 })
     expect(result.evicted).toBe(0)
     expect(await cache.get('h-hit')).not.toBeNull()
+  })
+
+  // A hit renews `accessed_at` only once it is an hour old: renewing every
+  // hit rewrote 2,180 rows at a warm 1,090-package run's close (~30 ms).
+  it('a hit renews accessed_at only once it is older than an hour, by get and getMany', async () => {
+    for (const h of ['h-get', 'h-many']) {
+      await cache.save({
+        hash: h,
+        projectDir,
+        outputFiles: [],
+        entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+      })
+    }
+    const db = cache.dbHandle()
+    const set = (at: number): void => {
+      db.query('UPDATE entries SET accessed_at = ?').run(at)
+    }
+    const read = (): number[] =>
+      (
+        db.query('SELECT accessed_at AS a FROM entries ORDER BY hash').all() as Array<{ a: number }>
+      ).map((r) => r.a)
+    const hit = async (): Promise<void> => {
+      expect(await cache.get('h-get')).not.toBeNull()
+      expect((await cache.getMany(['h-many'])).size).toBe(1)
+      cache.stats()
+    }
+    const fresh = Date.now() - REFRESH + 60_000
+    set(fresh)
+    await hit()
+    expect(read()).toEqual([fresh, fresh])
+    const old = Date.now() - REFRESH - 60_000
+    const before = Date.now()
+    set(old)
+    await hit()
+    expect(read().every((a) => a >= before)).toBe(true)
+  })
+
+  it('an entry used within the age limit is never pruned, its row unrenewed', async () => {
+    await cache.save({
+      hash: 'h-used',
+      projectDir,
+      outputFiles: [],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    const db = cache.dbHandle()
+    const limit = 30 * 60 * 1000
+    // Renewed 50 minutes ago and hit just now, which renews nothing: the
+    // row reads older than the 30-minute limit, the use is not.
+    db.query('UPDATE entries SET accessed_at = ?').run(Date.now() - 50 * 60 * 1000)
+    expect(await cache.get('h-used')).not.toBeNull()
+    expect((await cache.prune({ olderThanMs: Date.now() - limit })).evicted).toBe(0)
+    expect((await cache.evictIfDue({ maxAgeMs: limit }))?.evicted ?? 0).toBe(0)
+    // CONTROL: last renewed past the limit plus the hour, it goes.
+    db.query('UPDATE entries SET accessed_at = ?').run(Date.now() - limit - REFRESH - 60_000)
+    expect((await cache.prune({ olderThanMs: Date.now() - limit })).evicted).toBe(1)
   })
 
   it('ingest() rejects a zstd frame declaring an oversize decompressed length (bomb)', async () => {
@@ -1383,7 +1443,8 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Wait a tick so olderThanMs = now strictly exceeds h-old's accessed_at.
+    // Wait a tick so the cutoff strictly exceeds h-old's last use, read as
+    // `accessed_at` plus the hour a hit may leave it unrenewed.
     await new Promise((r) => setTimeout(r, 10))
 
     // The artifact is on disk BEFORE the prune — without this control the
@@ -1395,7 +1456,7 @@ describe('Cache storage (v10)', () => {
     // prune's orphan sweep found them, a grace window later.
     expect(existsSync(cache.outputsPath('h-old'))).toBe(true)
 
-    const result = await cache.prune({ olderThanMs: Date.now() })
+    const result = await cache.prune({ olderThanMs: Date.now() + REFRESH })
     expect(result.evicted).toBe(1)
     expect(result.bytesFreed).toBeGreaterThanOrEqual(3)
 
@@ -1489,7 +1550,8 @@ describe('Cache storage (v10)', () => {
         (r) => r.hash,
       )
 
-    const result = await cache.prune({ olderThanMs: 1000 })
+    // The last use is `accessed_at` plus the hour a hit may leave unrenewed.
+    const result = await cache.prune({ olderThanMs: 1000 + REFRESH })
     expect(result.evicted).toBe(1)
     // The index is the oracle, not `get()`: these rows' artifacts are
     // empty stand-ins, so `get()` could not read a survivor either.
@@ -1608,7 +1670,7 @@ describe('Cache storage (v10)', () => {
     await utimes(aged, twoHoursAgo, twoHoursAgo)
     await new Promise((r) => setTimeout(r, 10))
 
-    const dry = await cache.prune({ olderThanMs: Date.now(), dryRun: true })
+    const dry = await cache.prune({ olderThanMs: Date.now() + REFRESH, dryRun: true })
     expect(dry.evicted).toBe(1)
     expect(dry.bytesFreed).toBeGreaterThanOrEqual(3)
     expect(dry.orphans).toBe(1)
@@ -1619,7 +1681,7 @@ describe('Cache storage (v10)', () => {
     expect(existsSync(aged)).toBe(true)
 
     // The real prune with the same policy reaps exactly what the dry run named.
-    const wet = await cache.prune({ olderThanMs: Date.now() })
+    const wet = await cache.prune({ olderThanMs: Date.now() + REFRESH })
     expect({ evicted: wet.evicted, orphans: wet.orphans, orphanBytes: wet.orphanBytes }).toEqual({
       evicted: 1,
       orphans: 1,
@@ -1753,7 +1815,7 @@ describe('Cache storage (v10)', () => {
       for (let i = 0; i < 1000; i++) seedRow(cache, insert, `h-bulk-${i}`)
     })()
 
-    const result = await cache.prune({ olderThanMs: 2 })
+    const result = await cache.prune({ olderThanMs: REFRESH + 2 })
     expect(result.evicted).toBe(1000)
     expect(await cache.get('h-bulk-0')).toBeNull()
     expect(await cache.get('h-bulk-999')).toBeNull()
@@ -1806,7 +1868,7 @@ describe('Cache storage (v10)', () => {
 
     // By age too: the phantom is older than the cutoff and still neither
     // evicted nor counted as freed; the real entry is.
-    const byAge = await cache.prune({ olderThanMs: hourAgo + 1, dryRun: true })
+    const byAge = await cache.prune({ olderThanMs: hourAgo + REFRESH + 1, dryRun: true })
     expect({ evicted: byAge.evicted, bytesFreed: byAge.bytesFreed }).toEqual({
       evicted: 1,
       bytesFreed: 100,
@@ -2200,7 +2262,7 @@ describe('Cache storage (v10)', () => {
     })
     await rm(path.join(cacheDir, 'h-orphan-row'), { recursive: true, force: true })
 
-    const result = await cache.prune({ olderThanMs: Date.now() + 1000 })
+    const result = await cache.prune({ olderThanMs: Date.now() + REFRESH + 1000 })
     expect(result.evicted).toBe(1)
     // DB row should be gone.
     expect(await cache.get('h-orphan-row')).toBeNull()

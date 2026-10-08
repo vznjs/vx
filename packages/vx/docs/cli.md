@@ -1522,7 +1522,7 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx last --list`) rather than printing a bare "unknown subcommand".
 
 ```
-vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
+vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
 vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
@@ -2654,7 +2654,13 @@ specific one, and the two do not combine (a word beside `--list` no run
 id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
-emits `{ invocation, tasks }` for scripting, and `--list --format json`
+emits `{ invocation, tasks }` for scripting; a failed task's row adds
+`output` (its output as plain text, the first 8 KiB and last 56 KiB,
+secrets masked) and `locations` (the existing files it names,
+`{ file, line?, col? }`, file absolute), so an agent reads why without
+the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
+newest 50 failed runs; past those, or when the write was refused, a
+failed row reads `output: ''` and `locations: []`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`

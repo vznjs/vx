@@ -41,7 +41,12 @@ import {
   maskCaptured,
   BoundedCapture,
 } from '../exec/index.js'
-import { encodeOutputLog } from './output-log.js'
+import {
+  encodeOutputLog,
+  FAILED_OUTPUT_HEAD_CHARS,
+  FAILED_OUTPUT_TAIL_CHARS,
+  failedOutputLog,
+} from './output-log.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
   killGraceMs,
@@ -260,7 +265,85 @@ export interface ExecuteArgs {
 export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (isGroupTask(args.node)) return executeGroupTask(args)
   if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
+  // A probed hit needs none of the run path's set-up: the upstream folding,
+  // timers and closures `executeCachedTask` builds on entry were ~15 µs of
+  // each of a warm run's hits (X-193). The same branch there handles it
+  // when this one does not apply.
+  const probed = args.preProbed
+  if (probed?.hit != null && readsCache(args) && args.remoteOnlyNoop !== true) {
+    return restoreProbed(
+      args,
+      probed.hash,
+      probed.hit,
+      process.hrtime.bigint() - args.runStartHrTimeNs,
+    )
+  }
   return executeCachedTask(args)
+}
+
+/** Whether this task reads the cache: a cached, not remote-only task with a read axis on. */
+function readsCache(args: ExecuteArgs): boolean {
+  const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+  return (
+    args.remoteOnly !== true &&
+    args.node.config.cache !== undefined &&
+    (policy.localRead || policy.remoteRead)
+  )
+}
+
+/**
+ * Restore the up-front probe's hit, or demote it. A key taken before a task
+ * rewrote the lockfile names an install the tree no longer holds, and the
+ * lazy path never probes one (X-124): demoted like a vanished hit, it runs
+ * dep-gated. The hit may be restoring AHEAD of this task's deps, and a
+ * command run now would build from outputs they have not written yet and
+ * save that under the good key: the scheduler runs it again once they are
+ * done (admission drops the probe).
+ */
+async function restoreProbed(
+  args: ExecuteArgs,
+  hash: string,
+  hit: CacheEntry,
+  taskStartNs: bigint,
+): Promise<TaskOutcome> {
+  const cacheOpStart = performance.now()
+  const restored = fingerprintMoved(args)
+    ? null
+    : await restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs)
+  if (restored !== null) return restored
+  throw new RestoreDemoted(args.node.id)
+}
+
+/**
+ * A hit restored, or null when its artifact was removed after the probe (a
+ * prune, another workspace's retention on a shared cache directory): a
+ * miss. The restore has wiped the declared outputs by then; the run path
+ * cleans them again and the task writes them.
+ */
+async function restoreOrMiss(
+  args: ExecuteArgs,
+  hash: string,
+  hit: CacheEntry,
+  cacheOpStart: number,
+  taskStartNs: bigint,
+): Promise<TaskOutcome | null> {
+  try {
+    return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+  } catch (err) {
+    if (!(err instanceof ArtifactVanishedError)) throw err
+    args.log.status(`[vx] ${args.node.id}: ${err.message} — running it`)
+    return null
+  }
+}
+
+/**
+ * The workspace fingerprint every key here folded has moved (a task
+ * rewrote the lockfile), said once per run.
+ */
+function fingerprintMoved(args: ExecuteArgs): boolean {
+  if (args.fingerprintWatch?.moved() === undefined) return false
+  args.fingerprintWatch.say(args.log)
+  return true
 }
 
 /**
@@ -270,35 +353,65 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * through us.
  */
 async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
+  if (args.node.config.cache === undefined) {
+    return unkeyedGroupOutcome(
+      args.node,
+      args.upstream,
+      args.upfrontGroupKey,
+      args.runStartHrTimeNs,
+    )
+  }
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // `computeGroupKey`: an unkeyed group's key is its upstream's alone, so
-  // the up-front one stands when that upstream is unchanged.
-  const upfront = args.upfrontGroupKey
-  const hash =
-    args.node.config.cache === undefined
-      ? upfront !== undefined && sameUpstream(args.upstream, upfront.upstream)
-        ? upfront.key
-        : computeGroupHash(args.upstream)
-      : await computeTaskHash({
-          node: args.node,
-          upstream: args.upstream,
-          workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
-  return {
+  const hash = await computeTaskHash({
     node: args.node,
+    upstream: args.upstream,
+    workspaceRoot: args.workspaceRoot,
+    workspaceFingerprint: args.workspaceFingerprint,
+    cache: args.cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+  })
+  return groupOutcome(args.node, args.upstream, hash, wallclockNs)
+}
+
+/**
+ * An unkeyed group's outcome (no `cache`, no key of its own): its key is
+ * its upstream's alone (`computeGroupKey`), so the up-front one stands when
+ * that upstream is unchanged. Synchronous: the scheduler settles such a
+ * group in place (`ScheduleOptions.settleNow`), and `upstream` is the key's
+ * (`keyUpstream`).
+ */
+export function unkeyedGroupOutcome(
+  node: TaskNode,
+  upstream: TaskOutcome[],
+  upfront: UpfrontGroupKey | undefined,
+  runStartHrTimeNs: bigint,
+): TaskOutcome {
+  const wallclockNs = process.hrtime.bigint() - runStartHrTimeNs
+  const hash =
+    upfront !== undefined && sameUpstream(upstream, upfront.upstream)
+      ? upfront.key
+      : computeGroupHash(upstream)
+  return groupOutcome(node, upstream, hash, wallclockNs)
+}
+
+function groupOutcome(
+  node: TaskNode,
+  upstream: TaskOutcome[],
+  hash: string,
+  wallclockNs: bigint,
+): TaskOutcome {
+  return {
+    node,
     status: 'success',
     exitCode: 0,
     durationMs: 0,
     hash,
     // What this group stands for. A dependent expands it to describe the
     // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
-    groupUpstream: args.upstream,
+    groupUpstream: upstream,
     wallclockStartNs: wallclockNs,
     wallclockEndNs: wallclockNs,
   }
@@ -823,40 +936,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the probe already ran — restore its hit, or (null hit) fall straight
   // to the run path as a known stable miss. No second cache.get.
   if (willRead) {
-    const cacheOpStart = performance.now()
-    // A hit whose artifact was removed after the probe (a prune, another
-    // workspace's retention on a shared cache directory) is a miss. The
-    // restore has wiped the declared outputs by then; the run path cleans
-    // them again and the task writes them.
-    const restoreOrMiss = async (hit: CacheEntry): Promise<TaskOutcome | null> => {
-      try {
-        return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
-      } catch (err) {
-        if (!(err instanceof ArtifactVanishedError)) throw err
-        log.status(`[vx] ${node.id}: ${err.message} — running it`)
-        return null
-      }
-    }
     if (preProbed !== undefined) {
-      if (preProbed.hit !== null) {
-        // A key taken before a task rewrote the lockfile names an install
-        // the tree no longer holds, and the lazy path below never probes
-        // one (X-124): demoted like a vanished hit, it runs dep-gated.
-        const restored = fingerprintMoved() ? null : await restoreOrMiss(preProbed.hit)
-        if (restored !== null) return restored
-        // The up-front probe's hit may be restoring AHEAD of this task's
-        // deps, and a command run now would build from outputs they have
-        // not written yet and save that under the good key. The scheduler
-        // runs it again once they are done (admission drops the probe).
-        throw new RestoreDemoted(node.id)
-      }
+      if (preProbed.hit !== null) return restoreProbed(args, hash, preProbed.hit, taskStartNs)
       // Confirmed stable miss — skip the probe, fall through to run.
-    } else if (!fingerprintMoved()) {
+    } else if (!fingerprintMoved(args)) {
+      const cacheOpStart = performance.now()
       const endProbe = span('cache.get')
       const hit = await cache.get(hash, getContext(node, step.command))
       endProbe()
       if (hit) {
-        const restored = await restoreOrMiss(hit)
+        const restored = await restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs)
         if (restored !== null) return restored
       }
     }
@@ -1198,7 +1287,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
-  // The attempt's output as the logger got it (masked), for the entry.
+  // The attempt's output as the logger got it (masked): the entry's when
+  // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [])
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
@@ -1290,14 +1380,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
-    const kept = willSave ? new BoundedCapture() : undefined
+    const kept = willSave
+      ? new BoundedCapture()
+      : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
     const toOut = (t: string): void => {
-      kept?.push(t)
+      kept.push(t)
       log.taskStdout(node, t)
     }
     const toErr = (t: string): void => {
-      kept?.push(t, true)
+      kept.push(t, true)
       log.taskStderr(node, t)
     }
     const out = secrets && maskedEmitter(secrets, toOut)
@@ -1437,16 +1529,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
-   * The workspace fingerprint every key here folded has moved (a task
-   * rewrote the lockfile), said once per run.
-   */
-  function fingerprintMoved(): boolean {
-    if (args.fingerprintWatch?.moved() === undefined) return false
-    args.fingerprintWatch.say(log)
-    return true
-  }
-
-  /**
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
    * task saves nothing and runs again.
@@ -1491,7 +1573,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * withholds it too: the key folded the old one.
    */
   async function keyStillTrue(): Promise<boolean> {
-    if (fingerprintMoved()) {
+    if (fingerprintMoved(args)) {
       unkeyed = true
       return false
     }
@@ -1540,6 +1622,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(effectiveExitCode !== 0 && output !== undefined
+      ? { failedOutput: failedOutputLog(output, willSave) }
+      : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),

@@ -280,6 +280,13 @@ longer evaluate on every run, check-attr overlaps git status, the
 telemetry context reads files instead of spawning git, and a literal
 file output no longer walks its glob on each hit.
 
+**Cache save CPU (2026-10-08, `docs/design/cache-save-cpu-2026-10.md`).**
+A cold save costs ~3.8 s of vx's ~8.6 s own CPU on the 1,090-package
+row. Five PR steps; step 1 (a save scans its own tar in memory,
+synchronously) is X-191. Next: step 2, a small artifact packed
+synchronously, with an A/B that splits plan, pack and the unaccounted
+~1.3 s.
+
 **Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
 fastest task runner, shown by the native-config benchmark with every
 competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how

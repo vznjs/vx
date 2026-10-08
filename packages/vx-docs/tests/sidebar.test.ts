@@ -1,5 +1,5 @@
-// The site's three places and two sidebars (design/site-short-2026-09.md §
-// The shape), read from the built HTML: what a reader sees, not what the
+// The site's places and two sidebars (design/site-short-2026-09.md §
+// The shape; Features, standalone pages, came after), read from the built HTML: what a reader sees, not what the
 // config says. The Docs' sidebar is the eight pages, then the playground; the Reference ends
 // with the one way into the internals. Every page shows exactly one of the
 // two (the blog keeps its own), and no sidebar links an internals page. The
@@ -14,11 +14,13 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Written by hand from the design, not read from src/nav/sections.ts.
 const PLACES: [string, string][] = [
+  ['Features', 'features/'],
   ['Docs', 'quickstart/'],
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
+  ['Releases', 'releases/'],
 ]
-// The Docs are eight pages, no groups (design/site-short-2026-09.md's six, Troubleshooting, Upgrading).
+// The Docs are nine pages, no groups (design/site-short-2026-09.md's six, AI agents, Troubleshooting, Upgrading).
 const DOCS_PAGES: [string, string][] = [
   ['Quickstart', 'quickstart/'],
   ['Configure', 'guides/configure/'],
@@ -26,6 +28,7 @@ const DOCS_PAGES: [string, string][] = [
   ['CI and remote', 'guides/ci/'],
   ['Migrate', 'guides/migrate/'],
   ['Plugins', 'guides/plugins/'],
+  ['AI agents', 'guides/agents/'],
   ['Troubleshooting', 'guides/troubleshooting/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
@@ -135,7 +138,7 @@ describe('the sidebars', () => {
     const lists = { Docs: docs, Reference: reference }
     const wrong: string[] = []
     for (const rel of all) {
-      if (rel === '' || rel.startsWith('blog/')) continue
+      if (rel === '' || /^(?:blog|releases)\//.test(rel)) continue
       const page = html(rel)
       const list = sidebarList(page)
       if (list === undefined) continue
@@ -158,6 +161,8 @@ describe('the sidebars', () => {
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])
+    expect(places(html('releases/')).current).toEqual(['Releases'])
+    expect(places(html('releases/vx-0-0-625/')).current).toEqual(['Releases'])
   })
 
   it('no sidebar, on any page, links an internals page', () => {
@@ -183,10 +188,10 @@ describe('the sidebars', () => {
 })
 
 describe('the header', () => {
-  it('names the three places, in order, on every docs page', () => {
+  it('names the places, in order, on every docs page', () => {
     const wrong: string[] = []
     for (const rel of pages()) {
-      if (rel === '') continue
+      if (rel === '' || rel.startsWith('features/')) continue
       const got = places(html(rel)).links
       if (JSON.stringify(got) !== JSON.stringify(PLACES))
         wrong.push(`${rel}: ${JSON.stringify(got)}`)
@@ -194,12 +199,14 @@ describe('the header', () => {
     expect(wrong).toEqual([])
   })
 
-  it('and the landing names the same three', () => {
-    const nav = /<nav class="nav-links[^"]*">([\s\S]*?)<\/nav>/.exec(html(''))![1]!
-    const got = [...nav.matchAll(/<a href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => [
-      text(m[2]!),
-      m[1]!.slice(BASE.length),
-    ])
-    expect(got).toEqual(PLACES.map(([l, h]) => [l.toLowerCase(), h]))
+  it('and the landing and the feature pages name the same ones', () => {
+    for (const rel of ['', 'features/', 'features/sandbox/']) {
+      const nav = /<nav class="nav-links[^"]*">([\s\S]*?)<\/nav>/.exec(html(rel))![1]!
+      const got = [...nav.matchAll(/<a href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => [
+        text(m[2]!),
+        m[1]!.slice(BASE.length),
+      ])
+      expect({ rel, got }).toEqual({ rel, got: PLACES.map(([l, h]) => [l.toLowerCase(), h]) })
+    }
   })
 })

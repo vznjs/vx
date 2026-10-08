@@ -1,0 +1,55 @@
+---
+// The standalone pages' top bar (the landing and the feature pages): the
+// brand, the site's places from src/nav/sections.ts, and GitHub. The
+// feature pages can switch theme; the landing is dark only.
+import { SECTIONS } from '../../nav/sections.js'
+
+interface Props {
+  current?: string
+  themeToggle?: boolean
+}
+const { current, themeToggle = false } = Astro.props
+const base = import.meta.env.BASE_URL
+const href = (p: string) => `${base}${p}`
+---
+
+<header class="nav">
+  <div class="nav-left">
+    <a class="brand" href={base}>
+      <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
+      <span class="word">vx</span>
+    </a>
+    <nav class="nav-links">
+      {
+        SECTIONS.map((s) => (
+          <a href={href(s.href)} aria-current={s.id === current ? 'page' : undefined}>
+            {s.label.toLowerCase()}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+  <div class="nav-right">
+    {
+      themeToggle && (
+        <button class="theme-toggle" type="button" aria-label="Switch theme" data-theme-toggle>
+          <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </svg>
+          <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
+          </svg>
+        </button>
+      )
+    }
+    <a class="btn-github" href="https://github.com/vznjs/vx">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"
+        ><path
+          d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.49-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.05-.49.05-.49.81.06 1.24.83 1.24.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"
+        ></path></svg
+      >
+      GitHub
+    </a>
+  </div>
+</header>

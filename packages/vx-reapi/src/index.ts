@@ -51,7 +51,9 @@ export interface ReapiPluginOptions extends Partial<
   /**
    * Endpoint, or omit to read `VX_REAPI_ENDPOINT`. With neither the plugin
    * DECLINES — a declared-but-unconfigured plugin costs nothing and must
-   * never fail a run.
+   * never fail a run. TLS unless it starts `grpc://`, `http://`, `unix:` or
+   * `unix-abstract:`, or `tls: false` is set, as Bazel reads a schemeless
+   * `--remote_cache`.
    */
   endpoint?: string
   /**
@@ -173,7 +175,7 @@ function assertEndpoint(endpoint: string, from: string): void {
   const port = m?.[2] === undefined ? undefined : Number(m[2])
   if (m === null || (port !== undefined && (port < 1 || port > 65_535))) {
     throw new UserError(
-      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)`,
+      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
     )
   }
 }

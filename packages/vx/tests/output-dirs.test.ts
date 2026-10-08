@@ -474,7 +474,8 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     await cache.recordOutputDirs('h2', proj, ['dist/sub'])
     // Evict h2 by age: its `accessed_at` is set back past the cutoff.
     cache.dbHandle().query('UPDATE entries SET accessed_at = 0 WHERE hash = ?').run('h2')
-    const result = await cache.prune({ olderThanMs: 1 })
+    // Past an hour after it: a row's last use is accessed_at plus the hour.
+    const result = await cache.prune({ olderThanMs: 60 * 60 * 1000 + 1 })
     expect(result.evicted).toBe(1)
     const all = cache
       .dbHandle()

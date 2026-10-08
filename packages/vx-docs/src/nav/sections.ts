@@ -1,7 +1,8 @@
-// The site's three places (design/site-short-2026-09.md § The shape): the
-// Docs and the Reference each have a sidebar of their own, and the Blog has
-// the one starlight-blog gives it. The landing is the story; the Guide it
-// replaced redirects there.
+// The site's places (design/site-short-2026-09.md § The shape, plus the
+// feature pages): the Docs and the Reference each have a sidebar of their
+// own, the Blog and Releases have none, and Features is a set of
+// standalone pages (src/pages/features/) outside Starlight. The landing is
+// the story; the Guide it replaced redirects there.
 //
 // Starlight has one sidebar. SIDEBAR is it, as two top-level groups whose
 // labels are the section names; route-data.ts shows a page only the group its
@@ -11,12 +12,12 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'docs' | 'reference' | 'blog'
+export type SectionId = 'features' | 'docs' | 'reference' | 'blog' | 'releases'
 
 declare global {
   namespace App {
     interface Locals {
-      /** Which of the three places the page belongs to (route-data.ts). */
+      /** Which place a Starlight page belongs to (route-data.ts); never Features. */
       vxSection: SectionId
     }
   }
@@ -24,9 +25,11 @@ declare global {
 
 /** The top navigation, in order. `href` is under the site's base. */
 export const SECTIONS: readonly { id: SectionId; label: string; href: string }[] = [
+  { id: 'features', label: 'Features', href: 'features/' },
   { id: 'docs', label: 'Docs', href: 'quickstart/' },
   { id: 'reference', label: 'Reference', href: 'cli/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
+  { id: 'releases', label: 'Releases', href: 'releases/' },
 ]
 
 type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
@@ -43,6 +46,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'CI and remote', link: '/guides/ci/' },
     { label: 'Migrate', link: '/guides/migrate/' },
     { label: 'Plugins', link: '/guides/plugins/' },
+    { label: 'AI agents', link: '/guides/agents/' },
     { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
     { label: 'Try it', link: '/playground/' },

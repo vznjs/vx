@@ -118,13 +118,14 @@ describe('handleMessage', () => {
     ])
   })
 
-  it('tools/list advertises the six tools with object schemas', async () => {
+  it('tools/list advertises the seven tools with object schemas', async () => {
     const r = (await handleMessage(req(4, 'tools/list'), ctx)) as {
       result: { tools: Array<{ name: string; inputSchema: { type: string } }> }
     }
     expect(r.result.tools.map((t) => t.name).sort()).toEqual([
       'explainCacheKey',
       'getCacheStats',
+      'getFailures',
       'getRunHistory',
       'getWorkspaceInfo',
       'listTasks',
@@ -297,7 +298,7 @@ describe('vx mcp over stdio (the real entry point)', () => {
       .split('\n')
       .map((l) => JSON.parse(l) as { id: number; result: Record<string, unknown> })
     expect(replies.map((r) => r.id)).toEqual([1, 2, 3])
-    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(6)
+    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(7)
     const history = JSON.parse(
       (replies[2]!.result['content'] as Array<{ text: string }>)[0]!.text,
     ) as {

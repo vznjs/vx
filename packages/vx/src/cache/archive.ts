@@ -50,7 +50,14 @@ import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
-import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
+import {
+  TarFormatError,
+  type TarInput,
+  tarEntries,
+  tarEntriesSync,
+  tarPack,
+  tarSize,
+} from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -58,6 +65,10 @@ const META_ENTRY = '.vx-meta.json'
 
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
+
+// One decoder, its defaults (a leading BOM dropped), for both scanners.
+// `ignoreBOM`: a leading U+FEFF in a task's stdout is the task's.
+const utf8 = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /**
  * The last entry: a CRC-32 over every entry before it, each its name, a
@@ -107,19 +118,30 @@ class SumCheck {
     name: string,
     body: AsyncIterable<Uint8Array>,
   ): Promise<AsyncIterable<Uint8Array> | null> {
+    if (!this.enter(name)) return this.sum.through(body)
+    this.verify(await textOf(body))
+    return null
+  }
+  /**
+   * The next regular entry: true when it is the sum entry, whose text the
+   * caller hands to `verify`; otherwise the caller hands its bytes to `add`.
+   */
+  enter(name: string): boolean {
     if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
-    if (name === SUM_ENTRY) {
-      const got = await textOf(body)
-      if (got !== this.sum.hex()) {
-        throw new TarFormatError(
-          `artifact content does not match its checksum (${got}, read ${this.sum.hex()})`,
-        )
-      }
-      this.seen = true
-      return null
-    }
+    if (name === SUM_ENTRY) return true
     this.sum.entry(name)
-    return this.sum.through(body)
+    return false
+  }
+  add(bytes: Uint8Array): void {
+    this.sum.add(bytes)
+  }
+  verify(got: string): void {
+    if (got !== this.sum.hex()) {
+      throw new TarFormatError(
+        `artifact content does not match its checksum (${got}, read ${this.sum.hex()})`,
+      )
+    }
+    this.seen = true
   }
   done(): void {
     if (!this.seen) throw new TarFormatError('artifact carries no checksum')
@@ -413,6 +435,51 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
   })
 }
 
+/** What a scan of an artifact reads out of it. */
+interface ArtifactScan {
+  entries: ArchiveEntry[]
+  stdout: string | null
+  exec: ExecUsage | undefined
+  key: string | undefined
+}
+
+/** A scan's result, built entry by entry in tar order: the one fold both scanners share. */
+class ScanFold {
+  private readonly seen: Array<{ name: string; size: number; mtimeMs: number }> = []
+  private files: MetaFile['files'] = {}
+  private exec: ExecUsage | undefined
+  private key: string | undefined
+  stdout: string | null = null
+
+  sidecar(text: string): void {
+    const parsed = JSON.parse(text) as MetaFile
+    this.files = parsed.files ?? {}
+    // The ingest side is the untrusted boundary: a foreign sidecar's
+    // usage is taken only when it is a plain non-negative number.
+    this.exec = usageOf(parsed.exec)
+    if (typeof parsed.key === 'string') this.key = parsed.key
+  }
+
+  entry(name: string, size: number, mtimeMs: number): void {
+    this.seen.push({ name, size, mtimeMs })
+  }
+
+  result(): ArtifactScan {
+    return {
+      entries: this.seen.map((s) => {
+        const m = this.files[s.name]
+        // A foreign artifact (or one whose sidecar lost an entry) restores
+        // readable-but-not-executable rather than failing the hit: the
+        // sidecar is metadata, never the authority on whether bytes exist.
+        return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
+      }),
+      stdout: this.stdout,
+      exec: this.exec,
+      key: this.key,
+    }
+  }
+}
+
 /**
  * List an artifact's regular entries with their restore metadata, and
  * its stdout text (`null` when the entry is absent — not a vx artifact),
@@ -420,49 +487,55 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
  * name is unsafe — a partial reading of a poisoned artifact is the
  * outcome the traversal defense exists to prevent.
  */
-export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<{
-  entries: ArchiveEntry[]
-  stdout: string | null
-  exec: ExecUsage | undefined
-  key: string | undefined
-}> {
-  const seen: Array<{ name: string; size: number; mtimeMs: number }> = []
-  let meta: MetaFile['files'] = {}
-  let exec: ExecUsage | undefined
-  let key: string | undefined
-  let stdout: string | null = null
+export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<ArtifactScan> {
+  const fold = new ScanFold()
   const check = new SumCheck()
   for await (const e of tarEntries(tar)) {
     if (e.type !== '0') continue
     const body = await check.body(e.name, e.body)
     if (body === null) continue
     if (e.name === META_ENTRY) {
-      const parsed = JSON.parse(await textOf(body)) as MetaFile
-      meta = parsed.files ?? {}
-      // The ingest side is the untrusted boundary: a foreign sidecar's
-      // usage is taken only when it is a plain non-negative number.
-      exec = usageOf(parsed.exec)
-      if (typeof parsed.key === 'string') key = parsed.key
+      fold.sidecar(await textOf(body))
       continue
     }
     assertSafeName(e.name)
-    if (e.name === STDOUT_ENTRY) stdout = await textOf(body)
+    if (e.name === STDOUT_ENTRY) fold.stdout = await textOf(body)
     else await drain(body)
-    seen.push({ name: e.name, size: e.size, mtimeMs: e.mtimeMs })
+    fold.entry(e.name, e.size, e.mtimeMs)
   }
   check.done()
-  return {
-    entries: seen.map((s) => {
-      const m = meta[s.name]
-      // A foreign artifact (or one whose sidecar lost an entry) restores
-      // readable-but-not-executable rather than failing the hit: the
-      // sidecar is metadata, never the authority on whether bytes exist.
-      return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
-    }),
-    stdout,
-    exec,
-    key,
+  return fold.result()
+}
+
+/**
+ * `scanArtifact` over a tar in memory, synchronously: a save scans the
+ * tar it just packed. Same decoder, same checks in the same order, same
+ * result. The async generators, per-chunk promises and drain were most
+ * of a small save's scan: one 400 B output, 49 → 14 µs (X-191).
+ */
+export function scanTarBytes(tar: Uint8Array): ArtifactScan {
+  const fold = new ScanFold()
+  const check = new SumCheck()
+  for (const e of tarEntriesSync(tar)) {
+    if (e.type !== '0') continue
+    if (check.enter(e.name)) {
+      check.verify(utf8.decode(e.body()))
+      continue
+    }
+    if (e.name === META_ENTRY) {
+      const body = e.body()
+      check.add(body)
+      fold.sidecar(utf8.decode(body))
+      continue
+    }
+    assertSafeName(e.name)
+    const body = e.body()
+    check.add(body)
+    if (e.name === STDOUT_ENTRY) fold.stdout = utf8.decode(body)
+    fold.entry(e.name, e.size, e.mtimeMs)
   }
+  check.done()
+  return fold.result()
 }
 
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
@@ -569,7 +642,7 @@ async function bytesOf(body: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
 }
 
 const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
-  new TextDecoder().decode(await bytesOf(body))
+  utf8.decode(await bytesOf(body))
 
 /** One staged entry: written at `tmp`, renamed to `target` on commit. */
 interface Staged {

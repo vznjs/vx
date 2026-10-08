@@ -15,7 +15,7 @@ printf 'FROM public.ecr.aws/docker/library/busybox:musl\nCOPY nativelink /usr/lo
 docker build -t vx-nativelink-sh .
 docker run -d --name vx-nl -p 51051:50051 -v "$PWD/exec.json5:/config.json5" vx-nativelink-sh /config.json5
 
-VX_REAPI_EXEC_ENDPOINT=127.0.0.1:51051 bun test tests/exec-e2e.test.ts
+VX_REAPI_EXEC_ENDPOINT=grpc://127.0.0.1:51051 bun test tests/exec-e2e.test.ts
 ```
 
 The base is the Docker Official busybox image, and any mirror of it works:

@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-reapi: connect a bare endpoint with TLS, as Bazel does
+
+a vx-reapi endpoint with no scheme now uses TLS; a plaintext server needs grpc:// or tls: false.
+
 ## cache: replay stderr on cache hits
 
 every cached task misses once after upgrading to vx-cache-v42.

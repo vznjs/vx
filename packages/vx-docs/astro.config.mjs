@@ -1,12 +1,6 @@
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
-// The blog: announcement posts under /blog/, an RSS feed, authors and
-// tags, rendered in Starlight's own chrome. Posts are Markdown files in
-// src/content/docs/blog/ (see README.md § Writing a blog post). The
-// plugin is the maintained Starlight blog (HiDeoo); hand-rolling the
-// index, pagination, RSS and structured data would be a second copy of
-// what it already does for this exact Starlight version.
-import starlightBlog from 'starlight-blog'
+import { readdirSync } from 'node:fs'
 import { SIDEBAR } from './src/nav/sections.ts'
 import remarkDataCharts from './src/plugins/data-charts.ts'
 import remarkMermaid from './src/plugins/remark-mermaid.mjs'
@@ -22,14 +16,8 @@ export default defineConfig({
   // sandbox grants in vx.config.ts for why a write under node_modules breaks
   // module resolution inside the Linux sandbox.
   cacheDir: './.astro/cache',
-  // `satteri` (starlight-blog's Markdown engine) loads a native binding at
-  // runtime; bundled into a prerender chunk under dist/ that `require` has
-  // nowhere to resolve from in Bun's isolated install layout. Kept external
-  // — and declared here so it resolves from this package — it loads from
-  // its real path in the store, where its platform package is linked.
   vite: {
     cacheDir: './.astro/vite',
-    ssr: { external: ['satteri'] },
     // The site has no PostCSS config. Without an inline one Vite searches
     // every parent up to the workspace root, reading the root package.json
     // the build's sandbox hides: Linux answers ENOENT and the search goes
@@ -89,6 +77,21 @@ export default defineConfig({
     '/guide/try-it/': `${root}playground/`,
     '/guide/labs/': `${root}playground/`,
     '/benchmarks/real-repos/': `${root}benchmarks/`,
+    // The blog's old listing pages (starlight-blog's pagination and author
+    // page): the index now holds every post.
+    '/blog/2/': `${root}blog/`,
+    '/blog/3/': `${root}blog/`,
+    '/blog/4/': `${root}blog/`,
+    '/blog/5/': `${root}blog/`,
+    '/blog/authors/vzn/': `${root}blog/`,
+    // Release notes moved out of the blog into their own section.
+    '/blog/tags/release/': `${root}releases/`,
+    '/blog/tags/essays/': `${root}blog/`,
+    ...Object.fromEntries(
+      readdirSync(new URL('./src/content/docs/releases/', import.meta.url))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => [`/blog/${f.slice(0, -3)}/`, `${root}releases/${f.slice(0, -3)}/`]),
+    ),
   },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
@@ -119,12 +122,35 @@ export default defineConfig({
             content: 'vx: a faster runner for your Turborepo or Nx repo',
           },
         },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'application/rss+xml',
+            title: 'vx | Blog',
+            href: `${site}${root}blog/rss.xml`,
+          },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'application/rss+xml',
+            title: 'vx | Releases',
+            href: `${site}${root}releases/rss.xml`,
+          },
+        },
       ],
-      // The site's chrome: the three places in the header (and atop the phone
-      // menu), the landing's fonts, and dark as the default theme.
+      // The site's chrome: the places in the header (and atop the phone
+      // menu), the landing's fonts, and dark as the default theme. The blog's
+      // and releases' posts take a hero and related posts here
+      // (src/components/blog/); their indexes, tag pages and feeds are
+      // src/pages/blog/ and src/pages/releases/.
       components: {
         Head: './src/components/Head.astro',
+        Footer: './src/components/starlight/Footer.astro',
         Header: './src/components/starlight/Header.astro',
+        PageTitle: './src/components/starlight/PageTitle.astro',
         Sidebar: './src/components/starlight/Sidebar.astro',
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
@@ -132,20 +158,10 @@ export default defineConfig({
       // A code block wraps rather than scrolls: on a phone the end of a
       // command hid past the edge, and nothing said it was there.
       expressiveCode: { defaultProps: { wrap: true } },
-      plugins: [
-        starlightBlog({
-          title: 'Blog',
-          prefix: 'blog',
-          // The header's own nav links the blog (src/nav/sections.ts).
-          navigation: 'none',
-          postCount: 10,
-          recentPostCount: 5,
-          authors: {
-            vzn: { name: 'vzn', title: 'vx maintainer', url: 'https://github.com/vznjs' },
-          },
-        }),
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
+        { icon: 'rss', label: 'RSS', href: `${site}${root}blog/rss.xml` },
       ],
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' }],
       // Hand-authored pages live here; imported pages carry their own
       // `editUrl` (scripts/import-docs.ts) pointing at packages/vx/docs/.
       editLink: {

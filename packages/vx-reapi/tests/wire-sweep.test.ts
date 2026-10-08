@@ -130,10 +130,11 @@ describe.if(CHUNKING_SUPPORTED)('what every call carries', () => {
   })
 
   it('a grpc:// endpoint is plain; a grpcs:// one is TLS', async () => {
-    await using({ endpoint: `grpc://${fake.endpoint}` }, async (c) => {
+    const hostPort = fake.endpoint.replace('grpc://', '')
+    await using({ endpoint: `grpc://${hostPort}` }, async (c) => {
       expect((await c.capabilities()).execEnabled).toBe(true)
     })
-    await using({ endpoint: `grpcs://${fake.endpoint}`, callTimeoutMs: 3000 }, async (c) => {
+    await using({ endpoint: `grpcs://${hostPort}`, callTimeoutMs: 3000 }, async (c) => {
       await expect(c.capabilities()).rejects.toThrow()
     })
   })
@@ -605,7 +606,7 @@ describe('flow control', () => {
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const { port } = server.address() as { port: number }
-    const c = new ReapiClient({ endpoint: `127.0.0.1:${port}` })
+    const c = new ReapiClient({ endpoint: `grpc://127.0.0.1:${port}` })
     try {
       await c.findMissingBlobs([{ hash: 'a'.repeat(64), size_bytes: 1 }]).catch(() => {})
       expect(seen).toEqual({ stream: 16 * 1024 * 1024, connection: 16 * 1024 * 1024 })

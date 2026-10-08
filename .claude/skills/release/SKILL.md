@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a vx release on demand. Use when asked to release, and for the daily release routine. Writes the release's blog post, merges it, dispatches auto-release.yml, and shares the post on Bluesky.
+description: Cut a vx release on demand. Use when asked to release, and for the daily release routine. Writes the release note, merges it, dispatches auto-release.yml, and shares the post on Bluesky.
 ---
 
 # Release vx
@@ -24,16 +24,22 @@ always a patch: `v0.0.N` → `v0.0.N+1` (`scripts/release-notes.ts`,
 ## 2. Write the post
 
 Read `packages/vx-docs/README.md` § Release posts and the newest
-`packages/vx-docs/src/content/docs/blog/vx-0-0-*.md` (the model). Write
-`blog/vx-0-0-<N+1>.md` from `git log $last..origin/main`:
+`packages/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model). Write
+`releases/vx-0-0-<N+1>.md` from `git log $last..origin/main`:
 
+- Feature posts first (owner, 2026-10-08): every user-facing feature
+  in the range gets its own short visual essay in `blog/` before the
+  release (cover, terminal frames, a chart or diagram), and its row in
+  `packages/vx/docs/features.md` links it. The release note is the
+  summary: one `##` per change, a line or two, linking that post.
 - At most ten changes a user would notice; skip internals, tests,
   refactors, docs, CI. Verify every command, flag and config key in an
   example against current source; prefer real output from a fixture
   run of `bun packages/vx/src/bin.ts …` in the scratchpad.
-- Title `vx 0.0.<N+1> Release`, nothing else (owner, 2026-10-08:
-  feature-list and headline titles were both rejected). The story goes
-  in the cover headline and the excerpt. Date today,
+- Title = the story headline: the cover's `head` without its
+  `[brackets]` (`Runs that explain themselves`). The version is not in
+  the title; the Releases page shows it as a `v0.0.<N+1>` chip, read from the
+  slug. Date today,
   tag `release`, an excerpt, an intro, `**In this release**` links,
   one `##` per change with one example and its PR links,
   `## Breaking changes` when any, then How to update and Learn more as
@@ -70,7 +76,7 @@ the post in a follow-up PR before sharing it.
 
 Then wait until the release is published (`release.yml` publishes the
 draft after its last upload) and the post is live at
-`https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/` (`docs.yml` deploys
+`https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/` (`docs.yml` deploys
 main).
 
 ## 4. Share on Bluesky
@@ -85,7 +91,7 @@ title and description (the post's title and excerpt):
 
 ```sh
 cd /mnt/project-files/x-posts/_source
-NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "<post title>: <cover headline>" --desc "<excerpt>" --dry
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --dry
 ```
 
 Read the `--dry` record, then run it again without `--dry`. It logs to
