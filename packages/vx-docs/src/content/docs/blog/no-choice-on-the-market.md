@@ -29,8 +29,8 @@ package, which turns a README edit into a rebuild and adds hashing to
 every task. Outputs are restored additively, so
 a deleted file survives a cache hit. And the parts that would have
 grown into a platform are being deprecated rather than finished: the
-daemon, `--parallel`, `--no-cache`, `--remote-only` are all deprecated
-in 2.10, and the flag surface is the largest of any tool in this space.
+daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18). The
+flag surface is the largest of any tool in this space.
 
 Turborepo is the right tool until the repository is large enough or
 the team needs something it cannot do, and then there is no next step
