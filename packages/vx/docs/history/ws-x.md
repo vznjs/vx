@@ -525,6 +525,24 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-74.** Unused: its empty `packages:` fix landed first from another
+  lane (D-149).
+- **X-75.** Unused: its `<name>...[ref]` task-edge fix landed first
+  from another lane (#2869).
+- **X-76.** A config split into its own helper (`vx.config.mjs` imports
+  `./tasks.mjs`, which imports `../../shared/preset.mjs`) was not
+  selected by `--affected` when the preset changed: the import walk
+  stopped at `tasks.mjs` as a file some project owns. It now also
+  descends through the importing file's own project; a hop into another
+  project still stops. Row: `affected.test.ts` › "PIN: through the
+  config's own helper file to an orphan".
+- **X-77.** A `vx.config.cts` (or `.ts`) written with TypeScript's
+  CommonJS export, `export = { tasks: … }`, was refused as "did not
+  export a default object", though Bun loads it: it spells no CommonJS
+  name, so vx served its bytes as a module, where the assignment has no
+  default. `export =` now sends the config down Bun's own path. Row:
+  `config-commonjs-hint.test.ts` › "each name that makes Bun run a
+  config as CommonJS keeps it CommonJS" (`assign.cts`, `assignts.ts`).
 - **X-81.** A write grant that needs a directory where a file stands
   (`out.txt/` over a file, `a.txt/x/*.js`, `a.txt/out`) failed the task
   as `[vx] internal error … EEXIST` or `ENOTDIR` from the pre-create, and

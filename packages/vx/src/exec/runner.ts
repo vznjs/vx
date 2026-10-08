@@ -624,7 +624,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   })
 
   const markReady = (): void => {
-    if (readyAt === undefined) {
+    // A marker printed on the way down, once the wait gave up, is not ready.
+    if (readyAt === undefined && gaveUpAt === undefined) {
       readyAt = Date.now()
       readyTimer?.clear()
       resolveReady()
@@ -712,40 +713,42 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
 
-  // Readiness deadline. Reject FIRST so the failure reads as a
-  // timeout, then SIGTERM — the exit handler's later reject is a
-  // no-op on the settled promise. Cleared the moment ready fires so
-  // a healthy server is never killed by a stale timer.
+  // Readiness deadline: SIGTERM, wait the grace for the GROUP, SIGKILL
+  // what is left, and only then reject. The caller's teardown used to
+  // signal the group again a turn after this SIGTERM, and a server whose
+  // handler is a one-shot (`process.once('SIGTERM')`, a trap that resets
+  // itself) died on the second mid-cleanup. Cleared the moment ready
+  // fires so a healthy server is never killed by a stale timer.
   let readyTimer: { clear(): void } | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
-    const giveUp = (): void => {
-      if (readyAt === undefined) {
-        gaveUpAt = Date.now()
-        rejectReady(
-          new PersistentReadyError(
-            `persistent task not ready within ${opts.timeoutMs}ms — ` +
-              `readyWhen pattern never matched; child killed`,
-            'timeout',
-          ),
-        )
-        // Listed on the group guard until the SIGKILL: the shell may die
-        // on the SIGTERM and let the group go while the server runs out
-        // the grace, and a vx that exits inside it (the timer is unref'd)
-        // leaves the server to the guard (kill-tree.ts, item 865).
-        const letGo = holdGroups([child])
+    const giveUp = async (): Promise<void> => {
+      if (readyAt !== undefined) return
+      gaveUpAt = Date.now()
+      // Listed on the group guard until the SIGKILL: the shell may die on
+      // the SIGTERM and let the group go while the server runs out the
+      // grace, and a vx killed inside it leaves the server to the guard
+      // (kill-tree.ts, item 865).
+      const letGo = holdGroups([child])
+      try {
         killTree(child, 'SIGTERM')
-        // Same escalation as `armTimeout`: a server that traps TERM and
-        // never became ready is not in the persistent registry, so nothing
-        // else would ever kill it — it outlived the run under init.
-        const killTimer = setTimeout(() => {
-          killTree(child, 'SIGKILL')
-          letGo()
-        }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
-        killTimer.unref?.()
+        // A server that traps TERM and never became ready is not in the
+        // persistent registry, so nothing else would ever kill it.
+        const left = await untilGroupsGone([child], killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
+        for (const c of left) killTree(c, 'SIGKILL')
+        await child.exited
+      } finally {
+        letGo()
       }
+      rejectReady(
+        new PersistentReadyError(
+          `persistent task not ready within ${opts.timeoutMs}ms — ` +
+            `readyWhen pattern never matched; child killed`,
+          'timeout',
+        ),
+      )
     }
     readyTimer = runningTimeout(() => {
-      const turn = afterPendingExits(giveUp)
+      const turn = afterPendingExits(() => void giveUp())
       readyTimer = { clear: () => clearTimeout(turn) }
     }, opts.timeoutMs)
   }
@@ -757,7 +760,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     markGroupIfGone(child)
     releaseGroup(child)
     readyTimer?.clear()
-    if (readyAt === undefined) {
+    if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
         new PersistentReadyError(
           `persistent task exited before becoming ready (exit ${code ?? '?'})` +
