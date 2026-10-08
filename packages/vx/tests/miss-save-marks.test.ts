@@ -95,6 +95,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
   it(
     "a workspace output landing in another project's dir is keyed by that project's reader",
     async () => {
+      await waitForProducers(root)
       await addProject(root, 'gen', {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {
