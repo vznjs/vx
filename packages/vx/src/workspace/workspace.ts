@@ -296,12 +296,11 @@ async function readRootManifests(
     return { globs: ['.'], catalogs }
   }
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
-    const globs = assertGlobList(
-      (ws as { packages?: unknown }).packages ?? [],
-      pkgPath,
-      'workspaces.packages',
-    )
-    return { globs, catalogs }
+    const packages = (ws as { packages?: unknown }).packages
+    // Yarn 1 and 4 run the root alone under `packages: null`; read as an
+    // empty list, the root was no project and every verb ran nothing (D-150).
+    if (packages === null) return { globs: ['.'], catalogs }
+    return { globs: assertGlobList(packages, pkgPath, 'workspaces.packages'), catalogs }
   }
   return { globs: assertGlobList(ws, pkgPath, 'workspaces'), catalogs }
 }
@@ -459,7 +458,13 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
  * to the workspace root.
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
-  const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
+  const env = process.env['VX_CACHE_DIR']
+  // `cacheDir: '   '` is refused at load (X-22); the variable made the same
+  // directory named in spaces at the root (D-160).
+  if (config?.cacheDir === undefined && env !== undefined && env !== '' && env.trim() === '') {
+    throw new UserError('VX_CACHE_DIR is only whitespace — name a directory, or unset it')
+  }
+  const rel = config?.cacheDir ?? (env || path.join('.vx', 'cache'))
   const home = process.env['HOME'] || homedir()
   // No shell expands `~` in a config string or a quoted variable, and
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
@@ -724,10 +729,15 @@ async function readManifest(root: string, dir: string, file: string): Promise<st
     )
     if (searchable) unreadable(err, file)
     process.stderr.write(
-      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+      `vx: ${shownDir(root, dir)} is not readable by this user — skipped, with any project in it\n`,
     )
     return null
   }
+}
+
+/** `dir` as a discovery line names it: the root's own path is '' (D-127, D-154). */
+function shownDir(root: string, dir: string): string {
+  return relPosix(root, dir) || 'the workspace root'
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
@@ -782,7 +792,7 @@ export async function discoverProjects(
         // same flight as the failed read, so naming it costs nothing.
         if (configPath !== null) {
           process.stderr.write(
-            `vx: ${relPosix(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
+            `vx: ${shownDir(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
           )
         }
         return null
@@ -813,9 +823,8 @@ export async function discoverProjects(
       // fine for a dir that declares no tasks; a dir with a vx config was
       // meant to run.
       if (configPath !== null) {
-        const rel = relPosix(workspace.root, dir)
         process.stderr.write(
-          `vx: ${rel === '' ? 'the workspace root' : rel} has a vx config but its package.json has no "name" — skipped\n`,
+          `vx: ${shownDir(workspace.root, dir)} has a vx config but its package.json has no "name" — skipped\n`,
         )
       }
       continue

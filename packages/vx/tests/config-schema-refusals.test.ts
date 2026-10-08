@@ -177,6 +177,22 @@ describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
     )
     expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
   })
+
+  it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
+    // The workspace file has no JSON rule before its schema; the fuzz found it.
+    expect(refusal({ cacheRetention: { olderThan: 30n } })).toBe(
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30n)`,
+    )
+    expect(refusal({ cacheRetention: { maxSize: Symbol('s') } })).toBe(
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got Symbol(s))`,
+    )
+    const p = testPlugin('fz-fp-bigint', {
+      fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: plugin 'fz-fp-bigint' claims fingerprint file 1n, which is not a file name at the workspace root`,
+    )
+  })
 })
 
 describe('task refusals the sweep found unheld (item 653)', () => {
@@ -506,6 +522,29 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     expect(
       cacheRefusal({ files: ['src/**'], tasks: ['^buidl'] }, { files: [] }, ['^build']),
     ).not.toBeNull()
+  })
+
+  // The selection picks among the task's own dependencies and a group's
+  // members are not among them (schema.md: name the group, whose hash
+  // rolls its members up), so a name reached only through a group would
+  // fold nothing; it is refused like a typo.
+  it('an inputs.tasks name reached only through a group is refused, in each form', () => {
+    const refused = (name: string, dep: string) =>
+      `${CFG}: tasks.t.cache.inputs.tasks: "${name}" names no task in tasks.t.dependsOn ('${dep}') — ` +
+      `it would match nothing and fold no upstream hash, decoupling the task from its ` +
+      `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +
+      `\`pkg#name\` one project's. Fix the name, or use [] to decouple on purpose.`
+    for (const [name, dep] of [
+      ['compile', 'all'],
+      ['^compile', '^all'],
+      ['lib#compile', 'lib#all'],
+    ] as const) {
+      expect(cacheRefusal({ files: ['src/**'], tasks: [name] }, { files: [] }, [dep])).toBe(
+        refused(name, dep),
+      )
+      // Control: the group itself is named.
+      expect(cacheRefusal({ files: ['src/**'], tasks: [dep] }, { files: [] }, [dep])).toBeNull()
+    }
   })
 })
 

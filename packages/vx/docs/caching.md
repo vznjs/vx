@@ -681,6 +681,9 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+left remote (`--download=none`) is held to the same checks: a moved
+key still lets a local consumer fetch its outputs, but the fetch saves
+no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
@@ -708,7 +711,10 @@ over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way.
+key derivation, step 3) withholds the save the same way, and no key
+taken before it is probed or restored: a hit the up-front probe found
+goes back to the scheduler and runs once its deps are done. Until X-124
+that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
 policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
@@ -1164,7 +1170,7 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
+in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
@@ -1366,7 +1372,10 @@ hit replays it with pure SQL, never decompressing the artifact).
 it (pre-alpha: no migrations; the index is an inventory, owner
 2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
-`output_dirs` kept an earlier vx's columns).
+`output_dirs` kept an earlier vx's columns). The check, drop, re-create
+and stamp are one write transaction, so another version's open waits
+rather than landing between them; an index already current is opened
+without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache prune --dry-run` previews the reset
 instead, item 1083).
