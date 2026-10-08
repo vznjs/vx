@@ -223,11 +223,12 @@ through; a Tree file's setuid and setgid bits are dropped.
 ## Artifacts stream
 
 An artifact up to 256 KiB is read whole and sent in one batch, with no
-probe first. Past that the cache layer never holds an artifact whole: `put` digests the file-backed
-`Blob` vx hands it in one pass over its stream, asks `FindMissingBlobs`, and
-uploads from a second pass: past the batch limit (about 4 MiB) the file is
-read `chunkBytes` at a time as the ByteStream write drains, identity-encoded
-(the artifact is zstd already). `get` returns the ByteStream read as a
+probe first. Up to the batch limit (about 4 MiB) it is read whole once,
+probed with `FindMissingBlobs`, and those bytes sent. Past that the cache
+layer never holds an artifact whole: `put` digests the file-backed `Blob`
+vx hands it in one pass over its stream, asks `FindMissingBlobs`, and
+uploads from a second pass, read `chunkBytes` at a time as the ByteStream
+write drains, identity-encoded (the artifact is zstd already). `get` returns the ByteStream read as a
 `Response`, each message taken from the call as vx writes the previous one
 to disk.
 
