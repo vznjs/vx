@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
+import { deleteDist, missingDist } from './outputs.js'
 
 const projects = Number(process.argv[2] ?? 100)
 const reps = Number(process.argv[3] ?? 3)
@@ -64,18 +65,20 @@ if (gen.exitCode !== 0) throw new Error('generate failed')
 await vx(ws, ['lock'])
 
 const wipeCache = () => rm(path.join(ws, '.vx'), { recursive: true, force: true })
-const wipeOutputs = async () => {
-  const glob = new Bun.Glob('packages/*/dist')
-  for await (const d of glob.scan({ cwd: ws, onlyFiles: false })) {
-    await rm(path.join(ws, d), { recursive: true, force: true })
-  }
+const wipeOutputs = () => deleteDist(ws)
+// A rep that left an output unwritten timed less work than its row claims.
+const vxBuilt = async (cwd: string) => {
+  const ms = await vxRun(cwd)
+  const missing = await missingDist(cwd, 'out.js')
+  if (missing.length > 0) throw new Error(`${missing.length} dist/ missing, e.g. ${missing[0]}`)
+  return ms
 }
 
 const noCache: number[] = []
 for (let i = 0; i < reps; i++) {
   await wipeCache()
   await wipeOutputs()
-  noCache.push(await vxRun(ws))
+  noCache.push(await vxBuilt(ws))
 }
 
 // Warm the cache once, then measure the all-hits stat-skip path.
@@ -88,7 +91,7 @@ for (let i = 0; i < reps; i++) warmNoRestore.push(await vxRun(ws))
 const warmRestore: number[] = []
 for (let i = 0; i < reps; i++) {
   await wipeOutputs()
-  warmRestore.push(await vxRun(ws))
+  warmRestore.push(await vxBuilt(ws))
 }
 
 await rm(ws, { recursive: true, force: true })
