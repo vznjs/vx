@@ -129,7 +129,10 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   while vx lives, and sees EOF when vx exits (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
-  capture, no callbacks.
+  capture, no callbacks. The terminal's modes are read with `stty -g`
+  before that spawn and set back when the child exits, if it changed
+  them: a task killed in raw mode left the terminal raw, and Bun
+  restores them at exit only when vx's stdout is the terminal.
 - **forwardArgs** are appended to `command` after a single space, each
   quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe; a
   `#` is safe past a word's first character), by

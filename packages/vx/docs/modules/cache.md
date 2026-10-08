@@ -505,6 +505,8 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
+  A path holding a backslash is resolved link by link (`realOf`): Bun's
+  `realpath` answers ENOENT for any such path.
   On any throw, nothing was renamed into place.
 
 `get(hash)`:

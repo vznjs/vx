@@ -236,7 +236,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const few = args.outputs.size <= ON_THREAD_STATS
   const lstatOf = few ? async (p: string) => lstatSync(p) : lstat
   const statOf = few ? async (p: string) => statSync(p) : stat
-  const realpathOf = few ? async (p: string) => realpathSync(p) : realpath
+  const realpathOf = (p: string) => realOf(p, few)
   let withinReal: Promise<string> | undefined
   // Where this artifact's own non-link outputs really are: a link to one of
   // them packs bytes the task wrote itself. A root-anchored output tree is
@@ -306,12 +306,12 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         )
       }
       const mode = st.mode & 0o777
-      meta.files[name] = [mode, Math.floor(st.mtimeMs)]
       return {
         name,
         abs: src,
         size: st.size,
         mode,
+        mtimeMs: Math.floor(st.mtimeMs),
         // ustar's octal field holds no sign and 11 digits: an mtime before
         // 1970 made the header unreadable, and one past March 2242 failed
         // every save of the task. The sidecar above carries the real value.
@@ -319,6 +319,8 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
     }),
   )
+  // In the outputs' order, not as each stat settled: one tree, one artifact.
+  for (const f of files) meta.files[f.name] = [f.mode, f.mtimeMs]
   const stdout = new TextEncoder().encode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
   const inputs: TarInput[] = [
@@ -637,11 +639,11 @@ class Extractor {
       // deepest EXISTING ancestor and re-append the rest: the answer is the
       // same before and after the base is created, which is what makes the
       // memo safe.
-      r = await realpath(key).catch(async () => {
+      r = await realOf(key).catch(async () => {
         let probe = path.dirname(key)
         const tail: string[] = [path.basename(key)]
         while (probe !== path.dirname(probe)) {
-          const real = await realpath(probe).then(
+          const real = await realOf(probe).then(
             (v) => v,
             () => null,
           )
@@ -687,7 +689,7 @@ class Extractor {
     // resolve was a round trip spent on a comparison never made (item 627).
     let probe = path.dirname(targetResolved)
     while (probe.startsWith(baseResolved + path.sep)) {
-      const real = await realpath(probe).then(
+      const real = await realOf(probe).then(
         (r) => r,
         () => null,
       )
@@ -867,7 +869,7 @@ class Extractor {
       const top = path.resolve(s.created)
       // Created at a dangling link's resolved target (`mkdirThroughLink`),
       // so the chain is pruned from where the link leads.
-      if (!dir.startsWith(top)) dir = await realpath(dir).catch(() => dir)
+      if (!dir.startsWith(top)) dir = await realOf(dir).catch(() => dir)
       while (dir.startsWith(top)) {
         if (
           !(await rmdir(dir).then(
@@ -914,6 +916,23 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
       'through a link that leaves its directory. Remove the link and re-run (the restore ' +
       'puts a real directory there), or stop declaring outputs under it.',
   )
+}
+
+/**
+ * `realpath`, for a path holding a backslash too: Bun's answers ENOENT for
+ * any such path (1.4.2), so the containment walk took a link named
+ * `dist\x` for absent and wrote through it, and a save called a linked
+ * output under one dangling. Such a path's links are read one by one.
+ */
+async function realOf(p: string, sync = false): Promise<string> {
+  try {
+    return sync ? realpathSync(p) : await realpath(p)
+  } catch (err) {
+    if (!p.includes('\\')) throw err
+    const real = await resolveThrough(p)
+    await stat(real)
+    return real
+  }
 }
 
 /**
