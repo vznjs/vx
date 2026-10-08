@@ -6,7 +6,7 @@
 // still exists when one changed (C-94); a file born and gone since the
 // arm is no change, one that existed at it and is gone is (C-95).
 
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -70,3 +70,38 @@ it('a judgement starts a cycle exactly when a fired path differs from what the l
   }
   expect(broken).toEqual([])
 }, 60_000)
+
+// Git lists a file under a project reached through a symlink
+// (`packages/x -> ../shared/x`) at its real place, and the project is
+// watched at the link: the deletion of a file that existed at the arm read
+// as one born and gone since, and re-ran nothing. The root is reached
+// through a link too, as macOS's `/var` is, and keeps its spelling.
+it('a deletion through a symlinked project dir is a change', async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), 'vx-judge-link-'))
+  try {
+    await mkdir(path.join(base, 'real', 'shared', 'x'), { recursive: true })
+    await mkdir(path.join(base, 'real', 'packages'))
+    await symlink('real', path.join(base, 'root'))
+    await symlink('../shared/x', path.join(base, 'real', 'packages', 'x'))
+    const root = path.join(base, 'root')
+    const listedAt = path.join(root, 'shared', 'x', 'f')
+    await writeFile(listedAt, 'f\n')
+    const judge = new ChangeJudge({
+      workspaceRoot: root,
+      armedAt: fsClockNow(root),
+      held: () => false,
+      uncached: () => new Set(),
+      existedAtArm: new Set([listedAt]),
+    })
+    await unlink(listedAt)
+    judge.pending.set(path.join(root, 'packages', 'x', 'f'), 'x f')
+    expect(judge.judge()).toBe('x f')
+    // Control: one git never listed, born and gone since the arm, is none.
+    await writeFile(path.join(root, 'shared', 'x', 'g'), 'g\n')
+    await unlink(path.join(root, 'shared', 'x', 'g'))
+    judge.pending.set(path.join(root, 'packages', 'x', 'g'), 'x g')
+    expect(judge.judge()).toBeUndefined()
+  } finally {
+    await rm(base, { recursive: true, force: true })
+  }
+})
