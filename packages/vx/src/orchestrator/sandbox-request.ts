@@ -326,8 +326,11 @@ export interface WithheldLink {
  * task is granted and what it is not.
  *
  * One level deep, plus one level inside a `@scope/` directory — the shape
- * a package manager writes. Anything already inside a granted directory
- * is dropped; what is left is a sibling project's real path.
+ * a package manager writes — and then the same in the `node_modules` of
+ * each granted target, so a dependency's own workspace dependencies are
+ * reached as the runtime reaches them. A target inside the granted
+ * `node_modules` or inside the package holding the link is dropped; what
+ * is left is a sibling project's real path.
  *
  * A link to the task's OWN project, or to a directory holding it, is
  * dropped too: npm and Yarn classic link every workspace package at the
@@ -371,20 +374,39 @@ async function linkedDeps(
     }
     return found
   }
+  const keyedDirs =
+    keyed === undefined ? undefined : new Set(await Promise.all([...keyed].map((d) => realpath(d))))
+  const grants = (target: string): boolean =>
+    keyedDirs === undefined || !atOrUnder(target, root) || keyedDirs.has(target)
   // Merged in `dirs` order, so the link a hint names is the project's own
-  // when both have one.
+  // when both have one. A granted package is scanned in turn: pnpm and
+  // Bun link a dependency's own workspace dependencies only under ITS
+  // `node_modules`, so `app -> ui -> core` left core hidden and the import
+  // of ui failed with ENOENT, unreported.
   const targets = new Map<string, { link: string; name: string }>()
-  for (const found of await Promise.all(dirs.map((d) => scan(d, '')))) {
-    for (const [target, link, name] of found) {
-      if (!targets.has(target)) targets.set(target, { link, name })
+  let frontier: Array<[nodeModules: string, owner: string | undefined]> = dirs.map((d) => [
+    d,
+    undefined,
+  ])
+  while (frontier.length > 0) {
+    const next: typeof frontier = []
+    const scans = await Promise.all(frontier.map(([d]) => scan(d, '')))
+    for (const [i, found] of scans.entries()) {
+      const owner = frontier[i]![1]
+      for (const [target, link, name] of found) {
+        if (targets.has(target) || (owner !== undefined && atOrUnder(target, owner))) continue
+        targets.set(target, { link, name })
+        if (grants(target)) {
+          next.push([path.join(target, 'node_modules'), target])
+        }
+      }
     }
+    frontier = next
   }
-  if (keyed === undefined) return { granted: [...targets.keys()], withheld: [] }
-  const keyedDirs = new Set(await Promise.all([...keyed].map((d) => realpath(d))))
   const granted: string[] = []
   const withheld: WithheldLink[] = []
   for (const [target, { link, name }] of targets) {
-    if (!atOrUnder(target, root) || keyedDirs.has(target)) granted.push(target)
+    if (grants(target)) granted.push(target)
     else
       withheld.push({
         dir: target,
@@ -464,11 +486,13 @@ async function prepareOutputsForBind(
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }
-    if (hasWildcard || g.endsWith('/')) {
-      const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
-      await mkdir(abs, { recursive: true })
-    } else {
-      const abs = path.join(projectDir, g)
+    const dir = hasWildcard || g.endsWith('/')
+    const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
+    try {
+      if (dir) {
+        await mkdir(abs, { recursive: true })
+        continue
+      }
       // Whatever is already there is what the task meant — a grant on the
       // project dir itself is a directory, and touching it as a file is
       // an EISDIR, not a missing bind. `lstat`, and an exclusive create: a
@@ -478,9 +502,31 @@ async function prepareOutputsForBind(
       await mkdir(path.dirname(abs), { recursive: true })
       await writeFile(abs, '', { flag: 'wx' })
       placeholders.push({ path: abs, mtimeMs: (await lstat(abs)).mtimeMs })
+    } catch (err) {
+      await sweepPlaceholders(placeholders)
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'ENOTDIR') throw err
+      // A file stands where the grant needs a directory: `out.txt/` over a
+      // file, or `a.txt/x/*.js`. It reached the user as an internal error.
+      const blocker = await fileOnPath(projectDir, dir ? abs : path.dirname(abs))
+      throw new UserError(
+        `exec.sandbox.allow.write: "${g}" needs a directory at ${blocker}, and a file is ` +
+          `there — remove the file, or grant a path beside it`,
+      )
     }
   }
   return placeholders
+}
+
+/** The first path from `from` down to `to` that exists and is not a directory. */
+async function fileOnPath(from: string, to: string): Promise<string> {
+  let at = from
+  for (const part of path.relative(from, to).split(path.sep)) {
+    at = path.join(at, part)
+    const st = await lstat(at).catch(() => undefined)
+    if (st !== undefined && !st.isDirectory()) return at
+  }
+  return to
 }
 
 /**
@@ -589,6 +635,18 @@ const CREDENTIAL_STORES = [
   '.npmrc',
   '.yarnrc.yml',
   '.pypirc',
+  // Registry and service tokens of the same kind: Bun's global bunfig
+  // (`[install.scopes]` tokens) at either of its homes, Cargo's, RubyGems'.
+  '.bunfig.toml',
+  '.config/.bunfig.toml',
+  '.cargo/credentials',
+  '.cargo/credentials.toml',
+  '.gem/credentials',
+  '.config/hub',
+  '.config/containers/auth.json',
+  '.terraform.d/credentials.tfrc.json',
+  '.vault-token',
+  '.pgpass',
 ]
 
 /** The stores present on this host, learned once per home. */

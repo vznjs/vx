@@ -9,11 +9,11 @@ import { TaskLogBuffer } from '@vzn/vx'
 import type {
   RunContextRecord,
   RunSummaryRecord,
+  TaskLogEntry,
   TaskTelemetry,
   TelemetryRecord,
   TelemetrySink,
 } from '@vzn/vx'
-import type { TaskLogEntry } from '@vzn/vx'
 import {
   buildEventLogsRequest,
   buildLogsRequest,

@@ -6,7 +6,8 @@
 // silently when it goes wrong, so the assertion is the exact tree after
 // each hit, read fresh — never "the run was green".
 
-import { chmod, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { lstatSync } from 'node:fs'
+import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -183,6 +184,45 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
         await rm(path.join(dir, 'real-out', 'out.js'))
         expect((await status())?.['status']).toBe('cache-hit')
         expect(await readFile(path.join(dir, 'dist', 'out.js'), 'utf8')).toBe('v1\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "each entry holds only its own run's files, and a hit leaves no other entry's (X-88)",
+    async () => {
+      // The clean skipped files reached through the link (X-5) while the
+      // save followed it: the entry for `two` held `one.js` too, and a hit
+      // for `one` left `two.js` beside it.
+      const root = await makeWorkspace({ prefix: 'vx-output-linkdir-clean-' })
+      try {
+        const dir = await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'mkdir -p real-out && ln -sfn real-out dist && cat src/s.txt > dist/$(cat src/s.txt).js' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/s.txt': 'one' },
+        })
+        const build = async (state: string, status: string): Promise<string[]> => {
+          await writeFile(path.join(dir, 'src', 's.txt'), state)
+          const r = await summarized(root, ['app#build'])
+          expect(r.tasks.get('app#build')?.['status']).toBe(status)
+          return (await readdir(path.join(dir, 'real-out'))).sort()
+        }
+        expect(await build('one', 'success')).toEqual(['one.js'])
+        expect(await build('two', 'success')).toEqual(['two.js'])
+        expect(await build('one', 'cache-hit')).toEqual(['one.js'])
+        expect(await build('two', 'cache-hit')).toEqual(['two.js'])
+        expect(lstatSync(path.join(dir, 'dist')).isSymbolicLink()).toBe(true)
       } finally {
         await rm(root, { recursive: true, force: true })
       }

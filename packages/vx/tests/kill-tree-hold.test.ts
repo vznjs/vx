@@ -144,3 +144,43 @@ it('the guard line runs its task when the guard’s pipe is broken', async () =>
   const out = await new Response(task.stdout).text()
   expect([await task.exited, out.endsWith('ran\n')]).toEqual([0, true])
 })
+
+const RUNNER = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+
+/** A ready server's shell exits, leaving `late.txt`'s writer in its group; `steps` run, then a `kill -9`. */
+async function serverOutlivesHolder(steps: string): Promise<boolean> {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-hold-'))
+  try {
+    const script = `
+      import { holdGroups } from ${JSON.stringify(KILL_TREE)}
+      import { runPersistent } from ${JSON.stringify(RUNNER)}
+      const { child, ready } = runPersistent({
+        command: '(sleep 1; echo late > late.txt) >/dev/null 2>&1 & echo up > up.txt',
+        cwd: ${JSON.stringify(dir)},
+        env: process.env,
+      })
+      await ready
+      await child.exited
+      ${steps}
+      process.kill(process.pid, 'SIGKILL')
+    `
+    const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'ignore', stderr: 'pipe' })
+    expect(await proc.exited).toBe(137)
+    expect(existsSync(path.join(dir, 'up.txt'))).toBe(true)
+    await Bun.sleep(2_000)
+    return existsSync(path.join(dir, 'late.txt'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// The registry still owns a ready server after its shell exits and stops
+// its group at the end of the run; the runner struck the group at the
+// shell's exit, so a `kill -9` of vx left the backgrounded server to nobody.
+it('a server group that outlives its shell stays listed', async () => {
+  expect(await serverOutlivesHolder('')).toBe(false)
+}, 20_000)
+
+it('CONTROL: a teardown that lets the server group go strikes it', async () => {
+  expect(await serverOutlivesHolder('holdGroups([child])()')).toBe(true)
+}, 20_000)

@@ -332,7 +332,8 @@ export interface PruneResult {
  * discriminator — least-invasive row format, no schema change. A
  * project output dir literally named `workspace-outputs/` would
  * collide with the namespace; the name is reserved, and a project
- * output glob under it is refused at load (config-schema.ts).
+ * output glob under it is refused at load (config-schema.ts), a file
+ * another glob reaches there at save (`planArtifact`).
  */
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
