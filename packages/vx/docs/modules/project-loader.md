@@ -93,6 +93,11 @@ readers that reach it here.
   (D-64). The first load, in process, sends them to stderr too while
   the round evaluates: a verb's stdout is its output, and a config's
   `console.log` came out ahead of `vx show --format json`'s JSON.
+- A config that throws something other than an Error (`throw 'no'`, a
+  plain object) fails as a user error naming the config, on both paths:
+  "Project config <path> threw "no", which is not an Error". It
+  printed `vx: no`, naming no file, and a null-prototype object crashed
+  vx's error printer.
 - A config that calls `process.exit` while it evaluates fails the load,
   at the config's line, on both paths: "process.exit(0) in a config: a
   config exports its object; it cannot end the run". In process

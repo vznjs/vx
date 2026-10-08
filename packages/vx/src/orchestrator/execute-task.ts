@@ -636,7 +636,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // `signal` stops a plugin executor on the run's stop AND on
   // `exec.timeout`: core cannot kill a process an executor spawned, so a
   // declared timeout meant nothing on one that kept its own clock (H-12).
-  // The local executor keeps its own timer (it signals the process group).
+  // The local executor keeps its own timer from the spawn (it signals the
+  // process group), so its request carries no clock: armed here, it also
+  // timed the sandbox's wrap, and a wrap slower than the timeout aborted
+  // the request before the spawn — a task reported killed, never run.
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
   // The attempt's listener on the run's stop signal, taken off once the
@@ -644,7 +647,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // grew to the task count, and each add scans it for a duplicate, ~100 ms
   // of a 1,000-task cold run.
   let unlistenStop: (() => void) | undefined
-  function requestSignal(): AbortSignal {
+  function requestSignal(local: boolean): AbortSignal {
     const stop = new AbortController()
     const abort = (): void => stop.abort(args.stopSignal?.reason)
     unlistenStop?.()
@@ -655,9 +658,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       run.addEventListener('abort', abort, { once: true })
       unlistenStop = () => run.removeEventListener('abort', abort)
     }
-    if (effectiveTimeout !== undefined) {
-      clearTimeout(timeoutTimer)
-      timeoutFired = false
+    clearTimeout(timeoutTimer)
+    timeoutFired = false
+    if (effectiveTimeout !== undefined && !local) {
       timeoutTimer = setTimeout(() => {
         timeoutFired = true
         stop.abort(new Error(`timed out after ${effectiveTimeout}ms`))
@@ -807,7 +810,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     if (preProbed !== undefined) {
       if (preProbed.hit !== null) {
-        const restored = await restoreOrMiss(preProbed.hit)
+        // A key taken before a task rewrote the lockfile names an install
+        // the tree no longer holds, and the lazy path below never probes
+        // one (X-124): demoted like a vanished hit, it runs dep-gated.
+        const restored = fingerprintMoved() ? null : await restoreOrMiss(preProbed.hit)
         if (restored !== null) return restored
         // The up-front probe's hit may be restoring AHEAD of this task's
         // deps, and a command run now would build from outputs they have
@@ -970,7 +976,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     violations = []
     const endReq = span('miss: build request')
-    const req = await buildRequest()
+    const req = await buildRequest(isLocalExecutor(args.executor))
     endReq()
     // A sibling's failure under --continue=never can land while a retry
     // cleans or builds its request, after the loop's own check: the retry
@@ -1012,8 +1018,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
           } else {
             log.status(`[vx] ${node.id}: ${why} — running it here`)
-            clearTimeout(timeoutTimer)
-            const local = await localExecutor().execute(await buildRequest())
+            const local = await localExecutor().execute(await buildRequest(true))
             assertExecuteResult('local', node.id, local)
             return local
           }
@@ -1044,9 +1049,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: maskCaptured(res.stdout, secrets),
         stderr: maskCaptured(res.stderr, secrets),
       }
-    // An executor that stopped on the timeout's abort exits non-zero; say
-    // why, so the frame, the retry line and `timedOut` read as a timeout.
-    if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
+    // An executor that stopped on the timeout's abort timed out, whatever
+    // its exit: a child that traps the TERM and exits 0 left partial outputs
+    // a pass would save (X-125), as the local runner's own `timedOut` says.
+    // The local executor's clock is that runner's; this one only signals it,
+    // and a 0 between the two timers is a finish, not a kill.
+    if (
+      timeoutFired &&
+      res.timedOut !== true &&
+      (res.exitCode !== 0 || !isLocalExecutor(args.executor))
+    ) {
       res = { ...res, timedOut: true }
     }
     violations = [...res.violations]
@@ -1252,7 +1264,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
 
-  async function buildRequest(): Promise<ExecuteRequest> {
+  async function buildRequest(local: boolean): Promise<ExecuteRequest> {
     const out = secrets && maskedEmitter(secrets, (t) => log.taskStdout(node, t))
     const err = secrets && maskedEmitter(secrets, (t) => log.taskStderr(node, t))
     flushMasked = () => {
@@ -1290,10 +1302,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
     }
-    // The signal last: it arms `exec.timeout`, and the sandbox's arming
+    // The signal last: it arms a plugin's `exec.timeout`, and the sandbox's arming
     // below is vx's work, not the task's. Armed first, a 60 ms timeout
     // expired before the spawn and failed `echo` as timed out, unrun.
-    if (!userSandbox) return { ...base, signal: requestSignal() }
+    if (!userSandbox) return { ...base, signal: requestSignal(local) }
     await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
@@ -1305,7 +1317,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
-    return { ...base, sandbox: sb.sandbox, signal: requestSignal() }
+    return { ...base, sandbox: sb.sandbox, signal: requestSignal(local) }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
@@ -1316,12 +1328,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // record (a row with no artifact) is exactly the corrupt-entry shape
     // `restoreOutputs` refuses, so writing none is the only clean answer.
     // The closure is what a later local consumer — or a later eager run —
-    // pulls the bytes with.
+    // pulls the bytes with. Its fetch saves them under `hash` only past the
+    // eager save's check: an input edited before the describe filed the
+    // edit's bytes under the old key (X-123).
     const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
     if (materialize !== undefined) {
+      const keyed = await keyStillTrue()
       args.deferred?.register(node.id, {
         materialize,
-        hash,
+        ...(keyed ? { hash } : {}),
         entry: {
           taskId: node.id,
           command: storedCommand,
