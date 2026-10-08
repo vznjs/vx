@@ -6,7 +6,8 @@ import {
   formatTaskAbortedLine,
   formatTaskExecutedLine,
 } from '../src/orchestrator/framed-output.js'
-import { formatDuration, formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatElapsed } from '../src/util/index.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -233,24 +234,24 @@ describe('formatRunSummary', () => {
   })
 })
 
-describe('formatDuration', () => {
+describe('formatElapsed', () => {
   it('uses ms below 1 second', () => {
-    expect(formatDuration(0)).toBe('0ms')
-    expect(formatDuration(7)).toBe('7ms')
-    expect(formatDuration(999)).toBe('999ms')
+    expect(formatElapsed(0)).toBe('0ms')
+    expect(formatElapsed(7)).toBe('7ms')
+    expect(formatElapsed(999)).toBe('999ms')
   })
 
   it('switches to s with two decimals at 1 second', () => {
-    expect(formatDuration(1000)).toBe('1.00s')
-    expect(formatDuration(1234)).toBe('1.23s')
-    expect(formatDuration(60_000)).toBe('60.00s')
+    expect(formatElapsed(1000)).toBe('1.00s')
+    expect(formatElapsed(1234)).toBe('1.23s')
+    expect(formatElapsed(60_000)).toBe('60.00s')
   })
 
   it('ROUNDS sub-second, never truncates', () => {
     // A 1.6 ms task that reads as `1ms` understates every short task in
     // the run, and the rows they sit in are compared against each other.
-    expect(formatDuration(1.6)).toBe('2ms')
-    expect(formatDuration(0.4)).toBe('0ms')
+    expect(formatElapsed(1.6)).toBe('2ms')
+    expect(formatElapsed(0.4)).toBe('0ms')
   })
 })
 

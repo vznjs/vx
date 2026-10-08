@@ -124,6 +124,7 @@ src/util/bun-version.ts
 src/util/cgroup.ts
 src/util/edit-distance.ts
 src/util/errors.ts
+src/util/hangup.ts
 src/util/hash.ts
 src/util/index.ts
 src/util/num.ts

@@ -250,20 +250,16 @@ function identifier(task: string): string {
  * keys them through a shell line that prints each file. Inline in every
  * package's config, that line read as noise nobody could review.
  */
-type Probe = { name: string; command: string; doc: string; field: string }
+type Probe = { name: string; command: string }
 
 const PROBES: readonly Probe[] = [
   {
     name: 'dotenvFiles',
     command: DOTENV_PROBE_TOP,
-    doc: "Each `.env` file in the task's directory, name and bytes",
-    field: 'runtime',
   },
   {
     name: 'dotenvFilesDeep',
     command: DOTENV_PROBE,
-    doc: "Each `.env` file under the task's directory, name and bytes",
-    field: 'runtime',
   },
 ]
 
@@ -282,8 +278,6 @@ function nameProbes(projects: readonly TurboMappedProject[]): {
     const probe: Probe = {
       name: `dotenvRootFiles${rootGlobs.length === 0 ? '' : rootGlobs.length + 1}`,
       command: v,
-      doc: "The `.env` files the workspace's root globs name, name and bytes",
-      field: 'workspaceRuntime',
     }
     rootGlobs.push(probe)
     return probe
@@ -320,49 +314,12 @@ function renderPreset(
   // glob, or an env name a user hand-wrote) may contain a `'`/`\`/newline that
   // would otherwise splice into a malformed, unloadable `vx-preset.ts`.
   const arr = (xs: string[]): string => `[${xs.map(quote).join(', ')}]`
-  const lines = [
-    "// TypeScript composition replaces turbo's global fields: each vx.config.ts imports these",
-    '// arrays and spreads them into the matching task fields.',
-  ]
-  if (inputs.length > 0) {
-    lines.push(
-      '',
-      '// From globalDependencies and what Turbo adds to them (the packages the',
-      '// root depends on, microfrontends configs) — workspace-root-relative,',
-      '// spread into each task’s cache.inputs.workspaceFiles.',
-      `export const globalInputs = ${arr(inputs)}`,
-    )
-  }
-  if (env.length > 0) {
-    lines.push(
-      '',
-      '// From globalEnv: cache inputs AND passed through to every task',
-      '// (vx child environments are isolated; see docs/schema.md).',
-      `export const globalEnvInputs = ${arr(env)}`,
-    )
-  }
-  if (pass.length > 0) {
-    lines.push(
-      '',
-      '// From globalPassThroughEnv: forwarded to every task, never hashed.',
-      `export const globalPassThroughEnv = ${arr(pass)}`,
-    )
-  }
-  for (const l of shared)
-    lines.push(
-      '',
-      `// turbo.json's \`${l.task}\` env: hashed and passed where a config spreads it.`,
-      `export const ${l.name} = ${arr([...l.values])}`,
-    )
-  for (const probe of probes) {
-    lines.push(
-      '',
-      `// ${probe.doc}. Turbo hashes`,
-      "// `.env` files although git ignores them, and a glob over git's files",
-      `// sees none: cache.inputs.${probe.field} keys them.`,
-      `export const ${probe.name} = ${quote(probe.command)}`,
-    )
-  }
+  const lines: string[] = []
+  if (inputs.length > 0) lines.push(`export const globalInputs = ${arr(inputs)}`)
+  if (env.length > 0) lines.push(`export const globalEnvInputs = ${arr(env)}`)
+  if (pass.length > 0) lines.push(`export const globalPassThroughEnv = ${arr(pass)}`)
+  for (const l of shared) lines.push(`export const ${l.name} = ${arr([...l.values])}`)
+  for (const probe of probes) lines.push(`export const ${probe.name} = ${quote(probe.command)}`)
   lines.push('')
   return lines.join('\n')
 }
