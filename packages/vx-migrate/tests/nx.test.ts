@@ -187,6 +187,52 @@ describe('nx(): a wildcard-first output', () => {
   )
 })
 
+describe('nx(): a dependency fileset that matches nothing', () => {
+  it.each([
+    ['package.json', 'project.json'],
+    ['project.json', 'package.json'],
+  ])(
+    'its twin (with %s alone) warns of nothing, and the file appearing still re-keys the reader',
+    async (_kept, gone) => {
+      await rm(path.join(root, 'packages', 'lib', gone))
+      if (gone === 'package.json')
+        await writeFile(
+          path.join(root, 'packages', 'app', 'package.json'),
+          JSON.stringify({ name: 'app', version: '1.0.0' }),
+        )
+      const graph = structuredClone(GRAPH) as {
+        graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
+      }
+      graph.graph.nodes['app']!.data.targets['test'] = {
+        executor: 'nx:run-commands',
+        options: { command: 'echo t' },
+        inputs: [
+          '{projectRoot}/src/**/*',
+          { fileset: '{projectRoot}/tsconfig.spec.json', dependencies: true },
+        ],
+        cache: true,
+      }
+      await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const go = async () => {
+        const log = silent()
+        const r = await run({ cwd: root, tasks: ['app#test'], log, handleSignals: false })
+        return { r, lines: log.lines.filter((l) => l.includes('matched no files')) }
+      }
+      const first = await go()
+      expect(status(first.r, 'app#test')).toBe('success')
+      expect(first.lines).toEqual([])
+      expect(first.r.outcomes.map((o) => o.node.id).filter((id) => id.startsWith('lib#'))).toEqual([
+        expect.stringMatching(/^lib#nx-input:fileset-[0-9a-f]{16}$/),
+      ])
+      expect(status((await go()).r, 'app#test')).toBe('cache-hit')
+      await writeFile(path.join(root, 'packages', 'lib', 'tsconfig.spec.json'), '{}\n')
+      expect(status((await go()).r, 'app#test')).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('nx()', () => {
   it(
     'a ^target no project has is no edge, as under Nx',

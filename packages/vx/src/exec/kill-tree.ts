@@ -64,15 +64,24 @@ export function closeSignalChannel(child: Child): void {
  */
 let guardFd: number | null | undefined
 
+// Three lists: groups (`+`/`-`), single pids (`=`/`_`) and paths to
+// remove (`@`/`!`), killed and removed in that order at EOF.
 const GUARD_SCRIPT = [
-  "g=' '",
+  "g=' ' k=' ' f=' '",
   'while IFS= read -r l; do',
+  '  p=${l#?}',
   '  case $l in',
-  '    +*) g="$g${l#+} " ;;',
-  '    -*) p=${l#-}; case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
+  '    +*) g="$g$p " ;;',
+  '    -*) case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
+  '    =*) k="$k$p " ;;',
+  '    _*) case $k in *" $p "*) k="${k%% $p *} ${k#* $p }" ;; esac ;;',
+  '    @*) f="$f$p " ;;',
+  '    !*) case $f in *" $p "*) f="${f%%" $p "*} ${f#*" $p "}" ;; esac ;;',
   '  esac',
   'done <&3',
   'for p in $g; do kill -s KILL -- "-$p"; done 2>/dev/null',
+  'for p in $k; do kill -s KILL "$p"; done 2>/dev/null',
+  'set -f; for p in $f; do rm -rf -- "$p"; done 2>/dev/null',
 ].join('\n')
 
 /** The guard's process, so a guard vx stops writing to is stopped too. */
@@ -186,6 +195,25 @@ export function releaseGroup(child: Child): void {
   else guardWrite(`-${child.pid}\n`)
 }
 
+/**
+ * List what the guard takes down besides groups if vx dies: the sandbox
+ * runtime's session. The runtime spawns its bridge socat as a plain child
+ * in vx's OWN group, which the guard must never kill, and a `kill -9`
+ * leaves its sockets in the temp directory. So each pid is killed alone
+ * and each path removed, by a name only that session carries. The
+ * returned function strikes them once the session is down, so a pid the
+ * kernel reuses is never killed on its account. Starts the guard: a spawn
+ * follows. A path holding whitespace is not listed (the lists split on it).
+ */
+export function guardSession(pids: readonly number[], paths: readonly string[]): () => void {
+  startGuard()
+  const listed = paths.filter((p) => !/\s/.test(p))
+  guardWrite(pids.map((p) => `=${p}\n`).join('') + listed.map((p) => `@${p}\n`).join(''))
+  return () => {
+    guardWrite(pids.map((p) => `_${p}\n`).join('') + listed.map((p) => `!${p}\n`).join(''))
+  }
+}
+
 /** Groups a teardown is still taking down: how many hold each, and whether its runner let it go. */
 const holds = new Map<number, { count: number; released: boolean }>()
 
@@ -210,7 +238,7 @@ export function holdGroups(children: readonly Child[]): () => void {
       if (hold === undefined) continue
       if (--hold.count > 0) continue
       holds.delete(pid)
-      if (hold.released) guardWrite(`-${pid}\n`)
+      if (owed.delete(pid) || hold.released) guardWrite(`-${pid}\n`)
     }
   }
 }
@@ -226,9 +254,23 @@ export function holdGroups(children: readonly Child[]): () => void {
  */
 const goneGroups = new WeakSet<Child>()
 
-/** Note, as `child`'s leader exits, whether its group went with it. */
-export function markGroupIfGone(child: Child): void {
-  if (!groupAlive(child)) goneGroups.add(child)
+/** Server groups that outlived their leader: struck when a teardown next lets them go. */
+const owed = new Set<number>()
+
+/**
+ * A persistent child's leader has exited. An empty group is struck and
+ * never signalled again. One with a member left stays listed until a
+ * teardown lets it go: the run's registry still owns a ready server after
+ * its shell exits and stops its group at the end, and struck here, the
+ * `server` of a `server & echo up` was left to nobody by a `kill -9` of vx.
+ */
+export function releaseServerGroup(child: Child): void {
+  if (groupAlive(child)) {
+    owed.add(child.pid)
+    return
+  }
+  goneGroups.add(child)
+  releaseGroup(child)
 }
 
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {

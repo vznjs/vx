@@ -34,6 +34,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 ```
 
@@ -426,6 +427,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T
 ```

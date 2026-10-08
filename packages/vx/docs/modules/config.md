@@ -67,9 +67,10 @@ its `allow`, `deny`, `ignore`, D-156), `cache`, `cache.inputs` and
 generic argument skips TypeScript's excess-property check, so a
 Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
 failed only when vx loaded the config (D-69). `defineWorkspace` does
-the same for its keys and `cacheRetention`'s: a lone unknown key failed
+the same for its keys, `cacheRetention`'s and `rules`': a lone unknown key failed
 TypeScript's weak-type check, but a typo beside a known one
-(`{ plugins, concurency }`) type-checked (D-70).
+(`{ plugins, concurency }`, D-70; `rules: { exclusiveOutputs, upfrontKey }`,
+D-155) type-checked.
 
 `TaskConfig.dependsOn` is `readonly string[]` (Turbo/Nx
 micro-syntax — see [`schema.md`](../schema.md)).

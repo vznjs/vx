@@ -236,6 +236,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)
@@ -337,6 +338,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {

@@ -90,6 +90,32 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
+    'locks a project named __proto__ as its own entry (D-152)',
+    async () => {
+      // Assigned into a plain object, the entry set the map's prototype:
+      // "locked 1 project", `"projects": {}` on disk, and --check said the
+      // project was not in the lock.
+      await addProject(root, '__proto__', ENV_CONFIG)
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      const lockJson = JSON.parse(await Bun.file(path.join(root, 'vx-lock.json')).text()) as {
+        projects: object
+      }
+      expect(Object.keys(lockJson.projects)).toEqual(['__proto__'])
+      expect((await vx(root, ['lock', '--check'], { X: 'a' })).out).toBe(
+        'vx lock --check: up to date (1 project)\n',
+      )
+      const frozen = await vx(
+        root,
+        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        { X: 'b' },
+      )
+      expect(frozen.code).toBe(0)
+      expect(frozen.out).toContain('flavor-a')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'freezes env-dependent configs: live runs see env; --frozen trusts the lock; --check audits',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)

@@ -809,6 +809,22 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-122.** Under `--exclude-dependencies` the sandbox's keyed set
+  stood a group in by its `deps`, which hold order-only edges and lack
+  the dropped members its hash folds (`keyUpstream`). Two groups over
+  different dropped tasks got one stand-in, the selection kept one, and
+  a sandboxed task was denied a linked sibling its key answers for. The
+  stand-in now lists the keyed members. A denial, never a stale hit:
+  units matched only where the hashes did not. Row:
+  `keyed-projects.test.ts` › "a group under --exclude-dependencies
+  stands in for the dependencies its hash folds".
+- **X-121.** Refuted: `cache.inputs.tasks: ['compile']` on a task that
+  reaches `compile` only through a group does not fold nothing at hash
+  time; the loader refuses it in all three forms ("names no task in …
+  dependsOn"), since schema.md has a selection name the group, whose
+  hash rolls its members up. Pinned so the refusal stays. Row:
+  `config-schema-refusals.test.ts` › "an inputs.tasks name reached only
+  through a group is refused, in each form".
 - **X-117.** "a SIGHUP after the summary signals a kept server once" read
   `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
   (`terminateChildren` dedups; the keep-alive wait defers to the abort),
@@ -849,3 +865,67 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   task cycle among declared builds is refused, as a run of those builds
   already was. Row: `task-graph.test.ts` › "an edge by name to a default
   build on a cycle goes on past it, as ^build does".
+- **X-126.** A submodule or embedded repository INSIDE a project left
+  tasks out of `--affected`. git reports it as one path (`vendor/lib`),
+  and per-task selection matched that path against each task's globs as
+  if it were a file: `lint` on `**` claimed it, so `build` on
+  `vendor/**/*.txt`, whose key folds the files inside, was not seeded
+  ("Nothing affected"). A project inside such a repository was never
+  selected: the owner walk stopped at the outer project. The diff now
+  reads `--raw` modes, so a gitlink on either side (a removed one took
+  its files) or an untracked `dir/` reaches the holding project whole
+  and every project under it. Row:
+  `affected-submodule.test.ts` › "a nested repository inside a project
+  reaches every task of it, and the projects inside".
+- **X-127.** A `workspaceFiles` glob reaching into a changed submodule
+  or embedded repository (`vendor/sub/**`) selected nothing: git reports
+  the repository as one path, `vendor/sub`, which the glob does not
+  match, while the key folds every file inside. A run under
+  `--affected` said "nothing affected" over a stale key. `affectedChanges`
+  now names the changed nested repositories (`AffectedChanges.nested`),
+  and both the candidate pass (`workspaceGlobOwners`) and the per-task
+  seed ask `workspaceFilesReachInto`: a positive entry whose static prefix
+  is above or inside the repository reaches it. Row:
+  `affected-workspace-files.test.ts` › "a glob reaching into a changed
+  nested repository selects its declarer".
+- **X-128.** A config importing a file of another project was left out
+  of `--affected` when a file THAT file imports changed: the config
+  import walk stopped at the first file of another project, reasoning
+  that containment selects it. Containment selects the owner, not the
+  importer, while the evaluation follows the import and the importer's
+  key moved: `site`'s config imports `core/src/index.ts`, which imports
+  `util.ts`; an edit to `util.ts` ran `core#build` alone and skipped
+  `site#build`. The walk now follows every import (200 configs into a
+  500-file library: 10 → 28 ms for one changed file). Rows:
+  `config-missing-import.test.ts` › "a config reaching into ANOTHER
+  project follows the imports of that file", `affected.test.ts` › "the
+  walk descends past a project boundary (X-128)".
+- **X-123.** A task left remote (`--download=none`) whose inputs moved
+  between its key and the describe before the command was saved under
+  the old key once a local consumer fetched it: the remote built over the
+  edit, and once the edit was reverted the next run hit those bytes. The
+  eager save withheld it (item 743); the deferred one asked nothing. It
+  now takes the same check, and a moved key registers the fetch with no
+  key, so the consumer still gets the bytes and nothing is saved. Rows:
+  `execute-task.test.ts` › "the DEFERRED save site refuses a key the
+  inputs no longer match (X-123)", `download-policy.test.ts` › "an entry
+  with no key is fetched for its consumer but saves nothing (X-123)".
+- **X-124.** A hit the up-front probe found was restored after a task
+  had rewritten the lockfile the workspace fingerprint folds: its key named
+  the install the run started on, so a task with no edge to `install`
+  that restored after it put back bytes built against the old install,
+  while the lazy path refuses to probe past that move (item 750). Such a
+  hit now goes back to the scheduler as a vanished one does and runs
+  once its deps are done. Row: `execute-task.test.ts` › "a preProbed HIT
+  is not restored once a task rewrote the lockfile (X-124)".
+- **X-125.** On a plugin executor, a task whose child trapped the
+  timeout's stop and exited 0 passed: core recorded `timedOut` only for a
+  non-zero exit, so the partial outputs were saved and the next run
+  replayed them as a green hit. The local executor fails the same child
+  as timed out. Any exit after the timeout's abort is now a timeout on a
+  plugin executor; the local one keeps its runner's own verdict, since
+  core's request timer starts before the spawn. Rows:
+  `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
+  abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".

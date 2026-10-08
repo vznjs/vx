@@ -71,6 +71,36 @@ describe('vx watch under a signal (e2e)', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // The handler replaced nohup's SIG_IGN, so the hang-up stopped the loop.
+  // Without the fix vx exits inside the 200 ms grace; the second is slack.
+  it('a watch started with SIGHUP ignored (nohup) keeps its cycle through a hang-up', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: { slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } } },
+        }
+      `,
+    )
+    const proc = Bun.spawn(
+      ['sh', '-c', `trap '' HUP; exec "$0" "$@"`, process.execPath, BIN, 'watch', 'slow', '--all'],
+      {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      },
+    )
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    proc.kill('SIGHUP')
+    const after = await Promise.race([proc.exited, Bun.sleep(1_000).then(() => 'running')])
+    expect([after, isAlive(pid)]).toEqual(['running', true])
+    proc.kill('SIGTERM')
+    expect(await proc.exited).toBe(0)
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   it('SIGINT while idle prints stopped and exits 0', async () => {
     await addProject(
       root,
