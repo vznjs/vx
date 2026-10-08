@@ -71,7 +71,9 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder()
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
+    ignoreBOM: true,
+  })
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -428,8 +430,10 @@ function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string>
   return { text, undecodable }
 }
 
-const LOSSY_UTF8 = new TextDecoder()
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+// A default decoder strips a leading U+FEFF: the first path git lists
+// would lose it and name no file.
+const LOSSY_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
@@ -1553,10 +1557,15 @@ export async function applyGitEnumeration(
     return lo
   }
   for (const projectDir of projectDirs) {
-    const relPrefix =
+    const spelled =
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
         : relPosix(workspaceRoot, projectDir)
+    // macOS git reports paths NFC (core.precomposeunicode) while a dir
+    // discovered by readdir keeps the spelling it was created with: match
+    // NFC, and key the OIDs by the project's spelling, which is how
+    // `resolveFiles` looks them up.
+    const relPrefix = spelled.normalize('NFC')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()
@@ -1569,11 +1578,13 @@ export async function applyGitEnumeration(
     const end = lowerBound(`${prefix}￿`)
     const matches: string[] = []
     const projOids = new Map<string, string>()
+    const projAbs =
+      relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
       matches.push(rel.slice(prefix.length))
       const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(abs(rel), oid)
+      if (oid !== undefined) projOids.set(projAbs(rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A

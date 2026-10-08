@@ -325,6 +325,46 @@ describe('vx watch loop (e2e): the watched set', () => {
     await until(async () => (await executions(f.log)) === 3, 'the cycle after the root file edit')
   }, 40_000)
 
+  it('a module the config imports from inside its project reshapes the set like the config', async () => {
+    // Only an import from outside every project re-read the set: the same
+    // workspaceFiles line added in `./inputs.mjs` ran one cycle, and the
+    // root file it named was silence until a restart.
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
+    const inputs = (extra: string): string =>
+      `export const inputs = { files: ['src/**']${extra} }\n`
+    await writeFile(path.join(f.dir, 'inputs.mjs'), inputs(''))
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `import { inputs } from './inputs.mjs'
+      export default {
+        tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
+            cache: { inputs, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }\n`,
+    )
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the per-project arm')
+    await initialOnly(w, f.log)
+
+    await writeFile(
+      path.join(f.dir, 'inputs.mjs'),
+      inputs(", workspaceFiles: ['tsconfig.base.json']"),
+    )
+    await until(
+      () => w.out().includes('vx watch: watching the workspace root'),
+      'the swap to the root watcher',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(f.log)).toBe(2)
+
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":2}\n')
+    await until(async () => (await executions(f.log)) === 3, 'the cycle after the root file edit')
+  }, 40_000)
+
   // Item 1018: the glob list itself. A root `package.json` was no event
   // outside a root project, `pnpm-workspace.yaml` was a cycle that never
   // re-read the set, and the member bases were the ones at start.

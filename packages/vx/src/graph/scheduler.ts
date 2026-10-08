@@ -208,7 +208,7 @@ export interface ScheduleOptions {
    *   - 'deps-ok': a failed/skipped/aborted upstream skips its
    *     dependents; independent siblings keep running.
    *   - 'never': the first failure stops dispatch — in-flight tasks
-   *     finish naturally, everything not yet started completes as
+   *     finish their attempt but start no retry, everything not yet started completes as
    *     skipped (restore-tier included: a fail-fast run stops
    *     restoring too).
    *   - 'always': dependents run even when an upstream failed. Their
@@ -227,6 +227,11 @@ export interface ScheduleOptions {
    * 'never' it stops dispatch.
    */
   serverDied?: (id: string) => boolean
+  /**
+   * Called once, when 'never' stops dispatch: a task in flight then
+   * finishes its attempt but starts no retry.
+   */
+  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -424,6 +429,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // dequeued task is skipped instead of dispatched (in-flight tasks
   // finish naturally and their dependents drain through the same path).
   let failFastTripped = false
+  const tripFailFast = (): void => {
+    if (failFastTripped) return
+    failFastTripped = true
+    options.onFailFast?.()
+  }
   const outcomes = new Map<string, TaskOutcome>()
 
   // Reverse adjacency + pending dep counts. Built once. A task becomes
@@ -588,7 +598,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
-      if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
+      if (continueMode === 'never' && outcome.status === 'failed') tripFailFast()
       outcomes.set(id, outcome)
       // A dormant server is asked again: the dispatch settles it once its
       // last dependant is in.
@@ -686,7 +696,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
       if (continueMode === 'never' && servers.some(serverDied)) {
-        failFastTripped = true
+        tripFailFast()
         return true
       }
       if (inRestoreTier(id)) return false
@@ -959,7 +969,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 }
 
 /** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
-function idleServers(
+export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,

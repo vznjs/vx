@@ -331,6 +331,29 @@ jobs:
           VX_REQUIRE_NX: '1'
         run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-migrate
 
+  # The linux-arm64 release binary is cross-compiled and never run
+  # elsewhere: this proves it launches, on main only, so a pull request
+  # waits on no arm64 runner.
+  binary-linux-arm64:
+    name: compiled binary (linux-arm64)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - name: compiled binary (check.binary)
+        run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
+
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
   # broke every cache save; the /tmp -> /private/tmp symlinked-base

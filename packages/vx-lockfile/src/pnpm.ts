@@ -13,6 +13,7 @@
 
 import { reachDigests } from '@vzn/vx'
 import { pruneSections } from './blocks.js'
+import { record } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -146,10 +147,6 @@ function scalar(v: unknown): string {
     : typeof v === 'number' || typeof v === 'boolean'
       ? String(v)
       : ''
-}
-
-function record(v: unknown): Yaml | undefined {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Yaml) : undefined
 }
 
 /** JSON with sorted keys, so YAML key order cannot move a digest. */

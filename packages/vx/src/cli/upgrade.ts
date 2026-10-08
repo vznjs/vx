@@ -1,4 +1,4 @@
-// `vx upgrade [tag]` — self-update the compiled binary in place.
+// `vx upgrade [TAG]` — self-update the compiled binary in place.
 // Asks the GitHub release API for the asset of this os/arch and the
 // SHA-256 digest it publishes, downloads the asset, verifies the digest,
 // writes next to the current executable, atomic rename over it. The
@@ -299,8 +299,7 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   }
   if (!isCompiledBinary()) {
     throw new UserError(
-      'vx upgrade only works for the compiled binary. ' +
-        'You are running from source — use git pull instead. ' +
+      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull ' +
         '(npm installs update with: npm install -g @vzn/vx@latest)',
     )
   }
