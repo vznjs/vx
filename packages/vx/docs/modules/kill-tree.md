@@ -24,7 +24,7 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
 export function guardLine(fd: number): string // the shell line that lists `$$`'s group and closes the pipe
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
-export function markGroupIfGone(child: Child): void
+export function releaseServerGroup(child: Child): void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -97,11 +97,14 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   comes while a group is held is written when the hold ends; holds
   count, so two teardowns over one group let it go once both are done.
 - A child whose group was empty when its leader exited is never signalled
-  again (`markGroupIfGone`, from `runPersistent`'s exit): its number is
+  again (`releaseServerGroup`, from `runPersistent`'s exit): its number is
   free, and a ready server stays in the run's registry after it exits, so
   the end-of-run teardown's `kill(-pid)` could reach a group the kernel
   had since handed it (item 874). `groupAlive` reads such a group as gone.
-  A group that still has a member keeps its number, and is signalled.
+  A group that still has a member keeps its number, is signalled, and
+  stays listed until a teardown lets it go: the registry still owns it,
+  and struck at the leader's exit, the `server` of a `server & echo up`
+  outlived a `kill -9` of vx.
 - A clean exit closes the pipe too, with the list empty, so the guard
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is

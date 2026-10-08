@@ -181,7 +181,7 @@ export function holdGroups(children: readonly Child[]): () => void {
       if (hold === undefined) continue
       if (--hold.count > 0) continue
       holds.delete(pid)
-      if (hold.released) guardWrite(`-${pid}\n`)
+      if (owed.delete(pid) || hold.released) guardWrite(`-${pid}\n`)
     }
   }
 }
@@ -197,9 +197,23 @@ export function holdGroups(children: readonly Child[]): () => void {
  */
 const goneGroups = new WeakSet<Child>()
 
-/** Note, as `child`'s leader exits, whether its group went with it. */
-export function markGroupIfGone(child: Child): void {
-  if (!groupAlive(child)) goneGroups.add(child)
+/** Server groups that outlived their leader: struck when a teardown next lets them go. */
+const owed = new Set<number>()
+
+/**
+ * A persistent child's leader has exited. An empty group is struck and
+ * never signalled again. One with a member left stays listed until a
+ * teardown lets it go: the run's registry still owns a ready server after
+ * its shell exits and stops its group at the end, and struck here, the
+ * `server` of a `server & echo up` was left to nobody by a `kill -9` of vx.
+ */
+export function releaseServerGroup(child: Child): void {
+  if (groupAlive(child)) {
+    owed.add(child.pid)
+    return
+  }
+  goneGroups.add(child)
+  releaseGroup(child)
 }
 
 export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
