@@ -54,7 +54,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 
 export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn>
-  ready: Promise<void> // resolves once "ready"; rejects if exit before ready
+  ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
 }
 
