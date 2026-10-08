@@ -248,7 +248,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
   Nor is a task in flight when `--continue=never` stops the run: its
-  attempt finishes, and its failure is the last.
+  attempt finishes, and its failure is the last, even when its retry
+  was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
@@ -558,7 +559,7 @@ the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to 
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and `TMPDIR` values over these names:
+proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
@@ -1054,7 +1055,10 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, a dangling one, or
+it (never following it). An output DIRECTORY that is a symlink
+(`dist -> real-out`) is followed: its target is cleaned, saved and
+restored as the output; one that resolves outside the project refuses
+the task, naming the link. A link to a directory, a dangling one, or
 one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
@@ -1108,7 +1112,8 @@ project dir (e.g. a root-level generated file). Same capture / restore
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
 namespace so project and workspace outputs never collide. A project
 `outputs.files` glob under a top-level `workspace-outputs/` is refused
-at load: that name is the namespace.
+at load: that name is the namespace. A file another glob matches there
+(`**/*.js`) is refused at save, and the task is not cached.
 
 ```ts
 outputs: {
@@ -1167,7 +1172,7 @@ interface SandboxGrants {
   network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
   unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
+  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host or another running task already holds fails the task)
   machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
@@ -1330,7 +1335,8 @@ Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a tas
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
-real path of every workspace package linked there. A project never names
+real path of every workspace package linked there, and in turn in each
+such package's own `node_modules`. A project never names
 a sibling to import what its `package.json` already depends on. A link
 back to the task's own project, or to a directory holding it, is not
 followed: npm and Yarn link every workspace package at the root, the
@@ -1530,7 +1536,7 @@ interface WorkspaceRules {
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
@@ -2015,3 +2021,4 @@ Workspace-config errors:
 | `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                                  | A fingerprint claim without its file list or its `affected` answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `plugin '<name>' claims fingerprint file "<file>", which is not a file name at the workspace root`                                                           | A claim names a path, or no name: a claim is a bare file at the root (`vx watch`'s root arm is not recursive).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                                     | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once`                  | One plugin package declared twice (`plugins: [bun(), bun()]`); the message named it as two plugins (D-158).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |

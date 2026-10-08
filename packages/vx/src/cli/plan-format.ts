@@ -1,7 +1,7 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
 import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
-import { formatDuration } from '../orchestrator/index.js'
+import { formatElapsed } from '../util/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
@@ -37,7 +37,7 @@ export function formatPlanText(plan: RunPlan): string {
     const desc = skipped ? 'noop — would not run' : describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
-    const eta = executes && t.p50Ms !== undefined ? `  ~${formatDuration(t.p50Ms)}` : ''
+    const eta = executes && t.p50Ms !== undefined ? `  ~${formatElapsed(t.p50Ms)}` : ''
     // Placement, by EXECUTOR NAME rather than a local/remote word: the
     // summary line below already spends "local" and "remote" on the cache
     // tier, and a task placed on a named executor is what the reader can
@@ -94,8 +94,8 @@ export function formatPlanText(plan: RunPlan): string {
   const p = plan.predicted
   const executes = miss + nocache
   if (p !== undefined && executes > 0 && executes > p.unknownCount) {
-    const parts = [`predicted: ~${formatDuration(p.wallMs)} wall`]
-    parts.push(`~${formatDuration(p.workMs)} total execution`)
+    const parts = [`predicted: ~${formatElapsed(p.wallMs)} wall`]
+    parts.push(`~${formatElapsed(p.workMs)} total execution`)
     if (p.unknownCount > 0) {
       parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
     }

@@ -179,7 +179,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
     }
     const verbOwners = new Map<string, string>()
-    const fileClaimants = new Map<string, string>()
+    const fileClaimants = new Map<string, { name: string; at: number }>()
     for (const [i, p] of config.plugins.entries()) {
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
@@ -321,12 +321,19 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             )
           }
           const owner = fileClaimants.get(file)
-          if (owner !== undefined) {
+          // One package twice (`plugins: [bun(), bun()]`) read "plugins 'x'
+          // and 'x' both claim" (D-158).
+          if (owner !== undefined && owner.name === plug.name) {
             throw new UserError(
-              `${configPath}: plugins '${owner}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice (plugins[${owner.at}] and plugins[${i}]) — a file has one claimant; declare the plugin once`,
             )
           }
-          fileClaimants.set(file, plug.name)
+          if (owner !== undefined) {
+            throw new UserError(
+              `${configPath}: plugins '${owner.name}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+            )
+          }
+          fileClaimants.set(file, { name: plug.name, at: i })
         }
       }
       // A plugin must contribute at least one capability or lifecycle hook
