@@ -1078,3 +1078,13 @@ watch`'s initial run held that run for good: the loop armed only after
   it, so the fix was never heard. The loop now arms once the initial run
   waits on readiness alone (every config is loaded by then) and takes the
   run as its cycle in flight. Rows: `watch-initial-readiness.test.ts`.
+- **X-136.** `vx watch` never heard an edit to the root `.gitignore` or
+  to one in a package glob's directory (`packages/.gitignore`): inputs
+  are gitignore-aware, so un-ignoring a file changed `app#build`'s key,
+  `vx run` missed on it, and the watch ran nothing. Both arms now take
+  `.gitignore` as a cycle. Rows: `watch-root-scope.test.ts` ›
+  "un-ignoring an input in the root/a member base .gitignore re-runs".
+- **X-137.** `vx watch //#check` ran the root task, then exited 1 with
+  "no projects in scope": the anchor was taken as a project named `//`.
+  It now maps to the root project's name, as the run does (D-39). Row:
+  `watch-root-scope.test.ts` › "watches the root project".

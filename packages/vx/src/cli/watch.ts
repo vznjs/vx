@@ -164,7 +164,15 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const workspaceRoot = await findWorkspaceRoot(cwd, reads)
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const allProjects = await discoverCliProjects(workspace)
-  const anchored = opts.tasks.filter((t) => t.includes('#')).map((t) => t.slice(0, t.indexOf('#')))
+  // `//#check` is the root project's task, named by its package.json name
+  // as the run names it (prepare.ts, D-39): taken literally, no project
+  // was in scope and the watch exited 1 after a green run.
+  const rootDir = path.resolve(workspaceRoot)
+  const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
+  const anchored = opts.tasks
+    .filter((t) => t.includes('#'))
+    .map((t) => t.slice(0, t.indexOf('#')))
+    .map((p) => (p === '//' && rootName !== undefined ? rootName : p))
   const named =
     anchored.length === opts.tasks.length
       ? new Set(anchored)
@@ -627,6 +635,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               isWorkspaceFingerprintFile(filename) ||
               isWorkspaceConfigFile(filename) ||
               filename === 'package.json' ||
+              filename === '.gitignore' ||
               claimedRootFiles.has(filename)
             ) {
               if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
@@ -886,6 +895,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           base,
           arm(base, false, (filename) => {
             if (isIgnoredWatchPath(filename)) return
+            // Inputs are gitignore-aware: an edit here changes what the
+            // members' keys read, and `vx run` would miss on it.
+            if (filename === '.gitignore') {
+              trigger(
+                path.relative(workspaceRoot, path.join(base, filename)),
+                path.join(base, filename),
+              )
+              return
+            }
             // Only a member coming or going. On macOS a non-recursive watcher
             // also reports a member whose CONTENTS changed (FSEvents names the
             // directory a write landed in), so a task writing into its own

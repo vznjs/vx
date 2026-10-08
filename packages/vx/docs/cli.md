@@ -1262,7 +1262,9 @@ run...` precedes it.
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A file a
+   task's input; the cycle after it re-evaluates the file. A `.gitignore`
+   there or in a package glob's directory is a cycle too: inputs are
+   gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
    the configs; so is one inside a project, which re-reads the set as the
