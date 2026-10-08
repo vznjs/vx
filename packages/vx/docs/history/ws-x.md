@@ -1125,3 +1125,11 @@ reaches no build task.` The plan now carries the run's own line
   vanished and the run exited 0 having run the others. The lock now
   refuses it as it does a moved config (D-88). Row:
   `frozen-deleted-config.test.ts`.
+- **X-146.** A diff that matched, then lost every project to an `!`
+  exclusion or an empty walk (`--filter '[HEAD]' --filter '!x'`,
+  `--filter '[HEAD]^...'` over an uncommitted change) said that nothing
+  was affected since HEAD and that HEAD is HEAD itself: the note fired
+  whenever every include was a diff. It now fires only when the diff itself
+  matched nothing; otherwise the exit-0 note names the exclusion or the
+  walk. Row: `affected-base-notes.test.ts` › "a diff that matched, then
+  lost every project to an exclusion or a walk, says which (X-146)".

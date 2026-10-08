@@ -414,7 +414,10 @@ helpers by bare specifier to opt out. See
 **Nothing changed exits 0.** When the selection comes only from
 `--affected` / `[<ref>]` and resolves to zero projects, vx prints
 `nothing affected since <ref>` and exits 0 — a docs-only commit must not
-fail `vx run lint test build --affected=origin/main`. A name or path
+fail `vx run lint test build --affected=origin/main`. When the diff
+did match and an exclusion or an empty walk took it all back, the exit-0
+note says that instead (`no projects selected: !app excluded every
+project the other filters matched`), never that nothing changed. A name or path
 pattern that matches nothing is still an error (a probable typo), and a
 pattern that matches nothing alongside one that matched is warned about
 on stderr.
