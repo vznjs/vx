@@ -6,14 +6,15 @@
 //   bun perf-guard.ts --update   rewrite this platform's baseline
 //
 // COUNTS (processes spawned, hashes taken, SQLite statements run) are
-// deterministic: the same code does the same work on any box, so any
-// change fails and the PR commits the new baseline, which puts the number
-// in its diff. Counts are taken at two sizes, so work that grows faster
-// than the package count shows in the pair. TIME is not deterministic,
-// so it is held loosely: the min of interleaved reps at the larger size,
-// divided by a calibration loop run between them (a slower box slows
-// both), failing only past TIME_LIMIT and only when every re-measure
-// agrees.
+// deterministic: the same code does the same work on any box. A count
+// that grows fails, and a PR that means it commits the new baseline,
+// which puts the number in its diff; a count that shrinks passes. Counts
+// are taken at two sizes, so work that grows faster than the package
+// count shows in the pair. TIME is printed, never held: the min of
+// interleaved reps at the larger size, divided by a calibration loop run
+// between them. On CI beside the test shards it read 1.97× on a PR that
+// made no phase slower, and a local gate on four cores runs it beside
+// twelve shards, so no limit both holds and stays quiet.
 import { Database } from 'bun:sqlite'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -25,13 +26,8 @@ const SMALL = 25
 const LARGE = 100
 const REPS = 7
 const ATTEMPTS = 3
-/**
- * A timed number fails past baseline × this. Under `vx run`'s sandbox the
- * 100-package numbers spread 0.83–1.19× on one box (the 25-package ones
- * 0.5–1.8×, so those are counted, not timed). It catches a phase gone
- * half again slower, not a few percent; the counts hold those.
- */
-const TIME_LIMIT = 1.5
+/** A timed number past baseline × this is flagged in the table; it fails nothing. */
+const TIME_FLAG = 1.5
 // Past vx's racy-mtime windows (FILE_HASH_RACY_MS, OUTPUT_DIRS_RACY_MS,
 // 50 ms): a file changed closer than that to a read is not memoised, so
 // a count taken inside one depends on the box's speed.
@@ -302,10 +298,10 @@ async function measure<T>(what: 'counts' | 'time'): Promise<T> {
 /** Normalized times at LARGE. */
 const timeAll = () => measure<Record<string, number>>('time')
 
-/** Each number's best of `attempts` measures, while `again` asks for one. */
-async function best(attempts: number, again: (t: Record<string, number>) => boolean) {
+/** Each number's best of `attempts` measures. */
+async function best(attempts: number) {
   let time = await timeAll()
-  for (let a = 1; a < attempts && again(time); a++) {
+  for (let a = 1; a < attempts; a++) {
     const next = await timeAll()
     time = Object.fromEntries(Object.entries(time).map(([k, v]) => [k, Math.min(v, next[k]!)]))
   }
@@ -329,7 +325,7 @@ async function main(): Promise<void> {
   if (process.argv.includes('--update')) {
     // The best of ATTEMPTS: a baseline taken on a busy moment lets a later
     // regression of that size through.
-    const time = await best(ATTEMPTS, () => true)
+    const time = await best(ATTEMPTS)
     const rounded = Object.fromEntries(Object.entries(time).map(([k, v]) => [k, +v.toFixed(3)]))
     all[platform] = { counts: counted, time: rounded }
     await writeFile(BASELINE, JSON.stringify(byKey(all), null, 2) + '\n')
@@ -345,7 +341,8 @@ async function main(): Promise<void> {
     return
   }
 
-  const failures: string[] = []
+  const grew: string[] = []
+  const shrank: string[] = []
   const rows: string[] = []
   for (const phase of new Set([...Object.keys(base.counts), ...Object.keys(counted)])) {
     const was = base.counts[phase] ?? {}
@@ -355,33 +352,31 @@ async function main(): Promise<void> {
       rows.push(
         `  ${`${phase}: ${k}`.padEnd(46)} ${String(b).padStart(7)} ${String(n).padStart(7)}`,
       )
-      if (b !== n) failures.push(`${phase}: ${k} ${b} → ${n}`)
+      if (n > b) grew.push(`${phase}: ${k} ${b} → ${n}`)
+      if (n < b) shrank.push(`${phase}: ${k} ${b} → ${n}`)
     }
   }
 
-  // Time: re-measure while anything is over, keeping each number's best.
-  const over = (t: Record<string, number>) =>
-    Object.keys(base.time).filter((k) => !(t[k]! <= base.time[k]! * TIME_LIMIT))
-  const time = await best(ATTEMPTS, (t) => over(t).length > 0)
+  const time = await timeAll()
   for (const k of Object.keys(base.time)) {
     const ratio = time[k]! / base.time[k]!
     rows.push(
-      `  ${k.padEnd(46)} ${base.time[k]!.toFixed(2).padStart(7)} ${time[k]!.toFixed(2).padStart(7)}  ${ratio.toFixed(2)}×`,
-    )
-  }
-  for (const k of over(time)) {
-    failures.push(
-      `${k}: ${base.time[k]!.toFixed(2)} → ${time[k]!.toFixed(2)} (limit ${TIME_LIMIT}×)`,
+      `  ${k.padEnd(46)} ${base.time[k]!.toFixed(2).padStart(7)} ${time[k]!.toFixed(2).padStart(7)}  ${ratio.toFixed(2)}×${ratio > TIME_FLAG ? '  slower? (noisy; not held)' : ''}`,
     )
   }
 
   process.stdout.write(
     `perf-guard (${platform})${' '.repeat(26)} baseline     now\n${rows.join('\n')}\n`,
   )
-  if (failures.length > 0) {
+  if (shrank.length > 0) {
     process.stdout.write(
-      `\nperf-guard: ${failures.length} changed:\n${failures.map((f) => `  ${f}`).join('\n')}\n` +
-        `A count is exact: if the change is meant, record it with \`vx run perf.update\` and commit perf-baseline.json.\n`,
+      `\nperf-guard: ${shrank.length} fewer (passes; \`vx run @vzn/vx-bench#perf.update\` records them):\n${shrank.map((f) => `  ${f}`).join('\n')}\n`,
+    )
+  }
+  if (grew.length > 0) {
+    process.stdout.write(
+      `\nperf-guard: ${grew.length} grew:\n${grew.map((f) => `  ${f}`).join('\n')}\n` +
+        `The change does more work. If it is meant, run \`vx run @vzn/vx-bench#perf.update\` and commit perf-baseline.json; on a conflict there, take main's file and run it again.\n`,
     )
     process.exitCode = 1
   }
