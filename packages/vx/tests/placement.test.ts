@@ -56,7 +56,10 @@ describe('pinnedLocalSet', () => {
       const n = node(id, {}, deps)
       return {
         ...n,
-        config: { ...n.config, cache: { inputs: { files: ['src/**'], ...inputs } } },
+        config: {
+          ...n.config,
+          cache: { inputs: { files: ['src/**'], ...inputs }, outputs: { files: [] } },
+        },
       } as TaskNode
     }
     const set = pinnedLocalSet(
@@ -309,6 +312,29 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       { name: 'pool-y', capacity: 2 },
       undefined,
       undefined,
+    ])
+  })
+
+  it('two executors that share a name get two pools; one executor keeps one', () => {
+    const first = exec('pool', 4)
+    const second = exec('pool', 2)
+    // A name that is already a repeat's spelling does not take it twice.
+    const spelled = exec('pool#2', 1)
+    const poolOf = poolOfPlacement({
+      executors: new Map([
+        ['a#x', first],
+        ['a#w', spelled],
+        ['a#y', second],
+        ['a#z', first],
+      ]),
+      remoteOnlyNoop: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect([poolOf('a#x'), poolOf('a#w'), poolOf('a#y'), poolOf('a#z')]).toEqual([
+      { name: 'pool', capacity: 4 },
+      { name: 'pool#2', capacity: 1 },
+      { name: 'pool#3', capacity: 2 },
+      { name: 'pool', capacity: 4 },
     ])
   })
 })

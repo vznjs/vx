@@ -90,7 +90,9 @@ readers that reach it here.
   `Bun.stdout.writer()`): the parent's stdout may be `vx mcp`'s
   JSON-RPC stream, whose own redirect covers only the parent thread, and
   a second tool call's config output landed between two responses
-  (D-64). The first load prints where the process's stdout points.
+  (D-64). The first load, in process, sends them to stderr too while
+  the round evaluates: a verb's stdout is its output, and a config's
+  `console.log` came out ahead of `vx show --format json`'s JSON.
 - A config that calls `process.exit` while it evaluates fails the load,
   at the config's line, on both paths: "process.exit(0) in a config: a
   config exports its object; it cannot end the run". In process

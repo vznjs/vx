@@ -9,15 +9,12 @@ export class Cache implements CacheLayer {
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
@@ -326,6 +323,8 @@ export async function run(options: RunOptions): Promise<RunSummary>
 export function splitTaskId(id: string): [project: string, task: string]
 == function whyDidThisRerun (src/orchestrator/metrics.ts)
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+== function withForwardArgs (src/exec/runner.ts)
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
 export interface AdmitContext {
   readonly running: readonly TaskNode[]
@@ -396,12 +395,12 @@ export interface CacheGetContext {
 }
 == type CacheInputs (src/config.ts)
 export interface CacheInputs {
-  files: string[]
-  workspaceFiles?: string[]
-  env?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  env?: readonly string[]
   tasks?: readonly string[]
-  runtime?: string[]
-  workspaceRuntime?: string[]
+  runtime?: readonly string[]
+  workspaceRuntime?: readonly string[]
 }
 == type CacheKeyInput (src/cache/layer.ts)
 export interface CacheKeyInput {
@@ -473,8 +472,8 @@ export interface CacheLayer {
 }
 == type CacheOutputs (src/config.ts)
 export interface CacheOutputs {
-  files: string[]
-  workspaceFiles?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
 }
 == type CachePolicy (src/cache/policy.ts)
 export interface CachePolicy {
@@ -505,11 +504,14 @@ export type CacheStatus =
   | 'miss'
   | 'no-cache'
   | 'group'
+  | 'not-started'
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
   stderr?: boolean
 }
+== type Catalogs (src/workspace/workspace.ts)
+export type Catalogs = ReadonlyMap<string, Readonly<Record<string, unknown>>>
 == type CgroupProbe (src/util/cgroup.ts)
 export interface CgroupProbe {
   readonly root?: string
@@ -584,9 +586,9 @@ export interface ExecConfig {
 }
 == type ExecEnv (src/config.ts)
 export interface ExecEnv {
-  passThrough?: string[]
+  passThrough?: readonly string[]
   define?: Record<string, string>
-  secret?: string[]
+  secret?: readonly string[]
 }
 == type ExecuteRequest (src/exec/executor.ts)
 export interface ExecuteRequest {
@@ -1073,6 +1075,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 == type PruneOptions (src/cache/layer.ts)
 export interface PruneOptions {
@@ -1200,6 +1203,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -1317,26 +1321,26 @@ export interface SandboxConfig {
 }
 == type SandboxDenials (src/config.ts)
 export interface SandboxDenials {
-  network?: string[]
+  network?: readonly string[]
 }
 == type SandboxGrants (src/config.ts)
 export interface SandboxGrants {
-  read?: string[]
-  write?: string[]
-  network?: true | string[]
-  systemInfo?: string[]
-  unixSockets?: true | string[]
-  localBinding?: boolean | number[]
-  machLookup?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  network?: true | readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
 }
 == type SandboxIgnore (src/config.ts)
 export interface SandboxIgnore {
-  read?: string[]
-  write?: string[]
-  systemInfo?: string[]
-  network?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[]
 }
 == type SandboxViolation (src/exec/sandbox-runtime.ts)
 export interface SandboxViolation {
@@ -1465,6 +1469,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -1665,6 +1670,7 @@ export interface WhyDidThisRerun {
 export interface Workspace {
   root: string
   packageGlobs: string[]
+  catalogs?: Catalogs
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

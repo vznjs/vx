@@ -481,6 +481,15 @@ export interface TelemetrySource {
 /** How often a running task's process tree is sampled. */
 const SAMPLE_MS = 1000
 
+/** Call `fn` every `ms` until the returned stop is called. */
+type Every = (ms: number, fn: () => Promise<void>) => () => void
+
+const everyInterval: Every = (ms, fn) => {
+  const timer = setInterval(() => void fn(), ms)
+  timer.unref()
+  return () => clearInterval(timer)
+}
+
 const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
   'run.start',
   'task.start',
@@ -508,6 +517,8 @@ export function createTelemetrySource(args: {
   owners?: ReadonlyMap<TelemetrySink, string>
   /** The run's task graph, to see a group dependency through to the tasks behind it. */
   nodes?: ReadonlyMap<string, TaskNode>
+  /** The sampler's clock; a test ticks it by hand instead of waiting on the wall. */
+  every?: Every
 }): TelemetrySource {
   const { sinks, run, warn } = args
   const runId = run.runId
@@ -543,12 +554,13 @@ export function createTelemetrySource(args: {
   // only while one runs; a tick still reading when the next is due is not
   // doubled.
   const tracked = new Map<string, number>()
-  let timer: ReturnType<typeof setInterval> | undefined
+  const every = args.every ?? everyInterval
+  let stopEvery: (() => void) | undefined
   let sampling = false
   let ended = false
   const stopTimer = (): void => {
-    if (timer !== undefined) clearInterval(timer)
-    timer = undefined
+    stopEvery?.()
+    stopEvery = undefined
   }
   const untrack = (taskId: string, pid: number): void => {
     if (tracked.get(taskId) === pid) tracked.delete(taskId)
@@ -587,10 +599,7 @@ export function createTelemetrySource(args: {
   const track = (taskId: string, pid: number): (() => void) => {
     if (ended) return () => {}
     tracked.set(taskId, pid)
-    if (timer === undefined) {
-      timer = setInterval(() => void tick(), SAMPLE_MS)
-      timer.unref()
-    }
+    stopEvery ??= every(SAMPLE_MS, tick)
     return () => untrack(taskId, pid)
   }
 

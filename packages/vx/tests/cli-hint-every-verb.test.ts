@@ -61,10 +61,11 @@ describe('a refused word names the nearest one the verb takes', () => {
     })
   }
 
-  it('a shell typo names the shell; a word near none, and two shells, name nothing', async () => {
+  it('a shell typo names the shell; a word near none (`tcsh` is no typo of bash), and two shells, name nothing', async () => {
     expect([
       await refused(['completions', 'bsh']),
       await refused(['completions', 'powershell']),
+      await refused(['completions', 'tcsh']),
       await refused(['completions', 'zsh', 'fish']),
     ]).toEqual([
       [
@@ -74,6 +75,10 @@ describe('a refused word names the nearest one the verb takes', () => {
       [
         1,
         'vx completions: expected one shell — bash, zsh or fish (got powershell) (see `vx completions --help`)',
+      ],
+      [
+        1,
+        'vx completions: expected one shell — bash, zsh or fish (got tcsh) (see `vx completions --help`)',
       ],
       [1, 'vx completions: expected one shell — bash, zsh or fish (see `vx completions --help`)'],
     ])

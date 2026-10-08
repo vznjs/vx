@@ -123,6 +123,47 @@ describe('an interactive task under a vx on a terminal', () => {
   }, 20_000)
 })
 
+// `vx run > out.txt` on a terminal: the menu and prompt went to stdout, so
+// they landed in the file and the terminal sat blank, waiting on a number.
+describe('the picker with stdout redirected', () => {
+  it('asks on the terminal, and only the run reaches the file', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-redirect-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'echo BUILT' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn(['sh', '-c', `"${process.execPath}" "${BIN}" run > out.txt`], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const file = await Bun.file(path.join(root, 'out.txt')).text()
+      expect({
+        code,
+        asked: screen.includes('1. app#build'),
+        built: file.includes('BUILT'),
+        menuInFile: file.includes('Pick a task'),
+      }).toEqual({ code: 0, asked: true, built: true, menuInFile: false })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
 // `--filter` scopes the menu as it scopes a bare task: the picker listed
 // every project, and an anchored pick ran outside the filter.
 describe('the picker under --filter', () => {

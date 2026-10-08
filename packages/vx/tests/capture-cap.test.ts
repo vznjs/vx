@@ -118,3 +118,73 @@ describe('the bound reaches the cache entry and its replay', () => {
     TIMEOUT,
   )
 })
+
+describe('a secret the bound cuts', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-capture-cap-secret-' })
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'leaves no piece of it at the head’s end or the tail’s start of the entry',
+    async () => {
+      const secret = 'sekritvalue42'
+      const xs = (n: number): string => `head -c ${n} /dev/zero | tr '\\0' x`
+      // The first copy straddles the head's end (6 chars kept), the second
+      // the tail's start (7 kept); the middle between them is dropped.
+      const command = [
+        xs(CAPTURE_HEAD_CHARS - 6),
+        'printf "$API_TOKEN"',
+        xs(1_000_000),
+        'printf "$API_TOKEN"',
+        xs(CAPTURE_TAIL_CHARS - 7),
+      ].join('; ')
+      await addProject(root, 'chatty', {
+        files: { 'src/x.txt': 'x' },
+        config: `
+          export default {
+            tasks: {
+              test: {
+                exec: {
+                  command: ${JSON.stringify(command)},
+                  env: { define: { API_TOKEN: ${JSON.stringify(secret)} } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      expect((await run({ cwd: root, tasks: ['test'], log: quiet })).ok).toBe(true)
+      let replayed = ''
+      const hit = await run({
+        cwd: root,
+        tasks: ['test'],
+        log: {
+          ...quiet,
+          taskStdout(_node, chunk) {
+            replayed += chunk
+          },
+        },
+      })
+      expect(hit.outcomes[0]?.status).toBe('cache-hit')
+      expect(replayed).toContain('of output not kept')
+      expect(replayed).not.toContain('sekrit')
+      expect(replayed).not.toContain('value42')
+      // Control: each piece is masked where it was, not dropped.
+      const line = replayed.indexOf('\n[vx] ')
+      expect(replayed.slice(line - 4, line)).toBe('x***')
+      expect(replayed.slice(-(CAPTURE_TAIL_CHARS - 7) - 4, -(CAPTURE_TAIL_CHARS - 7) + 1)).toBe(
+        '\n***x',
+      )
+    },
+    TIMEOUT,
+  )
+})

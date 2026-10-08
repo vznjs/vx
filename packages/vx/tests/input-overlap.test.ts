@@ -263,6 +263,71 @@ describe('rules.upfrontKeys stays near-linear', () => {
   }, 120_000)
 })
 
+describe('the reader-writer index finds every pair the rule refuses', () => {
+  // The index pairs a reader with writers only (X-101): each shape an index
+  // by path could miss, the glob on either side, in either order, in a
+  // project and at the root.
+  const shapes: Array<[string, string]> = [
+    ['dist/a/**', 'dist/a/b/c/d.js'],
+    ['*/app.js', 'dist/app.js'],
+    ['{dist,lib}/app.js', 'lib/app.js'],
+    ['*.js', 'app.js'],
+    ['**/app.js', 'dist/sub/app.js'],
+    ['dist', 'dist/a/b/c.js'],
+    ['dist/**', 'dist'],
+    ['dist/app*', 'dist/app.js'],
+    ['dist/**', 'dist/sub/*.js'],
+    ['gen/x.js', 'gen/x.js'],
+  ]
+  for (const [glob, other] of shapes) {
+    for (const [read, written] of [
+      [glob, other],
+      [other, glob],
+    ] as const) {
+      it(`a reader of ${read} meets a writer of ${written}`, () => {
+        const r = task([read], [])
+        const w = task([], [written])
+        expect(refusal(app({ r, w }))).toStartWith(`app#r reads ${JSON.stringify(read)}`)
+        expect(refusal(app({ w, r }))).toStartWith(`app#r reads ${JSON.stringify(read)}`)
+        expect(
+          refusal({ p: { r: wsTask([read], []) }, q: { w: wsTask([], [written]) } }),
+        ).toStartWith(`p#r reads ${JSON.stringify(read)} in cache.inputs.workspaceFiles`)
+      })
+    }
+  }
+})
+
+describe('rules.upfrontKeys stays near-linear over a shared input', () => {
+  it('4,000 readers of one shared input pair none of them', () => {
+    // Every task reading `src/**` and the root `tsconfig.base.json` filed
+    // all 4,000 readers under one glob, and the index paired each reader
+    // with every other reader: 8 million pairs a reader-writer rule never
+    // judges. 5,000 such tasks were 15 s of graph build (X-101).
+    const PROJECTS = 400
+    const projects: Record<string, Record<string, TaskConfig>> = {}
+    for (let p = 0; p < PROJECTS; p++) {
+      const tasks: Record<string, TaskConfig> = {}
+      for (let t = 0; t < 10; t++) {
+        tasks[`t${t}`] = {
+          exec: { command: 'x' },
+          cache: {
+            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+            outputs: { files: [`out/t${t}/**`] },
+          },
+        }
+      }
+      projects[`p${p}`] = tasks
+    }
+    let best = Infinity
+    for (let r = 0; r < 3; r++) {
+      const t0 = performance.now()
+      expect(refusal(projects)).toBeNull()
+      best = Math.min(best, performance.now() - t0)
+    }
+    expect(best).toBeLessThan(1_000)
+  }, 120_000)
+})
+
 describe('a task whose own outputs take back an input entry whole is always refused', () => {
   const off = { exclusiveOutputs: false, upfrontKeys: false }
   const said = (glob: string, field = 'files') =>

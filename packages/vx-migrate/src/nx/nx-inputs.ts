@@ -7,7 +7,7 @@
 // (`dependentTasksOutputFiles`) is nothing; `externalDependencies` is a todo saying
 // so. Extracted from `buildTask` in item 606.
 
-import { nxWorkspacePath, underProject } from './nx-outputs.js'
+import { nxWorkspacePath, underProject, withProjectDir } from './nx-outputs.js'
 import { minimatchToVx } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 
@@ -68,21 +68,18 @@ export function expandNxInputs(
           todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
           return
         }
-        if (neg === '' && at.outputs?.some((o) => p === o || p.startsWith(`${o}/`))) {
-          todos.push(
-            `input ${JSON.stringify(entry)} is an output of the project's own targets: git does not ` +
-              'list it, so vx cannot key on it — dropped; the task that writes it keys its dependants through dependsOn',
-          )
-          return
-        }
+        // Nx's file map skips gitignored files, so it hashes nothing here
+        // either: a changed `dist` file is a cache hit under Nx 23.3 (YL-1).
+        const lit = withProjectDir(p, at.rel, false)
+        if (neg === '' && at.outputs?.some((o) => lit === o || lit.startsWith(`${o}/`))) return
         const g = minimatchToVx(p, neg !== '')
         if (g === null) {
           todos.push(`input ${JSON.stringify(entry)}: glob syntax vx cannot take — map manually`)
           return
         }
         const own = underProject(g, at.rel)
-        if (own === null) into.wsFiles.push(neg + g)
-        else into.files.push(neg + own)
+        if (own === null) into.wsFiles.push(neg + withProjectDir(g, at.rel, true))
+        else into.files.push(neg + withProjectDir(own, at.rel, true))
         return
       }
       // Bare string = named-input reference.
@@ -197,7 +194,10 @@ export function expandNxInputs(
     }
     // A negation filters only other includeIgnored matches, and a literal
     // reads no others.
-    if (!neg) into.runtimeCmds.push(`cat -- ${shellQuote(p)} 2>/dev/null; echo "$?"`)
+    if (!neg)
+      into.runtimeCmds.push(
+        `cat -- ${shellQuote(withProjectDir(p, at.rel, false))} 2>/dev/null; echo "$?"`,
+      )
   }
   for (const entry of entries) expand(entry, new Set())
   // Nx matches a project fileset with no positive glob against every project

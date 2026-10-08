@@ -13,6 +13,7 @@
 
 import { reachDigests } from '@vzn/vx'
 import { pruneSections } from './blocks.js'
+import { record } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -59,11 +60,9 @@ export function parseLockfile(text: string): Lockfile {
   // with "regenerate it", which regenerates the same two documents.
   const parsed: unknown = Bun.YAML.parse(text)
   const docs = (Array.isArray(parsed) ? parsed : [parsed]).filter((d) => d !== null)
-  const doc = docs.at(-1) as Yaml | undefined
+  const doc = record(docs.at(-1))
   const leading = docs.slice(0, -1)
-  if (doc === undefined || typeof doc !== 'object' || Array.isArray(doc)) {
-    throw new Error('pnpm-lock.yaml: not a YAML document')
-  }
+  if (doc === undefined) throw new Error('pnpm-lock.yaml: not a YAML document')
   const version = scalar(doc['lockfileVersion'])
   const major = Number.parseInt(version, 10)
   if (!Number.isFinite(major) || major < 5) {
@@ -146,10 +145,6 @@ function scalar(v: unknown): string {
     : typeof v === 'number' || typeof v === 'boolean'
       ? String(v)
       : ''
-}
-
-function record(v: unknown): Yaml | undefined {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Yaml) : undefined
 }
 
 /** JSON with sorted keys, so YAML key order cannot move a digest. */
