@@ -501,7 +501,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       const handle = arm(proj.dir, true, (filename) => {
         const abs = path.join(proj.dir, filename)
         if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
-        if (shapesWatchedSet(filename)) reread = true
+        // A module the config imports from inside the project is the config
+        // too: its edit can add an output or a `workspaceFiles` input.
+        if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
         trigger(`${proj.name} ${filename}`, abs)
       })
       perProject.set(proj.dir, handle)
@@ -522,8 +524,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
             if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-            if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
-            trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+            const abs = path.join(workspaceRoot, filename)
+            if (
+              shapesWatchedSet(filename) ||
+              filename === LOCKFILE_NAME ||
+              configImportFiles.includes(abs)
+            )
+              reread = true
+            trigger(`root ${filename}`, abs)
           })
         : // The root itself, non-recursive, beside the per-project arms, so
           // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
