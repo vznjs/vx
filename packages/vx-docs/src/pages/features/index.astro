@@ -4,26 +4,30 @@
 // the chips are anchors to the sections.
 import FeatureCard from '../../components/features/FeatureCard.astro'
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
-import { CATEGORIES, FEATURES } from '../../features/features.js'
+import { CATEGORIES, FEATURES, inlineHtml } from '../../features/features.js'
+import { inventory } from '../../features/inventory.js'
 
 const groups = CATEGORIES.map((c) => ({
   ...c,
   features: FEATURES.filter((f) => f.category === c.id),
 }))
+const base = import.meta.env.BASE_URL
+const all = await inventory(base)
+const total = all.reduce((n, g) => n + g.items.length, 0)
 ---
 
 <FeaturesPage
   title="Features — vx"
-  description={`Everything vx does: ${FEATURES.length} features, from the cache and the sandbox to watch mode and plugins, each with its own page.`}
+  description={`Everything vx does: ${total} features, from the cache and the sandbox to watch mode and plugins.`}
   path="features/"
 >
   <section class="fhub-hero">
     <div class="container">
-      <p class="vx-kicker">// {FEATURES.length} features</p>
+      <p class="vx-kicker">// {total} features and counting</p>
       <h1>Everything <span class="phosphor">vx</span> does.</h1>
       <p class="lede">
-        A fast runner, a cache you can trust, and the small things you meet every day, each with a
-        page of its own.
+        A fast runner, a cache you can trust, and the small things you meet every day. The big
+        ones first, then all {total}, one line each.
       </p>
       <ul class="chips" aria-label="Categories">
         {
@@ -36,7 +40,9 @@ const groups = CATEGORIES.map((c) => ({
           ))
         }
         <li>
-          <a href={`${import.meta.env.BASE_URL}all-features/`}>Every feature, one line each →</a>
+          <a href="#all">
+            All features <span class="count">{total}</span>
+          </a>
         </li>
       </ul>
     </div>
@@ -59,4 +65,47 @@ const groups = CATEGORIES.map((c) => ({
       </section>
     ))
   }
+
+  <section class="fcat fall" id="all">
+    <div class="container">
+      <div class="fcat-head">
+        <h2>All {total} features</h2>
+        <p>
+          One line each, from <a href={`${base}all-features/`}>the inventory</a>. Each links its
+          page or its story.
+        </p>
+      </div>
+      <div class="fall-groups">
+        {
+          all.map((g) => (
+            <div class="fall-group">
+              <h3>
+                {g.title} <span class="count">{g.items.length}</span>
+              </h3>
+              <ul>
+                {g.items.map((i) => (
+                  <li>
+                    {i.href === undefined ? (
+                      <strong set:html={inlineHtml(i.name)} />
+                    ) : (
+                      <a href={i.href}>
+                        <strong set:html={inlineHtml(i.name)} />
+                      </a>
+                    )}
+                    {i.surface !== '' && <span class="fall-surface" set:html={inlineHtml(i.surface)} />}
+                    <span class="fall-line" set:html={inlineHtml(i.line)} />
+                    {i.post !== undefined && i.post !== i.href && (
+                      <a class="fall-post" href={i.post}>
+                        story →
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
 </FeaturesPage>
