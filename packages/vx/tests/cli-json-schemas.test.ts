@@ -436,6 +436,7 @@ describe('each schema object is its source type', () => {
         timedOut: true,
         sandboxViolations: true,
         notReady: true,
+        forwarded: true,
       }),
     )
   })

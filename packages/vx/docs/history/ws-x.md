@@ -1083,3 +1083,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   "no projects in scope": the anchor was taken as a project named `//`.
   It now maps to the root project's name, as the run does (D-39). Row:
   `watch-root-scope.test.ts` › "watches the root project".
+
+- **X-140.** `vx last`'s "re-run what failed" line handed the run's
+  forwarded args (`-- --shard 2`) to every failed task, but a run forwards
+  them to requested tasks only: a failed dependency re-ran as another
+  command under another key. Each `runs` row now records `forward_args`
+  only for a task that got them, `vx last --format json` says so per task
+  (`forwarded`), and the line gives a failed dependency its own command
+  without them. Row: `last.test.ts` › "a failed run replays FAILED with the failure first".

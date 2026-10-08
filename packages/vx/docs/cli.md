@@ -2570,7 +2570,9 @@ prints `no recorded runs`, exit 0), and past green runs only,
 `--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded). The
+vx run app#test -- …`, with the arguments the run forwarded to the
+tasks that got them; a failed dependency, which never got them, gets a
+line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 
