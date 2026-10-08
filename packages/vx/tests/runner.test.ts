@@ -1493,19 +1493,21 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     expect(JSON.parse(out)).toEqual({ stdout: 'hi\n', stderr: '' })
   })
 
-  // Counted by fstat, not /proc/self/fd: under vx's sandbox /proc is
-  // another pid namespace's.
-  const openFds = (): number => {
-    let n = 0
+  // Found by fstat, not /proc/self/fd: under vx's sandbox /proc is
+  // another pid namespace's. A set, not a count: a descriptor an earlier
+  // row left closing closed inside the window and hid nothing but read as
+  // two fewer (macOS CI).
+  const openFds = (): Set<number> => {
+    const open = new Set<number>()
     for (let fd = 0; fd < 1024; fd++) {
       try {
         fstatSync(fd)
-        n++
+        open.add(fd)
       } catch {
         // not open
       }
     }
-    return n
+    return open
   }
 
   it('every descriptor a task took is closed after it: plain, cut, spawn-failed, persistent', async () => {
@@ -1522,6 +1524,6 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     spawn.child.kill('SIGKILL')
     await spawn.child.exited
     await Bun.sleep(50)
-    expect(openFds()).toBe(before)
+    expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
   }, 10_000)
 })
