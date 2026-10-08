@@ -674,6 +674,13 @@ export async function loadProjectConfigs(
  */
 let redirectHolders = 0
 let undoRedirect = (): void => {}
+/**
+ * Bun's own `Console`, taken at load: the console a round finds may be a
+ * constructed one (`vx mcp` serves under its own), which has no `Console`.
+ * The global's, not `node:console`'s: the playground bundles this module
+ * for the browser, where that specifier is a stub.
+ */
+const BunConsole = (globalThis.console as { Console?: typeof console.Console }).Console
 
 function stdoutToStderr(): () => void {
   if (redirectHolders++ === 0) undoRedirect = installRedirect()
@@ -699,10 +706,8 @@ function installRedirect(): () => void {
   ;(Bun.stdout as { writer: typeof Bun.stdout.writer }).writer = ((
     ...args: Parameters<typeof Bun.stderr.writer>
   ) => Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
-  // The global's own `Console`, not `node:console`'s: the playground bundles
-  // this module for the browser, where that specifier is a stub. Bun's
-  // console adds `write`, which a constructed Console lacks.
-  globalThis.console = Object.assign(new ownConsole.Console(process.stderr, process.stderr), {
+  // Bun's console adds `write`, which a constructed Console lacks.
+  globalThis.console = Object.assign(new BunConsole!(process.stderr, process.stderr), {
     write: (...data: string[]) => {
       const text = data.join('')
       process.stderr.write(text)
