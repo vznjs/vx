@@ -209,6 +209,9 @@ interface PackArgs {
   within?: string
 }
 
+/** The largest mtime, in seconds, a ustar header's 12-byte octal field holds (2242-03-16). */
+const MAX_HEADER_MTIME = 0o77777777777
+
 /** At or below this many outputs, `planArtifact` stats them on the calling thread. */
 const ON_THREAD_STATS = 32
 
@@ -310,9 +313,11 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         size: st.size,
         mode,
         // ustar's octal field holds no sign: an mtime before 1970 made the
-        // header unreadable and every save of it a "corrupt artifact". The
-        // sidecar above carries the real value.
-        mtime: Math.max(0, Math.floor(st.mtimeMs / 1000)),
+        // header unreadable and every save of it a "corrupt artifact". Nor
+        // a value past 11 octal digits: an mtime after 2242 (a bogus date
+        // a zip or tarball carried) failed every save of it. The sidecar
+        // above carries the real value either way.
+        mtime: Math.min(MAX_HEADER_MTIME, Math.max(0, Math.floor(st.mtimeMs / 1000))),
       }
     }),
   )

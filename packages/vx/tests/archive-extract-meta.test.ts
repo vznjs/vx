@@ -4,7 +4,8 @@
 // file was made with. And the sidecar's stat restored whole at its edges
 // (A-4): a mode of 000 and an mtime of 0 were skipped (the file came back
 // 0644 and stamped now, so every later hit restored it again), and an mtime
-// before 1970 wrote an unreadable tar header, so its task never saved. Name
+// before 1970 wrote an unreadable tar header, so its task never saved, as
+// did one after 2242, past the header field's 11 octal digits. Name
 // safety is archive-security.test.ts.
 
 import {
@@ -144,6 +145,11 @@ describe('the sidecar at its edges', () => {
   it('packs and restores an mtime before 1970', async () => {
     // A Date: Bun's `utimesSync` reads a negative number of seconds as now.
     const t = new Date(Date.UTC(1960, 0, 1))
+    expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
+  })
+
+  it('packs and restores an mtime past 2242, beyond the header field', async () => {
+    const t = new Date(Date.UTC(2300, 0, 1))
     expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
   })
 
