@@ -3755,6 +3755,52 @@ describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt
   )
 })
 
+// Release-assets' darwin upload granted `systemInfo: ['hw.optional.neon']`
+// and still died on `deny(1) sysctl-read hw.optional.neon`: the grant wrote
+// only a `system-info` rule, and Bun reads it as a sysctl.
+describe.skipIf(process.platform !== 'darwin' || process.arch !== 'arm64')(
+  'a systemInfo grant under seatbelt',
+  () => {
+    it(
+      'lets the task sysctl-read the name it grants',
+      async () => {
+        if (!(await sandboxAvailable('systemInfo grant under seatbelt'))) return
+        await initSandbox()
+        const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sysctl-')))
+        try {
+          const run = (systemInfo: string[]) =>
+            runSandboxed({
+              // sysctlbyname(3), the call Bun makes, as its raw syscall
+              // (274). /usr/sbin/sysctl exited 1 under the grant on macOS
+              // CI, with no stderr kept to say why.
+              command: `/usr/bin/perl -e '$n="hw.optional.neon";$v=pack("L",0);$l=pack("Q",4);exit 1 if syscall(274,$n,length($n),$v,$l,0,0);print unpack("L",$v)'`,
+              cwd: dir,
+              env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+              baseAllowRead: [],
+              baseDenyRead: [],
+              reportWithin: dir,
+              reportLinked: [],
+              config: resolveSandboxConfig({ allow: { read: ['.'], systemInfo } }, dir),
+            })
+          const granted = await run(['hw.optional.neon'])
+          // CONTROL: without the grant the read is refused.
+          const bare = await run([])
+          expect({
+            out: granted.stdout.trim(),
+            code: granted.exitCode,
+            err: granted.exitCode === 0 ? '' : granted.stderr,
+            bareOk: bare.exitCode === 0,
+          }).toEqual({ out: '1', code: 0, err: '', bareOk: false })
+        } finally {
+          await resetSandbox()
+          await rm(dir, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  },
+)
+
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
   it(
     'macOS refuses to apply a policy inside a sandboxed process',

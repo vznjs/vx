@@ -1165,7 +1165,7 @@ interface SandboxGrants {
   read?: readonly string[] // paths or globs, project-relative or absolute
   write?: readonly string[] // paths or globs; a write grant is readable too
   network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
-  systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
+  systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
   unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
   localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
   machLookup?: readonly string[] // mach global-names (macOS)
