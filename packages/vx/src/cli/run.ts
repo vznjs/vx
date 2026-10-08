@@ -11,7 +11,6 @@ import {
   run as runOrchestrator,
   shellQuote,
   type RunOptions,
-  type RunResult,
 } from '../orchestrator/index.js'
 import type { ContinueMode, TaskOutcome } from '../graph/index.js'
 import {
