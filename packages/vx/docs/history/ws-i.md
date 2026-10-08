@@ -857,3 +857,19 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
   2,000-project restore 1,001–1,432 ms against base 1,020–1,401 and
   A/A 1,034–1,442; up-to-date 377.9 min against 369.8 / 356.2. The
   profile's 12 ms in `higher` was the profiler's.
+
+## Probes refuted (2026-10-08)
+
+- Group commit of saves (lead A): each save's transaction ran in its own
+  savepoint inside one IMMEDIATE transaction per event-loop turn. A cold
+  2,000-task run made 939 commits instead of 2,000 (1–5 per batch), but
+  wall and CPU stayed in A/A noise: min 7,033 against base 7,244 and A/A
+  7,653 ms; CPU median 19.9 s against 19.6 / 19.8. The run waits on its
+  tasks, not on the commits.
+- Spawning off the main thread: `Bun.spawn` blocks ~360 µs even for
+  `/bin/true` (the VM's execve). With the main thread also doing ~1.8 ms
+  of work a task and output relayed back, two spawner Workers tied at
+  concurrency 4 (6,606 / 6,708 / 6,535 ms against 6,832 / 6,339 / 6,529)
+  and won 7–18% only at 16. vx's default is the core count, so the
+  Workers' memory and cross-thread output, signals and resource usage
+  buy nothing by default.
