@@ -144,6 +144,11 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   ) {
     throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
   }
+  // No path can carry one: the mkdir's argument error was reported as an
+  // unwritable workspace.
+  if (typeof config.cacheDir === 'string' && config.cacheDir.includes('\0')) {
+    throw new UserError(`${configPath}: \`cacheDir\` holds a NUL, which no path can carry`)
+  }
   if (config.timeout !== undefined) {
     if (
       typeof config.timeout !== 'number' ||
@@ -156,8 +161,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   }
   if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
   if (config.affectedBase !== undefined) {
-    // A leading '-' would reach git as an option, not a ref.
-    if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
+    // A leading '-' would reach git as an option, not a ref; a NUL fails the
+    // spawn with an argument error naming nothing in this file.
+    if (
+      typeof config.affectedBase !== 'string' ||
+      !/^[^-\s\0][^\s\0]*$/.test(config.affectedBase)
+    ) {
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
     }
   }

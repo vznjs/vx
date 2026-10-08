@@ -66,6 +66,23 @@ describe('whitespace-only values', () => {
   })
 })
 
+// A NUL in a workspace path or ref loaded, then failed the run with
+// Node's argument error: the cache dir's message blamed the workspace's
+// permissions, and affectedBase's named `args[3]` and nothing in the config.
+describe('a NUL in a workspace string', () => {
+  it('is refused in cacheDir and affectedBase', () => {
+    expect([
+      refusal({ cacheDir: 'a\0b' }),
+      refusal({ affectedBase: 'main\0x' }),
+      refusal({ affectedBase: 'origin/main' }),
+    ]).toEqual([
+      `${WS}: \`cacheDir\` holds a NUL, which no path can carry`,
+      `${WS}: \`affectedBase\` must be a git ref like 'origin/main'`,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)
