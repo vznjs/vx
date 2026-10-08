@@ -82,10 +82,12 @@ Start with one package and leave the rest of your tooling as it is.
 
 ## Coming from Turbo, Nx or Vite Task
 
-`bunx @vzn/vx-migrate` writes the native `vx.config.ts` files from
-`turbo.json`, the Nx graph or each `vite.config`'s `run.tasks`; from there everything above applies.
-`vx init` in such a repo writes only a `vx.workspace.ts` declaring
-`turbo()` or `nx()`: a temporary start, dropped once the configs exist.
+`npx vx init` beside `turbo.json` or `nx.json` runs `@vzn/vx-migrate`, which
+writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
+(`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
+from there everything above applies. `vx init --keep` writes only a
+`vx.workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
+once the configs exist.
 [Migrate](../guides/migrate/) has the steps.
 
 ## Common problems
