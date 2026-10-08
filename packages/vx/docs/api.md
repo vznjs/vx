@@ -203,12 +203,12 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheInputs {
-  files: string[]
-  workspaceFiles?: string[]
-  env?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  env?: readonly string[]
   tasks?: readonly string[]
-  runtime?: string[]
-  workspaceRuntime?: string[]
+  runtime?: readonly string[]
+  workspaceRuntime?: readonly string[]
 }
 ```
 
@@ -274,8 +274,8 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheOutputs {
-  files: string[]
-  workspaceFiles?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
 }
 ```
 
@@ -488,9 +488,9 @@ type · `src/config.ts`
 
 ```ts
 export interface ExecEnv {
-  passThrough?: string[]
+  passThrough?: readonly string[]
   define?: Record<string, string>
-  secret?: string[]
+  secret?: readonly string[]
 }
 ```
 
@@ -1861,6 +1861,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -2057,7 +2058,7 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxDenials {
-  network?: string[]
+  network?: readonly string[]
 }
 ```
 
@@ -2067,13 +2068,13 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxGrants {
-  read?: string[]
-  write?: string[]
-  network?: true | string[]
-  systemInfo?: string[]
-  unixSockets?: true | string[]
-  localBinding?: boolean | number[]
-  machLookup?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  network?: true | readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
 }
@@ -2256,6 +2257,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'

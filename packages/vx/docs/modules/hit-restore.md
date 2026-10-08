@@ -42,7 +42,8 @@ where it was.
 Only with `rules.exclusiveOutputs: false` (X-53); by default the graph
 refuses an edge-ordered overlap. An ADDITIVE task
 (`node.addsToOutputsOf`) is judged current by its
-recorded rows alone and cleans by those rows (`cleanOutputPaths`), never
+recorded rows alone and cleans by those rows (`cleanOutputPaths`, pruning
+only inside its declared trees as the glob clean does), never
 by its glob, which also selects the upstream's files it adds beside. An
 upstream that dependants add to (`node.outputsAddedToBy`) drops the
 strays their globs could have added before it judges its own tree — on

@@ -3212,9 +3212,33 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
 
   it('dedups per syscall AND path, so two calls on one path stay two lines', async () => {
     const ws = path.join(dir, 'ws')
+    // A probe's ENOENT counts only where the host has the path.
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'x'), '')
     expect(
       await targets([at(`${ws}/x`), `1 access("${ws}/x", 4) = -1 ENOENT (x)`].join('\n')),
     ).toEqual([`${ws}/x`, `${ws}/x`])
+  })
+
+  it("drops a probe's ENOENT where the host has no file, never an openat's", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'gen.sh'), '')
+    const exec = (p: string): string =>
+      `1 execve("${p}", ["${p}", "f()"], 0x7ffd /* 9 vars */) = -1 ENOENT (x)`
+    expect(
+      (
+        await produce(
+          [
+            exec(`${ws}/gen.sh`),
+            exec(`${ws}/gone.sh`),
+            `1 faccessat2(AT_FDCWD, "${ws}/gone", X_OK, AT_EACCESS) = -1 ENOENT (x)`,
+            `1 access("${ws}/gone", R_OK) = -1 EACCES (x)`,
+            at(`${ws}/gone`),
+          ].join('\n'),
+        )
+      ).map((v) => `${v.line.split('(')[0]} ${v.target}`),
+    ).toEqual([`execve ${ws}/gen.sh`, `access ${ws}/gone`, `openat ${ws}/gone`])
   })
 
   // Item 652: the row above holds the KEY; nothing held the dedup itself —
@@ -4377,10 +4401,11 @@ describe('localBinding port list — the pure halves', () => {
     const sock = portBridgeSocket('t1', 3000)
     expect(sock.endsWith('/vx-port-t1-3000.sock')).toBe(true)
     const inner = portBridgeInner([3000, 3001], 't1')
+    const dial = path.join(path.dirname(sock), 'vx-port-dial-t1.sh')
     expect(inner).toContain(
-      `socat UNIX-LISTEN:${sock},fork,unlink-early TCP:127.0.0.1:3000 >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${sock},fork,unlink-early 'SYSTEM:sh ${dial} 3000' >/dev/null 2>&1 &`,
     )
-    expect(inner).toContain('TCP:127.0.0.1:3001')
+    expect(inner).toContain(`'SYSTEM:sh ${dial} 3001'`)
     // Backgrounded socats are reaped with the shell, as SRT reaps its own.
     expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
     expect(portBridgeHostArgv('t1', 3000)).toEqual([
@@ -4410,9 +4435,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
       return port
     }
 
-    const files = (port: number) => ({
+    function ipv6Loopback(): boolean {
+      try {
+        Bun.listen({ hostname: '::1', port: 0, socket: { data() {} } }).stop(true)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const files = (port: number, hostname = '127.0.0.1') => ({
       'serve.ts':
-        `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('hi') })\n` +
+        `Bun.serve({ port: ${port}, hostname: '${hostname}', fetch: () => new Response('hi') })\n` +
         `console.log('serving')\n`,
       'client.ts':
         `const r = await fetch('http://127.0.0.1:${port}/')\n` +
@@ -4524,6 +4558,31 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // The bridge lives exactly as long as the server: the run tore the
         // server down, so the host's side is gone and the port is closed.
         await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow()
+      },
+      TIMEOUT,
+    )
+
+    // A box with no IPv6 has no ::1 to bind; the dial choice is then held
+    // by port-bridge-dial.test.ts alone (X-91).
+    it.skipIf(!ipv6Loopback())(
+      'a server bound to ::1 alone is reachable through the bridge',
+      async () => {
+        // The task's side dialled 127.0.0.1 only, so Vite's `localhost` on
+        // a host that resolves ::1 first was refused.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port, '::1'),
+          config: serverConfig(`[${port}]`),
+        })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(fixture.root, 'packages', 'srv', 'out.txt'), 'utf8')).toBe(
+          'hi',
+        )
       },
       TIMEOUT,
     )
@@ -5117,6 +5176,37 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(r.violations.map((v) => v.target)).toEqual([path.join(proj, 'src', 'secret.txt')])
   })
 
+  // An exec or an access probe of a hidden file was untraced, so
+  // `./gen.sh || fallback` passed with no report. A hidden path answers
+  // ENOENT, as a missing one does: only the host's file is a refusal.
+  it('reports a refused exec or access probe, not a probe of a missing file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'gen.sh'), '#!/bin/sh\necho gen\n', { mode: 0o755 })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args(
+        './src/gen.sh || test -r src/x.txt || ./src/gone.sh || test -x src/gone || echo fell back',
+        {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+        },
+      ),
+    )
+    // `test -r` is `faccessat2`, `faccessat` or `access` by libc and kernel.
+    const call = (line: string): string =>
+      line.split('(')[0]!.replace(/^f?access(at2?)?$/, 'access')
+    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
+      0,
+      'fell back\n',
+      [`execve ${path.join(proj, 'src', 'gen.sh')}`, `access ${path.join(proj, 'src', 'x.txt')}`],
+    ])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
@@ -5230,8 +5320,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces openat only, through the seccomp filter', async () => {
-    // The flag is the difference between tracing one syscall and stopping
+  it('traces the reads, execs and access probes, through the seccomp filter', async () => {
+    // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     try {
@@ -5246,7 +5336,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',

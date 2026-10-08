@@ -27,7 +27,10 @@ import { computeTaskHash, type ComputeHashArgs } from './task-hash.js'
 
 /** What `taintTracker` answers per dispatch, and what it learns per finish. */
 export interface TaintTracker {
-  /** Whether `node`, dispatched with these `upstream` outcomes, builds on bytes nothing vouches for. */
+  /**
+   * Whether `node`, dispatched with these key `upstream` outcomes, builds on
+   * bytes nothing vouches for. Its order-only deps count too.
+   */
   judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
   /** Every settled outcome, the scheduler's `onFinish`. */
   settled: (outcome: TaskOutcome) => void
@@ -102,8 +105,14 @@ export function taintTracker(
   }
   return {
     // A restore-tier task may run before its deps and see holes here; it
-    // never saves anyway (a hit restores), so a hole is not taint.
-    judge: (node, upstream) => seeds.has(node.id) || upstream.some(through),
+    // never saves anyway (a hit restores), so a hole is not taint. The
+    // upstream is the key's, which drops order-only edges; their failure
+    // reaches the task through the dependency `--exclude-dependencies`
+    // took out, so they are read from the settled outcomes.
+    judge: (node, upstream) =>
+      seeds.has(node.id) ||
+      upstream.some(through) ||
+      node.orderOnly?.some((d) => through(outcomes.get(d))) === true,
     settled: (outcome) => {
       outcomes.set(outcome.node.id, outcome)
     },
