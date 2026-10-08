@@ -10,6 +10,7 @@
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
+import { relPosix } from './paths.js'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -220,7 +221,7 @@ export function spareTrackedOutputs(
   /** Drop the `!` entries readers carry for a committed file no output names any more. */
   const unhide = (owner: (typeof projects)[number] | null, rooted: string) => {
     for (const q of projects) {
-      const qrel = path.relative(root, q.dir).split(path.sep).join('/')
+      const qrel = relPosix(root, q.dir)
       for (const r of q.tasks) {
         const inputs = (r.task?.['cache'] as { inputs?: Outputs } | undefined)?.inputs
         if (inputs === undefined) continue
@@ -238,7 +239,7 @@ export function spareTrackedOutputs(
     }
   }
   for (const p of projects) {
-    const rel = path.relative(root, p.dir).split(path.sep).join('/')
+    const rel = relPosix(root, p.dir)
     const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
     for (const t of p.tasks) {
       const outputs = (t.task?.['cache'] as { outputs?: Outputs } | undefined)?.outputs

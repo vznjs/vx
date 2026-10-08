@@ -349,7 +349,9 @@ export function modifiedBefore(abs: string, t: number): boolean {
     // carry a file's OLD mtime onto the new one, and judged by mtime alone
     // such an edit was "before the arm" and never ran (item 945). No
     // process can set a ctime, and a rename or a write moves it.
-    const st = fs.statSync(abs)
+    // The link's own times, not its target's: a link made after the arm
+    // to an old file is a new input, and followed it read as the target's.
+    const st = fs.lstatSync(abs)
     return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {
     return false
