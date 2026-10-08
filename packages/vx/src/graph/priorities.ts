@@ -24,7 +24,17 @@ export function tieredReverseDepCount(
 ): Map<string, number> {
   const exec = new Map<string, TaskNode>()
   for (const [id, node] of nodes) if (!restoreTier.has(id)) exec.set(id, node)
-  const counts = computeReverseDepCount(exec)
+  // An exec tier with no edge inside it (a warm run's groups) counts 0
+  // everywhere: no closure to build.
+  let linked = false
+  for (const node of exec.values()) {
+    if (node.deps.some((d) => exec.has(d))) {
+      linked = true
+      break
+    }
+  }
+  const counts = linked ? computeReverseDepCount(exec) : new Map<string, number>()
+  if (!linked) for (const id of exec.keys()) counts.set(id, 0)
   let feeds = false
   for (const node of exec.values()) {
     const weight = 1 + counts.get(node.id)!
