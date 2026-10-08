@@ -64,11 +64,13 @@ anything beneath it changes.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
+   stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
 6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
-caches.
+caches. A readiness timeout returns once the server's process group is
+gone (SIGTERM, grace, SIGKILL), not when its shell exits.
 
 ### C. Normal task
 
@@ -96,8 +98,10 @@ caches.
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
-     `dist/` doesn't survive into a fresh exec; the directory each
-     wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
+     `dist/` doesn't survive into a fresh exec: it prunes only inside
+     the declared trees, so a glob's root stays (B-49) and a directory
+     above it or holding a literal output, which a sibling task may just
+     have made to write into, stays too (inputs.md).
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
@@ -154,7 +158,8 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
-An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
+`rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to

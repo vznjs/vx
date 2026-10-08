@@ -507,6 +507,16 @@ I-64. A task's RSS floor reads `/proc/self/status` only when the last
 `VmHWM` cannot decide the peak (it never falls). 500 cold tasks: 500
 reads → 3, ~17 ms of the scheduler's thread (~35 µs a read in vx).
 
+I-65. The config-eval retention sweep runs once a day on its own
+`schema_meta` clock, as the file-hash sweep does: no index covers
+`created_at`, so every close read every row and its JSON, 1–6 ms at
+8,000 rows (2 MB).
+
+I-66. A clean resolves the project root only once a directory exists
+to compare it with. After a restore's outputs were pruned nothing does,
+and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
+(2,000 calls, min of 5), ~9 ms of a 2,000-task restore.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -837,3 +847,7 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
   probe's three IN-queries are row-object building, not SQL.
 - Checkpoint on close (5–9 ms at 500): `bun:sqlite` exposes no
   `NO_CKPT_ON_CLOSE`, and process exit closes and checkpoints anyway.
+- Ready-heap priorities cached per slot (no two `Map.get` per compare):
+  2,000-project restore 1,001–1,432 ms against base 1,020–1,401 and
+  A/A 1,034–1,442; up-to-date 377.9 min against 369.8 / 356.2. The
+  profile's 12 ms in `higher` was the profiler's.

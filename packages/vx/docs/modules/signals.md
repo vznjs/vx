@@ -57,7 +57,10 @@ re-reads the registries after the grace, so a child the still-live
 scheduler spawned during it goes too. The wait is for each group
 (`untilGroupsGone`), not its leader: a shell that died at once on the
 signal ended the grace, and the server it had backgrounded was
-SIGKILLed mid-cleanup (2026-09-24).
+SIGKILLed mid-cleanup (2026-09-24). A child is signalled once even when
+the registries list it twice: a ready server sits in both, and its group
+got the Ctrl-C twice (`abort.test.ts` › "a stop signals each group
+once, a ready server included").
 
 ## Public surface
 

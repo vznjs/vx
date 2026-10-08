@@ -51,7 +51,7 @@ import {
   span,
   UserError,
 } from '../util/index.js'
-import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
@@ -466,6 +466,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   try {
     await spawn.ready
   } catch (err) {
+    // A shell that exited before ready can leave its group running
+    // (`server & …; exit`): never registered, so no teardown reached it,
+    // and it held its port against the next `vx watch` cycle's server.
+    if (err instanceof PersistentReadyError && err.reason === 'exited')
+      await terminateChildren(() => [spawn.child])
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
@@ -514,6 +519,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // One the readiness timeout is killing reports the signal's, as an
     // ordinary timeout does (X-24).
     const ready = err instanceof PersistentReadyError ? err : undefined
+    // The timer's SIGKILL is a grace away and the shell may die on the
+    // TERM first: a server that ignores it held its port past run() into
+    // the next `vx watch` cycle. Return once the group is gone.
+    if (ready?.reason === 'timeout') await terminateChildren(() => [spawn.child])
     return {
       node,
       status: 'failed',
@@ -905,7 +914,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs({ ...cleanArgs, keepGlobRoots: true })
+      const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
       args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)

@@ -58,6 +58,11 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
   ],
   [['--projects=a'], ['--filter', 'a']],
   [
+    ['-p', '!b,a'],
+    ['--filter', '*', '--filter', '!b', '--filter', 'a'],
+  ],
+  [['--projects=a,!b'], ['--filter', 'a', '--filter', '!b']],
+  [
     ['--exclude', 'a,b'],
     ['--filter', '!a', '--filter', '!b'],
   ],
@@ -252,7 +257,7 @@ describe('Turbo and Nx flags on vx run', () => {
     }
     // CONTROL: a camelCase name with no Nx flag behind it stays unknown.
     expect(parseRunArgs(['build', '--dryRun']).error).toBe(
-      'unknown flag: --dryRun (did you mean --dry?) (see `vx run --help`)',
+      'unknown flag: --dryRun (did you mean --dry?)',
     )
   })
 

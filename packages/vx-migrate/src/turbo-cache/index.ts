@@ -366,7 +366,8 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
  * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
  * auth failure (401/403) throws ONCE — LayeredCache reports it — and then
- * turns the layer off for the rest of the process, so a bad token costs one
+ * turns the layer off for the rest of the process (an upload's 403 turns off
+ * uploads alone: the read-only token), so a bad token costs one
  * line, not one per task — the requests already in flight when it lands
  * degrade in silence rather than repeating it.
  *
@@ -377,6 +378,13 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  /**
+   * A `403` on an upload is a read-only token or server
+   * (turborepo-remote-cache's `READ_ONLY` and its JWTs without the write
+   * scope): uploads stop, reads go on. Read as a refused token, it turned
+   * the reads off too, and every task after the first upload missed.
+   */
+  private writesRefused = false
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
   constructor(
@@ -480,6 +488,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     ).catch((err: unknown) => {
       throw deadlineNamed(err, timeoutMs)
     })
+    if (method === 'PUT' && res.status === 403) {
+      const first = !this.writesRefused
+      this.writesRefused = true
+      if (!first) return undefined
+      throw new Error(
+        'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
+      )
+    }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
@@ -578,7 +594,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
-    if (this.disabled) return
+    if (this.disabled || this.writesRefused) return
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(body.size),

@@ -24,17 +24,10 @@ async function main(): Promise<void> {
     // costs). Registered before any verb runs; the façade loads on first use.
     registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
     const code = await run(argv)
-    // NOTHING calls `process.exit` here, and that is the fix rather than a
-    // simplification. Bun drops what a pipe has not yet taken when
-    // `process.exit` follows a large write: 300 KB written then exit
-    // delivered 64 KiB (128 KiB after a tick), and `vx history --format
-    // json` on a 300-project workspace was cut mid-string (2026-09-15).
-    // `stdout.end(cb)` fixed that on 1.4.2 — and on 1.3.11 the callback
-    // still fires early: 2 MiB written, 214 KB delivered (2026-09-20).
-    // Setting the code and letting the loop drain is the one form that
-    // does not depend on when a runtime decides a pipe is flushed; it
-    // costs a hang if a verb leaves a handle open, which the suite's
-    // several hundred spawns of this binary would show at once.
+    // Not `process.exit` here: Bun drops what a pipe has not yet taken
+    // when it follows a large write (300 KB written, 64 KiB delivered;
+    // `vx history --format json` was cut mid-string, 2026-09-15). The code
+    // is set, and `exitOnceFlushed` exits after both streams have ended.
     process.exitCode = code
   } catch (err) {
     const { fsRefusalHint, isFsRefusal, isOutOfFds, isUserError, OUT_OF_FDS_HINT } =
@@ -65,6 +58,28 @@ async function main(): Promise<void> {
     process.exitCode = 1
   }
   settled = true
+  await exitOnceFlushed()
+}
+
+/**
+ * Exit once stdout and stderr have ended, with the code the verb set. A
+ * config can leave a timer behind (a top-level `setInterval`, an await that
+ * hit its evaluation budget), and the loop it holds never drained: vx
+ * printed its verdict and hung for good. Only after `main` has settled, so
+ * `vx watch`, `vx mcp` and a run's kept-alive tasks end when their verb
+ * does. `end(cb)` delivers a large write whole on Bun 1.4.2 (4 MiB under a
+ * slow reader; `write('', cb)` delivered 450 KB), the floor `engines.bun`
+ * holds. A stream whose end never calls back leaves the loop to drain. A
+ * signal's handler exits by itself, with the signal's code.
+ */
+async function exitOnceFlushed(): Promise<void> {
+  if ((await import('./util/index.js')).exitClaimedBySignal()) return
+  let open = 2
+  const ended = (): void => {
+    if (--open === 0) process.exit()
+  }
+  process.stdout.end(ended)
+  process.stderr.end(ended)
 }
 
 // The loop drained while the verb was still pending: something it awaits
