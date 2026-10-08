@@ -2022,7 +2022,7 @@ Moved out of core on 2026-09-10: the Turbo and Nx mappers are
 `@vzn/vx-migrate`, their own package, run without a workspace file —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json or an Nx graph → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph or vite-plus run.tasks → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
