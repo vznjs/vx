@@ -1,9 +1,9 @@
 // Local flaky-task detection, end to end through the real CLI: a task that
-// fails and then passes on the SAME cache key is named on its row, typed
+// passes and then fails on the SAME cache key is named on its row, typed
 // in `--summarize`, and listed by `vx info` — from the run history alone,
-// no service. The controls are the two things that look like a flake and
-// are not: a hit (nothing executed) and a failure on a changed key (a
-// break).
+// no service. The controls are the things that look like a flake and are
+// not: a first pass after failures (a recovery), a hit (nothing executed)
+// and a failure on a changed key (a break).
 
 import { readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -70,7 +70,7 @@ describe('flaky-task detection (e2e)', () => {
   })
 
   it(
-    'a failure, then a pass on the same key: its row, --summarize and vx info all say so',
+    'a pass, then a failure on the same key: its row, --summarize and vx info all say so',
     async () => {
       const red = await vx(root, ['run', 'test', '--all', '--summarize=red.json'])
       expect(red.code).toBe(1)
@@ -79,17 +79,39 @@ describe('flaky-task detection (e2e)', () => {
       const redSummary = JSON.parse(await readFile(path.join(root, 'red.json'), 'utf8'))
       expect(redSummary.tasks[0].flaky).toBeUndefined()
 
+      // Control: a first pass after only failures is a recovery, not a flake.
       await writeFile(path.join(root, 'green'), '')
       const green = await vx(root, ['run', 'test', '--all', '--summarize=green.json'])
       expect(green.code).toBe(0)
-      expect(green.text).toContain('app#test flaky - failed 1× before')
-      // Nothing prints below the footer: its result line is the last word.
-      expect(lastLine(green.text)).toMatch(/^ {2}result {4}1 task · /)
+      expect(green.text).not.toContain('flaky -')
       const greenSummary = JSON.parse(await readFile(path.join(root, 'green.json'), 'utf8'))
-      expect(greenSummary.tasks[0].id).toBe('app#test')
-      expect(greenSummary.tasks[0].flaky).toEqual({ passes: 1, failures: 1, attempts: 1 })
-      // Same key both times: the claim is "same inputs", so prove it.
+      expect(greenSummary.tasks[0].flaky).toBeUndefined()
+
+      // `--force`: the pass was cached, and a hit executes nothing.
+      await unlink(path.join(root, 'green'))
+      const relapse = await vx(root, [
+        'run',
+        'test',
+        '--all',
+        '--force',
+        '--summarize=relapse.json',
+      ])
+      expect(relapse.code).toBe(1)
+      expect(relapse.text).toContain('app#test flaky - passed 1× before')
+      // Nothing prints below the footer: its result line is the last word.
+      expect(lastLine(relapse.text)).toMatch(/^ {2}result {4}1 task · /)
+      const relapseSummary = JSON.parse(await readFile(path.join(root, 'relapse.json'), 'utf8'))
+      expect(relapseSummary.tasks[0].id).toBe('app#test')
+      expect(relapseSummary.tasks[0].flaky).toEqual({ passes: 1, failures: 2, attempts: 1 })
+      // Same key every time: the claim is "same inputs", so prove it.
+      expect(relapseSummary.tasks[0].hash).toBe(redSummary.tasks[0].hash)
       expect(greenSummary.tasks[0].hash).toBe(redSummary.tasks[0].hash)
+
+      // Once relapsed, a pass on the key is named too.
+      await writeFile(path.join(root, 'green'), '')
+      const again = await vx(root, ['run', 'test', '--all', '--force'])
+      expect(again.code).toBe(0)
+      expect(again.text).toContain('app#test flaky - failed 2× before')
 
       // Control: a hit executed nothing, so it proves nothing.
       const hit = await vx(root, ['run', 'test', '--all'])
@@ -106,16 +128,16 @@ describe('flaky-task detection (e2e)', () => {
       expect(brokenSummary.tasks[0].flaky).toBeUndefined()
       expect(brokenSummary.tasks[0].hash).not.toBe(redSummary.tasks[0].hash)
 
-      // The doctor's standing list: one task, one mixed key, the counts —
+      // The doctor's standing list: one task, one flaky key, the counts —
       // the hit above is a pass on that key too (it replayed one).
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
       expect(info.text).toMatch(
-        /^flaky tasks: +1 — app#test \(1 of 3 runs failed on unchanged inputs\)$/m,
+        /^flaky tasks: +1 — app#test \(2 of 5 runs failed on unchanged inputs\)$/m,
       )
       const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
       expect(json.flakyTasks).toEqual([
-        { taskId: 'app#test', project: 'app', task: 'test', keys: 1, passes: 2, failures: 1 },
+        { taskId: 'app#test', project: 'app', task: 'test', keys: 1, passes: 3, failures: 2 },
       ])
     },
     TIMEOUT,
@@ -131,6 +153,12 @@ describe('flaky-task detection (e2e)', () => {
       expect(lastLine(r.text)).toMatch(/^ {2}result {4}1 task · /)
       const summary = JSON.parse(await readFile(path.join(root, 'retry.json'), 'utf8'))
       expect(summary.tasks[0].flaky).toEqual({ passes: 1, failures: 0, attempts: 2 })
+      // The doctor's list said `none` over it: a retry's pass is one
+      // success row with attempts 2, and no key held a failed row.
+      const info = await vx(root, ['info'])
+      expect(info.text).toMatch(
+        /^flaky tasks: .*\bretry#build \(1 of 2 runs failed( on unchanged inputs)?\)/m,
+      )
     },
     TIMEOUT,
   )

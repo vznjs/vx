@@ -29,6 +29,7 @@ async function graph(opts: {
   discovered?: string[]
   libTargets?: Record<string, unknown>
   appTargets?: Record<string, unknown>
+  libRoot?: string
 }): Promise<Map<string, GeneratedTask>> {
   await writeFile(
     path.join(root, 'nx.json'),
@@ -58,7 +59,7 @@ async function graph(opts: {
         },
         lib: {
           data: {
-            root: 'packages/lib',
+            root: opts.libRoot ?? 'packages/lib',
             ...(opts.libNamed === undefined ? {} : { namedInputs: opts.libNamed }),
             ...(opts.libTargets === undefined ? {} : { targets: opts.libTargets }),
           },
@@ -86,7 +87,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
   it('a dependency’s env and runtime inputs key its twin', async () => {
     const t = await graph({ inputs: ['^production'], libNamed })
     expect(inputsOf(t.get('lib#nx-input:production'))).toEqual({
-      files: ['src/**'],
+      files: ['package.json', 'project.json', 'src/**'],
       env: ['LIB_MODE'],
       workspaceRuntime: ['node -v'],
     })
@@ -143,6 +144,29 @@ describe('nx-upstream: what the sweep found unheld', () => {
     })
   })
 
+  // A dir is a path: `packages/l{b}` joined raw read as a brace of one
+  // alternative, which core refuses, and `packages/[x]` stays as it is.
+  it('a walked-through node’s dir stays literal in the reader’s globs', async () => {
+    for (const [libRoot, glob] of [
+      ['packages/l{b}', 'packages/l\\{b\\}/src/**'],
+      ['packages/[x]', 'packages/[x]/src/**'],
+    ] as const) {
+      const t = await graph({
+        inputs: ['^production'],
+        libNamed,
+        libRoot,
+        discovered: ['app', 'base'],
+      })
+      expect(inputsOf(t.get('app#test'))).toEqual({
+        files: [],
+        workspaceFiles: [glob],
+        env: ['LIB_MODE'],
+        workspaceRuntime: ['node -v'],
+      })
+      expect(depsOf(t.get('app#test'))).toEqual(['base#nx-input:production'])
+    }
+  })
+
   it('`^{workspaceRoot}/…` is a dependency fileset too', async () => {
     const fileset = '{workspaceRoot}/tools/gen.ts'
     const t = await graph({ inputs: [`^${fileset}`] })
@@ -153,11 +177,10 @@ describe('nx-upstream: what the sweep found unheld', () => {
 })
 
 // TanStack/table's `public` input lists `{projectRoot}/dist`, the output
-// of each project's own `build`, for every `^public`: Nx hashes it from
-// disk, vx refused the path (git does not list it) and the run failed.
+// of each project's own `build`, for every `^public`. Nx's file map skips
+// gitignored files, so it hashes none of it (probed on Nx 23.3: a changed
+// `dist` file was a cache hit); vx drops it the same way, without a todo.
 describe('an input inside the project’s own outputs', () => {
-  const TODO = (glob: string) =>
-    `input "${glob}" is an output of the project's own targets: git does not list it, so vx cannot key on it — dropped; the task that writes it keys its dependants through dependsOn`
   const libNamed = {
     public: ['{projectRoot}/src/**', '{projectRoot}/dist', '{projectRoot}/out/x.js'],
   }
@@ -165,11 +188,11 @@ describe('an input inside the project’s own outputs', () => {
     build: { command: 'b', outputs: ['{projectRoot}/dist/**', '{projectRoot}/out'] },
   }
 
-  it('is dropped from a dependency’s twin, with a todo', async () => {
+  it('is dropped from a dependency’s twin, as Nx hashes nothing there', async () => {
     const t = await graph({ inputs: ['^public'], libNamed, libTargets })
     const twin = t.get('lib#nx-input:public')
-    expect(inputsOf(twin)).toEqual({ files: ['src/**'] })
-    expect(twin?.todos).toEqual([TODO('{projectRoot}/dist'), TODO('{projectRoot}/out/x.js')])
+    expect(inputsOf(twin)).toEqual({ files: ['package.json', 'project.json', 'src/**'] })
+    expect(twin?.todos).toEqual([])
   })
 
   it('is dropped from the task’s own inputs; a sibling path stays', async () => {
@@ -183,6 +206,6 @@ describe('an input inside the project’s own outputs', () => {
       appTargets: { build: { command: 'b', outputs: ['{projectRoot}/dist'] } },
     })
     expect(inputsOf(t.get('app#test'))).toEqual({ files: ['src/**', 'distx', '!dist/keep'] })
-    expect(t.get('app#test')?.todos).toEqual([TODO('{projectRoot}/dist')])
+    expect(t.get('app#test')?.todos).toEqual([])
   })
 })

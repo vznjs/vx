@@ -23,7 +23,7 @@ that binary.
    package's `lint`), so `--all` never runs a check twice. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
-   [Coming from Turbo or Nx](#coming-from-turbo-or-nx) instead.
+   [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
 3. Or write one by hand, beside a package's `package.json`.
 
 ## Config
@@ -80,10 +80,10 @@ Start with one package and leave the rest of your tooling as it is.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss.
 4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
 
-## Coming from Turbo or Nx
+## Coming from Turbo, Nx or Vite Task
 
 `bunx @vzn/vx-migrate` writes the native `vx.config.ts` files from
-`turbo.json` or the Nx graph; from there everything above applies.
+`turbo.json`, the Nx graph or each `vite.config`'s `run.tasks`; from there everything above applies.
 `vx init` in such a repo writes only a `vx.workspace.ts` declaring
 `turbo()` or `nx()`: a temporary start, dropped once the configs exist.
 [Migrate](../guides/migrate/) has the steps.
@@ -94,9 +94,9 @@ Start with one package and leave the rest of your tooling as it is.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.
-- **A package has no `vx.config.ts`.** It has no tasks, and `^build` reaches through it to the nearest package that has one.
+- **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
-- **A package has nothing to build, but others depend on it.** Give it `build: { dependsOn: [] }`, so their `^build` waits on nothing.
+- **A package has nothing to build, but others depend on it.** Its default `build` waits on its own dependencies' builds. `build: { dependsOn: [] }` waits on nothing, but also drops its files from its dependents' keys: use it only when no dependent reads its source.
 
 ## Known limits
 

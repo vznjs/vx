@@ -25,7 +25,10 @@
 const { spawn, spawnSync } = require('node:child_process')
 const { createRequire } = require('node:module')
 const path = require('node:path')
-const { loadTaskEnv } = require('./nx-dotenv.cjs')
+const { realpathSync } = require('node:fs')
+// Through npm's `.bin` symlink under `--preserve-symlinks-main`, Node keeps
+// the link as the main module, so a relative require would look in `.bin`.
+const { loadTaskEnv } = require(path.join(path.dirname(realpathSync(__filename)), 'nx-dotenv.cjs'))
 
 // `--envFile`, Nx's own option name, and not `--env-file`: Node 22 takes
 // `--env-file` from anywhere on its command line, the script's arguments

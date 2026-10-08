@@ -20,6 +20,7 @@ import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 import { nxProjectOutputs } from './nx-outputs.js'
 import { matchNxProjects } from './nx-deps.js'
+import { literalGlob } from '../glob-grammar.js'
 
 interface GraphNode {
   name?: string
@@ -192,7 +193,9 @@ export function planNxUpstream(
     const inputs = emptyNxInputs()
     for (const g of own.files) {
       const neg = g.startsWith('!') ? '!' : ''
-      inputs.wsFiles.push(rel === '' ? g : `${neg}${rel}/${neg === '' ? g : g.slice(1)}`)
+      inputs.wsFiles.push(
+        rel === '' ? g : `${neg}${literalGlob(rel)}/${neg === '' ? g : g.slice(1)}`,
+      )
     }
     inputs.wsFiles.push(...own.wsFiles)
     inputs.envNames.push(...own.envNames)
@@ -336,7 +339,14 @@ export function planNxUpstream(
         if (u.of !== 'deps') foldProjects(u.name, u.of, inputs, todos, edges)
         else if (u.name !== name) fold(node, u.name, peers, inputs, todos, edges)
       }
-      const cacheInputs: Record<string, unknown> = { files: inputs.files }
+      // Nx hashes a fileset that matches nothing as nothing; core warns of
+      // an input set that resolves to no file. A project has a package.json
+      // or a project.json, and Nx keys each task on both (its manifest, its
+      // configuration), so listing them keeps the twin of an absent
+      // `tsconfig.spec.json` (or a dependency's unbuilt `*.d.ts`) quiet; the
+      // file appearing still re-keys it, and a missing literal is silent.
+      const files = [...new Set(['package.json', 'project.json', ...inputs.files])]
+      const cacheInputs: Record<string, unknown> = { files }
       if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
       if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
       if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds

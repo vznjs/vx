@@ -20,13 +20,13 @@
 //     the lockfile moves, which the workspace fingerprint already covers.
 //     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
 //     from disk (D-27).
-//   - Descend only through files owned by NO project, or by a ROOT project
-//     (whose own files are the shared tooling that is otherwise unowned,
-//     D-41). A config reaching into another project (say a site's
-//     `vx.config.ts` importing `../core/src/index.ts`) records that edge
-//     and STOPS there — following it would drag substantially all of that
-//     project's `src/` into the closure, and the containment channel
-//     already selects the project that owns it.
+//   - One reversed BFS from every config at once, each file read once
+//     however many configs reach it. It descends through every file in
+//     the workspace, another project's included: a site's `vx.config.ts`
+//     importing `../core/src/index.ts` evaluates what that file imports
+//     too, so an edit there moves the site's key. The walk stopped at the
+//     first file of another project, and containment selected core alone
+//     while the site's key moved (X-128).
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
@@ -281,7 +281,7 @@ function tsconfigTarget(spec: string, fromDir: string, memo?: TsconfigMemo): str
 }
 
 /** A path as Bun names it: realpath'd when it exists. */
-function realpathOr(file: string): string {
+export function realpathOr(file: string): string {
   try {
     return realpathSync(file)
   } catch {
@@ -305,7 +305,7 @@ function selfReference(pkg: string, fromDir: string): boolean {
     const manifest = path.join(dir, 'package.json')
     if (existsSync(manifest)) {
       try {
-        const json = JSON.parse(readFileSync(manifest, 'utf8')) as {
+        const json = JSON.parse(readFileSync(manifest, 'utf8').replace(/^\uFEFF/, '')) as {
           name?: unknown
           exports?: unknown
         }
@@ -393,50 +393,12 @@ export interface ConfigImportOwnersArgs {
   changed: readonly string[]
   /** Already-selected projects; their configs need no scan. */
   skip: ReadonlySet<string>
-  /**
-   * Each project dir's realpath, when the caller already has them: the
-   * containment pass needs the same answers, and asking twice cost 5,000
-   * realpaths at 5,000 projects (D-24).
-   */
-  realDirs?: ReadonlyMap<string, string>
-}
-
-/**
- * Project dir → name, REALPATH'D — which is why this cannot reuse the index
- * the containment pass builds. `Bun.resolveSync` hands back realpath'd
- * targets, and on darwin a workspace under `os.tmpdir()` lives at
- * `/var/folders/…` while its realpath is `/private/var/folders/…`; comparing
- * the two matches nothing and fails exactly like "found no imports".
- */
-async function realDirIndex(
-  projects: readonly ProjectMeta[],
-  known: ReadonlyMap<string, string> | undefined,
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>()
-  await Promise.all(
-    projects.map(async (p) => {
-      out.set(known?.get(p.dir) ?? (await realpath(p.dir).catch(() => p.dir)), p.name)
-    }),
-  )
-  return out
 }
 
 const TS_EXT = new Set(['.ts', '.mts', '.cts'])
 
 /** The extensions Bun tries for a specifier that names none. */
 const RESOLVED_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json']
-
-/** The deepest project containing `file`, or undefined when none does. */
-function ownerOf(file: string, dirToName: ReadonlyMap<string, string>): string | undefined {
-  let dir = path.dirname(file)
-  for (;;) {
-    const name = dirToName.get(dir)
-    if (name !== undefined) return name
-    const parent = path.dirname(dir)
-    if (parent === dir) return undefined
-    dir = parent
-  }
-}
 
 /** Projects whose config file transitively imports one of `changed`. */
 export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>> {
@@ -453,10 +415,6 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
     }),
   )
   if (roots.size === 0) return selected
-  const dirToName = await realDirIndex(a.projects, a.realDirs)
-  // A root project owns every file no member owns: the shared tooling the
-  // walk descends through when the root is no project (D-41).
-  const rootOwner = dirToName.get(workspaceRoot)
 
   // target → the files that import it. Reversed up front so one BFS from the
   // changed set answers every root at once, instead of a walk per root.
@@ -492,10 +450,7 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
         const list = importedBy.get(target)
         if (list) list.push(file)
         else importedBy.set(target, [file])
-        // Descend ONLY through unowned files, or the root project's own:
-        // see the header.
-        const owner = ownerOf(target, dirToName)
-        if (owner === undefined || owner === rootOwner) frontier.push(target)
+        frontier.push(target)
       }
     }
   }

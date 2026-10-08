@@ -1,12 +1,14 @@
 // A vx on a real pseudo-terminal. Unsafe: macOS's sandbox (seatbelt)
 // refuses to open a pty ("Failed to open PTY", darwin CI 2026-09-24), so
 // a sandboxed shard cannot host these rows; Linux's bwrap allows it.
-import { rm } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+/** termios `c_lflag` ECHO: the same bit on Linux and macOS. */
+const ECHO = 0o10
 
 // turborepo#12502: a task that touched the terminal hung the run when the
 // runner itself sat on one (stopped by SIGTTIN/SIGTTOU, or blocked reading
@@ -84,6 +86,10 @@ describe('an interactive task under a vx on a terminal', () => {
           },
         },
       })
+      // No echo: the kernel echoes the typed line into vx's output wherever
+      // its write has reached: the control row's `got:[]` read `gothello:[]`
+      // (2026-10-08). A reader still gets the line.
+      proc.terminal!.localFlags &= ~ECHO
       // A vx that never hands the line over waits on it for good: stopped,
       // so a failing row fails in seconds and leaves no server behind.
       const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
@@ -120,6 +126,91 @@ describe('an interactive task under a vx on a terminal', () => {
   it('without the field the task reads no terminal', async () => {
     const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)} } } } }`
     expect(await onTerminal(config, 'app#ask')).toEqual({ code: 0, answers: ['got:[]'] })
+  }, 20_000)
+})
+
+// Every run needs git, so a workspace git does not track is refused before
+// the picker asks: the menu came first and the refusal followed the choice.
+describe('the picker outside a git work tree', () => {
+  it('is never shown: the refusal comes first', async () => {
+    // Canonical: vx names its cwd, and macOS's temp dir is a symlink.
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-picker-nogit-', git: false }))
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+      })
+      let screen = ''
+      const proc = Bun.spawn([process.execPath, BIN, 'run'], {
+        cwd: root,
+        // A ceiling at the fixture's parent: a temp dir inside some repo
+        // must not lend the fixture its git.
+        env: {
+          ...process.env,
+          CI: '',
+          GITHUB_ACTIONS: '',
+          NO_COLOR: '1',
+          GIT_CEILING_DIRECTORIES: path.dirname(root),
+        },
+        terminal: {
+          data: (_term, data) => {
+            screen += new TextDecoder().decode(data)
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      expect({ code, lines: screen.split(/\r?\n/).filter((l) => l !== '') }).toEqual({
+        code: 1,
+        lines: [
+          `vx requires git: ${root} is not inside a git work tree. Run 'git init' in your workspace root. (git: fatal: not a git repository (or any of the parent directories): .git)`,
+        ],
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
+// `vx run > out.txt` on a terminal: the menu and prompt went to stdout, so
+// they landed in the file and the terminal sat blank, waiting on a number.
+describe('the picker with stdout redirected', () => {
+  it('asks on the terminal, and only the run reaches the file', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-redirect-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'echo BUILT' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn(['sh', '-c', `"${process.execPath}" "${BIN}" run > out.txt`], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const file = await Bun.file(path.join(root, 'out.txt')).text()
+      expect({
+        code,
+        asked: screen.includes('1. app#build'),
+        built: file.includes('BUILT'),
+        menuInFile: file.includes('Pick a task'),
+      }).toEqual({ code: 0, asked: true, built: true, menuInFile: false })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   }, 20_000)
 })
 

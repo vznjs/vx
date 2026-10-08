@@ -11,7 +11,8 @@
   another task of it declares a changed root file (`workspaceFiles`
   owners join `changes.projects` alone);
 - a cached task seeds when a changed path is one of its declared inputs
-  (`declaresInput`, inputs.md), or when its project is reached whole: the
+  (`declaresInput`, inputs.md), or its `workspaceFiles` may reach into a
+  changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
   diff named it whole, a changed path is `package.json` or a `vx.config.*`,
   or no cached task of the project declares a changed path.
 
@@ -21,7 +22,9 @@ task, so a change reaches another project only along a task edge such as
 seeds as a cached task with `**` as input. A `^name` edge the graph
 passes through a package it loaded no config for reaches it the same way:
 any change there reaches the task. An anchored `pkg#task` always runs. `prepareRun` drops the rest
-and returns `empty: 'none-affected'` when nothing is left.
+and returns `empty: 'none-affected'` when nothing is left. The closure
+walk keeps its own stack, so a chain as deep as the builder takes
+(50,000) is walked, where a recursion per edge threw `RangeError`.
 
 A cached task's `workspaceFiles` is asked of every node, not only of the
 changed projects' (whose owners the selection found from the staged

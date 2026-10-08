@@ -72,15 +72,20 @@ export function undeclaredDepsError(taskId: string, name: string): UserError
 
 // Which `{project, task}` pairs a run's requested names resolve to, and
 // which resolve to nothing (`vx run`'s "every requested name must resolve").
+// A bare name matches no task `unselected` holds: `prepareRun` passes
+// `isDefaultBuild`, so `vx run build` in a project declaring none is
+// refused like any undeclared name, and `lib#build` still plans it (X-102).
 export function expandRequested(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): Array<{ project: string; task: string }>
 export function unresolvedRequests(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): string[]
 
 // Flags the display-only `surfaced` tasks a requested GROUP stands for;
@@ -114,6 +119,22 @@ entry is parsed via [`dependency-spec.ts`](./dependency-spec.md):
 
 The micro-syntax parser is shared with `cache.inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
+
+**The default `build` on a package cycle** (X-100). Every project the
+loader gives the default `build` (the one keyed group, `isKeyedGroup`)
+holds `build`, so on a package cycle (`directDeps`' strongly connected
+components, found on the first ask) `^build` closed a task cycle no
+config declares. A default `build` on a cycle walks last, once the rest
+of the graph is built: a build on its cycle that reaches it is passed
+through, and one that does not is a holder like any other (X-118: passed
+through unasked, `p#test` on `p#build` ran beside a `t#build` on no
+`^build` and hit after `t` changed). A build only that question brought
+in is pruned again when it reaches back. An edge to a default `build` on
+a cycle — a `^build` walk, or one by name (`build`, `pkg#build`) —
+is added and goes on past it, so the builds it cannot depend on still
+come first (X-120: by name it stopped there, and `a#test` on `build`,
+with `a` and `b` on the default build depending on each other, folded
+nothing of `b`). Off a cycle it is a holder like any other.
 
 **`requested: true`** marks the user-requested set. A node added via
 dependsOn expansion is `requested: false`. If a node is later named
@@ -203,7 +224,10 @@ output the reader's own `!` entries take back whole (`outputTakenBack`)
 does not count, nor do its own outputs. A group has no outputs and no
 key of its own, so the default build (`**`) is exempt. Each domain runs
 through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
-project check in milliseconds.
+project check in milliseconds. The index is kept per side, readers and
+writers, and pairs across sides only (X-101): filed together, 5,000
+tasks reading one shared input (`tsconfig.base.json`) paired every
+reader with every other and built the graph in 15 s; 0.2 s now.
 
 Whatever the rules, `refuseSelfClean` refuses a task whose own outputs
 take back one of its input entries whole (`src/**` as both): vx removes
@@ -234,7 +258,8 @@ in-place rewriter (a formatter) declares no outputs.
 - zero-dependency single node
 - `'name'` (self) expansion + missing-task error
 - `'^name'` frontier expansion: nearest holder, sparse bridging,
-  stop-at-holder, shared-subtree dedup
+  stop-at-holder, shared-subtree dedup; default builds on a package
+  cycle make no task cycle and keep the builds past them
 - `'pkg#name'` cross-project edge (missing throws)
 - `'^name'` no project declares throws `undeclaredDepsError`'s message;
   the controls — declared only off the dependency path, declared by the
@@ -278,7 +303,9 @@ message, each shape refused and loaded with the rule off, edge or no
 edge, both workspace domains, the `!` take-back and a partial one that
 is still refused, the exemptions (own outputs, uncached, group, the
 default build), a run refused and the same run with the rule off, a
-non-boolean value, and a time bound at 4,000 tasks.
+non-boolean value, a time bound at 4,000 tasks and at 4,000 readers of
+one shared input, and a row per way the per-side index could miss a
+reader and a writer.
 
 ## Replacing this module
 

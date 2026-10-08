@@ -1,9 +1,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
-import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
@@ -13,12 +13,16 @@ import {
   type RunOptions,
   type RunResult,
 } from '../orchestrator/index.js'
-import type { ContinueMode } from '../graph/index.js'
-import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { findCwdSelection, pickTask, resolveFilters } from './select.js'
+import type { ContinueMode, TaskOutcome } from '../graph/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  gitRefusal,
+  parseCachePolicy,
+} from '../cache/index.js'
+import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { loadCliWorkspace } from './workspace-config.js'
-import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -113,7 +117,7 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
 }
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
- * its refusals pointed at `vx run --help` (M-58). */
+ * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
 export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
@@ -177,7 +181,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (n === null)
         return {
           ...out,
-          error: `invalid concurrency: ${v} (a positive integer, or a share of the cores such as 50%)`,
+          error: `--concurrency must be a positive integer, or a share of the cores such as 50% (got ${v})`,
         }
       out.concurrency = n
     } else if (a === '--all') {
@@ -185,7 +189,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
       return {
         ...out,
-        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp(verb)}`,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
@@ -215,7 +219,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--retry requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null) {
-        return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
+        return { ...out, error: `--retry must be a non-negative integer (got ${v})` }
       }
       out.retries = n
     } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
@@ -234,31 +238,46 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         }
       }
       if (n === null || n <= 0) {
-        return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
+        return { ...out, error: `--timeout must be a positive integer in ms (got ${v})` }
       }
       out.timeout = n
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
+      if (v === undefined || v === '') {
+        return {
+          ...out,
+          error: `--output-logs requires a value (full, errors-only, hash-only, or none)`,
+        }
+      }
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
-        return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
+        return {
+          ...out,
+          error: `--output-logs must be full, errors-only, hash-only, or none (got ${v})`,
+        }
       }
       out.outputLogs = v
     } else if (a === '--download' || a?.startsWith('--download=')) {
       const v = a === '--download' ? before[++i] : a.slice('--download='.length)
+      if (v === undefined || v === '') {
+        return { ...out, error: `--download requires a value (all, toplevel, or none)` }
+      }
       if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
-        return { ...out, error: `--download must be all, toplevel, or none` }
+        return { ...out, error: `--download must be all, toplevel, or none (got ${v})` }
       }
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
       // otherwise create a directory literally named `--force` and drop
       // the flag. A path starting with `-` needs the `=` form.
       if (a === '--cache-dir' && v.startsWith('-')) {
-        return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--cache-dir requires a path (got flag ${v}; a path that starts with - needs --cache-dir=${v})`,
+        }
       }
       out.cacheDir = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
@@ -301,8 +320,11 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.continueMode = 'always'
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
+      if (v === '') {
+        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+      }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
-        return { ...out, error: `--continue must be never, deps-ok, or always` }
+        return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
       }
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
@@ -310,14 +332,15 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined)
         return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
-      if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
+      if (n === null)
+        return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `invalid --dry value: ${fmt} (text or json)` }
+        return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--graph') {
@@ -345,7 +368,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
       // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
       const eq = raw.indexOf('=')
-      if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
+      if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
     } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
       const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
@@ -354,7 +377,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       // nothing about its shape rejects a swallowed flag. A path starting
       // with `-` needs the `=` form.
       if (a === '--report-file' && v.startsWith('-')) {
-        return { ...out, error: `--report-file requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--report-file requires a path (got flag ${v}; a path that starts with - needs --report-file=${v})`,
+        }
       }
       out.reportFile = v
     } else if (a === '--report') {
@@ -362,11 +388,11 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (a?.startsWith('--report=')) {
       const fmt = a.slice('--report='.length)
       if (fmt !== 'markdown') {
-        return { ...out, error: `invalid --report value: ${fmt} (only markdown)` }
+        return { ...out, error: `--report must be markdown (got ${fmt})` }
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}${seeHelp(verb)}` }
+      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }
@@ -446,20 +472,9 @@ async function scopeFilters(
   const filterStrings = [...parsed.filters]
   let affectedFilter: string | undefined
   if (parsed.affected !== undefined) {
-    const root = await findWorkspaceRoot(cwd)
-    let base = parsed.affected
-    // The workspace's `affectedBase` — or a plugin's `config` stage, from
-    // nx.json's `defaultBase` or `TURBO_SCM_BASE` — comes before the guess.
-    if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
-    if (base === '') {
-      try {
-        base = await defaultAffectedBase(root)
-      } catch (err) {
-        if (!isUserError(err)) throw err
-        return { error: err.message }
-      }
-    }
-    affectedFilter = `...[${base}]`
+    const f = await affectedFilterFor(cwd, parsed.affected)
+    if (typeof f === 'object') return f
+    affectedFilter = f
     filterStrings.unshift(affectedFilter)
   }
   return { filterStrings, ...(affectedFilter !== undefined ? { affectedFilter } : {}) }
@@ -484,6 +499,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -555,8 +571,7 @@ export async function resolveRunOptions(
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
-        error:
-          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+        error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
     projects = [cwdProject.name]
@@ -612,7 +627,7 @@ const TASKS_SHOWN = 12
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    process.stderr.write(`vx run: ${parsed.error}\n`)
+    process.stderr.write(`vx run: ${parsed.error}${seeHelp('run')}\n`)
     return 1
   }
 
@@ -634,6 +649,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(
         `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
+      return 1
+    }
+    // Every run needs git: refused here, not after the user has chosen.
+    const refusal = gitRefusal(await findWorkspaceRoot(cwd))
+    if (refusal !== undefined) {
+      process.stderr.write(`${refusal.message}\n`)
       return 1
     }
     const load = {
@@ -724,6 +745,25 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
+  // The report prints above the footer: nothing prints below it (owner).
+  // Rendered once, however many sinks asked for it; a kept server's crash
+  // after the footer re-renders the file's copy (C-53).
+  const wantsReport = parsed.report === 'markdown' || parsed.reportFile !== undefined
+  let reported: { outcomes: readonly TaskOutcome[]; md: string } | undefined
+  if (wantsReport) {
+    opts.beforeFooter = (outcomes, ok) => {
+      reported = {
+        outcomes,
+        md: formatRunReportMarkdown({ ok, outcomes: outcomes.map(projectOutcome) }),
+      }
+      // `--report` writes stdout. The report ITSELF is machine-clean, but
+      // stdout is not vx's alone — the status logger writes there too, so
+      // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
+      // meter bar and `::group::` command above the table. `--report-file`
+      // is the redirect-free form.
+      return parsed.report === 'markdown' ? reported.md : ''
+    }
+  }
   // A run executes in THIS process, always. Where an individual task's
   // command runs is the `executor` capability's business (per task, with
   // the scheduler, cache, retries and telemetry unchanged above it); there
@@ -733,17 +773,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx run: ${summary.refused}\n`)
     return 1
   }
-  const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
-  // Report generation is post-run, gated on the flags — zero cost when
-  // both are absent. Rendered once, however many sinks asked for it.
-  if (parsed.report === 'markdown' || parsed.reportFile !== undefined) {
-    const md = formatRunReportMarkdown(result)
-    // `--report` writes stdout. The report ITSELF is machine-clean, but
-    // stdout is not vx's alone — the status logger writes there too, so
-    // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
-    // meter bar and `::group::` command above the table. `--report-file`
-    // is the redirect-free form.
-    if (parsed.report === 'markdown') process.stdout.write(md)
+  if (wantsReport) {
+    const md =
+      reported?.outcomes === summary.outcomes
+        ? reported.md
+        : formatRunReportMarkdown({
+            ok: summary.ok,
+            outcomes: summary.outcomes.map(projectOutcome),
+          })
     if (parsed.reportFile !== undefined) {
       const target = path.resolve(cwd, parsed.reportFile)
       try {
@@ -766,5 +803,5 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
     }
   }
-  return result.ok ? 0 : 1
+  return summary.ok ? 0 : 1
 }

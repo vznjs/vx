@@ -57,7 +57,10 @@ re-reads the registries after the grace, so a child the still-live
 scheduler spawned during it goes too. The wait is for each group
 (`untilGroupsGone`), not its leader: a shell that died at once on the
 signal ended the grace, and the server it had backgrounded was
-SIGKILLed mid-cleanup (2026-09-24).
+SIGKILLed mid-cleanup (2026-09-24). A child is signalled once even when
+the registries list it twice: a ready server sits in both, and its group
+got the Ctrl-C twice (`abort.test.ts` › "a stop signals each group
+once, a ready server included").
 
 ## Public surface
 
@@ -83,6 +86,12 @@ export function forwardSignals(args: {
 }): SignalForwarding // { remove(): void }
 ```
 
+A vx started with SIGHUP ignored (`nohup`, a supervisor) installs no
+SIGHUP handler, here or in `vx watch`: a handler replaces the inherited
+`SIG_IGN`, and `nohup vx run` stopped its run and exited 129 when the
+terminal closed (2026-10-08). `hangupIgnored` (`util-hangup.md`) reads
+the disposition once, before the first handler.
+
 The two registries stay with `run()`, which hands them to the runner
 around every spawn; this module only reads them when a signal lands.
 `remove()` runs in `run()`'s finally so repeated runs in one process (a
@@ -104,7 +113,9 @@ each reap a task's backgrounded grandchild; each fails on a pid-only
 kill; a grandchild's cleanup gets the grace after its shell exits, and
 the wait ends when the group is gone; a SIGHUP gives the grandchild its
 SIGTERM cleanup, the one thing that tells the handled hang-up from a vx
-the hang-up killed, whose group guard SIGKILLs the task anyway);
+the hang-up killed, whose group guard SIGKILLs the task anyway; a vx
+started with SIGHUP ignored runs on through one and exits 0);
+`tests/watch-signals.test.ts` (the same for `vx watch`);
 `tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
 the one-shot child and the ready persistent child dead; a child that
 ignores TERM is SIGKILLed after the grace; a second signal skips the

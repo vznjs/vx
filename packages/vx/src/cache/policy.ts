@@ -36,6 +36,11 @@ export const FULL_CACHE_POLICY: CachePolicy = {
   remoteWrite: true,
 }
 
+/** No axis on (`--no-cache`, `--cache=local:`): no cache answers for any task. */
+export function cachesNothing(p: CachePolicy): boolean {
+  return !(p.localRead || p.localWrite || p.remoteRead || p.remoteWrite)
+}
+
 /**
  * Parse a `--cache=<spec>` value into a `CachePolicy`, starting from a
  * base (defaults to {@link FULL_CACHE_POLICY}). The spec is a

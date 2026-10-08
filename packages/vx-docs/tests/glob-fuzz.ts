@@ -16,17 +16,6 @@
 
 import { taskGlob } from '../../vx/src/util/paths.js'
 
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
 const TASK_TOKENS = [
   'a',
   'b',
@@ -56,13 +45,15 @@ const ANY_CHARS = [...SEGMENT_CHARS, '/', '/']
 
 // The string `taskGlob` hands to `new Bun.Glob`, captured by swapping the
 // constructor for one call: the matcher under test must see exactly what
-// Bun sees.
+// Bun sees. The FIRST construction is the whole pattern's; a brace pattern
+// then builds one glob per alternative, and keeping the last of those
+// fuzzed a single alternative instead of the pattern.
 export function compiledByTaskGlob(pattern: string): string {
   const real = Bun.Glob
-  let seen = ''
+  let seen: string | undefined
   ;(Bun as { Glob: unknown }).Glob = class {
     constructor(p: string) {
-      seen = p
+      seen ??= p
     }
   }
   try {
@@ -70,7 +61,7 @@ export function compiledByTaskGlob(pattern: string): string {
   } finally {
     ;(Bun as { Glob: unknown }).Glob = real
   }
-  return seen
+  return seen!
 }
 
 /**

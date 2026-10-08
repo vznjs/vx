@@ -19,7 +19,7 @@ import {
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners } from './config-imports.js'
+import { configImportOwners, realpathOr } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -84,7 +84,10 @@ export interface AffectedArgs {
    * (item 954). The `--affected` sugar's graph walk has already staged every
    * config, so there it costs nothing more.
    */
-  workspaceGlobOwners?: (changedPaths: readonly string[]) => Promise<Iterable<string>>
+  workspaceGlobOwners?: (
+    changedPaths: readonly string[],
+    nested: readonly string[],
+  ) => Promise<Iterable<string>>
   /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
    * answer for a change to one. Resolved lazily: loading the workspace
@@ -142,6 +145,12 @@ export interface AffectedChanges {
   /** Project → its changed paths, relative to the project's directory. */
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  /**
+   * The changed paths that are nested repositories (a submodule, an
+   * embedded repository), workspace-relative: each stands for every file
+   * in it, so a `workspaceFiles` glob that reaches under one is reached.
+   */
+  nested?: readonly string[]
 }
 
 export async function affectedChanges(
@@ -174,6 +183,14 @@ export async function affectedChanges(
     throw new UserError(
       `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
+  }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
     )
   }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -213,16 +230,10 @@ export async function affectedChanges(
     // submodules (`diff.ignoreSubmodules`, `submodule.<name>.ignore`), and
     // then an edit inside one, or a committed bump, was no change here while
     // the task's key moved (item 951).
-    gitPaths(args.workspaceRoot, [
-      'diff',
-      '--no-renames',
-      '--ignore-submodules=none',
-      '--relative',
-      '--name-only',
-      '-z',
-      '--end-of-options',
-      base,
-    ]),
+    //
+    // `--raw` for each path's mode: a gitlink (160000) is a nested
+    // repository, one path standing for every file in it (`nested` below).
+    gitDiffPaths(args.workspaceRoot, base),
     // `git diff` never reports untracked-but-not-ignored files, but input
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
     // so a brand-new source file changes a task's cache key. Union it in or
@@ -236,9 +247,13 @@ export async function affectedChanges(
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
-  const changed = [...diffed, ...untracked.filter((s) => !isInstalledPath(s))].filter(
+  const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
     (s) => s !== LOCKFILE_NAME,
   )
+  // The nested repositories git reports as one path: a gitlink, or an
+  // untracked embedded repository (`dir/`, the only path git prints so).
+  const nested = new Set(diffed.gitlinks)
+  for (const rel of untracked) if (rel.endsWith('/')) nested.add(rel)
 
   // A lockfile or workspace-definition change re-keys EVERY task, because the
   // workspace fingerprint folds those files into every cache key. Mapping
@@ -308,6 +323,7 @@ export async function affectedChanges(
   const owned = projectsContaining(
     args.workspaceRoot,
     changed,
+    nested,
     args.projects,
     realDirs,
     perTask
@@ -363,15 +379,21 @@ export async function affectedChanges(
     projects: args.projects,
     changed,
     skip: perTask ? new Set() : owned,
-    realDirs,
   })) {
     owned.add(name)
     whole.add(name)
   }
 
-  const done = (): AffectedChanges => ({ projects: owned, changed, paths, whole })
+  const nestedDirs = [...nested].map((rel) => rel.replace(/\/$/, ''))
+  const done = (): AffectedChanges => ({
+    projects: owned,
+    changed,
+    paths,
+    whole,
+    ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
+  })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
-  for (const name of await args.workspaceGlobOwners(changed)) owned.add(name)
+  for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
   return done()
 }
 
@@ -432,7 +454,17 @@ async function dependentsAtBase(
     ) {
       continue
     }
-    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    // Today's catalogs, or both graphs would differ on every `catalog:`
+    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
+    // edit, which the fingerprint widening and the root's own change answer.
+    const catalogs = projects[0]?.catalogs
+    byDir.set(dir, {
+      name: pkg.name,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+      ...(catalogs === undefined ? {} : { catalogs }),
+    })
     if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])
@@ -468,8 +500,10 @@ function parentsOfNewNested(
   projects: readonly ProjectMeta[],
 ): Set<string> {
   const out = new Set<string>()
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   for (const [rel, bytes] of atBase) {
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
     if (!dirToName.has(dir)) continue
@@ -623,6 +657,37 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
     throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`)
   }
   return stdout.split('\0').filter((s) => s.length > 0)
+}
+
+/**
+ * `git diff --raw -z <base>`'s paths, and those that are a gitlink on
+ * either side: one the change removed took its files with it. Each record
+ * is `:<mode> <mode> <oid> <oid> <status>` then its path (one path:
+ * `--no-renames`).
+ */
+async function gitDiffPaths(
+  workspaceRoot: string,
+  base: string,
+): Promise<{ paths: string[]; gitlinks: string[] }> {
+  const fields = await gitPaths(workspaceRoot, [
+    'diff',
+    '--no-renames',
+    '--ignore-submodules=none',
+    '--relative',
+    '--raw',
+    '-z',
+    '--end-of-options',
+    base,
+  ])
+  const paths: string[] = []
+  const gitlinks: string[] = []
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const rel = fields[i + 1]!
+    paths.push(rel)
+    const head = fields[i]!
+    if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+  }
+  return { paths, gitlinks }
 }
 
 /**
@@ -806,25 +871,11 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   )
 }
 
-function isDirectory(abs: string): boolean {
-  try {
-    return statSync(abs).isDirectory()
-  } catch {
-    return false
-  }
-}
-
-function realpathOr(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return p
-  }
-}
-
 function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
+  /** The changed paths that are nested repositories (`nested` in `affectedChanges`). */
+  nested: ReadonlySet<string>,
   projects: readonly ProjectMeta[],
   realDirs: ReadonlyMap<string, string>,
   /** Told each owned path relative to its project, and each nested repository's projects. */
@@ -837,8 +888,10 @@ function projectsContaining(
   // O(files · path-depth) instead of O(files · projects): independent of the
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
@@ -849,42 +902,40 @@ function projectsContaining(
     const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    const spelled = path.resolve(workspaceRoot, rel)
-    if (spelled !== p.dir && !dirToName.has(spelled)) dirToName.set(spelled, p.name)
+    const spelled = path.resolve(workspaceRoot, rel).normalize('NFC')
+    if (!dirToName.has(spelled)) dirToName.set(spelled, p.name)
   }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
-    let dir = path.resolve(workspaceRoot, rel)
-    let hit = false
+    const repo = nested.has(rel)
+    let dir = path.resolve(workspaceRoot, rel).normalize('NFC')
     for (;;) {
       const name = dirToName.get(dir)
       if (name !== undefined) {
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel)))
-        hit = true
+        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')))
+        // Its files are the project's inputs, and none of them is this
+        // path: a task's globs cannot say whether they reach inside.
+        if (repo) on?.repo(name)
         break
       }
       const parent = path.dirname(dir)
       if (parent === dir) break // reached the filesystem root
       dir = parent
     }
-    if (hit) continue
-    // A changed path that is a DIRECTORY on disk is a nested repository —
-    // a submodule whose checkout moved or is dirty (`vendor/sub`), an
-    // embedded repository left untracked (`vendor/nested/`) — because git
-    // reports nothing else as a directory. The workspace repository sees
-    // the nested one as that single path, so a change inside is a change
-    // to it, and every project under it is affected. Its own enumeration
-    // already keys those projects on their files (git-inputs.ts); without
-    // this, `--affected` after an edit inside selected none of them.
-    const abs = path.resolve(workspaceRoot, rel)
-    if (isDirectory(abs)) {
-      const prefix = abs + path.sep
-      for (const [dir, name] of dirToName) {
-        if (!dir.startsWith(prefix)) continue
-        owned.add(name)
-        on?.repo(name)
-      }
+    if (!repo) continue
+    // A submodule whose checkout moved or is dirty (`vendor/sub`), an
+    // embedded repository left untracked (`vendor/nested/`): the workspace
+    // repository sees the nested one as that single path, so a change
+    // inside is a change to it, and every project under it is affected.
+    // Its own enumeration already keys those projects on their files
+    // (git-inputs.ts); without this, `--affected` after an edit inside
+    // selected none of them.
+    const prefix = path.resolve(workspaceRoot, rel).normalize('NFC') + path.sep
+    for (const [dir, name] of dirToName) {
+      if (!dir.startsWith(prefix)) continue
+      owned.add(name)
+      on?.repo(name)
     }
   }
   return owned

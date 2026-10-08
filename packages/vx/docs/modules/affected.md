@@ -15,7 +15,10 @@ export interface AffectedArgs {
   projects: readonly ProjectMeta[]
   /** Which projects declare a `workspaceFiles` glob matching these paths.
    *  Asked about every changed path, once something changed (item 954). */
-  workspaceGlobOwners?: (paths: readonly string[]) => Promise<Iterable<string>>
+  workspaceGlobOwners?: (
+    changedPaths: readonly string[],
+    nested: readonly string[],
+  ) => Promise<Iterable<string>>
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
   fingerprintClaims?: () => Promise<FingerprintClaims>
@@ -35,6 +38,7 @@ export interface AffectedChanges {
   changed: readonly string[] // workspace-relative changed paths
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, base manifest edge, config import, nested repo
+  nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 
@@ -77,9 +81,12 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    On the merge-base path it runs only when `git merge-base` finds no
    base: a merge base proves the ref resolves, and the check was a
    synchronous spawn before every one.
-2. `git diff --name-only <merge-base(since, HEAD)>` (`<since>` itself
+2. `git diff --raw <merge-base(since, HEAD)>` (`<since>` itself
    when there is no merge base) — emits the union of committed, staged
-   and unstaged changes. Matches Turbo's `[<since>]` semantics. A base
+   and unstaged changes. A path that is a gitlink (mode 160000) on either
+   side, or an untracked `dir/`, is a nested repository: one path for every file
+   in it, so it reaches the project holding it whole and every project
+   under it (X-126). Matches Turbo's `[<since>]` semantics. A base
    that names HEAD's own ancestor (`HEAD~1`, `HEAD^2`) is its own merge
    base, so its resolved commit stands in and no `git merge-base`
    spawns (#2288).
@@ -133,9 +140,8 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
 Selection is never hashed, so widening it changes no cache key: every
 channel here may over-select safely — but it may not UNDER-select, and
 a channel that reads a declaration differently from the key does
-exactly that. It does NOT follow that selection
-is complete — the config-import channel stops at project boundaries and
-[documents what that misses](./config-imports.md#where-this-stops).
+exactly that. The config-import channel
+[documents where it stops](./config-imports.md#where-this-stops).
 
 `defaultAffectedBase`:
 

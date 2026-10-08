@@ -60,7 +60,10 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       if (spaced) i++
       const n = Number(lv)
       if (!Number.isInteger(n) || n < 1 || n > 500) {
-        return { ...out, error: `invalid --list: ${lv} (expected 1..500)` }
+        return {
+          ...out,
+          error: `--list must be a whole number from 1 to 500 (got ${lv})${seeHelp('last')}`,
+        }
       }
       out.list = n
       continue
@@ -77,7 +80,7 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     const cd = parseCacheDirFlag(args, i)
     if (cd !== null) {
-      if ('error' in cd) return { ...out, error: cd.error }
+      if ('error' in cd) return { ...out, error: `${cd.error}${seeHelp('last')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
       continue

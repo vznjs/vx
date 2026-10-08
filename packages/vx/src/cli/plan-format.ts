@@ -1,7 +1,7 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
 import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
-import { formatDuration } from '../orchestrator/index.js'
+import { formatElapsed } from '../util/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
@@ -29,6 +29,7 @@ export function formatPlanText(plan: RunPlan): string {
   let miss = 0
   let nocache = 0
   let noop = 0
+  let idle = 0
   for (const t of real) {
     // `@noop`: the run succeeds it without running, whatever its key says.
     const skipped = t.executor === 'noop'
@@ -36,7 +37,7 @@ export function formatPlanText(plan: RunPlan): string {
     const desc = skipped ? 'noop — would not run' : describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
-    const eta = executes && t.p50Ms !== undefined ? `  ~${formatDuration(t.p50Ms)}` : ''
+    const eta = executes && t.p50Ms !== undefined ? `  ~${formatElapsed(t.p50Ms)}` : ''
     // Placement, by EXECUTOR NAME rather than a local/remote word: the
     // summary line below already spends "local" and "remote" on the cache
     // tier, and a task placed on a named executor is what the reader can
@@ -56,6 +57,7 @@ export function formatPlanText(plan: RunPlan): string {
     else if (t.cacheStatus === 'hit-remote') remote++
     else if (t.cacheStatus === 'miss') miss++
     else if (t.cacheStatus === 'no-cache') nocache++
+    else if (t.cacheStatus === 'not-started') idle++
   }
 
   const hitParts: string[] = []
@@ -67,6 +69,7 @@ export function formatPlanText(plan: RunPlan): string {
   if (miss > 0) summary.push(`${miss} would run`)
   if (nocache > 0) summary.push(`${nocache} no-cache`)
   if (noop > 0) summary.push(`${noop} noop`)
+  if (idle > 0) summary.push(`${idle} not started`)
   lines.push('')
   lines.push(summary.join(', ') + '.')
 
@@ -91,8 +94,8 @@ export function formatPlanText(plan: RunPlan): string {
   const p = plan.predicted
   const executes = miss + nocache
   if (p !== undefined && executes > 0 && executes > p.unknownCount) {
-    const parts = [`predicted: ~${formatDuration(p.wallMs)} wall`]
-    parts.push(`~${formatDuration(p.workMs)} total execution`)
+    const parts = [`predicted: ~${formatElapsed(p.wallMs)} wall`]
+    parts.push(`~${formatElapsed(p.workMs)} total execution`)
     if (p.unknownCount > 0) {
       parts.push(`${p.unknownCount} task${p.unknownCount === 1 ? '' : 's'} without history (+?)`)
     }
@@ -199,6 +202,8 @@ function symbolFor(s: CacheStatus): string {
       return '·'
     case 'group':
       return '○'
+    case 'not-started':
+      return '−'
   }
 }
 
@@ -214,6 +219,8 @@ function describe(s: CacheStatus): string {
       return 'no-cache (would exec)'
     case 'group':
       return 'group task'
+    case 'not-started':
+      return 'not started (unneeded)'
   }
 }
 
@@ -229,5 +236,7 @@ function dotColor(s: CacheStatus): string {
       return '#e5e7eb' // gray-200
     case 'group':
       return '#f5d0fe' // fuchsia-200
+    case 'not-started':
+      return '#ffffff'
   }
 }

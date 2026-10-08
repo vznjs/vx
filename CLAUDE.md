@@ -122,16 +122,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the shard around them three times on CI, item 925). The
   shards exclude them in the dealer itself — `testFiles()` in
   `scripts/test-shard.ts` drops the name, so the shard command never
-  sees the file; `test.bun.unsafe` runs them. It and
-  `@vzn/vx-reapi#test` (which dials service containers on the host's
-  loopback, unreachable from a Linux sandbox's network namespace) are
-  the ONLY two tasks in the whole repo with no `exec.sandbox`.
+  sees the file; `test.bun.unsafe` runs them. It,
+  `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial service
+  containers on the host's loopback, unreachable from a Linux sandbox's
+  network namespace) are the ONLY three tasks in the whole repo with no
+  `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one
   suite that needs live services, `@vzn/vx-reapi#test`, runs skip-mode
-  in the gate and live in CI's service job with `VX_REAPI_TEST_ENDPOINT`
-  / `VX_REAPI_EXEC_ENDPOINT` set (the values are key inputs).
+  in the gate; CI's service job runs only the live files, as
+  `@vzn/vx-reapi#test.live` and `@vzn/vx-migrate#test.live` (uncached:
+  the services and `nx@22` are unpinned).
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.
@@ -450,7 +452,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v40`, core `SCHEMA_VERSION` `v32`,
+- `CACHE_VERSION` `vx-cache-v41`, core `SCHEMA_VERSION` `v32`,
   `TELEMETRY_SCHEMA_VERSION` 3. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.

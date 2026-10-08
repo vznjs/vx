@@ -1671,7 +1671,7 @@ describe('Cache storage (v10)', () => {
     await age(path.join(cacheDir, 'cache.db'))
 
     expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: 11 })
-    const result = await cache.prune({ olderThanMs: 1 })
+    const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 1,
       orphanBytes: 11,
@@ -1713,7 +1713,7 @@ describe('Cache storage (v10)', () => {
     ]
 
     expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 2 })
-    await cache.prune({ olderThanMs: 1 })
+    await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(reaped.filter((f) => existsSync(f))).toEqual([])
     expect(kept.filter((f) => existsSync(f))).toEqual(kept)
   })
@@ -1897,7 +1897,7 @@ describe('Cache storage (v10)', () => {
 
     // What `vx info` reports before anyone prunes is exactly what prune reaps.
     expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 15 })
-    const result = await cache.prune({ olderThanMs: 1 })
+    const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(result.evicted).toBe(0)
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 2,
@@ -1917,7 +1917,7 @@ describe('Cache storage (v10)', () => {
     // swallowed the loser's ENOENT and both reported the bytes. Nothing may
     // be EVICTABLE here: an eviction deletes the row before the file, and a
     // scan between the two sees the file as an orphan — darwin CI landed
-    // there once with `olderThanMs: 1` and the aged indexed entry.
+    // there once with an epoch cutoff and the aged indexed entry.
     //
     // Linux only: on darwin, Bun 1.4.0 returned success from BOTH concurrent
     // unlinks of the one path (measured on CI 2026-09-10: counts [1, 1],
@@ -1931,10 +1931,11 @@ describe('Cache storage (v10)', () => {
       return
     }
     try {
-      const aYear = 365 * 24 * 60 * 60 * 1000
+      // Past the aged orphan's file time, short of every row's last use.
+      const olderThanMs = Date.now() - 30 * 60 * 1000
       const [r1, r2] = await Promise.all([
-        cache.prune({ olderThanMs: aYear }),
-        other.prune({ olderThanMs: aYear }),
+        cache.prune({ olderThanMs }),
+        other.prune({ olderThanMs }),
       ])
       // One assertion over both results and what the directory still holds:
       // a failure names WHICH prune counted WHAT, on the platform it failed.
@@ -2458,9 +2459,9 @@ describe('Cache schema/version recovery', () => {
         (raw.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    // `schema_meta` holds the schema version, the cache format (item 671)
-    // and the `file_hashes` sweep's clock (item 1082).
-    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 3 : 1])))
+    // `schema_meta` holds the schema version, the cache format (item 671),
+    // the `file_hashes` sweep's clock (item 1082) and the config sweep's.
+    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 4 : 1])))
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
@@ -2601,7 +2602,7 @@ describe('Cache schema/version recovery', () => {
       expect(existsSync(orphan)).toBe(true)
       const aged = (Date.now() - 2 * 60 * 60 * 1000) / 1000
       await utimes(orphan, aged, aged)
-      const pruned = await c2.prune({ olderThanMs: 1 })
+      const pruned = await c2.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
       expect(pruned.orphans).toBe(1)
       expect(existsSync(orphan)).toBe(false)
     } finally {
@@ -2884,6 +2885,33 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       ]).toEqual(['/w/new/vx.config.ts'])
     } finally {
       reopened.close()
+    }
+  })
+
+  it('close() sweeps config evals once a day, not on every close', async () => {
+    // The sweep reads every row (no index on created_at); a warm run paid it
+    // on every close until it took the file-hash sweep's daily clock.
+    const day = 24 * 60 * 60 * 1000
+    const old = Date.now() - 40 * day
+    const first = new Cache(cacheDir)
+    first.putConfigEvals([['k-old', '{"old":true}']])
+    first.close()
+    const second = new Cache(cacheDir)
+    second.dbHandle().query('UPDATE config_evals SET created_at = ?').run(old)
+    second.close()
+    const third = new Cache(cacheDir)
+    // Swept moments ago: the stale row survives this close.
+    expect([...third.getConfigEvals(['k-old']).keys()]).toEqual(['k-old'])
+    third
+      .dbHandle()
+      .query('UPDATE schema_meta SET value = ? WHERE key = ?')
+      .run(String(Date.now() - 2 * day), 'config_evals_swept_at')
+    third.close()
+    const fourth = new Cache(cacheDir)
+    try {
+      expect([...fourth.getConfigEvals(['k-old']).keys()]).toEqual([])
+    } finally {
+      fourth.close()
     }
   })
 

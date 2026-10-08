@@ -17,7 +17,7 @@ import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
 import { foldedDeps } from './keyed-projects.js'
 import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
-import { filterUpstreamHashes, keyUpstream } from './upstream.js'
+import { filterUpstreamHashes, keyedOutcome, keyUpstream } from './upstream.js'
 
 export interface DeriveStableKeysArgs {
   nodes: Map<string, TaskNode>
@@ -382,9 +382,7 @@ function foldedBy(
 }
 
 /**
- * Synthetic upstream outcomes for key derivation. Only `node` + `hash`
- * are read by filterUpstreamHashes / computeGroupHash; the rest of
- * TaskOutcome is irrelevant here, so we cast a minimal shape.
+ * Synthetic upstream outcomes for key derivation (`keyedOutcome`).
  */
 function synthUpstream(
   node: TaskNode,
@@ -395,13 +393,7 @@ function synthUpstream(
   for (const dep of node.deps) {
     const depNode = nodes.get(dep)
     if (!depNode) continue
-    out.push({
-      node: depNode,
-      status: 'success',
-      exitCode: 0,
-      durationMs: 0,
-      hash: keyById.get(dep),
-    } as TaskOutcome)
+    out.push(keyedOutcome(depNode, keyById.get(dep)))
   }
   return keyUpstream(node, out)
 }

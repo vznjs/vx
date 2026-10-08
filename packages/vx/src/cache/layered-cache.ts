@@ -186,7 +186,27 @@ class ScopedRemote implements RemoteCacheLayer {
   }
 
   async has(hash: string): Promise<boolean> {
-    return (await this.remote.has(this.scoped(hash))) || this.remote.has(hash)
+    return this.fallThrough(
+      () => this.remote.has(this.scoped(hash)),
+      () => this.remote.has(hash),
+    )
+  }
+
+  /**
+   * The scope's answer, else the trusted one. A scope lookup that fails
+   * still asks the trusted key, so a hit there is not lost; its error is
+   * rethrown (and warned) when the trusted key fails or has nothing too.
+   */
+  private async fallThrough<T>(own: () => Promise<T>, trusted: () => Promise<T>): Promise<T> {
+    let found: T
+    try {
+      found = await own()
+    } catch (err) {
+      const fallback = await trusted().catch(() => undefined)
+      if (!fallback) throw err
+      return fallback
+    }
+    return found || trusted()
   }
 
   private async scopedHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
@@ -208,7 +228,10 @@ class ScopedRemote implements RemoteCacheLayer {
     hash: string,
   ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null> {
     if (this.trustedOnly.has(hash)) return this.remote.get(hash)
-    return (await this.remote.get(this.scoped(hash))) ?? this.remote.get(hash)
+    return this.fallThrough(
+      () => this.remote.get(this.scoped(hash)),
+      () => this.remote.get(hash),
+    )
   }
 
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
