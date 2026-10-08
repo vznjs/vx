@@ -867,8 +867,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // Wire up readers. We deliberately don't await them — they run for
   // the child's lifetime. The `ready` promise resolves out-of-band.
   const [stdout, stderr] = pipes.streams(child)
-  void Promise.all([consumeChunks(stdout, false), consumeChunks(stderr, true)]).finally(() =>
-    pipes.close(),
+  const readers = Promise.all([consumeChunks(stdout, false), consumeChunks(stderr, true)]).finally(
+    () => pipes.close(),
   )
 
   opts.liveChildren?.add(child)
@@ -915,10 +915,19 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   // If the child exits BEFORE ready fires, that's a failure to start
   // — reject the ready promise so the caller can surface it.
-  void child.exited.then((code) => {
+  void child.exited.then(async (code) => {
     opts.liveChildren?.delete(child)
     releaseServerGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
+    // The exit can land before the readers took the marker it printed on
+    // the way out: `echo READY; exit` read as never ready under load. The
+    // drain is bounded, as a task's is, for a grandchild holding the pipe.
+    if (readyAt === undefined && gaveUpAt === undefined) {
+      await Promise.race([
+        readers,
+        new Promise((resolve) => setTimeout(resolve, POST_EXIT_DRAIN_MS).unref?.()),
+      ])
+    }
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
         new PersistentReadyError(

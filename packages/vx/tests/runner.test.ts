@@ -509,6 +509,20 @@ describe('runPersistent', () => {
     })
     await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
   })
+
+  // The exit can land before the readers take the marker the task printed:
+  // `echo READY; exit` read as never ready under CI load. A grandchild that
+  // prints just after the shell exits opens the same gap on an idle box.
+  it('a marker read after the shell exited, inside the drain bound, is ready', async () => {
+    const spawn = runPersistent({
+      command: '(sleep 0.05; echo READY) & exit 0',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'READY',
+    })
+    await spawn.ready
+    await spawn.child.exited
+  })
 })
 
 // The runner's exit bookkeeping, each line deleted in turn against the
