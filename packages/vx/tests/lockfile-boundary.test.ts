@@ -472,7 +472,8 @@ describe('frozenProjectConfigs — the validation memo', () => {
     const store = memStore()
     await writeRaw(JSON.stringify(lock()))
     await frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store)
-    expect(store.rows.size).toBe(1)
+    // The project's row and, every entry loaded, the whole lock's.
+    expect(store.rows.size).toBe(2)
     // The same bytes read again, the object then broken in memory: only a
     // served verdict lets it through.
     const again = (await readLockfile(root))!
@@ -480,6 +481,50 @@ describe('frozenProjectConfigs — the validation memo', () => {
     expect(await frozenProjectConfig(again, metaFor('pkg/vx.config.ts'), root, store)).toEqual(
       again.projects['pkg']!.config,
     )
+  })
+
+  it('remembers the whole lock only once every entry was accepted, then serves it alone (X-181)', async () => {
+    const two = (): Lockfile => ({
+      ...lock(),
+      projects: {
+        ...lock().projects,
+        other: { configPath: 'other/vx.config.ts', configHash: 'h', config: CONFIG },
+      },
+    })
+    const metas = [
+      { name: 'pkg', configPath: path.join(root, 'pkg/vx.config.ts') },
+      { name: 'other', configPath: path.join(root, 'other/vx.config.ts') },
+    ]
+    const brokenOther = async (): Promise<Lockfile> => {
+      const read = (await readLockfile(root))!
+      read.projects['other']!.config = broken().projects['pkg']!.config
+      return read
+    }
+    const store = memStore()
+    await writeRaw(JSON.stringify(two()))
+    // A scoped load accepts its own entry, not the lock.
+    await frozenProjectConfigs((await readLockfile(root))!, [metas[0]!], root, store)
+    expect(store.rows.size).toBe(1)
+    const err = await rejection(frozenProjectConfigs(await brokenOther(), metas, root, store))
+    expect(err.message).toBe(
+      `${LOCKFILE_NAME} (other): \`tasks\` must be an object keyed by task name`,
+    )
+    await frozenProjectConfigs((await readLockfile(root))!, metas, root, store)
+    expect(store.rows.size).toBe(3)
+    // The per-project rows gone, the whole lock's row alone serves both a
+    // full and a scoped load.
+    for (const k of [...store.rows.keys()])
+      if (k.endsWith('\0pkg') || k.endsWith('\0other')) store.rows.delete(k)
+    expect(store.rows.size).toBe(1)
+    const served = await brokenOther()
+    expect(await frozenProjectConfigs(served, metas, root, store)).toEqual([
+      CONFIG,
+      served.projects['other']!.config,
+    ])
+    expect(await frozenProjectConfigs(served, [metas[1]!], root, store)).toEqual([
+      served.projects['other']!.config,
+    ])
+    expect(store.rows.size).toBe(1)
   })
 
   it('validates other bytes afresh', async () => {

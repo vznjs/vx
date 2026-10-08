@@ -1169,3 +1169,18 @@ reaches no build task.` The plan now carries the run's own line
   median 1,480 → 1,418 ms (A/A 1,488); `run graph` stage median
   (VX_TIMING, 11 rounds) 237 → 209 ms (A/A 255). Row:
   `group-key-once.test.ts`.
+- **X-181.** The Oct 8 one-rep bench put the `--frozen` warm restore
+  behind the unlocked one (1.73 vs 1.62 s); the next full bench had it
+  ahead everywhere (restore 1.38 vs 1.62 s, up-to-date 766 vs 787 ms).
+  Noise: `strace -c -f` of both arms shows the locked run doing the
+  same syscalls minus 1,090 config identity `statx`. Its one real
+  extra cost: the lock's validation memo asked 1,090 per-project rows
+  in one `IN` query, and the 1.1 MB lock was read only after discovery
+  and the cache open. A load that accepts every entry now also keeps
+  one row for the whole lock, served alone after; a run with nothing
+  staged starts the lock read beside discovery. A/B (compiled, 4 arms
+  interleaved over two shared copies, A/A beside, host shared with
+  three other A/Bs, so wall is noise): `load configs` median, up-to-date
+  52.0 → 18.1 ms (A/A 55.3, unlocked 78.7); restore 49.3 → 20.3 ms (A/A
+  47.1, unlocked 97.5). Rows: `lockfile-boundary.test.ts`,
+  `frozen-selection.test.ts`.

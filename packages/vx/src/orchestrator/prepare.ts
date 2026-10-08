@@ -189,6 +189,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // fingerprint. A watch cycle is a new run and reads it afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd, reads)
+  // A frozen run with nothing staged reads the lock whatever discovery
+  // finds, so the read (1.1 MB at 1,000 projects, ~10 ms to read and
+  // parse) starts here and overlaps discovery's I/O instead of following
+  // the cache open (X-181). A missing or malformed lock still refuses at
+  // the config load, after any earlier refusal.
+  let lockRead: Promise<Lockfile> | undefined
+  const readLock = (): Promise<Lockfile> =>
+    (lockRead ??= readLockfile(workspaceRoot).then((read) => {
+      if (read === null) throw new UserError(FROZEN_WITHOUT_LOCK)
+      return read
+    }))
+  if (options.frozen === true && options.staged === undefined) void readLock().catch(() => {})
   // An UNSCOPED run (no explicit scope, at least one bare task name)
   // enumerates the whole tree whatever the configs say, so git starts
   // HERE — the walk needs only the root — and overlaps the workspace
@@ -313,13 +325,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // Read once, and only when a config is to be read from it: the CLI's
   // selection pass may have staged every config (`options.staged`), and
   // its load refused a frozen run without a lock. A 1,000-project lock is
-  // 1.1 MB of JSON (I-27).
-  let lockRead: Promise<Lockfile> | undefined
-  const readLock = (): Promise<Lockfile> =>
-    (lockRead ??= readLockfile(workspaceRoot).then((read) => {
-      if (read === null) throw new UserError(FROZEN_WITHOUT_LOCK)
-      return read
-    }))
+  // 1.1 MB of JSON (I-27); a run with nothing staged started its read
+  // beside discovery, above.
   const staged = options.staged
   const allStaged =
     staged !== undefined &&

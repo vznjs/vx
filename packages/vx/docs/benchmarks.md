@@ -445,8 +445,8 @@ difference as a tie, not a win: since the config-evaluation cache
 (2026-09-02) the plain warm run evaluates nothing either for a config
 the purity gate can prove pure, and it serves the same validated object
 from `cache.db` without re-validating it, while `--frozen` parses the
-whole lock and re-validates every entry (the lock is hand-editable, so
-it is a boundary). What frozen still skips is the per-config identity
+whole lock and reads one remembered verdict for it (the lock is
+hand-editable, so it is a boundary; X-181). What frozen still skips is the per-config identity
 stat; what it still pays is the lock's own parse. Measured 2026-09-12
 on the 1,000-project bench, compiled binary, 12 interleaved reps:
 plain min 154 / median 177 ms, frozen 148 / 165 — ~5%, the identity

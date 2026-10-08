@@ -179,13 +179,18 @@ export async function frozenProjectConfigs(
   // The lock is hand-editable; the stored config crosses the same
   // boundary a freshly evaluated one does.
   const digest = store === undefined ? undefined : lockDigests.get(lock)
-  const keys =
+  const prefix =
     digest === undefined
       ? undefined
-      : metas.map(
-          (m) =>
-            `vx-lock-valid-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${digest}\0${m.name}`,
-        )
+      : `vx-lock-valid-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${digest}`
+  // One row for a lock whose every entry was accepted: a warm `--all` run
+  // asked for 1,090 per-project rows in one `IN` query, ~10 ms of its
+  // config load, where the eval-cache path it replaces is cheaper (X-181).
+  // A scoped run still validates, and remembers, only what it loads.
+  if (prefix !== undefined && store !== undefined && store.getConfigEval(prefix) !== null) {
+    return entries.map((e) => e.config)
+  }
+  const keys = prefix === undefined ? undefined : metas.map((m) => `${prefix}\0${m.name}`)
   const known =
     keys === undefined || store === undefined
       ? new Map<string, string>()
@@ -198,6 +203,14 @@ export async function frozenProjectConfigs(
     if (key !== undefined && known.has(key)) continue
     validateProjectConfig(entries[i]!.config, `${LOCKFILE_NAME} (${metas[i]!.name})`)
     if (key !== undefined) accepted.push([key, '1'])
+  }
+  // Every meta found its entry above, so as many distinct names as the
+  // lock holds is every entry of it.
+  if (
+    prefix !== undefined &&
+    new Set(metas.map((m) => m.name)).size === Object.keys(lock.projects).length
+  ) {
+    accepted.push([prefix, '1'])
   }
   if (store !== undefined && accepted.length > 0) {
     if (store.putConfigEvals !== undefined) store.putConfigEvals(accepted)
