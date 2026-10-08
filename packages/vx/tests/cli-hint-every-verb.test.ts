@@ -4,7 +4,7 @@
 // the version and exited 0: `flagHint` knew a verb's flags from its
 // usage line, where no verb spells `--help`.
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -26,6 +26,7 @@ beforeEach(async () => {
   process.chdir(dir)
 })
 afterEach(async () => {
+  mock.restore()
   process.chdir(cwd)
   await rm(dir, { recursive: true, force: true })
 })

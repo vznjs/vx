@@ -451,6 +451,82 @@ describe('a seatbelt grant naming a literal star or question mark', () => {
   })
 })
 
+// A task's escaped read grant names one directory, `out/[id]`. Linux scans
+// it as a glob, finds the directory and binds it whole; macOS handed SRT
+// `out/[[]id]`, an exact regex that granted the entry and none of its
+// files, so the same config read the subtree on one platform only.
+describe('an escaped directory read grant', () => {
+  let dir = ''
+  beforeEach(async () => {
+    dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-esc-')))
+    await mkdir(path.join(dir, 'out/[id]/deep'), { recursive: true })
+    await mkdir(path.join(dir, 'out/i'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+  const onPlatform = <T>(platform: string, f: () => T): T => {
+    const d = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: platform })
+    try {
+      return f()
+    } finally {
+      Object.defineProperty(process, 'platform', d)
+    }
+  }
+  const probes = (): string[] =>
+    ['out/[id]', 'out/[id]/page.html', 'out/[id]/deep/a.js', 'out/i', 'out/[id]x'].map((p) =>
+      path.join(dir, p),
+    )
+  const linuxGrants = (read: string): boolean[] => {
+    const granted = onPlatform(
+      'linux',
+      () => resolveSandboxConfig({ allow: { read: [read] } }, dir).allowRead,
+    )
+    return probes().map((p) => granted.some((g) => p === g || p.startsWith(`${g}/`)))
+  }
+  const darwinGrants = (read: string): boolean[] => {
+    const resolved = onPlatform('darwin', () =>
+      resolveSandboxConfig({ allow: { read: [read] } }, dir),
+    )
+    const cfg = seatbeltBrackets({
+      filesystem: {
+        denyRead: [dir],
+        allowRead: [...resolved.allowRead],
+        allowWrite: [],
+        denyWrite: [],
+      },
+    })!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    const rx = [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith(`^${dir}/`))
+      .map((r) => new RegExp(r))
+    return probes().map((p) => rx.some((r) => r.test(p)))
+  }
+
+  it('grants the directory and its subtree on both platforms', () => {
+    const expected = [true, true, true, false, false]
+    expect([linuxGrants('out/\\[id\\]'), darwinGrants('out/\\[id\\]')]).toEqual([
+      expected,
+      expected,
+    ])
+  })
+
+  it('CONTROL: the same grant spelled with a trailing `/**`', () => {
+    const expected = [true, true, true, false, false]
+    expect([linuxGrants('out/\\[id\\]/**'), darwinGrants('out/\\[id\\]/**')]).toEqual([
+      expected,
+      expected,
+    ])
+  })
+})
+
 // A grant whose only wildcards are escaped names one path, as a plain
 // literal does: `packages/\[legacy\]/src` is the directory `[legacy]/src`.
 // Counted as a glob, it reached every wall under `packages/` and its own

@@ -27,7 +27,14 @@ import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
-import { isUserError, listed, maskedLine, nearest, UserError } from '../util/index.js'
+import {
+  isUserError,
+  listed,
+  maskedCommand,
+  maskedLine,
+  nearest,
+  UserError,
+} from '../util/index.js'
 import {
   claimedAffected,
   fingerprintClaims,
@@ -483,7 +490,11 @@ export async function pickTask(
       .filter((t) => !isDefaultBuild(config.tasks?.[t]))
       .sort()
     for (const t of taskNames) {
-      const desc = config.tasks?.[t]?.description
+      const task = config.tasks?.[t]
+      const desc =
+        task?.description === undefined
+          ? undefined
+          : maskedCommand(task.description, task.exec?.env)
       entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })
     }
   }

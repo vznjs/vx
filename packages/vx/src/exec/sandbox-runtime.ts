@@ -1545,7 +1545,9 @@ function literalReadPaths(
  * baseline reads: a linked dependency under `packages/[legacy]/` was a
  * class too, and as an exact regex even `[[]` grants the directory's entry
  * and none of its files, so its subtree is granted beside it (a trailing
- * `/**` is stripped before the compile).
+ * `/**` is stripped before the compile). A task's read grant whose only
+ * brackets are escaped names one path too, and Linux binds it whole, so
+ * it gets the same subtree: `out/\[id\]` read `out/[id]` and none of it.
  *
  * A `*` or `?` meant as itself (escaped in a grant, or in a baseline's
  * name) has no spelling: SRT's rewrite of each runs inside a class too,
@@ -1564,8 +1566,9 @@ export function seatbeltBrackets(
   const baseline = new Set(names)
   const read = (p: string): string[] => {
     if (!seatbeltSpells(p, 'read', baseline.has(p))) return []
-    if (!bracketed.has(p)) return [literal(p)]
-    const at = p.replaceAll('[', '[[]')
+    const name = bracketed.has(p) ? p : /\\[[\]]/.test(p) ? namedPath(p) : undefined
+    if (name === undefined) return [literal(p)]
+    const at = name.replaceAll('[', '[[]')
     return [at, `${at}/**/*`]
   }
   return {
@@ -1574,7 +1577,9 @@ export function seatbeltBrackets(
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
       allowWrite: fs.allowWrite.filter((p) => seatbeltSpells(p, 'write', false)).map(literal),
-      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
+      ...(fs.allowRead !== undefined
+        ? { allowRead: [...new Set(fs.allowRead.flatMap(read))] }
+        : {}),
     },
   }
 }
@@ -2766,10 +2771,16 @@ function grantSpelled(p: string, within: string): string {
  * names what is missing when there is no form, for the warning and for
  * `vx info`.
  */
-let straceAvailableCache: { form: false | 'plain' | 'seccomp'; why: string } | undefined
-async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
-  if (process.platform !== 'linux') return { form: false, why: '' }
-  if (straceAvailableCache !== undefined) return straceAvailableCache
+let straceAvailableCache: Promise<{ form: false | 'plain' | 'seccomp'; why: string }> | undefined
+function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
+  if (process.platform !== 'linux') return Promise.resolve({ form: false, why: '' })
+  // The promise is the memo, not its answer: a run starts a wave of tasks
+  // at once, and each asked before the first answer landed (one probe per task).
+  straceAvailableCache ??= probeStrace()
+  return straceAvailableCache
+}
+
+async function probeStrace(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
   try {
     const p = Bun.spawn([executablePath('strace'), '--version'], {
       stdout: 'pipe',
@@ -2777,33 +2788,28 @@ async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: 
     })
     const out = await new Response(p.stdout).text()
     await p.exited
-    if (p.exitCode !== 0) {
-      straceAvailableCache = { form: false, why: `strace --version exited ${p.exitCode}` }
-    } else {
-      const m = /version (\d+)\.(\d+)/.exec(out)
-      const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
-      let form: 'plain' | 'seccomp' = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
-      let refused = await traceRefusal(form)
-      // A strace that cannot check the seccomp filter says so and traces on
-      // without it, exit 0. Inside the sandbox that line read as the trace
-      // cut short, and every sandboxed task ran twice: the plain form, if
-      // it is quiet, is the one that works here.
-      if (refused?.warned === true && form === 'seccomp') {
-        refused = await traceRefusal('plain')
-        if (refused === null) form = 'plain'
-      }
-      straceAvailableCache =
-        refused === null
-          ? { form, why: '' }
-          : { form: false, why: `strace cannot trace here (${refused.line})` }
+    if (p.exitCode !== 0) return { form: false, why: `strace --version exited ${p.exitCode}` }
+    const m = /version (\d+)\.(\d+)/.exec(out)
+    const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
+    let form: 'plain' | 'seccomp' = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
+    let refused = await traceRefusal(form)
+    // A strace that cannot check the seccomp filter says so and traces on
+    // without it, exit 0. Inside the sandbox that line read as the trace
+    // cut short, and every sandboxed task ran twice: the plain form, if
+    // it is quiet, is the one that works here.
+    if (refused?.warned === true && form === 'seccomp') {
+      refused = await traceRefusal('plain')
+      if (refused === null) form = 'plain'
     }
+    return refused === null
+      ? { form, why: '' }
+      : { form: false, why: `strace cannot trace here (${refused.line})` }
   } catch {
     // Not on PATH. Said as the refused attach is: without it an undeclared
     // read is denied but never reported, so a task that tolerates the miss
     // passes and caches with no word of it (J's lead).
-    straceAvailableCache = { form: false, why: 'strace is not on PATH' }
+    return { form: false, why: 'strace is not on PATH' }
   }
-  return straceAvailableCache
 }
 
 async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {

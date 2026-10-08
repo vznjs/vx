@@ -50,6 +50,14 @@ export function summarize(samples: readonly number[]): { min: number; median: nu
   return { min: s[0]!, median: s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2 }
 }
 
+/** Each arm's min against the first arm's, as a signed percent: `-4.2%` is 4.2 % faster. */
+export function versusFirst(mins: readonly number[]): string[] {
+  return mins.map((m) => {
+    const pct = (m / mins[0]! - 1) * 100
+    return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
+  })
+}
+
 /** What a failed run said: the tail of stdout, where vx reports a failed task, then stderr. */
 export function failure(label: string, code: number, stdout: string, stderr: string): string {
   const tail = (s: string) => s.trimEnd().split('\n').slice(-40).join('\n')
@@ -104,10 +112,13 @@ if (import.meta.main) {
   for (let r = 0; r < rounds; r++) {
     for (const i of roundOrder(r, arms.length)) samples[i]!.push(await time(arms[i]!, args))
   }
+  const stats = samples.map(summarize)
+  const vs = versusFirst(stats.map((s) => s.min))
   for (const [i, arm] of arms.entries()) {
-    const { min, median } = summarize(samples[i]!)
+    const { min, median } = stats[i]!
+    const rel = i === 0 ? '' : `  ${vs[i]} vs ${arms[0]!.label}`
     console.log(
-      `${arm.label.padEnd(8)} min ${min.toFixed(1)}  median ${median.toFixed(1)}  n=${rounds}`,
+      `${arm.label.padEnd(8)} min ${min.toFixed(1)}  median ${median.toFixed(1)}  n=${rounds}${rel}`,
     )
   }
   console.log(

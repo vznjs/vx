@@ -103,6 +103,23 @@ const nonJsonPaths = ${nonJsonPaths.toString()}
     throw new Error('process.exit(' + (code ?? '') + ') in a config: ' + ${JSON.stringify(CONFIG_EXIT)})
   }
 }
+// Bun's resolver reads \\ as a separator, so a config under a\\b is served
+// from the path as written (project-loader.ts's LITERAL_QUERY), read now.
+let literal = false
+const serveLiteral = () => {
+  if (literal) return
+  literal = true
+  globalThis.Bun.plugin({
+    name: 'vx-config-literal',
+    setup(build) {
+      build.onResolve({ filter: /\\?vx-literal$/ }, (args) => ({ path: args.path, namespace: 'file' }))
+      build.onLoad({ filter: /\\?vx-literal$/ }, async (args) => {
+        const file = args.path.slice(0, -'?vx-literal'.length)
+        return { contents: await globalThis.Bun.file(file).text(), loader: /\\.[cm]?ts$/.test(file) ? 'ts' : 'js' }
+      })
+    },
+  })
+}
 self.onmessage = async (e) => {
   const { id, path, env } = e.data
   // A Worker starts with the process's STARTUP environment, not the
@@ -155,7 +172,9 @@ self.onmessage = async (e) => {
     if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
   }
   try {
-    const ns = await import(path)
+    const literalPath = path.includes('\\\\')
+    if (literalPath) serveLiteral()
+    const ns = await import(literalPath ? path + '?vx-literal' : path)
     // Awaited as the in-process load's async return flattens it: a Promise
     // default loaded on a run and was refused as "an instance of Promise"
     // on every later evaluation in the process (D-5).
@@ -252,10 +271,11 @@ export function evalBudgetMs(): number {
   // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
   // back rather than clamping, because honouring ~24.8 days would hang
   // `vx watch` forever on a worker the OS killed — and unbounded makes it 1 ms,
-  // so EVERY config load times out instead. Both ends break the same feature.
+  // so EVERY config load times out instead. Both ends break the same feature,
+  // and `0` is the second end: it fired on the next tick (D-157).
   if (raw !== undefined && /^[0-9]+$/.test(raw)) {
     const n = Number(raw)
-    if (n <= MAX_TIMEOUT_MS) return n
+    if (n > 0 && n <= MAX_TIMEOUT_MS) return n
   }
   return 30_000
 }

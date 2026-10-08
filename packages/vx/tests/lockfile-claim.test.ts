@@ -87,6 +87,19 @@ describe('extra files the lockfile names', () => {
     expect(new Set([first, second, third]).size).toBe(3)
   })
 
+  // X-130: the memo was one file per lockfile, trusted on its version and
+  // the lockfile's hash. Another claimant of the file at the same version
+  // (a plugin swapped in the same cache dir) read a memo that named no
+  // extra file, so its patch edits never moved the key.
+  it("another claimant's memo is not trusted", async () => {
+    await lock('packages/a=a1\nextra:patches/p.patch\n')
+    await patch('one')
+    await claim().key(task('packages/a'), ctx())
+    const first = (await withExtras().key(task('packages/a'), ctx()))!['deps']
+    await patch('two!')
+    expect((await withExtras().key(task('packages/a'), ctx()))!['deps']).not.toBe(first)
+  })
+
   it('CONTROL: an unchanged extra file costs a warm run no parse', async () => {
     await lock('packages/a=a1\nextra:patches/p.patch\n')
     await patch('one')
