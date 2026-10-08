@@ -17,7 +17,9 @@
           "project": { "type": "string" },
           "task": { "type": "string" },
           "hash": { "type": "string", "description": "the cache key" },
-          "cacheStatus": { "enum": ["hit-local", "hit-remote", "miss", "no-cache", "group"] },
+          "cacheStatus": {
+            "enum": ["hit-local", "hit-remote", "miss", "no-cache", "group", "not-started"]
+          },
           "deps": { "type": "array", "items": { "type": "string" } },
           "p50Ms": {
             "type": "number",
