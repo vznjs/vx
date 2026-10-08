@@ -82,6 +82,7 @@ import {
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
+  namedPath,
   toRealPath,
   unique,
 } from './sandbox-paths.js'
@@ -2518,7 +2519,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  */
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
-    .filter((g) => !isMountableLiteral(g))
+    .filter((g) => namedPath(g) === undefined)
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
@@ -2553,11 +2554,9 @@ export function darwinWallRules(
   }
   // A baseline is a name the filesystem handed back, never a pattern: a
   // bracket in it does not make it a glob.
-  deny('file-read-data', c.wallsReached?.read ?? [], [
-    ...c.allowRead.filter(isMountableLiteral),
-    ...baseAllowRead,
-  ])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite.filter(isMountableLiteral))
+  const named = (grants: readonly string[]): string[] => grants.flatMap((g) => namedPath(g) ?? [])
+  deny('file-read-data', c.wallsReached?.read ?? [], [...named(c.allowRead), ...baseAllowRead])
+  deny('file-write*', c.wallsReached?.write ?? [], named(c.allowWrite))
   return rules
 }
 
@@ -2645,8 +2644,9 @@ function expandGrants(
       // A hit that IS a wall, or lies inside one, was matched, not named:
       // `read: ['*']` in a root project bound `.git` and `.vx`, and
       // `packages/*` a nested project its key excludes (B-1). A grant that
-      // names a wall literally never reaches this loop and stays.
-      if (walls.some((w) => atOrUnder(real, w))) continue
+      // names a wall literally never reaches this loop and stays, and one
+      // spelled with escaped brackets names it as surely.
+      if (namedPath(p) === undefined && walls.some((w) => atOrUnder(real, w))) continue
       out.push(abs)
       hits++
     }
@@ -2736,10 +2736,16 @@ function grantSpelled(p: string, within: string): string {
  * names what is missing when there is no form, for the warning and for
  * `vx info`.
  */
-let straceAvailableCache: { form: false | 'plain' | 'seccomp'; why: string } | undefined
-async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
-  if (process.platform !== 'linux') return { form: false, why: '' }
-  if (straceAvailableCache !== undefined) return straceAvailableCache
+let straceAvailableCache: Promise<{ form: false | 'plain' | 'seccomp'; why: string }> | undefined
+function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
+  if (process.platform !== 'linux') return Promise.resolve({ form: false, why: '' })
+  // The promise is the memo, not its answer: a run starts a wave of tasks
+  // at once, and each asked before the first answer landed (one probe per task).
+  straceAvailableCache ??= probeStrace()
+  return straceAvailableCache
+}
+
+async function probeStrace(): Promise<{ form: false | 'plain' | 'seccomp'; why: string }> {
   try {
     const p = Bun.spawn([executablePath('strace'), '--version'], {
       stdout: 'pipe',
@@ -2747,33 +2753,28 @@ async function straceState(): Promise<{ form: false | 'plain' | 'seccomp'; why: 
     })
     const out = await new Response(p.stdout).text()
     await p.exited
-    if (p.exitCode !== 0) {
-      straceAvailableCache = { form: false, why: `strace --version exited ${p.exitCode}` }
-    } else {
-      const m = /version (\d+)\.(\d+)/.exec(out)
-      const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
-      let form: 'plain' | 'seccomp' = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
-      let refused = await traceRefusal(form)
-      // A strace that cannot check the seccomp filter says so and traces on
-      // without it, exit 0. Inside the sandbox that line read as the trace
-      // cut short, and every sandboxed task ran twice: the plain form, if
-      // it is quiet, is the one that works here.
-      if (refused?.warned === true && form === 'seccomp') {
-        refused = await traceRefusal('plain')
-        if (refused === null) form = 'plain'
-      }
-      straceAvailableCache =
-        refused === null
-          ? { form, why: '' }
-          : { form: false, why: `strace cannot trace here (${refused.line})` }
+    if (p.exitCode !== 0) return { form: false, why: `strace --version exited ${p.exitCode}` }
+    const m = /version (\d+)\.(\d+)/.exec(out)
+    const [major, minor] = m ? [Number(m[1]), Number(m[2])] : [0, 0]
+    let form: 'plain' | 'seccomp' = major > 5 || (major === 5 && minor >= 3) ? 'seccomp' : 'plain'
+    let refused = await traceRefusal(form)
+    // A strace that cannot check the seccomp filter says so and traces on
+    // without it, exit 0. Inside the sandbox that line read as the trace
+    // cut short, and every sandboxed task ran twice: the plain form, if
+    // it is quiet, is the one that works here.
+    if (refused?.warned === true && form === 'seccomp') {
+      refused = await traceRefusal('plain')
+      if (refused === null) form = 'plain'
     }
+    return refused === null
+      ? { form, why: '' }
+      : { form: false, why: `strace cannot trace here (${refused.line})` }
   } catch {
     // Not on PATH. Said as the refused attach is: without it an undeclared
     // read is denied but never reported, so a task that tolerates the miss
     // passes and caches with no word of it (J's lead).
-    straceAvailableCache = { form: false, why: 'strace is not on PATH' }
+    return { form: false, why: 'strace is not on PATH' }
   }
-  return straceAvailableCache
 }
 
 async function wantsStraceDetection(): Promise<false | 'plain' | 'seccomp'> {

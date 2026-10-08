@@ -209,6 +209,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // one whose `name` was overwritten after the stamp, is refused here —
       // the one boundary every plugin crosses.
       const pkg = (p as Record<symbol, unknown>)[PLUGIN_PACKAGE]
+      // An async factory called without `await` was told its plugin did not
+      // come from definePlugin — it had (D-159).
+      if (pkg === undefined && typeof (p as { then?: unknown }).then === 'function') {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` is a Promise — await the factory that returns the plugin`,
+        )
+      }
       if (typeof pkg !== 'string' || pkg.length === 0) {
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` must come from definePlugin(import.meta, { … }) — a plugin's name is its package name`,

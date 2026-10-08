@@ -28,7 +28,7 @@ import {
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
-import { packageScripts, relPosix } from '../paths.js'
+import { isRecord, packageScripts, relPosix } from '../paths.js'
 import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
 import {
   DOTENV_PROBE,
@@ -438,9 +438,6 @@ async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   checkTurboShape(parsed, relPosix(root, file))
   return parsed as TurboJson
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const TOP_LISTS = [
   'globalDependencies',

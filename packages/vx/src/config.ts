@@ -608,6 +608,25 @@ type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never
 /** `T[P]` when `T` has it; `unknown` (no keys to check) when it does not. */
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 
+/** The objects inside each task's `exec`, held to their keys as `exec` is (D-156). */
+type KnownExecs<T extends ProjectConfig> = {
+  tasks?: {
+    [K in keyof NonNullable<T['tasks']>]?: {
+      exec?: KnownExec<At<NonNullable<T['tasks']>[K], 'exec'>>
+    }
+  }
+}
+
+type KnownExec<E> = {
+  env?: Known<At<E, 'env'>, ExecEnv>
+  persistent?: Known<At<E, 'persistent'>, PersistentConfig>
+  sandbox?: Known<At<E, 'sandbox'>, SandboxConfig> & {
+    allow?: Known<At<At<E, 'sandbox'>, 'allow'>, SandboxGrants>
+    deny?: Known<At<At<E, 'sandbox'>, 'deny'>, SandboxDenials>
+    ignore?: Known<At<At<E, 'sandbox'>, 'ignore'>, SandboxIgnore>
+  }
+}
+
 /**
  * Identity function — exists only so TypeScript narrows literal types
  * and, crucially, **validates `dependsOn` against this project's own
@@ -617,6 +636,7 @@ type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? 
  */
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {

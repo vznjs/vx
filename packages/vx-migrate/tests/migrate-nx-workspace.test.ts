@@ -92,3 +92,39 @@ it('writes them into the vx.workspace.ts it writes; one it cannot read stays a n
     'nx.json `maxCacheSize`: add `cacheRetention: { maxSize: "1.5 TB" }` to vx.workspace.ts',
   ])
 })
+
+// CONTROL: a workspace file of the user's is left alone, and each setting is a note.
+it('names them where the workspace file is already there', async () => {
+  await writeFile(path.join(root, 'nx.json'), '{"parallel":1,"defaultBase":"master"}')
+  await writeFile(
+    path.join(root, 'package.json'),
+    '{"name":"r","private":true,"workspaces":["libs/*"]}\n',
+  )
+  await mkdir(path.join(root, 'libs', 'a'), { recursive: true })
+  await writeFile(path.join(root, 'libs', 'a', 'package.json'), '{"name":"a"}\n')
+  await writeFile(
+    path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+    JSON.stringify({
+      nodes: { a: { name: 'a', data: { root: 'libs/a', targets: { build: { command: 'tsc' } } } } },
+      dependencies: {},
+    }),
+  )
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const proc = Bun.spawn([process.execPath, '--no-install', bin, '--no-install'], {
+    cwd: root,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = await new Response(proc.stdout).text()
+  expect(await proc.exited).toBe(0)
+  expect(out).toContain('nx.json `parallel: 1`: add `concurrency: 1` to vx.workspace.ts')
+  expect(out).toContain(
+    'nx.json `defaultBase` "master": add `affectedBase: "master"` to vx.workspace.ts',
+  )
+  expect(await readFile(path.join(root, 'vx.workspace.mjs'), 'utf8')).toBe(
+    'export default { plugins: [] }\n',
+  )
+  expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(false)
+})
