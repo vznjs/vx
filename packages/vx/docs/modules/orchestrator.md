@@ -285,8 +285,12 @@ reproduced on vx 2026-09-24). So a lock naming this process's OWN pid
 is stale (a run of this process shares the lock and never meets its
 entry), and on Linux the entry also carries the holder's start time
 (field 22 of `/proc/<pid>/stat`), so a live pid another process now
-wears is stale as well. The start time is read once per process for
-its entry and once per holder while waiting; elsewhere, where it
+wears is stale as well. A holder procfs shows as a zombie (`Z`) is
+stale too: a `kill -9`ed vx whose parent does not reap it (a
+container's pid 1 that never waits) still answers signal 0 with its
+start time unchanged, and the next run waited for the reaper, or for
+good. The start time is read once per process for its entry, and
+`/proc/<pid>/stat` once per poll while waiting; elsewhere, where it
 would cost a `ps` spawn per run, and under a procfs mounted for another
 pid namespace (`util/procfs.ts`), the lock trusts the pid
 (`tests/run-lock.test.ts`, `tests/run-lock-recycled.unsafe.test.ts`). A
