@@ -429,7 +429,8 @@ function pmRunsMembers(script: string): boolean {
   return false
 }
 
-const CD = /(?:^|[\s;&|(])cd\s+("[^"]*"|'[^']*'|[^\s;&|()]+)/g
+// A bare target may escape a space or paren (`cd packages/my\ app`).
+const CD = /(?:^|[\s;&|(])cd\s+("[^"]*"|'[^']*'|(?:\\.|[^\s;&|()\\])+)/g
 
 /**
  * A `cd` into a member's directory, or one holding members, runs that
@@ -439,7 +440,8 @@ const CD = /(?:^|[\s;&|(])cd\s+("[^"]*"|'[^']*'|[^\s;&|()]+)/g
  */
 function cdsToMembers(script: string, rootDir: string, memberDirs: readonly string[]): boolean {
   for (const m of script.matchAll(CD)) {
-    const target = m[1]!.replace(/^(["'])(.*)\1$/, '$2')
+    const quoted = /^(["'])(.*)\1$/.exec(m[1]!)
+    const target = quoted ? quoted[2]! : m[1]!.replace(/\\(.)/g, '$1')
     if (/[$`~*?]/.test(target) || target === '-') return true
     const dir = path.resolve(rootDir, target)
     const inside = (a: string, b: string): boolean => a === b || a.startsWith(b + path.sep)

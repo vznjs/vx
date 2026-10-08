@@ -1,3 +1,4 @@
 # Workstream YJ — Nx/Turbo parity: Lerna (2026-10-07)
 
+- **YJ-1.** A Lerna repo mapped through Nx's graph had no task order: `lerna run x` hands Nx `^x` (and drops other edges) when nx.json has no `targetDefaults` and no package with `x` has an `nx` key, and the graph holds none of it. The mapper now applies it beside a `lerna.json`; `nx()` re-maps when one appears. Rows: packages/vx-migrate/tests/nx-lerna-order.test.ts › "orders each target after its dependencies’ under lerna.json", "nx() re-maps when lerna.json appears".
 - **YJ-2.** `bunx @vzn/vx-migrate` in a Lerna 6+ repo with no nx.json said "nothing to migrate", though `lerna run` runs on Nx's graph. A lerna.json beside an installed or declared Lerna that a root script `lerna run`s (not `useNx: false`, not Lerna 5 without `useNx: true`, no turbo.json) is now an Nx source; `--keep` writes the `nx()` workspace file itself. Rows: packages/vx-migrate/tests/migrate.test.ts › "vx migrate (lerna)".

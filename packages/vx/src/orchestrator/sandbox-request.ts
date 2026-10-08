@@ -271,7 +271,7 @@ export async function sandboxRequestFor(
     // could copy a key into an output the cache shares (L-41).
     baseDenyRead: [
       ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
-      ...credentialStores(workspaceRoot),
+      ...(await credentialStores(workspaceRoot, config.allowWrite)),
     ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
@@ -464,11 +464,13 @@ async function prepareOutputsForBind(
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }
-    if (hasWildcard || g.endsWith('/')) {
-      const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
-      await mkdir(abs, { recursive: true })
-    } else {
-      const abs = path.join(projectDir, g)
+    const dir = hasWildcard || g.endsWith('/')
+    const abs = path.join(projectDir, hasWildcard ? grantPrefix(g) : g)
+    try {
+      if (dir) {
+        await mkdir(abs, { recursive: true })
+        continue
+      }
       // Whatever is already there is what the task meant — a grant on the
       // project dir itself is a directory, and touching it as a file is
       // an EISDIR, not a missing bind. `lstat`, and an exclusive create: a
@@ -478,9 +480,31 @@ async function prepareOutputsForBind(
       await mkdir(path.dirname(abs), { recursive: true })
       await writeFile(abs, '', { flag: 'wx' })
       placeholders.push({ path: abs, mtimeMs: (await lstat(abs)).mtimeMs })
+    } catch (err) {
+      await sweepPlaceholders(placeholders)
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'ENOTDIR') throw err
+      // A file stands where the grant needs a directory: `out.txt/` over a
+      // file, or `a.txt/x/*.js`. It reached the user as an internal error.
+      const blocker = await fileOnPath(projectDir, dir ? abs : path.dirname(abs))
+      throw new UserError(
+        `exec.sandbox.allow.write: "${g}" needs a directory at ${blocker}, and a file is ` +
+          `there — remove the file, or grant a path beside it`,
+      )
     }
   }
   return placeholders
+}
+
+/** The first path from `from` down to `to` that exists and is not a directory. */
+async function fileOnPath(from: string, to: string): Promise<string> {
+  let at = from
+  for (const part of path.relative(from, to).split(path.sep)) {
+    at = path.join(at, part)
+    const st = await lstat(at).catch(() => undefined)
+    if (st !== undefined && !st.isDirectory()) return at
+  }
+  return to
 }
 
 /**
@@ -589,13 +613,35 @@ const CREDENTIAL_STORES = [
   '.npmrc',
   '.yarnrc.yml',
   '.pypirc',
+  // Registry and service tokens of the same kind: Bun's global bunfig
+  // (`[install.scopes]` tokens) at either of its homes, Cargo's, RubyGems'.
+  '.bunfig.toml',
+  '.config/.bunfig.toml',
+  '.cargo/credentials',
+  '.cargo/credentials.toml',
+  '.gem/credentials',
+  '.config/hub',
+  '.config/containers/auth.json',
+  '.terraform.d/credentials.tfrc.json',
+  '.vault-token',
+  '.pgpass',
 ]
 
 /** The stores present on this host, learned once per home. */
 let presentStores: { home: string; paths: string[] } | undefined
 
-/** The credential stores to deny, less any that holds the workspace. */
-function credentialStores(workspaceRoot: string): string[] {
+/**
+ * The credential stores to deny, less any that holds the workspace, and
+ * punched around the task's write grants: a grant names a store as a read
+ * does. Denied whole, the store's mask landed on the grant's bind (a file
+ * grant binds its directory on Linux), so `write: ['~/.npmrc']` wrote to
+ * /dev/null with exit 0, and `~/.aws/config` left `~/.aws/credentials`
+ * readable. A grant above a store does not name it, so it stays denied.
+ */
+async function credentialStores(
+  workspaceRoot: string,
+  writes: readonly string[],
+): Promise<string[]> {
   const home = homedir()
   if (presentStores?.home !== home) {
     presentStores = {
@@ -603,9 +649,19 @@ function credentialStores(workspaceRoot: string): string[] {
       paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
     }
   }
-  return presentStores.paths.filter(
+  const stores = presentStores.paths.filter(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
+  return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
+}
+
+/** `dir` denied, or its entries no write grant lies under or at when one is inside it. */
+async function denyAround(dir: string, writes: readonly string[]): Promise<string[]> {
+  const inside = writes.filter((w) => atOrUnder(w, dir))
+  if (inside.length === 0) return [dir]
+  if (inside.includes(dir)) return []
+  const entries = await readdir(dir).catch(() => [])
+  return (await Promise.all(entries.map((e) => denyAround(path.join(dir, e), inside)))).flat()
 }
 
 /** `~/x` against the user's home; anything else unchanged. */

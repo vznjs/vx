@@ -46,8 +46,8 @@ export interface ResolveInputsArgs {
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
-  ownOutputs: string[] // project-relative globs to exclude
-  ownWorkspaceOutputs?: string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
+  ownOutputs: readonly string[] // project-relative globs to exclude
+  ownWorkspaceOutputs?: readonly string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
   nestedProjectDirs: string[] // absolute dirs of nested projects
   gitFilesCache?: GitFilesCache // per-run memo of `git ls-files` per project
   runtimeCache?: Map<string, Promise<string>> // per-run memo of `inputs.runtime`, keyed projectDir + '\0' + command
@@ -88,10 +88,8 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
 
 export async function resolveOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** Before a miss: keep each wildcard glob's root (`dist` for `dist/**`). */
-  keepGlobRoots?: boolean
 }): Promise<string[]>
 
 /**
@@ -103,7 +101,7 @@ export async function resolveOutputs(args: {
  */
 export async function cleanOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]>
 
@@ -112,11 +110,11 @@ export async function cleanOutputs(args: {
 // it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]>
 
 /** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
@@ -135,25 +133,26 @@ export interface OutputStamp {
 }
 export async function stampOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>>
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
 // The same two for root-anchored `outputs.workspaceFiles` (A-43).
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<Map<string, OutputStamp>>
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: string[] },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void>
 
 // Kill every runtime probe still running that these memos (one run's
@@ -278,11 +277,17 @@ pass for `outputs.workspaceFiles`, anchored at the workspace root and
 deliberately without the project-dir exclusion.
 
 `cleanOutputs` removes every match, then the directories it emptied,
-bottom-up and never the root itself (a directory left standing where
-the cached entry holds a file of the same name blocks the restore).
-Before a miss (`keepGlobRoots`) it keeps the directory each wildcard
-glob is rooted at: the task writes under it, and removing it cost an
-rmdir and the task's mkdir (B-49). A
+bottom-up, but only inside the trees the task declared (before a miss
+and before a restore alike; `cleanWorkspaceOutputs` too): below each
+wildcard glob's root, and at or below each literal output (a directory
+left standing where the entry or the task needs a file of the same name
+blocks it). The glob's root stays, since the task writes under it and
+removing it cost an rmdir and the task's mkdir (B-49). A directory above
+it or holding a literal output (`out` for `out/a.txt`) stays, since a
+sibling task running beside this one may have just made it and not yet
+written into it. An additive task's clean by its recorded rows
+(`cleanOutputPaths`, item 588) prunes by the same scope, from the
+task's declared outputs. A
 declared output the process cannot remove — another user's `dist/`, a
 read-only checkout — is a `UserError` naming the path, not an internal
 error.

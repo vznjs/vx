@@ -27,6 +27,10 @@ it('each name that makes Bun run a config as CommonJS keeps it CommonJS', async 
     'escaped.js': `\\u006dodule.\\u0065xports = { tasks: ${TASKS} }\n`,
     'this.mjs': `this.tasks = ${TASKS}\n`,
     'require.ts': `const r = require\nmodule.exports = { tasks: ${TASKS} }\n`,
+    // TypeScript's CommonJS export, no CommonJS name spelled: served as a
+    // module, its value vanished and the config "did not export a default".
+    'assign.cts': `export = { tasks: ${TASKS} }\n`,
+    'assignts.ts': `const config = { tasks: ${TASKS} }\nexport = config\n`,
   }
   for (const [name, source] of Object.entries(forms)) {
     const file = path.join(dir, name.replace('.', '/vx.config.'))

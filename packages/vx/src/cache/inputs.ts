@@ -109,10 +109,10 @@ export interface ResolveInputsArgs {
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
-  ownOutputs: string[]
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
    *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
-  ownWorkspaceOutputs?: string[]
+  ownWorkspaceOutputs?: readonly string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
   /**
@@ -646,7 +646,7 @@ function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
 /** Resolve declared output globs (project-relative) to actual produced files. */
 export async function resolveOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
@@ -747,27 +747,15 @@ function isInside(dir: string, abs: string): boolean {
  */
 export async function cleanOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
-  /**
-   * Before a miss: keep the directory each wildcard glob is rooted at
-   * (`dist` for `dist/**`). The task writes its matches under it, so a
-   * remove there bought only an rmdir and the task's mkdir: 0.4 ms of a
-   * 4.9 ms one-file miss (B-49). A restore prunes it, since the entry's
-   * shape decides there.
-   */
-  keepGlobRoots?: boolean
 }): Promise<string[]> {
   const files = await resolveOutputs(args)
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(files, args.projectDir)
-  await pruneEmptiedDirs(
-    args.projectDir,
-    removed,
-    args.keepGlobRoots === true ? globRoots(args.projectDir, args.outputs) : undefined,
-  )
+  await pruneEmptiedDirs(args.projectDir, removed, pruneScope(args.projectDir, args.outputs))
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
   return files.map((f) => relPosix(args.projectDir, f))
@@ -777,15 +765,20 @@ export async function cleanOutputs(args: {
  * Remove exactly these project-relative paths — the recorded rows of an
  * ADDITIVE task's own artifact (item 588), never a glob: the glob would
  * take the upstream's files the task adds beside. Emptied directories are
- * pruned as `cleanOutputs` prunes them, and stop at one the upstream still
- * fills.
+ * pruned as `cleanOutputs` prunes them, only inside the declared `outputs`
+ * (`pruneScope`), and stop at one the upstream still fills.
  */
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    await removeAll(files, args.projectDir),
+    pruneScope(args.projectDir, args.outputs),
+  )
 }
 
 /**
@@ -808,7 +801,7 @@ export interface OutputStamp {
  */
 export async function stampOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
@@ -817,7 +810,7 @@ export async function stampOutputs(args: {
 /** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -848,7 +841,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -856,7 +849,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: string[] },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -951,7 +944,10 @@ function notThroughLink(files: readonly string[], root: string): string[] {
       return null
     }
   }
-  const realRoot = real(root) ?? root
+  // Resolved only once a directory exists to compare: after a clean pruned
+  // the outputs (the common restore) nothing does, and the call was most
+  // of an empty clean.
+  let realRoot: string | undefined
   const own = new Map<string, boolean>()
   return files.filter((f) => {
     const dir = path.dirname(f)
@@ -960,7 +956,8 @@ function notThroughLink(files: readonly string[], root: string): string[] {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
       const r = real(dir)
-      ok = r === null || r === path.join(realRoot, path.relative(root, dir))
+      ok =
+        r === null || r === path.join((realRoot ??= real(root) ?? root), path.relative(root, dir))
       own.set(dir, ok)
     }
     return ok
@@ -974,12 +971,13 @@ function notThroughLink(files: readonly string[], root: string): string[] {
  * wrote `dist/out/…` and now writes `dist/out`) blocks the rename, and an
  * empty directory is not an output anyone declared. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
- * says so if it is in the way.
+ * says so if it is in the way. With a `scope`, only a directory inside it
+ * goes (`pruneScope`).
  */
 async function pruneEmptiedDirs(
   root: string,
   removed: readonly string[],
-  keep?: ReadonlySet<string>,
+  scope?: PruneScope,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -997,7 +995,9 @@ async function pruneEmptiedDirs(
     const parents = new Set<string>()
     const dirs = [...level].filter(
       (dir) =>
-        dir !== rootResolved && dir.startsWith(rootResolved + path.sep) && keep?.has(dir) !== true,
+        dir !== rootResolved &&
+        dir.startsWith(rootResolved + path.sep) &&
+        (scope === undefined || inScope(dir, scope)),
     )
     const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
     if (dirs.length <= SYNC_CLEAN_MAX) {
@@ -1020,19 +1020,42 @@ async function pruneEmptiedDirs(
   }
 }
 
+interface PruneScope {
+  /** Wildcard globs' roots (`dist` for `dist/**`): prune strictly below. */
+  below: string[]
+  /** Literal outputs (`out` as a tree): prune the path itself and below. */
+  atOrBelow: string[]
+}
+
 /**
- * The directories the wildcard output globs are rooted at, absolute. A
- * literal names a file or a tree whose shape the task decides, so it has
- * none; nor has a glob rooted at the project itself.
+ * Where a clean, before a miss or a restore, may prune: only the trees the
+ * task declared. A directory above a glob's root or holding a literal
+ * output (`out` for `out/a.txt`) stays: a sibling task running beside this
+ * one may have just made it and not yet written into it, and pruning it
+ * failed that task "Directory nonexistent". A glob's root stays: the task
+ * writes under it, and a remove there bought only an rmdir and the task's
+ * mkdir (B-49). A literal's own path goes: the entry or the task may need
+ * a file there. A glob rooted at the project prunes nothing.
  */
-function globRoots(projectDir: string, outputs: readonly string[]): Set<string> {
-  const roots = new Set<string>()
+function pruneScope(base: string, outputs: readonly string[]): PruneScope {
+  const scope: PruneScope = { below: [], atOrBelow: [] }
   for (const g of outputs) {
-    if (g.startsWith('!') || isLiteralPattern(g)) continue
+    if (g.startsWith('!')) continue
+    if (isLiteralPattern(g)) {
+      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(normalizeGlob(g))))
+      continue
+    }
     const prefix = staticPrefix(g)
-    if (prefix !== '.') roots.add(path.resolve(projectDir, prefix))
+    if (prefix !== '.') scope.below.push(path.resolve(base, prefix))
   }
-  return roots
+  return scope
+}
+
+function inScope(dir: string, scope: PruneScope): boolean {
+  return (
+    scope.below.some((r) => dir.startsWith(r + path.sep)) ||
+    scope.atOrBelow.some((r) => dir === r || dir.startsWith(r + path.sep))
+  )
 }
 
 /**
@@ -1044,7 +1067,7 @@ function globRoots(projectDir: string, outputs: readonly string[]): Set<string> 
  */
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1067,10 +1090,14 @@ export async function resolveWorkspaceOutputs(args: {
  */
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
+  await pruneEmptiedDirs(
+    args.workspaceRoot,
+    await removeAll(files, args.workspaceRoot),
+    pruneScope(args.workspaceRoot, args.outputs),
+  )
   return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
@@ -1168,8 +1195,8 @@ async function assertNoInvisibleLiteralInputs(
 interface ResolveFilesArgs {
   projectDir: string
   workspaceRoot: string
-  files: string[] | undefined
-  ownOutputs: string[]
+  files: readonly string[] | undefined
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles`, and the project's root-relative directory. */
   ownWorkspaceOutputs: readonly string[]
   projectRel: string

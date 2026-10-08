@@ -4377,10 +4377,11 @@ describe('localBinding port list — the pure halves', () => {
     const sock = portBridgeSocket('t1', 3000)
     expect(sock.endsWith('/vx-port-t1-3000.sock')).toBe(true)
     const inner = portBridgeInner([3000, 3001], 't1')
+    const dial = path.join(path.dirname(sock), 'vx-port-dial-t1.sh')
     expect(inner).toContain(
-      `socat UNIX-LISTEN:${sock},fork,unlink-early TCP:127.0.0.1:3000 >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${sock},fork,unlink-early 'SYSTEM:sh ${dial} 3000' >/dev/null 2>&1 &`,
     )
-    expect(inner).toContain('TCP:127.0.0.1:3001')
+    expect(inner).toContain(`'SYSTEM:sh ${dial} 3001'`)
     // Backgrounded socats are reaped with the shell, as SRT reaps its own.
     expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
     expect(portBridgeHostArgv('t1', 3000)).toEqual([
@@ -4410,9 +4411,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
       return port
     }
 
-    const files = (port: number) => ({
+    function ipv6Loopback(): boolean {
+      try {
+        Bun.listen({ hostname: '::1', port: 0, socket: { data() {} } }).stop(true)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const files = (port: number, hostname = '127.0.0.1') => ({
       'serve.ts':
-        `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('hi') })\n` +
+        `Bun.serve({ port: ${port}, hostname: '${hostname}', fetch: () => new Response('hi') })\n` +
         `console.log('serving')\n`,
       'client.ts':
         `const r = await fetch('http://127.0.0.1:${port}/')\n` +
@@ -4524,6 +4534,31 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // The bridge lives exactly as long as the server: the run tore the
         // server down, so the host's side is gone and the port is closed.
         await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow()
+      },
+      TIMEOUT,
+    )
+
+    // A box with no IPv6 has no ::1 to bind; the dial choice is then held
+    // by port-bridge-dial.test.ts alone (X-91).
+    it.skipIf(!ipv6Loopback())(
+      'a server bound to ::1 alone is reachable through the bridge',
+      async () => {
+        // The task's side dialled 127.0.0.1 only, so Vite's `localhost` on
+        // a host that resolves ::1 first was refused.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port, '::1'),
+          config: serverConfig(`[${port}]`),
+        })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(fixture.root, 'packages', 'srv', 'out.txt'), 'utf8')).toBe(
+          'hi',
+        )
       },
       TIMEOUT,
     )
@@ -5308,6 +5343,40 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect(spy).toHaveBeenCalledTimes(1)
     } finally {
       spy.mockRestore()
+    }
+  })
+
+  // macOS adds rules to the wrapped profile and refuses one of an
+  // unexpected shape, after the wrap counted. Stubbed to darwin from the
+  // wrap on: what precedes it is Linux's, the refusal is darwin's.
+  it('hands the cleanup back, and drops the task dir, when the profile is refused', async () => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    let tmp = ''
+    let during = false
+    const wrap = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(async (c) => {
+      tmp = path.join(taskRoot(), /vx-task-\d+-[0-9a-f]{16}/.exec(c)?.[0] ?? '-')
+      during = existsSync(tmp)
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      return `sh -c ${c}`
+    })
+    const cleanup = spyOn(SandboxManager, 'cleanupAfterCommand')
+    try {
+      const config = { ...resolveSandboxConfig({}, dir), systemInfo: ['hw.ncpu'] }
+      const err = await runSandboxed(args('true', { config })).then(
+        () => undefined,
+        (e: Error) => e.message,
+      )
+      Object.defineProperty(process, 'platform', real)
+      expect([
+        err?.includes('did not have the expected shape'),
+        during,
+        existsSync(tmp),
+        cleanup.mock.calls.length,
+      ]).toEqual([true, true, false, 1])
+    } finally {
+      Object.defineProperty(process, 'platform', real)
+      wrap.mockRestore()
+      cleanup.mockRestore()
     }
   })
 

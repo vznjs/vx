@@ -348,6 +348,30 @@ describe('applyFilters', () => {
     expect(pick('./packages/core/*')).toEqual(['inner'])
   })
 
+  // Nx's `--projects` matches an entry by name, then by root
+  // (find-matching-projects, 23.2.1): `-p 'apps/*'` matched nothing.
+  it('a name holding a `/` outside a scope that names no project is a directory', () => {
+    const projects = [
+      mkProject('ui', '/ws/packages/ui'),
+      mkProject('@s/web', '/ws/apps/web'),
+      mkProject('@s/docs', '/ws/apps/docs'),
+      mkProject('@s/mobile', '/ws/mobile'),
+    ]
+    const graph = buildPackageGraph(projects)
+    const pick = (...raw: string[]) =>
+      [...applyFilters({ filters: raw.map((r) => parseFilter(r, ROOT)), projects, graph })].sort()
+    expect(pick('apps/*')).toEqual(['@s/docs', '@s/web'])
+    expect(pick('apps/web')).toEqual(['@s/web'])
+    expect(pick('packages/**')).toEqual(['ui'])
+    expect(pick('!apps/*')).toEqual(['@s/mobile', 'ui'])
+    // A name match wins: `*/mobile` is `@s/mobile` by name, not a dir.
+    expect(pick('*/mobile')).toEqual(['@s/mobile'])
+    expect(pick('*/web')).toEqual(['@s/web'])
+    // CONTROL: a scoped pattern never falls back, nor a bare name.
+    expect(pick('@s/apps/*')).toEqual([])
+    expect(pick('apps')).toEqual([])
+  })
+
   it('path filter selects packages under the directory', () => {
     const filters = [parseFilter('./packages/ui', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui'])

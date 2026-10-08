@@ -73,7 +73,7 @@ export function buildPackageGraph(
     const dev = bucket(p.packageJson.devDependencies)
     const add = (key: string, spec: unknown, installed: boolean, into: Set<string>): void => {
       if (typeof spec !== 'string') return
-      const target = linked(key, spec.trim(), p.dir, installed)
+      const target = linked(key, fromCatalog(p, key, spec.trim()), p.dir, installed)
       if (target !== undefined && target !== p.name) into.add(target)
     }
     // Which entry is installed when a key sits in more than one field,
@@ -300,6 +300,19 @@ export function buildPackageGraph(
   }
 }
 
+/**
+ * The spec a `catalog:` / `catalog:<name>` entry stands for in the
+ * workspace's catalog, so it is an edge by the rule its range or protocol
+ * meets (zenstack's `nuxt: "catalog:"` is `4.3.1`, which the workspace's
+ * versionless `nuxt` sample does not satisfy). A catalog the graph was not
+ * given or that lacks the key leaves the spec, which keeps its edge.
+ */
+function fromCatalog(p: ProjectMeta, key: string, spec: string): string {
+  if (p.catalogs === undefined || !spec.startsWith('catalog:')) return spec
+  const resolved = p.catalogs.get(spec.slice('catalog:'.length).trim() || 'default')?.[key]
+  return typeof resolved === 'string' && !resolved.startsWith('catalog:') ? resolved.trim() : spec
+}
+
 function bucket(field: unknown): Readonly<Record<string, unknown>> {
   return typeof field === 'object' && field !== null ? (field as Record<string, unknown>) : {}
 }
@@ -377,8 +390,7 @@ function linkedTarget(
     if (!MAY_POINT_ELSEWHERE.test(spec)) {
       const local = byName.get(key)
       if (local === undefined) return undefined
-      // A catalog entry's range lives where the graph does not read
-      // (`pnpm-workspace.yaml`, bun's root `catalog`): it keeps the edge.
+      // A catalog entry its workspace's catalog did not resolve keeps the edge.
       if (!installed || spec.startsWith('catalog:')) return key
       return satisfies(local, spec) ? key : undefined
     }

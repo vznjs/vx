@@ -527,6 +527,32 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).not.toContain('hello-cli')
   })
 
+  // `--dry` called a cacheable task under a policy that reads and writes
+  // nothing `no-cache`, the real run `miss` and its footer "1 miss": a
+  // miss is a lookup that failed, and this run looked nothing up.
+  for (const flag of ['--no-cache', '--cache=local:']) {
+    it(`${flag}: the plan and the run both call the task no-cache`, async () => {
+      const { readFile } = await import('node:fs/promises')
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
+      expect(stdout).toContain('no-cache (would exec)')
+      stdout = ''
+      const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
+      expect(await run(args)).toBe(0)
+      expect(stdout).toContain('| one#hello | success | no-cache |')
+      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).not.toContain('miss')
+      const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
+      expect([row.id, row.noCache]).toEqual(['one#hello', true])
+    })
+  }
+
   it('--dry-run --json emits parseable JSON', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -962,6 +988,26 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('## vx run')
     expect(stdout).toContain('| Task | Status | Cache | Duration |')
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
+  })
+
+  // Nothing prints below the footer (owner): the report came after its
+  // `result` row. The table (X-64) prints first, then the report.
+  it('--report and the --verbosity table print above the footer', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report=markdown', '--verbosity=1'])
+    expect(code).toBe(0)
+    const report = stdout.indexOf('| Task | Status | Cache | Duration |')
+    const table = stdout.indexOf('TASK')
+    const footer = stdout.indexOf('  result')
+    expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
+    expect([table < report, report < footer]).toEqual([true, true])
+    expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
   })
 
   it('bare --report defaults to markdown', async () => {
@@ -2184,16 +2230,18 @@ describe('parsePruneArgs', () => {
   // sweep deleted each with the suite green).
   it('refuses a value it cannot parse instead of pruning by it', () => {
     expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({
-      error: 'invalid duration: abc (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({
-      error: 'invalid duration: 1.5d (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got 1.5d) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({
-      error: 'invalid size: abc (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({
-      error: 'invalid size: 1.5G (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got 1.5G) (see `vx cache --help`)',
     })
   })
 
