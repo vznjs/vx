@@ -267,7 +267,9 @@ are refused too: they format one run's result.
      events never agree (CI read 9 re-runs where macOS, which coalesces
      the two, read 2). Pinned end to end in `tests/cli.test.ts`.
    - Debounce events `~150ms` after the last one before triggering a
-     cycle.
+     cycle, and at most 1 s after the first: a writer that never pauses
+     (a dev server's log) reset the timer forever and held every edit
+     back (WD-1).
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
@@ -278,8 +280,8 @@ are refused too: they format one run's result.
    in-flight cycle tears its children down (the received signal, a
    SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
-   it holds with the same signal, and resolves 0. SIGINT also
-   prints `vx watch: stopped`. Until 2026-09-10 the handlers went in
+   it holds with the same signal, and resolves; watch exits 0. SIGINT then
+   prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
    (`tests/watch-signals.test.ts`).
