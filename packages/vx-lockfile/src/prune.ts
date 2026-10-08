@@ -25,6 +25,7 @@ import {
   type ProjectMeta,
 } from '@vzn/vx'
 import * as bunLock from './bun.js'
+import { record } from './json.js'
 import * as npmLock from './npm.js'
 import * as pnpmLock from './pnpm.js'
 import * as yarnLock from './yarn.js'
@@ -194,7 +195,8 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
   const listed = Array.isArray(field)
     ? (field as string[])
     : ((field as { packages?: string[] } | undefined)?.packages ?? undefined)
-  const workspaces = listed?.includes('.') ? ['.', ...rels] : rels
+  const patterns = rels.map(literalGlob)
+  const workspaces = listed?.includes('.') ? ['.', ...patterns] : patterns
   if (listed !== undefined) {
     rootManifest['workspaces'] = Array.isArray(field)
       ? workspaces
@@ -236,7 +238,7 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
   if (await exists(workspaceYaml)) {
     written.set(
       'pnpm-workspace.yaml',
-      rewriteWorkspaceYaml(await Bun.file(workspaceYaml).text(), rels),
+      rewriteWorkspaceYaml(await Bun.file(workspaceYaml).text(), patterns),
     )
   }
   // A manifest with no `workspaces` (pnpm's) is copied byte for byte.
@@ -286,10 +288,21 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
   return 0
 }
 
-/** `packages:` cut to the subset's dirs; every other key as written. */
-function rewriteWorkspaceYaml(text: string, rels: readonly string[]): string {
+/**
+ * A dir as a workspace pattern that matches only itself: every package
+ * manager and vx read the list as globs, and `packages/a[1]` matched
+ * `packages/a1`, so the pruned copy had no such member. A class of one
+ * (`[[]`) is the escape bun, npm, pnpm, yarn and `Bun.Glob` all read;
+ * a backslash is not (bun found no workspace).
+ */
+function literalGlob(rel: string): string {
+  return rel.replace(/[*?[{]/g, '[$&]')
+}
+
+/** `packages:` cut to the subset's member patterns; every other key as written. */
+function rewriteWorkspaceYaml(text: string, members: readonly string[]): string {
   const lines = text.split('\n')
-  const list = ['packages:', ...rels.map((r) => `  - ${JSON.stringify(r)}`)]
+  const list = ['packages:', ...members.map((r) => `  - ${JSON.stringify(r)}`)]
   const at = lines.findIndex((l) => /^packages\s*:/.test(l))
   if (at === -1) return [...list, ...lines].join('\n')
   let end = at + 1
@@ -317,9 +330,7 @@ async function namedFiles(root: string, manifest: Record<string, unknown>): Prom
     const p = path.join(root, file)
     if (!(await exists(p))) return {}
     const doc: unknown = Bun.YAML.parse(await Bun.file(p).text())
-    return doc !== null && typeof doc === 'object' && !Array.isArray(doc)
-      ? (doc as Record<string, unknown>)
-      : {}
+    return record(doc) ?? {}
   }
   named.push(...values((await yaml('pnpm-workspace.yaml'))['patchedDependencies']))
   const yarnrc = await yaml('.yarnrc.yml')

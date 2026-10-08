@@ -6,7 +6,7 @@
 import type { TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
-import { outcomeLabel, projectOutcome } from './events.js'
+import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import { formatElapsed } from '../util/index.js'
 
@@ -119,6 +119,8 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
   /** Tasks an `admit` policy held with a worker free, and the waits summed. Absent with no hold. */
   held?: { count: number; sumMs: number }
+  /** A run of groups only: their names, so `0 tasks` says why. */
+  emptyGroups?: readonly string[]
 }
 
 /**
@@ -213,7 +215,14 @@ export function formatSummarySection(
     // No legend line until the first bucket lands (live: all-gray bar).
     if (taskParts.length > 0) lines.push(legend(taskParts))
   } else {
-    lines.push(row('tasks', dim('0 tasks')))
+    const groups = stats.emptyGroups ?? []
+    // `vx run build` where no project gives build a command runs the default
+    // group alone: say so, or it reads like a selection that matched nothing.
+    const why =
+      groups.length > 0
+        ? ` ${dim('\u00b7')} ${dim(`${groups.join(', ')} ${groups.length === 1 ? 'has' : 'have'} no command in these projects`)}`
+        : ''
+    lines.push(row('tasks', dim('0 tasks') + why))
     // A stop before any task finished still names what it took down.
     if (taskParts.length > 0) lines.push(legend(taskParts))
   }
@@ -255,7 +264,7 @@ export function formatSummarySection(
   let spread = ''
   if (stats.spread !== null && stats.spread.count > 0) {
     const { maxMs, minMs, sumMs, count } = stats.spread
-    spread = ` ${dim(`\u00b7 max ${formatDuration(maxMs)} \u00b7 avg ${formatDuration(sumMs / count)} \u00b7 min ${formatDuration(minMs)}`)}`
+    spread = ` ${dim(`\u00b7 max ${formatElapsed(maxMs)} \u00b7 avg ${formatElapsed(sumMs / count)} \u00b7 min ${formatElapsed(minMs)}`)}`
   }
   // Run-shape footer (final summary only): worker pool + cache mode,
   // grouped with time under a blank line below the meters.
@@ -271,15 +280,15 @@ export function formatSummarySection(
     // (2026-09-15), so the line says it is a sum.
     if (stats.held !== undefined && stats.held.count > 0) {
       info.push(
-        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatDuration(stats.held.sumMs)} in all`,
+        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatElapsed(stats.held.sumMs)} in all`,
       )
     }
-    lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
+    lines.push('', row('info', join(info)), row('time', `${formatElapsed(totalMs)}${spread}`))
     // The run in one line, last, where the eye lands: what a Turbo user
     // reads first in its own summary (tasks, cached, time), in vx's words.
     if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, totalMs, colors)))
   } else {
-    lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
+    lines.push('', row('time', `${formatElapsed(totalMs)}${spread}`))
   }
   return lines
 }
@@ -311,7 +320,7 @@ function resultLine(
         : `${hits} cached (${Math.floor((hits / cacheable) * 100)}%)`,
     )
   if (noCache > 0) parts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-  parts.push(formatDuration(totalMs))
+  parts.push(formatElapsed(totalMs))
   return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
 
@@ -356,9 +365,7 @@ export function formatRunSummary(
   // distinction — it never consulted the cache, so it is not a miss.
   const noCache = outcomes.filter(
     (o) =>
-      !isGroupTask(o.node) &&
-      (o.status === 'success' || o.status === 'failed') &&
-      o.node.config.cache === undefined,
+      !isGroupTask(o.node) && (o.status === 'success' || o.status === 'failed') && ranNoCache(o),
   ).length
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran
@@ -368,6 +375,9 @@ export function formatRunSummary(
     .map((o) => o.durationMs)
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
+  const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
+    ? [...new Set(outcomes.map((o) => o.node.taskName))]
+    : []
   return formatSummarySection(
     {
       failed: t.failed,
@@ -398,6 +408,7 @@ export function formatRunSummary(
             },
           }
         : {}),
+      ...(emptyGroups.length > 0 ? { emptyGroups } : {}),
     },
     totalMs,
     colors,
@@ -414,8 +425,4 @@ export function neverStarted(
   o: Pick<TaskOutcome, 'status'> & { wallclockStartNs?: unknown },
 ): boolean {
   return o.status === 'aborted' && o.wallclockStartNs === undefined
-}
-
-export function formatDuration(ms: number): string {
-  return formatElapsed(ms)
 }

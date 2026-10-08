@@ -25,6 +25,7 @@ export interface ParsedFilter {
   pathRoot?: string // the workspace root `pathGlob` is relative to
   exactDir?: true // `//`: the project at `matcher` itself, never the ones under it
   tag?: true // tag:<pattern>: `matcher` is a glob over the projects' tags
+  dirFallback?: ParsedFilter // `apps/*` naming no project: read as ./apps/*
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter
@@ -49,7 +50,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string>
 
 | Form                  | Meaning                                                                                                                                                                                                                                                                                                                                                                                        |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`           | Name match. `*` is the sole metacharacter and means any characters — pnpm's rule, so `*core*` crosses the `@scope/` boundary.                                                                                                                                                                                                                                                                  |
+| `<pattern>`           | Name match. `*` is the sole metacharacter and means any characters — pnpm's rule, so `*core*` crosses the `@scope/` boundary. A pattern holding a `/` outside a scope that names no project is read as `./<pattern>` (Nx's `--projects 'apps/*'`).                                                                                                                                             |
 | `./<dir>` / `{<dir>}` | The package whose dir is `<dir>`, alone (`.` is the root project; a nested package is not included, as in Turbo and pnpm, D-43); a `<dir>` that is no package matches the packages under it (workspace-relative). A glob in the path (`./apps/*`, `{apps/**}`) is matched over each project's root-relative dir instead, unless the path selects a project dir literally (`./packages/[abc]`). |
 | `//`                  | The root project alone (Turbo's name for the root package); nothing when the root is no project, never every project under it (D-46).                                                                                                                                                                                                                                                          |
 | `tag:<pattern>`       | The projects whose config `tags` hold a match (`*` as in a name; Nx's `tag:`). Every operator a name takes applies.                                                                                                                                                                                                                                                                            |
@@ -88,7 +89,8 @@ The git-relative `[<since>]` form is parsed into a `gitSince` field,
 alone or after a name or `{dir}` selector it narrows (`@scope/*[main]`,
 `{./apps/*}[HEAD~1]`: the selected packages that changed, D-44; an
 unbraced `./` path keeps its brackets as a glob class; `<name>...[ref]`
-also takes the dependants of what changed, as Turbo reads it), but resolution
+also takes the dependants of what changed, as Turbo reads it, over a graph
+that holds the configs' cross-project `dependsOn` edges), but resolution
 happens upstream (`cli/select.ts` calls
 `workspace/affected.ts:affectedProjects` once per distinct ref and
 passes the result via `affectedByFilter`). A tag lives in the config,

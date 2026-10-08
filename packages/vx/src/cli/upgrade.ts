@@ -200,7 +200,7 @@ export async function fetchRelease(tag: string | undefined): Promise<unknown> {
   }
   // A body that is not JSON (a captive portal's page, a proxy's error
   // page served with a 200) is the same refusal as a cut one.
-  return await readOrRefuse(() => res.json() as Promise<unknown>, url, 'read the release')
+  return await readOrRefuse(() => res.json(), url, 'read the release')
 }
 
 /**

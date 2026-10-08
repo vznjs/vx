@@ -24,7 +24,8 @@ import {
   refuseUnknownOptions,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadlineNamed } from '../remote-deadline.js'
+import { deadline } from '../remote-deadline.js'
+import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
@@ -55,6 +56,12 @@ export interface TurboCacheOptions {
   uploadTimeoutMs?: number
   /** Resends of a request answered 429 / 5xx or never connected (default 1, Turbo's); 0 turns them off. */
   retries?: number
+  /**
+   * Send Turbo's preflight (`OPTIONS`) before each artifact request and
+   * follow its `Location`, or `TURBO_PREFLIGHT` / turbo.json's
+   * `remoteCache.preflight`; default off.
+   */
+  preflight?: boolean
 }
 
 /** turbo.json's `remoteCache` block: the source below Turbo's environment, as in Turbo. */
@@ -66,6 +73,7 @@ export interface TurboJsonRemoteCache {
   enabled?: unknown
   timeout?: unknown
   uploadTimeout?: unknown
+  preflight?: unknown
 }
 
 /** `.turbo/config.json`'s fields, under any of the spellings Turbo accepts. */
@@ -85,6 +93,7 @@ export interface TurboCacheConfig {
   timeoutMs: number
   uploadTimeoutMs: number
   retries: number
+  preflight: boolean
 }
 
 /** Turbo's signature message prefix (`crates/turborepo-cache/src/signature_authentication.rs`). */
@@ -250,18 +259,14 @@ export function resolveTurboCacheConfig(
     fromFile(file.teamId)
   const teamSlug =
     options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
+  const preflight =
+    options.preflight ??
+    truthy(env['TURBO_PREFLIGHT'], 'TURBO_PREFLIGHT') ??
+    file.preflight === true
   // Turbo signs only under `remoteCache.signature: true`; the env key alone
   // signs nothing there, and a short one here refused the whole cache.
   // `TURBO_SIGNATURE` (1/true, 0/false) sits above turbo.json, as in Turbo.
-  const signEnv = env['TURBO_SIGNATURE']
-  let signing = file.signature === true
-  if (signEnv !== undefined && signEnv !== '') {
-    if (!/^(1|0|true|false)$/.test(signEnv))
-      throw new Error(
-        `vx/turbo-cache: TURBO_SIGNATURE should be 1 or 0, got ${JSON.stringify(signEnv)}`,
-      )
-    signing = signEnv === '1' || signEnv === 'true'
-  }
+  const signing = truthy(env['TURBO_SIGNATURE'], 'TURBO_SIGNATURE') ?? file.signature === true
   const signatureKey =
     options.signatureKey ?? (signing ? env['TURBO_REMOTE_CACHE_SIGNATURE_KEY'] : undefined)
   if (signatureKey !== undefined) {
@@ -303,7 +308,16 @@ export function resolveTurboCacheConfig(
       seconds(file.uploadTimeout, 'remoteCache.uploadTimeout') ??
       60_000,
     retries,
+    preflight,
   }
+}
+
+/** Turbo's `truth_env_var`: 1/true, 0/false; unset or empty is `undefined`. */
+function truthy(v: string | undefined, name: string): boolean | undefined {
+  if (v === undefined || v === '') return undefined
+  if (!/^(1|0|true|false)$/.test(v))
+    throw new Error(`vx/turbo-cache: ${name} should be 1 or 0, got ${JSON.stringify(v)}`)
+  return v === '1' || v === 'true'
 }
 
 /**
@@ -365,6 +379,7 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
  */
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  private readonly breaker = new OutageBreaker()
   /**
    * A `403` on an upload is a read-only token or server
    * (turborepo-remote-cache's `READ_ONLY` and its JWTs without the write
@@ -396,11 +411,47 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return u.toString()
   }
 
-  private headers(extra: Record<string, string> = {}): Record<string, string> {
+  private headers(extra: Record<string, string> = {}, auth = true): Record<string, string> {
     return {
-      Authorization: `Bearer ${this.config.token}`,
+      ...(auth ? { Authorization: `Bearer ${this.config.token}` } : {}),
       'x-artifact-client-interactive': process.stdout.isTTY ? '1' : '0',
       ...extra,
+    }
+  }
+
+  /**
+   * Turbo's preflight: an `OPTIONS` to the request's URL names the method
+   * and headers to come; the answer's `Location` (relative to `apiUrl`) is
+   * where the request goes, as given — a signed storage URL signs its own
+   * query, so nothing is appended — and the token goes along only when
+   * `Access-Control-Allow-Headers` admits `Authorization` (or `*`), so it
+   * never reaches a third-party store. The answer's status is not read, as
+   * in Turbo.
+   */
+  private async preflight(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    signal: () => AbortSignal | undefined,
+  ): Promise<{ url: string; auth: boolean }> {
+    const s = signal()
+    const res = await this.fetchImpl(url, {
+      method: 'OPTIONS',
+      headers: {
+        Authorization: `Bearer ${this.config.token}`,
+        'Access-Control-Request-Method': method === 'HEAD' ? 'GET' : method,
+        'Access-Control-Request-Headers': ['Authorization', ...Object.keys(headers)].join(', '),
+      },
+      ...(s === undefined ? {} : { signal: s }),
+    })
+    await res.body?.cancel()
+    const location = res.headers.get('location')
+    const allowed = res.headers.get('access-control-allow-headers') ?? ''
+    return {
+      url: location === null ? res.url || url : new URL(location, this.config.apiUrl).toString(),
+      auth:
+        allowed.trim() === '*' ||
+        allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),
     }
   }
 
@@ -416,20 +467,29 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
     const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
-    const res = await withRetry(
-      () =>
-        this.fetchImpl(this.url(pathname), {
-          method,
-          headers: this.headers(init.headers),
-          ...(init.body === undefined ? {} : { body: init.body }),
-          // 0 is Turbo's "no deadline".
-          ...(timeoutMs === 0 ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
-        }),
-      this.config.retries,
-      this.wait,
-    ).catch((err: unknown) => {
-      throw deadlineNamed(err, timeoutMs)
-    })
+    // 0 is Turbo's "no deadline".
+    const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
+    // The batch query is never preflighted, as in Turbo.
+    const preflight = this.config.preflight && method !== 'POST'
+    const res = await this.breaker.send(() =>
+      withRetry(
+        async () => {
+          const extra = init.headers ?? {}
+          const to = preflight
+            ? await this.preflight(this.url(pathname), method, extra, signal)
+            : { url: this.url(pathname), auth: true }
+          const s = signal()
+          return this.fetchImpl(to.url, {
+            method,
+            headers: this.headers(extra, to.auth),
+            ...(init.body === undefined ? {} : { body: init.body }),
+            ...(s === undefined ? {} : { signal: s }),
+          })
+        },
+        this.config.retries,
+        this.wait,
+      ),
+    )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
@@ -551,7 +611,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       timeoutMs: this.config.uploadTimeoutMs,
     })
     if (res === undefined) return
-    if (res.status !== 200 && res.status !== 202) throw new Error(`HTTP ${res.status}`)
+    // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
+    // 204 stored the artifact and was counted a failed upload.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
   }
 }
 
@@ -636,6 +698,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
   retries: 'number',
+  preflight: 'boolean',
 }
 
 /**

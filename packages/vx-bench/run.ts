@@ -10,6 +10,8 @@
 //   warm-no-restore— second run over an intact tree (stat-check skip
 //                    path; the steady-state dev loop)
 //   warm-restore   — outputs deleted, cache intact (full extract path)
+//   one edited     — one package's source changed per rep (one miss, every
+//                    other task a hit: the edit-and-rerun dev loop)
 //
 // vx is invoked as a real subprocess (`bun src/bin.ts run build --all
 // --frozen`, or the same through `$VX_BIN`) so process startup and discovery
@@ -20,11 +22,12 @@
 // does not (measured 2026-09-09 on a two-package workspace: 114 vs
 // 71 ms), so a small-workspace number should be taken through VX_BIN.
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
+import { deleteDist, missingDist } from './outputs.js'
 
 const projects = Number(process.argv[2] ?? 100)
 const reps = Number(process.argv[3] ?? 3)
@@ -64,18 +67,20 @@ if (gen.exitCode !== 0) throw new Error('generate failed')
 await vx(ws, ['lock'])
 
 const wipeCache = () => rm(path.join(ws, '.vx'), { recursive: true, force: true })
-const wipeOutputs = async () => {
-  const glob = new Bun.Glob('packages/*/dist')
-  for await (const d of glob.scan({ cwd: ws, onlyFiles: false })) {
-    await rm(path.join(ws, d), { recursive: true, force: true })
-  }
+const wipeOutputs = () => deleteDist(ws)
+// A rep that left an output unwritten timed less work than its row claims.
+const vxBuilt = async (cwd: string) => {
+  const ms = await vxRun(cwd)
+  const missing = await missingDist(cwd, 'out.js')
+  if (missing.length > 0) throw new Error(`${missing.length} dist/ missing, e.g. ${missing[0]}`)
+  return ms
 }
 
 const noCache: number[] = []
 for (let i = 0; i < reps; i++) {
   await wipeCache()
   await wipeOutputs()
-  noCache.push(await vxRun(ws))
+  noCache.push(await vxBuilt(ws))
 }
 
 // Warm the cache once, then measure the all-hits stat-skip path.
@@ -88,7 +93,15 @@ for (let i = 0; i < reps; i++) warmNoRestore.push(await vxRun(ws))
 const warmRestore: number[] = []
 for (let i = 0; i < reps; i++) {
   await wipeOutputs()
-  warmRestore.push(await vxRun(ws))
+  warmRestore.push(await vxBuilt(ws))
+}
+
+// A fresh value each rep, so every rep misses the edited task.
+const edited = path.join(ws, 'packages', 'pkg-000', 'src', 'index.js')
+const oneEdited: number[] = []
+for (let i = 0; i < reps; i++) {
+  await writeFile(edited, `export const v = ${-1 - i}\n`)
+  oneEdited.push(await vxRun(ws))
 }
 
 await rm(ws, { recursive: true, force: true })
@@ -99,3 +112,4 @@ console.log(`\nvx benchmark — ${projects} projects × build, median of ${reps}
 console.log(`  no-cache        : ${fmt(noCache)}`)
 console.log(`  warm, no restore: ${fmt(warmNoRestore)}`)
 console.log(`  warm, restore   : ${fmt(warmRestore)}`)
+console.log(`  one edited      : ${fmt(oneEdited)}`)

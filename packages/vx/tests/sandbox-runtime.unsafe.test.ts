@@ -2352,6 +2352,106 @@ describe.skipIf(!available || process.platform !== 'linux')(
       },
       TIMEOUT,
     )
+
+    // pnpm and Bun link ui's own dependency under ui's `node_modules`, so
+    // app -> ui -> core put core where the scan never looked: importing ui
+    // failed with ENOENT on core, no violation, cached or not.
+    /** app imports ui, ui re-exports core, each linked under its dependant. */
+    const chain = async (opts: { cache: boolean; uiKeysCore: boolean }): Promise<string> => {
+      const source = (dependsOn: string[]) => `
+        export default {
+          tasks: {
+            source: {
+              dependsOn: ${JSON.stringify(dependsOn)},
+              exec: { command: 'true' },
+              cache: { inputs: { files: ['*.js'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `
+      const core = await addProject(fixture.root, '@x/core', {
+        files: { 'index.js': 'export const core = "core 1"\n' },
+        config: source([]),
+      })
+      const ui = await addProject(fixture.root, '@x/ui', {
+        deps: { '@x/core': 'workspace:*' },
+        files: { 'index.js': 'export { core } from "@x/core"\n' },
+        config: source(opts.uiKeysCore ? ['^source'] : []),
+      })
+      const app = await addProject(fixture.root, '@x/app', {
+        deps: { '@x/ui': 'workspace:*' },
+        files: {
+          'src/check.js': 'import { core } from "@x/ui"\nawait Bun.write("dist/out.txt", core)\n',
+        },
+        config: `
+          export default {
+            tasks: {
+              test: {
+                exec: {
+                  command: 'mkdir -p dist && bun src/check.js',
+                  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+                },
+                dependsOn: ['^source'],
+                ${opts.cache ? "cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }," : ''}
+              },
+            },
+          }
+        `,
+      })
+      for (const [from, to] of [
+        [app, 'x-ui'],
+        [ui, 'x-core'],
+      ] as const) {
+        await mkdir(path.join(from, 'node_modules', '@x'), { recursive: true })
+        await symlink(`../../../${to}`, path.join(from, 'node_modules', '@x', to.slice(2)))
+      }
+      return core
+    }
+    const out = () =>
+      readFile(path.join(fixture.root, 'packages', 'x-app', 'dist', 'out.txt'), 'utf8')
+
+    it(
+      "a dependency's own workspace dependency is granted to a task with no `cache`",
+      async () => {
+        await chain({ cache: false, uiKeysCore: false })
+        const r = await runTest()
+        expectOk(r, fixture)
+        expect(testOutcome(r)?.sandboxViolations).toBeUndefined()
+        expect(await out()).toBe('core 1')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "a dependency's own workspace dependency the key answers for is granted, and an edit re-runs",
+      async () => {
+        const core = await chain({ cache: true, uiKeysCore: true })
+        expectOk(await runTest(), fixture)
+        expect(await out()).toBe('core 1')
+        await writeFile(path.join(core, 'index.js'), 'export const core = "core 2"\n')
+        const r = await runTest()
+        expect(testOutcome(r)?.status).toBe('success')
+        expect(await out()).toBe('core 2')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "a dependency's own workspace dependency the key does not answer for is withheld, with the hint",
+      async () => {
+        await chain({ cache: true, uiKeysCore: false })
+        const r = testOutcome(await runTest())
+        expect(r?.status).toBe('failed')
+        expect(r?.sandboxViolationLines?.at(-1)).toBe(
+          'vx: @x/app#test read `packages/x-core` through `packages/x-ui/node_modules/@x/core`, ' +
+            'and its key folds no task of @x/core, so an edit there would not re-run it. Add a ' +
+            '`dependsOn` edge that reaches one (`^build` where @x/core#build keys its sources, or ' +
+            'a `source` task: `@x/core#source`), or grant and key the files yourself ' +
+            '(`allow.read` plus `cache.inputs.workspaceFiles`).',
+        )
+      },
+      TIMEOUT,
+    )
   },
 )
 
@@ -3212,9 +3312,33 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
 
   it('dedups per syscall AND path, so two calls on one path stay two lines', async () => {
     const ws = path.join(dir, 'ws')
+    // A probe's ENOENT counts only where the host has the path.
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'x'), '')
     expect(
       await targets([at(`${ws}/x`), `1 access("${ws}/x", 4) = -1 ENOENT (x)`].join('\n')),
     ).toEqual([`${ws}/x`, `${ws}/x`])
+  })
+
+  it("drops a probe's ENOENT where the host has no file, never an openat's", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'gen.sh'), '')
+    const exec = (p: string): string =>
+      `1 execve("${p}", ["${p}", "f()"], 0x7ffd /* 9 vars */) = -1 ENOENT (x)`
+    expect(
+      (
+        await produce(
+          [
+            exec(`${ws}/gen.sh`),
+            exec(`${ws}/gone.sh`),
+            `1 faccessat2(AT_FDCWD, "${ws}/gone", X_OK, AT_EACCESS) = -1 ENOENT (x)`,
+            `1 access("${ws}/gone", R_OK) = -1 EACCES (x)`,
+            at(`${ws}/gone`),
+          ].join('\n'),
+        )
+      ).map((v) => `${v.line.split('(')[0]} ${v.target}`),
+    ).toEqual([`execve ${ws}/gen.sh`, `access ${ws}/gone`, `openat ${ws}/gone`])
   })
 
   // Item 652: the row above holds the KEY; nothing held the dedup itself —
@@ -3673,6 +3797,49 @@ describe('reportableViolations', () => {
     }
   })
 
+  // The row above's seatbelt twin: the report judges a seatbelt record by
+  // `path`, where it lands, and `ignore` judged it by `target`, the path as
+  // logged. A record named through a link was reported inside the project
+  // and no pattern for it matched, so the denial `ignore` names failed the
+  // task.
+  it('matches an `ignore` pattern against where a seatbelt record lands', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-ignore-mac-')))
+    try {
+      await mkdir(path.join(d, 'proj'))
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const alias = path.join(d, 'alias')
+      const recorded = [
+        mac('file-write-create', `${alias}/a.bun-build`),
+        mac('file-read-data', `${alias}/gen/x.ts`),
+        mac('file-read-data', `${alias}/kept.ts`),
+        mac('network-outbound', 'example.com:443'),
+      ]
+      const cfg = resolveSandboxConfig(
+        {
+          ignore: {
+            write: ['*.bun-build'],
+            read: ['gen/**'],
+            network: ['example.com:443'],
+          },
+        },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: cfg }))).toEqual([
+        `bun(1) deny(1) file-read-data ${alias}/kept.ts`,
+      ])
+      // CONTROL: each list still silences only its own operation.
+      const swapped = resolveSandboxConfig(
+        { ignore: { read: ['*.bun-build'], write: ['gen/**'] } },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: swapped }))).toEqual(
+        recorded.map((v) => v.line),
+      )
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
+
   // A `~` pattern was kept as written and matched no target: every producer
   // records an absolute path, so `ignore: { read: ['~/.cache/*'] }`
   // silenced nothing (sweep of B-11, `ign-tilde`).
@@ -3730,6 +3897,52 @@ describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt
     TIMEOUT,
   )
 })
+
+// Release-assets' darwin upload granted `systemInfo: ['hw.optional.neon']`
+// and still died on `deny(1) sysctl-read hw.optional.neon`: the grant wrote
+// only a `system-info` rule, and Bun reads it as a sysctl.
+describe.skipIf(process.platform !== 'darwin' || process.arch !== 'arm64')(
+  'a systemInfo grant under seatbelt',
+  () => {
+    it(
+      'lets the task sysctl-read the name it grants',
+      async () => {
+        if (!(await sandboxAvailable('systemInfo grant under seatbelt'))) return
+        await initSandbox()
+        const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-sysctl-')))
+        try {
+          const run = (systemInfo: string[]) =>
+            runSandboxed({
+              // sysctlbyname(3), the call Bun makes, as its raw syscall
+              // (274). /usr/sbin/sysctl exited 1 under the grant on macOS
+              // CI, with no stderr kept to say why.
+              command: `/usr/bin/perl -e '$n="hw.optional.neon";$v=pack("L",0);$l=pack("Q",4);exit 1 if syscall(274,$n,length($n),$v,$l,0,0);print unpack("L",$v)'`,
+              cwd: dir,
+              env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+              baseAllowRead: [],
+              baseDenyRead: [],
+              reportWithin: dir,
+              reportLinked: [],
+              config: resolveSandboxConfig({ allow: { read: ['.'], systemInfo } }, dir),
+            })
+          const granted = await run(['hw.optional.neon'])
+          // CONTROL: without the grant the read is refused.
+          const bare = await run([])
+          expect({
+            out: granted.stdout.trim(),
+            code: granted.exitCode,
+            err: granted.exitCode === 0 ? '' : granted.stderr,
+            bareOk: bare.exitCode === 0,
+          }).toEqual({ out: '1', code: 0, err: '', bareOk: false })
+        } finally {
+          await resetSandbox()
+          await rm(dir, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  },
+)
 
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
   it(
@@ -4377,10 +4590,11 @@ describe('localBinding port list — the pure halves', () => {
     const sock = portBridgeSocket('t1', 3000)
     expect(sock.endsWith('/vx-port-t1-3000.sock')).toBe(true)
     const inner = portBridgeInner([3000, 3001], 't1')
+    const dial = path.join(path.dirname(sock), 'vx-port-dial-t1.sh')
     expect(inner).toContain(
-      `socat UNIX-LISTEN:${sock},fork,unlink-early TCP:127.0.0.1:3000 >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${sock},fork,unlink-early 'SYSTEM:sh ${dial} 3000' >/dev/null 2>&1 &`,
     )
-    expect(inner).toContain('TCP:127.0.0.1:3001')
+    expect(inner).toContain(`'SYSTEM:sh ${dial} 3001'`)
     // Backgrounded socats are reaped with the shell, as SRT reaps its own.
     expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
     expect(portBridgeHostArgv('t1', 3000)).toEqual([
@@ -4410,9 +4624,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
       return port
     }
 
-    const files = (port: number) => ({
+    function ipv6Loopback(): boolean {
+      try {
+        Bun.listen({ hostname: '::1', port: 0, socket: { data() {} } }).stop(true)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const files = (port: number, hostname = '127.0.0.1') => ({
       'serve.ts':
-        `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('hi') })\n` +
+        `Bun.serve({ port: ${port}, hostname: '${hostname}', fetch: () => new Response('hi') })\n` +
         `console.log('serving')\n`,
       'client.ts':
         `const r = await fetch('http://127.0.0.1:${port}/')\n` +
@@ -4524,6 +4747,31 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // The bridge lives exactly as long as the server: the run tore the
         // server down, so the host's side is gone and the port is closed.
         await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow()
+      },
+      TIMEOUT,
+    )
+
+    // A box with no IPv6 has no ::1 to bind; the dial choice is then held
+    // by port-bridge-dial.test.ts alone (X-91).
+    it.skipIf(!ipv6Loopback())(
+      'a server bound to ::1 alone is reachable through the bridge',
+      async () => {
+        // The task's side dialled 127.0.0.1 only, so Vite's `localhost` on
+        // a host that resolves ::1 first was refused.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port, '::1'),
+          config: serverConfig(`[${port}]`),
+        })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(fixture.root, 'packages', 'srv', 'out.txt'), 'utf8')).toBe(
+          'hi',
+        )
       },
       TIMEOUT,
     )
@@ -5117,6 +5365,37 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(r.violations.map((v) => v.target)).toEqual([path.join(proj, 'src', 'secret.txt')])
   })
 
+  // An exec or an access probe of a hidden file was untraced, so
+  // `./gen.sh || fallback` passed with no report. A hidden path answers
+  // ENOENT, as a missing one does: only the host's file is a refusal.
+  it('reports a refused exec or access probe, not a probe of a missing file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'gen.sh'), '#!/bin/sh\necho gen\n', { mode: 0o755 })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args(
+        './src/gen.sh || test -r src/x.txt || ./src/gone.sh || test -x src/gone || echo fell back',
+        {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+        },
+      ),
+    )
+    // `test -r` is `faccessat2`, `faccessat` or `access` by libc and kernel.
+    const call = (line: string): string =>
+      line.split('(')[0]!.replace(/^f?access(at2?)?$/, 'access')
+    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
+      0,
+      'fell back\n',
+      [`execve ${path.join(proj, 'src', 'gen.sh')}`, `access ${path.join(proj, 'src', 'x.txt')}`],
+    ])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
@@ -5230,8 +5509,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces openat only, through the seccomp filter', async () => {
-    // The flag is the difference between tracing one syscall and stopping
+  it('traces the reads, execs and access probes, through the seccomp filter', async () => {
+    // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     try {
@@ -5246,7 +5525,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',

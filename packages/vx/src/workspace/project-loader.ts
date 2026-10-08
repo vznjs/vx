@@ -127,10 +127,12 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
 }
 
 // What makes Bun run a file as CommonJS is one of these names at the top
-// level (an escaped `\u006dodule` too, so any backslash counts). Source
+// level (an escaped `\u006dodule` too, so any backslash counts), or
+// TypeScript's `export =`, which spells none of them. Source
 // with none of them runs as a module whichever path loads it, so it skips
 // the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
-const COMMONJS_HINT = /\b(?:module|exports|require|this|__dirname|__filename)\b|\\/
+const COMMONJS_HINT =
+  /\b(?:module|exports|require|this|__dirname|__filename)\b|\\|\bexport\s*=(?!=)/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
 const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
@@ -479,6 +481,7 @@ export async function loadProjectConfigs(
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
   let umask = -1
+  let unredirect: (() => void) | undefined
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
@@ -588,6 +591,7 @@ export async function loadProjectConfigs(
       else misses.push(i)
     }
     if (misses.length > 0) {
+      unredirect = stdoutToStderr()
       builtins = builtinSnapshot()
       env = { ...process.env }
       cwd = process.cwd()
@@ -651,6 +655,7 @@ export async function loadProjectConfigs(
       )
     return results.map((r) => (r as Loaded).config)
   } finally {
+    unredirect?.()
     endRound()
     if (store !== undefined && !tainted) {
       if (evals.length > 0) {
@@ -662,6 +667,72 @@ export async function loadProjectConfigs(
         else for (const [p, files] of learnedClosures) store.putConfigClosure(p, files)
       }
     }
+  }
+}
+
+/**
+ * Every route to fd 1 sent to stderr while configs evaluate in this
+ * process; returns the release. A verb's stdout is its output (`vx show
+ * --format json`), and a config's `console.log` came out ahead of the
+ * JSON. The worker does the same for a repeat load (D-64), `vx mcp` for
+ * its whole serve. Taken before a round's built-in snapshot and released
+ * after its check, so the guard sees no change of vx's own.
+ *
+ * Counted, because rounds overlap (`--affected`'s per-file sweep loads each
+ * config in a round of its own): a second install over the first moved
+ * `Bun.write` and `console` under the first round's snapshot, which refused
+ * the loads, and the undos ran out of order and left a redirect in place
+ * for good. The first taker installs; the last release restores.
+ */
+let redirectHolders = 0
+let undoRedirect = (): void => {}
+/**
+ * Bun's own `Console`, taken at load: the console a round finds may be a
+ * constructed one (`vx mcp` serves under its own), which has no `Console`.
+ * The global's, not `node:console`'s: the playground bundles this module
+ * for the browser, where that specifier is a stub.
+ */
+const BunConsole = (globalThis.console as { Console?: typeof console.Console }).Console
+
+function stdoutToStderr(): () => void {
+  if (redirectHolders++ === 0) undoRedirect = installRedirect()
+  return () => {
+    if (--redirectHolders === 0) undoRedirect()
+  }
+}
+
+function installRedirect(): () => void {
+  const out = process.stdout
+  const ownWrite = Object.getOwnPropertyDescriptor(out, 'write')
+  const ownConsole = globalThis.console
+  const bun = Bun as { write: typeof Bun.write }
+  const ownBunWrite = Bun.write
+  const ownWriter = Object.getOwnPropertyDescriptor(Bun.stdout, 'writer')
+  out.write = ((...args: Parameters<typeof process.stderr.write>) =>
+    process.stderr.write(...args)) as typeof out.write
+  bun.write = ((dest: unknown, ...rest: unknown[]) =>
+    (ownBunWrite as (...a: unknown[]) => Promise<number>)(
+      dest === Bun.stdout ? Bun.stderr : dest,
+      ...rest,
+    )) as typeof Bun.write
+  ;(Bun.stdout as { writer: typeof Bun.stdout.writer }).writer = ((
+    ...args: Parameters<typeof Bun.stderr.writer>
+  ) => Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
+  // Bun's console adds `write`, which a constructed Console lacks.
+  globalThis.console = Object.assign(new BunConsole!(process.stderr, process.stderr), {
+    write: (...data: string[]) => {
+      const text = data.join('')
+      process.stderr.write(text)
+      return text.length
+    },
+  })
+  return () => {
+    if (ownWrite === undefined) delete (out as { write?: unknown }).write
+    else Object.defineProperty(out, 'write', ownWrite)
+    bun.write = ownBunWrite
+    if (ownWriter === undefined) delete (Bun.stdout as { writer?: unknown }).writer
+    else Object.defineProperty(Bun.stdout, 'writer', ownWriter)
+    globalThis.console = ownConsole
   }
 }
 
@@ -749,8 +820,10 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'semver',
   'serve',
   'sleep',
+  'sleepSync',
   'spawn',
   'spawnSync',
+  'stderr',
   'stdout',
   'stringWidth',
   'stripANSI',
@@ -1039,6 +1112,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // left out: it loads first in every run, filtered or not, so none
     // depends on what else loaded (D-122's case), and plugins' tests and
     // tools hand state through them.
+    const unredirect = stdoutToStderr()
     const builtins = builtinSnapshot('globalThis', true)
     const env = { ...process.env }
     const cwd = process.cwd()
@@ -1053,6 +1127,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
         ...restoreCwd(cwd),
         ...restoreUmask(umask),
       ]
+      unredirect()
       // eslint-disable-next-line no-unsafe-finally -- the refusal outranks the load's own error
       if (changed.length > 0) throw builtinsChanged(changed, configPath)
     }
