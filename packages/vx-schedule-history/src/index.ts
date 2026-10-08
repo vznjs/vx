@@ -106,8 +106,14 @@ function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => vo
     check('resources.headroom', options.resources.headroom, String(DEFAULT_HEADROOM))
   }
   for (const [id, r] of Object.entries(options.reservations ?? {})) {
+    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
+      bad.push(
+        `reservations[${JSON.stringify(id)}] ${JSON.stringify(r) ?? String(r)} (using none; must be { cpus?, memory? })`,
+      )
+      continue
+    }
     for (const axis of ['cpus', 'memory'] as const) {
-      const v = (r as Record<string, unknown> | null)?.[axis]
+      const v = r[axis]
       if (v !== 0) check(`reservations[${JSON.stringify(id)}].${axis}`, v, 'none')
     }
   }
@@ -199,6 +205,18 @@ const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
 
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('scheduleHistoryPlugin()', options, SCHEDULE_HISTORY_KEYS)
+  // `'any'` above lets `null` through, and every run then failed in
+  // `schedule` reading `null.headroom`.
+  const { resources } = options
+  if (
+    resources !== undefined &&
+    resources !== false &&
+    (resources === null || typeof resources !== 'object' || Array.isArray(resources))
+  ) {
+    throw new UserError(
+      `scheduleHistoryPlugin() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+    )
+  }
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {
@@ -232,7 +250,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     Object.entries(declaredOf(options) ?? {}),
   )
   if (options.resources !== false || options.reservations !== undefined) {
-    const memoryMb = memoryBudgetMb(options)
+    // Read on the first admit: every config evaluation runs this factory,
+    // and the default budget is cgroup reads on Linux.
+    let memoryMb: number | undefined
     hooks.admit = (task, ctx) =>
       admits(
         task.id,
@@ -240,7 +260,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         reservations,
         {
           cpus: ctx.concurrency,
-          memory: memoryMb,
+          memory: (memoryMb ??= memoryBudgetMb(options)),
         },
       )
   }

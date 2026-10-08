@@ -5,7 +5,7 @@
 // renamed file the old path's verdict, trusting a blob that stands for
 // other bytes. The index file's bytes hold the path.
 
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -104,7 +104,12 @@ it('an index written as the enumeration starts asks no verdict; an older one doe
   git('-c', 'core.autocrlf=true', 'add', 'f.txt')
   const lying: BlobSizeMemo = { ...memo(), blobVerdict: () => [] }
 
-  // The index was written just now: the lie is not asked.
+  // The index was written just now: the lie is not asked. A loaded runner
+  // took longer than the racy window between `git add` and the call, so
+  // the index's ctime is moved to now here (bytes and mtime kept).
+  const index = path.join(root, '.git', 'index')
+  const st = await stat(index)
+  await utimes(index, st.atime, st.mtime)
   expect(await trusted(lying)).toEqual(['keep.txt'])
   // Past the racy window (FILE_HASH_RACY_MS), the index is old enough for
   // its key, and the memo's word is taken: the control that it is asked.

@@ -3,7 +3,8 @@
 // scheduler already reads; the pins here are the rounding, the headroom,
 // the thresholds, the packing rule and the one rule that matters most — a
 // declared reservation is never overridden.
-import { describe, expect, it } from 'bun:test'
+import os from 'node:os'
+import { describe, expect, it, spyOn } from 'bun:test'
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
 import { admits, resourceEstimates, scheduleHistoryPlugin, withDeclared } from '../src/index.js'
 
@@ -190,6 +191,22 @@ describe('the reservation rules the sweep found unheld', () => {
     expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
   })
 
+  // Every config evaluation runs the factory (`vx info`, `vx mcp`, a plan):
+  // the machine's memory, cgroup reads on Linux, is paid only by a run.
+  it('the memory budget is read on the first admit, once; not by the factory', () => {
+    const totalmem = spyOn(os, 'totalmem')
+    try {
+      const plugin = scheduleHistoryPlugin()
+      const declared = totalmem.mock.calls.length
+      const admitCtx = { running: [], concurrency: 4 }
+      plugin.admit!(node('a#build') as never, admitCtx as never)
+      plugin.admit!(node('a#build') as never, admitCtx as never)
+      expect([declared, totalmem.mock.calls.length]).toEqual([0, 1])
+    } finally {
+      totalmem.mockRestore()
+    }
+  })
+
   // A NaN budget fits no reservation: every task that reserved memory
   // waited for an idle machine and the run went serial, unannounced.
   it('a `memory` that is no number above 0 packs against the default; one warning names it', async () => {
@@ -238,8 +255,10 @@ describe('the reservation rules the sweep found unheld', () => {
         'b#build': { memory: 512, cpus: -1 },
         'c#build': { memory: 0 },
         'd#build': { memory: 512, cpus: Number('x') },
-        // A config typo, not a type: no crash, no reservation, no word.
+        // A config typo, not a type: no crash, no reservation, but a word —
+        // `vx history` showed each declared with nothing reserved.
         'e#build': null as never,
+        'f#build': 2048 as never,
       },
     })
     const beside = (id: string, running: string) =>
@@ -249,10 +268,11 @@ describe('the reservation rules the sweep found unheld', () => {
       beside('a#build', 'b#build'),
       beside('d#build', 'b#build'),
       beside('e#build', 'd#build'),
-    ]).toEqual([true, true, true, true])
+      beside('f#build', 'b#build'),
+    ]).toEqual([true, true, true, true, true])
     await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(warned[0]).toBe(
-      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none) — each must be a finite number above 0',
+      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none), reservations["e#build"] null (using none; must be { cpus?, memory? }), reservations["f#build"] 2048 (using none; must be { cpus?, memory? }) — each must be a finite number above 0',
     )
   })
 
