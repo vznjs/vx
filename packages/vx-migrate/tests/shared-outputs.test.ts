@@ -246,4 +246,54 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
     ])
     expect([inputsOf(r), r.todos.length]).toEqual([undefined, 1])
   })
+
+  // Core refuses a project's `inputs.files` over another task's workspace
+  // output inside it (X-135): Turbo's `**/*` beside a codegen writing
+  // `packages/lib/generated/**` from another package.
+  it("takes another task's workspace output back from a project's own inputs", () => {
+    const writer = (out: string): GeneratedTask => ({
+      name: 'gen',
+      todos: [],
+      task: {
+        exec: { command: 'gen' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { workspaceFiles: [out] } },
+      },
+    })
+    const lib = reader('build', ['**/*'])
+    const root = reader('lint', ['**/*'])
+    const other = reader('test', ['src/**'])
+    excludeWorkspaceOutputs('/w', [
+      { name: 'app', dir: '/w/packages/app', tasks: [writer('packages/lib/generated/**')] },
+      { name: 'lib', dir: '/w/packages/lib', tasks: [lib, other] },
+      { name: 'root', dir: '/w', tasks: [root] },
+    ])
+    expect([
+      inputsOf(lib)?.['files'],
+      inputsOf(other)?.['files'],
+      inputsOf(root)?.['files'],
+    ]).toEqual([['**/*', '!generated/**'], ['src/**'], ['**/*', '!packages/lib/generated/**']])
+  })
+
+  it('uncaches a project reader of a literal an output reaches from above', () => {
+    const writer: GeneratedTask = {
+      name: 'gen',
+      todos: [],
+      task: {
+        exec: { command: 'gen' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { workspaceFiles: ['**/gen/**'] } },
+      },
+    }
+    const literal = reader('test', ['gen/a.ts'])
+    excludeWorkspaceOutputs('/w', [
+      { name: 'app', dir: '/w/packages/app', tasks: [writer] },
+      { name: 'lib', dir: '/w/packages/lib', tasks: [literal] },
+    ])
+    expect([inputsOf(literal), literal.todos]).toEqual([
+      undefined,
+      [
+        'reads "gen/a.ts", which app#gen writes — vx keys a task only on files no other task ' +
+          'writes, so it runs uncached; read the source instead in a vx.config to cache it',
+      ],
+    ])
+  })
 })

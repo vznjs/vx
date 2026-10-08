@@ -124,11 +124,11 @@ If no task name is given:
 
 Exit codes:
 
-| Code                  | When                                                                                                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                        |
-| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                    |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
+| Code                  | When                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                                                                                                                                                                                     |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                                                                 |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT.
@@ -291,10 +291,14 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
 change seeds tasks in the projects it touches:
 
 - a cached task when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`);
+  (`files`, `workspaceFiles`), or a changed submodule or embedded
+  repository is one its `workspaceFiles` may reach into (git reports it
+  as one path; a glob whose fixed prefix is above or inside it counts);
 - every task of a project whose `package.json` or `vx.config.*`
   changed, or that holds a changed path no cached task of its declares
-  (vx cannot prove that path re-keys nothing), or that a lockfile
+  (vx cannot prove that path re-keys nothing), or that holds a changed
+  submodule or embedded repository (git reports it as one path, and no
+  task's globs can say whether they reach inside), or that a lockfile
   claim, a manifest edge at the base or a config import names;
 - an uncached task when a changed path lies in its project or the
   project is reached whole; a root file another task of its declares
@@ -337,9 +341,10 @@ as a change (input hashing sees it, so `--affected` must too). A
 project inside a submodule or an embedded repository is selected when
 git reports that repository changed — a dirty or moved submodule
 (`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
-the workspace repository sees the nested one as a single path, so a
-change inside is a change to it, and every project under it is
-selected. A repository's own request to hide submodules from a diff
+the workspace repository sees the nested one as a single path (`git
+diff --raw`'s gitlink mode, 160000, on either side names one), so a change inside is a
+change to it, and every project under it is selected, the project that
+holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
@@ -400,10 +405,10 @@ to no project and no `workspaceFiles` glob names it. The scan is
 STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
 bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
 other bare specifier is a package, and a lockfile change already selects
-everything. It stops at a project boundary (a root project's files excepted): a config importing
-`../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
-imports inside `lib` do not reach further — `lib` is already selected
-by containment. Import your helpers by bare specifier to opt out. See
+everything. It crosses project boundaries as the evaluation does: a
+config importing `../../packages/lib/preset.ts` is selected when
+`preset.ts` or a file it imports inside `lib` changes. Import your
+helpers by bare specifier to opt out. See
 [`docs/modules/config-imports.md`](./modules/config-imports.md).
 
 **Nothing changed exits 0.** When the selection comes only from
@@ -766,7 +771,9 @@ command.
 
 Explicit override; always beats the flow and CI defaults. `full`
 (frames for executed work, one-liners for quiet cache hits),
-`errors-only` (only failed tasks print; the CI noise budget),
+`errors-only` (only failed tasks print, a server that died on its
+own after ready included, with what it wrote since; the CI noise
+budget),
 `hash-only` (one line per task — outcome word, task id, cache key — and
 no log output at all; the run's audit trail of which key each task
 resolved to, Turbo parity), `none` (no per-task output). The
@@ -1013,7 +1020,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
 became ready — `timeout` (the readiness deadline fired; `exitCode` is
-the kill's, 143 or 137 after the grace, as an ordinary timeout's),
+the kill's, 143 or 137 after the grace, and 143 for a server that
+traps the TERM and exits 0, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
@@ -1243,7 +1251,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour. The line `vx watch: initial
 run...` precedes it.
-2. **Watch loop.** After the initial run finishes, the directory of
+2. **Watch loop.** After the initial run finishes (or once it waits only
+   on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
    anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
@@ -1253,17 +1262,20 @@ run...` precedes it.
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A file a
+   task's input; the cycle after it re-evaluates the file. A `.gitignore`
+   there or in a package glob's directory is a cycle too: inputs are
+   gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
-   run stale (item 949). The directory
+   run stale (item 949). An import whose file is gone stays on the list
+   by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
-   runs is a cycle that runs it, and its directory is watched from then
-   on; a removed one is dropped. An edit to the glob list itself (the
+   runs is a cycle that runs it, and its directory is watched from before
+   that cycle runs, so an edit made during it queues (X-138); a removed one is dropped. An edit to the glob list itself (the
    root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
    the set, so a glob added there is watched from the cycle it triggers
    (item 1018). A base, or a directory a config imports from, removed and made
@@ -1294,7 +1306,8 @@ run...` precedes it.
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
-   with an old mtime by `mv`, `cp -p` or `tar x` still counts), and a
+   with an old mtime by `mv`, `cp -p` or `tar x` still counts, and a
+   symlink's own times are read, never its target's), and a
    path git did not list at the arm that is gone again (vim's `4913`
    write probe, a lock file) is no edit; and
    nothing is judged while a cycle runs — its
@@ -1423,7 +1436,10 @@ dev server stays up while watch idles, and what it writes keeps printing; when t
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
-change starts it again. Stopping watch stops the server too. For dev-server workflows where you want the server
+change starts it again. An edit while a cycle waits only on a server
+that has not printed its `readyWhen` line stops that cycle and starts
+the next, so a fix reaches a server stuck before ready, in the initial
+run too. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
@@ -1548,7 +1564,8 @@ policy on its file time (item 1083).
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
-evicts what that run is restoring. A run it cannot see — another
+evicts what that run is restoring. One started by a task of that run
+is refused instead: the run holds the lock until the task ends. A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).
@@ -2037,7 +2054,7 @@ package's README.
 
 ## Turbo and Nx flags
 
-What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
+What a Turbo, Nx or Vite Task (`vp run`) user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
@@ -2129,6 +2146,13 @@ copy to the source.
 | nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                                            |
 | nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
 | nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                                          |
+| vp     | `-r`, `--recursive`                               | alias   | `--all`                                                                                                                                           |
+| vp     | `-w`, `--workspace-root`                          | alias   | `--filter //` (the root project)                                                                                                                  |
+| vp     | `--concurrency-limit <v>`                         | alias   | `--concurrency <n>`                                                                                                                               |
+| vp     | `--ignore-depends-on`                             | alias   | `--exclude-dependencies`                                                                                                                          |
+| vp     | `--fail-if-no-match`                              | alias   | nothing: a filter that matches nothing already fails the run                                                                                      |
+| vp     | `--log <v>`                                       | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| vp     | `--last-details`                                  | refuse  | `vx last` prints the last run                                                                                                                     |
 
 ## Machine-readable output
 
@@ -2330,7 +2354,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
-  attempts counted as failures. `none` when no key did.
+  attempts counted as failures. A task with no cache block keys on its
+  config alone, so its key says nothing about its inputs: it is never
+  listed. A failure behind a failed dependency, in a run that continues
+  past failures, is that dependency's and counts on no key. `none` when
+  no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2455,7 +2483,9 @@ id), `env` (a declared variable, by digest), `runtime` and
 fingerprint: the lockfile and the other root manifests), `config` (the
 evaluated task config), `upstream` (a dependency's input key — a
 lockfile change moves it too, so that row rides with the
-fingerprint's) and `plugin` (a `key` plugin's material, by name).
+fingerprint's), `plugin` (a `key` plugin's material, by name) and
+`format` (the key format vx itself folds: it moves only with an
+upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
@@ -2544,7 +2574,9 @@ prints `no recorded runs`, exit 0), and past green runs only,
 `--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded). The
+vx run app#test -- …`, with the arguments the run forwarded to the
+tasks that got them; a failed dependency, which never got them, gets a
+line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 
@@ -2654,18 +2686,30 @@ REAPI endpoints, the GitHub token) are in its README; what a TASK sees
 is `exec.env` in `docs/schema.md`, and the two markers vx sets on every
 task are the last row.
 
-| Var                               | Value                 | Default | Effect                                                                                                                                                                                                                                                                                         |
-| --------------------------------- | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run, a `--dry`, or each `vx watch` cycle (`docs/modules/timing.md`).                                                                                                                                                                                   |
-| `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.           |
-| `VX_CACHE_DIR`                    | a path                | none    | The workspace's cache dir, relative to the workspace root, below `--cache-dir` and `vx.workspace`'s `cacheDir`. A named cache dir holds the whole cache and shares nothing; unset, entries live in the user's shared store (`docs/caching.md`). Empty is ignored.                              |
-| `VX_CACHE_SCOPE`                  | a `cacheScope` value  | none    | The run's `cacheScope` (`trusted`, `read-only`, `pr-123`), above `vx.workspace`'s and `github()`'s. Empty is ignored; a value `cacheScope` would refuse is refused before any task.                                                                                                            |
-| `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                          |
-| `VX_READY_NOTICE_MS`              | positive integer (ms) | 10000   | How long a persistent task may take to match `readyWhen` before vx says once what it waits for. Out of range falls back to the default.                                                                                                                                                        |
-| `VX_TEARDOWN_TIMEOUT_MS`          | integer (ms)          | 3000    | The bound on one plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run. Out of range falls back to the default, never clamps: a bound of 24.8 days is no bound.                                                                    |
-| `VX_CONFIG_WORKER_TIMEOUT_MS`     | integer (ms)          | 30000   | How long one `vx.config.ts` evaluation may take, in process or in its worker, before the load fails naming the config (a real evaluation is ~10 ms). A synchronous loop on a first load holds the thread the deadline needs, so it hangs until killed. Out of range falls back to the default. |
-| `VX_WATCH_POLL`                   | any non-empty         | off     | `vx watch` polls every 250 ms from the start instead of probing the OS watcher (§ `vx watch` › How changes are seen).                                                                                                                                                                          |
-| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).          |
+| Var                               | Value                 | Default | Effect                                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run, a `--dry`, or each `vx watch` cycle (`docs/modules/timing.md`).                                                                                                                                                                                                      |
+| `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.                              |
+| `VX_CACHE_DIR`                    | a path                | none    | The workspace's cache dir, relative to the workspace root, below `--cache-dir` and `vx.workspace`'s `cacheDir`. A named cache dir holds the whole cache and shares nothing; unset, entries live in the user's shared store (`docs/caching.md`). Empty is ignored; whitespace alone is refused, as `cacheDir` is.  |
+| `VX_CACHE_SCOPE`                  | a `cacheScope` value  | none    | The run's `cacheScope` (`trusted`, `read-only`, `pr-123`), above `vx.workspace`'s and `github()`'s. Empty is ignored; a value `cacheScope` would refuse is refused before any task.                                                                                                                               |
+| `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                                             |
+| `VX_READY_NOTICE_MS`              | positive integer (ms) | 10000   | How long a persistent task may take to match `readyWhen` before vx says once what it waits for. Out of range falls back to the default.                                                                                                                                                                           |
+| `VX_TEARDOWN_TIMEOUT_MS`          | integer (ms)          | 3000    | The bound on one plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run. Out of range falls back to the default, never clamps: a bound of 24.8 days is no bound.                                                                                       |
+| `VX_CONFIG_WORKER_TIMEOUT_MS`     | integer (ms)          | 30000   | How long one `vx.config.ts` evaluation may take, in process or in its worker, before the load fails naming the config (a real evaluation is ~10 ms). A synchronous loop on a first load holds the thread the deadline needs, so it hangs until killed. Out of range falls back to the default.                    |
+| `VX_WATCH_POLL`                   | any non-empty         | off     | `vx watch` polls every 250 ms from the start instead of probing the OS watcher (§ `vx watch` › How changes are seen).                                                                                                                                                                                             |
+| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).                             |
+| Var                               | Value                 | Default | Effect                                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VX_TIMING`                       | any non-empty         | off     | Print the stage table to stderr after a run, a `--dry`, or each `vx watch` cycle (`docs/modules/timing.md`).                                                                                                                                                                                                      |
+| `VX_TASK_TIMEOUT`                 | positive integer (ms) | none    | The default timeout for tasks without their own `exec.timeout`, one rung below `--timeout` / `RunOptions.timeout` and one above the workspace `timeout`. Empty, non-integer or non-positive is ignored; a value past the largest timer (~24.8 days) is clamped to it, never refused.                              |
+| `VX_CACHE_DIR`                    | a path                | none    | The workspace's cache dir, relative to the workspace root, below `--cache-dir` and `vx.workspace`'s `cacheDir`. A named cache dir holds the whole cache and shares nothing; unset, entries live in the user's shared store (`docs/caching.md`). Empty is ignored.                                                 |
+| `VX_CACHE_SCOPE`                  | a `cacheScope` value  | none    | The run's `cacheScope` (`trusted`, `read-only`, `pr-123`), above `vx.workspace`'s and `github()`'s. Empty is ignored; a value `cacheScope` would refuse is refused before any task.                                                                                                                               |
+| `VX_KILL_GRACE_MS`                | positive integer (ms) | 2000    | The SIGTERM → SIGKILL grace a child that ignores SIGTERM gets: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks. Out of range falls back to the default.                                                                                                                             |
+| `VX_READY_NOTICE_MS`              | positive integer (ms) | 10000   | How long a persistent task may take to match `readyWhen` before vx says once what it waits for. Out of range falls back to the default.                                                                                                                                                                           |
+| `VX_TEARDOWN_TIMEOUT_MS`          | integer (ms)          | 3000    | The bound on one plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run. Out of range falls back to the default, never clamps: a bound of 24.8 days is no bound.                                                                                       |
+| `VX_CONFIG_WORKER_TIMEOUT_MS`     | integer (ms)          | 30000   | How long one `vx.config.ts` evaluation may take, in process or in its worker, before the load fails naming the config (a real evaluation is ~10 ms). A synchronous loop on a first load holds the thread the deadline needs, so it hangs until killed. Out of range (0, or past 2³¹−1) falls back to the default. |
+| `VX_WATCH_POLL`                   | any non-empty         | off     | `vx watch` polls every 250 ms from the start instead of probing the OS watcher (§ `vx watch` › How changes are seen).                                                                                                                                                                                             |
+| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx             | —       | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).                             |
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `FORCE_COLOR`). A truthy `CI` picks the CI output flow and

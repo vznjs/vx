@@ -3,8 +3,6 @@ export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly storeDir: string | undefined
-  readonly storeFallback: string | null
-  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
@@ -66,6 +64,7 @@ export class Cache implements CacheLayer {
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void
@@ -214,6 +213,7 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
@@ -287,6 +287,8 @@ export function machineMemoryBytes(probe: CgroupProbe = {}): number
 export function machineParallelism(probe: CgroupProbe = {}): number
 == function maskedCommand (src/util/secret-mask.ts)
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+== function maskedLine (src/util/secret-mask.ts)
+export function maskedLine(line: string): string
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)
@@ -337,6 +339,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
@@ -809,6 +812,24 @@ export interface InvocationRecord {
 export interface KeyHookContext extends BaseContext {}
 == type Known (src/config.ts)
 type Known<T, Shape> = { [P in keyof T]: P extends keyof Shape ? unknown : never }
+== type KnownExec (src/config.ts)
+type KnownExec<E> = {
+  env?: Known<At<E, 'env'>, ExecEnv>
+  persistent?: Known<At<E, 'persistent'>, PersistentConfig>
+  sandbox?: Known<At<E, 'sandbox'>, SandboxConfig> & {
+    allow?: Known<At<At<E, 'sandbox'>, 'allow'>, SandboxGrants>
+    deny?: Known<At<At<E, 'sandbox'>, 'deny'>, SandboxDenials>
+    ignore?: Known<At<At<E, 'sandbox'>, 'ignore'>, SandboxIgnore>
+  }
+}
+== type KnownExecs (src/config.ts)
+type KnownExecs<T extends ProjectConfig> = {
+  tasks?: {
+    [K in keyof NonNullable<T['tasks']>]?: {
+      exec?: KnownExec<At<NonNullable<T['tasks']>[K], 'exec'>>
+    }
+  }
+}
 == type LayeredCacheOptions (src/cache/layered-cache.ts)
 export interface LayeredCacheOptions {
   onRemoteError?: (err: Error) => void
@@ -1226,6 +1247,7 @@ export interface RunPlan {
   predicted?: PlanPrediction
   unresolvedTasks?: readonly string[]
   unresolvedHint?: string
+  noneAffected?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 == type RunRecord (src/cache/layer.ts)

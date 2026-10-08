@@ -33,6 +33,11 @@ export function declaresInput(
   workspaceRel: string | null,
 ): boolean
 
+/** May `inputs.workspaceFiles` name a file under `dir` (workspace-relative)?
+ *  By the positive entries' static prefixes. A changed nested repository is
+ *  one path for all its files; `--affected` asks this of it. */
+export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean
+
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   listings: InputListing[] // what `files` was filtered from, for `addedInput`

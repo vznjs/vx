@@ -681,6 +681,9 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+left remote (`--download=none`) is held to the same checks: a moved
+key still lets a local consumer fetch its outputs, but the fetch saves
+no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
@@ -708,7 +711,10 @@ over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way.
+key derivation, step 3) withholds the save the same way, and no key
+taken before it is probed or restored: a hit the up-front probe found
+goes back to the scheduler and runs once its deps are done. Until X-124
+that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
 policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
@@ -1045,7 +1051,10 @@ second run waits, saying after a second whom it waits for:
 ```
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
-land by rename); a task's OUTPUT TREE was not — both runs cleaned and
+land by rename; a transaction that reads before it writes takes the
+lock at BEGIN, since SQLite answers its later write `database is locked`
+at once: a run's history was lost so in 13 of 48 runs on one shared
+cache dir, X-105); a task's OUTPUT TREE was not — both runs cleaned and
 restored the same `dist/`, and a clean landing while the other run's
 restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root
@@ -1084,7 +1093,7 @@ healthy key (`tests/vanished-artifact.test.ts`).
 
 A local artifact whose bytes are wrong (a failed checksum, a torn
 write, one past the artifact ceiling, an entry missing a recorded
-output) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+output, a name that now reads unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
 for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
@@ -1164,7 +1173,7 @@ cache is vx's to keep), and keeps every artifact, each indexed again
 when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
-in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
+in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
@@ -1271,8 +1280,10 @@ and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
 into the archive. Restore applies both, at their edges too: a mode of
-000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`) and one before 1970, whose
-tar header carries 0 since ustar's field holds no sign. Until 2026-09-27
+000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
+tar header carries 0 since ustar's field holds no sign, and one past
+March 2242, whose header carries the field's 11-digit maximum (X-114:
+the save failed `value … does not fit a 12-byte field`). Until 2026-09-27
 (A-4) the first two were skipped, so the file came back 0644 and
 stamped now and every later hit restored it again, and the third wrote
 a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,
@@ -1354,7 +1365,9 @@ row, its file time standing for `accessed_at`: past `olderThan` it goes,
 and under `maxSize` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
 time plus an hour. A temp a crashed save left goes once it is an hour
-old, and nothing younger than an hour is taken.
+old, and nothing younger than an hour is taken. Re-indexing touches the
+artifact's mtime before it links its temp, so the sweep sees that one
+fresh too.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
@@ -1366,7 +1379,10 @@ hit replays it with pure SQL, never decompressing the artifact).
 it (pre-alpha: no migrations; the index is an inventory, owner
 2026-10-06): every table but `schema_meta` is dropped and recreated,
 so each comes back in its current shape (A-54: `config_closures` and
-`output_dirs` kept an earlier vx's columns).
+`output_dirs` kept an earlier vx's columns). The check, drop, re-create
+and stamp are one write transaction, so another version's open waits
+rather than landing between them; an index already current is opened
+without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache prune --dry-run` previews the reset
 instead, item 1083).
@@ -1601,7 +1617,7 @@ CREATE INDEX invocations_ci      ON invocations(ci);
 -- CASCADE sweeps the rows when a prune drops the entry.
 CREATE TABLE entry_inputs (
   entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
-  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin
+  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin|format
   name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
   hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
   PRIMARY KEY (entry_hash, kind, name),

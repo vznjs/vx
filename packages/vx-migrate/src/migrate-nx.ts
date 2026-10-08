@@ -7,6 +7,7 @@ import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
+import { relPosix } from './paths.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -90,7 +91,7 @@ async function unlistedProjects(
     (p) => path.resolve(p.dir) !== path.resolve(root) && !listed.has(path.resolve(p.dir)),
   )
   if (unlisted.length === 0) return { manifests: [], notes: [] }
-  const rels = unlisted.map((p) => path.relative(root, p.dir).split(path.sep).join('/')).sort()
+  const rels = unlisted.map((p) => relPosix(root, p.dir)).sort()
   const manifests: { relPath: string; contents: string }[] = []
   for (const p of unlisted) {
     const file = path.join(p.dir, 'package.json')
@@ -102,7 +103,7 @@ async function unlistedProjects(
     )
       continue
     manifests.push({
-      relPath: path.relative(root, file).split(path.sep).join('/'),
+      relPath: relPosix(root, file),
       contents: `${JSON.stringify({ name: p.name, private: true }, null, 2)}\n`,
     })
   }

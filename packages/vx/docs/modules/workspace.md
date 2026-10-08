@@ -207,6 +207,9 @@ A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
 A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
 one (the list commented out), defers to `package.json`, as pnpm does.
 
+A yarn `workspaces: { packages: null }` is the single project too, as
+yarn 1 and 4 read it.
+
 From the same parsed manifests it takes the catalogs a `catalog:` spec
 resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
 without that file, the root `package.json`'s, at the top level or under

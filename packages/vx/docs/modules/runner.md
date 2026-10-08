@@ -102,6 +102,16 @@ export function maskCaptured(text: string, secrets: SecretMask): string // the p
 export function ownRssHighWater(): number
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the runtime reported
+
+// A task's stdout and stderr: real pipes on Linux, Bun's 'pipe' elsewhere
+// or for a terminal task. `sandbox-runtime.ts` spawns through it too.
+export class TaskPipes {
+  constructor(terminal?: boolean)
+  readonly stdio: readonly [number | 'pipe', number | 'pipe'] // descriptors 1 and 2 for Bun.spawn
+  spawned(): void // close vx's write ends once the spawn returned or threw
+  streams(child): [stdout, stderr] // what streamToString reads
+  close(): void // close the read ends once both streams ended or were cancelled
+}
 ```
 
 ## Spawning rules
@@ -123,13 +133,33 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   macOS's `sh` is bash, and `exec [[ -f x ]]` there was
   `exec: [[: not found`, exit 127 (B-56).
 - **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
-  stdin sees EOF, never a hang); `stdout: 'pipe'`, `stderr: 'pipe'`.
+  stdin sees EOF, never a hang); stdout and stderr are pipes
+  (`TaskPipes`). Bun's `'pipe'` is a socketpair, and Linux opens
+  `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses
+  (ENXIO): `echo x > /dev/stdout` and `cmd | tee /dev/stderr` failed
+  in every task (X-113). On Linux vx makes two `pipe2` pairs through
+  `bun:ffi` (libc bound at the first spawn, not at load), hands the
+  child the write ends and reads its own ends with
+  `Bun.file(fd).stream()`; vx's ends are non-blocking and 256 KiB
+  (`F_SETPIPE_SZ`; at the default 64 KiB a 200 MB stdout drained 13%
+  slower than through the socketpair). A read end is closed only after
+  its stream ends: Bun dups it at the first pull, and a number closed
+  before then was reused by the next spawn's pipe, whose output the
+  stream then read. macOS opens `/dev/fd/N` as a dup, which a socket
+  allows, so it keeps Bun's `'pipe'`, as does a libc that will not
+  load or a pipe the descriptor limit refuses (Bun's socketpair then
+  fails the spawn with the reason). Cost: 0.9 ms once per process,
+  13 µs a spawn; `runCommand` of `/usr/bin/env` min / median 1.458 /
+  2.060 ms against 1.458 / 2.056 before (1,000 interleaved runs).
   `runPersistent` alone spawns with `stdin: 'pipe'` and never writes
   it: a dev server that exits on stdin EOF (esbuild `--watch`) stays up
   while vx lives, and sees EOF when vx exits (execution.md § Output
   capture and rendering). `terminal: true` (an `exec.interactive` task
   on a TTY) spawns either with `'inherit'` on all three: no stream, no
-  capture, no callbacks.
+  capture, no callbacks. The terminal's modes are read with `stty -g`
+  before that spawn and set back when the child exits, if it changed
+  them: a task killed in raw mode left the terminal raw, and Bun
+  restores them at exit only when vx's stdout is the terminal.
 - **forwardArgs** are appended to `command` after a single space, each
   quoted via `shellQuote(arg)` (i.e. `'...'`-quoted when not safe; a
   `#` is safe past a word's first character), by
@@ -265,7 +295,7 @@ descriptor. The `ready` promise:
 The pattern matcher buffers across chunk boundaries and tests each
 line of the pending fragment on its own — complete lines without
 their break (`\n` or `\r`), then the trailing partial line — with
-terminal escapes (CSI, OSC, two-byte) removed from the tested text
+terminal escapes (CSI, OSC, charset picks, two-byte) removed from the tested text
 only; the streamed bytes keep them. So `^`/`$` anchor per line, a
 colourised banner matches its plain text, and neither a match split
 across two reads nor a prompt-style marker without a trailing newline
@@ -356,6 +386,10 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
   across chunks, newline-terminated marker, reject-on-exit-before-
   ready. Ready-on-spawn + orchestrator wiring are covered by the
   persistent e2e suite (`tests/persistent.test.ts`).
+- Pipes (X-113): `runCommand` and `runPersistent` open `/dev/stdout` and
+  `/dev/stderr` by path, the first task's output ends at its exit, and
+  every descriptor a task took (plain, cut, spawn-failed, persistent)
+  is closed after it.
 
 ## Replacing this module
 

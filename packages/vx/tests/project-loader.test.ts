@@ -95,6 +95,41 @@ describe('loadProjectConfig', () => {
     expect(own?.name).toBe('SyntaxError')
   })
 
+  it('a throw that is not an Error names the config, first load and repeat', async () => {
+    // `throw 'no'` printed `vx: no`, naming no file; a null-prototype
+    // object crashed vx's own error printer with a stack.
+    const rows: Array<[string, string]> = [
+      ["'no'", '"no"'],
+      ['undefined', 'undefined'],
+      ['Object.create(null)', '[Object: null prototype] {}'],
+      ['{ code: 1 }', '{ code: 1 }'],
+    ]
+    for (const [i, [thrown, shown]] of rows.entries()) {
+      const file = path.join(dir, `t${i}`, 'vx.config.mjs')
+      await mkdir(path.dirname(file))
+      await writeFile(file, `throw ${thrown}\nexport default {}\n`)
+      const got: unknown[] = []
+      for (let load = 0; load < 2; load++) {
+        const err = await loadProjectConfig(file).then(
+          () => null,
+          (e: unknown) => e as Error,
+        )
+        got.push([err?.name, err?.message])
+      }
+      const want = ['UserError', `Project config ${file} threw ${shown}, which is not an Error`]
+      expect(got).toEqual([want, want])
+    }
+    // An Error keeps its own stack: not reworded.
+    const own = path.join(dir, 'own', 'vx.config.mjs')
+    await mkdir(path.dirname(own))
+    await writeFile(own, "throw new Error('boom')\nexport default {}\n")
+    const err = await loadProjectConfig(own).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect([err?.name, err?.message]).toEqual(['Error', 'boom'])
+  })
+
   it('two syntax errors name the first one, not a stack', async () => {
     // Bun throws an AggregateError of BuildMessages when a file has more
     // than one, and it reached the user as a stack with no position (X-6).
@@ -1536,5 +1571,52 @@ describe('a config that changes the built-ins (D-74)', () => {
       after: false,
       first: firstFile(),
     })
+  })
+})
+
+// Bun reads `\` in a module path as a separator, so a config under a
+// directory named `a\b` was looked for under `a/b` and never loaded.
+describe('a config under a directory whose name holds a backslash', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = path.join(await mkdtemp(path.join(os.tmpdir(), 'vx-loader-')), 'a\\b')
+    await mkdir(dir)
+  })
+
+  afterEach(async () => {
+    await rm(path.dirname(dir), { recursive: true, force: true })
+  })
+
+  it('loads a project config, and its repeat load in a worker', async () => {
+    const file = path.join(dir, 'vx.config.ts')
+    await writeFile(
+      file,
+      `
+        const command: string = 'tsc'
+        export default { tasks: { build: { exec: { command } } } }
+      `,
+    )
+    expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc')
+    await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc -b' } } } }")
+    expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc -b')
+  })
+
+  it('loads a workspace config', async () => {
+    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { plugins: [] }')
+    expect(await loadWorkspaceConfig(dir)).toEqual({ plugins: [] })
+  })
+
+  it('refuses a CommonJS config, saying why', async () => {
+    const file = path.join(dir, 'vx.config.cjs')
+    await writeFile(file, 'module.exports = { tasks: {} }')
+    const err = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.name).toBe('UserError')
+    expect(err?.message).toBe(
+      `Project config ${file} sits under a path that holds a backslash, which Bun loads only as an ES module in UTF-8`,
+    )
   })
 })

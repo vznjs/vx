@@ -14,6 +14,8 @@ import { isCacheHit, taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
+  /** Tasks that ran behind a failed dependency (`--continue=always`). */
+  tainted?: ReadonlySet<string>
   runId: string
   /** Wall-clock ms at run start; every per-task ns offset is anchored to it. */
   startedAtMs: number
@@ -66,13 +68,21 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.status === 'aborted') continue
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     runs.push({
-      ...(o.hash !== undefined ? { hash: o.hash } : {}),
+      // A failure behind a failed dependency is recorded keyless (`''`, which
+      // the key readers skip): the flaky list asks a key whether it failed.
+      ...(o.hash !== undefined && !(o.status === 'failed' && input.tainted?.has(o.node.id) === true)
+        ? { hash: o.hash }
+        : {}),
       project: o.node.projectName,
       task: o.node.taskName,
       status: o.status,
       exitCode: o.exitCode,
       durationMs: o.durationMs,
-      ...(input.forwardArgs !== undefined ? { forwardArgs: input.forwardArgs } : {}),
+      // A run forwards its args to the tasks it was asked for, never to a
+      // dependency: the row says which ran with them.
+      ...(input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested
+        ? { forwardArgs: input.forwardArgs }
+        : {}),
       // Anchor to the REAL per-task wall-clock window: run-start wall time +
       // the task's ns offset (captured for hits and executed tasks alike).
       // The `end - duration` fallback applies to outcomes without an offset —

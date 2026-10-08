@@ -696,6 +696,46 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-107.** A background upload read its body through the artifact's
+  live name, and a re-save of the key (another run on a shared cache
+  dir, `--force`) renames other bytes over it: a plugin that reads the
+  body twice (`@vzn/vx-reapi`'s digest then upload, a retry) sent one
+  artifact's digest over another's bytes. The job now hands `put` a
+  `Bun.file` over a private hard link (`Cache.pinArtifact`), unlinked
+  when the PUT ends. Row: `layered-cache.test.ts` › "a re-save of the
+  key during an upload leaves every read of its body the same".
+- **X-108.** Adopting a row-less artifact hard-linked it to a temp that
+  kept the artifact's old mtime, so a concurrent `vx cache prune` took
+  the temp and the artifact as hour-old orphans mid-adopt and the hit
+  became a miss. `adopt` now touches the artifact before linking. Row:
+  `cache.test.ts` › "a prune during an adopt leaves the artifact it is
+  indexing".
+- **X-109.** A reading verb (`vx info`, `why`, `last`) over a shared
+  `store.db` with no tables yet switched its journal and created its
+  tables statement by statement under no write lock, racing a writing
+  opener making that store. `Cache.inspect` now reads such a store
+  as an empty one in memory and writes nothing to it. Row:
+  `shared-store.test.ts` › "a reading verb's handle on an empty store
+  writes nothing to it".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with
@@ -783,6 +823,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-113.** On Linux `echo x > /dev/stdout` and `cmd | tee /dev/stderr`
+  failed in every task with "No such device or address": Bun's `'pipe'`
+  is a socketpair (on macOS too, where `/dev/fd/N` dups it and works),
+  and Linux opens `/dev/stdout` through `/proc/self/fd/1`, which a
+  socket refuses. `TaskPipes` (runner.ts) makes real pipes with
+  `pipe2` through `bun:ffi` for the one-shot, persistent and sandboxed
+  spawns. Cost within the A/A spread: 300 uncached tasks at
+  `--concurrency 1`, min of 31 interleaved, 628.8 ms before, 631.7
+  after, 616.5 A/A. Rows: `runner.test.ts` › "a task's stdout and
+  stderr are pipes it can open by path", `sandbox-runtime.unsafe.test.ts`
+  › "a sandboxed task and server open /dev/stdout and /dev/stderr by
+  path" and its plain twin. On macOS a sandboxed task failed the same
+  writes EPERM: seatbelt judges the resolved `/dev/fd/1`, which SRT's
+  `/dev/stdout` grant does not name, so vx grants `/dev/fd` there.
 - **X-110.** Args after `--` landed on the wrong line or inside a
   comment: a `<<word` in a comment or quotes (`# then << check`,
   `node -e "1<<x"`) made every later line a heredoc body, so the args
@@ -809,6 +863,44 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-114.** An output with an mtime past March 2242 (8^11 seconds, the
+  most ustar's 11 octal digits hold) failed every save of its task with
+  `value … does not fit a 12-byte field`, so the task never cached. The
+  header now carries the field's maximum, as one before 1970 carries 0;
+  the sidecar keeps the real mtime. Row: `archive-extract-meta.test.ts` ›
+  "packs and restores an mtime past what ustar holds (2242)".
+- **X-115.** A local artifact holding a name that read unsafe failed its
+  task on every run with the entry kept, where every other bad local
+  artifact is dropped and the task run (A-52). The save and the ingest
+  proved each name safe, so the bytes had changed: a long name's pax
+  record has no header checksum and is judged before the CRC at the end
+  is read, so one flipped bit (`.` → `/`) was enough. The restore now
+  throws it as a `CorruptArtifactError`. Row: `artifact-roundtrip.test.ts`
+  › "a local artifact whose name reads unsafe is dropped and run, as
+  corrupt bytes are".
+- **X-116.** A persistent task whose readiness timeout fired, and whose
+  server trapped the SIGTERM and exited 0, reported
+  `failed (never ready: timed out, exit 0)`: X-24 took the server's own
+  code, and a one-shot task that does the same reports 143. It now
+  reports 143. Row:
+  `persistent-ready-timeout.test.ts` › "a never-ready server that traps
+  SIGTERM and exits 0 reports the SIGTERM, not 0".
+- **X-122.** Under `--exclude-dependencies` the sandbox's keyed set
+  stood a group in by its `deps`, which hold order-only edges and lack
+  the dropped members its hash folds (`keyUpstream`). Two groups over
+  different dropped tasks got one stand-in, the selection kept one, and
+  a sandboxed task was denied a linked sibling its key answers for. The
+  stand-in now lists the keyed members. A denial, never a stale hit:
+  units matched only where the hashes did not. Row:
+  `keyed-projects.test.ts` › "a group under --exclude-dependencies
+  stands in for the dependencies its hash folds".
+- **X-121.** Refuted: `cache.inputs.tasks: ['compile']` on a task that
+  reaches `compile` only through a group does not fold nothing at hash
+  time; the loader refuses it in all three forms ("names no task in …
+  dependsOn"), since schema.md has a selection name the group, whose
+  hash rolls its members up. Pinned so the refusal stays. Row:
+  `config-schema-refusals.test.ts` › "an inputs.tasks name reached only
+  through a group is refused, in each form".
 - **X-117.** "a SIGHUP after the summary signals a kept server once" read
   `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
   (`terminateChildren` dedups; the keep-alive wait defers to the abort),
@@ -849,3 +941,176 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   task cycle among declared builds is refused, as a run of those builds
   already was. Row: `task-graph.test.ts` › "an edge by name to a default
   build on a cycle goes on past it, as ^build does".
+- **X-126.** A submodule or embedded repository INSIDE a project left
+  tasks out of `--affected`. git reports it as one path (`vendor/lib`),
+  and per-task selection matched that path against each task's globs as
+  if it were a file: `lint` on `**` claimed it, so `build` on
+  `vendor/**/*.txt`, whose key folds the files inside, was not seeded
+  ("Nothing affected"). A project inside such a repository was never
+  selected: the owner walk stopped at the outer project. The diff now
+  reads `--raw` modes, so a gitlink on either side (a removed one took
+  its files) or an untracked `dir/` reaches the holding project whole
+  and every project under it. Row:
+  `affected-submodule.test.ts` › "a nested repository inside a project
+  reaches every task of it, and the projects inside".
+- **X-127.** A `workspaceFiles` glob reaching into a changed submodule
+  or embedded repository (`vendor/sub/**`) selected nothing: git reports
+  the repository as one path, `vendor/sub`, which the glob does not
+  match, while the key folds every file inside. A run under
+  `--affected` said "nothing affected" over a stale key. `affectedChanges`
+  now names the changed nested repositories (`AffectedChanges.nested`),
+  and both the candidate pass (`workspaceGlobOwners`) and the per-task
+  seed ask `workspaceFilesReachInto`: a positive entry whose static prefix
+  is above or inside the repository reaches it. Row:
+  `affected-workspace-files.test.ts` › "a glob reaching into a changed
+  nested repository selects its declarer".
+- **X-128.** A config importing a file of another project was left out
+  of `--affected` when a file THAT file imports changed: the config
+  import walk stopped at the first file of another project, reasoning
+  that containment selects it. Containment selects the owner, not the
+  importer, while the evaluation follows the import and the importer's
+  key moved: `site`'s config imports `core/src/index.ts`, which imports
+  `util.ts`; an edit to `util.ts` ran `core#build` alone and skipped
+  `site#build`. The walk now follows every import (200 configs into a
+  500-file library: 10 → 28 ms for one changed file). Rows:
+  `config-missing-import.test.ts` › "a config reaching into ANOTHER
+  project follows the imports of that file", `affected.test.ts` › "the
+  walk descends past a project boundary (X-128)".
+- **X-123.** A task left remote (`--download=none`) whose inputs moved
+  between its key and the describe before the command was saved under
+  the old key once a local consumer fetched it: the remote built over the
+  edit, and once the edit was reverted the next run hit those bytes. The
+  eager save withheld it (item 743); the deferred one asked nothing. It
+  now takes the same check, and a moved key registers the fetch with no
+  key, so the consumer still gets the bytes and nothing is saved. Rows:
+  `execute-task.test.ts` › "the DEFERRED save site refuses a key the
+  inputs no longer match (X-123)", `download-policy.test.ts` › "an entry
+  with no key is fetched for its consumer but saves nothing (X-123)".
+- **X-124.** A hit the up-front probe found was restored after a task
+  had rewritten the lockfile the workspace fingerprint folds: its key named
+  the install the run started on, so a task with no edge to `install`
+  that restored after it put back bytes built against the old install,
+  while the lazy path refuses to probe past that move (item 750). Such a
+  hit now goes back to the scheduler as a vanished one does and runs
+  once its deps are done. Row: `execute-task.test.ts` › "a preProbed HIT
+  is not restored once a task rewrote the lockfile (X-124)".
+- **X-125.** On a plugin executor, a task whose child trapped the
+  timeout's stop and exited 0 passed: core recorded `timedOut` only for a
+  non-zero exit, so the partial outputs were saved and the next run
+  replayed them as a green hit. The local executor fails the same child
+  as timed out. Any exit after the timeout's abort is now a timeout on a
+  plugin executor; the local one keeps its runner's own verdict, since
+  core arms no clock on a local request (#3153). Rows:
+  `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
+  abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "core does not abort a local request at the
+  timeout; the runner's timedOut decides (X-125)".
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".
+
+- **X-129.** `vx run test --affected` where the changed project has no
+  vx config and another declares `test` exited 1, "no projects declare
+  task(s): test", against item 1024. The guard loaded the rest of the
+  workspace only when fewer projects were loaded than have configs; a
+  config-less project counts as loaded, so one changed member made the
+  counts equal and the declarer was never asked. It now asks by name.
+  Row: `affected-sparse-tasks.test.ts` › "exits 0 and says no affected
+  project declares the task".
+- **X-130.** The lockfile-claim memo was trusted on `version` and the
+  lockfile's hash, not on who wrote it. Two claimants of one file at the
+  same `version` (a plugin swapped in one cache dir) read each other's
+  memo; one with no `extraFiles` left an empty extras list, so the other's
+  patch edits never moved its key while the lockfile stayed put: a stale
+  hit. The memo now records the claimant (`part` and the source of
+  `digest` / `extraFiles`). A plugin release that changes its parse
+  without bumping `version` is the documented contract's breach, not this
+  path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
+  trusted".
+- **X-131.** Under `--continue=always` a task that ran behind its failed
+  dependency failed on the key it had passed on: its row said `flaky -
+passed 1× before` and `vx info` listed it for thirty days, though the
+  failure was the dependency's. Such a failure is now no flaky candidate
+  and is recorded keyless (`''`, which the key readers skip). Row:
+  `flaky.test.ts` › "is not a flake on the key it had passed on".
+- **X-132.** `vx info` listed as flaky a task with no cache block that
+  passed and then failed, though no run's row calls one flaky: its key is
+  its config alone, so "same inputs" meant nothing. The shared per-key
+  projection now skips rows recorded `cached = 0`, so the doctor, the
+  per-run detector and the history's failure mode agree. Row:
+  `flaky.test.ts` › "is not on the flaky list after a pass and a
+  failure".
+
+- **X-134.** A persistent task that printed its `readyWhen` marker and
+  exited at once read as "exited before becoming ready" under load: the
+  exit landed before the readers took the line (persistent.test.ts'
+  forwardArgs row, CI and 12 of 15 local runs under `yes` load). The exit
+  now waits for the readers, bounded by the task drain's 250 ms, before
+  judging. Row: `runner.test.ts` › "a marker read after the shell exited,
+  inside the drain bound, is ready" (10 of 10 without the fix).
+
+- **X-133.** `vx watch` lost a config import whose file was deleted:
+  since #3207 a failed cycle re-reads the watch set, and the import list
+  skipped what it could not resolve, so the preset's return was no event
+  and every edit after it ran nothing until a restart. `configImports`
+  now lists an unresolvable relative import by the path it would have
+  (each extension Bun tries, when it has none). The watch row waited on
+  the failed cycle's own re-arm line; it now counts re-arms. Rows:
+  `config-cache.test.ts` › "the watch list keeps an import whose file is
+  gone", `watch-recreated-dirs.test.ts` › "an edit to a restored preset".
+
+- **X-135.** `rules.upfrontKeys` never compared a task's `inputs.files`
+  with another task's `outputs.workspaceFiles`, which can land in its
+  project: `app#build` reading `**` beside a `gen` writing
+  `app/gen/**` loaded with no edge between them, and the up-front probe
+  of `app#build` (kept out of the restore tier, still reused) keyed what
+  the project held before `gen` ran. The rule now rebases each project
+  reader to the root and refuses the pair, naming `!gen/**` in the
+  project's terms. vx-migrate's `excludeWorkspaceOutputs` takes such an
+  output back from a package's inputs (Turbo's `**/*` beside a codegen
+  writing `../lib/generated/**`), or runs a literal reader uncached.
+  Rows: `input-overlap.test.ts` › "refuses a files input over another
+  task's workspaceFiles output in its project"; vx-migrate
+  `shared-outputs.test.ts` › "takes another task's workspace output back
+  from a project's own inputs".
+
+- **X-139.** A dev server stuck before its `readyWhen` line in `vx
+watch`'s initial run held that run for good: the loop armed only after
+  it, so the fix was never heard. The loop now arms once the initial run
+  waits on readiness alone (every config is loaded by then) and takes the
+  run as its cycle in flight. Rows: `watch-initial-readiness.test.ts`.
+- **X-138.** A package added mid-watch was armed only after the cycle
+  it triggered had run, so an edit to it during that cycle fell in the
+  gap and ran nothing. The cycle now re-arms (quietly) before it runs;
+  the re-read after the run stays, for what the run changed. Row:
+  `watch-new-member-edit.test.ts`.
+- **X-136.** `vx watch` never heard an edit to the root `.gitignore` or
+  to one in a package glob's directory (`packages/.gitignore`): inputs
+  are gitignore-aware, so un-ignoring a file changed `app#build`'s key,
+  `vx run` missed on it, and the watch ran nothing. Both arms now take
+  `.gitignore` as a cycle. Rows: `watch-root-scope.test.ts` ›
+  "un-ignoring an input in the root/a member base .gitignore re-runs".
+- **X-137.** `vx watch //#check` ran the root task, then exited 1 with
+  "no projects in scope": the anchor was taken as a project named `//`.
+  It now maps to the root project's name, as the run does (D-39). Row:
+  `watch-root-scope.test.ts` › "watches the root project".
+
+- **X-141.** `vx run build --affected --dry` on a change no `build` task
+  reaches said `no affected project declares task(s): build`, though the
+  changed project declares it; the run says `Nothing affected: the change
+reaches no build task.` The plan now carries the run's own line
+  (`RunPlan.noneAffected`). Row: `affected-dependents.test.ts` › "a change
+  no requested task reaches is a clean "nothing affected"".
+- **X-142.** After an upgrade that bumped `CACHE_VERSION`, every task
+  missed once and `vx why` said `cache key changed … (inputs differ)` with
+  `no component-level difference was recorded`: the fold never recorded
+  the version. The capture now records it (`format cache-version`), so
+  `vx why` names the upgrade and says there is nothing to fix. Rows:
+  `why.test.ts` › "a key the format moved names the upgrade, not an
+  input (X-142)", `key-fold.test.ts`, `cache.test.ts`.
+- **X-140.** `vx last`'s "re-run what failed" line handed the run's
+  forwarded args (`-- --shard 2`) to every failed task, but a run forwards
+  them to requested tasks only: a failed dependency re-ran as another
+  command under another key. Each `runs` row now records `forward_args`
+  only for a task that got them, `vx last --format json` says so per task
+  (`forwarded`), and the line gives a failed dependency its own command
+  without them. Row: `last.test.ts` › "a failed run replays FAILED with the failure first".

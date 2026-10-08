@@ -11,7 +11,6 @@ import {
   run as runOrchestrator,
   shellQuote,
   type RunOptions,
-  type RunResult,
 } from '../orchestrator/index.js'
 import type { ContinueMode, TaskOutcome } from '../graph/index.js'
 import {
@@ -181,7 +180,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (n === null)
         return {
           ...out,
-          error: `invalid concurrency: ${v} (a positive integer, or a share of the cores such as 50%)`,
+          error: `--concurrency must be a positive integer, or a share of the cores such as 50% (got ${v})`,
         }
       out.concurrency = n
     } else if (a === '--all') {
@@ -267,14 +266,17 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
-      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
       // Unlike every other value flag, a cache dir is an arbitrary
       // string — nothing about its shape rejects a swallowed flag. An
       // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
       // otherwise create a directory literally named `--force` and drop
       // the flag. A path starting with `-` needs the `=` form.
       if (a === '--cache-dir' && v.startsWith('-')) {
-        return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--cache-dir requires a path (got flag ${v}; a path that starts with - needs --cache-dir=${v})`,
+        }
       }
       out.cacheDir = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
@@ -329,14 +331,15 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined)
         return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
-      if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
+      if (n === null)
+        return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `invalid --dry value: ${fmt} (text or json)` }
+        return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--graph') {
@@ -364,7 +367,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
       // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
       const eq = raw.indexOf('=')
-      if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
+      if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
     } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
       const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
@@ -373,7 +376,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       // nothing about its shape rejects a swallowed flag. A path starting
       // with `-` needs the `=` form.
       if (a === '--report-file' && v.startsWith('-')) {
-        return { ...out, error: `--report-file requires a path, got flag: ${v}` }
+        return {
+          ...out,
+          error: `--report-file requires a path (got flag ${v}; a path that starts with - needs --report-file=${v})`,
+        }
       }
       out.reportFile = v
     } else if (a === '--report') {
@@ -381,7 +387,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (a?.startsWith('--report=')) {
       const fmt = a.slice('--report='.length)
       if (fmt !== 'markdown') {
-        return { ...out, error: `invalid --report value: ${fmt} (only markdown)` }
+        return { ...out, error: `--report must be markdown (got ${fmt})` }
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
@@ -626,6 +632,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   const cwd = process.cwd()
   let tasks = [...parsed.tasks]
+  let picked: string | undefined
 
   // No positionals → interactive picker (TTY only). Yields a single
   // anchored pkg#task; the rest of the pipeline treats it like any
@@ -674,10 +681,11 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
       only = new Set(selected.names)
     }
-    const picked = await pickTask(cwd, {}, load, only)
-    if (picked === 'interrupted') return 130
-    if (!picked) return 1
-    tasks = [`${picked.project}#${picked.task}`]
+    const chosen = await pickTask(cwd, {}, load, only)
+    if (chosen === 'interrupted') return 130
+    if (!chosen) return 1
+    picked = `${chosen.project}#${chosen.task}`
+    tasks = [picked]
   }
 
   const resolved = await resolveRunOptions(parsed, cwd, tasks)
@@ -692,8 +700,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
   // show what was actually run. `args` is everything after `run`, quoted
-  // so `vx last` replays one paste-able line.
-  opts.command = ['vx', 'run', ...args.map(shellQuote)].join(' ')
+  // so `vx last` replays one paste-able line; a picked task is named in
+  // it, or the line would open the picker again.
+  opts.command = [
+    'vx',
+    'run',
+    ...(picked !== undefined ? [shellQuote(picked)] : []),
+    ...args.map(shellQuote),
+  ].join(' ')
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
@@ -706,6 +720,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return 1
     }
     if (plan.tasks.length === 0) {
+      // The run's own line: a dry run that guessed from the scope alone
+      // said no affected project declared a task one did (X-141).
+      if (plan.noneAffected !== undefined) {
+        process.stderr.write(`${plan.noneAffected}\n`)
+        return 0
+      }
       if (opts.selectedByDiff === true) {
         process.stderr.write(`vx run: no affected project declares task(s): ${tasks.join(', ')}.\n`)
         return 0

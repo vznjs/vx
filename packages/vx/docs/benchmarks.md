@@ -61,7 +61,8 @@ start + module load + exit outside the table. The 1.7 s cold run is the
 1000 `cp` commands.
 
 Reproduce: `bun packages/vx-bench/run.ts 1000 5` (it prints the median
-and every rep; the best is the min).
+and every rep; the best is the min). Its last row, `one edited`, changes
+one package's source per rep: one miss, every other task a hit.
 
 ### A second machine, same shape (2026-09-20)
 
@@ -155,7 +156,8 @@ repairs it, which the release workflow now does on a macOS runner.
 `packages/vx-bench/ab.ts` is the method the numbers here use: one
 workspace copy per arm, warmed by that arm, rounds that run every arm
 once in a rotated order, min and median per arm, and an A/A arm (the
-same vx twice) as the noise floor. An arm is a compiled binary or a
+same vx twice) as the noise floor. Every arm after the first prints its
+min against the first arm's as a signed percent. An arm is a compiled binary or a
 checkout; the runs see git's defaults and no `BUN_OPTIONS`. A `run` is
 timed `--frozen`: each arm runs `vx lock` in its own copy with its own
 vx once, before the warm-up.
@@ -403,7 +405,8 @@ is a floor.
 above — `layers` × `perLayer` packages, ~30 deps each, three tasks
 (`build` + `installDeps` + `test`) with the **identical** shell command,
 `src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
-Turbo, and Nx across three cache states. Fairness is deliberate: vx runs
+Turbo, and Nx across three cache states, then times one edit to the top
+package (its `build` and `test` run, every other task hits). Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
 `vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
@@ -421,7 +424,9 @@ BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure fram
 ```
 
 It writes [`packages/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/packages/vx-bench/RESULTS.md)
-(committed, so the numbers can be referenced from a commit).
+(committed, so the numbers can be referenced from a commit). On the same
+workspace shape as the committed run, it then prints every re-measured
+timing more than 10% slower than the committed one.
 
 Since 2026-09-03 the table also carries **CPU** columns and a **baseline**
 row — the theoretical best case (an ideal schedule of the tasks, one git

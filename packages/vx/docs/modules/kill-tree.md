@@ -25,6 +25,7 @@ export function guardLine(fd: number): string // the shell line that lists `$$`'
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
 export function releaseServerGroup(child: Child): void
+export function guardSession(pids: readonly number[], paths: readonly string[]): () => void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -108,6 +109,20 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is
   never killed on an old task's account.
+- The sandbox runtime's session is listed too (`guardSession`). On Linux
+  the runtime spawns its network bridge, a socat on
+  `<tmp>/claude-http-<hex>.sock`, as a plain child in vx's OWN group,
+  which the guard must never kill, and vx itself listens on
+  `<tmp>/srt-obs-*/` and `<tmp>/srt-mux-<pid>-<n>.sock`. A `kill -9` of
+  vx left the socat under init and the three paths behind; dozens piled
+  up on a dev box. `initSandbox` reads them from procfs once per session
+  (vx's children whose argv listens on the runtime's socket path, and vx's
+  own socket inodes against `/proc/net/unix`; ~3 ms, sandboxed runs only)
+  and lists the pids (`=<pid>`, killed alone) and the paths (`@<path>`,
+  removed) — each a name only that session carries, never a sweep that
+  could reach another live vx's. A finished reset strikes them (`_`,
+  `!`), so a reused pid is never killed. A path holding whitespace is not
+  listed. A socat that dies mid-session stays listed until the reset.
 - The guard is detached, so a terminal's Ctrl-C does not reach it; that
   path is vx's own teardown (`signals.md`).
 - Best-effort: a guard that cannot start, or a write it is gone for,
@@ -119,7 +134,20 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   guarding while the guard kept every group whose release it never got,
   and SIGKILLed them at vx's CLEAN exit. A guard vx gives up on is
   SIGKILLed with its list. A child's own `+` line meets the same queue
-  and is not retried: a group whose line hit a full queue is unlisted.
+  (it holds vx's nonblocking end): a group whose line hit a full queue
+  went unlisted and survived a `kill -9`. Its shell retries a failed
+  write until it lands or the guard's pid is gone (`kill -0`); the shell
+  cannot tell EAGAIN from EPIPE, and a guard vx gives up on is
+  SIGKILLed, so the pid ends the wait. `kill -0` counts a zombie, and
+  a guard vx had not reaped (its event loop held, or an init that
+  never reaps the orphan after vx's `kill -9`) kept the shell spinning
+  at full CPU; where /proc is vx's own (`procfsIsOwn()`) the guard's
+  state is read instead, so Z ends the wait. macOS keeps `kill -0`:
+  the spin lasts until vx's loop runs. Only a line built inside
+  `spawnGuarded` retries: any other pipe is not that guard's. The success path costs nothing
+  new. The guard lists a group once however often its line arrives: a
+  `-` strikes one entry, and a shell that keeps a failed printf
+  buffered (bash as macOS's sh, B-10) resends it with the retry.
 - The pipe is not inherited: Bun opens it close-on-exec, and a task's
   `/proc/self/fd` holds 0, 1 and 2 only (probed 2026-09-26).
 - A per-spawn watcher in the task's own shell was the first sketch and
@@ -198,10 +226,24 @@ and "a never-ready server a dead shell left goes with a vx that exits
 inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
 itself in a child that SIGKILLs itself: a deferred release is written when
 the hold ends, and a group two teardowns hold stays listed until both let go.
+There too, "a listed session’s pid dies alone…" (its unlisted sibling in
+the same group lives) and "a struck session is left to itself".
+`tests/sandbox-session-guard.unsafe.test.ts` SIGKILLs vx under a
+sandboxed server and finds no bridge socat alive and no socket or
+observer directory left; red without the listing.
 `tests/kill-tree-guard-backlog.test.ts`: a task spawned after a burst of
 2,000 releases still dies with a `kill -9` (fails without the wait), and
 a released task's grandchild outlives a clean exit after a stopped guard
-overran the queue (fails without the guard's SIGKILL).
+overran the queue (fails without the guard's SIGKILL). A task that
+lists itself behind a stopped guard's full queue dies with a `kill -9`
+once the guard resumes (fails without the retry); one whose guard is
+SIGKILLed instead still runs (hangs without the `kill -0`); and a group
+listed twice is released by one release (fails without the dedupe).
+`tests/kill-tree-guard-zombie.unsafe.test.ts` (unsandboxed, for its own
+/proc): such a task runs while vx's loop is held and its dead guard is a
+zombie (hangs 10 s without the state read), and, the control, still
+lists itself once a stopped live guard resumes (fails if the read calls
+every guard dead).
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner

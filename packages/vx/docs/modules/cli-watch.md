@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`, `watch-judge.ts`)
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`, `watch-judge.ts`, `watch-cycle.ts`)
 
 ## Purpose
 
@@ -60,6 +60,15 @@ export class ChangeJudge {
   judge(): string | undefined // the first changed path's label, or none
 }
 
+// watch-cycle.ts — one cycle's run, stoppable while it waits on readiness alone:
+export interface WatchCycle {
+  readonly opts: RunOptions // the cycle's own bus and stop
+  waitsOnReadiness(): boolean // every task in flight is a persistent one not yet ready
+  interrupt(): void // stop the run as a SIGTERM would; watch keeps going
+  readonly interrupted: boolean
+}
+export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () => void): WatchCycle
+
 // watch-filter.ts — which events matter, decided over paths alone:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
 export function makeWatchIgnore(
@@ -115,7 +124,7 @@ export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
   arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle // OS watcher, poller on no proof, an OS watch limit or VX_WATCH_POLL
   proved(): Promise<void> // every arm so far proved delivery or fell back
-  closeAll(): void
+  closeAll(): void // and every arm or fallback after it is CLOSED
 }
 ```
 
@@ -201,7 +210,10 @@ are refused too: they format one run's result.
      the root filter and the ignore filter are rebuilt on the new set.
      Until 2026-09-10 the set was fixed when the loop armed: the next
      cycle ran the new package and every edit inside it was silence
-     (`tests/watch-loop-members.test.ts`, the added-package pair). The scope
+     (`tests/watch-loop-members.test.ts`, the added-package pair). A
+     cycle that fails re-reads too: a package added with a config that
+     does not load yet was left unwatched, and the fix to that config
+     ran nothing (WD-26). The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
    - The same re-read follows a cycle started by a file that shapes
@@ -284,7 +296,10 @@ are refused too: they format one run's result.
    in-flight cycle tears its children down (the received signal, a
    SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
-   it holds with the same signal, and resolves; watch exits 0. SIGINT then
+   it holds with the same signal, and resolves; watch exits 0. The pool
+   stays closed: a cycle still re-arming arms nothing, and a watcher the
+   close caught before its proof gets no poller
+   (`tests/watch-pool-close.test.ts`). SIGINT then
    prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
@@ -312,12 +327,19 @@ started, and the persistent tasks they depend on, are handed back
 running (`RunSummary.persistent`) instead of being stopped when its
 graph ends. The loop holds them while it idles; the next cycle calls
 their `stop()` before its run, and the stop path calls it after the
-in-flight cycle returns. Any other persistent task is still stopped at
+in-flight cycle returns. A stop that lands while a cycle is stopping
+them ends the cycle there: it runs nothing (WD-22). Any other persistent task is still stopped at
 the end of its cycle, as under `vx run`. So a `persistent` dev server is up between cycles and
 re-spawned by each one. Until 2026-09-24 the server was stopped at the
 END of each cycle and was dead whenever watch sat idle
 (`tests/watch-loop.test.ts` › "the dev server stays up while watch
 idles and is replaced when the next cycle starts").
+
+A cycle whose server never matches `readyWhen` and has no
+`exec.timeout` never ends. An edit judged a change while every task in
+flight is such a server stops the cycle (SIGTERM, grace, SIGKILL, as
+Ctrl-C does) and starts the next; a cycle running any other task is
+never stopped (`tests/watch-ready-interrupt.test.ts`, WD-15).
 
 For dev-server workflows, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`. `vx watch` is

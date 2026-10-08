@@ -152,8 +152,7 @@ export function mergePriorities(
   // it sorts above the baseline for any node it covers, and add the
   // baseline as a tie-break for parity within the override set.
   const SCALE = 1 << 20
-  const out = new Map<string, number>()
-  for (const [id, w] of baseline) out.set(id, w)
+  const out = new Map(baseline)
   for (const [id, w] of overrides) {
     const b = baseline.get(id) ?? 0
     out.set(id, w * SCALE + b)

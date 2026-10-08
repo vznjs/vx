@@ -12,6 +12,7 @@ import {
   rmSync,
   type Stats,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
   chmodSync,
@@ -147,11 +148,38 @@ describe('the sidecar at its edges', () => {
     expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
   })
 
+  it('packs and restores an mtime past what ustar holds (2242)', async () => {
+    // 11 octal digits of seconds end at 8^11 - 1, in March 2242. 2250, not
+    // later: APFS keeps an mtime as int64 nanoseconds, which end in 2262.
+    const t = new Date(Date.UTC(2250, 0, 1))
+    expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
+  })
+
   it('control: an ordinary mode and mtime round-trip as before', async () => {
     const st = await roundTrip((f) => {
       chmodSync(f, 0o755)
       utimesSync(f, 1_700_000_000, 1_700_000_000)
     })
     expect([st.mode & 0o777, st.mtimeMs]).toEqual([0o755, 1_700_000_000_000])
+  })
+})
+
+describe("the sidecar's order", () => {
+  it('lists the outputs in their own order, whichever stat settles first', async () => {
+    // Each entry was added as its stat settled, so a link (more awaits than a
+    // file) landed after the file below it, and two packs of one tree whose
+    // stats settled differently stored different bytes.
+    const src = fresh()
+    writeFileSync(path.join(src, 'target.txt'), 't')
+    symlinkSync('target.txt', path.join(src, 'link.txt'))
+    writeFileSync(path.join(src, 'plain.txt'), 'p')
+    const outputs = new Map([
+      ['outputs/link.txt', path.join(src, 'link.txt')],
+      ['outputs/plain.txt', path.join(src, 'plain.txt')],
+    ])
+    const tar = await packArtifact({ stdout: '', outputs, within: src })
+    const meta = (await new Bun.Archive(tar).files()).get('.vx-meta.json')!
+    const files = (JSON.parse(await meta.text()) as { files: Record<string, unknown> }).files
+    expect(Object.keys(files)).toEqual([...outputs.keys()])
   })
 })

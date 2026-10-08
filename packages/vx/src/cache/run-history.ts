@@ -69,10 +69,9 @@ export class RunHistory {
       this.insertRun.run(...bindRun(runs[0]!, this.digestValue))
       return
     }
-    // `bun:sqlite`'s `transaction()` returns a callable that wraps the
-    // body in BEGIN/COMMIT, fsyncing once at the end. For a 200-task
-    // run that's one fsync instead of 200.
-    this.db.transaction(() => this.insertRuns(runs))()
+    // One transaction, one fsync: for a 200-task run, one instead of 200.
+    // IMMEDIATE, as `recordRunBundle` explains.
+    this.db.transaction(() => this.insertRuns(runs)).immediate()
   }
 
   /** `runs` as few INSERTs; each distinct forward-args list digested once. */
@@ -99,10 +98,19 @@ export class RunHistory {
     // the entry-save transaction (`save`/`ingest`) so a warm
     // all-cache-hit run — which writes no `runs`-vs-`entry_inputs`
     // mismatch — pays nothing for the moat it isn't refreshing.
-    this.db.transaction(() => {
-      this.insertRuns(bundle.runs)
-      this.insertInvocation.run(...bindInvocation(bundle.invocation))
-    })()
+    //
+    // IMMEDIATE: the write lock is taken at BEGIN, where the busy timeout
+    // waits for it. A run's rows digest their forward args under a salt
+    // the body READS first (`[]` from every CLI run), and a deferred
+    // transaction that read before it wrote could not wait: 13 of 48 runs
+    // on one shared cache dir lost their history to `database is locked`
+    // in 2–60 ms (BUSY_SNAPSHOT, a retry passing at once).
+    this.db
+      .transaction(() => {
+        this.insertRuns(bundle.runs)
+        this.insertInvocation.run(...bindInvocation(bundle.invocation))
+      })
+      .immediate()
   }
 
   /**

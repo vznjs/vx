@@ -163,3 +163,88 @@ describe('flaky-task detection (e2e)', () => {
     TIMEOUT,
   )
 })
+
+// Under --continue=always a task runs behind its failed dependency on the
+// same key it had passed on; its failure is the dependency's, not a flake.
+describe('a failure behind a failed dependency (--continue=always)', () => {
+  it(
+    'is not a flake on the key it had passed on',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-flaky-taint-' })
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                prep: { exec: { command: 'test -f ../../green' } },
+                test: {
+                  dependsOn: ['prep'],
+                  exec: { command: 'test -f ../../green' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/input.txt': 'v1\n' },
+        })
+        await writeFile(path.join(root, 'green'), '')
+        const green = await vx(root, ['run', 'test', '--all', '--summarize=green.json'])
+        expect(green.code).toBe(0)
+        await unlink(path.join(root, 'green'))
+        const red = await vx(root, [
+          'run',
+          'test',
+          '--all',
+          '--force',
+          '--continue=always',
+          '--summarize=red.json',
+        ])
+        expect(red.code).toBe(1)
+        const greenTest = JSON.parse(await readFile(path.join(root, 'green.json'), 'utf8')).tasks
+        const redTasks = JSON.parse(await readFile(path.join(root, 'red.json'), 'utf8')).tasks
+        const test = (ts: { id: string }[]) => ts.find((t) => t.id === 'app#test') as any
+        // The positive first: it ran and failed on the key it had passed on.
+        expect([test(redTasks).status, test(redTasks).hash]).toEqual([
+          'failed',
+          test(greenTest).hash,
+        ])
+        expect(red.text).not.toContain('flaky -')
+        expect(test(redTasks).flaky).toBeUndefined()
+        const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
+        expect(json.flakyTasks).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// A task with no cache block keys on its config alone: a run's row never
+// calls it flaky, and the doctor's list did for thirty days.
+describe('a task with no cache block', () => {
+  it(
+    'is not on the flaky list after a pass and a failure',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-flaky-uncached-' })
+      try {
+        await addProject(root, 'app', {
+          config: `export default { tasks: { check: { exec: { command: 'test -f ../../green' } } } }`,
+        })
+        await writeFile(path.join(root, 'green'), '')
+        expect((await vx(root, ['run', 'check', '--all', '--summarize=green.json'])).code).toBe(0)
+        await unlink(path.join(root, 'green'))
+        expect((await vx(root, ['run', 'check', '--all', '--summarize=red.json'])).code).toBe(1)
+        const hashOf = async (f: string) =>
+          JSON.parse(await readFile(path.join(root, f), 'utf8')).tasks[0].hash
+        // The positive first: one key, a pass then a failure.
+        expect(await hashOf('red.json')).toBe(await hashOf('green.json'))
+        const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
+        expect(json.flakyTasks).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

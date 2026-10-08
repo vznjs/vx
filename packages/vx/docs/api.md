@@ -34,6 +34,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  nested?: readonly string[]
 }
 ```
 
@@ -96,8 +97,6 @@ export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly storeDir: string | undefined
-  readonly storeFallback: string | null
-  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
@@ -159,6 +158,7 @@ export class Cache implements CacheLayer {
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void
@@ -398,6 +398,7 @@ free strings. Runtime behavior is unchanged (it returns its input).
 ```ts
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
@@ -1156,6 +1157,16 @@ A task's command as vx shows it: its secret values masked.
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 ```
 
+## `maskedLine`
+
+function · `src/util/secret-mask.ts`
+
+A line vx prints for no one task (a plugin's warning): this process's secrets masked.
+
+```ts
+export function maskedLine(line: string): string
+```
+
 ## `MigrationFormat`
 
 type · `src/workspace/migration.ts`
@@ -1890,6 +1901,7 @@ export interface RunPlan {
   predicted?: PlanPrediction
   unresolvedTasks?: readonly string[]
   unresolvedHint?: string
+  noneAffected?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 ```

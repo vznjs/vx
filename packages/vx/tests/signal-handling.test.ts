@@ -120,6 +120,60 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
+  // A shell waiting on a child stops its script on Ctrl-C only when the
+  // child DIED of SIGINT; one that exits 130 is taken to have handled it,
+  // and the script goes on. vx exited 130, so Ctrl-C of `vx run a; vx run
+  // b` ran b, and a `for` loop over `vx run` could not be stopped.
+  it(
+    'a stopping signal ends vx by that signal, so a shell script running it stops too',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { hold: { exec: { command: 'echo up > up.txt; sleep 30' } } } }`,
+      )
+      const up = path.join(dir, 'up.txt')
+      const env = { ...process.env, NO_COLOR: '1' }
+      const deaths: unknown[] = []
+      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+        await rm(up, { force: true })
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#hold'], {
+          cwd: fixture.root,
+          env,
+          stdout: 'ignore',
+          stderr: 'ignore',
+        })
+        await waitForContent(up, 'up\n', 10_000)
+        proc.kill(signal)
+        deaths.push({ code: await proc.exited, by: proc.signalCode })
+      }
+      expect(deaths).toEqual([
+        { code: 130, by: 'SIGINT' },
+        { code: 143, by: 'SIGTERM' },
+        { code: 129, by: 'SIGHUP' },
+      ])
+
+      // Ctrl-C reaches the terminal's foreground group: the shell and vx.
+      await rm(up, { force: true })
+      const script = Bun.spawn(
+        [
+          'bash',
+          '-c',
+          `${JSON.stringify(process.execPath)} ${JSON.stringify(BIN)} run app#hold; echo NEXT`,
+        ],
+        { cwd: fixture.root, env, stdout: 'pipe', stderr: 'ignore', detached: true },
+      )
+      await waitForContent(up, 'up\n', 10_000)
+      process.kill(-script.pid, 'SIGINT')
+      const out = await new Response(script.stdout).text()
+      expect({ code: await script.exited, next: out.includes('NEXT') }).toEqual({
+        code: 130,
+        next: false,
+      })
+    },
+    TIMEOUT,
+  )
+
   // A signal exit is `process.exit`, which runs no finally, so the run
   // lock's entry stayed in the temp dir for the next run to reclaim (item
   // 848). Since item 849 a first signal lets run() leave through its
