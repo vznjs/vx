@@ -169,7 +169,7 @@ describe('vx watch rejects flags it cannot honor', () => {
 describe('numeric flags take a plain decimal integer only', () => {
   it('--concurrency rejects hex / fraction / exponent / padded / signed forms', () => {
     for (const v of ['0x10', '2.7', '1e3', ' 4 ', '+4', '4abc', '']) {
-      expect(parseRunArgs(['build', '--concurrency', v]).error).toMatch(/invalid concurrency/)
+      expect(parseRunArgs(['build', '--concurrency', v]).error).toMatch(/--concurrency must be/)
     }
     expect(parseRunArgs(['build', '--concurrency', '4']).concurrency).toBe(4)
   })
@@ -208,7 +208,7 @@ describe('numeric flags take a plain decimal integer only', () => {
 
   it('--verbosity rejects the same forms', () => {
     for (const v of ['0x2', '1e1', '1.5', ' 1 ']) {
-      expect(parseRunArgs(['build', '--verbosity', v]).error).toMatch(/invalid verbosity/)
+      expect(parseRunArgs(['build', '--verbosity', v]).error).toMatch(/--verbosity must be/)
     }
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '--verbosity', '0']).verbosity).toBe(0)
@@ -298,7 +298,7 @@ describe('value flags accept the = form', () => {
 
   it('--concurrency=', () => {
     expect(parseRunArgs(['build', '--concurrency=4']).concurrency).toBe(4)
-    expect(parseRunArgs(['build', '--concurrency=']).error).toMatch(/invalid concurrency/)
+    expect(parseRunArgs(['build', '--concurrency=']).error).toMatch(/--concurrency must be/)
   })
 
   it('--output-logs=', () => {
@@ -335,7 +335,7 @@ describe('value flags accept the = form', () => {
 
   it('--verbosity=', () => {
     expect(parseRunArgs(['build', '--verbosity=2']).verbosity).toBe(2)
-    expect(parseRunArgs(['build', '--verbosity=']).error).toMatch(/invalid verbosity/)
+    expect(parseRunArgs(['build', '--verbosity=']).error).toMatch(/--verbosity must be/)
   })
 
   it('leaves the =-ONLY flags =-only — a space form would eat the task name', () => {
@@ -373,9 +373,9 @@ describe('a refused value says what the flag takes (E-36)', () => {
         (flag) => parseRunArgs(['build', ...flag]).error,
       ),
     ).toEqual([
-      'invalid concurrency: 0 (a positive integer, or a share of the cores such as 50%)',
-      'invalid verbosity: high (a non-negative integer)',
-      'invalid --dry value: yaml (text or json)',
+      '--concurrency must be a positive integer, or a share of the cores such as 50% (got 0)',
+      '--verbosity must be a non-negative integer (got high)',
+      '--dry must be text or json (got yaml)',
     ])
   })
 })

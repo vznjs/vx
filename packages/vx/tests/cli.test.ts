@@ -100,7 +100,7 @@ describe('cli run()', () => {
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
       [
         1,
-        'vx watch: invalid concurrency: abc (a positive integer, or a share of the cores such as 50%) (see `vx watch --help`)\n',
+        'vx watch: --concurrency must be a positive integer, or a share of the cores such as 50% (got abc) (see `vx watch --help`)\n',
       ],
       [
         1,
@@ -421,7 +421,7 @@ describe('cli run()', () => {
 
   it('rejects run with bad flag value (parser error surfaced)', async () => {
     expect(await run(['run', 'build', '--concurrency', 'oops'])).toBe(1)
-    expect(stderr).toContain('invalid concurrency')
+    expect(stderr).toContain('--concurrency must be')
   })
 
   it('--version is the only version form (no -V short alias)', async () => {
@@ -1174,7 +1174,7 @@ describe('vx watch command (parser-side validation)', () => {
   it('surfaces parser errors with the watch prefix', async () => {
     expect(await run(['watch', 'build', '--concurrency', 'oops'])).toBe(1)
     expect(stderr).toContain('vx watch:')
-    expect(stderr).toContain('invalid concurrency')
+    expect(stderr).toContain('--concurrency must be')
   })
 })
 
@@ -1915,8 +1915,8 @@ describe('parseRunArgs', () => {
   })
 
   it('--verbosity rejects non-integer and negative values', () => {
-    expect(parseRunArgs(['build', '--verbosity', 'high']).error).toMatch(/invalid verbosity/)
-    expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/invalid verbosity/)
+    expect(parseRunArgs(['build', '--verbosity', 'high']).error).toMatch(/--verbosity must be/)
+    expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/--verbosity must be/)
   })
 
   it('parses --dry and --dry=json / --dry=text', () => {
@@ -1928,7 +1928,9 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects invalid --dry=<format>', () => {
-    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(/invalid --dry value: yaml/)
+    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(
+      /--dry must be text or json \(got yaml\)/,
+    )
   })
 
   it('parses --graph (stdout) and --graph=<path>', () => {
@@ -2068,7 +2070,7 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects bad concurrency', () => {
-    expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/invalid concurrency/)
+    expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/--concurrency must be/)
   })
 
   it('multiple positionals are collected as tasks (Turbo-style `vx run a b`)', () => {
@@ -2104,9 +2106,9 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects --tag with an empty key', () => {
-    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/invalid --tag/)
-    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/invalid --tag/)
-    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/invalid --tag/)
+    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/--tag must be k=v/)
+    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/--tag must be k=v/)
+    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/--tag must be k=v/)
   })
 
   it('parses --report and --report=markdown', () => {
@@ -2135,8 +2137,8 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects a non-markdown --report value (json reserved)', () => {
-    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/invalid --report value/)
-    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/invalid --report value/)
+    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/--report must be markdown/)
+    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/--report must be markdown/)
   })
 })
 
