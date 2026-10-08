@@ -1299,7 +1299,8 @@ run...` precedes it.
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
-   with an old mtime by `mv`, `cp -p` or `tar x` still counts), and a
+   with an old mtime by `mv`, `cp -p` or `tar x` still counts, and a
+   symlink's own times are read, never its target's), and a
    path git did not list at the arm that is gone again (vim's `4913`
    write probe, a lock file) is no edit; and
    nothing is judged while a cycle runs — its
