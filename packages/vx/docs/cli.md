@@ -1436,17 +1436,22 @@ run):
   format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
-Persistent tasks (`exec.persistent`) re-spawn each cycle. A requested
-dev server stays up while watch idles, and what it writes keeps printing; when the next cycle starts, the
-old server is stopped first (the kill grace, then SIGKILL) and the cycle
-launches a fresh one, so the two never hold one port. One that dies
-while watch idles is said (`vx: app#dev exited with code 3`); the next
-change starts it again. An edit while a cycle waits only on a server
-that has not printed its `readyWhen` line stops that cycle and starts
-the next, so a fix reaches a server stuck before ready, in the initial
-run too. Stopping watch stops the server too. For dev-server workflows where you want the server
-to stay up across changes, use the dev tool's own watch (`vite`,
-`tsc -b -w`, `bun --watch`) rather than `vx watch`.
+A requested persistent task (`exec.persistent`, a dev server) starts
+once and stays up across cycles; each cycle re-runs what it depends on,
+as the cache keys decide. So `vx watch dev`, with `dev` depending on
+`^build`, rebuilds only the libraries an edit reaches on the way to the
+app and leaves the server running; the dev tool's own reload picks up
+what was rebuilt. What the server writes keeps printing. It restarts
+only when its own task config (or the args forwarded to it) changed, or
+when it died: the old one is stopped first (the kill grace, then
+SIGKILL), so the two never hold one port. One that dies while watch
+idles is said (`vx: app#dev exited with code 3`); the next change
+starts it again. A cycle in which a task the server depends on fails
+stops it. An edit while a cycle waits only on a server that has not
+printed its `readyWhen` line stops that cycle and starts the next, so a
+fix reaches a server stuck before ready, in the initial run too.
+Stopping watch stops the server too. A one-shot task (`vx watch build`)
+re-runs itself and what it depends on.
 
 ### Exit codes
 

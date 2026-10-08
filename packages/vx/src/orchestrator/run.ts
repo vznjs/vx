@@ -63,7 +63,7 @@ import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, resolveOutputView } from './logger.js'
+import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
@@ -103,13 +103,19 @@ import {
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
 import { assembleRunRecords } from './run-records.js'
-import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
+import {
+  hasEnded,
+  selectKeepAlive,
+  serverConfig,
+  shutdownPersistent,
+  takeHeldServers,
+} from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
 import { createMissExplainer } from './miss-reason.js'
-import type { RunOptions, RunSummary } from './options.js'
+import type { HeldServer, RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
 // is one `preProbed.set` away from leaking a hit across cycles.
@@ -358,6 +364,18 @@ async function runOnBus(
   colors: ColorSupport,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
+  // A server's output goes through a cell of its own: a later watch cycle
+  // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
+  const serverOuts = new Map<string, { bus: EventBus }>()
+  const serverLog = (id: string): Logger => {
+    const out = { bus }
+    serverOuts.set(id, out)
+    return {
+      ...log,
+      taskStdout: (node, chunk) => out.bus.emit({ kind: 'task:stdout', node, chunk }),
+      taskStderr: (node, chunk) => out.bus.emit({ kind: 'task:stderr', node, chunk }),
+    }
+  }
 
   const prepared = await prepareRun(options, log)
   mark('plugin stages')
@@ -469,6 +487,20 @@ async function runOnBus(
     workspaceProjectCount,
   } = prepared
   const concurrency = options.concurrency ?? workspaceConfig?.concurrency ?? machineParallelism()
+  // An earlier cycle's servers: the ones this graph starts again unchanged
+  // stay up; the others go now, before anything binds their ports. A stop
+  // that lands meanwhile ends the run here, having run nothing: an aborted
+  // graph printed a `not run` row and a footer above `stopped` (WD-22).
+  const heldBefore = takeHeldServers(options.keep?.servers, nodes, options.forwardArgs)
+  if (heldBefore.stale.length > 0) {
+    await terminateChildren(() => heldBefore.stale)
+    if (options.signal?.aborted === true) {
+      disposePlugins?.()
+      await teardown()
+      prepared.cache.close()
+      return { ok: true, outcomes: [] }
+    }
+  }
 
   // Resolved ONCE per run, in declaration order, the local executor last.
   // A broken factory aborts here, before any task starts.
@@ -968,7 +1000,7 @@ async function runOnBus(
         cache,
         cachePolicy: policy,
         forwardArgs: options.forwardArgs,
-        log,
+        log: node.config.exec?.persistent !== undefined ? serverLog(node.id) : log,
         executor: placements.executors.get(node.id) ?? UNPLACED_EXECUTOR,
         deferred: deferredOutputs,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
@@ -1041,6 +1073,25 @@ async function runOnBus(
         // History is observability: an unreadable one judges nothing.
       }
     }
+    const keepServer = (node: TaskNode): TaskOutcome | undefined => {
+      const server = heldBefore.kept.get(node.id)
+      if (server === undefined) return undefined
+      heldBefore.kept.delete(node.id)
+      if (hasEnded(server.child)) return undefined
+      server.handOver()
+      server.out.bus = bus
+      serverOuts.set(node.id, server.out)
+      persistentRegistry.set(node.id, server.child)
+      const at = process.hrtime.bigint() - runStartHrTimeNs
+      return {
+        node,
+        status: 'success',
+        exitCode: 0,
+        durationMs: 0,
+        wallclockStartNs: at,
+        wallclockEndNs: at,
+      }
+    }
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -1063,7 +1114,12 @@ async function runOnBus(
         narrowDemand(o.node.id)
       },
       onError: (node, line) => log.taskStderr(node, line),
-      execute: (node, upstream) => executeWithDedup(node, keyUpstream(node, upstream)),
+      execute: (node, upstream) => {
+        const kept = keepServer(node)
+        return kept !== undefined
+          ? Promise.resolve(kept)
+          : executeWithDedup(node, keyUpstream(node, upstream))
+      },
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),
@@ -1384,11 +1440,22 @@ async function runOnBus(
       // keep-alive says it: `vx watch` sat on "watching" over a dead dev
       // server. The holder's own stop() is not such a death.
       let stopping = false
+      // Taken by a later run (`RunOptions.keep`): kept or stopped there.
+      const handed = new Set<ReturnType<typeof Bun.spawn>>()
+      const servers = new Map<string, HeldServer>()
       keepAlive.nodes.forEach((n, i) => {
+        const child = held[i]!
+        servers.set(n.id, {
+          child,
+          config: serverConfig(n, options.forwardArgs),
+          out: serverOuts.get(n.id) ?? { bus },
+          handOver: () => void handed.add(child),
+        })
         // One that died during the graph was said then.
-        if (hasEnded(held[i]!)) return
-        void held[i]!.exited.then((code) => {
-          if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)
+        if (hasEnded(child)) return
+        void child.exited.then((code) => {
+          if (!stopping && !handed.has(child) && code !== 0)
+            log.status(`vx: ${n.id} exited with code ${code}`)
         })
       })
       return {
@@ -1396,9 +1463,10 @@ async function runOnBus(
         outcomes: list,
         persistent: {
           ids: keepAlive.nodes.map((n) => n.id),
+          servers,
           stop: (signal) => {
             stopping = true
-            return terminateChildren(() => held, signal)
+            return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
           },
         },
       }

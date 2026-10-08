@@ -58,6 +58,6 @@ it('three saves of a tracked file under a held server blame no server', async ()
 // Control: an untracked file a server rewrites is still named (item 948).
 it('three writes of an untracked file under a held server name it', async () => {
   expect(await threeEdits('server.log')).toEqual([
-    'vx watch: server.log has started 3 cycles in a row, written while a server the cycle before started was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write restarts the server.\n',
+    'vx watch: server.log has started 3 cycles in a row, written while a server was running — a persistent task rewrites it. Add it to .gitignore (a git-ignored path never starts a cycle); until then every write starts a cycle.\n',
   ])
 })

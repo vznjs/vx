@@ -409,8 +409,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   let claimedRootFiles = args.claimedRootFiles
   let configImportFiles = args.configImports
   let wsConfigImportFiles = args.workspaceConfigImports
-  // A dev server stays up while the loop idles; the cycle that replaces it
-  // stops it first, so the new one never meets the old one's port.
+  // A dev server stays up while the loop idles and across cycles; a cycle
+  // that must restart it (its config changed, it died) stops it before its
+  // graph, so the new one never meets the old one's port.
   let held = args.held
 
   // Reentrancy guard — never two orchestrator runs in flight. Events that
@@ -480,20 +481,26 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // after the run stays, for what the run itself changed.
             if (reread) await rearm(false)
             process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
-            await held?.stop()
-            held = undefined
-            // A Ctrl-C while the old server shut down ran a cycle anyway: a
-            // `not run` row and a footer printed above `stopped` (WD-22).
             if (stop.aborted) break
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
             // run made within a tick of it carried an earlier mtime and read as
             // an edit (WD-20). The end needs no stamp: an mtime never leads it.
             const start = fsClockNow(cacheDir)
-            current = watchCycle(opts, stop, interruptIfWaiting)
+            // A server still up whose task is unchanged stays up: the cycle
+            // rebuilds what it depends on, and the dev tool's own reload
+            // takes it from there. The run stops the others before its graph.
+            const before = held
+            current = watchCycle(
+              { ...opts, ...(before ? { keep: before } : {}) },
+              stop,
+              interruptIfWaiting,
+            )
             const cycle = await runOrchestrator(current.opts)
             current = undefined
             held = cycle.persistent
+            // What this cycle did not take (a server whose task did not run).
+            await before?.stop()
             if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
             changes.lastCycle = { start, end: Date.now() }
           } catch (err) {

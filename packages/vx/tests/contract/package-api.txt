@@ -712,6 +712,14 @@ export interface HashCache {
 export interface HeldPersistent {
   ids: readonly string[]
   stop(signal?: 'SIGINT' | 'SIGTERM'): Promise<void>
+  servers: ReadonlyMap<string, HeldServer>
+}
+== type HeldServer (src/orchestrator/options.ts)
+export interface HeldServer {
+  child: ReturnType<typeof Bun.spawn>
+  config: string
+  out: { bus: EventBus }
+  handOver(): void
 }
 == type HistoryProvider (src/orchestrator/history.ts)
 export interface HistoryProvider {
@@ -1230,6 +1238,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean
+  keep?: HeldPersistent
   summaryTable?: boolean
   tty?: boolean
   log?: Logger

@@ -325,15 +325,23 @@ Watch mode re-invokes `orchestrator.run` per cycle with
 `holdPersistent: true`, so the requested persistent tasks a cycle
 started, and the persistent tasks they depend on, are handed back
 running (`RunSummary.persistent`) instead of being stopped when its
-graph ends. The loop holds them while it idles; the next cycle calls
-their `stop()` before its run, and the stop path calls it after the
-in-flight cycle returns. A stop that lands while a cycle is stopping
-them ends the cycle there: it runs nothing (WD-22). Any other persistent task is still stopped at
-the end of its cycle, as under `vx run`. So a `persistent` dev server is up between cycles and
-re-spawned by each one. Until 2026-09-24 the server was stopped at the
-END of each cycle and was dead whenever watch sat idle
-(`tests/watch-loop.test.ts` › "the dev server stays up while watch
-idles and is replaced when the next cycle starts").
+graph ends. The loop holds them while it idles and hands them to the
+next cycle as `RunOptions.keep`: a server still up whose task that
+cycle starts again, with the same resolved config and forwarded args,
+stays up and reads ready at once (`0ms running`), and what it writes
+reaches the new cycle's renderer. The rest of the graph re-runs as
+usual: `vx watch dev` over `dev: { dependsOn: ['^build'] }` rebuilds
+the libraries an edit reached, and the dev tool's own reload takes it
+from there. A server whose config changed, or that died, is stopped
+before the cycle's graph and started again; a stop that lands while it
+is going ends the cycle there, having run nothing (WD-22). One the
+cycle never reaches (a dependency failed) is stopped after it, by the
+hand-back it came from. Any other persistent task is still stopped at
+the end of its cycle, as under `vx run`. Until 2026-10-08 every cycle
+restarted the server, and until 2026-09-24 it was stopped at the END of
+each cycle and was dead whenever watch sat idle
+(`tests/watch-loop.test.ts` › "the dev server stays up across cycles
+and is replaced when its config changes").
 
 A cycle whose server never matches `readyWhen` and has no
 `exec.timeout` never ends. An edit judged a change while every task in
@@ -341,10 +349,10 @@ flight is such a server stops the cycle (SIGTERM, grace, SIGKILL, as
 Ctrl-C does) and starts the next; a cycle running any other task is
 never stopped (`tests/watch-ready-interrupt.test.ts`, WD-15).
 
-For dev-server workflows, use the dev tool's own watch (`vite`,
-`tsc -b -w`, `bun --watch`) rather than `vx watch`. `vx watch` is
-for `vx watch test` / `vx watch lint` / `vx watch build` —
-non-persistent tasks where each cycle should re-run cleanly.
+`vx watch dev` is the dev-server workflow: the server is started
+once and the tasks it depends on re-run on each edit. A one-shot task
+(`vx watch build`, `vx watch test`) re-runs itself and what it depends
+on, as the cache keys decide.
 
 ## What this does NOT do
 
@@ -375,8 +383,8 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
   re-run of the user's specified task across the entire scope.
-- Doesn't carry a persistent task through a cycle: it stays up while
-  watch idles, and the next cycle stops and re-spawns it.
+- Restart a server for an edit to its own sources: the dev tool
+  reloads those itself. Only its config, or its death, restarts it.
 - Re-key a cycle when a task rewrites a lockfile _during_ it: the keys
   are taken once per cycle. The run itself notices (item 750,
   [`fingerprint-watch.md`](./fingerprint-watch.md)): nothing keyed
@@ -417,6 +425,3 @@ Plausible extensions, all contained:
   in the current debounce window and only re-run tasks in those
   projects (`opts.projects = [...affected]`). Useful for very large
   workspaces.
-- **Persistent-task hand-off** — track persistent children across
-  cycles so a dev server doesn't restart on every file change.
-  Schema-extending change; cooperate with `execute-task.ts`.

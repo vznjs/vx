@@ -50,12 +50,13 @@ export function acquireRunLock(
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
 //   summarize?, beforeFooter? (text above the footer), profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
-//   holdPersistent? (return the requested persistent tasks still running)
+//   holdPersistent? (return the requested persistent tasks still running),
+//   keep? (an earlier run's hand-back: keep each server whose task is unchanged)
 
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
-  persistent?: HeldPersistent // { ids, stop() }, set only under holdPersistent
+  persistent?: HeldPersistent // { ids, stop(), servers }, set only under holdPersistent
   refused?: string // why the run refused to start; the caller prints it
 }
 ```
@@ -142,7 +143,13 @@ export interface RunSummary {
     owns them and its `stop()` is the same teardown. One that dies on
     its own after that is named (`vx: <id> exited with code <n>`,
     #2442), so a watch loop idling over a dead server says so; the
-    teardown its `stop()` runs is not.
+    teardown its `stop()` runs is not. `RunOptions.keep` hands such a
+    hand-back to the next run: each server still up whose node is in its
+    graph with the same resolved config (`serverConfig`) is reported
+    ready when its task is reached, without a spawn, and its output cell
+    is pointed at the new run's bus; the others are stopped before the
+    run lock (`takeHeldServers`). A taken server leaves the earlier
+    hand-back: its `stop()` and exit notice skip it.
     `RunOptions.signal` aborts a run from outside through the same
     teardown: the scheduler dispatches nothing further (never-started
     tasks complete `aborted`) and run() returns to its caller.

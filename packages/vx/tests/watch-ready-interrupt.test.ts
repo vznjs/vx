@@ -34,24 +34,25 @@ async function lines(name: string): Promise<string[]> {
   return (await f.text()).split('\n').filter(Boolean)
 }
 
-async function fixture(prep: string): Promise<string> {
-  root = await makeWorkspace({ prefix: 'vx-watch-ready-' })
-  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-marks-'))
+/** The project's config; `hang` makes a server that never prints READY. A server restarts only when its config changes. */
+function config(prep: string, hang = false): string {
   const pids = path.join(outside, 'pids')
-  const dir = await addProject(
-    root,
-    'web',
-    `export default { tasks: {
+  return `export default { tasks: {
       prep: { exec: { command: '${prep}' } },
       dev: {
         dependsOn: ['prep'],
         exec: {
-          command: 'echo $$ >> ${pids}; grep -q hang src/a.txt && exec sleep 1000; echo READY; exec sleep 1000',
+          command: 'echo $$ >> ${pids}; ${hang ? 'exec sleep 1000' : 'echo READY; exec sleep 1000'}',
           persistent: { readyWhen: 'READY' },
         },
       },
-    } }`,
-  )
+    } }`
+}
+
+async function fixture(prep: string): Promise<string> {
+  root = await makeWorkspace({ prefix: 'vx-watch-ready-' })
+  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-ready-marks-'))
+  const dir = await addProject(root, 'web', config(prep))
   await Bun.write(path.join(dir, 'src', 'a.txt'), 'ok\n')
   return dir
 }
@@ -64,9 +65,9 @@ it('an edit stops a cycle waiting on a server that never becomes ready', async (
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
   await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-  await writeFile(path.join(dir, 'src', 'a.txt'), 'hang\n')
+  await writeFile(path.join(dir, 'vx.config.mjs'), config('true', true))
   await until(async () => (await lines('pids')).length === 2, 'the hanging server')
-  await writeFile(path.join(dir, 'src', 'a.txt'), 'fixed\n')
+  await writeFile(path.join(dir, 'vx.config.mjs'), config('true'))
   await until(() => runsEnded(w) === 3, 'the cycle after the fix')
   const pids = (await lines('pids')).map(Number)
   expect(pids).toHaveLength(3)
