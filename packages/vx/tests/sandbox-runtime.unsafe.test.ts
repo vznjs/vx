@@ -3746,7 +3746,10 @@ describe.skipIf(process.platform !== 'darwin' || process.arch !== 'arm64')(
         try {
           const run = (systemInfo: string[]) =>
             runSandboxed({
-              command: '/usr/sbin/sysctl -n hw.optional.neon',
+              // sysctlbyname(3), the call Bun makes, as its raw syscall
+              // (274). /usr/sbin/sysctl exited 1 under the grant on macOS
+              // CI, with no stderr kept to say why.
+              command: `/usr/bin/perl -e '$n="hw.optional.neon";$v=pack("L",0);$l=pack("Q",4);exit 1 if syscall(274,$n,length($n),$v,$l,0,0);print unpack("L",$v)'`,
               cwd: dir,
               env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
               baseAllowRead: [],
@@ -3758,11 +3761,12 @@ describe.skipIf(process.platform !== 'darwin' || process.arch !== 'arm64')(
           const granted = await run(['hw.optional.neon'])
           // CONTROL: without the grant the read is refused.
           const bare = await run([])
-          expect([granted.stdout.trim(), granted.exitCode, bare.exitCode === 0]).toEqual([
-            '1',
-            0,
-            false,
-          ])
+          expect({
+            out: granted.stdout.trim(),
+            code: granted.exitCode,
+            err: granted.exitCode === 0 ? '' : granted.stderr,
+            bareOk: bare.exitCode === 0,
+          }).toEqual({ out: '1', code: 0, err: '', bareOk: false })
         } finally {
           await resetSandbox()
           await rm(dir, { recursive: true, force: true })
