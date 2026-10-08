@@ -1,0 +1,139 @@
+---
+// One page per feature in src/features/features.ts: the category, title and
+// hook, the image, the body and an example, links to the docs and the deep
+// dive, then the rest of its category and the previous and next feature.
+import { getImage } from 'astro:assets'
+import type { ImageMetadata } from 'astro'
+import FeatureCard from '../../components/features/FeatureCard.astro'
+import FeatureImage from '../../components/features/FeatureImage.astro'
+import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import { categoryOf, FEATURES, inlineHtml, type Feature } from '../../features/features.js'
+
+export function getStaticPaths() {
+  return FEATURES.map((feature, i) => ({
+    params: { slug: feature.slug },
+    props: { feature, prev: FEATURES[i - 1], next: FEATURES[i + 1] },
+  }))
+}
+
+interface Props {
+  feature: Feature
+  prev: Feature | undefined
+  next: Feature | undefined
+}
+const { feature: f, prev, next } = Astro.props
+const base = import.meta.env.BASE_URL
+const link = (h: string) => (h.startsWith('https://') ? h : `${base}${h}`)
+const category = categoryOf(f)
+const more = FEATURES.filter((x) => x.category === f.category && x.slug !== f.slug)
+const plain = f.hook.replace(/`/g, '')
+
+// The link card's image: a JPEG at the size the cards ask for.
+const images = import.meta.glob<{ default: ImageMetadata }>('../../assets/features/*.png', {
+  eager: true,
+})
+const og = await getImage({
+  src: images[`../../assets/features/${f.image}`]!.default,
+  width: 1200,
+  format: 'jpeg',
+  quality: 82,
+})
+---
+
+<FeaturesPage
+  title={`${f.title} — vx features`}
+  description={plain}
+  path={`features/${f.slug}/`}
+  ogImage={new URL(og.src, Astro.site).href}
+>
+  <section class="fhero">
+    <div class="container">
+      <div class="crumbs">
+        <a href={`${base}features/`}>Features</a>
+        <span aria-hidden="true">/</span>
+        <a class="pill" href={`${base}features/#${category.id}`}>{category.title}</a>
+      </div>
+      <h1>{f.title}</h1>
+      <p class="lede" set:html={inlineHtml(f.hook)} />
+      <div class="actions">
+        <a class="btn btn-primary btn-lg" href={link(f.docs.href)}
+          >Read the docs <span class="arr">→</span></a
+        >
+        {
+          f.deepDive && (
+            <a class="btn btn-ghost btn-lg" href={link(f.deepDive.href)}>
+              Deep dive: {f.deepDive.label}
+            </a>
+          )
+        }
+      </div>
+      <figure class="fshot">
+        <FeatureImage
+          file={f.image}
+          alt={f.imageAlt}
+          widths={[640, 960, 1280, 1600]}
+          sizes="(max-width: 1328px) calc(100vw - 2 * clamp(20px, 5vw, 64px)), 1200px"
+          eager
+        />
+      </figure>
+    </div>
+  </section>
+
+  <section class="fmain">
+    <div class="container fmain-grid">
+      <div class="fbody">
+        {f.body.map((p) => <p set:html={inlineHtml(p)} />)}
+      </div>
+      <div class="fexample">
+        <p class="vx-kicker label">// {f.example.lang === 'ts' ? 'config' : f.example.lang === 'sh' ? 'try it' : 'what it prints'}</p>
+        <pre class="code" data-lang={f.example.lang}><code>{f.example.code}</code></pre>
+        <div class="section-links">
+          <a class="section-link" href={link(f.docs.href)}>{f.docs.label} <span class="arr">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {
+    more.length > 0 && (
+      <section class="fmore">
+        <div class="container">
+          <h2>More in {category.title}</h2>
+          <div class="fgrid">
+            {more.map((x) => (
+              <FeatureCard feature={x} showCategory={false} />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  <div class="fpager">
+  <nav class="pager container" aria-label="Previous and next feature">
+    {
+      prev ? (
+        <a class="prev" href={`${base}features/${prev.slug}/`}>
+          <span class="dir">← Previous</span>
+          <span class="name">{prev.title}</span>
+        </a>
+      ) : (
+        <span />
+      )
+    }
+    {
+      next ? (
+        <a class="next" href={`${base}features/${next.slug}/`}>
+          <span class="dir">Next →</span>
+          <span class="name">{next.title}</span>
+        </a>
+      ) : (
+        <a class="next" href={`${base}features/`}>
+          <span class="dir">All features →</span>
+          <span class="name">Everything vx does</span>
+        </a>
+      )
+    }
+  </nav>
+  </div>
+</FeaturesPage>

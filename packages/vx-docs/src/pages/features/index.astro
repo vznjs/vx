@@ -1,0 +1,59 @@
+---
+// The feature hub: every feature in src/features/features.ts as a card,
+// grouped by category, each linking its own page ([slug].astro). Static;
+// the chips are anchors to the sections.
+import FeatureCard from '../../components/features/FeatureCard.astro'
+import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import { CATEGORIES, FEATURES } from '../../features/features.js'
+
+const groups = CATEGORIES.map((c) => ({
+  ...c,
+  features: FEATURES.filter((f) => f.category === c.id),
+}))
+---
+
+<FeaturesPage
+  title="Features — vx"
+  description={`Everything vx does: ${FEATURES.length} features, from the cache and the sandbox to watch mode and plugins, each with its own page.`}
+  path="features/"
+>
+  <section class="fhub-hero">
+    <div class="container">
+      <p class="vx-kicker">// {FEATURES.length} features</p>
+      <h1>Everything <span class="phosphor">vx</span> does.</h1>
+      <p class="lede">
+        A fast runner, a cache you can trust, and the small things you meet every day, each with a
+        page of its own.
+      </p>
+      <ul class="chips" aria-label="Categories">
+        {
+          groups.map((g) => (
+            <li>
+              <a href={`#${g.id}`}>
+                {g.title} <span class="count">{g.features.length}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  {
+    groups.map((g) => (
+      <section class="fcat" id={g.id}>
+        <div class="container">
+          <div class="fcat-head">
+            <h2>{g.title}</h2>
+            <p>{g.line}</p>
+          </div>
+          <div class="fgrid">
+            {g.features.map((f) => (
+              <FeatureCard feature={f} showCategory={false} />
+            ))}
+          </div>
+        </div>
+      </section>
+    ))
+  }
+</FeaturesPage>

@@ -1,7 +1,7 @@
 // The landing page is the whole story (owner, 2026-09-28; design/site-short-2026-09.md
 // § Laws; 2026-10-02: vx is its own tool, Turbo and Nx only via migration):
 // the hero, the benchmark chart and why, how to start, the one picture with its six
-// callouts, and the four pillars. These rows read the page as it shipped,
+// callouts, the four pillars, and a strip of the feature pages. These rows read the page as it shipped,
 // `dist/index.html`, which the `build` task writes, and the picture as data
 // (src/components/landing/one-run.ts). What the design says is written out
 // here by hand, never read from the module it holds.
@@ -19,7 +19,7 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
-const SECTIONS = ['bench', 'edge', 'try', 'one-run', 'pillars']
+const SECTIONS = ['bench', 'edge', 'try', 'one-run', 'pillars', 'features']
 
 // The six lines under the picture, as the design writes them, each at the
 // anchor the old chapters redirect to.
