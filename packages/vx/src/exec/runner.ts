@@ -349,6 +349,18 @@ const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 const TIMEOUT_SIGKILL_GRACE_MS = 2000
 
 /**
+ * Run `fn` one loop turn later, once the child exits already pending are
+ * read. A deadline due in the same turn as a child's exit fires BEFORE Bun
+ * reaps it: a task that exited 0 inside its timeout, seen late by a busy vx,
+ * was SIGTERMed as a zombie and failed as timed out, and a server that died
+ * before ready read as a readiness timeout (2026-10-08). A turn later the
+ * exit has settled the caller, which clears the returned timer.
+ */
+function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
+  return setTimeout(fn, 0)
+}
+
+/**
  * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
  * `timedOut()` reports whether the timer fired — so the caller can
  * classify the resulting SIGTERM as a real failure rather than a
@@ -368,7 +380,10 @@ export function armTimeout(
   let firedAt: number | undefined
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  const timer = setTimeout(() => {
+  let timer = setTimeout(() => {
+    timer = afterPendingExits(fire)
+  }, timeoutMs)
+  function fire(): void {
     firedAt = Date.now()
     killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
@@ -379,7 +394,7 @@ export function armTimeout(
     // the CLI alive.
     killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), graceMs)
     killTimer.unref?.()
-  }, timeoutMs)
+  }
   return {
     timedOut: () => firedAt !== undefined,
     settle: async () => {
@@ -680,7 +695,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
-    readyTimer = setTimeout(() => {
+    const giveUp = (): void => {
       if (readyAt === undefined) {
         gaveUpAt = Date.now()
         rejectReady(
@@ -705,6 +720,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
         killTimer.unref?.()
       }
+    }
+    readyTimer = setTimeout(() => {
+      readyTimer = afterPendingExits(giveUp)
     }, opts.timeoutMs)
   }
 
