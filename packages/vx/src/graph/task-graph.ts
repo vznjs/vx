@@ -2,6 +2,7 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
+  normalizeGlob,
   relPosix,
   splitNegations,
   staticPrefix,
@@ -1152,6 +1153,64 @@ function collideAcross(
  */
 const GLOB_HEAD_END = /[*?{}\\!]/
 
+/** `firstSegment`'s answer for a glob that can start anywhere. */
+const ANYWHERE = ''
+
+/** Where a glob's first segment ends: a separator, or anything `GLOB_HEAD_END` stops at. */
+const FIRST_SEGMENT_END = /[*?{}\\!/]/
+
+const firstSegments = new Map<string, string>()
+
+/**
+ * The first path segment every path a glob (or its `asTrees` twin) can
+ * match starts with, or `ANYWHERE`. A task glob matches whole paths, so
+ * two globs with different first segments select disjoint sets, and none
+ * of `outputsOverlap`'s three cases can hold for them. Memoised by the
+ * raw string: a pure function, and one glob (`src/**`) recurs in every
+ * project.
+ */
+function firstSegment(raw: string): string {
+  let seg = firstSegments.get(raw)
+  if (seg !== undefined) return seg
+  const g = normalizeGlob(raw)
+  const cut = g.search(FIRST_SEGMENT_END)
+  seg = cut === -1 ? g : g[cut] === '/' ? g.slice(0, cut) : ANYWHERE
+  if (seg === '.' || seg === '..') seg = ANYWHERE
+  firstSegments.set(raw, seg)
+  return seg
+}
+
+/**
+ * False only when no pair `overlapCandidates` could return can overlap:
+ * every glob starts in a named segment and no two members (on different
+ * sides, given `sideOf`) share one. The per-project buckets are nearly
+ * all of this shape (`src/**` read, `dist/**` written), and building the
+ * indexes for each cost the warm run's graph stage tens of milliseconds
+ * at 1,090 projects (X-148).
+ */
+function mayOverlap<T>(
+  tasks: readonly T[],
+  globsOf: (n: T) => readonly string[] | undefined,
+  sideOf?: (n: T) => boolean,
+): boolean {
+  // Per segment: the first member seen (one side) or the sides seen as a mask.
+  const seen = new Map<string, number>()
+  for (let i = 0; i < tasks.length; i++) {
+    const mark = sideOf === undefined ? i : sideOf(tasks[i]!) ? 2 : 1
+    for (const g of globsOf(tasks[i]!) ?? []) {
+      const seg = firstSegment(g)
+      if (seg === ANYWHERE) return true
+      const was = seen.get(seg)
+      if (was === undefined) seen.set(seg, mark)
+      else if (sideOf === undefined) {
+        if (was !== i) return true
+      } else if ((was | mark) === 3) return true
+      else seen.set(seg, was | mark)
+    }
+  }
+  return false
+}
+
 /**
  * The pairs `[i, j]`, `i < j`, of `tasks` whose declared outputs CAN
  * overlap, ascending by `i` then `j`: a superset of the pairs
@@ -1181,6 +1240,7 @@ function overlapCandidates<T>(
   globsOf: (n: T) => readonly string[] | undefined,
   sideOf?: (n: T) => boolean,
 ): Array<[number, number]> {
+  if (!mayOverlap(tasks, globsOf, sideOf)) return []
   const sides = sideOf === undefined ? 1 : 2
   // The index a member of side `s` looks up: its own side's, or the other's.
   const across = (s: number): number => (sides === 1 ? s : 1 - s)
@@ -1356,6 +1416,7 @@ function refuseSelfClean(node: TaskNode): void {
   const cache = node.config.cache
   if (cache === undefined) return
   for (const field of ['files', 'workspaceFiles'] as const) {
+    if (!coversAny(cache.inputs[field], cache.outputs[field])) continue
     const inputs = splitNegations(cache.inputs[field] ?? [])
     const out = splitNegations(cache.outputs[field] ?? [])
     const outputs = out.positive
@@ -1382,6 +1443,39 @@ function refuseSelfClean(node: TaskNode): void {
       )
     }
   }
+}
+
+/**
+ * False only when no positive output can cover a positive input: each
+ * starts in a named first segment and no input shares one with an output
+ * (`firstSegment`). The common task reads `src/**` and writes `dist/**`.
+ */
+function coversAny(
+  inputs: readonly string[] | undefined,
+  outputs: readonly string[] | undefined,
+): boolean {
+  if (inputs === undefined || outputs === undefined) return false
+  let anyOutput = false
+  for (const go of outputs) {
+    if (go.startsWith('!')) continue
+    anyOutput = true
+    if (firstSegment(go) === ANYWHERE) return true
+  }
+  if (!anyOutput) return false
+  for (const gi of inputs) {
+    if (gi.startsWith('!')) continue
+    const seg = firstSegment(gi)
+    if (seg === ANYWHERE) return true
+    for (const go of outputs) if (!go.startsWith('!') && firstSegment(go) === seg) return true
+  }
+  return false
+}
+
+/** A glob list's positive entries: the list itself when it takes nothing back. */
+function positives(globs: readonly string[] | undefined): readonly string[] {
+  if (globs === undefined) return []
+  for (const g of globs) if (g.startsWith('!')) return splitNegations(globs).positive
+  return globs
 }
 
 /** One task's inputs (`reads`) or outputs in one namespace, for `detectInputOverlaps`. */
@@ -1431,8 +1525,8 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   for (const n of nodes.values()) {
     const cache = n.config.cache
     if (cache === undefined) continue
-    const outFiles = splitNegations(cache.outputs.files).positive
-    const outWs = splitNegations(cache.outputs.workspaceFiles ?? []).positive
+    const outFiles = positives(cache.outputs.files)
+    const outWs = positives(cache.outputs.workspaceFiles ?? [])
     if (outFiles.length > 0) {
       bucket(n.projectName).push({ node: n, globs: outFiles, reads: false })
       filesWriters.push(n)
@@ -1443,8 +1537,8 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       wsWriters.push(side)
     }
     if (isGroupTask(n)) continue
-    const inFiles = splitNegations(cache.inputs.files).positive
-    const inWs = splitNegations(cache.inputs.workspaceFiles ?? []).positive
+    const inFiles = positives(cache.inputs.files)
+    const inWs = positives(cache.inputs.workspaceFiles ?? [])
     if (inFiles.length > 0) {
       bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
       filesReaders.push(n)
@@ -1471,7 +1565,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     const sides = [...wsWriters]
     for (const node of filesReaders) {
       const rel = relPosix(workspaceRoot, node.projectDir)
-      const globs = splitNegations(node.config.cache!.inputs.files).positive.map((g) =>
+      const globs = positives(node.config.cache!.inputs.files).map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )
       sides.push({ node, globs, reads: true, rel })
@@ -1488,7 +1582,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   if (workspaceRoot !== undefined) {
     for (const node of filesWriters) {
       const rel = relPosix(workspaceRoot, node.projectDir)
-      const globs = splitNegations(node.config.cache!.outputs.files).positive.map((g) =>
+      const globs = positives(node.config.cache!.outputs.files).map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )
       rooted.push({ node, globs, reads: false, rel })
