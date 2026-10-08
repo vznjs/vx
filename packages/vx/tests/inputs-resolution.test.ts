@@ -791,7 +791,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // `cleanOutputPaths` takes an entry's rows, not the resolver's
     // contained set, so the delete keeps its own containment.
     await symlink(victim, path.join(projectDir, 'dist'))
-    await cleanOutputPaths({ projectDir, rels: ['dist/precious.txt'] })
+    await cleanOutputPaths({ projectDir, rels: ['dist/precious.txt'], outputs: ['dist/**'] })
     expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
   })
 

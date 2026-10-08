@@ -109,10 +109,10 @@ export interface ResolveInputsArgs {
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
-  ownOutputs: string[]
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
    *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
-  ownWorkspaceOutputs?: string[]
+  ownWorkspaceOutputs?: readonly string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
   /**
@@ -650,7 +650,7 @@ function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
  */
 export async function resolveOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
@@ -800,7 +800,7 @@ function isInside(dir: string, abs: string): boolean {
  */
 export async function cleanOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const files = await resolveOutputs(args)
@@ -818,15 +818,20 @@ export async function cleanOutputs(args: {
  * Remove exactly these project-relative paths — the recorded rows of an
  * ADDITIVE task's own artifact (item 588), never a glob: the glob would
  * take the upstream's files the task adds beside. Emptied directories are
- * pruned as `cleanOutputs` prunes them, and stop at one the upstream still
- * fills.
+ * pruned as `cleanOutputs` prunes them, only inside the declared `outputs`
+ * (`pruneScope`), and stop at one the upstream still fills.
  */
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    await removeAll(files, args.projectDir),
+    pruneScope(args.projectDir, args.outputs),
+  )
 }
 
 /**
@@ -849,7 +854,7 @@ export interface OutputStamp {
  */
 export async function stampOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
@@ -858,7 +863,7 @@ export async function stampOutputs(args: {
 /** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -889,7 +894,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -897,7 +902,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: string[] },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -1114,7 +1119,7 @@ function inScope(dir: string, scope: PruneScope): boolean {
  */
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1137,7 +1142,7 @@ export async function resolveWorkspaceOutputs(args: {
  */
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
   await pruneEmptiedDirs(
@@ -1242,8 +1247,8 @@ async function assertNoInvisibleLiteralInputs(
 interface ResolveFilesArgs {
   projectDir: string
   workspaceRoot: string
-  files: string[] | undefined
-  ownOutputs: string[]
+  files: readonly string[] | undefined
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles`, and the project's root-relative directory. */
   ownWorkspaceOutputs: readonly string[]
   projectRel: string

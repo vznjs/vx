@@ -1403,10 +1403,33 @@ describe('inputs.ts edges', () => {
   it('an additive clean prunes a parent whose recorded directory is already gone', async () => {
     // The row's own directory left before the clean (ENOENT); its emptied
     // parent is still pruned, as it would be had the clean removed both.
-    await mkdir(path.join(root, 'dist'))
-    await cleanOutputPaths({ projectDir: root, rels: ['dist/sub/x'] })
-    expect(existsSync(path.join(root, 'dist'))).toBe(false)
-    expect(existsSync(root)).toBe(true) // CONTROL: never the root
+    await mkdir(path.join(root, 'out', 'dist'), { recursive: true })
+    await cleanOutputPaths({ projectDir: root, rels: ['out/dist/sub/x'], outputs: ['out/**'] })
+    expect(existsSync(path.join(root, 'out', 'dist'))).toBe(false)
+    expect(await readdir(path.join(root, 'out'))).toEqual([]) // CONTROL: the glob's root stays
+  })
+
+  it('an additive clean keeps a directory a sibling just made, as the glob clean does', async () => {
+    // The restore's clean takes the task's rows, then extracts. A sibling
+    // that had made `dist` (or `gen`, a literal's directory) and not yet
+    // written into it lost it to the prune, and its write failed "Directory
+    // nonexistent". Order, not time: the sibling's mkdir lands first, its
+    // write after the clean.
+    await write(path.join(root, 'dist', 'a.txt'))
+    await write(path.join(root, 'dist', 'sub', 'b.txt'))
+    await write(path.join(root, 'gen', 'z.txt'))
+    await write(path.join(root, 'lit', 'x', 'y.txt'))
+    await cleanOutputPaths({
+      projectDir: root,
+      rels: ['dist/a.txt', 'dist/sub/b.txt', 'gen/z.txt', 'lit/x/y.txt'],
+      outputs: ['dist/**', 'gen/z.txt', 'lit'],
+    })
+    await writeFile(path.join(root, 'dist', 'sibling.txt'), 's')
+    await writeFile(path.join(root, 'gen', 'sibling.txt'), 's')
+    // CONTROL: below the glob's root and the literal tree itself still go.
+    expect(existsSync(path.join(root, 'dist', 'sub'))).toBe(false)
+    expect(existsSync(path.join(root, 'lit'))).toBe(false)
+    expect((await readdir(root)).sort()).toEqual(['dist', 'gen'])
   })
 
   it('a workspace-output clean prunes the directories it emptied below the glob’s root', async () => {

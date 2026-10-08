@@ -595,9 +595,10 @@ row, its stored stdout included, made a 200-task plan over 1 MB outputs
 Caching is controlled by a four-axis `CachePolicy` — **localRead**,
 **localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
 each enforced inside the matching cache layer at construction time. The
-local `Cache` gets a `{ read, write }` slice gating only its task
-artifact get/save (never `recordRun` / `stats` / `prune` / ingest /
-hashing); the `LayeredCache` additionally gates its own remote
+local `Cache` gets a `{ read, write }` slice gating its task artifact
+get/save, the config-evaluation cache's reads and writes, and the
+file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
+/ key derivation); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
@@ -836,7 +837,8 @@ With the rule off, an edge fixes the order, and the dependant is
   file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
-  before a restore (its rows only);
+  before a restore (its rows only, pruning emptied directories only
+  inside its declared trees, so a sibling's fresh directory stays);
 - its "already current" check requires its rows present and current and
   ignores everything else under the glob;
 - it is **never restore-tier**: it restores or runs after its upstream,
@@ -1179,7 +1181,8 @@ root) and it holds everything, shared with no other workspace:
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
+    │                                       packed under (v35), the miss's CPU and RSS
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1342,9 +1345,14 @@ the task's declared outputs), and hits; one that fails the check is a
 miss, and the save that follows replaces it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
-the policy sums index rows, so orphans alone never make it due), once
-they are older than an hour (a save renames the artifact into place
-before its row commits, so a fresh row-less file is a save in flight).
+the policy sums index rows, so orphans alone never make it due). A
+row-less artifact may be in use: two vx versions share one store, and
+each open drops the other's rows. So the policy judges it as it judges a
+row, its file time standing for `accessed_at`: past `olderThan` it goes,
+and under `maxSize` it counts, oldest use first with the rows. A hit
+renews a file time over an hour old, so the last use is read as the file
+time plus an hour. A temp a crashed save left goes once it is an hour
+old, and nothing younger than an hour is taken.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
@@ -1777,7 +1785,9 @@ breaking footer).
   entry could hold files a run of another key left there. The fix
   cannot reach an entry already saved that way.
 - **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
-  X-34).
+  X-34). An additive task's entry a hit replayed over a file the task
+  had removed, one that missed a same-size rewrite, and a runtime probe
+  answered before its upstream wrote.
 - **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the

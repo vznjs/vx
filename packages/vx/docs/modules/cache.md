@@ -166,7 +166,7 @@ export interface PruneOptions {
 export interface PruneResult {
   evicted: number
   bytesFreed: number
-  orphans: number // artifacts / temps with no index row, an hour old or more
+  orphans: number // row-less artifacts the policy takes by file time, and temps an hour old
   orphanBytes: number
 }
 
@@ -328,6 +328,7 @@ export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 // The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
+export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
 ```
 
 ## Key derivation (`Cache.key`)
@@ -550,9 +551,9 @@ Surfaced by `vx info`.
 - Doesn't garbage-collect old entries unasked. Eviction is
   `vx cache prune --older-than <d>` / `--max-size <s>` (calls into
   `Cache.prune`), or the workspace's `cacheRetention` at the end of a
-  run (`Cache.evictIfDue`); both sweep artifacts and temps the index
-  has no row for, once they are an hour old (`docs/caching.md`
-  § Storage layout). `evictIfDue` runs that sweep on its own when the
+  run (`Cache.evictIfDue`); both sweep artifacts the index has no row
+  for by the same policy, on file times, and temps once an hour old
+  (`docs/caching.md` § Storage layout). `evictIfDue` runs that sweep on its own when the
   policy has nothing due but the last sweep (`schema_meta`
   `orphans_swept_at`, stamped by every sweep) is an hour old: the
   policy sums index rows, so orphans never make it due.

@@ -122,7 +122,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `placement-async-hints.test.ts`).
 - A plugin executor's `execute` that throws fails the task, its message
   prefixed `plugin '<p>' (executor '<e>') failed in execute:` in the
-  frame and the scheduler's line (C-63), plainly, as a refusal: the
+  scheduler's one line, which lands in the task's frame (C-63), plainly, as a refusal: the
   plugin is named, so it is not vx's internal error (C-85). The local
   executor's own throw is vx's and is not renamed.
 - `executorFallback(reason)` (on the façade) is how a `remote` executor

@@ -335,7 +335,9 @@ terminal and a task succeeding or failing. Read it alongside
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
        fails when the server it started fell over. That server then reads
        `failed` with its own exit in the rewritten `--summarize` and in the
-       outcomes `--report` renders; one a Ctrl-C stopped does not. Under
+       report `--report-file` writes; one a Ctrl-C stopped does not. The
+       stdout `--report` prints above the footer, so it reads as the
+       footer does, before the wait. Under
        `holdPersistent` (the watch loop) run() instead returns them on
        `RunSummary.persistent`, still running, for the caller to stop;
        one that dies on its own after that is said, its `stop()` is not.
@@ -657,7 +659,7 @@ were accepted and wrote nothing until item 992).
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
 - **`--report[=markdown]`** — a markdown table to stdout
-  after the run.
+  above the footer (CI step summaries), through `RunOptions.beforeFooter`.
 - **`--report-file <path>`** — the same report APPENDED to `<path>`
   (`$GITHUB_STEP_SUMMARY`).
 
