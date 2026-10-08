@@ -37,7 +37,7 @@ const LOCKFILES: ReadonlyArray<readonly [string, PackageManager]> = [
 
 function readText(file: string): string {
   try {
-    return readFileSync(file, 'utf8')
+    return readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
   } catch {
     return ''
   }

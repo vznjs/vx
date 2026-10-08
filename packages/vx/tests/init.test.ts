@@ -125,10 +125,8 @@ describe('vx init source detection', () => {
         expect(lint.code).toBe(0)
         expect(await Bun.file(path.join(root, 'lint.out')).text()).toBe('linted\n')
         const build = await vx(root, ['run', 'build', '--all', '--dry=json'])
-        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual([
-          'a#build',
-          'fixture-root#build',
-        ])
+        // The root's default build is no match for a bare name (X-102).
+        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual(['a#build'])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -694,6 +692,23 @@ describe('migrateScripts', () => {
           'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: false\n',
         }),
       ).toEqual(apart)
+      // pnpm 10 reads the YAML, so a trailing comment or a flow mapping is
+      // the same setting; a line regex missed both and folded the hook.
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: false # hooks off\n',
+        }),
+      ).toEqual(apart)
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': '{packages: [], enablePrePostScripts: false}\n',
+        }),
+      ).toEqual(apart)
+      expect(
+        await at('pnpm-lock.yaml', {
+          'pnpm-workspace.yaml': 'packages: []\nenablePrePostScripts: true # hooks on\n',
+        }),
+      ).toEqual(['build'])
       // CONTROL: the setting a manager ignores, or none, folds the hook.
       expect(await at('pnpm-lock.yaml', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])
       expect(await at('bun.lock', { '.npmrc': 'ignore-scripts=true\n' })).toEqual(['build'])
@@ -1057,6 +1072,31 @@ describe('migrateScripts', () => {
     ).toEqual([
       ['a', ['build']],
       ['root', ['typecheck', 'linux']],
+    ])
+  })
+
+  it('a cd into a member whose dir holds a backslash-escaped space runs the members', () => {
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      escaped: 'cd packages/my\\ app && vitest run',
+      escapedParen: 'cd packages/my\\ app\\ \\(v2\\)/src && tsc',
+      quoted: 'cd "packages/my app" && vitest run',
+      // CONTROL: an escaped space into no member stays a root task.
+      other: 'cd docs/my\\ notes && make',
+    })
+    const a = meta('a', '/w/packages/my app', { build: 'tsc' })
+    const b = meta('b', '/w/packages/my app (v2)', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a, b]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['b', ['build']],
+      ['root', ['other']],
     ])
   })
 

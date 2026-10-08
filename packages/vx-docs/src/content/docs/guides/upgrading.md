@@ -13,6 +13,18 @@ first; its text is that footer: what changed and what to do.
 
 Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
 
+## config: accept readonly lists in every config array field
+
+config array fields are typed readonly; code that mutates a resolved config list must copy it first.
+
+## workspace: refuse a tag that --filter tag: cannot name
+
+a tag that --filter tag: cannot select (`**`, an upper-case glob such as `A*`) is now refused at config load.
+
+## cache: record the dry prune's API in the contract
+
+Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.
+
 ## cache: bump CACHE_VERSION to vx-cache-v40
 
 every cached task misses once after the upgrade.

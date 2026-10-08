@@ -19,6 +19,7 @@ src/nx-env.cjs
 src/nx-exec.cjs
 src/nx/export-graph.ts
 src/nx/index.ts
+src/nx/lerna.ts
 src/nx/nx-deps.ts
 src/nx/nx-dotenv.ts
 src/nx/nx-inputs.ts
