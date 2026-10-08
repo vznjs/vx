@@ -217,12 +217,7 @@ export default {
 
 describe('vx init in a Turbo or Nx repo: the first run builds, the second hits', () => {
   const cases: Array<[string, () => string, () => string, Record<string, string>]> = [
-    [
-      'a Turbo repo',
-      turboRepo,
-      () => NATIVE,
-      { 'app#build': '', 'lib#build': '' },
-    ],
+    ['a Turbo repo', turboRepo, () => NATIVE, { 'app#build': '', 'lib#build': '' }],
     [
       'an Nx repo',
       () => {
