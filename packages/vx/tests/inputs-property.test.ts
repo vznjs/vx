@@ -11,19 +11,9 @@ import path from 'node:path'
 import { afterAll, expect, it, setDefaultTimeout } from 'bun:test'
 import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
 import { relPosix } from '../src/util/index.js'
+import { rng } from './helpers/rng.js'
 
 setDefaultTimeout(60_000)
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 // U+FFFF leads a name on purpose: the partition's upper bound once was
 // `dir/` + U+FFFF, and such a file fell out of every project's inputs.
@@ -161,7 +151,7 @@ function oracle(
 
 for (let seed = 1; seed <= 24; seed++) {
   it(`seed ${seed}: the resolved inputs are exactly the oracle's`, async () => {
-    const rand = mulberry32(seed)
+    const rand = rng(seed)
     const fx = await build(rand)
     const projectDirs = fx.nested === undefined ? [fx.pkg] : [fx.pkg, fx.nested]
     for (let k = 0; k < 6; k++) {
