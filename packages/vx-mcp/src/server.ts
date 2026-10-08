@@ -11,7 +11,7 @@ import { handleToolCall, listTools, type ToolContext } from './tools.js'
 export const PROTOCOL_VERSION = '2025-06-18'
 const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
 
-export interface ServerOptions extends ToolContext {}
+interface ServerOptions extends ToolContext {}
 
 interface Request {
   jsonrpc?: string

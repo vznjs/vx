@@ -270,7 +270,9 @@ are refused too: they format one run's result.
      events never agree (CI read 9 re-runs where macOS, which coalesces
      the two, read 2). Pinned end to end in `tests/cli.test.ts`.
    - Debounce events `~150ms` after the last one before triggering a
-     cycle.
+     cycle, and at most 1 s after the first: a writer that never pauses
+     (a dev server's log) reset the timer forever and held every edit
+     back (WD-1).
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
