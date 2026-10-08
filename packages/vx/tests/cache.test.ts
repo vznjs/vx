@@ -1827,6 +1827,44 @@ describe('Cache storage (v10)', () => {
     expect(existsSync(cache.outputsPath('h-real'))).toBe(true)
   })
 
+  it('a prune during an adopt leaves the artifact it is indexing', async () => {
+    // adopt() hard-links the artifact to a temp; the link shares the
+    // inode's old mtime, so a sweep mid-adopt took the temp and the
+    // row-less artifact as hour-old orphans.
+    await mkdir(projectDir, { recursive: true })
+    const f = path.join(projectDir, 'out.txt')
+    await writeFile(f, 'adopted')
+    const hash = 'aaaaaaaaaaaaaaaa'
+    const ctx = { taskId: 'pkg#build', command: 'noop' }
+    await cache.save({
+      hash,
+      projectDir,
+      outputFiles: [f],
+      entry: { ...ctx, durationMs: 0, stdout: '' },
+    })
+    cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
+    const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+    await utimes(cache.outputsPath(hash), twoHoursAgo, twoHoursAgo)
+
+    const other = new Cache(cacheDir, { read: true, write: true })
+    let swept: { orphans: number } | undefined
+    const target = cache as unknown as {
+      writeArtifactAndIndex: (...args: unknown[]) => Promise<void>
+    }
+    const index = target.writeArtifactAndIndex.bind(cache)
+    spyOn(target, 'writeArtifactAndIndex').mockImplementation(async (...args) => {
+      swept = await other.prune({ olderThanMs: 365 * 24 * 60 * 60 * 1000 })
+      return index(...args)
+    })
+    try {
+      expect(await cache.get(hash, ctx)).not.toBeNull()
+    } finally {
+      other.close()
+    }
+    expect(swept?.orphans).toBe(0)
+    expect(await readdir(cacheDir)).toContain(`${hash}.tar.zst`)
+  })
+
   it('prune() reaps an aged artifact or temp the index does not know, and nothing younger', async () => {
     const { mkdir } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })

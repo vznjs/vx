@@ -696,6 +696,46 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-107.** A background upload read its body through the artifact's
+  live name, and a re-save of the key (another run on a shared cache
+  dir, `--force`) renames other bytes over it: a plugin that reads the
+  body twice (`@vzn/vx-reapi`'s digest then upload, a retry) sent one
+  artifact's digest over another's bytes. The job now hands `put` a
+  `Bun.file` over a private hard link (`Cache.pinArtifact`), unlinked
+  when the PUT ends. Row: `layered-cache.test.ts` › "a re-save of the
+  key during an upload leaves every read of its body the same".
+- **X-108.** Adopting a row-less artifact hard-linked it to a temp that
+  kept the artifact's old mtime, so a concurrent `vx cache prune` took
+  the temp and the artifact as hour-old orphans mid-adopt and the hit
+  became a miss. `adopt` now touches the artifact before linking. Row:
+  `cache.test.ts` › "a prune during an adopt leaves the artifact it is
+  indexing".
+- **X-109.** A reading verb (`vx info`, `why`, `last`) over a shared
+  `store.db` with no tables yet switched its journal and created its
+  tables statement by statement under no write lock, racing a writing
+  opener making that store. `Cache.inspect` now reads such a store
+  as an empty one in memory and writes nothing to it. Row:
+  `shared-store.test.ts` › "a reading verb's handle on an empty store
+  writes nothing to it".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with
@@ -783,6 +823,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-113.** On Linux `echo x > /dev/stdout` and `cmd | tee /dev/stderr`
+  failed in every task with "No such device or address": Bun's `'pipe'`
+  is a socketpair (on macOS too, where `/dev/fd/N` dups it and works),
+  and Linux opens `/dev/stdout` through `/proc/self/fd/1`, which a
+  socket refuses. `TaskPipes` (runner.ts) makes real pipes with
+  `pipe2` through `bun:ffi` for the one-shot, persistent and sandboxed
+  spawns. Cost within the A/A spread: 300 uncached tasks at
+  `--concurrency 1`, min of 31 interleaved, 628.8 ms before, 631.7
+  after, 616.5 A/A. Rows: `runner.test.ts` › "a task's stdout and
+  stderr are pipes it can open by path", `sandbox-runtime.unsafe.test.ts`
+  › "a sandboxed task and server open /dev/stdout and /dev/stderr by
+  path" and its plain twin. On macOS a sandboxed task failed the same
+  writes EPERM: seatbelt judges the resolved `/dev/fd/1`, which SRT's
+  `/dev/stdout` grant does not name, so vx grants `/dev/fd` there.
 - **X-110.** Args after `--` landed on the wrong line or inside a
   comment: a `<<word` in a comment or quotes (`# then << check`,
   `node -e "1<<x"`) made every later line a heredoc body, so the args
@@ -924,9 +978,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   replayed them as a green hit. The local executor fails the same child
   as timed out. Any exit after the timeout's abort is now a timeout on a
   plugin executor; the local one keeps its runner's own verdict, since
-  core's request timer starts before the spawn. Rows:
+  core arms no clock on a local request (#3153). Rows:
   `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
   abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "core does not abort a local request at the
+  timeout; the runner's timedOut decides (X-125)".
   `execute-task.test.ts` › "the local executor's own timedOut decides an
   exit 0 after the request's abort (X-125)".
 

@@ -1431,7 +1431,9 @@ dev server stays up while watch idles, and what it writes keeps printing; when t
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
-change starts it again. Stopping watch stops the server too. For dev-server workflows where you want the server
+change starts it again. An edit while a cycle waits only on a server
+that has not printed its `readyWhen` line stops that cycle and starts
+the next, so a fix reaches a server stuck before ready. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
@@ -1556,7 +1558,8 @@ policy on its file time (item 1083).
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
-evicts what that run is restoring. A run it cannot see — another
+evicts what that run is restoring. One started by a task of that run
+is refused instead: the run holds the lock until the task ends. A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).

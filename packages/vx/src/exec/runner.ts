@@ -4,7 +4,8 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
-import { existsSync, readFileSync } from 'node:fs'
+import type { Pointer } from 'bun:ffi'
+import { closeSync, existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import {
   shellArgv,
@@ -98,11 +99,134 @@ export interface RunOptions {
   terminal?: boolean
 }
 
+type Fd = 'inherit' | 'ignore' | 'pipe' | number
+
 /** A child's descriptors 0–2: vx's own for a task that holds the terminal. */
-function taskStdio(terminal: boolean | undefined, stdin: 'ignore' | 'pipe') {
-  return terminal === true
-    ? (['inherit', 'inherit', 'inherit'] as const)
-    : ([stdin, 'pipe', 'pipe'] as const)
+function taskStdio(
+  terminal: boolean | undefined,
+  stdin: 'ignore' | 'pipe',
+  pipes: TaskPipes,
+): [Fd, Fd, Fd] {
+  return terminal === true ? ['inherit', 'inherit', 'inherit'] : [stdin, ...pipes.stdio]
+}
+
+const O_NONBLOCK = 0o4000
+const O_CLOEXEC = 0o2000000
+const F_SETFL = 4
+const F_SETPIPE_SZ = 1031
+/**
+ * A pipe holds 64 KiB by default, and a 200 MB stdout drained 13% slower
+ * through one than through Bun's socketpair (min of 7: 293 vs 259 ms);
+ * at 256 KiB it drained in 230. Past the user's pipe quota the kernel
+ * refuses the resize and the pipe keeps its 64 KiB.
+ */
+const PIPE_BYTES = 256 * 1024
+
+type PipeCalls = {
+  pipe2: (fds: Pointer, flags: number) => number
+  fcntl: (fd: number, cmd: number, arg: number) => number
+  ptr: (view: Int32Array, byteOffset?: number) => Pointer
+}
+let pipeCalls: PipeCalls | null | undefined
+
+/** libc's `pipe2` and `fcntl`, bound once; null off Linux or where libc will not load. */
+function linuxPipeCalls(): PipeCalls | null {
+  if (pipeCalls !== undefined) return pipeCalls
+  pipeCalls = null
+  if (process.platform !== 'linux') return null
+  try {
+    // Loaded at the first spawn, not with the module: a static import cost
+    // every vx start 0.3 ms, a warm run that spawns nothing included.
+    const { dlopen, FFIType, ptr } = require('bun:ffi') as typeof import('bun:ffi')
+    // glibc's soname; musl's loader answers any `libc.` name with itself
+    // (ldso/dynlink.c's reserved names).
+    const { symbols } = dlopen('libc.so.6', {
+      pipe2: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
+      fcntl: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+    })
+    pipeCalls = { pipe2: symbols.pipe2, fcntl: symbols.fcntl, ptr }
+  } catch {
+    // Bun's socketpair, as before: only `/dev/stdout` by path fails on it.
+  }
+  return pipeCalls
+}
+
+/**
+ * Two pipes, `[out read, out write, err read, err write]`, or undefined
+ * when libc is not bound or a descriptor is not to be had (Bun's own
+ * socketpair then fails the spawn with the reason).
+ */
+function realPipes(): Int32Array | undefined {
+  const calls = linuxPipeCalls()
+  if (calls === null) return undefined
+  const fds = new Int32Array(4)
+  // Bun's spawn closes every descriptor it is not handed (probed, Bun
+  // 1.4.2); O_CLOEXEC keeps any other exec from holding a write end open.
+  if (calls.pipe2(calls.ptr(fds), O_CLOEXEC) !== 0) return undefined
+  if (calls.pipe2(calls.ptr(fds, 8), O_CLOEXEC) !== 0) {
+    closeSync(fds[0]!)
+    closeSync(fds[1]!)
+    return undefined
+  }
+  // vx's ends only: a task whose stdout is non-blocking fails its writes with EAGAIN.
+  calls.fcntl(fds[0]!, F_SETFL, O_NONBLOCK)
+  calls.fcntl(fds[2]!, F_SETFL, O_NONBLOCK)
+  calls.fcntl(fds[0]!, F_SETPIPE_SZ, PIPE_BYTES)
+  calls.fcntl(fds[2]!, F_SETPIPE_SZ, PIPE_BYTES)
+  return fds
+}
+
+/**
+ * A task's stdout and stderr. Bun's `'pipe'` is a socketpair, and Linux
+ * opens `/dev/stdout` through `/proc/self/fd/1`, which a socket refuses
+ * (ENXIO): `echo x > /dev/stdout` and `cmd | tee /dev/stderr` failed in
+ * every task, where a terminal or Turbo hands real pipes (X-113). So on
+ * Linux vx makes the pipes (`pipe2` through `bun:ffi`) and hands the child
+ * the write ends. macOS opens `/dev/fd/N` as a dup of the descriptor,
+ * which a socket allows, so Bun's pipe stays there.
+ */
+export class TaskPipes {
+  /** Descriptors 1 and 2 for `Bun.spawn`'s `stdio`. */
+  readonly stdio: readonly [number | 'pipe', number | 'pipe']
+  readonly #read: readonly number[]
+
+  constructor(terminal?: boolean) {
+    const fds = terminal === true ? undefined : realPipes()
+    this.stdio = fds === undefined ? ['pipe', 'pipe'] : [fds[1]!, fds[3]!]
+    this.#read = fds === undefined ? [] : [fds[0]!, fds[2]!]
+  }
+
+  /**
+   * Close vx's copies of the write ends once the spawn has returned or
+   * thrown: the child holds its own, and one left here is a writer the
+   * reader's EOF would wait for.
+   */
+  spawned(): void {
+    for (const fd of this.stdio) if (typeof fd === 'number') closeSync(fd)
+  }
+
+  /** The child's stdout and stderr. */
+  streams(
+    child: ReturnType<typeof Bun.spawn>,
+  ): [
+    ReadableStream<Uint8Array> | number | undefined,
+    ReadableStream<Uint8Array> | number | undefined,
+  ] {
+    const [out, err] = this.#read
+    return out === undefined
+      ? [child.stdout, child.stderr]
+      : [Bun.file(out).stream(), Bun.file(err!).stream()]
+  }
+
+  /**
+   * Close the read ends, once both streams have ended or been cancelled.
+   * Bun reads a dup of each, but takes it on the stream's first pull: a
+   * number closed before then was reused by the next spawn's pipe, and
+   * the stream read THAT (probed, Bun 1.4.2).
+   */
+  close(): void {
+    for (const fd of this.#read) closeSync(fd)
+  }
 }
 
 /**
@@ -598,6 +722,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
 
   let child: ReturnType<typeof Bun.spawn>
+  const pipes = new TaskPipes(opts.terminal)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     const signalFd = opts.signalChannel === true
@@ -619,7 +744,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           // The one-shot spawn below keeps 'ignore', so a task that reads
           // stdin can never hang CI.
           stdio: [
-            ...taskStdio(opts.terminal, 'pipe'),
+            ...taskStdio(opts.terminal, 'pipe', pipes),
             ...(signalFd ? ['pipe' as const] : []),
             ...(guard === undefined ? [] : [guard]),
           ],
@@ -637,6 +762,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       void spawned.exited.then(() => closeSignalChannel(spawned))
     }
   } catch (err) {
+    pipes.close()
     const message = err instanceof Error ? err.message : String(err)
     return {
       child: undefined as unknown as ReturnType<typeof Bun.spawn>,
@@ -645,6 +771,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       ),
       readyMs: () => Date.now() - start,
     }
+  } finally {
+    pipes.spawned()
   }
 
   let resolveReady!: () => void
@@ -738,8 +866,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
 
   // Wire up readers. We deliberately don't await them — they run for
   // the child's lifetime. The `ready` promise resolves out-of-band.
-  void consumeChunks(child.stdout, false)
-  void consumeChunks(child.stderr, true)
+  const [stdout, stderr] = pipes.streams(child)
+  void Promise.all([consumeChunks(stdout, false), consumeChunks(stderr, true)]).finally(() =>
+    pipes.close(),
+  )
 
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
@@ -834,6 +964,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: ReturnType<typeof Bun.spawn>
+  const pipes = new TaskPipes(opts.terminal)
   const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     proc = spawnGuarded((guard) =>
@@ -841,7 +972,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
         ...SH_ARGV0,
         cwd: opts.cwd,
         env: opts.env as Record<string, string>,
-        stdio: [...taskStdio(opts.terminal, 'ignore'), ...(guard === undefined ? [] : [guard])],
+        stdio: [
+          ...taskStdio(opts.terminal, 'ignore', pipes),
+          ...(guard === undefined ? [] : [guard]),
+        ],
         // Its own session and process group, so a kill reaches what it
         // forked (kill-tree.ts). A terminal handed over is not this
         // session's controlling one, so no read stops the group.
@@ -849,19 +983,23 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       }),
     )
   } catch (err) {
+    pipes.close()
     const stderr = spawnFailureText(err, opts.cwd)
     opts.onStderr?.(stderr)
     return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, spawnFailed: true }
+  } finally {
+    pipes.spawned()
   }
 
   opts.liveChildren?.add(proc)
   opts.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
+  const [out, err] = pipes.streams(proc)
   const streams = Promise.all([
-    streamToString(proc.stdout, opts.onStdout, ac.signal, opts.capture?.stdout ?? true),
-    streamToString(proc.stderr, opts.onStderr, ac.signal, opts.capture?.stderr ?? true),
-  ])
+    streamToString(out, opts.onStdout, ac.signal, opts.capture?.stdout ?? true),
+    streamToString(err, opts.onStderr, ac.signal, opts.capture?.stderr ?? true),
+  ]).finally(() => pipes.close())
   // Gate on the child's own exit, not on stream EOF: an orphaned grandchild
   // can keep the pipe open past the child's exit (a timeout SIGTERM leaves the
   // grandchild alive; a NORMAL exit of `server & echo up` does too), so EOF may

@@ -75,9 +75,13 @@ wire `new Response(readableStream)`, bytes in hand `new Blob([bytes])`.
 validates from the temp; a body that fails mid-stream or fails validation
 leaves no temp. A body past the artifact ceiling's zstd bound (by its
 length header, its Blob size, or a running count) is refused before it
-fills the disk (L-5). `put` receives `Bun.file(<local artifact>)`, opened when
-the plugin reads it, so a queued upload holds a path, not a buffer; a
-plugin that must digest first reads `body.stream()` twice. The one
+fills the disk (L-5). `put` receives a `Bun.file` over a private hard
+link to the local artifact (`Cache.pinArtifact`), made when the job starts
+and unlinked when it ends, so a queued upload holds a path, not a buffer,
+and every read of the body sees the same bytes: a re-save of the key
+renames others over the live name, and a body opened by that name read
+them mid-upload. A plugin that must digest first reads `body.stream()`
+twice. The one
 exception is `--cache=local:,remote:rw`: with no local artifact the bytes
 are packed in memory during `save` and sent as `new Blob([bytes])`.
 
