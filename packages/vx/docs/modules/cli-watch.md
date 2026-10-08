@@ -115,7 +115,7 @@ export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
   arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle // OS watcher, poller on no proof, an OS watch limit or VX_WATCH_POLL
   proved(): Promise<void> // every arm so far proved delivery or fell back
-  closeAll(): void
+  closeAll(): void // and every arm or fallback after it is CLOSED
 }
 ```
 
@@ -284,7 +284,10 @@ are refused too: they format one run's result.
    in-flight cycle tears its children down (the received signal, a
    SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
-   it holds with the same signal, and resolves; watch exits 0. SIGINT then
+   it holds with the same signal, and resolves; watch exits 0. The pool
+   stays closed: a cycle still re-arming arms nothing, and a watcher the
+   close caught before its proof gets no poller
+   (`tests/watch-pool-close.test.ts`). SIGINT then
    prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child

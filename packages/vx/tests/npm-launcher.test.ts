@@ -4,7 +4,15 @@
 // had no pin; the distribution path is exercised only on a release. Driven
 // here against a fake install tree, so every arm runs on any platform.
 
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -147,6 +155,45 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(r.out).toBe(
       `fake bun: --no-env-file --no-install ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`,
     )
+  })
+
+  it('runs through the .bin symlink npm makes, under NODE_OPTIONS=--preserve-symlinks-main', async () => {
+    // Differential: the main module's path stayed `.bin/vx`, so
+    // `require('./package.json')` read `.bin/package.json` and the launcher
+    // died MODULE_NOT_FOUND with a stack before vx started.
+    await launcherReady()
+    const plat = path.join(root, 'node_modules', '@vzn', `vx-${KEY}`)
+    mkdirSync(plat, { recursive: true })
+    writeFileSync(path.join(plat, 'package.json'), JSON.stringify({ name: `@vzn/vx-${KEY}` }))
+    writeFileSync(path.join(plat, 'vx'), '#!/bin/sh\necho "fake binary: $@"\n')
+    chmodSync(path.join(plat, 'vx'), 0o755)
+    const dotBin = path.join(root, 'node_modules', '.bin')
+    mkdirSync(dotBin)
+    symlinkSync('../@vzn/vx/launcher.cjs', path.join(dotBin, 'vx'))
+    for (const opts of [
+      '',
+      '--preserve-symlinks-main',
+      '--preserve-symlinks --preserve-symlinks-main',
+    ]) {
+      const p = Bun.spawnSync({
+        cmd: [NODE!, path.join(dotBin, 'vx'), 'run', 'a b'],
+        cwd: root,
+        env: { PATH: '/usr/bin:/bin', HOME: root, NODE_OPTIONS: opts },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect({
+        opts,
+        out: p.stdout.toString(),
+        err: p.stderr.toString(),
+        code: p.exitCode,
+      }).toEqual({
+        opts,
+        out: 'fake binary: run a b\n',
+        err: '',
+        code: 0,
+      })
+    }
   })
 
   // musl has no glibc loader, so the glibc binary's execve fails ENOENT. The

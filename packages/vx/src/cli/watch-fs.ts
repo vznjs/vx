@@ -349,7 +349,9 @@ export function modifiedBefore(abs: string, t: number): boolean {
     // carry a file's OLD mtime onto the new one, and judged by mtime alone
     // such an edit was "before the arm" and never ran (item 945). No
     // process can set a ctime, and a rename or a write moves it.
-    const st = fs.statSync(abs)
+    // The link's own times, not its target's: a link made after the arm
+    // to an old file is a new input, and followed it read as the target's.
+    const st = fs.lstatSync(abs)
     return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {
     return false
@@ -398,6 +400,10 @@ export class WatcherPool {
   // network mount, a container bind — the attempt costs a denied syscall
   // and a two-second wait before the fallback takes over anyway.
   private readonly forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
+  // The stop closes the pool while a cycle may still be re-arming: an arm
+  // after it, or a proof that fails because it closed the watcher, would
+  // leave a live watcher or poller nothing ever closes.
+  private closed = false
 
   constructor(private readonly skip: (dir: string, rel: string) => boolean) {
     if (this.forcePoll)
@@ -411,6 +417,7 @@ export class WatcherPool {
   // By slot, not by handle: an OS watcher that never proves delivery is
   // swapped for a poller in place, and a drop must close what is there.
   arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
+    if (this.closed) return CLOSED
     const watchers = this.watchers
     const at = watchers.length
     const handle: WatchHandle = {
@@ -442,8 +449,8 @@ export class WatcherPool {
       armed.ready.then((ok) => {
         if (ok) return
         armed.watcher.close()
-        // Dropped by a rearm before its proof settled: nothing to swap in.
-        if (watchers[at] !== armed.watcher) return
+        // Dropped by a rearm or the stop before its proof settled: nothing to swap in.
+        if (this.closed || watchers[at] !== armed.watcher) return
         // The watcher never proved delivery, so it is not one: an FSEvents
         // stream the OS refused, a filesystem that reports nothing. Swap in
         // the poller rather than run a loop that silently never fires.
@@ -462,6 +469,7 @@ export class WatcherPool {
   }
 
   closeAll(): void {
+    this.closed = true
     for (const w of this.watchers) {
       try {
         w.close()

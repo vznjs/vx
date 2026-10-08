@@ -9,3 +9,38 @@ differences, binaries and install across platforms.
   loader now counts as having no prebuilt binary, so Bun runs the source
   when present and otherwise the error names musl. Rows:
   `npm-launcher.test.ts` › "without glibc (musl)".
+- **XP-10.** `vx prune` on a CRLF checkout dropped every blank line
+  between yarn.lock entries: a `\r` line read as a top-level key, so
+  the pruned file was a rewrite, not a cut. A whitespace-only line is
+  never a key now. Row in `packages/vx-lockfile/tests/prune-lockfile.test.ts`:
+  "a CRLF checkout keeps the blank lines between entries".
+- **XP-20.** `vx watch` compared a cache dir named through a symlink (`VX_CACHE_DIR`, macOS `/var`) with the real paths watchers report, so cache writes ran cycles; the ignore now realpaths it. Row: watch-rules "a cache dir named through a symlink is still the cache (XP-20)".
+- **XP-30.** `vx init`: a root script's `cd packages/my\ app` (escaped
+  space or paren) was not read as a cd into the member, so the root kept a
+  task that runs the member's work. Row: `init.test.ts` "a cd into a
+  member whose dir holds a backslash-escaped space runs the members".
+- **XP-40.** turbo() escapes a brace in a package dir it writes into a glob (climbed inputs, root dependency trees): `r{x,y}` matched `rx`, `ry`, never itself. Rows: "a climbed glob escapes the package dir it keeps…", "key every task on a dependency whose dir name holds a brace".
+- **XP-50.** macOS `ps` under a comma locale (`0:01,50`) read no time, so off-Linux sampling saw no tree; `proc-sample.unsafe.test.ts` "reads ps's time column, macOS hundredths (either decimal point) and days included".
+- **XP-60.** `--affected` matched git's NFC paths against project dirs as
+  discovered; a macOS dir stored NFD selected nothing. Both sides compare
+  NFC. Row: `affected-unicode.test.ts`.
+- **XP-70.** On macOS a project dir stored NFD got no slice of git's NFC
+  listing and spawned `git ls-files` per task. The enumeration matches the
+  dir as NFC; key paths stay git's spelling. Row: `git-enum-unicode.test.ts`.
+- **XP-80.** A `package.json` or `lerna.json` saved with a BOM (Windows
+  editors) refused a local plugin's run, crashed `vx init`, refused a
+  config's self-import, and in vx-migrate crashed adoption. Each reader
+  strips a leading BOM (#3086, #3087).
+- **XP-90.** `vx watch` under a project reached through a symlink: git
+  refuses paths through a link, so gitignored writes re-ran in a loop and a
+  deleted input re-ran nothing. Paths are asked of git at their real
+  directory (#3089).
+- **XP-100.** Under `NODE_OPTIONS=--preserve-symlinks-main` an npm `.bin`
+  symlink kept `.bin` as the main module's dir: the launcher and
+  vx-migrate's `nx-exec`/`nx-env` failed a relative `require`. Each loads
+  from its real directory (#3105, #3106).
+- **XP-110.** Nx mapper: a project dir holding `{}` or `[]` lost its
+  `{projectRoot}` inputs and outputs or matched another project; the dir
+  is escaped as a literal in every glob (#3082).
+- **Refuted.** A `cd` typed in another case than the disk (APFS) already
+  lands in the right member on macOS (#3034 closed).
