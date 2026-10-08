@@ -79,6 +79,7 @@ src/orchestrator/excluded-keys.ts
 src/orchestrator/execute-task.ts
 src/orchestrator/failure-mode.ts
 src/orchestrator/fingerprint-watch.ts
+src/orchestrator/forecast.ts
 src/orchestrator/framed-output.ts
 src/orchestrator/graph-stage.ts
 src/orchestrator/history.ts
@@ -120,6 +121,7 @@ src/orchestrator/task-hash.ts
 src/orchestrator/task-log-buffer.ts
 src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
+src/orchestrator/terminal-signals.ts
 src/orchestrator/upstream.ts
 src/util/bun-version.ts
 src/util/cgroup.ts
