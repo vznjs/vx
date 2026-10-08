@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { findCwdProject } from '../src/cli/select.js'
+import { gitInit } from './helpers/workspace.js'
 
 let root = ''
 
@@ -17,6 +18,7 @@ const config = (marker: string, dependsOn = '') => `export default { tasks: { bu
 
 beforeAll(async () => {
   root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-cwd-case-')))
+  gitInit(root)
   // `workspaces` in package.json, not pnpm-workspace.yaml: the root walk
   // must CLAIM the typed member, which pnpm's nearest-file rule skips.
   await writeFile(
