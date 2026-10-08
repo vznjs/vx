@@ -1345,7 +1345,7 @@ export function commandEnvironment(
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 
-export interface OutputPathSets {
+interface OutputPathSets {
   /** v2.1+ `output_paths` — deduped, sorted. */
   outputPaths: string[]
   /** v2.0 legacy split: wildcard-free globs are files, prefix-derived are directories. */
