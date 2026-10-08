@@ -1095,3 +1095,10 @@ passed 1× before` and `vx info` listed it for thirty days, though the
 reaches no build task.` The plan now carries the run's own line
   (`RunPlan.noneAffected`). Row: `affected-dependents.test.ts` › "a change
   no requested task reaches is a clean "nothing affected"".
+- **X-140.** `vx last`'s "re-run what failed" line handed the run's
+  forwarded args (`-- --shard 2`) to every failed task, but a run forwards
+  them to requested tasks only: a failed dependency re-ran as another
+  command under another key. Each `runs` row now records `forward_args`
+  only for a task that got them, `vx last --format json` says so per task
+  (`forwarded`), and the line gives a failed dependency its own command
+  without them. Row: `last.test.ts` › "a failed run replays FAILED with the failure first".

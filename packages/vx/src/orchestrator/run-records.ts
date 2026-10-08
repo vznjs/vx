@@ -78,7 +78,11 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       status: o.status,
       exitCode: o.exitCode,
       durationMs: o.durationMs,
-      ...(input.forwardArgs !== undefined ? { forwardArgs: input.forwardArgs } : {}),
+      // A run forwards its args to the tasks it was asked for, never to a
+      // dependency: the row says which ran with them.
+      ...(input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested
+        ? { forwardArgs: input.forwardArgs }
+        : {}),
       // Anchor to the REAL per-task wall-clock window: run-start wall time +
       // the task's ns offset (captured for hits and executed tasks alike).
       // The `end - duration` fallback applies to outcomes without an offset —
