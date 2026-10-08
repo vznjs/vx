@@ -607,6 +607,37 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-100.** The default `build` (2026-10-04) made a task cycle out of a
+  package cycle: `a` (`build` on `^build`) and `b` (no `build`)
+  depending on each other refused `vx run build` with
+  `Cycle detected in task graph: a#build -> b#build -> a#build`, where
+  `b` used to be passed through. The `^build` walk now finds package
+  cycles (Tarjan over `directDeps`, on first ask): a default `build`
+  passes through the projects on its cycle, and a walk meeting one on a
+  cycle takes its edge and goes on past it. Rows: `task-graph.test.ts` ›
+  "default builds on a package cycle make no task cycle", "a default
+  build on a cycle keeps the builds behind it for its dependants", and
+  the off-cycle control.
+- **X-101.** `rules.upfrontKeys` paired every reader of a shared input
+  with every other reader: the path index filed them all under one key
+  (`src/**`, a root `tsconfig.base.json`), so 5,000 tasks reading
+  `tsconfig.base.json` built their graph in 15 s, and 20,000 in one
+  project died `RangeError: Out of memory`. `overlapCandidates` takes a
+  side and keeps its index per side, pairing readers with writers only:
+  15 s → 0.2 s. Rows: `input-overlap.test.ts` › "4,000 readers of one
+  shared input pair none of them" and "the reader-writer index finds
+  every pair the rule refuses" (twenty).
+- **X-102.** Every project has a `build` since the default one
+  (2026-10-04), so a bare `vx run build` matched it: at a root that
+  declares none it ran 0 tasks, exit 0, where any other name said
+  "only projects outside the selection declare it — pass --all", and in
+  a workspace with no `build` at all it ran nothing green. A bare name
+  no longer selects a default `build` (`expandRequested` /
+  `unresolvedRequests` take `unselected`; `undeclaredIn` and the
+  did-you-mean list skip it); `lib#build` still plans it and `^build`
+  still reaches it. Rows: `bare-name-default-build.test.ts` (four); the
+  root rows of `task-selection.test.ts` and `configless-fence.test.ts`
+  no longer list a default build as requested.
 - **X-96.** An `admit` policy was asked about group tasks and saw a
   dispatched group in `ctx.running`, so a packing policy could park real
   work behind a group that runs nothing. Groups now bypass `admit` and
