@@ -3,7 +3,7 @@
 // final outcome (and the cached artifact) is the last attempt's. The
 // CLI default never touches cache keys.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -175,6 +175,51 @@ describe('exec.retries — e2e', () => {
       expect(r.outcomes[0]!.exitCode).toBe(3)
       expect(r.outcomes[0]!.attempts).toBe(3)
       expect(lineCount(path.join(dir, 'attempts.txt'))).toBe(3)
+    },
+    TIMEOUT,
+  )
+
+  // X-68: the retry loop asked only the run's stop, so a task in flight
+  // when fail-fast tripped ran every retry it had left.
+  it(
+    'continueMode never: a task in flight when another fails is not retried',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'p',
+        `export default {
+          tasks: {
+            r: {
+              exec: {
+                command: 'echo x >> attempts.txt; touch r-started; until test -f go; do sleep 0.01; done; exit 1',
+                retries: 3,
+              },
+            },
+            f: { exec: { command: 'until test -f r-started; do sleep 0.01; done; exit 1' } },
+          },
+        }
+        `,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['r', 'f'],
+        projects: ['p'],
+        concurrency: 2,
+        continueMode: 'never',
+        log: {
+          ...capturingLogger(fixture),
+          // The scheduler trips fail-fast before it reports the outcome, so
+          // r's attempt ends after the trip.
+          taskComplete(node) {
+            if (node.id === 'p#f') writeFileSync(path.join(dir, 'go'), '')
+          },
+        },
+      })
+      expect(r.ok).toBe(false)
+      const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
+      expect(status).toEqual({ 'p#r': 'failed', 'p#f': 'failed' })
+      expect(lineCount(path.join(dir, 'attempts.txt'))).toBe(1)
+      expect(fixture.err.join('')).not.toContain('vx: retrying')
     },
     TIMEOUT,
   )

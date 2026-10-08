@@ -9,15 +9,12 @@ export class Cache implements CacheLayer {
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
@@ -505,6 +502,7 @@ export type CacheStatus =
   | 'miss'
   | 'no-cache'
   | 'group'
+  | 'not-started'
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
@@ -985,6 +983,25 @@ export interface PluginCommand {
 }
 == type PluginHook (src/config.ts)
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
+== type PluginHookHandlers (src/orchestrator/plugin.ts)
+export interface PluginHookHandlers {
+  onRunStart: (info: RunStartInfo) => void | Promise<void>
+  onTaskStart: (node: TaskNode) => void | Promise<void>
+  onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onRunStatus: (line: string) => void | Promise<void>
+  onRunEnd: () => void | Promise<void>
+}
+== type PluginHookName (src/orchestrator/plugin.ts)
+export type PluginHookName =
+  | 'onRunStart'
+  | 'onTaskStart'
+  | 'onTaskStdout'
+  | 'onTaskStderr'
+  | 'onTaskComplete'
+  | 'onRunStatus'
+  | 'onRunEnd'
 == type PluginHooks (src/orchestrator/plugin.ts)
 export type PluginHooks = Omit<VxPlugin, 'name'>
 == type PluginOptionKinds (src/orchestrator/plugin.ts)
@@ -997,7 +1014,9 @@ export interface PluginOrigin {
   readonly url?: string
 }
 == type PluginSetupContext (src/orchestrator/plugin.ts)
-export interface PluginSetupContext extends BaseContext {}
+export interface PluginSetupContext extends BaseContext {
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 == type PreparedRun (src/orchestrator/prepare.ts)
 export interface PreparedRun {
   workspaceRoot: string

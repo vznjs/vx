@@ -443,6 +443,15 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     expect([route('app/[id]/page.js'), route('app/i/page.js')]).toEqual([true, false])
   })
 
+  it('a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)', () => {
+    const tree = makeRootEventFilter(root, [], ['shared', 'conf/'])
+    expect(
+      ['shared', 'shared/a.json', 'shared/x/b.json', 'conf/c.json', 'sharedx/a.json'].map((r) =>
+        tree(r.split('/').join(path.sep)),
+      ),
+    ).toEqual([true, true, true, true, false])
+  })
+
   it('the sweep hands the loop every declared workspaceFiles glob, deduplicated', async () => {
     const wsRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-sweep-inputs-'))
     try {
@@ -772,6 +781,32 @@ describe('pollWatcher', () => {
       expect(seen).not.toContain(WATCH_PROBE)
     } finally {
       w.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The key folds a link as its target string (watch-judge.ts reads it the
+  // same way), and the native watcher reports one; the poller sampled
+  // regular files alone, so a link made or retargeted was no edit to it.
+  it('sees a link made and a link retargeted', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-link-'))
+    try {
+      const seen: string[] = []
+      const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+      try {
+        await Bun.sleep(60)
+        await symlink('a.txt', path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toEqual(['cur'])
+        seen.length = 0
+        await symlink('b.txt', path.join(dir, 'cur.tmp'))
+        await rename(path.join(dir, 'cur.tmp'), path.join(dir, 'cur'))
+        await settle(seen, 'cur')
+        expect(seen).toContain('cur')
+      } finally {
+        w.close()
+      }
+    } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
