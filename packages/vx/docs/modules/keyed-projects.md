@@ -28,7 +28,9 @@ The dependencies one task's key folds, the step the walk repeats;
 Under `--exclude-dependencies` the walk folds what the key folds
 (`keyUpstream`): a task's scheduled edges less its order-only ones, plus
 its `excludedUpstream`, whose own dependencies it reads from `keyOnly`
-(`PreparedRun.keyOnly`).
+(`PreparedRun.keyOnly`). A group's dedup stand-in lists the same members,
+since its hash is taken over them: built from `deps`, two groups whose
+dropped members differed shared one, and a keyed sibling was withheld.
 
 `run.ts` builds one lookup per run and hands it to every task
 (`ExecuteArgs.keyedProjects`); execute-task asks it only on the miss path

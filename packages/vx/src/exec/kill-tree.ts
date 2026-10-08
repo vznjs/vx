@@ -64,15 +64,27 @@ export function closeSignalChannel(child: Child): void {
  */
 let guardFd: number | null | undefined
 
+// Three lists: groups (`+`/`-`), single pids (`=`/`_`) and paths to
+// remove (`@`/`!`), killed and removed in that order at EOF. A
+// group is listed once however often its line arrives: a `-` strikes
+// one entry, and a shell that keeps a failed printf buffered (bash as
+// macOS's sh, B-10) sends the line again with its retry.
 const GUARD_SCRIPT = [
-  "g=' '",
+  "g=' ' k=' ' f=' '",
   'while IFS= read -r l; do',
+  '  p=${l#?}',
   '  case $l in',
-  '    +*) g="$g${l#+} " ;;',
-  '    -*) p=${l#-}; case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
+  '    +*) case $g in *" $p "*) ;; *) g="$g$p " ;; esac ;;',
+  '    -*) case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
+  '    =*) k="$k$p " ;;',
+  '    _*) case $k in *" $p "*) k="${k%% $p *} ${k#* $p }" ;; esac ;;',
+  '    @*) f="$f$p " ;;',
+  '    !*) case $f in *" $p "*) f="${f%%" $p "*} ${f#*" $p "}" ;; esac ;;',
   '  esac',
   'done <&3',
   'for p in $g; do kill -s KILL -- "-$p"; done 2>/dev/null',
+  'for p in $k; do kill -s KILL "$p"; done 2>/dev/null',
+  'set -f; for p in $f; do rm -rf -- "$p"; done 2>/dev/null',
 ].join('\n')
 
 /** The guard's process, so a guard vx stops writing to is stopped too. */
@@ -159,8 +171,22 @@ function guardWrite(line: string): void {
  */
 export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child {
   startGuard()
-  return spawn(typeof guardFd === 'number' ? guardFd : undefined)
+  if (typeof guardFd !== 'number') return spawn(undefined)
+  handingTo = guardProc?.pid
+  try {
+    return spawn(guardFd)
+  } finally {
+    handingTo = undefined
+  }
 }
+
+/**
+ * The guard whose pipe `spawnGuarded` is handing over right now. Only a
+ * line built for that hand-over retries: its pipe is broken only once
+ * the guard has exited, so `kill -0` ends the wait. A line for any other
+ * pipe would wait on a guard that has nothing to do with it.
+ */
+let handingTo: number | undefined
 
 /**
  * The shell line that lists `$$`'s group on the guard's pipe at `fd` and
@@ -168,9 +194,22 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
  * shell, which leads its group (every guarded spawn is `detached`); a
  * program that is not a shell is `exec`'d after it. A write to a guard
  * that has died is ignored rather than a SIGPIPE that kills the task.
+ * The pipe is vx's own nonblocking one, so a full queue fails the write
+ * (EAGAIN) and the group went unlisted: the write is retried while the
+ * guard lives. The shell cannot tell EAGAIN from EPIPE, so the guard's
+ * pid ends the wait, and vx SIGKILLs a guard it gives up on.
  */
 export function guardLine(fd: number): string {
-  return `trap '' PIPE; printf '+%s\\n' $$ >&${fd} 2>/dev/null; trap - PIPE; exec ${fd}>&-; `
+  const add = `printf '+%s\\n' $$ >&${fd} 2>/dev/null`
+  // `kill -0` counts a zombie, and a guard vx has not reaped (its event
+  // loop busy, or an init that never reaps an orphan after vx's kill -9)
+  // kept the shell spinning. Where /proc is ours, its state says dead;
+  // `##*) ` cuts at the LAST ')', as comm may hold one.
+  const alive = procfsIsOwn()
+    ? `{ read -r vx_g </proc/${handingTo}/stat; } 2>/dev/null && case "\${vx_g##*) }" in [ZX]*) false ;; esac`
+    : `kill -0 ${handingTo} 2>/dev/null`
+  const retry = handingTo === undefined ? '' : ` || until ${add}; do ${alive} || break; done`
+  return `trap '' PIPE; ${add}${retry}; trap - PIPE; exec ${fd}>&-; `
 }
 
 /**
@@ -184,6 +223,25 @@ export function releaseGroup(child: Child): void {
   const hold = holds.get(child.pid)
   if (hold !== undefined) hold.released = true
   else guardWrite(`-${child.pid}\n`)
+}
+
+/**
+ * List what the guard takes down besides groups if vx dies: the sandbox
+ * runtime's session. The runtime spawns its bridge socat as a plain child
+ * in vx's OWN group, which the guard must never kill, and a `kill -9`
+ * leaves its sockets in the temp directory. So each pid is killed alone
+ * and each path removed, by a name only that session carries. The
+ * returned function strikes them once the session is down, so a pid the
+ * kernel reuses is never killed on its account. Starts the guard: a spawn
+ * follows. A path holding whitespace is not listed (the lists split on it).
+ */
+export function guardSession(pids: readonly number[], paths: readonly string[]): () => void {
+  startGuard()
+  const listed = paths.filter((p) => !/\s/.test(p))
+  guardWrite(pids.map((p) => `=${p}\n`).join('') + listed.map((p) => `@${p}\n`).join(''))
+  return () => {
+    guardWrite(pids.map((p) => `_${p}\n`).join('') + listed.map((p) => `!${p}\n`).join(''))
+  }
 }
 
 /** Groups a teardown is still taking down: how many hold each, and whether its runner let it go. */

@@ -1400,6 +1400,18 @@ export function declaresInput(
   return matcher(workspaceRel)
 }
 
+/**
+ * Whether a cached task's `workspaceFiles` may name a file under `dir`
+ * (workspace-relative): a nested repository git reports as that one path,
+ * whose files the key folds and a match against the path alone misses.
+ * By the entries' static prefixes, so a glob that may descend counts.
+ */
+export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean {
+  const ws = cache.inputs.workspaceFiles
+  if (ws === undefined || ws.length === 0) return false
+  return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
+}
+
 function inPlan(plan: FilesPlan, rel: string): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {

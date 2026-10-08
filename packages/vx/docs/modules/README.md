@@ -81,7 +81,7 @@ here, itself or in a brace group.
 | [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                                                    |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                                          |
 | [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                                              |
-| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then exit 128+signo.                                      |
+| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then die of it (128+signo).                               |
 | [`admission.md`](./admission.md)                   | `src/orchestrator/admission.ts` — between scheduler and task: in-flight dedup (an embedder's registry) and continue-taint.                                    |
 | [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.                                                                         |
 | [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).                                                                         |
@@ -184,7 +184,12 @@ here, itself or in a brace group.
 | [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                        |
 | [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.              |
 | [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                   |
+<<<<<<< HEAD
 | [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.       |
+=======
+| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.             |
+| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path, never an 8.3 short name.                       |
+>>>>>>> origin/main
 | [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.              |
 |                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration` (cli-cache.md) and the core verb list (cli.md). |
 |                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                 |

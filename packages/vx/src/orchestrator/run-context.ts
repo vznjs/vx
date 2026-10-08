@@ -379,7 +379,7 @@ function ciLinks(provider: string, env: Record<string, string | undefined>): CiL
     default:
       return {}
   }
-  return Object.fromEntries(Object.entries(links).filter(([, x]) => x !== undefined)) as CiLinks
+  return Object.fromEntries(Object.entries(links).filter(([, x]) => x !== undefined))
 }
 
 /** Host name (null on failure) + platform + arch. */

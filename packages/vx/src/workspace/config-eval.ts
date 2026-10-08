@@ -103,6 +103,23 @@ const nonJsonPaths = ${nonJsonPaths.toString()}
     throw new Error('process.exit(' + (code ?? '') + ') in a config: ' + ${JSON.stringify(CONFIG_EXIT)})
   }
 }
+// Bun's resolver reads \\ as a separator, so a config under a\\b is served
+// from the path as written (project-loader.ts's LITERAL_QUERY), read now.
+let literal = false
+const serveLiteral = () => {
+  if (literal) return
+  literal = true
+  globalThis.Bun.plugin({
+    name: 'vx-config-literal',
+    setup(build) {
+      build.onResolve({ filter: /\\?vx-literal$/ }, (args) => ({ path: args.path, namespace: 'file' }))
+      build.onLoad({ filter: /\\?vx-literal$/ }, async (args) => {
+        const file = args.path.slice(0, -'?vx-literal'.length)
+        return { contents: await globalThis.Bun.file(file).text(), loader: /\\.[cm]?ts$/.test(file) ? 'ts' : 'js' }
+      })
+    },
+  })
+}
 self.onmessage = async (e) => {
   const { id, path, env } = e.data
   // A Worker starts with the process's STARTUP environment, not the
@@ -155,7 +172,9 @@ self.onmessage = async (e) => {
     if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
   }
   try {
-    const ns = await import(path)
+    const literalPath = path.includes('\\\\')
+    if (literalPath) serveLiteral()
+    const ns = await import(literalPath ? path + '?vx-literal' : path)
     // Awaited as the in-process load's async return flattens it: a Promise
     // default loaded on a run and was refused as "an instance of Promise"
     // on every later evaluation in the process (D-5).
@@ -185,12 +204,16 @@ self.onmessage = async (e) => {
         : thrown
     const report = changed()
     umaskBack()
+    // A thrown string or plain object has no message, and String() of a
+    // null-prototype object throws here, inside the catch.
+    const isError = err !== null && typeof err === 'object' && typeof err.message === 'string'
     postMessage({
       id,
       ok: false,
-      name: err?.name ?? 'Error',
-      message: err?.message ?? String(err),
-      stack: err?.stack ?? null,
+      thrown: isError ? null : globalThis.Bun.inspect(err, { compact: true }),
+      name: isError ? (err.name ?? 'Error') : 'Error',
+      message: isError ? err.message : '',
+      stack: isError ? (err.stack ?? null) : null,
       changed: report,
       position:
         err?.position && typeof err.position === 'object'
@@ -214,6 +237,8 @@ interface WorkerReply {
   nonJson: NonJsonValue[]
   name: string
   message: string
+  /** What a config threw that is not an Error, as `thrownValueMessage` shows it; null for an Error. */
+  thrown?: string | null
   stack: string | null
   /** A transpile error's location — `BuildMessage.position`, trimmed to what the loader reads. */
   position: { file?: string; line?: number; column?: number } | null
@@ -222,6 +247,16 @@ interface WorkerReply {
 interface Pending {
   resolve: (reply: WorkerReply) => void
   reject: (err: Error) => void
+  configPath: string
+}
+
+/**
+ * A config threw something that is not an Error: `throw 'no'` printed
+ * `vx: no`, naming no file, and a null-prototype object crashed vx's own
+ * error printer with a stack.
+ */
+export function thrownValueMessage(kind: string, configPath: string, shown: string): string {
+  return `${kind} config ${configPath} threw ${shown}, which is not an Error`
 }
 
 /**
@@ -236,10 +271,11 @@ export function evalBudgetMs(): number {
   // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
   // back rather than clamping, because honouring ~24.8 days would hang
   // `vx watch` forever on a worker the OS killed — and unbounded makes it 1 ms,
-  // so EVERY config load times out instead. Both ends break the same feature.
+  // so EVERY config load times out instead. Both ends break the same feature,
+  // and `0` is the second end: it fired on the next tick (D-157).
   if (raw !== undefined && /^[0-9]+$/.test(raw)) {
     const n = Number(raw)
-    if (n <= MAX_TIMEOUT_MS) return n
+    if (n > 0 && n <= MAX_TIMEOUT_MS) return n
   }
   return 30_000
 }
@@ -285,6 +321,10 @@ function acquireWorker(): Worker {
     pending.delete(msg.id)
     if (msg.ok) {
       p.resolve(msg)
+      return
+    }
+    if (typeof msg.thrown === 'string') {
+      p.reject(new UserError(thrownValueMessage('Project', p.configPath, msg.thrown)))
       return
     }
     // Rebuild the error the config actually threw. Name, message, stack
@@ -365,7 +405,7 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // evaluation costs, so it can only fire on a genuine wedge.
     const budget = evalBudgetMs()
     const reply = await new Promise<WorkerReply>((resolve, reject) => {
-      pending.set(id, { resolve, reject })
+      pending.set(id, { resolve, reject, configPath })
       timer = setTimeout(() => {
         rejectAll(new Error(`config worker did not answer within ${budget}ms`))
         if (worker !== null) {
