@@ -86,7 +86,7 @@ export function watchRefusal(parsed: RunArgs): string | null {
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
   if (parsed.error) {
-    process.stderr.write(`vx watch: ${parsed.error}\n`)
+    process.stderr.write(`vx watch: ${parsed.error}${seeHelp('watch')}\n`)
     return 1
   }
 
@@ -137,10 +137,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // worth; every cycle after an edit must load and list live.
   delete opts.staged
   delete opts.discovered
-  process.once('SIGINT', () => {
-    process.stdout.write('\nvx watch: stopped\n')
-    stop.abort('SIGINT')
-  })
+  process.once('SIGINT', () => stop.abort('SIGINT'))
+  // Said once the loop is down, the last line: written as the signal
+  // landed, the aborted cycle's summary printed below it.
+  const stopped = (): number => {
+    if (stop.signal.reason === 'SIGINT') process.stdout.write('\nvx watch: stopped\n')
+    return 0
+  }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
   // A task runs in its own session (exec/kill-tree.ts): the terminal
   // closing reaches the loop alone, and the loop passes it on.
@@ -206,7 +209,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
   if (stop.signal.aborted) {
     await held?.stop(forwardedSignal(stop.signal.reason))
-    return 0
+    return stopped()
   }
   if (refusedToStart) return 1
   // After the initial run, so a `pkg#task` naming no project gets the
@@ -234,7 +237,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       ...fingerprintClaims(plugins).keys(),
       ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
     ])
-  return await runWatchLoop({
+  await runWatchLoop({
     opts,
     held,
     stop: stop.signal,
@@ -285,6 +288,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? ws.cacheDir,
   })
+  return stopped()
 }
 
 interface WatchLoopArgs {
@@ -345,7 +349,7 @@ interface Rediscovered {
   fenceDirs: readonly string[]
 }
 
-async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
+async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const { opts, stop, workspaceRoot, projects, cacheDir } = args
   // The watched set as of the last cycle: `rearm` replaces these after an
   // event that can change it, and every filter below reads the current one.
@@ -403,7 +407,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           await held?.stop()
           held = undefined
           restartTimings()
-          const start = Date.now()
+          // On the mtime clock, as the arm is: from `Date.now()` a write the
+          // run made within a tick of it carried an earlier mtime and read as
+          // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+          const start = fsClockNow(cacheDir)
           const cycle = await runOrchestrator(opts)
           held = cycle.persistent
           if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
@@ -501,7 +508,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       const handle = arm(proj.dir, true, (filename) => {
         const abs = path.join(proj.dir, filename)
         if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
-        if (shapesWatchedSet(filename)) reread = true
+        // A module the config imports from inside the project is the config
+        // too: its edit can add an output or a `workspaceFiles` input.
+        if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
         trigger(`${proj.name} ${filename}`, abs)
       })
       perProject.set(proj.dir, handle)
@@ -522,8 +531,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
             if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-            if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
-            trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+            const abs = path.join(workspaceRoot, filename)
+            if (
+              shapesWatchedSet(filename) ||
+              filename === LOCKFILE_NAME ||
+              configImportFiles.includes(abs)
+            )
+              reread = true
+            trigger(`root ${filename}`, abs)
           })
         : // The root itself, non-recursive, beside the per-project arms, so
           // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
@@ -830,7 +845,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   process.stdout.write(`\n${watchingLine(projects.length)}; press Ctrl+C to stop\n`)
 
-  return await new Promise<number>((resolve) => {
+  return await new Promise<void>((resolve) => {
     const cleanup = async (): Promise<void> => {
       pool.closeAll()
       if (debounceTimer) clearTimeout(debounceTimer)
@@ -838,7 +853,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       // it has returned, so the process never exits over a live child.
       await inFlight
       await held?.stop(forwardedSignal(stop.reason))
-      resolve(0)
+      resolve()
     }
     if (stop.aborted) {
       void cleanup()

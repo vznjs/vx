@@ -19,7 +19,10 @@ under a green run, and one that moved a node to another key crashed
 the scheduler with a raw TypeError. Before that, after EACH plugin,
 every entry must be an object whose `deps` is an array (X-15): a hook
 that set `deps = null` was refused as "null is not an object", naming
-neither the task nor the field.
+neither the task nor the field. Its `projectName` and `taskName` must be
+names and its `projectDir` an absolute path (X-94): a node a hook added
+without one failed at its run as an internal error (a TypeError from
+`path`), and a relative one keyed and ran against vx's own cwd.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved

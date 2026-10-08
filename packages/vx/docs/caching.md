@@ -836,7 +836,8 @@ With the rule off, an edge fixes the order, and the dependant is
   file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
-  before a restore (its rows only);
+  before a restore (its rows only, pruning emptied directories only
+  inside its declared trees, so a sibling's fresh directory stays);
 - its "already current" check requires its rows present and current and
   ignores everything else under the glob;
 - it is **never restore-tier**: it restores or runs after its upstream,
@@ -1157,7 +1158,9 @@ two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. A home this user cannot write keeps the store
+when its task next hits. The check, drop, re-create and stamp are one
+write transaction, so another version's open waits rather than landing
+between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
@@ -1367,13 +1370,14 @@ when its task next asks for its key (below).
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'config_evals_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
 -- The config-evaluation cache (§ Config evaluation cache): the validated,
 -- JSON-serialised result of a provably pure config, keyed by everything
--- the evaluation could have observed. Machine-local.
+-- the evaluation could have observed. Machine-local. Rows not written in
+-- 30 days are swept at most once a day (`config_evals_swept_at`).
 CREATE TABLE config_evals (
   key        TEXT PRIMARY KEY,
   json       TEXT NOT NULL,

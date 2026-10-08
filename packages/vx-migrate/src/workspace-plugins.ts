@@ -45,6 +45,7 @@ function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] 
 export function renderWorkspaceFile(
   plugins: readonly WorkspacePlugin[],
   format: 'ts' | 'mjs',
+  fields: readonly { readonly field: string; readonly source: string }[] = [],
 ): string {
   return [
     ...(format === 'ts' ? ["import type { WorkspaceConfig } from '@vzn/vx/config'"] : []),
@@ -54,6 +55,7 @@ export function renderWorkspaceFile(
     '  plugins: [',
     ...entries(plugins, '    '),
     '  ],',
+    ...fields.map((f) => `  ${f.field}: ${f.source},`),
     `}${format === 'ts' ? ' satisfies WorkspaceConfig' : ''}`,
     '',
   ].join('\n')

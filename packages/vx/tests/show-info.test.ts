@@ -682,11 +682,15 @@ describe('vx info — a config that will not load counts as zero, for every numb
 
 describe('parseShowArgs', () => {
   it('defaults to pretty with no target', () => {
-    expect(parseShowArgs([])).toEqual({ format: 'pretty' })
+    expect(parseShowArgs([])).toEqual({ format: 'pretty', filters: [] })
   })
 
   it('captures a positional target', () => {
-    expect(parseShowArgs(['app#build'])).toEqual({ format: 'pretty', target: 'app#build' })
+    expect(parseShowArgs(['app#build'])).toEqual({
+      format: 'pretty',
+      filters: [],
+      target: 'app#build',
+    })
   })
 
   it('accepts --format json in both spellings', () => {

@@ -142,9 +142,9 @@ export interface VxPlugin {
    * many times per run, so it must be cheap and synchronous; a throw, or
    * an answer that is a Promise, is reported once and the plugin admits
    * from then on — a policy never
-   * breaks a run. Restore-tier hits and tasks on an executor pool hold no
-   * local resources and are never asked. When several plugins answer, all
-   * must admit. Core keeps no notion of what a task needs: a plugin that
+   * breaks a run. Restore-tier hits, tasks on an executor pool and groups
+   * hold no local resources: never asked, never in `ctx.running`. When
+   * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
    * packs memory or CPU learns or declares the numbers itself
    * (`@vzn/vx-schedule-history` packs what past executions used).
    */
@@ -341,7 +341,12 @@ export interface FingerprintContext extends BaseContext {
 }
 
 export interface AdmitContext {
-  /** The tasks executing on this machine right now, in dispatch order. */
+  /**
+   * The tasks holding a worker on this machine right now, in dispatch
+   * order. A persistent task leaves at ready, when it gives its worker
+   * back: it runs until the graph ends, so a policy that counted it would
+   * hold its dependants with no completion left to ask again.
+   */
   readonly running: readonly TaskNode[]
   /** The run's worker count — the ceiling the count gate already applies. */
   readonly concurrency: number
@@ -440,7 +445,8 @@ function pluginPackageName(dir: string): string {
   for (let d = dir; ;) {
     let text: string | undefined
     try {
-      text = readFileSync(path.join(d, 'package.json'), 'utf8')
+      // A byte-order mark is stripped, as npm, Node and discovery strip it.
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
     } catch {
       /* not here; look one level up */
     }

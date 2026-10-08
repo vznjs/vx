@@ -89,12 +89,23 @@ describe('cli run()', () => {
       // `watch` reads `run`'s flags, and pointed at `vx run --help`.
       await said(['watch', 'build', '--debounce=abc']),
       await said(['watch', 'build', '--filtr=app']),
+      // A refused value points at the verb's help too, not only an unknown flag.
+      await said(['watch', 'build', '--concurrency', 'abc']),
+      await said(['run', 'build', '--output-logs=loud']),
       await said(['cache', 'bogus']),
       // CONTROL: a near miss keeps its one name.
       await said(['cache', 'prnue']),
     ]).toEqual([
       [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
+      [
+        1,
+        'vx watch: invalid concurrency: abc (a positive integer, or a share of the cores such as 50%) (see `vx watch --help`)\n',
+      ],
+      [
+        1,
+        'vx run: --output-logs must be full, errors-only, hash-only, or none (got loud) (see `vx run --help`)\n',
+      ],
       [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
       [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
     ])
@@ -515,6 +526,32 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     // The actual task would have echoed `hello-cli`; it must NOT run.
     expect(stdout).not.toContain('hello-cli')
   })
+
+  // `--dry` called a cacheable task under a policy that reads and writes
+  // nothing `no-cache`, the real run `miss` and its footer "1 miss": a
+  // miss is a lookup that failed, and this run looked nothing up.
+  for (const flag of ['--no-cache', '--cache=local:']) {
+    it(`${flag}: the plan and the run both call the task no-cache`, async () => {
+      const { readFile } = await import('node:fs/promises')
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
+      expect(stdout).toContain('no-cache (would exec)')
+      stdout = ''
+      const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
+      expect(await run(args)).toBe(0)
+      expect(stdout).toContain('| one#hello | success | no-cache |')
+      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).not.toContain('miss')
+      const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
+      expect([row.id, row.noCache]).toEqual(['one#hello', true])
+    })
+  }
 
   it('--dry-run --json emits parseable JSON', async () => {
     let stdout = ''
@@ -951,6 +988,26 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('## vx run')
     expect(stdout).toContain('| Task | Status | Cache | Duration |')
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
+  })
+
+  // Nothing prints below the footer (owner): the report came after its
+  // `result` row. The table (X-64) prints first, then the report.
+  it('--report and the --verbosity table print above the footer', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report=markdown', '--verbosity=1'])
+    expect(code).toBe(0)
+    const report = stdout.indexOf('| Task | Status | Cache | Duration |')
+    const table = stdout.indexOf('TASK')
+    const footer = stdout.indexOf('  result')
+    expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
+    expect([table < report, report < footer]).toEqual([true, true])
+    expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
   })
 
   it('bare --report defaults to markdown', async () => {
@@ -1574,9 +1631,9 @@ describe('parseRunArgs', () => {
     )
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
-      'unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
+      'unknown flag: --concurency (did you mean --concurrency?)',
     )
-    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz (see `vx run --help`)')
+    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
     // The candidate list itself: run's documented flags come from the help
     // text's `(for run)` sections, and prune's flag is not among them.
     const flags = documentedFlags('run')
@@ -1618,9 +1675,7 @@ describe('parseRunArgs', () => {
     // A verb the reference does not know gets the whole reference.
     expect(verbHelpText('no-such-verb')).toBe(helpText())
     // Another verb's flag is never suggested to `run`.
-    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe(
-      'unknown flag: --older-tha (see `vx run --help`)',
-    )
+    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe('unknown flag: --older-tha')
   })
 
   it('a verb cut takes only lines that START with its own `vx <verb>` form', () => {
@@ -2546,14 +2601,14 @@ describe('unknown-flag hints reach three edits', () => {
     // same-stem budget offered `--concurrency` for `--continue-on-error`
     // (nine edits) and `--cache` for `--cache-directory`.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
-      'unknown flag: --continue-on-error (see `vx run --help`)',
+      'unknown flag: --continue-on-error',
     )
     expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
-      'unknown flag: --cache-directory (see `vx run --help`)',
+      'unknown flag: --cache-directory',
     )
     // CONTROL: within three edits the stem still hints.
     expect(parseRunArgs(['build', '--timeouts']).error).toBe(
-      'unknown flag: --timeouts (did you mean --timeout?) (see `vx run --help`)',
+      'unknown flag: --timeouts (did you mean --timeout?)',
     )
   })
 })
