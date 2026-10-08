@@ -1226,7 +1226,10 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
-  if (ports.length > 0) writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  if (ports.length > 0) {
+    hostBridges.set(tag, { ports, procs: [] })
+    writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  }
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1244,7 +1247,7 @@ async function wrapIn(
     process.platform === 'linux'
       ? literalReadPaths(customConfig)
       : process.platform === 'darwin'
-        ? seatbeltBrackets(customConfig)
+        ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
@@ -1407,8 +1410,14 @@ function ownGroupCommand(
   return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
-/** What strace stops on: the reads, and what moves or makes a process's cwd. */
-const TRACED_CALLS = 'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+/**
+ * What strace stops on: the reads, the execs and access probes (a refused
+ * `./gen.sh || fallback` passed unreported), and what moves or makes a
+ * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
+ * `git status` 30%, where the execs and probes cost nothing measurable.
+ */
+const TRACED_CALLS =
+  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -1450,22 +1459,32 @@ function literalReadPaths(
  * file and the route could not be granted. `[[]` is a class of one `[`; a
  * lone `]` is plain text (B-65). A deny path is a real directory, never a
  * pattern: a nested project's wall under `[legacy]/` compiled as a class,
- * matched nothing, and the root task read it.
+ * matched nothing, and the root task read it. So is each of `names`, the
+ * baseline reads: a linked dependency under `packages/[legacy]/` was a
+ * class too, and as an exact regex even `[[]` grants the directory's entry
+ * and none of its files, so its subtree is granted beside it (a trailing
+ * `/**` is stripped before the compile).
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  names: readonly string[] = [],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
   if (fs === undefined) return config
-  const literal = (paths: readonly string[]): string[] =>
-    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
+  const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
+  const read = (p: string): string[] => {
+    if (!bracketed.has(p)) return [literal(p)]
+    const at = p.replaceAll('[', '[[]')
+    return [at, `${at}/**/*`]
+  }
   return {
     ...config,
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: literal(fs.allowWrite),
-      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
+      allowWrite: fs.allowWrite.map(literal),
+      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
     },
   }
 }
@@ -1582,7 +1601,14 @@ const hostBridges = new Map<
  * (2026-10-03). Linux, own procfs only, as the wait.
  */
 function portsHeld(ports: readonly number[]): number[] {
-  if (ports.length === 0 || !procfsIsOwn()) return []
+  if (ports.length === 0) return []
+  // This run's own bridges first: a wrap claims its ports before it awaits,
+  // and two tasks granted one port both read the table before either
+  // bridge bound, so the second's bind failed unseen and its clients
+  // reached the first task.
+  const claimed = new Set([...hostBridges.values()].flatMap((b) => b.ports))
+  const ours = ports.filter((p) => claimed.has(p))
+  if (ours.length > 0 || !procfsIsOwn()) return ours
   const held = new Set<string>()
   for (const [file, any, loop] of [
     ['/proc/net/tcp', '00000000', '0100007F'],
@@ -1638,7 +1664,7 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
 }
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
-  const procs: Array<ReturnType<typeof Bun.spawn>> = []
+  const procs = hostBridges.get(tag)!.procs
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
@@ -1668,10 +1694,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) {
-    hostBridges.set(tag, { ports, procs })
-    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
-  }
+  if (procs.length > 0) for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
 }
 
 /**
@@ -1811,11 +1834,11 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace only `openat` — it's the actual file-read attempt, the
-  // signal the user cares about. `statx` / `newfstatat` / `access`
-  // are mostly shell PATH-walking and stat probes that aren't
-  // actionable (we'd report every node_modules/.bin entry the shell
-  // checks before resolving a command).
+  // We trace `openat`, the read itself, plus `execve` and the access
+  // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
+  // is a tax on every stat-heavy task. A probe's ENOENT counts only where
+  // the host has the path (`parseStraceViolations`), so a PATH walk past
+  // a missing `node_modules/.bin` entry reports nothing.
   //
   // `--seccomp-bpf` is what makes that filter cheap: without it strace
   // ptrace-stops the tracee on EVERY syscall and discards the untraced
@@ -1825,7 +1848,7 @@ async function runSandboxedOnce(
   // 24/24; under `strace -f -e trace=openat` the same four fail with
   // medians 2.5–7× over budget; with `--seccomp-bpf` 24/24 again), and
   // it taxed every other sandboxed task the same way. With the flag the
-  // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
+  // kernel filter stops only on the traced calls. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
@@ -2016,6 +2039,7 @@ async function runSandboxedOnce(
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
             scratch,
+            [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2273,8 +2297,12 @@ function sbplToken(value: string, field: string): string {
  */
 export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
+  // A name is an info type to one caller and a sysctl to another (Bun
+  // reads `hw.optional.neon` with sysctl-read), so it grants both.
   for (const t of c.systemInfo ?? []) {
-    rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
+    const name = sbplToken(t, 'allow.systemInfo')
+    rules.push(`(allow system-info (info-type "${name}"))`)
+    rules.push(`(allow sysctl-read (sysctl-name "${name}"))`)
   }
   if (localBindingOn(c)) {
     // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is
@@ -2418,7 +2446,7 @@ export function darwinWallRules(
     for (const w of walls) {
       const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
       const kept = literals
-        .filter((l) => isMountableLiteral(l) && atOrUnder(l, w))
+        .filter((l) => atOrUnder(l, w))
         .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
       rules.push(
         kept.length === 0
@@ -2427,8 +2455,13 @@ export function darwinWallRules(
       )
     }
   }
-  deny('file-read-data', c.wallsReached?.read ?? [], [...c.allowRead, ...baseAllowRead])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite)
+  // A baseline is a name the filesystem handed back, never a pattern: a
+  // bracket in it does not make it a glob.
+  deny('file-read-data', c.wallsReached?.read ?? [], [
+    ...c.allowRead.filter(isMountableLiteral),
+    ...baseAllowRead,
+  ])
+  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite.filter(isMountableLiteral))
   return rules
 }
 
