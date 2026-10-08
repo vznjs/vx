@@ -25,7 +25,7 @@ const SITE = path.resolve(import.meta.dir, '..')
 const CONTENT = path.join(SITE, 'src/content/docs')
 
 const INTERNALS = ['/overview/', '/architecture/', '/optimizations/', '/patterns/', '/flows/']
-const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog)\//
+const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog|releases)\//
 
 /**
  * Pages the last `import` generated, as paths under the content directory. A generated
@@ -84,7 +84,7 @@ describe('docs site sidebar coverage', () => {
     expect([...outputs].sort()).toEqual(ignored)
   })
 
-  it('names every page but the internals and the blog', () => {
+  it('names every page but the internals, the blog and the releases', () => {
     const orphans = collectionPages()
       .map((p) => `/${p}`)
       .filter((u) => !listed.includes(u) && !INTERNALS.includes(u) && !OUT_OF_SIDEBAR.test(u))
@@ -98,7 +98,7 @@ describe('docs site sidebar coverage', () => {
   it('excuses only kinds of page that exist, and lists the glossary and the comparison', () => {
     const pages = collectionPages().map((p) => `/${p}`)
     expect(INTERNALS.filter((u) => !pages.includes(u))).toEqual([])
-    for (const dir of ['modules', 'design', 'internals', 'blog']) {
+    for (const dir of ['modules', 'design', 'internals', 'blog', 'releases']) {
       expect(pages.some((u) => u.startsWith(`/${dir}/`))).toBe(true)
     }
     expect(listed).toContain('/glossary/')

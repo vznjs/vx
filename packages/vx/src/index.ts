@@ -239,8 +239,15 @@ export type {
 // The serializable run result and its per-task views (what `run()` returns).
 export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
 
-// The one run-history query a reader outside the CLI takes today: `vx why`'s
-// answer, which `@vzn/vx-mcp` serves. The event bus / wire form and the
-// other history readers (`listRuns`, `getRun`, …) left the façade 2026-09-10
-// with no consumer; the telemetry seam above is the canonical export path.
-export { latestRunId, resolveRunId, whyDidThisRerunQuery } from './orchestrator/index.js'
+// The run-history queries a reader outside the CLI takes today: `vx why`'s
+// answer and a run's failures, which `@vzn/vx-mcp` serves. The event bus /
+// wire form and the other history readers (`listRuns`, `getRun`, …) left the
+// façade 2026-09-10 with no consumer; the telemetry seam above is the
+// canonical export path.
+export {
+  latestRunId,
+  resolveRunId,
+  runFailures,
+  whyDidThisRerunQuery,
+} from './orchestrator/index.js'
+export type { OutputLocation, RunFailures, TaskFailure } from './orchestrator/index.js'

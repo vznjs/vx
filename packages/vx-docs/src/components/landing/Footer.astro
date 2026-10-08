@@ -1,0 +1,58 @@
+---
+// The standalone pages' footer (the landing and the feature pages).
+const base = import.meta.env.BASE_URL
+const href = (p: string) => `${base}${p}`
+
+const footCols = {
+  docs: [
+    { t: 'Features', h: href('features/') },
+    { t: 'Quickstart', h: href('quickstart/') },
+    { t: 'Configure', h: href('guides/configure/') },
+    { t: 'Sandboxing', h: href('guides/sandboxing/') },
+    { t: 'CI and remote', h: href('guides/ci/') },
+    { t: 'Migrate', h: href('guides/migrate/') },
+    { t: 'Plugins', h: href('guides/plugins/') },
+    { t: 'Try it', h: href('playground/') },
+  ],
+  reference: [
+    { t: 'CLI', h: href('cli/') },
+    { t: 'Config', h: href('schema/') },
+    { t: 'Benchmarks', h: href('benchmarks/') },
+    { t: 'vx, Turborepo, Nx, Bazel', h: href('compare/') },
+    { t: 'Turbo / Nx parity map', h: href('parity/') },
+    { t: 'Glossary', h: href('glossary/') },
+  ],
+  community: [
+    { t: 'GitHub', h: 'https://github.com/vznjs/vx' },
+    { t: 'Blog', h: href('blog/') },
+  ],
+}
+---
+
+<footer class="footer">
+  <div class="foot-grid container">
+    <div class="foot-brand">
+      <div class="row">
+        <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
+        <span class="word">vx</span>
+      </div>
+      <p>One binary · MIT licensed · no account.</p>
+    </div>
+    {
+      Object.entries(footCols).map(([title, links]) => (
+        <div class="foot-col">
+          <p class="title">{title}</p>
+          <div class="links">
+            {links.map((l) => (
+              <a href={l.h}>{l.t}</a>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+  <div class="foot-bottom container">
+    <span>© 2026 vx contributors</span>
+    <span>MIT licensed · @vzn/vx</span>
+  </div>
+</footer>

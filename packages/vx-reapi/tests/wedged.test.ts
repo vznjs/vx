@@ -37,7 +37,10 @@ afterAll(() => {
 
 describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', () => {
   it('rejects with DEADLINE_EXCEEDED instead of hanging the probe', async () => {
-    const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 1000 })
+    const cache = new ReapiRemoteCache({
+      endpoint: `grpc://127.0.0.1:${port}`,
+      callTimeoutMs: 1000,
+    })
     try {
       const t0 = Date.now()
       let code: number | undefined
@@ -63,7 +66,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     const local = new Cache(path.join(dir, 'cache'))
     const warns: string[] = []
     try {
-      const plugin = reapi({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 1000 })
+      const plugin = reapi({ endpoint: `grpc://127.0.0.1:${port}`, callTimeoutMs: 1000 })
       const layer = (await plugin.cache!({
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
@@ -85,7 +88,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
   it('a DOWN server (connection refused) also degrades, the fast way', async () => {
     // The control for the wedge: refused connections were never the problem,
     // and must stay fast — UNAVAILABLE, not a deadline wait.
-    const cache = new ReapiRemoteCache({ endpoint: '127.0.0.1:1', callTimeoutMs: 5000 })
+    const cache = new ReapiRemoteCache({ endpoint: 'grpc://127.0.0.1:1', callTimeoutMs: 5000 })
     try {
       let code: number | undefined
       try {
@@ -111,7 +114,7 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     // error is still the honest DEADLINE_EXCEEDED.
     const warns: string[] = []
     const client = new (await import('../src/wire.js')).ReapiClient({
-      endpoint: `127.0.0.1:${port}`,
+      endpoint: `grpc://127.0.0.1:${port}`,
       // The downgrade nets a chunk ABOVE the safe size; the default is it (F-20).
       chunkBytes: 128 * 1024,
       callTimeoutMs: 900,
@@ -141,7 +144,7 @@ describe.if(CHUNKING_SUPPORTED)('adaptive chunk downgrade', () => {
     // so the deadline surfaces after ONE wait, not two.
     const warns: string[] = []
     const client = new (await import('../src/wire.js')).ReapiClient({
-      endpoint: `127.0.0.1:${port}`,
+      endpoint: `grpc://127.0.0.1:${port}`,
       // The downgrade nets a chunk ABOVE the safe size; the default is it (F-20).
       chunkBytes: 128 * 1024,
       callTimeoutMs: 900,
@@ -211,7 +214,7 @@ describe.if(CHUNKING_SUPPORTED)("the chunk stall's deadline spelled by the serve
     const { port, marker } = await serve(rstAfterMs)
     const warns: string[] = []
     const client = new ReapiClient({
-      endpoint: `127.0.0.1:${port}`,
+      endpoint: `grpc://127.0.0.1:${port}`,
       chunkBytes: 128 * 1024,
       callTimeoutMs: T,
       onWarn: (m) => {
@@ -273,7 +276,7 @@ describe.if(CHUNKING_SUPPORTED)(
     // burned the full 180s upload deadline on a lookup.
     it('a metadata probe gives up on the SHORT deadline, not the bulk one', async () => {
       const cache = new ReapiRemoteCache({
-        endpoint: `127.0.0.1:${port}`,
+        endpoint: `grpc://127.0.0.1:${port}`,
         callTimeoutMs: 60_000,
         metaTimeoutMs: 700,
       })
@@ -294,7 +297,7 @@ describe.if(CHUNKING_SUPPORTED)(
       // wire (that cost this suite 15 s a run); the two cases around this one
       // prove the wire honours the deadline in force, explicit and derived.
       const at = (opts: { callTimeoutMs: number; metaTimeoutMs?: number }): number => {
-        const client = new ReapiClient({ endpoint: `127.0.0.1:${port}`, ...opts })
+        const client = new ReapiClient({ endpoint: `grpc://127.0.0.1:${port}`, ...opts })
         try {
           return client.metaTimeoutMs
         } finally {
@@ -312,7 +315,10 @@ describe.if(CHUNKING_SUPPORTED)(
     // CONTROL: the cap must not clamp a deliberately SHORT bulk deadline, or
     // `min()` would silently lengthen a probe that was already tighter.
     it('a bulk deadline below the cap still governs the probe', async () => {
-      const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 800 })
+      const cache = new ReapiRemoteCache({
+        endpoint: `grpc://127.0.0.1:${port}`,
+        callTimeoutMs: 800,
+      })
       try {
         const t0 = Date.now()
         await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
@@ -353,7 +359,7 @@ describe.if(CHUNKING_SUPPORTED)('a call a proxy cuts in transit', () => {
     servers.push(proc)
     const { value } = await proc.stdout.getReader().read()
     const client = new ReapiClient({
-      endpoint: `127.0.0.1:${new TextDecoder().decode(value).trim()}`,
+      endpoint: `grpc://127.0.0.1:${new TextDecoder().decode(value).trim()}`,
     })
     try {
       const err = await client.getActionResult({ hash: 'ab'.repeat(32), size_bytes: 1 }).then(

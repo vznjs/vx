@@ -1,4 +1,4 @@
-// The six tools, as pure handlers over one workspace: four over its
+// The seven tools, as pure handlers over one workspace: five over its
 // cache.db, one over its resolved configs, one the doctor's facts (what
 // `vx info` prints, from the same collector). Every handler opens what it
 // reads for the call and closes it — the server is a short-lived adapter —
@@ -17,6 +17,7 @@ import {
   UserError,
   latestRunId,
   resolveRunId,
+  runFailures,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
@@ -102,6 +103,21 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'getFailures',
+    description:
+      'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column). `runId` defaults to the latest failed run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: {
+          type: 'string',
+          description:
+            'A run id from getRunHistory, or a unique prefix of one (as `vx last --list` prints it); omitted = the latest failed run',
+        },
+      },
+    },
+  },
+  {
     name: 'getWorkspaceInfo',
     description:
       'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
@@ -159,6 +175,8 @@ export async function handleToolCall(
       return explainCacheKey(args, ctx)
     case 'whyDidThisRerun':
       return whyDidThisRerun(args, ctx)
+    case 'getFailures':
+      return getFailures(args, ctx)
     case 'getWorkspaceInfo':
       return getWorkspaceInfo(ctx)
     default:
@@ -462,6 +480,28 @@ async function whyDidThisRerun(
     // The canonical query, not a copy: two implementations of this once
     // answered differently about rows that recorded no cache key.
     return { ...whyDidThisRerunQuery(db, runId, taskId) }
+  } finally {
+    cache.close()
+  }
+}
+
+async function getFailures(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const given = args['runId']
+  if (given !== undefined && typeof given !== 'string') {
+    throw new UserError('getFailures: runId, when given, must be a string')
+  }
+  if (given === '') throw new UserError('getFailures: runId, when given, must not be empty')
+  const cache = Cache.inspect(ctx.cacheDir)
+  try {
+    const db = cache.dbHandle()
+    const runId = given === undefined ? undefined : resolveRunId(db, given, 'getFailures')
+    if (runId === null) throw new UserError(`getFailures: no recorded run ${given}`)
+    const failures = runFailures(ctx.cacheDir, db, runId)
+    if (failures === null) throw new UserError('getFailures: no recorded run failed')
+    return { ...failures }
   } finally {
     cache.close()
   }

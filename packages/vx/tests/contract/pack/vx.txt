@@ -106,6 +106,7 @@ src/orchestrator/projects.ts
 src/orchestrator/remote-prefetch.ts
 src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
+src/orchestrator/run-failures.ts
 src/orchestrator/run-id.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts

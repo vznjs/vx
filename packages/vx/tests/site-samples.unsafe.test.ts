@@ -571,7 +571,7 @@ describe('the agents-and-mcp post tabulates every tool the server offers', () =>
       'utf8',
     )
     const names = [...src.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
-    expect(names.length).toBe(6)
+    expect(names.length).toBe(7)
     const page = readFileSync(path.join(DOCS, 'blog', 'agents-and-mcp.md'), 'utf8')
     const rows = [...page.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...names].sort())
@@ -1811,8 +1811,9 @@ describe('the plugin examples say which seams they cover', () => {
 })
 
 describe("the site's reapi samples on port 443 name a TLS scheme", () => {
-  // A bare `host:443` is plaintext to vx-reapi; the CI and configure guides
-  // showed one (J-96). vx-reapi's tls.test.ts holds the client to it.
+  // A bare `host:443` was plaintext to vx-reapi when the CI and configure
+  // guides showed one (J-96); it is TLS now, as in Bazel, and a sample still
+  // names its scheme. vx-reapi's tls.test.ts holds the client to the rule.
   it('every `endpoint: …:443` on a page starts grpcs:// or https://', () => {
     const samples = handAuthoredSitePages().flatMap((p) =>
       [...readFileSync(p, 'utf8').matchAll(/endpoint: '([^']+:443)'/g)].map(

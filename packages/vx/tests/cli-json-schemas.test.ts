@@ -31,6 +31,7 @@ import type {
   InputDiffEntry,
   InvocationDetail,
   RunSummaryRow,
+  TaskFailure,
   WhyDidThisRerun,
   PlanPrediction,
   RunPlan,
@@ -70,7 +71,8 @@ const CONFIG = (dep: boolean) => `export default {
     },
     fail: { exec: { command: 'exit 3' } },
     flaky: {
-      exec: { command: 'test -f ../../flag' },
+      // A failure names a file, so vx last prints its locations.
+      exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
       cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
     },
   },
@@ -415,7 +417,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('last', 'task')).toEqual(
-      keys<RunSummaryRow>({
+      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations'>>({
         runId: true,
         project: true,
         task: true,
@@ -437,6 +439,8 @@ describe('each schema object is its source type', () => {
         sandboxViolations: true,
         notReady: true,
         forwarded: true,
+        output: true,
+        locations: true,
       }),
     )
   })

@@ -48,13 +48,14 @@ import {
   machineParallelism,
   teardownTimeoutMs,
   secretMask,
+  isFsRefusal,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import type { ExecuteArgs } from './execute-task.js'
+import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
@@ -103,6 +104,7 @@ import {
 } from './local-shortcircuit.js'
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
+import { writeRunFailures } from './run-failures.js'
 import { assembleRunRecords } from './run-records.js'
 import {
   hasEnded,
@@ -1134,6 +1136,21 @@ async function runOnBus(
           ? Promise.resolve(kept)
           : executeWithDedup(node, keyUpstream(node, upstream))
       },
+      // An unkeyed group runs nothing: settled in place, unless a taint
+      // may ride it, which `buildExecuteArgs` records on dispatch.
+      ...(options.continueMode !== 'always' && taintSeeds.size === 0
+        ? {
+            settleNow: (node: TaskNode, upstream: TaskOutcome[]) =>
+              isGroupTask(node) && node.config.cache === undefined
+                ? unkeyedGroupOutcome(
+                    node,
+                    keyUpstream(node, upstream),
+                    shortCircuit.groupKeys.get(node.id),
+                    runStartHrTimeNs,
+                  )
+                : undefined,
+          }
+        : {}),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),
@@ -1323,8 +1340,21 @@ async function runOnBus(
     // cache closes: its history is written once the wait has decided, or it
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stoppedBy === undefined
-    if (stoppedBy === undefined && !historyAfterWait)
+    // A failed task's output, for `vx last` and an agent: files beside the
+    // index, so a refused write (a full disk, a read-only cache dir) costs
+    // only that output.
+    const recordFailures = (final: readonly TaskOutcome[]): void => {
+      try {
+        writeRunFailures(prepared.cacheDir, runId, final)
+      } catch (err) {
+        if (!isFsRefusal(err)) throw err
+        log.status(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
+      }
+    }
+    if (stoppedBy === undefined && !historyAfterWait) {
       recordHistory(() => cache.recordRunBundle(records))
+      recordFailures(list)
+    }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
@@ -1537,6 +1567,7 @@ async function runOnBus(
             local.close()
           }
         })
+        recordFailures(final)
       }
       return { ok: ok && first.code === 0, outcomes: final }
     }
