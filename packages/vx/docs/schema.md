@@ -1522,7 +1522,7 @@ interface WorkspaceRules {
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
-  orphan sweep (artifacts no index row counts, older than an hour —
+  orphan sweep (artifacts no index row counts, judged by file time —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000

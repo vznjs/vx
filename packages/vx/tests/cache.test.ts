@@ -1671,7 +1671,7 @@ describe('Cache storage (v10)', () => {
     await age(path.join(cacheDir, 'cache.db'))
 
     expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: 11 })
-    const result = await cache.prune({ olderThanMs: 1 })
+    const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 1,
       orphanBytes: 11,
@@ -1713,7 +1713,7 @@ describe('Cache storage (v10)', () => {
     ]
 
     expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 2 })
-    await cache.prune({ olderThanMs: 1 })
+    await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(reaped.filter((f) => existsSync(f))).toEqual([])
     expect(kept.filter((f) => existsSync(f))).toEqual(kept)
   })
@@ -1859,7 +1859,7 @@ describe('Cache storage (v10)', () => {
 
     // What `vx info` reports before anyone prunes is exactly what prune reaps.
     expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: 15 })
-    const result = await cache.prune({ olderThanMs: 1 })
+    const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(result.evicted).toBe(0)
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 2,
@@ -1879,7 +1879,7 @@ describe('Cache storage (v10)', () => {
     // swallowed the loser's ENOENT and both reported the bytes. Nothing may
     // be EVICTABLE here: an eviction deletes the row before the file, and a
     // scan between the two sees the file as an orphan — darwin CI landed
-    // there once with `olderThanMs: 1` and the aged indexed entry.
+    // there once with an epoch cutoff and the aged indexed entry.
     //
     // Linux only: on darwin, Bun 1.4.0 returned success from BOTH concurrent
     // unlinks of the one path (measured on CI 2026-09-10: counts [1, 1],
@@ -1893,10 +1893,11 @@ describe('Cache storage (v10)', () => {
       return
     }
     try {
-      const aYear = 365 * 24 * 60 * 60 * 1000
+      // Past the aged orphan's file time, short of every row's last use.
+      const olderThanMs = Date.now() - 30 * 60 * 1000
       const [r1, r2] = await Promise.all([
-        cache.prune({ olderThanMs: aYear }),
-        other.prune({ olderThanMs: aYear }),
+        cache.prune({ olderThanMs }),
+        other.prune({ olderThanMs }),
       ])
       // One assertion over both results and what the directory still holds:
       // a failure names WHICH prune counted WHAT, on the platform it failed.
@@ -2563,7 +2564,7 @@ describe('Cache schema/version recovery', () => {
       expect(existsSync(orphan)).toBe(true)
       const aged = (Date.now() - 2 * 60 * 60 * 1000) / 1000
       await utimes(orphan, aged, aged)
-      const pruned = await c2.prune({ olderThanMs: 1 })
+      const pruned = await c2.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
       expect(pruned.orphans).toBe(1)
       expect(existsSync(orphan)).toBe(false)
     } finally {
