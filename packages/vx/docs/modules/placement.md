@@ -72,7 +72,9 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   never cleaned or restored (`remoteOnlyNoop`) — and the run says so.
 - A pooled executor (one with `capacity`) hands the scheduler its pool
   through `poolOfPlacement`, so it can run more tasks at once than the
-  local worker count.
+  local worker count. Each executor is its own pool: the scheduler counts
+  a pool by name, so a second executor with a taken name (one package
+  declared twice) gets `<name>#2`, where the two shared one capacity.
 - `UNPLACED_EXECUTOR` is the sentinel behind a task that reached an
   executor without being placed: an internal error, never a fallback.
 - `planExecutorOf` resolves the executors for a plan and places the

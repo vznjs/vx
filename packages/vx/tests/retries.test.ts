@@ -3,7 +3,7 @@
 // final outcome (and the cached artifact) is the last attempt's. The
 // CLI default never touches cache keys.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -179,6 +179,51 @@ describe('exec.retries — e2e', () => {
     TIMEOUT,
   )
 
+  // X-68: the retry loop asked only the run's stop, so a task in flight
+  // when fail-fast tripped ran every retry it had left.
+  it(
+    'continueMode never: a task in flight when another fails is not retried',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'p',
+        `export default {
+          tasks: {
+            r: {
+              exec: {
+                command: 'echo x >> attempts.txt; touch r-started; until test -f go; do sleep 0.01; done; exit 1',
+                retries: 3,
+              },
+            },
+            f: { exec: { command: 'until test -f r-started; do sleep 0.01; done; exit 1' } },
+          },
+        }
+        `,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['r', 'f'],
+        projects: ['p'],
+        concurrency: 2,
+        continueMode: 'never',
+        log: {
+          ...capturingLogger(fixture),
+          // The scheduler trips fail-fast before it reports the outcome, so
+          // r's attempt ends after the trip.
+          taskComplete(node) {
+            if (node.id === 'p#f') writeFileSync(path.join(dir, 'go'), '')
+          },
+        },
+      })
+      expect(r.ok).toBe(false)
+      const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
+      expect(status).toEqual({ 'p#r': 'failed', 'p#f': 'failed' })
+      expect(lineCount(path.join(dir, 'attempts.txt'))).toBe(1)
+      expect(fixture.err.join('')).not.toContain('vx: retrying')
+    },
+    TIMEOUT,
+  )
+
   it(
     'single successful attempt carries no `attempts` field',
     async () => {
@@ -203,6 +248,52 @@ describe('exec.retries — e2e', () => {
     },
     TIMEOUT,
   )
+
+  // A retry's clean removed the failed attempt's `out/a.txt` and pruned the
+  // emptied `out/`, which a sibling running beside it had just made and
+  // was about to write into: the sibling failed "Directory nonexistent".
+  // The same held for a workspace output.
+  for (const [where, dir, outputs] of [
+    ['project', 'out', (f: string) => `{ files: ['out/${f}'] }`],
+    ['workspace', '../../out', (f: string) => `{ files: [], workspaceFiles: ['out/${f}'] }`],
+  ] as const) {
+    it(
+      `a retry's clean leaves a sibling's ${where} output directory standing`,
+      async () => {
+        await addProject(
+          fixture.root,
+          'p',
+          `export default {
+            tasks: {
+              flaky: {
+                exec: {
+                  command: 'while [ ! -e ready ]; do sleep 0.01; done; if [ -e tried ]; then touch go; exit 1; fi; touch tried; echo a > ${dir}/a.txt; exit 1',
+                  retries: 1,
+                },
+                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('a.txt')} },
+              },
+              other: {
+                exec: { command: 'mkdir -p ${dir} && touch ready && while [ ! -e go ]; do sleep 0.01; done; echo b > ${dir}/b.txt' },
+                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('b.txt')} },
+              },
+            },
+          }
+          `,
+        )
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['flaky', 'other'],
+          projects: ['p'],
+          log: capturingLogger(fixture),
+        })
+        const status = Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))
+        expect(status).toEqual({ 'p#flaky': 'failed', 'p#other': 'success' })
+        const b = path.join(fixture.root, 'packages/p', dir, 'b.txt')
+        expect(readFileSync(b, 'utf8')).toBe('b\n')
+      },
+      TIMEOUT,
+    )
+  }
 
   it(
     'the retried attempt count reaches the telemetry summary (flaky signal)',

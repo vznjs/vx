@@ -21,7 +21,10 @@
 
 const { createRequire, enableCompileCache } = require('node:module')
 const path = require('node:path')
-const { loadTaskEnv } = require('./nx-dotenv.cjs')
+const { realpathSync } = require('node:fs')
+// Through npm's `.bin` symlink under `--preserve-symlinks-main`, Node keeps
+// the link as the main module, so a relative require would look in `.bin`.
+const { loadTaskEnv } = require(path.join(path.dirname(realpathSync(__filename)), 'nx-dotenv.cjs'))
 
 // Nx's module graph is ~150 ms of every executed task; Node's on-disk
 // compile cache (22.1+, a no-op below) takes ~30 of them back on the

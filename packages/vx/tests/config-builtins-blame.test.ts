@@ -1,7 +1,7 @@
 // Configs load 128 at a time, so a change one config makes to a built-in
 // surfaced after another's load, and the refusal named the wrong file
 // (D-119). The round asks each config alone and names the one that made it.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'

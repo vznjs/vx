@@ -9,15 +9,12 @@ export class Cache implements CacheLayer {
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
@@ -326,6 +323,8 @@ export async function run(options: RunOptions): Promise<RunSummary>
 export function splitTaskId(id: string): [project: string, task: string]
 == function whyDidThisRerun (src/orchestrator/metrics.ts)
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+== function withForwardArgs (src/exec/runner.ts)
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
 export interface AdmitContext {
   readonly running: readonly TaskNode[]
@@ -505,11 +504,14 @@ export type CacheStatus =
   | 'miss'
   | 'no-cache'
   | 'group'
+  | 'not-started'
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
   stderr?: boolean
 }
+== type Catalogs (src/workspace/workspace.ts)
+export type Catalogs = ReadonlyMap<string, Readonly<Record<string, unknown>>>
 == type CgroupProbe (src/util/cgroup.ts)
 export interface CgroupProbe {
   readonly root?: string
@@ -1073,6 +1075,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 == type PruneOptions (src/cache/layer.ts)
 export interface PruneOptions {
@@ -1200,6 +1203,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -1465,6 +1469,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -1665,6 +1670,7 @@ export interface WhyDidThisRerun {
 export interface Workspace {
   root: string
   packageGlobs: string[]
+  catalogs?: Catalogs
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

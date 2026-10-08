@@ -23,8 +23,8 @@ without a terminal it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
 the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
 and `github()` when `.github/workflows` exists, installing each beside vx at
-the same version. Your `package.json` scripts
-stay as they are. The steps below
+the same version (`--no-install` leaves `package.json` alone). Your
+`package.json` scripts stay as they are. The steps below
 are the same adoption one stage at a time.
 
 ## Turborepo
@@ -175,7 +175,7 @@ The command itself comes from your `package.json` script, with its
 | `turbo run build`                 | `vx run build --all`                                   |
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
 | `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does) |
-| `turbo run build --continue`      | `vx run build --continue` (the default is `deps-ok`)   |
+| `turbo run build --continue`      | `vx run build --continue` (`always`, as Turbo's; without it, vx skips only a failure's dependents where Turbo stops) |
 | `TURBO_TOKEN` remote cache        | [`turboCache()`](../ci/#remote-cache) reads the same variables |
 
 ## Nx

@@ -46,6 +46,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
+  cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   blockedBy?: string // skipped: the failed or aborted task at the root of the block
   timedOut?: true // failed: vx's own `timeout` killed the final attempt
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
@@ -72,6 +73,8 @@ export interface ScheduleOptions {
   continueMode?: ContinueMode
   /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
   serverDied?: (id: string) => boolean
+  /** Called once, when 'never' stops dispatch: a task in flight starts no retry. */
+  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -94,11 +97,19 @@ export interface ScheduleOptions {
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
 
 // The dead server a dependency stands for: itself, or one a group reaches.
+// Iterative, each node once: a deep chain of groups does not overflow.
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
   id: string,
 ): string | undefined
+
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+export function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string>
 
 // Thrown by `execute` for a restore-tier task with nothing to restore.
 export class RestoreDemoted extends Error {
@@ -175,8 +186,11 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    paid only when one exists. `admit(id, running)` is that predicate for
    local exec-tier nodes: asked after the count gate with the set of
    local exec-tier tasks running right now (tracked only while a policy
-   exists), a `false` parks the node; restore-tier and pooled nodes are
-   never asked. Core passes the plugins' `admit` stage here
+   exists; a persistent task leaves it at ready, with its slot, since it
+   never finishes before its dependants and a policy that counted it
+   would hold them with no completion left to ask again), a `false` parks
+   the node; restore-tier, pooled and group nodes are never asked and
+   never in the set. Core passes the plugins' `admit` stage here
    (`plugin-host.buildAdmission`) and holds no costs of its own. A
    task a policy refused while a worker was free is timed from that
    first refusal to its dispatch, and its outcome carries the wait as
