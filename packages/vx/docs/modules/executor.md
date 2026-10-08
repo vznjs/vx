@@ -50,8 +50,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   part of `env`, safe to ship), `capture`, `outputs`, `timeoutMs?`,
   `onStdout`, `onStderr`, `signal?` (aborted when the run stops or
   `timeoutMs` elapses: an executor ends its work and returns, since core
-  cannot reach a process it spawned; a non-zero exit after the timeout's
-  abort is recorded `timedOut`; one that has not returned within the
+  cannot reach a process it spawned; any exit after the timeout's
+  abort, a 0 included, is recorded `timedOut` and fails (X-125); one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it),
   `liveChildren?`, `onSpawn?` (an executor that runs the command as a
   process on this machine calls it with the pid, so a telemetry sink can

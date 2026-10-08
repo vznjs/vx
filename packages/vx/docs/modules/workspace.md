@@ -201,6 +201,9 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
+`{ nohoist }`) is the single project too, as bun and yarn read it.
+
 A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
 one (the list commented out), defers to `package.json`, as pnpm does.
 
