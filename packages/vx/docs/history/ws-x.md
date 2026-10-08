@@ -1088,3 +1088,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   "no projects in scope": the anchor was taken as a project named `//`.
   It now maps to the root project's name, as the run does (D-39). Row:
   `watch-root-scope.test.ts` › "watches the root project".
+
+- **X-142.** After an upgrade that bumped `CACHE_VERSION`, every task
+  missed once and `vx why` said `cache key changed … (inputs differ)` with
+  `no component-level difference was recorded`: the fold never recorded
+  the version. The capture now records it (`format cache-version`), so
+  `vx why` names the upgrade and says there is nothing to fix. Rows:
+  `why.test.ts` › "a key the format moved names the upgrade, not an
+  input (X-142)", `key-fold.test.ts`, `cache.test.ts`.
