@@ -388,8 +388,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`. A wrap that
-     spawned nothing (a spawn that failed, a stop before it) calls it
-     too: SRT removes the empty mount-point stubs bwrap made on the host
+     spawned nothing (a spawn that failed, a stop before it, a macOS
+     profile refused for its shape) calls it too, and drops its task
+     dir: SRT removes the empty mount-point stubs bwrap made on the host
      (`.bashrc`, `.vscode`, … under a write grant) only once every wrap
      has, and one missed call kept every later task's stubs until the
      reset. A held `localBinding` port is refused before the wrap.
