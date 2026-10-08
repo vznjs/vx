@@ -510,9 +510,9 @@ export interface CacheInputs {
    * project files" (gitignore-aware), or narrow as needed. An empty
    * array means no file inputs at all.
    *
-   * Declared outputs and any nested-project files are excluded
-   * automatically — a task cannot invalidate itself, and cannot read
-   * across project boundaries.
+   * Declared outputs (both `outputs` fields) and any nested-project
+   * files are excluded automatically — a task cannot invalidate itself,
+   * and cannot read across project boundaries.
    */
   files: string[]
   /**
@@ -525,8 +525,8 @@ export interface CacheInputs {
    * NO project-boundary rule applies: these globs may match files
    * inside other projects' directories. Deliberate escape hatch —
    * prefer project-relative `files` declarations where possible.
-   * Declared `outputs.workspaceFiles` are excluded automatically (a
-   * task cannot invalidate itself).
+   * Declared outputs (both `outputs` fields) are excluded
+   * automatically (a task cannot invalidate itself).
    */
   workspaceFiles?: string[]
   /**

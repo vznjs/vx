@@ -258,4 +258,79 @@ describe('cacheScope', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it(
+    'a failed scope lookup falls through to the trusted key',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-fallthrough-')
+      const { layer, store } = memoryRemote()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const main = await runScoped(fixture, layer, undefined, 'v1')
+        // Only the scope's keys fail: the trusted hit is there to be found.
+        const refuse = (hash: string): void => {
+          if (hash !== main.hash) throw new Error('scope key unavailable')
+        }
+        const flaky: RemoteCacheLayer = {
+          has: async (hash) => (refuse(hash), layer.has(hash)),
+          get: async (hash) => (refuse(hash), layer.get(hash)),
+          put: layer.put,
+        }
+        expect((await runScoped(fixture, flaky, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
+        expect(store.size).toBe(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it('a failed scope lookup still warns when the trusted key misses too', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-warn-'))
+    const key = '0123456789abcdef'
+    const errors: string[] = []
+    let trustedDown = false
+    const remote: RemoteCacheLayer = {
+      async has(hash) {
+        if (hash !== key) throw new Error('scope down')
+        return false
+      },
+      async get(hash) {
+        if (hash !== key) throw new Error('scope down')
+        if (trustedDown) throw new Error('trusted down')
+        return null
+      },
+      async put() {},
+    }
+    const local = new Cache(path.join(dir, 'cache'))
+    const layered = (): LayeredCache =>
+      new LayeredCache(local, remote, {
+        policy: {
+          localRead: true,
+          localWrite: true,
+          remoteRead: true,
+          remoteWrite: true,
+          remoteScope: 'pr-1',
+        },
+        onRemoteError: (err) => errors.push(err.message),
+      })
+    try {
+      expect(await layered().has(key)).toBeNull()
+      expect(await layered().get(key)).toBeNull()
+      expect(errors).toEqual([
+        expect.stringContaining('scope down'),
+        expect.stringContaining('scope down'),
+      ])
+      errors.length = 0
+      trustedDown = true
+      expect(await layered().get(key)).toBeNull()
+      expect(errors).toEqual([expect.stringContaining('scope down')])
+    } finally {
+      local.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

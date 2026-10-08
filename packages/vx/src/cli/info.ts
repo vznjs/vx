@@ -10,7 +10,7 @@ import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-conf
 import { formatBytes } from './format.js'
 import { MIN_BUN } from '../util/index.js'
 
-export interface InfoArgs {
+interface InfoArgs {
   format: 'pretty' | 'json'
   /** `--cache-dir`: report on the cache a run with the same flag uses. */
   cacheDir?: string

@@ -27,6 +27,16 @@ describe('secretMask', () => {
     expect(s.end()).toBe('')
   })
 
+  it('maskCut masks the pieces a cut leaves, a whole value across one, and nothing else', () => {
+    const m = secretMask([{ API_TOKEN: SECRET }])!
+    expect(m.maskCut('a hunter', '-l11-sekret b')).toEqual([`a ${MASKED}`, `${MASKED} b`])
+    // A whole value that ends past where a piece would start goes whole.
+    const r = secretMask([{ API_TOKEN: 'abcabcabc' }])!
+    expect(r.maskCut('x abcabcabc', 'abcabcabc y')).toEqual([`x ${MASKED}`, `${MASKED} y`])
+    expect(m.maskCut(`a ${SECRET} b`, `c ${SECRET} d`)).toEqual([`a ${MASKED} b`, `c ${MASKED} d`])
+    expect(m.maskCut('plain', 'words')).toEqual(['plain', 'words'])
+  })
+
   it('a held tail is emitted once no chunk follows it', async () => {
     const got: string[] = []
     const e = maskedEmitter(secretMask([{ API_TOKEN: SECRET }])!, (t) => void got.push(t), 20)

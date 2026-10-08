@@ -1339,26 +1339,26 @@ describe('turbo-map: `with`', () => {
       ui.tasks.map((t) => t.name).sort(),
       task(m, 'ui', 'dev').task,
       task(m, 'ui', 'dev').todos,
-    ]).toEqual([['dev', 'dev:css'], { dependsOn: ['dev:css'] }, []])
+      // `lint` starts no persistent sidecar: Turbo's no-op, an empty group.
+    ]).toEqual([['dev', 'dev:css', 'lint'], { dependsOn: ['dev:css'] }, []])
   })
 
-  it('an edge to a no-script task whose sidecars all end is dropped, not left dangling', async () => {
+  // No package has a `lint` script, so Turbo's no-op `ui#lint` is still a
+  // node `app#check` waits on: a group, not a dropped edge.
+  it('an edge to a no-script task whose sidecars all end names its group', async () => {
     const m = await map(
       { tasks: { build: {}, lint: { with: ['build'] }, 'app#check': { dependsOn: ['ui#lint'] } } },
       { ui: { scripts: { build: 'b' } }, app: { scripts: { check: 'c' } } },
     )
     const check = task(m, 'app', 'check')
-    expect([check.task?.['dependsOn'], check.todos]).toEqual([
-      undefined,
-      ['dependsOn "ui#lint": ui declares no lint script — edge dropped'],
-    ])
+    expect([check.task?.['dependsOn'], check.todos]).toEqual([['ui#lint'], []])
   })
 
   // with-tailwind's `ui` has no `build` script; its `build` depends on
   // `build:styles` and `build:components`, which Turbo builds before
   // `web#build` and vx dropped. A node with only `^` edges needs no group:
   // core's `^task` already walks past a project without the task.
-  it("a no-script task keeps its own package's edges as a group; one with only ^ edges is none", async () => {
+  it("a no-script task keeps its own package's edges as a group", async () => {
     const m = await map(
       {
         tasks: {
@@ -1378,7 +1378,14 @@ describe('turbo-map: `with`', () => {
       task(m, 'ui', 'build').task,
       m.projects.find((p) => p.name === 'cfg')!.tasks.map((t) => t.name),
       task(m, 'app', 'check').task?.['dependsOn'],
-    ]).toEqual([{ dependsOn: ['^build', 'build:css'] }, [], ['ui#build']])
+      // No package has a `build` script: Turbo's no-op runs in cfg too.
+      task(m, 'cfg', 'build').task,
+    ]).toEqual([
+      { dependsOn: ['^build', 'build:css'] },
+      ['build'],
+      ['ui#build'],
+      { dependsOn: ['^build'] },
+    ])
   })
 
   // rallly: `build: [^build, ^db:generate]`, and only `database` has a
@@ -1488,7 +1495,9 @@ describe('turbo-map: `with`', () => {
           lint: {},
           ci: { dependsOn: ['lint', 'build'] },
           deploy: { dependsOn: ['web#build'] },
-          noop: {},
+          // documenso's `lint`: no script, no edge; Turbo runs a no-op per
+          // package and exits 0.
+          noop: { dependsOn: ['^noop'] },
         },
       },
       { web: { scripts: { build: 'b' } }, lib: { scripts: { lint: 'l' } } },
@@ -1500,10 +1509,10 @@ describe('turbo-map: `with`', () => {
     expect([tasks('web'), tasks('lib')]).toEqual([
       // `web#build` is web's own: the group stays there, so no package
       // gains a task edge to web that core's reach would follow.
-      { build: ['^build'], ci: ['build'], deploy: ['build'] },
+      { build: ['^build'], ci: ['build'], deploy: ['build'], noop: ['^noop'] },
       // lib's `build` is Turbo's no-op node over lib's files (G-117), which
       // core supplies to a project with no `build`.
-      { lint: undefined, ci: ['lint', 'build'] },
+      { lint: undefined, ci: ['lint', 'build'], deploy: [], noop: ['^noop'] },
     ])
   })
 
@@ -1563,7 +1572,8 @@ describe('turbo-map: a single-package repo', () => {
 
 describe('turbo-map: a transit node', () => {
   // A `^self` task some package runs is one too where a package lacks the
-  // script (with-vite's `ui#build`); one no package runs or depends on is not.
+  // script (with-vite's `ui#build`); one no package runs or depends on is a
+  // group (Turbo's no-op node, nothing to key).
   it('is a key-only task in each package; so is a ^self task some package runs, where the script is missing', async () => {
     const m = await map(
       {
@@ -1592,7 +1602,15 @@ describe('turbo-map: a transit node', () => {
       transit.task?.['cache'] !== undefined,
       // cfg's `build` is core's default, not a written one. Nothing depends
       // on lib, so its script-less `test` is the group that builds it.
-    ]).toEqual([['build', 'test', 'transit'], ['test', 'transit'], 'true', ['^transit'], true])
+      m.projects.find((p) => p.name === 'cfg')!.tasks.find((t) => t.name === 'lone')!.task,
+    ]).toEqual([
+      ['build', 'lone', 'test', 'transit'],
+      ['lone', 'test', 'transit'],
+      'true',
+      ['^transit'],
+      true,
+      { dependsOn: ['^lone'] },
+    ])
   })
 })
 

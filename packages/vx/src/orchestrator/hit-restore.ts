@@ -8,7 +8,6 @@
 // which bytes a green run replays. Moved out of execute-task.ts
 // 2026-09-10 as pure code motion, the mirror of miss-save.ts.
 
-import path from 'node:path'
 import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
