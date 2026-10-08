@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
@@ -953,6 +953,28 @@ describe('terminateChildren — what the sweep leaves behind', () => {
         expect(await waitForDead(gc, 1_000)).toBe(true)
       } finally {
         killGroup(shell.pid)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a child listed twice is signalled once',
+    async () => {
+      // A ready server sits in both the live set and the persistent
+      // registry, so a stop's sweep named it twice: two SIGTERMs, and a
+      // server that ran its trap between them heard both (WD-21).
+      const child = spawnIn('exec sleep 30')
+      const kill = spyOn(process, 'kill')
+      try {
+        await terminateChildren(() => [child, child], 'SIGTERM', 100)
+        const terms = kill.mock.calls.filter(
+          ([pid, sig]) => pid === -child.pid && sig === 'SIGTERM',
+        )
+        expect(terms.length).toBe(1)
+      } finally {
+        kill.mockRestore()
+        killGroup(child.pid)
       }
     },
     TIMEOUT,

@@ -69,7 +69,9 @@ export async function terminateChildren(
   signal: ForwardedSignal = 'SIGTERM',
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
-  const children = live()
+  // Deduped: a ready server is in both the live set and the registry, and a
+  // second SIGTERM can land after its trap ran on the first (WD-21).
+  const children = [...new Set(live())]
   // On the group guard's list until the sweep below is done: a shell that
   // dies on the signal lets its group go while what it forked runs out
   // the grace (kill-tree.ts, `holdGroups`).
