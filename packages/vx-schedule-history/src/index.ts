@@ -283,14 +283,11 @@ function estimatesFor(
 ): ReadonlyMap<string, ResourceEstimate> {
   const out = new Map<string, ResourceEstimate>()
   for (const id of ids) {
-    const h = history.get(id)
-    if (h === undefined) continue
-    const est: { memory?: number } = {}
-    if (h.maxPeakRssBytes !== undefined) {
-      const mb = (h.maxPeakRssBytes * headroom) / MB
-      if (mb >= MEMORY_STEP_MB) est.memory = Math.ceil(mb / MEMORY_STEP_MB) * MEMORY_STEP_MB
-    }
-    if (est.memory !== undefined) out.set(id, est)
+    const rss = history.get(id)?.maxPeakRssBytes
+    if (rss === undefined) continue
+    const mb = (rss * headroom) / MB
+    if (mb >= MEMORY_STEP_MB)
+      out.set(id, { memory: Math.ceil(mb / MEMORY_STEP_MB) * MEMORY_STEP_MB })
   }
   return out
 }

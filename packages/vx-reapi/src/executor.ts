@@ -12,7 +12,14 @@
 import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
-import { executorFallback, isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
+import {
+  executorFallback,
+  isLiteralPattern,
+  isUserError,
+  normalizeGlob,
+  UserError,
+  withForwardArgs,
+} from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -29,6 +36,9 @@ import {
 } from './merkle.js'
 import { execDigestFor } from './cache.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
+
+// A default decoder strips a leading U+FEFF, which is part of a path.
+const PATH_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /**
  * Split a coarse output directory into the paths its GLOB actually names.
@@ -346,7 +356,7 @@ function decodeOutputFile(buf: Uint8Array): {
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
-      if (field === 1) out.path = new TextDecoder().decode(slice)
+      if (field === 1) out.path = PATH_UTF8.decode(slice)
       else if (field === 2) out.digest = decodeDigest(slice)
       else if (field === 5 && len > 0) out.contents = slice
     } else if (wire === 0) {
@@ -370,8 +380,8 @@ function decodeOutputSymlink(buf: Uint8Array): { path: string; target: string } 
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (key >>> 3 === 1) out.path = new TextDecoder().decode(slice)
-    else if (key >>> 3 === 2) out.target = new TextDecoder().decode(slice)
+    if (key >>> 3 === 1) out.path = PATH_UTF8.decode(slice)
+    else if (key >>> 3 === 2) out.target = PATH_UTF8.decode(slice)
   }
   return out
 }
@@ -445,7 +455,7 @@ function decodeOutputDirectory(buf: Uint8Array): { path: string; tree_digest: Di
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (field === 1) out.path = new TextDecoder().decode(slice)
+    if (field === 1) out.path = PATH_UTF8.decode(slice)
     else if (field === 3) out.tree_digest = decodeDigest(slice)
   }
   return out
@@ -1249,12 +1259,9 @@ async function this_readStream(
   return ''
 }
 
-/** Forwarded args are appended shell-quoted, exactly as the local executor does. */
+/** Forwarded args are placed by core's own `withForwardArgs`, as the local executor's are. */
 function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): string {
-  const quoted =
-    req.forwardArgs.length === 0
-      ? req.command
-      : `${req.command} ${req.forwardArgs.map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(' ')}`
+  const command = withForwardArgs(req.command, req.forwardArgs)
   // A remote action gets NO PATH from this machine — sending one would put a
   // host path in the action digest and split every laptop from every runner.
   // But a task's command is normally a package binary (`oxlint`, `tsc`), and
@@ -1282,7 +1289,7 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   return (
     `VX_ROOT=${root}; ${cd}` +
     `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
-    quoted
+    command
   )
 }
 
@@ -1342,7 +1349,7 @@ export function commandEnvironment(
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 
-export interface OutputPathSets {
+interface OutputPathSets {
   /** v2.1+ `output_paths` — deduped, sorted. */
   outputPaths: string[]
   /** v2.0 legacy split: wildcard-free globs are files, prefix-derived are directories. */

@@ -508,6 +508,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-86.** A server whose `readyWhen` matched only after the run's stop
+  (its `trap` printed the marker on the way down, or the line raced the
+  signal) was reported `success` and registered, so a Ctrl-C'd run's
+  footer counted it a success, where a one-shot that exits 0 on the
+  stop is `aborted` (item 962). It is now `aborted`, and left to the
+  teardown already killing it. Row: `abort.test.ts` › "a server that
+  turns ready after the run stops is aborted, not a success".
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
@@ -517,3 +525,102 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-85.** A task that ignored the stop's SIGTERM and died to vx's
+  SIGKILL past the grace was reported `aborted`, and its frame still
+  carried `[vx] exit 137 is how the shell reports a death by SIGKILL:
+… the kernel's OOM killer …`, sending the reader after memory for a
+  kill vx sent. The verdict line is now left out while the run is
+  stopping. Row: `signal-handling.test.ts` › "a child that ignores
+  SIGTERM is SIGKILLed after the grace; vx still exits 143".
+- **X-87.** A sandboxed task's `exec.timeout` started before the sandbox
+  was armed (the runtime's ~200 ms probe), so the task got less than it
+  declared, and `echo` under `timeout: 60` reached the executor with its
+  signal already aborted: `failed (timed out, exit 143)` in 0 ms,
+  "killed (SIGTERM)" though nothing ran. The request's signal is now
+  made last. Row: `execute-task.test.ts` › "exec.timeout counts from the
+  executor's call, not from the sandbox's arming".
+- **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
+  from another lane, which refuses it by name.
+- **X-79.** A task's own output reached through the other namespace was
+  an input: `outputs.files: ['out.json']` under its
+  `inputs.workspaceFiles: ['packages/a/*.json']`, or an
+  `outputs.workspaceFiles` entry in its project under `inputs.files`.
+  Each build moved the key, the recheck said the file "changed after its
+  key was taken … declare it in cache.outputs" (it was), and no run was
+  ever saved. Both input halves now drop both output fields. A key that
+  folded such a file moves and misses once; it held no wrong bytes, so
+  no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
+  project outputs from its workspaceFiles", "excludes the task’s own
+  workspace outputs from its project files".
+- **X-80.** `lockfileClaim`'s in-process gate (a `vx watch` cycle, the MCP
+  server) re-read the lockfile and its extra files only when size or
+  mtime moved, so a same-size lockfile copied in with its mtime kept
+  (`cp -p`, `tar -x`) kept the old per-project digests and replayed the
+  old install's outputs. It now gates on size, mtime, ctime and inode,
+  as `Cache.hashFile` does, and stats each extra file before hashing it.
+  Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
+  kept is read again in the same process".
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".
+- **X-92.** `--affected` over a deep `dependsOn` chain ended in
+  `RangeError` and a stack: `affectedRoots` recursed once per edge, and
+  ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
+  closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
+  50,000-deep chain seeded at its bottom reaches its top", plus a
+  diamond control that passes both ways.
+- **X-93.** The `config` stage ran on the workspace file's export
+  itself, which Bun keeps as one object per process, so every load after
+  the first handed the hooks the last load's edits: `ws.concurrency *= 2`
+  over a declared 2 ran `vx run` on 8 workers (the CLI's selection pass,
+  then the run) and doubled again per `vx watch` cycle. The hooks now
+  edit a copy (data cloned, plugins kept). Row: `plugin-pipeline.test.ts`
+  › "every load in one process hands the hooks the declared config, not
+  the last edit".
+- **X-94.** A node a `graph` hook added was read as written: one with no
+  `projectDir` failed at its run as an internal error (a TypeError from
+  `path`), and one with a relative `projectDir` keyed and ran against
+  vx's own cwd. After each graph
+  plugin a node's `projectName` and `taskName` must be names and its
+  `projectDir` absolute, refused by the plugin's name. Row:
+  `plugin-pipeline.test.ts` › "a node a graph hook adds is refused,
+  naming the field, when it lacks a project or a task".
+- **X-95.** The scheduler counts a pooled executor's slots by its pool
+  name, which was the executor's name, and one package declared twice
+  (`@vzn/vx-reapi` against two clusters) names both executors alike: two
+  pools of 2 ran 2 tasks at once between them. `poolOfPlacement` now
+  gives each executor its own pool, a taken name taking `#2`, `#3`.
+  Rows: `plugin-capabilities.test.ts` › "capacity: two pooled executors
+  that share a name each keep their own capacity",
+  `placement.test.ts` › "two executors that share a name get two pools;
+  one executor keeps one".
+- **X-110.** Args after `--` landed on the wrong line or inside a
+  comment: a `<<word` in a comment or quotes (`# then << check`,
+  `node -e "1<<x"`) made every later line a heredoc body, so the args
+  went on that line and ` --fix # …` ran `--fix` as a command; a quote in
+  a real heredoc body, or a template literal's closing newline after a
+  trailing comment (`echo args: # c\n`), let the comment take them; a
+  comment line after a heredoc, or a `<<\X` heredoc, put them on its
+  terminator (`X --fix`), which then closed nothing. One scan now reads
+  quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
+  `withForwardArgs` X-110 rows.
+- **X-111.** A traced sandboxed task whose shell died of a signal
+  (`kill -9 $$`, a SIGSEGV) showed `bash: line 1: 3 Killed { … }`
+  in its frame: the wrapper's bash reported
+  the job on its stderr, the task's, printing vx's whole wrapper with its
+  proxy port and paths. The wrapper's `wait` now prints nothing; the exit
+  code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
+- **X-112.** An executor that runs `ExecuteRequest.command` itself joined
+  the args after `--` on its own: the `vx init --plugin executor` example
+  joined them bare (`'a b'` split, `it's` a syntax error) and
+  `@vzn/vx-reapi` appended them after a trailing comment, so
+  `printf '<%s>' # each arg` ran without them where the local executor
+  kept them. `withForwardArgs` is on `@vzn/vx` (48 names) and both use
+  it. Rows: `vx-plugin-examples` `executor.test.ts` › "puts the args after
+  -- on the command as the local executor does", `vx-reapi`
+  `executor-helpers-sweep.test.ts` › "puts the args before a trailing
+  comment, as the local executor does".

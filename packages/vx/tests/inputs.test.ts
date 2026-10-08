@@ -98,7 +98,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   // Up to 128 paths a clean removes synchronously, past it in parallel
   // (`SYNC_CLEAN_MAX`); both sides of the boundary hold the same contract.
   for (const n of [128, 129]) {
-    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the top`, async () => {
+    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the glob's root`, async () => {
       for (let i = 0; i < n; i++) await write(path.join(projectDir, 'dist', `d${i}`, 'f.js'))
       await write(path.join(projectDir, 'src', 'x.js'), 'source')
 
@@ -109,7 +109,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
       })
 
       expect(cleaned.length).toBe(n)
-      expect(await readdir(projectDir)).toEqual(['src'])
+      expect((await readdir(projectDir)).sort()).toEqual(['dist', 'src'])
+      expect(await readdir(path.join(projectDir, 'dist'))).toEqual([])
       expect(await readFile(path.join(projectDir, 'src', 'x.js'), 'utf8')).toBe('source')
     })
 
@@ -519,6 +520,28 @@ describe('resolveInputs — git ls-files path (v14)', () => {
       nestedProjectDirs: [],
     })
     expect(got.files.sort()).toEqual(odd.map((n) => path.join(projectDir, 'src', n)).sort())
+  })
+
+  // A default TextDecoder (and Response.text()) strips a leading U+FEFF, so
+  // a name that opens with one, listed first by git, lost it, named no file,
+  // and dropped out of the key: every edit to it was a hit.
+  it('a name that opens with U+FEFF enters the input set intact, untracked and tracked', async () => {
+    const bom = '\ufeffx'
+    const file = path.join(projectDir, bom)
+    await write(file)
+    const resolve = () =>
+      resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: ['*'] },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      })
+    expect((await resolve()).files).toEqual([file])
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+    expect((await resolve()).files).toEqual([file])
   })
 
   it('nested .gitignore patterns are correctly anchored (the v13 footgun)', async () => {
@@ -1163,6 +1186,23 @@ describe('resolveInputs — runtime values', () => {
     expect(r.runtimeValues[0]![1]).toContain('err')
   })
 
+  it('keeps the stdout/stderr split: moving bytes between the streams moves the output', async () => {
+    const outputs = new Set<string>()
+    for (const cmd of [
+      'printf ab',
+      'printf a; printf b 1>&2',
+      'printf b 1>&2',
+      'printf "\\0" ; printf 1 1>&2',
+    ]) {
+      const r = await resolveInputs(args({ runtime: [cmd] }))
+      outputs.add(r.runtimeValues[0]![1])
+    }
+    // A stdout that itself spells the framing stays apart from the framed pair.
+    const r = await resolveInputs(args({ runtime: [`printf '\\0001\\0001'`] }))
+    outputs.add(r.runtimeValues[0]![1])
+    expect(outputs.size).toBe(5)
+  })
+
   it('sorts runtime pairs by command for deterministic folding', async () => {
     const r = await resolveInputs(args({ runtime: ['echo b', 'echo a'] }))
     expect(r.runtimeValues.map(([c]) => c)).toEqual(['echo a', 'echo b'])
@@ -1369,11 +1409,11 @@ describe('inputs.ts edges', () => {
     expect(existsSync(root)).toBe(true) // CONTROL: never the root
   })
 
-  it('a workspace-output clean prunes the directories it emptied', async () => {
+  it('a workspace-output clean prunes the directories it emptied below the glob’s root', async () => {
     await write(path.join(root, 'gen', 'deep', 'x.txt'))
     await write(path.join(root, 'keep', 'y.txt'))
     await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['gen/**'] })
-    expect(existsSync(path.join(root, 'gen'))).toBe(false)
+    expect(await readdir(path.join(root, 'gen'))).toEqual([])
     expect(existsSync(path.join(root, 'keep', 'y.txt'))).toBe(true) // CONTROL
   })
 })

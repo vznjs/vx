@@ -9,13 +9,13 @@
 //
 // The digests are memoised on disk under the cache dir by the file's
 // xxh3, so a warm run pays one read + hash + a small JSON read, never a
-// parse; within one process (a run, a watch cycle) the file's size and
-// mtime gate even the read; and per run the read happens once (a WeakMap
+// parse; within one process (a run, a watch cycle) the file's size,
+// mtime, ctime and inode gate even the read; and per run the read happens once (a WeakMap
 // on the context core hands every `key` call of a run).
 
 import path from 'node:path'
 import { rename, stat } from 'node:fs/promises'
-import { xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, xxh3, xxh3hex } from '../util/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -87,18 +87,33 @@ async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
   }
 }
 
-async function statsOf(
+/**
+ * A file's identity for the in-process gate, as `Cache.hashFile`'s memo
+ * keys one: size and mtime alone kept the digests of a lockfile or patch
+ * replaced by another of the same size with its mtime kept (`cp -p`,
+ * `tar -x`), and no task sets a ctime.
+ */
+function identityOf(st: { size: number; mtimeMs: number; ctimeMs: number; ino: number }): string {
+  return `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`
+}
+
+async function statsOf(workspaceRoot: string, rels: readonly string[]): Promise<string[]> {
+  return Promise.all(
+    rels.map((rel) => stat(path.join(workspaceRoot, rel)).then(identityOf, () => 'gone')),
+  )
+}
+
+/** Each file's identity, taken BEFORE its hash, so a write between the two re-reads it. */
+async function hashExtras(
   workspaceRoot: string,
   rels: readonly string[],
-): Promise<Array<{ size: number; mtimeMs: number }>> {
-  return Promise.all(
-    rels.map((rel) =>
-      stat(path.join(workspaceRoot, rel)).then(
-        (st) => ({ size: st.size, mtimeMs: st.mtimeMs }),
-        () => ({ size: -1, mtimeMs: -1 }),
-      ),
-    ),
+): Promise<{ hashes: Record<string, string>; stats: Record<string, string> }> {
+  const ids = await statsOf(workspaceRoot, rels)
+  const stats = Object.fromEntries(rels.map((rel, i) => [rel, ids[i]!] as const))
+  const hashes = Object.fromEntries(
+    await Promise.all(rels.map(async (rel) => [rel, await hashExtra(workspaceRoot, rel)] as const)),
   )
+  return { hashes, stats }
 }
 
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks {
@@ -108,15 +123,14 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   if (scope !== 'project' && scope !== 'workspace') {
     throw new Error(`scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`)
   }
-  // Per workspace root: what the last read saw. `size` + `mtimeMs` gate a
-  // re-read; the content hash decides whether the digests are current.
+  // Per workspace root: what the last read saw. Each file's identity gates
+  // a re-read; the content hash decides whether the digests are current.
   const seen = new Map<
     string,
     {
-      size: number
-      mtimeMs: number
+      identity: string
       extras: readonly string[]
-      extraStats: ReadonlyArray<{ size: number; mtimeMs: number }>
+      extraStats: Readonly<Record<string, string>>
       digests: Digests
     }
   >()
@@ -125,23 +139,18 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
   const load = async (workspaceRoot: string, cacheDir: string): Promise<Digests> => {
     const full = path.join(workspaceRoot, file)
-    let st: { size: number; mtimeMs: number }
+    let identity: string
     try {
-      st = await stat(full)
+      identity = identityOf(await stat(full))
     } catch {
       const digests: Digests = { lock: '', importers: new Map() }
-      seen.set(workspaceRoot, { size: -1, mtimeMs: -1, extras: [], extraStats: [], digests })
+      seen.set(workspaceRoot, { identity: 'gone', extras: [], extraStats: {}, digests })
       return digests
     }
     const last = seen.get(workspaceRoot)
-    if (last !== undefined && last.size === st.size && last.mtimeMs === st.mtimeMs) {
+    if (last !== undefined && last.identity === identity) {
       const now = await statsOf(workspaceRoot, last.extras)
-      if (
-        now.every(
-          (s, i) =>
-            s.size === last.extraStats[i]!.size && s.mtimeMs === last.extraStats[i]!.mtimeMs,
-        )
-      ) {
+      if (now.every((s, i) => s === last.extraStats[last.extras[i]!])) {
         return last.digests
       }
     }
@@ -152,28 +161,22 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     // re-hashes the files the memo names and never parses to learn them.
     const memo = await readMemo(memoFile, version, lockHash)
     let extras: Record<string, string> = {}
+    let extraStats: Record<string, string> = {}
     let importers: ReadonlyMap<string, string> | undefined
     if (memo !== undefined) {
-      const now = Object.fromEntries(
-        await Promise.all(
-          Object.keys(memo.extras).map(
-            async (rel) => [rel, await hashExtra(workspaceRoot, rel)] as const,
-          ),
-        ),
-      )
-      if (Object.entries(memo.extras).every(([rel, h]) => now[rel] === h)) {
+      const now = await hashExtras(workspaceRoot, Object.keys(memo.extras))
+      if (Object.entries(memo.extras).every(([rel, h]) => now.hashes[rel] === h)) {
         extras = memo.extras
+        extraStats = now.stats
         importers = memo.importers
       }
     }
     if (importers === undefined) {
       const text = decode(bytes)
       const rels = [...new Set(options.extraFiles?.(text) ?? [])].sort()
-      extras = Object.fromEntries(
-        await Promise.all(
-          rels.map(async (rel) => [rel, await hashExtra(workspaceRoot, rel)] as const),
-        ),
-      )
+      const now = await hashExtras(workspaceRoot, rels)
+      extras = now.hashes
+      extraStats = now.stats
       importers =
         scope === 'workspace'
           ? new Map<string, string>()
@@ -191,13 +194,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         ? lockHash
         : xxh3hex([lockHash, ...rels.map((r) => `${r}\0${extras[r]}`)].join('\0'))
     const digests: Digests = { lock, importers }
-    seen.set(workspaceRoot, {
-      size: st.size,
-      mtimeMs: st.mtimeMs,
-      extras: rels,
-      extraStats: await statsOf(workspaceRoot, rels),
-      digests,
-    })
+    seen.set(workspaceRoot, { identity, extras: rels, extraStats, digests })
     return digests
   }
   const loadOnce = (ctx: KeyHookContext): Promise<Digests> => {
@@ -270,8 +267,7 @@ function digestFor(importers: ReadonlyMap<string, string>, importer: string): st
 
 /** The lockfile's importer path for a project directory: `.` for the root, POSIX otherwise. */
 function importerOf(workspaceRoot: string, projectDir: string): string {
-  const rel = path.relative(workspaceRoot, projectDir)
-  return rel === '' ? '.' : rel.split(path.sep).join('/')
+  return relPosix(workspaceRoot, projectDir) || '.'
 }
 
 async function readMemo(
