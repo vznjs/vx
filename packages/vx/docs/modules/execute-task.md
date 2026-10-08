@@ -98,8 +98,10 @@ gone (SIGTERM, grace, SIGKILL), not when its shell exits.
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
-     `dist/` doesn't survive into a fresh exec; the directory each
-     wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
+     `dist/` doesn't survive into a fresh exec: it prunes only inside
+     the declared trees, so a glob's root stays (B-49) and a directory
+     above it or holding a literal output, which a sibling task may just
+     have made to write into, stays too (inputs.md).
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.

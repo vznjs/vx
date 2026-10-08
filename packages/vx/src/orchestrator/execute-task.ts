@@ -914,7 +914,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs({ ...cleanArgs, keepGlobRoots: true })
+      const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
       args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
