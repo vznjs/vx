@@ -324,6 +324,9 @@ export interface ScheduleOptions {
 class ReadyHeap {
   private readonly ids: string[] = []
   private readonly seq: number[] = []
+  // Each slot's priority, read once at push: a map lookup per comparison
+  // was two per heap level on every push and pop.
+  private readonly prio: number[] = []
   private next = 0
   constructor(private readonly priority: ReadonlyMap<string, number>) {}
   get size(): number {
@@ -331,8 +334,8 @@ class ReadyHeap {
   }
   /** True if slot i outranks slot j (higher priority, or equal priority + earlier seq). */
   private higher(i: number, j: number): boolean {
-    const pi = this.priority.get(this.ids[i]!) ?? 0
-    const pj = this.priority.get(this.ids[j]!) ?? 0
+    const pi = this.prio[i]!
+    const pj = this.prio[j]!
     return pi !== pj ? pi > pj : this.seq[i]! < this.seq[j]!
   }
   private swap(i: number, j: number): void {
@@ -342,6 +345,9 @@ class ReadyHeap {
     const si = this.seq[i]!
     this.seq[i] = this.seq[j]!
     this.seq[j] = si
+    const pi = this.prio[i]!
+    this.prio[i] = this.prio[j]!
+    this.prio[j] = pi
   }
   /**
    * `seq` defaults to a fresh monotonic counter. A parked-then-repushed
@@ -361,6 +367,7 @@ class ReadyHeap {
   push(id: string, seq: number = this.next++): void {
     this.ids.push(id)
     this.seq.push(seq)
+    this.prio.push(this.priority.get(id) ?? 0)
     let i = this.ids.length - 1
     while (i > 0) {
       const parent = (i - 1) >> 1
@@ -379,9 +386,11 @@ class ReadyHeap {
     const top = this.ids[0]!
     const lastId = this.ids.pop()!
     const lastSeq = this.seq.pop()!
+    const lastPrio = this.prio.pop()!
     if (n > 1) {
       this.ids[0] = lastId
       this.seq[0] = lastSeq
+      this.prio[0] = lastPrio
       let i = 0
       for (;;) {
         const l = 2 * i + 1
@@ -701,14 +710,18 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // could fail anyway.
     const aborted = (): boolean => options.signal?.aborted === true
     const serverDied = options.serverDied ?? ((): boolean => false)
-    const deadServerVia = (id: string): string | undefined =>
-      deadServerBehind(nodes, serverDied, id)
     const servers =
       options.serverDied === undefined
         ? []
         : [...nodes.values()]
             .filter((n) => n.config.exec?.persistent !== undefined)
             .map((n) => n.id)
+    // Only a server can die: with none in the graph, no walk (a stack and
+    // a set per dependency of every exec-tier task, X-171).
+    const deadServerVia =
+      servers.length === 0
+        ? (): undefined => undefined
+        : (id: string): string | undefined => deadServerBehind(nodes, serverDied, id)
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
       if (continueMode === 'never' && servers.some(serverDied)) {
