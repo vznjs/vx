@@ -1101,3 +1101,9 @@ watch`'s initial run held that run for good: the loop armed only after
   only for a task that got them, `vx last --format json` says so per task
   (`forwarded`), and the line gives a failed dependency its own command
   without them. Row: `last.test.ts` › "a failed run replays FAILED with the failure first".
+
+- **X-143.** `vx lock` listed projects with core's discovery alone, so a
+  project a plugin's `discover` stage adds (with its own vx.config) was
+  never locked: `vx lock --check` said up to date and `vx run --frozen`
+  refused it with "run vx lock", which changed nothing. The lock now
+  discovers as a run does. Row: `lock-discover-stage.test.ts`.
