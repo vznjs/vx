@@ -89,12 +89,23 @@ describe('cli run()', () => {
       // `watch` reads `run`'s flags, and pointed at `vx run --help`.
       await said(['watch', 'build', '--debounce=abc']),
       await said(['watch', 'build', '--filtr=app']),
+      // A refused value points at the verb's help too, not only an unknown flag.
+      await said(['watch', 'build', '--concurrency', 'abc']),
+      await said(['run', 'build', '--output-logs=loud']),
       await said(['cache', 'bogus']),
       // CONTROL: a near miss keeps its one name.
       await said(['cache', 'prnue']),
     ]).toEqual([
       [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
+      [
+        1,
+        'vx watch: invalid concurrency: abc (a positive integer, or a share of the cores such as 50%) (see `vx watch --help`)\n',
+      ],
+      [
+        1,
+        'vx run: --output-logs must be full, errors-only, hash-only, or none (got loud) (see `vx run --help`)\n',
+      ],
       [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
       [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
     ])
@@ -1574,9 +1585,9 @@ describe('parseRunArgs', () => {
     )
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
-      'unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
+      'unknown flag: --concurency (did you mean --concurrency?)',
     )
-    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz (see `vx run --help`)')
+    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
     // The candidate list itself: run's documented flags come from the help
     // text's `(for run)` sections, and prune's flag is not among them.
     const flags = documentedFlags('run')
@@ -1618,9 +1629,7 @@ describe('parseRunArgs', () => {
     // A verb the reference does not know gets the whole reference.
     expect(verbHelpText('no-such-verb')).toBe(helpText())
     // Another verb's flag is never suggested to `run`.
-    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe(
-      'unknown flag: --older-tha (see `vx run --help`)',
-    )
+    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe('unknown flag: --older-tha')
   })
 
   it('a verb cut takes only lines that START with its own `vx <verb>` form', () => {
@@ -2545,14 +2554,14 @@ describe('unknown-flag hints reach three edits', () => {
     // same-stem budget offered `--concurrency` for `--continue-on-error`
     // (nine edits) and `--cache` for `--cache-directory`.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
-      'unknown flag: --continue-on-error (see `vx run --help`)',
+      'unknown flag: --continue-on-error',
     )
     expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
-      'unknown flag: --cache-directory (see `vx run --help`)',
+      'unknown flag: --cache-directory',
     )
     // CONTROL: within three edits the stem still hints.
     expect(parseRunArgs(['build', '--timeouts']).error).toBe(
-      'unknown flag: --timeouts (did you mean --timeout?) (see `vx run --help`)',
+      'unknown flag: --timeouts (did you mean --timeout?)',
     )
   })
 })

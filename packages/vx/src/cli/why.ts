@@ -226,7 +226,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const why = whyDidThisRerun(db, runId, taskId)
     if (!why.found) {
       throw new UserError(
-        `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last <runId>\` what one ran`,
+        `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
       )
     }
     const diff = cacheKeyDiff(db, runId, taskId)

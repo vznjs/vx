@@ -483,7 +483,7 @@ export interface PersistentSpawn {
    * Rejects with the spawn error if the child fails to start.
    */
   ready: Promise<void>
-  /** ms elapsed from spawn to ready (or to current time if not yet ready). */
+  /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
 }
 
@@ -522,6 +522,9 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = Date.now()
   let readyAt: number | undefined
+  // When the readiness wait gave up: the wait's length, not the kill grace
+  // a TERM-trapping server runs out after it.
+  let gaveUpAt: number | undefined
 
   // Pattern compiled once; thrown errors surface synchronously so the
   // caller can wrap with a user-facing message.
@@ -679,6 +682,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   if (readyRe && opts.timeoutMs !== undefined) {
     readyTimer = setTimeout(() => {
       if (readyAt === undefined) {
+        gaveUpAt = Date.now()
         rejectReady(
           new PersistentReadyError(
             `persistent task not ready within ${opts.timeoutMs}ms — ` +
@@ -730,7 +734,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    readyMs: () => (readyAt ?? Date.now()) - start,
+    readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
   }
 }
 
