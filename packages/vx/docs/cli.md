@@ -2561,7 +2561,10 @@ the verb's own Usage line, and for `run` and `watch` the run option
 lines, less the ones `watch` refuses. So a flag cannot be documented
 and not completed, nor completed and then refused: a flag another
 verb's line names in passing (`vx lock --check` beside `--frozen`) is
-not one. A plugin verb completes `--help` only. Task and project
+not one. After a flag with a fixed value set the script offers that
+set: `--format` pretty or json, `--output-logs` full, errors-only,
+hash-only or none, `--download` all, toplevel or none — each value one
+the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
 works both ways zsh loads one: from `$fpath` it completes on the first
