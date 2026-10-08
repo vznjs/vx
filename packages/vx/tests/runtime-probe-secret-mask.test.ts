@@ -2,6 +2,7 @@
 // output, and the probe runs in vx's own environment: a probe that echoed
 // `$API_TOKEN` printed the token in the task's stream and in `--dry`'s
 // stderr, unmasked (L-11).
+import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -14,7 +15,9 @@ const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string
 let saved: [string | undefined, string | undefined]
 beforeEach(async () => {
-  root = await makeWorkspace({ prefix: 'vx-probe-mask-' })
+  // Canonical: the message names the realpath'd cwd, and macOS's tmpdir is a
+  // symlink to /private/var.
+  root = realpathSync(await makeWorkspace({ prefix: 'vx-probe-mask-' }))
   saved = [process.env.API_TOKEN, process.env.GH_PAT]
   process.env.API_TOKEN = SECRET
   process.env.GH_PAT = PAT
