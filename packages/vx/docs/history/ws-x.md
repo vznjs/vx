@@ -804,3 +804,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   and saved under a key no run without them derives. A group's key now
   folds no forwarded args. Row: `task-hash-derive.test.ts` › "a
   requested default build ignores them: it runs no command".
+- **X-120.** An edge by name (`build`, `pkg#build`) to a default
+  `build` on a package cycle stopped there, where a `^build` walk goes on
+  past it (X-100): with `a` and `b` on the default build depending on
+  each other, neither build folds the other, so `a#test` on `build`
+  folded nothing of `b` and hit after `b` changed. Such an edge now goes
+  on past it as `^build` does. A request whose closure then reaches a
+  task cycle among declared builds is refused, as a run of those builds
+  already was. Row: `task-graph.test.ts` › "an edge by name to a default
+  build on a cycle goes on past it, as ^build does".

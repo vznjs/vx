@@ -1297,7 +1297,7 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
       requested: [{ project: 'p', task: 'test' }],
     })
     expect(depsOf(nodes)).toEqual({
-      'p#test': ['p#build'],
+      'p#test': ['p#build', 't#build'],
       'p#build': ['t#build'],
       't#build': [],
     })
@@ -1325,6 +1325,27 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
       'p#build': [],
       't#build': ['t#gen'],
       't#gen': ['p#build'],
+    })
+  })
+
+  it('an edge by name to a default build on a cycle goes on past it, as ^build does', () => {
+    // a ↔ b, both on the default build: neither build can fold the other,
+    // so a#test on `build` folded a's files alone and hit after b changed.
+    // c names a#build across projects, the same way.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', { ...defaultBuild, test: { ...cmd('t'), dependsOn: ['build'] } }),
+        project('b', defaultBuild),
+        project('c', holder(['a#build'])),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
+      requested: [{ project: 'a', task: 'test' }, build('c')],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'a#test': ['a#build', 'b#build'],
+      'a#build': [],
+      'b#build': [],
+      'c#build': ['a#build', 'b#build'],
     })
   })
 

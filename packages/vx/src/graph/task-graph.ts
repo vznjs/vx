@@ -451,6 +451,37 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   const sameCycle = (a: string, b: string): boolean =>
     onCycle(a) && componentOf(a) === componentOf(b)
 
+  // `^name` from `start`: edges to the nearest holders of `name` among the
+  // packages below it, passing through the ones `visited` holds and the
+  // ones that declare no `name`, and on past a default build on a cycle.
+  // True when it found a holder.
+  function walkHolders(frame: Frame, name: string, visited: Set<string>, start: string): boolean {
+    const frontier = [...packageGraph.directDeps(start)]
+    let held = false
+    while (frontier.length > 0) {
+      const target = frontier.pop()!
+      if (visited.has(target)) continue
+      visited.add(target)
+      if (visit(frame, target, name, false)) {
+        held = true
+        const task = declaredTask(projects.get(target)!.config, name)!
+        if (isKeyedGroup(task) && onCycle(target)) {
+          frontier.push(...packageGraph.directDeps(target))
+        }
+      } else frontier.push(...packageGraph.directDeps(target))
+    }
+    return held
+  }
+
+  // An edge by name (`build`, `pkg#build`) to a default build on a package
+  // cycle goes on past it as a `^build` walk does: that build folds nothing
+  // of the builds on its cycle, so `a#test` on `build` with `a` ↔ `b` both
+  // on the default build folded none of `b` and hit after `b` changed.
+  function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
+    const task = declaredTask(projects.get(project)!.config, name)!
+    if (isKeyedGroup(task) && onCycle(project)) walkHolders(frame, name, visited, project)
+  }
+
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
   function resolveEntry(frame: Frame, raw: string): void {
     const { node } = frame
@@ -500,6 +531,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
           )
         }
+        goPast(frame, projectName, spec.task, new Set([projectName]))
       }
     } else if (spec.kind === 'deps') {
       // Nearest-holder frontier (Turbo/Nx direct-deps parity +
@@ -528,37 +560,30 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // last (`resolveDeferred`), and a walk that meets it on a cycle takes
       // the edge and goes on past it, so the builds it could not depend on
       // still come first.
-      const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
       const visited = new Set<string>([projectName])
+      if (!isTaskPattern(spec.task)) {
+        const held = walkHolders(frame, spec.task, visited, projectName)
+        if (!held && !declaredAnywhere(projectName, spec.task)) {
+          if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
+          undeclaredDeps(id, spec.task)
+        }
+        return
+      }
+      // A pattern that matches nothing stays legal, as `build.*` does.
+      const re = compileTaskPattern(spec.task)
       const frontier = [...packageGraph.directDeps(projectName)]
-      let held = false
       while (frontier.length > 0) {
         const target = frontier.pop()!
         if (visited.has(target)) continue
         visited.add(target)
-        if (re === null) {
-          if (visit(frame, target, spec.task, false)) {
-            held = true
-            const task = declaredTask(projects.get(target)!.config, spec.task)!
-            if (isKeyedGroup(task) && onCycle(target)) {
-              frontier.push(...packageGraph.directDeps(target))
-            }
-          } else frontier.push(...packageGraph.directDeps(target))
+        const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
+          re.test(n),
+        )
+        if (names.length > 0) {
+          for (const name of names) visit(frame, target, name, false)
         } else {
-          const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
-            re.test(n),
-          )
-          if (names.length > 0) {
-            for (const name of names) visit(frame, target, name, false)
-          } else {
-            frontier.push(...packageGraph.directDeps(target))
-          }
+          frontier.push(...packageGraph.directDeps(target))
         }
-      }
-      // A pattern that matches nothing stays legal, as `build.*` does.
-      if (re === null && !held && !declaredAnywhere(projectName, spec.task)) {
-        if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
-        undeclaredDeps(id, spec.task)
       }
     } else {
       // Cross-project edge: pkg#task. Missing target is a hard error
@@ -573,6 +598,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
         )
       }
+      goPast(frame, spec.project, spec.task, new Set([projectName, spec.project]))
     }
   }
 

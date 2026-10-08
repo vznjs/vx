@@ -129,10 +129,12 @@ of the graph is built: a build on its cycle that reaches it is passed
 through, and one that does not is a holder like any other (X-118: passed
 through unasked, `p#test` on `p#build` ran beside a `t#build` on no
 `^build` and hit after `t` changed). A build only that question brought
-in is pruned again when it reaches back. A walk that meets a default
-`build` on a cycle adds its edge and goes on past it, so the builds it
-cannot depend on still come first. Off a cycle it is a holder like any
-other.
+in is pruned again when it reaches back. An edge to a default `build` on
+a cycle — a `^build` walk, or one by name (`build`, `pkg#build`) —
+is added and goes on past it, so the builds it cannot depend on still
+come first (X-120: by name it stopped there, and `a#test` on `build`,
+with `a` and `b` on the default build depending on each other, folded
+nothing of `b`). Off a cycle it is a holder like any other.
 
 **`requested: true`** marks the user-requested set. A node added via
 dependsOn expansion is `requested: false`. If a node is later named
