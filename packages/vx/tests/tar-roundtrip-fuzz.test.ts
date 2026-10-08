@@ -27,20 +27,10 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { extractArtifactStream, packArtifact } from '../src/cache/archive.js'
 import { tarEntries, tarPack, tarSize, type TarInput } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
+import { rng } from './helpers/rng.js'
 
 const enc = new TextEncoder()
 const same = (a: Uint8Array, b: Uint8Array): boolean => Buffer.compare(a, b) === 0
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 const ATOMS = ['a', 'Z', '0', '_', '.', ' ', '-', '=', 'é', '日', '😀', '\uFEFF']
 // APFS stores names NFD: `é` decomposes, so a name's bytes on disk are not
@@ -117,7 +107,7 @@ const SEEDS = Array.from({ length: 150 }, (_, i) => 0x7a2 + i * 7919)
 describe('tarPack → tarEntries, seeded', () => {
   it('round-trips names, sizes, bytes and header modes, and matches libarchive', async () => {
     for (const seed of SEEDS) {
-      const rnd = mulberry32(seed)
+      const rnd = rng(seed)
       const files = new Map<string, { data: Uint8Array; mode: number }>()
       const count = 1 + Math.floor(rnd() * 6)
       while (files.size < count) {
@@ -187,7 +177,7 @@ describe('packArtifact → extractArtifactStream, seeded, on disk', () => {
 
   it('restores every output at its own path with its bytes, mode and millisecond mtime', async () => {
     for (const seed of SEEDS.slice(0, 40)) {
-      const rnd = mulberry32(seed)
+      const rnd = rng(seed)
       const src = path.join(root, `s${seed}`)
       const dest = path.join(root, `d${seed}`)
       const outputs = new Map<string, string>()
