@@ -424,6 +424,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     try {
       let label: string | undefined = first
       while (label !== undefined && !stop.aborted) {
+        // A member came or went: armed before the run keys it, an edit in a
+        // new package while its first cycle runs queues like any other; armed
+        // only after, it fell in the gap and ran nothing (X-138). The re-read
+        // after the run stays, for what the run itself changed.
+        if (reread) await rearm(false)
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
         try {
           await held?.stop()
@@ -720,7 +725,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       ? 'vx watch: watching the workspace root (workspaceFiles inputs in use)'
       : `vx watch: watching ${count} project(s)`
 
-  const rearm = async (): Promise<void> => {
+  const rearm = async (say = true): Promise<void> => {
     let next: Rediscovered
     try {
       next = await args.rediscover()
@@ -769,7 +774,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // A new arm proves delivery like the first ones: an edit in the new
     // package right after this cycle is seen, not lost in the gap.
     await pool.proved()
-    process.stdout.write(`${watchingLine(next.projects.length)}\n`)
+    if (say) process.stdout.write(`${watchingLine(next.projects.length)}\n`)
   }
 
   armMode(projects)

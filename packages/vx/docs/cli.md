@@ -1271,8 +1271,8 @@ run...` precedes it.
    by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
-   runs is a cycle that runs it, and its directory is watched from then
-   on; a removed one is dropped. An edit to the glob list itself (the
+   runs is a cycle that runs it, and its directory is watched from before
+   that cycle runs, so an edit made during it queues (X-138); a removed one is dropped. An edit to the glob list itself (the
    root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
    the set, so a glob added there is watched from the cycle it triggers
    (item 1018). A base, or a directory a config imports from, removed and made
