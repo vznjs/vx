@@ -504,7 +504,9 @@ describe('vx upgrade (CLI)', () => {
       before,
     )
     expect(code).toBe(1)
-    expect(err).toContain('only works for the compiled binary')
+    expect(err).toBe(
+      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull (npm installs update with: npm install -g @vzn/vx@latest)\n',
+    )
   })
 
   it('refuses a second tag instead of installing the first', async () => {

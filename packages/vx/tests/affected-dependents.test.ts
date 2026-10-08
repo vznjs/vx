@@ -196,6 +196,25 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
   )
 
   it(
+    'a task named after an Object.prototype member is declared only where it is',
+    async () => {
+      // Only tool declares toString; lib's edit reaches lib and app, which
+      // inherit `toString` from Object and must not read as declaring it.
+      await write(
+        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
+      )
+      git(root, 'add', '-A')
+      git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'toString')
+      await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
+      const r = vx(root, 'run', 'toString', '--affected=HEAD~1')
+      expect(r.exitCode).toBe(0)
+      expect(r.stdout).toContain('No affected project declares task(s): toString.')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a path no cached task declares reaches its whole project',
     async () => {
       // vx cannot prove an undeclared file re-keys nothing (a plugin may read

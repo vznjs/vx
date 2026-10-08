@@ -43,7 +43,9 @@
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
+import { deleteDist, missingDist } from './outputs.js'
 import { listSchedule, type GraphNode } from './ideal.js'
 import path from 'node:path'
 
@@ -71,11 +73,6 @@ const RUNNER_ENV = benchEnv({
   DO_NOT_TRACK: '1',
   NX_CLOUD: 'false',
 })
-
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b)
-  return s[Math.floor(s.length / 2)]!
-}
 
 /**
  * Wall time and CPU time of one invocation. CPU is the runner process plus
@@ -315,15 +312,6 @@ async function gitInit(dir: string): Promise<void> {
   )
 }
 
-async function deleteDist(dir: string): Promise<void> {
-  const glob = new Bun.Glob('packages/*/dist')
-  const jobs: Promise<void>[] = []
-  for await (const rel of glob.scan({ cwd: dir, onlyFiles: false })) {
-    jobs.push(rm(path.join(dir, rel), { recursive: true, force: true }))
-  }
-  await Promise.all(jobs)
-}
-
 // ---- runners ----
 
 interface Runner {
@@ -466,6 +454,7 @@ async function measure(r: Runner, dir: string): Promise<Row> {
   const warmNoRestoreCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     const res = await sh(r.run, dir)
+    if (!res.ok) throw new Error(`${r.name} failed warm:\n${res.out.slice(-2000)}`)
     warmNoRestore.push(res.ms)
     warmNoRestoreCpu.push(res.cpuMs)
   }
@@ -474,18 +463,22 @@ async function measure(r: Runner, dir: string): Promise<Row> {
   for (let i = 0; i < REPS; i++) {
     await deleteDist(dir)
     const res = await sh(r.run, dir)
+    if (!res.ok) throw new Error(`${r.name} failed restoring:\n${res.out.slice(-2000)}`)
+    const missing = await missingDist(dir)
+    if (missing.length > 0)
+      throw new Error(`${r.name} left ${missing.length} dist/ unrestored, e.g. ${missing[0]}`)
     warmRestore.push(res.ms)
     warmRestoreCpu.push(res.cpuMs)
   }
   return {
     runner: r.name,
     version: r.version,
-    fresh: median(fresh),
-    warmNoRestore: median(warmNoRestore),
-    warmRestore: median(warmRestore),
-    freshCpu: median(freshCpu),
-    warmNoRestoreCpu: median(warmNoRestoreCpu),
-    warmRestoreCpu: median(warmRestoreCpu),
+    fresh: summarize(fresh).median,
+    warmNoRestore: summarize(warmNoRestore).median,
+    warmRestore: summarize(warmRestore).median,
+    freshCpu: summarize(freshCpu).median,
+    warmNoRestoreCpu: summarize(warmNoRestoreCpu).median,
+    warmRestoreCpu: summarize(warmRestoreCpu).median,
   }
 }
 
