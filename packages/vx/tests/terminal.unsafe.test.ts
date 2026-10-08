@@ -1,7 +1,7 @@
 // A vx on a real pseudo-terminal. Unsafe: macOS's sandbox (seatbelt)
 // refuses to open a pty ("Failed to open PTY", darwin CI 2026-09-24), so
 // a sandboxed shard cannot host these rows; Linux's bwrap allows it.
-import { rm } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -127,7 +127,8 @@ describe('an interactive task under a vx on a terminal', () => {
 // the picker asks: the menu came first and the refusal followed the choice.
 describe('the picker outside a git work tree', () => {
   it('is never shown: the refusal comes first', async () => {
-    const root = await makeWorkspace({ prefix: 'vx-picker-nogit-', git: false })
+    // Canonical: vx names its cwd, and macOS's temp dir is a symlink.
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-picker-nogit-', git: false }))
     try {
       await addProject(root, 'app', {
         config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
