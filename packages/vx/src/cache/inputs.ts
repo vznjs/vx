@@ -765,15 +765,20 @@ export async function cleanOutputs(args: {
  * Remove exactly these project-relative paths — the recorded rows of an
  * ADDITIVE task's own artifact (item 588), never a glob: the glob would
  * take the upstream's files the task adds beside. Emptied directories are
- * pruned as `cleanOutputs` prunes them, and stop at one the upstream still
- * fills.
+ * pruned as `cleanOutputs` prunes them, only inside the declared `outputs`
+ * (`pruneScope`), and stop at one the upstream still fills.
  */
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    await removeAll(files, args.projectDir),
+    pruneScope(args.projectDir, args.outputs),
+  )
 }
 
 /**

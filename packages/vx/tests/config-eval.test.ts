@@ -21,7 +21,7 @@
 // a rejected evaluation leaves its deadline timer armed, and a deliberately
 // huge `VX_CONFIG_WORKER_TIMEOUT_MS` becomes an INSTANT deadline.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -418,6 +418,86 @@ describe('evaluateConfigFresh: what a config prints (D-64)', () => {
       err:
         'from console.log\nfrom console.info\nfrom stdout.write\nfrom Bun.write\nfrom a writer\n' +
         'config {"tasks":{"t":{"exec":{"command":"true"}}}}\n',
+    })
+  }, 20_000)
+})
+
+describe('a first load in process: what a config prints', () => {
+  it("goes to stderr, never the verb's stdout, and every route is put back", async () => {
+    // `vx show --format json` evaluates in process, and a config's
+    // `console.log` came out ahead of the JSON on stdout.
+    const prints =
+      "console.log('log')\nprocess.stdout.write('write\\n')\n" +
+      "await Bun.write(Bun.stdout, 'bun\\n')\n" +
+      "const w = Bun.stdout.writer(); w.write('writer\\n'); await w.flush()\n"
+    const config = await write(
+      prints + "export default { tasks: { t: { exec: { command: 'true' } } } }\n",
+    )
+    const ws = path.join(root, 'ws')
+    await mkdir(ws)
+    await writeFile(path.join(ws, 'vx.workspace.mjs'), prints + 'export default {}\n')
+    const driver = path.join(root, 'first-load.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfigs, loadWorkspaceConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const routes = () => [process.stdout.write, Bun.write, Bun.stdout.writer, console]\n` +
+        `const before = routes()\n` +
+        `await loadWorkspaceConfig(${JSON.stringify(ws)})\n` +
+        `await loadProjectConfigs([${JSON.stringify(config)}])\n` +
+        `const back = routes().every((r, i) => r === before[i])\n` +
+        `process.stdout.write('back ' + back + '\\n')\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, out, err] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    expect({ code, out, err }).toEqual({
+      code: 0,
+      out: 'back true\n',
+      err: 'log\nwrite\nbun\nwriter\n'.repeat(2),
+    })
+  }, 20_000)
+
+  it('rounds that overlap all load, and the last one out puts the routes back', async () => {
+    // `--affected`'s per-file sweep loads each config in a round of its own:
+    // a second redirect installed over the first moved `Bun.write` under the
+    // first round's snapshot, every load was refused, and the out-of-order
+    // undos left stdout on stderr.
+    const configs = await Promise.all(
+      ['a', 'b', 'c'].map(async (name) => {
+        const dir = path.join(root, name)
+        await mkdir(dir)
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(
+          file,
+          "await Bun.sleep(5)\nconsole.log('log')\n" +
+            "export default { tasks: { t: { exec: { command: 'true' } } } }\n",
+        )
+        return file
+      }),
+    )
+    const driver = path.join(root, 'overlap.ts')
+    await writeFile(
+      driver,
+      `import { loadProjectConfigs } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))}\n` +
+        `const routes = () => [process.stdout.write, Bun.write, Bun.stdout.writer, console]\n` +
+        `const before = routes()\n` +
+        `const loaded = await Promise.allSettled(${JSON.stringify(configs)}.map((c) => loadProjectConfigs([c])))\n` +
+        `const back = routes().every((r, i) => r === before[i])\n` +
+        `process.stdout.write(loaded.map((r) => r.status).join(' ') + ' back ' + back + '\\n')\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, out, err] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    expect({ code, out, err }).toEqual({
+      code: 0,
+      out: 'fulfilled fulfilled fulfilled back true\n',
+      err: 'log\n'.repeat(3),
     })
   }, 20_000)
 })

@@ -1231,6 +1231,74 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     })
   })
 
+  // The default `build` the loader gives a project that declares none
+  // (orchestrator/projects.ts): the one keyed group.
+  const defaultBuild = {
+    build: {
+      dependsOn: ['^build'],
+      cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+    } as TaskConfig,
+  }
+  const depsOf = (nodes: Map<string, TaskNode>) =>
+    Object.fromEntries([...nodes.values()].map((n) => [n.id, [...n.deps].sort()]))
+
+  it('default builds on a package cycle make no task cycle', () => {
+    // The pass-through row above, as a run loads it: lib2 and lib3 carry
+    // the default build, and lib1 → lib2 → lib3 → lib1 was refused.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('lib1', holder()),
+        project('lib2', defaultBuild),
+        project('lib3', defaultBuild),
+      ),
+      packageGraph: packageGraph({ lib1: ['lib2'], lib2: ['lib3'], lib3: ['lib1'] }),
+      requested: [build('lib1'), build('lib2'), build('lib3')],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'lib1#build': ['lib2#build', 'lib3#build'],
+      'lib2#build': [],
+      'lib3#build': [],
+    })
+  })
+
+  it('a default build on a cycle keeps the builds behind it for its dependants', () => {
+    // d → p ↔ t → c, p with the default build: d still reaches t's build
+    // (the walk goes on past p) and p still reaches c's (it passes t).
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('d', holder()),
+        project('p', defaultBuild),
+        project('t', holder()),
+        project('c', holder()),
+      ),
+      packageGraph: packageGraph({ d: ['p'], p: ['t'], t: ['p', 'c'] }),
+      requested: [build('d'), build('p')],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'd#build': ['p#build', 't#build'],
+      'p#build': ['c#build'],
+      't#build': ['c#build', 'p#build'],
+      'c#build': [],
+    })
+  })
+
+  it('a default build on no cycle stops the walk as any holder does (control)', () => {
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app', holder()),
+        project('lib', defaultBuild),
+        project('core', holder()),
+      ),
+      packageGraph: packageGraph({ app: ['lib'], lib: ['core'] }),
+      requested: [build('app')],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'app#build': ['lib#build'],
+      'lib#build': ['core#build'],
+      'core#build': [],
+    })
+  })
+
   it('a same-project cycle through two tasks is refused', () => {
     expect(() =>
       buildTaskGraph({

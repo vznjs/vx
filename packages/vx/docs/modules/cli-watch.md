@@ -68,6 +68,7 @@ export function makeWatchIgnore(
 ): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export function gitFiles(workspaceRoot: string): Set<string> | undefined // one `git ls-files` at the arm
+export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -329,7 +330,10 @@ non-persistent tasks where each cycle should re-run cleanly.
   (item 237). A tracked file matching a pattern is not ignored, by git's
   rule; outside a repository nothing is. A path inside a submodule makes
   git refuse the batch; that path is skipped and the rest asked again
-  (`watch-ignore-submodule.test.ts`).
+  (`watch-ignore-submodule.test.ts`). A project reached through a symlink
+  (`packages/x -> ../shared/x`) is watched at the link, which git refuses
+  ("beyond a symbolic link"), so each path is asked, and looked up in
+  `gitFiles`, at its real place (`gitSpeller`).
 - Settle a file the task rewrites with DIFFERENT bytes every run when
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch

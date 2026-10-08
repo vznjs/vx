@@ -152,6 +152,7 @@ export async function ownWorkspaceOutputsSince(
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void>
 
 // Kill every runtime probe still running that these memos (one run's
@@ -284,7 +285,9 @@ blocks it). The glob's root stays, since the task writes under it and
 removing it cost an rmdir and the task's mkdir (B-49). A directory above
 it or holding a literal output (`out` for `out/a.txt`) stays, since a
 sibling task running beside this one may have just made it and not yet
-written into it. A
+written into it. An additive task's clean by its recorded rows
+(`cleanOutputPaths`, item 588) prunes by the same scope, from the
+task's declared outputs. A
 declared output the process cannot remove — another user's `dist/`, a
 read-only checkout — is a `UserError` naming the path, not an internal
 error.

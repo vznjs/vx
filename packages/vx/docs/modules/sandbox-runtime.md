@@ -277,8 +277,8 @@ export function absolutize(p: string, cwd?: string): string
 // one copy of the check the sandbox code makes.
 export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
-// Whether a sandboxed task may read a file: a read, write or baseline
-// grant at or above its canonical path (the shell verdict asks it).
+// Whether a sandboxed task may read a file: no denial, or a read, write or
+// baseline grant, at or above its canonical path (the shell verdict asks it).
 export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
@@ -705,6 +705,19 @@ opens). The parse takes a descriptor's printed path up to the `, "` that
 opens the file argument, since a directory's name may hold a quote
 (`4</ws/q"d>`). No widened grant, no `-y` and no extra parse.
 
+## A write grant cannot be removed (Linux)
+
+A directory grant is a bind mount, and a mount point cannot be removed or
+renamed: under `write: ['dist/']`, `rm -rf dist && tsc` empties `dist`,
+then fails with `Read-only file system` (EBUSY under a writable parent).
+macOS allows it. No bind makes it work and keeps "a task writes only its
+grants": binding the parent lets the task write beside the grant. So a
+failed task whose stdout or stderr names a grant root (absolute, or
+relative to the cwd, `./` allowed) on a line holding `Read-only file
+system`, `EROFS`, `EBUSY` or `resource busy` gets a hint naming the grant
+and the removal that works, `rm -rf dist/*` (`grantRemovalHint`; X-90,
+`sandbox-grant-remove.unsafe.test.ts`).
+
 ## A write grant that mounts nothing
 
 A bind covers what exists when the task STARTS, so a Linux write grant
@@ -740,7 +753,9 @@ writes and removes there, and nothing it leaves outlives the sandbox
 directory — `bun build --compile` extracts a cross-compile runtime into
 `<cwd>/.<hash>-00000000.tmp/` and moves it into its cache — and such a
 grant is not reported; `refusedWrites` takes a write under it as
-granted. Before 2026-09-29 it was reported as a write no grant covers
+granted, and the strace pass a missed read under any pending glob (cp
+probes its destination before creating it, which failed a clean task
+until 2026-10-08). Before 2026-09-29 it was reported as a write no grant covers
 and failed the task. An output never belongs there: grant its directory.
 
 On macOS a collapsed `<glob>/**` keeps `<glob>/**/*` beside the
@@ -887,9 +902,17 @@ shipping a build that depended on it.
 A `localBinding` port LIST is bridged out of the task's network namespace
 (`bwrap --unshare-net` sees no host port either way). `wrapSandboxedCommand`
 prefixes the sandboxed command with `portBridgeInner`: one
-`socat UNIX-LISTEN:<tmpdir>/vx-port-<tag>-<port>.sock,fork TCP:127.0.0.1:<port>`
+`socat UNIX-LISTEN:<tmpdir>/vx-port-<tag>-<port>.sock,fork 'SYSTEM:sh <tmpdir>/vx-port-dial-<tag>.sh <port>'`
 per port, backgrounded and reaped with the shell (as SRT starts its own
-proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
+proxy bridges). The dial script (`PORT_DIAL_SCRIPT`, written beside the
+sockets) reads the namespace's `/proc/net/tcp` and `tcp6` per
+connection, before any byte moves, and dials `::1` when only `::1`
+listens on the port, else 127.0.0.1: a fixed 127.0.0.1 dial refused a
+server bound to `::1` alone, Vite's `localhost` on a host that resolves
+`::1` first (X-91, `port-bridge-dial.test.ts`; the live `::1` row in
+`sandbox-runtime.unsafe.test.ts` skips on a box with no IPv6). It is a
+file, not inline, so the socat address holds no `:` or `,` of its own.
+vx then spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
 per port, socat resolved on vx's PATH. The task starts once each host
 socat listens (`/proc/net/tcp`, 5 s bound, skipped where /proc is not

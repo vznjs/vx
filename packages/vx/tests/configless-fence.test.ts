@@ -60,6 +60,9 @@ function plan(cwd: string, ...args: string[]): Map<string, string> {
   })
   const out = new TextDecoder().decode(p.stdout)
   expect(p.exitCode, out + new TextDecoder().decode(p.stderr)).toBe(0)
+  // `--affected` that reaches no `build` a config declares plans nothing
+  // and says so on stderr: a bare name skips the default build (X-102).
+  if (!out.includes('{')) return new Map()
   const tasks = (
     JSON.parse(out.slice(out.indexOf('{'))) as { tasks: { id: string; hash: string }[] }
   ).tasks
@@ -82,7 +85,7 @@ it(
 
     await commitEdit(r, 'packages/a/src/a.js', 'a-2\n')
     expect(plan(r, '--all').get('r#build')).toBe(before)
-    expect([...plan(r, '--affected=HEAD~1').keys()].sort()).toEqual(['a#build'])
+    expect([...plan(r, '--affected=HEAD~1').keys()].sort()).toEqual([])
 
     // Control: the root's own file moves its key and selects it.
     await commitEdit(r, 'own.txt', 'own-2\n')
