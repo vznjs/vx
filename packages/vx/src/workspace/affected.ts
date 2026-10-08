@@ -19,7 +19,7 @@ import {
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners } from './config-imports.js'
+import { configImportOwners, realpathOr } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -174,6 +174,14 @@ export async function affectedChanges(
     throw new UserError(
       `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
+  }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
     )
   }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -811,14 +819,6 @@ function isDirectory(abs: string): boolean {
     return statSync(abs).isDirectory()
   } catch {
     return false
-  }
-}
-
-function realpathOr(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return p
   }
 }
 

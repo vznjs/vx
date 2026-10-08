@@ -394,7 +394,8 @@ Semantics:
   and that task runs once it is ready. A dependant whose key the
   server's writes could change (one in its own project, unless a sandbox
   bounds the server's writes) is not probed ahead of it, so there the
-  server still starts.
+  server still starts. `vx run --dry` says so: such a server is
+  `not started` (`not-started` in `--dry=json`), not `would exec`.
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
@@ -471,7 +472,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
@@ -817,7 +819,8 @@ backslash stays an escape.
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
-`outputs.workspaceFiles` (a task never invalidates itself).
+outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
+in its own project (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
 watches the workspace root recursively (any file can be an input once
@@ -1939,17 +1942,18 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
-| Symptom                                                                              | Cause                                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `failed to parse <file>: <why>`                                                      | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
-| `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
-| `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
-| `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
-| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
-| `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
-| `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
-| `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
-| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read` | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
+| Symptom                                                                                                      | Cause                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                                                              | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
+| `<file>: packages must be an array of glob strings`                                                          | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
+| `<file>: must be a JSON object`                                                                              | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
+| `<file>: "name" must be a string with no surrounding whitespace`                                             | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`                                      | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
+| `<file>: must be a mapping (packages: and pnpm's settings)`                                                  | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
+| `<file>: workspaces must be an array of glob strings`                                                        | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
+| `workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root` | A member glob (`../ext/*`, an absolute path) reached a package outside the root. npm and pnpm take one; `--affected` asks git from the root and missed edits there. Move the root up to a directory that holds every member.                               |
+| `<file>: workspaces.packages must be an array of glob strings`                                               | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
+| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`                         | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
 Workspace-config errors:
 

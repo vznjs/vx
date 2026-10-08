@@ -15,6 +15,7 @@ import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
 import { stable } from './pnpm.js'
 import { pruneEntries, yamlKey } from './blocks.js'
+import { depsOf, record } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -44,8 +45,6 @@ export interface Entry {
   /** resolution + checksum / version + resolved + integrity */
   readonly resolution: string
 }
-
-type Json = Record<string, unknown>
 
 export function parseLockfile(text: string): Lockfile {
   const head = text.slice(0, 400)
@@ -194,20 +193,6 @@ function parseClassic(text: string): Lockfile {
 
 function unquote(s: string): string {
   return s.length >= 2 && s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s
-}
-
-function depsOf(e: Json, fields: readonly string[]): ReadonlyMap<string, string> {
-  const out = new Map<string, string>()
-  for (const field of fields) {
-    const deps = record(e[field])
-    if (deps === undefined) continue
-    for (const [name, spec] of Object.entries(deps)) out.set(name, String(spec))
-  }
-  return out
-}
-
-function record(v: unknown): Json | undefined {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
 
 /**
