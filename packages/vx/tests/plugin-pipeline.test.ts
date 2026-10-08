@@ -633,6 +633,25 @@ describe('key stage', () => {
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         "plugin 'org/tool' failed in key: returned null, not a record of string values",
       )
+
+      // A Map or a class instance holds its data off own enumerable keys:
+      // `Object.entries` read it as `[]`, no material, a silent miskey.
+      const refusal = async (body: string) => {
+        await workspace([pluginSource('org/tool', `{ key() { ${body} } }`)])
+        return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
+          () => null,
+          (e: Error) => e.message,
+        )
+      }
+      expect([
+        await refusal(`return new Map([['node-major', '22']])`),
+        await refusal(`class K { get v() { return '22' } }; return new K()`),
+        await refusal(`return Object.assign(Object.create(null), { v: '22' })`),
+      ]).toEqual([
+        "plugin 'org/tool' failed in key: returned a Map, not a record of string values",
+        "plugin 'org/tool' failed in key: returned a K, not a record of string values",
+        null,
+      ])
     },
     TIMEOUT,
   )
@@ -1418,7 +1437,7 @@ describe('plugin-host, called directly', () => {
     ]).toEqual([
       "plugin 'org/vite' failed in config: returned an object, which core ignores — edit the workspace config in place",
       "plugin 'org/proj' failed in project: returned an object, which core ignores — edit the project's config in place",
-      "plugin 'org/graph' failed in graph: returned an object, which core ignores — edit the task graph in place",
+      "plugin 'org/graph' failed in graph: returned a Map, which core ignores — edit the task graph in place",
     ])
     // CONTROL: handing back the object it was given changes nothing.
     expect(

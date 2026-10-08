@@ -487,7 +487,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     ),
   ],
   [
-    "plugin '<name>' declares command '<verb>', which no command line reaches — a verb is a word, not a flag or empty",
+    "plugin '<name>' declares command '<verb>', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'",
     workspaceConfig(
       `{ plugins: [${plugin('p', '{ commands: { "--version": { description: "d", run() { return 0 } } } }')}] }`,
     ),
@@ -559,7 +559,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
   ],
   [
-    'plugins[<i>].<capability> must be a function',
+    "plugins[<i>].<capability> of plugin '<name>' must be a function",
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup: 1 }')}] }`),
   ],
   [
@@ -567,11 +567,11 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup() {}, excutor() {} }')}] }`),
   ],
   [
-    'plugins[<i>] must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown',
+    "plugins[<i>] (plugin '<name>') must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown",
     workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
   ],
   [
-    'plugins[<i>].fingerprint must be { files: [name, …], affected: function }',
+    "plugins[<i>].fingerprint of plugin '<name>' must be { files: [name, …], affected: function }",
     workspaceConfig(`{ plugins: [${plugin('p', '{ fingerprint: { files: [] } }')}] }`),
   ],
   [

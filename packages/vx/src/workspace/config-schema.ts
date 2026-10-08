@@ -254,12 +254,16 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       }
       for (const cap of PLUGIN_FUNCTION_HOOKS) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
-          throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].${cap}\` of plugin '${pkg}' must be a function`,
+          )
         }
       }
       if (plug.commands !== undefined) {
         if (plug.commands === null || typeof plug.commands !== 'object') {
-          throw new UserError(`${configPath}: \`plugins[${i}].commands\` must be an object`)
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].commands\` of plugin '${pkg}' must be an object`,
+          )
         }
         // A list of commands loaded as the verbs `0`, `1`, … that help listed.
         if (Array.isArray(plug.commands)) {
@@ -276,7 +280,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             typeof c.description !== 'string'
           ) {
             throw new UserError(
-              `${configPath}: \`plugins[${i}].commands.${verb}\` must be { description: string, run: function }`,
+              `${configPath}: \`plugins[${i}].commands.${verb}\` of plugin '${pkg}' must be { description: string, run: function }`,
             )
           }
           // A verb the dispatcher would never reach is refused, not left
@@ -287,10 +291,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           // package: two plugins one package exports (`bun()` and `pnpm()`
           // both carry `prune`) are one owner, and the first declared runs.
           // `vx --version` and `vx ''` never reach a plugin: a flag is
-          // core's, and an empty word is no verb (X-21).
-          if (verb.trim() === '' || verb.startsWith('-')) {
+          // core's, and an empty word is no verb (X-21). `vx completions`
+          // writes verbs unquoted into a shell script, so a space or a `$(`
+          // in one would break or inject into the user's rc.
+          if (!/^[A-Za-z0-9][A-Za-z0-9:._-]*$/.test(verb)) {
             throw new UserError(
-              `${configPath}: plugin '${plug.name}' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`,
+              `${configPath}: plugin '${plug.name}' declares command '${verb}', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'`,
             )
           }
           if ((CORE_VERBS as readonly string[]).includes(verb)) {
@@ -317,7 +323,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           typeof claim.affected !== 'function'
         ) {
           throw new UserError(
-            `${configPath}: \`plugins[${i}].fingerprint\` must be { files: [name, …], affected: function }`,
+            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function }`,
           )
         }
         for (const file of claim.files as unknown[]) {
@@ -357,7 +363,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // — an empty `{ name }` object is a no-op authoring mistake.
       if (PLUGIN_HOOKS.every((hook) => plug[hook] === undefined)) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
+          `${configPath}: \`plugins[${i}]\` (plugin '${pkg}') must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
         )
       }
     }

@@ -117,27 +117,43 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     ])
   })
 
-  // X-21: a flag-like or empty verb loaded and could never run.
+  // X-21: a flag-like or empty verb loaded and could never run. A verb
+  // with a space or shell syntax broke or injected into `vx completions`.
   it('a verb no command line reaches is refused', () => {
     const p = (verb: string) => ({
       ...testPlugin('x21', { teardown() {} }),
       commands: { [verb]: { description: 'd', run: () => 0 } },
     })
     const why = (verb: string) =>
-      `${WS}: plugin 'x21' declares command '${verb}', which no command line reaches — a verb is a word, not a flag or empty`
+      `${WS}: plugin 'x21' declares command '${verb}', which is not a word — a verb is a letter or digit, then letters, digits, ':', '.', '_' or '-'`
     expect([
       refusal({ plugins: [p('--version')] }),
       refusal({ plugins: [p('')] }),
       refusal({ plugins: [p(' ')] }),
+      refusal({ plugins: [p('a b')] }),
+      refusal({ plugins: [p('$(touch x)')] }),
+      refusal({ plugins: [p('x;y')] }),
       refusal({ plugins: [p('deploy')] }),
-    ]).toEqual([why('--version'), why(''), why(' '), null])
+      refusal({ plugins: [p('db:migrate.v2_x-1')] }),
+    ]).toEqual([
+      why('--version'),
+      why(''),
+      why(' '),
+      why('a b'),
+      why('$(touch x)'),
+      why('x;y'),
+      null,
+      null,
+    ])
   })
 
   it('a non-object `commands` is refused, not read as a plugin that contributes a verb', () => {
     // `Object.entries(7)` is `[]`: without the shape check the plugin passes
     // the at-least-one-capability rule on a `commands` that declares nothing.
     const p = { ...testPlugin('sweep-653-cmd', { teardown() {} }), commands: 7 }
-    expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].commands\` must be an object`)
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].commands\` of plugin '${p.name}' must be an object`,
+    )
   })
 
   it('a `commands` array is refused, not read as the verbs 0, 1, …', () => {
@@ -153,7 +169,7 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].fingerprint\` must be { files: [name, …], affected: function }`,
+      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function }`,
     )
     // Control: the same claim over a file core folds validates.
     const ok = testPlugin('sweep-653-fp-ok', {

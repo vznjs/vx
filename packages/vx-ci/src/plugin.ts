@@ -5,7 +5,13 @@
 // same decline pattern as `otel()`.
 import { appendFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { refuseUnknownOptions, type PluginOptionKinds, definePlugin, type VxPlugin } from '@vzn/vx'
+import {
+  refuseUnknownOptions,
+  type PluginOptionKinds,
+  definePlugin,
+  UserError,
+  type VxPlugin,
+} from '@vzn/vx'
 import type { FetchFn } from './checks.js'
 import { githubCacheScope } from './cache-scope.js'
 
@@ -79,6 +85,13 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
   refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
+  // '' passes the kind check but reads wrong: `??` keeps it, so summaryFile
+  // declined instead of using GITHUB_STEP_SUMMARY, checkName POSTed a name
+  // GitHub refuses (422) and title rendered an empty heading.
+  for (const key of ['summaryFile', 'title', 'checkName'] as const) {
+    if (options[key] === '')
+      throw new UserError(`github() option "${key}" must be a non-empty string, got ""`)
+  }
   return definePlugin(import.meta, {
     async config(workspace) {
       if (options.cacheScope === false || workspace.cacheScope !== undefined) return
