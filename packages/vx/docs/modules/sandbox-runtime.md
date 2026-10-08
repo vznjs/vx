@@ -753,7 +753,9 @@ writes and removes there, and nothing it leaves outlives the sandbox
 directory — `bun build --compile` extracts a cross-compile runtime into
 `<cwd>/.<hash>-00000000.tmp/` and moves it into its cache — and such a
 grant is not reported; `refusedWrites` takes a write under it as
-granted. Before 2026-09-29 it was reported as a write no grant covers
+granted, and the strace pass a missed read under any pending glob (cp
+probes its destination before creating it, which failed a clean task
+until 2026-10-08). Before 2026-09-29 it was reported as a write no grant covers
 and failed the task. An output never belongs there: grant its directory.
 
 On macOS a collapsed `<glob>/**` keeps `<glob>/**/*` beside the
