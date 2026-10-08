@@ -2346,9 +2346,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
-  attempts counted as failures. A failure behind a failed dependency
-  under `--continue=always` is that dependency's, so it counts on no
-  key. `none` when no key did.
+  attempts counted as failures. A task with no cache block keys on its
+  config alone, so its key says nothing about its inputs: it is never
+  listed. A failure behind a failed dependency, in a run that continues
+  past failures, is that dependency's and counts on no key. `none` when
+  no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts

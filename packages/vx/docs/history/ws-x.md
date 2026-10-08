@@ -989,3 +989,10 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   failure was the dependency's. Such a failure is now no flaky candidate
   and is recorded keyless (`''`, which the key readers skip). Row:
   `flaky.test.ts` › "is not a flake on the key it had passed on".
+- **X-132.** `vx info` listed as flaky a task with no cache block that
+  passed and then failed, though no run's row calls one flaky: its key is
+  its config alone, so "same inputs" meant nothing. The shared per-key
+  projection now skips rows recorded `cached = 0`, so the doctor, the
+  per-run detector and the history's failure mode agree. Row:
+  `flaky.test.ts` › "is not on the flaky list after a pass and a
+  failure".
