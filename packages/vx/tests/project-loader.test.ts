@@ -71,6 +71,30 @@ describe('loadProjectConfig', () => {
     expect(err?.message).toContain('Expected "}"')
   })
 
+  it('a malformed JSON import names the config, first load and repeat', async () => {
+    // Bun's JSON loader throws a SyntaxError naming no file.
+    await writeFile(path.join(dir, 'data.json'), '{bad\n')
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(file, "import d from './data.json'\nexport default { tasks: d }\n")
+    for (let i = 0; i < 2; i++) {
+      const err = await loadProjectConfig(file).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect([err?.name, err?.message]).toEqual([
+        'UserError',
+        `Project config ${file}: an import does not parse: JSON Parse error: Expected '}'`,
+      ])
+    }
+    // A config's own JSON.parse keeps its stack and is not reworded.
+    await writeFile(path.join(dir, 'vx.config.ts'), "export default JSON.parse('{')\n")
+    const own = await loadProjectConfig(path.join(dir, 'vx.config.ts')).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(own?.name).toBe('SyntaxError')
+  })
+
   it('a throw that is not an Error names the config, first load and repeat', async () => {
     // `throw 'no'` printed `vx: no`, naming no file; a null-prototype
     // object crashed vx's own error printer with a stack.

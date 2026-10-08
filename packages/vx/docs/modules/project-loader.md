@@ -45,8 +45,9 @@ export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.cjs',
 ]
 
-// A Bun `ResolveMessage` / `BuildMessage` as a one-line UserError naming the
-// config (and the file, for a syntax error in an import); null for anything else.
+// A Bun `ResolveMessage` / `BuildMessage`, or the stackless `SyntaxError` of a
+// malformed JSON import, as a one-line UserError naming the config (and the
+// file, for a syntax error in an import); null for anything else.
 export function configLoadError(err: unknown, configPath: string, kind: string): UserError | null
 ```
 

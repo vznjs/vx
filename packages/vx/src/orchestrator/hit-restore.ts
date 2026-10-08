@@ -22,6 +22,7 @@ import {
 import type { TaskOutcome } from '../graph/index.js'
 import {
   asTrees,
+  relPosix,
   secretMask,
   span,
   splitNegations,
@@ -165,10 +166,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         const expectedRels = new Set(projExpected.map((e) => e.path))
         const expectedWsRels = new Set(wsExpected.map((e) => e.path))
         const actualRels = actualAbs
-          .map((p) => path.relative(node.projectDir, p).split(path.sep).join('/'))
+          .map((p) => relPosix(node.projectDir, p))
           .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
         const actualWsRels = actualWsAbs
-          .map((p) => path.relative(args.workspaceRoot, p).split(path.sep).join('/'))
+          .map((p) => relPosix(args.workspaceRoot, p))
           .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
         const rowsPresent = (
           actual: readonly string[],

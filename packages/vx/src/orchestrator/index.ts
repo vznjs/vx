@@ -43,6 +43,7 @@ export type {
   EventBus,
   RunEvent,
   RunEventSubscriber,
+  RunStartInfo,
   WireEvent,
   TaskView,
   OutcomeView,
