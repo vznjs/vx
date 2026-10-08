@@ -1,7 +1,7 @@
 ---
 // A post's cover at 1200×630: a release's rendered PNG, or for an essay a
-// cover drawn in CSS in the PNGs' look (ink, grid, one glow in the post's
-// tone, the mark, a label, the title; or, as a post's banner under its own
+// cover in the PNGs' look (ink, grid and one glow in the post's tone, a
+// bitmap from scripts/cover-backgrounds.ts; then the mark, a label, the title; or, as a post's banner under its own
 // headline, the label set large). Text sizes are container units, so
 // the drawn cover scales like an image at every card width.
 import { Image } from 'astro:assets'
@@ -25,7 +25,12 @@ const base = import.meta.env.BASE_URL
       fetchpriority={eager ? 'high' : undefined}
     />
   ) : (
-    <div class="vx-cover vx-cover-drawn" style={`--tone:${tone(post)}`} role="img" aria-label={post.title}>
+    <div
+      class="vx-cover vx-cover-drawn"
+      style={`--tone:${tone(post)};background-image:url(${base}blog/grid.png),url(${base}blog/tone-${tone(post).slice(1)}.webp)`}
+      role="img"
+      aria-label={post.title}
+    >
       <div class="vx-cover-in">
         <div class="vx-cover-top">
           <img src={`${base}logo-mark.svg`} alt="" width="32" height="32" />
