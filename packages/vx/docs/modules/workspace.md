@@ -195,6 +195,9 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
+`{ nohoist }`) is the single project too, as bun and yarn read it.
+
 From the same parsed manifests it takes the catalogs a `catalog:` spec
 resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
 without that file, the root `package.json`'s, at the top level or under

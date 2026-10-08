@@ -288,6 +288,11 @@ async function readRootManifests(
     )
   }
   if (ws === undefined || ws === null) return { globs: ['.'], catalogs }
+  // bun's `{ catalog }` and yarn's `{ nohoist }` name no members, and both
+  // managers run the root alone; vx refused them as no array (D-151).
+  if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) {
+    return { globs: ['.'], catalogs }
+  }
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
     const globs = assertGlobList(
       (ws as { packages?: unknown }).packages ?? [],
