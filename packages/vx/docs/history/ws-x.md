@@ -996,3 +996,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   per-run detector and the history's failure mode agree. Row:
   `flaky.test.ts` › "is not on the flaky list after a pass and a
   failure".
+
+- **X-134.** A persistent task that printed its `readyWhen` marker and
+  exited at once read as "exited before becoming ready" under load: the
+  exit landed before the readers took the line (persistent.test.ts'
+  forwardArgs row, CI and 12 of 15 local runs under `yes` load). The exit
+  now waits for the readers, bounded by the task drain's 250 ms, before
+  judging. Row: `runner.test.ts` › "a marker read after the shell exited,
+  inside the drain bound, is ready" (10 of 10 without the fix).
