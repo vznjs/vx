@@ -27,3 +27,20 @@ differences, binaries and install across platforms.
 - **XP-70.** On macOS a project dir stored NFD got no slice of git's NFC
   listing and spawned `git ls-files` per task. The enumeration matches the
   dir as NFC; key paths stay git's spelling. Row: `git-enum-unicode.test.ts`.
+- **XP-80.** A `package.json` or `lerna.json` saved with a BOM (Windows
+  editors) refused a local plugin's run, crashed `vx init`, refused a
+  config's self-import, and in vx-migrate crashed adoption. Each reader
+  strips a leading BOM (#3086, #3087).
+- **XP-90.** `vx watch` under a project reached through a symlink: git
+  refuses paths through a link, so gitignored writes re-ran in a loop and a
+  deleted input re-ran nothing. Paths are asked of git at their real
+  directory (#3089).
+- **XP-100.** Under `NODE_OPTIONS=--preserve-symlinks-main` an npm `.bin`
+  symlink kept `.bin` as the main module's dir: the launcher and
+  vx-migrate's `nx-exec`/`nx-env` failed a relative `require`. Each loads
+  from its real directory (#3105, #3106).
+- **XP-110.** Nx mapper: a project dir holding `{}` or `[]` lost its
+  `{projectRoot}` inputs and outputs or matched another project; the dir
+  is escaped as a literal in every glob (#3082).
+- **Refuted.** A `cd` typed in another case than the disk (APFS) already
+  lands in the right member on macOS (#3034 closed).
