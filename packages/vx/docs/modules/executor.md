@@ -37,6 +37,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's way to give a task back, and core's test for it (matched by
   name, so another copy of `@vzn/vx` is recognised); see below. Only the
   first is on `@vzn/vx`.
+- Runner's `withForwardArgs(command, args)` — the line the local executor runs:
+  the args after `--` shell-quoted, before a trailing comment, never on a
+  heredoc's terminator. On `@vzn/vx` for an executor that runs
+  `ExecuteRequest.command` itself: the example's own join lost the args to
+  a trailing comment and split `'a b'` (X-112).
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's
   `execute` after the request's abort, never the local one's (H-14).
@@ -117,7 +122,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `placement-async-hints.test.ts`).
 - A plugin executor's `execute` that throws fails the task, its message
   prefixed `plugin '<p>' (executor '<e>') failed in execute:` in the
-  frame and the scheduler's line (C-63), plainly, as a refusal: the
+  scheduler's one line, which lands in the task's frame (C-63), plainly, as a refusal: the
   plugin is named, so it is not vx's internal error (C-85). The local
   executor's own throw is vx's and is not renamed.
 - `executorFallback(reason)` (on the façade) is how a `remote` executor

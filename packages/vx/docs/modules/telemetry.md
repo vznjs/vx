@@ -28,10 +28,11 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
   `TaskTelemetry`, used by the streaming `task.end` record and the
   summary's `tasks[]` alike, so the two cannot drift (item 660).
-- `createTelemetrySource({ sinks, run, warn?, owners? })` → a
-  `TelemetrySource` — projects the bus once and fans out to sinks. `run`
-  is the `RunContextRecord` stamped on `run.start`; `owners` names a
-  nameless sink by its plugin.
+- `createTelemetrySource({ sinks, run, warn?, owners?, nodes?, every? })`
+  → a `TelemetrySource` — projects the bus once and fans out to sinks.
+  `run` is the `RunContextRecord` stamped on `run.start`; `owners` names a
+  nameless sink by its plugin; `every` is the sampler's interval (default
+  `setInterval`, unref'd), which a test ticks by hand.
 - `TelemetrySink` — what a `telemetry` plugin returns: an optional
   `name`, a `wants` list of record kinds (the source checks it BEFORE
   projecting, so a sink pays nothing for kinds it declines), and

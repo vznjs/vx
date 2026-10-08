@@ -17,10 +17,10 @@ lock lacks fails the frozen run itself.
 
 Only the native-config runs (each runner on the same graph from its own
 config: the stress run, the head-to-heads, the scaling table) measure
-vx. Every real-repo section below ran vx through `turbo()` or `nx()` on
-the repo's own `turbo.json` or Nx graph: a migration bridge, kept here
-as a record, not a claim (owner, 2026-10-02). Those repos are to be
-rerun on the native config `bunx @vzn/vx-migrate` writes.
+vx. The real-repo runs went through `turbo()` or `nx()` on the repo's
+own `turbo.json` or Nx graph, a migration bridge rather than a claim
+(owner, 2026-10-02), and are removed (§ Real repos). Those repos are to
+be rerun on the native config `bunx @vzn/vx-migrate` writes.
 
 ## Warm-run overhead (2026-09-02)
 
