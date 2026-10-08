@@ -79,7 +79,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve, reject) => {
     server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), (err, port) => {
       if (err) return reject(err)
-      endpoint = `127.0.0.1:${port}`
+      endpoint = `grpc://127.0.0.1:${port}`
       resolve()
     })
   })
@@ -189,7 +189,7 @@ describe.if(CHUNKING_SUPPORTED)('CAS download integrity', () => {
         e ? reject(e) : resolve(p),
       )
     })
-    const client = new ReapiClient({ endpoint: `127.0.0.1:${port}` })
+    const client = new ReapiClient({ endpoint: `grpc://127.0.0.1:${port}` })
     try {
       const one = await client.readBlob(GOOD_DIGEST)
       expect(one).not.toBeNull()
