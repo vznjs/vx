@@ -68,13 +68,9 @@ export function expandNxInputs(
           todos.push(`input ${JSON.stringify(entry)} uses a token vx does not support`)
           return
         }
-        if (neg === '' && at.outputs?.some((o) => p === o || p.startsWith(`${o}/`))) {
-          todos.push(
-            `input ${JSON.stringify(entry)} is an output of the project's own targets: git does not ` +
-              'list it, so vx cannot key on it — dropped; the task that writes it keys its dependants through dependsOn',
-          )
-          return
-        }
+        // Nx's file map skips gitignored files, so it hashes nothing here
+        // either: a changed `dist` file is a cache hit under Nx 23.3 (YL-1).
+        if (neg === '' && at.outputs?.some((o) => p === o || p.startsWith(`${o}/`))) return
         const g = minimatchToVx(p, neg !== '')
         if (g === null) {
           todos.push(`input ${JSON.stringify(entry)}: glob syntax vx cannot take — map manually`)

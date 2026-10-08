@@ -24,8 +24,9 @@ These are reproducible on your own machine, not marketing figures:
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
   (`--frozen`), as every vx bench runs it. A 100-project workspace
-  replays fully-cached in **74 ms** whole-process (1,000 projects in
-  172 ms). Its restore row deletes the outputs first and extracts
+  replayed fully-cached in **74 ms** whole-process (1,000 projects in
+  172 ms) on one macOS arm64 machine (2026-09-02); a 4-core Linux
+  container reads 271 ms at 1,000 projects. Its restore row deletes the outputs first and extracts
   every artifact, so it costs more than the untouched tree; the
   current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
@@ -49,9 +50,10 @@ and faster:
    key. Static-JSON config can't see them.
 3. **Strict output ownership.** Declared outputs are wiped before exec
    *and* restore, so the tree ends as the cached snapshot, with no stale
-   files. The one exception is a task that adds files to an upstream
-   task's outputs: it cleans nothing before exec and only the files it
-   recorded before a restore. Turborepo/Nx
+   files. Two tasks whose outputs overlap are refused by default
+   (`rules.exclusiveOutputs`); with that rule off, a task that adds files
+   to an upstream task's outputs cleans nothing before exec and only the
+   files it recorded before a restore. Turborepo/Nx
    restore additively.
 4. **Daemonless.** No background process, no staleness window, no socket
    to corrupt — and the fastest warm/cached runs in the head-to-head
@@ -105,7 +107,8 @@ Speed by subtraction is still speed:
   vx asks you to declare inputs and gives you a boundary to check them
   against: inside the workspace, a task with `sandbox` reads only what
   `allow.read` grants, plus `node_modules` and the linked packages it
-  depends on. Reads outside the workspace stay open, and `cache.inputs`
+  depends on. Reads outside the workspace stay open, except the
+  credential stores under home (`~/.ssh`, `~/.aws`, …), and `cache.inputs`
   grants nothing, so the sandbox checks the input list only where
   `allow.read` mirrors it. Guessing is replaced by a boundary.
 

@@ -8,6 +8,7 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  realPath,
   staticPrefix,
   taskGlob,
 } from '../util/index.js'
@@ -54,7 +55,9 @@ export function makeWatchIgnore(
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
 ): (base: string, filename: string) => boolean {
-  const cacheAbs = path.resolve(cacheDir)
+  // Watchers report under the real root; a cache dir named through a link
+  // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
+  const cacheAbs = realThrough(path.resolve(cacheDir))
   // A task's own outputs are not edits: without this every cycle that
   // writes `dist/` (or `out.txt`) re-runs once more, reporting
   // "up-to-date" for the trouble. Matched under the directory the globs
@@ -132,6 +135,16 @@ export function makeWatchIgnore(
   }
 }
 
+/** `p` with its longest existing prefix realpath'd: the cache dir may not exist yet. */
+function realThrough(p: string): string {
+  try {
+    return realPath(p)
+  } catch {
+    const up = path.dirname(p)
+    return up === p ? p : path.join(realThrough(up), path.basename(p))
+  }
+}
+
 /**
  * The literal directory a glob's matches live under (`''` when the glob
  * starts with a pattern, or negates). A literal entry is a file or its
@@ -185,7 +198,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
     }
     // Each record: source, line, pattern, path. No source: no pattern
     // matched; a `!` pattern: re-included. Either way not ignored.
-    const fields = new TextDecoder().decode(proc.stdout).split('\0')
+    const fields = new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')
     const records = Math.floor(fields.length / 4)
     for (let i = 0; i < records; i++) {
       const [source, , pattern, p] = fields.slice(i * 4, i * 4 + 4)
@@ -232,10 +245,11 @@ export function makeRootEventFilter(
   fenced: (ownDir: string, abs: string) => boolean = () => false,
 ): (filename: string) => boolean {
   const dirs = projectDirs.map((d) => path.resolve(d))
-  const globs = workspaceInputs
-    .map(normalizeGlob)
-    .filter((g) => !g.startsWith('!'))
-    .map((g) => taskGlob(g))
+  // A literal is its tree, as the key resolves it: `shared` matched only
+  // the directory's own event and no edit under it ran a cycle (WD-2).
+  const globs = asTrees(workspaceInputs.filter((g) => !normalizeGlob(g).startsWith('!'))).map((g) =>
+    taskGlob(g),
+  )
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
     // The depth test is a READING AID, not a guard: both predicates below
@@ -359,7 +373,7 @@ export function gitFiles(workspaceRoot: string): Set<string> | undefined {
   }
   if (proc.exitCode !== 0) return undefined
   const files = new Set<string>()
-  for (const p of new TextDecoder().decode(proc.stdout).split('\0')) {
+  for (const p of new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')) {
     if (p.length === 0) continue
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
