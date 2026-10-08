@@ -1610,7 +1610,8 @@ Plain runs ALWAYS evaluate live — the lock's existence changes
 nothing. Only `vx run --frozen` consumes it: configs come from the
 lock with no evaluation and no staleness checks of its own (frozen-env
 semantics: env reads in a config keep their lock-time values; a
-project absent from the lock or a missing lock is a hard error).
+project absent from the lock, a locked project whose config file is
+gone (X-144) or a missing lock is a hard error).
 
 `--check` is the audit: it reports changed config files via the
 stored hashes AND re-evaluates every config in the current

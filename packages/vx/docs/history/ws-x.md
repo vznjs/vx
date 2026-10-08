@@ -1114,3 +1114,9 @@ reaches no build task.` The plan now carries the run's own line
   only for a task that got them, `vx last --format json` says so per task
   (`forwarded`), and the line gives a failed dependency its own command
   without them. Row: `last.test.ts` › "a failed run replays FAILED with the failure first".
+
+- **X-144.** A `--frozen` run over a project whose config file was
+  deleted since `vx lock` loaded it config-less: its locked tasks
+  vanished and the run exited 0 having run the others. The lock now
+  refuses it as it does a moved config (D-88). Row:
+  `frozen-deleted-config.test.ts`.
