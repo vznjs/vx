@@ -775,7 +775,9 @@ Declared `cache.outputs.files` are wiped in two distinct places:
   it.
 - **Before restore on a cache hit.** The post-restore tree is the
   cached snapshot byte-for-byte. Hand-edits to output files don't
-  persist through a cache replay.
+  persist through a cache replay. When the hit's own check walked the
+  output globs to find the tree stale, the clean deletes from that walk's
+  list instead of walking again: nothing is awaited between them (X-161).
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
 with the same boundary rules, and two directories stay off the wipe

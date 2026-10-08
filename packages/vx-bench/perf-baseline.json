@@ -17,7 +17,7 @@
       "restore run @25": {
         "hash xxh3": 990,
         "spawn git": 3,
-        "sqlite statement": 101
+        "sqlite statement": 51
       },
       "plan @25": {
         "hash xxh3": 989,
@@ -47,7 +47,7 @@
       "restore run @100": {
         "hash xxh3": 3990,
         "spawn git": 3,
-        "sqlite statement": 329
+        "sqlite statement": 129
       },
       "plan @100": {
         "hash xxh3": 3989,

@@ -49,6 +49,17 @@ export class OutputIndex {
   private readonly pendingDirs = new Map<string, Array<[string, number]> | null>()
   /** Stamps taken and not yet written, flushed with the directory snapshots. */
   private readonly pendingStamps = new Map<string, Array<[string, number, number]>>()
+  /**
+   * The rows the last batched probe loaded, by hash: a hit's restore and
+   * the stamps after it read their rows here instead of the index, twice
+   * a restore (X-162). Read for path, size, mode and mtime only; a stamp
+   * taken since is the overlay `loadOutputFilesBatch` adds. Dropped when
+   * an entry's rows are replaced, and replaced by the next probe; rows
+   * held for an entry since pruned serve a restore that finds no artifact.
+   * Another process's save under the same key is the race the hit's own
+   * skip-restore check, which reads these rows, already runs.
+   */
+  private readonly held = new Map<string, readonly OutputFileRow[]>()
 
   constructor(private readonly db: Database) {
     this.insertOutputFile = lazyStatement(
@@ -108,12 +119,24 @@ export class OutputIndex {
    */
   replaceFileRows(hash: string, rows: ReadonlyArray<[string, number, number, number]>): void {
     // A stamp taken for the rows this replaces describes their files, not these.
+    this.held.delete(hash)
     this.pendingStamps.delete(hash)
     this.deleteOutputFiles.run(hash)
     this.deleteStamps.run(hash)
     for (const [rel, size, mode, mtime] of rows) {
       this.insertOutputFile.run(hash, rel, size, mode, mtime)
     }
+  }
+
+  /** Hold a probe's rows for its restores (`held`), in place of the last probe's. */
+  hold(rows: ReadonlyMap<string, readonly OutputFileRow[]>): void {
+    this.held.clear()
+    for (const [hash, list] of rows) this.held.set(hash, list)
+  }
+
+  /** `hash`'s rows: the probe's when held, else read. Path, size, mode and mtime only. */
+  rowsOf(hash: string): readonly OutputFileRow[] {
+    return this.held.get(hash) ?? this.loadOutputFilesBatch([hash]).get(hash) ?? []
   }
 
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
@@ -298,7 +321,7 @@ export class OutputIndex {
    * Written with the directory snapshots, in one transaction.
    */
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void {
-    const rows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const rows = this.rowsOf(hash)
     const stamps: Array<[string, number, number]> = []
     for (const e of rows) {
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)

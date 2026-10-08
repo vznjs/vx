@@ -1399,6 +1399,7 @@ export class Cache implements CacheLayer {
     })
     const liveHashes = live.map((r) => r.hash)
     const fileRows = this.loadOutputFilesBatch(liveHashes)
+    this.outputs.hold(fileRows)
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       this.touched.add(row.hash)
@@ -1534,7 +1535,7 @@ export class Cache implements CacheLayer {
     // same truncated expectation against the same truncated tree and agrees
     // forever. Refuse instead of silently under-restoring — checked before
     // anything is renamed into place.
-    const rows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const rows = this.guard(() => this.outputs.rowsOf(hash))
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
