@@ -631,6 +631,7 @@ async function runOnBus(
       stopRun.abort(signal)
     },
     done: runLeft,
+    handsTerminal: holders.size > 0,
     // The grace, then one flush and each teardown at their own bound, and
     // slack for the summary and the cache close.
     boundMs:

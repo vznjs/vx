@@ -197,9 +197,10 @@ the very end (the dev server IS the point of the run).
 duration (unless `RunOptions.handleSignals === false`) and removes them
 in a `finally`, so repeated `run()` calls never stack listeners. On
 signal: forward it (a SIGHUP as SIGTERM) to everything in
-`liveChildren` + `persistentRegistry`, close the cache,
-`process.exit(signalExitCode(signal))`
-(130 / 143 / 129).
+`liveChildren` + `persistentRegistry`, close the cache, and die of the
+signal once the exit hooks have run (130 / 143 / 129 to the parent; a
+run that handed a task the terminal exits with that code instead, so
+Bun restores the terminal).
 Children killed this way classify as `aborted` — not counted, not
 recorded. Watch mode passes `handleSignals: false`; the loop owns
 signal disposition for its whole lifetime.
