@@ -1,6 +1,7 @@
 // `vx show` lists what a run would see: a config-less package a configured
 // one depends on gets the default `build` in a run (its closure loads it),
-// so the list and `vx show build` show it there too.
+// so the list shows it there too. `vx show build` does not: no project
+// declares it, and `vx run build --all` refuses it (X-145).
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -76,14 +77,10 @@ describe('vx show and the default build of a dependency', () => {
   )
 
   it(
-    '`vx show build` shows it in the dependency too',
+    '`vx show build` names no project, as `vx run build --all` declares none',
     async () => {
       const r = await vx(root, ['show', 'build'])
-      expect(r.code).toBe(0)
-      expect(r.out.split('\n').filter((l) => l.includes(' — '))).toEqual([
-        'app — packages/app',
-        'lib — packages/lib',
-      ])
+      expect([r.code, r.out]).toEqual([1, ''])
     },
     TIMEOUT,
   )

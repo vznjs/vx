@@ -25,7 +25,10 @@ export async function taskVerbHint(
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
   const tasks = new Set<string>()
-  for (const p of projects.values()) for (const t of Object.keys(p.config.tasks ?? {})) tasks.add(t)
+  // The default build is no task `vx run` takes by name (X-145).
+  for (const p of projects.values())
+    for (const [t, task] of Object.entries(p.config.tasks ?? {}))
+      if (!isDefaultBuild(task)) tasks.add(t)
   const task = tasks.has(command) ? command : typo ? nearest(command, tasks) : undefined
   if (task === undefined) return null
   // Nx's `nx build app`: the word after the target is its project.
