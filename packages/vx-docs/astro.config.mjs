@@ -1,5 +1,6 @@
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
+import { readdirSync } from 'node:fs'
 import { SIDEBAR } from './src/nav/sections.ts'
 import remarkDataCharts from './src/plugins/data-charts.ts'
 import remarkMermaid from './src/plugins/remark-mermaid.mjs'
@@ -83,6 +84,14 @@ export default defineConfig({
     '/blog/4/': `${root}blog/`,
     '/blog/5/': `${root}blog/`,
     '/blog/authors/vzn/': `${root}blog/`,
+    // Release notes moved out of the blog into their own section.
+    '/blog/tags/release/': `${root}releases/`,
+    '/blog/tags/essays/': `${root}blog/`,
+    ...Object.fromEntries(
+      readdirSync(new URL('./src/content/docs/releases/', import.meta.url))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => [`/blog/${f.slice(0, -3)}/`, `${root}releases/${f.slice(0, -3)}/`]),
+    ),
   },
   // `remarkPlugins` runs on the `unified()` processor from
   // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
@@ -122,11 +131,21 @@ export default defineConfig({
             href: `${site}${root}blog/rss.xml`,
           },
         },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'application/rss+xml',
+            title: 'vx | Releases',
+            href: `${site}${root}releases/rss.xml`,
+          },
+        },
       ],
       // The site's chrome: the places in the header (and atop the phone
       // menu), the landing's fonts, and dark as the default theme. The blog's
-      // posts take a hero and related posts here (src/components/blog/); its
-      // index, tag pages and feed are src/pages/blog/.
+      // and releases' posts take a hero and related posts here
+      // (src/components/blog/); their indexes, tag pages and feeds are
+      // src/pages/blog/ and src/pages/releases/.
       components: {
         Head: './src/components/Head.astro',
         Footer: './src/components/starlight/Footer.astro',
