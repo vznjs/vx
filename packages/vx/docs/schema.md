@@ -110,7 +110,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -464,9 +467,9 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
 
 ```ts
 interface ExecEnv {
-  passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
+  passThrough?: readonly string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
-  secret?: string[] // names whose values are masked (`***`) whatever the name; see Masking
+  secret?: readonly string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
 
@@ -537,7 +540,12 @@ exec: {
 Every name in these lists (and in `cache.inputs.env`) must be one an
 environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
-child split at its `=` or not at all.
+child split at its `=` or not at all. A `passThrough` or `define` name is
+also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
+`sh -c`, and dash (Linux's `sh`) drops any other name from the environment
+it hands the command, so `my.var` reached a task on macOS and never on
+Linux. `cache.inputs.env` takes any such name: the key reads it from vx's
+own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
@@ -697,11 +705,11 @@ to revisit the config. The cost of a single forgotten cache miss
 
 ```ts
 interface CacheInputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
-  env?: string[] // optional
-  runtime?: string[] // optional; project-dir shell commands
-  workspaceRuntime?: string[] // optional; workspace-root shell commands
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
+  env?: readonly string[] // optional
+  runtime?: readonly string[] // optional; project-dir shell commands
+  workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
 ```
@@ -730,7 +738,9 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
+what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
+plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
@@ -1013,8 +1023,8 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 
 ```ts
 interface CacheOutputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
 }
 ```
 
@@ -1152,22 +1162,22 @@ interface SandboxConfig {
 }
 
 interface SandboxGrants {
-  read?: string[] // paths or globs, project-relative or absolute
-  write?: string[] // paths or globs; a write grant is readable too
-  network?: true | string[] // an allowlist of domains; `true` adds none (below)
-  systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
-  unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
-  machLookup?: string[] // mach global-names (macOS)
+  read?: readonly string[] // paths or globs, project-relative or absolute
+  write?: readonly string[] // paths or globs; a write grant is readable too
+  network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
+  systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
+  unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
+  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
+  machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
 }
 
 interface SandboxIgnore {
-  read?: string[] // denied reads to leave out of the report
-  write?: string[]
-  systemInfo?: string[]
-  network?: string[] // '<host>:<port>'
+  read?: readonly string[] // denied reads to leave out of the report
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[] // '<host>:<port>'
 }
 ```
 
@@ -1304,7 +1314,8 @@ no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
 966).
 The one exception is where tools keep credentials, denied unless a
-grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
+grant names one (`read: ['.', '~/.npmrc']` for a publish; a write grant at
+or inside a store frees that path alone), since a
 dependency the task ran could copy a key into an output the cache
 shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
@@ -1348,6 +1359,11 @@ and exited 0 (B-5; before it, both Linux shapes passed with nothing
 reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
+
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
 
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
@@ -1408,7 +1424,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1528,7 +1545,7 @@ interface WorkspaceRules {
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
-  orphan sweep (artifacts no index row counts, older than an hour —
+  orphan sweep (artifacts no index row counts, judged by file time —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
@@ -1637,7 +1654,7 @@ machinery by design.
 import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
-defineProject<T extends ProjectConfig>(config: T): T
+defineProject<const T extends ProjectConfig>(config: T): T
 defineWorkspace<T extends WorkspaceConfig>(config: T): T
 ```
 
@@ -1646,11 +1663,11 @@ autocomplete for task names in `dependsOn` against your declared
 tasks, strict validation against the schema, errors at edit time
 rather than at `vx run` time.
 
-They cost one runtime import of `@vzn/vx` per config file — a second
-copy of core loaded into every run (~17 ms on a two-package workspace,
-measured 2026-09-09; the `vx` process already holds the first). The
-type-only form gives the same editor checking for free, and is what
-`vx init` / `@vzn/vx-migrate` write:
+They cost one runtime import of `@vzn/vx/config` per config file:
+`src/config.ts`, which imports nothing, so it is cheap, but it must
+resolve from the config's directory. The type-only form gives the same
+editor checking with no runtime import, and is what `vx init` /
+`@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'

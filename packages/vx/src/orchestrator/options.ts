@@ -172,6 +172,13 @@ export interface RunOptions {
    */
   summarize?: string
   /**
+   * Text printed just above the run's footer, given the outcomes the
+   * footer counts, after the `summaryTable`: nothing prints below the
+   * footer (owner), so a caller's end-of-run report (`--report`) rides
+   * here. Not called on a refused run.
+   */
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
+  /**
    * If set, write a Chrome-trace JSON profile of the run's wallclock
    * spans. Path is cwd-relative. Default `profile.json` is selected
    * by the CLI parser, not here.

@@ -347,7 +347,7 @@ describe('task selection', () => {
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
       if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
       const plan = await planRun({ ...resolved, log: silent() })
-      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['a#build', 'r#build', 'r#root'])
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['a#build', 'r#root'])
     },
     TIMEOUT,
   )
