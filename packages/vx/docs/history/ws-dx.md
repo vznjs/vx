@@ -10,3 +10,10 @@ and log output reads better. Each must cost the warm path nothing.
   exec times summed (what `--report` already printed). Summed in the
   pass the summary already makes over outcomes, and per outcome in the
   live logger. Row: `summary.test.ts` › "ends with the run in one line".
+- **DX-2.** `vx why` names the root cause in one call: an upstream row
+  is only a carrier, so it follows each moved dependency in the same
+  run down to the tasks whose own inputs moved and prints
+  `app#build ← lib#build ← file packages/lib/src/index.js`, with
+  `what to do` for those kinds. JSON carries it as `roots`. Read-only
+  over history; the run path does not change. Row: `why.test.ts` ›
+  "env, package, workspace fingerprint, config and upstream".

@@ -9,7 +9,9 @@ import path from 'node:path'
 import { Cache } from '../cache/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
+import type { Database } from 'bun:sqlite'
 import {
+  type CacheKeyDiff,
   cacheKeyDiff,
   explainCacheKeyQuery as explainCacheKey,
   latestRunId,
@@ -232,9 +234,13 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       )
     }
     const diff = cacheKeyDiff(db, runId, taskId)
+    // An upstream change is never the cause, only its carrier: follow
+    // each moved dependency in this run down to the tasks whose own
+    // inputs moved, so one `vx why` names the file, not the next task.
+    const roots = rootCauses(db, runId, taskId, diff.entries)
 
     if (parsed.format === 'json') {
-      process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff })}\n`)
+      process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff, roots })}\n`)
       return 0
     }
 
@@ -293,7 +299,22 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
           `    ${e.change.padEnd(7)} ${e.kind.padEnd(kindW)}  ${printable(e.name)}  ${beforeAfter}`.trimEnd(),
         )
       }
-      const kinds = [...new Set(diff.entries.map((e) => e.kind))].filter((k) => k in WHAT_TO_DO)
+      if (roots.length > 0) {
+        lines.push('', '  root cause:')
+        for (const r of roots.slice(0, ROOTS_SHOWN)) {
+          const what = r.entries.map((e) =>
+            e.name === e.kind ? e.kind : `${e.kind} ${printable(e.name)}`,
+          )
+          lines.push(
+            `    ${r.chain.join(' \u2190 ')} \u2190 ${what.slice(0, 3).join(', ')}${what.length > 3 ? ` and ${what.length - 3} more` : ''}`,
+          )
+        }
+        if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
+      }
+      const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
+      const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
+        (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
+      )
       if (kinds.length > 0) {
         lines.push('', '  what to do:')
         // An upstream row names the task to ask next: the command, not a
@@ -320,4 +341,41 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   } finally {
     cache.close()
   }
+}
+
+const ROOTS_SHOWN = 5
+
+interface RootCause {
+  /** From the asked task down to the one whose own inputs moved. */
+  chain: string[]
+  entries: CacheKeyDiff['entries']
+}
+
+/**
+ * The tasks under `taskId`'s moved upstreams whose OWN key components
+ * moved in the same run, each with the chain that carried it up. A task
+ * visited once is not walked again (a diamond names its root once).
+ */
+function rootCauses(
+  db: Database,
+  runId: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+): RootCause[] {
+  const roots: RootCause[] = []
+  const seen = new Set([taskId])
+  const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
+    for (const e of moved) {
+      if (e.kind !== 'upstream' || seen.has(e.name)) continue
+      seen.add(e.name)
+      const next = [...chain, e.name]
+      const d = cacheKeyDiff(db, runId, e.name)
+      if (!d.found) continue
+      const own = d.entries.filter((x) => x.kind !== 'upstream')
+      if (own.length > 0) roots.push({ chain: next, entries: own })
+      walk(next, d.entries)
+    }
+  }
+  walk([taskId], entries)
+  return roots
 }

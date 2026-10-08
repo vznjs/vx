@@ -6,12 +6,25 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskId", "runId", "why", "diff"],
+      "required": ["taskId", "runId", "why", "diff", "roots"],
       "properties": {
         "taskId": { "type": "string" },
         "runId": { "type": "string" },
         "why": { "$ref": "#/$defs/why" },
-        "diff": { "$ref": "#/$defs/diff" }
+        "diff": { "$ref": "#/$defs/diff" },
+        "roots": {
+          "type": "array",
+          "description": "The tasks under moved upstreams whose own key components moved in this run, each with the chain from the asked task down to it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["chain", "entries"],
+            "properties": {
+              "chain": { "type": "array", "items": { "type": "string" } },
+              "entries": { "$ref": "#/$defs/entries" }
+            }
+          }
+        }
       }
     },
     {
@@ -94,23 +107,24 @@
         "taskId": { "type": "string" },
         "found": { "type": "boolean" },
         "previousRunId": { "type": ["string", "null"] },
-        "entries": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["kind", "name", "change", "before", "after"],
-            "properties": {
-              "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
-              "name": { "type": "string" },
-              "change": { "enum": ["added", "removed", "changed"] },
-              "before": { "type": ["string", "null"] },
-              "after": { "type": ["string", "null"] }
-            }
-          }
-        },
+        "entries": { "$ref": "#/$defs/entries" },
         "unchangedCount": { "type": "integer" },
         "note": { "type": "string" }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "name", "change", "before", "after"],
+        "properties": {
+          "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
+          "name": { "type": "string" },
+          "change": { "enum": ["added", "removed", "changed"] },
+          "before": { "type": ["string", "null"] },
+          "after": { "type": ["string", "null"] }
+        }
       }
     },
     "explanation": {
