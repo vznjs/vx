@@ -30,6 +30,7 @@ export interface ShortCircuit {
   preProbed: Map<string, ProbedEntry> // every stable task's probe, hit or miss
   restoreTier: Set<string> // the confirmed local hits
   uncachedKeys: Map<string, string> // uncached task id → its reused key
+  groupKeys: Map<string, UpfrontGroupKey> // unkeyed group id → its up-front key + upstream
 }
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
 // The tasks a workspace-output glob keeps out of the restore tier (`planRun` asks it too).
@@ -39,7 +40,7 @@ export function restoreTierExclusions(
 ): Set<string>
 ```
 
-- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys }`.
+- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys, groupKeys }`.
 - `uncachedKeys` — the up-front keys of uncached tasks that no upstream
   can change (stable-keys.md), minus every task `restoreTierExclusions`
   names (a root-anchored output may land in its project with no edge).
@@ -47,6 +48,11 @@ export function restoreTierExclusions(
   500 uncached tasks took 1,000 `task hash` calls (31.0 ms summed, min
   of 8) and now take 500 (10.6 ms); the wall moved within noise
   (B-91).
+- `groupKeys` — every unkeyed group's up-front key with the upstream it
+  folded (stable-keys.md). execute-task uses the key as `upfrontGroupKey`
+  when the live upstream has the same ids and keys in the same order, and
+  derives it otherwise: 1,090 `installDeps` groups were rolled up twice per
+  warm run, ~30 upstream ids sorted, joined and hashed each time (X-149).
 - `ProbedEntry { hash, hit }` — consumed by execute-task (probe reuse:
   the up-front probes ARE execute's probes, hoisted — no double work).
 

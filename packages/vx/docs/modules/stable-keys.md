@@ -21,7 +21,10 @@ can never drift on the stability gate.
   unfolded rewriter there, no workspace writer, no unstable dependency):
   an uncached key reads its whole project, so `dependsOnSiblingOutputs`,
   which answers false for it, is not that gate
-  (`uncached-key-once.test.ts`).
+  (`uncached-key-once.test.ts`). Given `groupKeys`, it records every
+  unkeyed group's key with the synthetic upstream it folded, stable or
+  not: execute-task compares that upstream with the live one before
+  reusing the key (`group-key-once.test.ts`).
 - `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream, dirByProject?, sameProject?)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary

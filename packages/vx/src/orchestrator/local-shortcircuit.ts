@@ -45,7 +45,7 @@ import { normalizeGlob, relPosix, span, staticPrefix } from '../util/index.js'
 import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { deriveStableKeys, workspaceInputsReach } from './stable-keys.js'
-import type { HashCache } from './task-hash.js'
+import type { HashCache, UpfrontGroupKey } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
 
 export interface ShortCircuitArgs {
@@ -91,6 +91,8 @@ export interface ShortCircuit {
    * again (`deriveStableKeys`' `uncachedKeys`).
    */
   uncachedKeys: Map<string, string>
+  /** Unkeyed group id → its up-front key (`deriveStableKeys`' `groupKeys`). */
+  groupKeys: Map<string, UpfrontGroupKey>
 }
 
 /**
@@ -105,11 +107,17 @@ export interface ShortCircuit {
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit> {
   let stableKeys
   const uncachedKeys = new Map<string, string>()
+  const groupKeys = new Map<string, UpfrontGroupKey>()
   const endKeys = span('stable keys')
   try {
-    stableKeys = await deriveStableKeys({ ...args, uncachedKeys })
+    stableKeys = await deriveStableKeys({ ...args, uncachedKeys, groupKeys })
   } catch {
-    return { preProbed: new Map(), restoreTier: new Set(), uncachedKeys: new Map() }
+    return {
+      preProbed: new Map(),
+      restoreTier: new Set(),
+      uncachedKeys: new Map(),
+      groupKeys: new Map(),
+    }
   } finally {
     endKeys()
   }
@@ -120,14 +128,14 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   const preProbed = new Map<string, ProbedEntry>()
   const restoreTier = new Set<string>()
   if (candidates.length === 0 && uncachedKeys.size === 0) {
-    return { preProbed, restoreTier, uncachedKeys }
+    return { preProbed, restoreTier, uncachedKeys, groupKeys }
   }
 
   const keptOut = restoreTierExclusions(args.nodes, args.workspaceRoot)
   // A root-anchored output may land in a project no edge leads from, so an
   // uncached key there is derived again once the writer may have run.
   for (const id of keptOut) uncachedKeys.delete(id)
-  if (candidates.length === 0) return { preProbed, restoreTier, uncachedKeys }
+  if (candidates.length === 0) return { preProbed, restoreTier, uncachedKeys, groupKeys }
 
   // Bounded pool over the stable candidates: probe local ONCE each. A
   // confirmed hit becomes restore-tier (unless workspace outputs disable
@@ -153,7 +161,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
         preProbed.set(node.id, { hash, hit })
         if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       }
-      return { preProbed, restoreTier, uncachedKeys }
+      return { preProbed, restoreTier, uncachedKeys, groupKeys }
     } catch {
       // Fall through to the per-hash pool, which isolates a failing probe
       // to its own task.
@@ -176,7 +184,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   }
   await Promise.all(Array.from({ length: workers }, () => pump()))
 
-  return { preProbed, restoreTier, uncachedKeys }
+  return { preProbed, restoreTier, uncachedKeys, groupKeys }
 }
 
 /**

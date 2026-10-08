@@ -44,7 +44,11 @@ Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
 
 ### A. Group task (no `exec`)
 
-Return `{ status: 'success', exitCode: 0, durationMs: 0, hash: await computeGroupKey(...) }`.
+Return `{ status: 'success', exitCode: 0, durationMs: 0, hash }`, `hash`
+being `computeGroupKey`'s. An unkeyed group takes `upfrontGroupKey`'s key
+when the live upstream has its ids and keys in order, else
+`computeGroupHash(upstream)`, synchronously; a keyed group awaits
+`computeTaskHash`.
 No spawn, no I/O. The hash is a stable rollup so downstream tasks
 filtering `inputs.tasks` to include this group still invalidate when
 anything beneath it changes.

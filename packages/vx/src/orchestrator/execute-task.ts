@@ -76,12 +76,13 @@ export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
 import {
-  computeGroupKey,
+  computeGroupHash,
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
   movedInput,
   type TaskInputComponent,
+  type UpfrontGroupKey,
 } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
@@ -191,6 +192,11 @@ export interface ExecuteArgs {
    */
   upfrontKey?: string
   /**
+   * An unkeyed group's up-front key (`deriveStableKeys`' `groupKeys`): used
+   * verbatim when the live upstream folds the same ids and keys.
+   */
+  upfrontGroupKey?: UpfrontGroupKey
+  /**
    * Start the sandbox runtime, on the first task that executes inside one
    * (run.ts, `prepareSandbox`). Absent when no task in the run declares a
    * sandbox. A cache hit never calls it: a hit needs no sandbox.
@@ -263,17 +269,25 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
  */
 async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  const hash = await computeGroupKey({
-    node: args.node,
-    upstream: args.upstream,
-    workspaceRoot: args.workspaceRoot,
-    workspaceFingerprint: args.workspaceFingerprint,
-    cache: args.cache,
-    forwardArgs: args.forwardArgs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-  })
+  // `computeGroupKey`: an unkeyed group's key is its upstream's alone, so
+  // the up-front one stands when that upstream is unchanged.
+  const upfront = args.upfrontGroupKey
+  const hash =
+    args.node.config.cache === undefined
+      ? upfront !== undefined && sameUpstream(args.upstream, upfront.upstream)
+        ? upfront.key
+        : computeGroupHash(args.upstream)
+      : await computeTaskHash({
+          node: args.node,
+          upstream: args.upstream,
+          workspaceRoot: args.workspaceRoot,
+          workspaceFingerprint: args.workspaceFingerprint,
+          cache: args.cache,
+          forwardArgs: args.forwardArgs,
+          nestedProjectDirs: args.nestedProjectDirs,
+          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+        })
   return {
     node: args.node,
     status: 'success',
@@ -286,6 +300,17 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
     wallclockStartNs: wallclockNs,
     wallclockEndNs: wallclockNs,
   }
+}
+
+/** The same ids with the same keys, in order: what `computeGroupHash` reads. */
+function sameUpstream(live: TaskOutcome[], upfront: TaskOutcome[]): boolean {
+  if (live.length !== upfront.length) return false
+  for (let i = 0; i < live.length; i++) {
+    const a = live[i]
+    const b = upfront[i]!
+    if (a === undefined || a.node.id !== b.node.id || a.hash !== b.hash) return false
+  }
+  return true
 }
 
 /**

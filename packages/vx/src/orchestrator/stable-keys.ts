@@ -16,7 +16,12 @@ import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
 import { foldedDeps } from './keyed-projects.js'
-import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
+import {
+  computeGroupHash,
+  computeTaskHash,
+  type HashCache,
+  type UpfrontGroupKey,
+} from './task-hash.js'
 import { filterUpstreamHashes, keyedOutcome, keyUpstream } from './upstream.js'
 
 export interface DeriveStableKeysArgs {
@@ -33,6 +38,11 @@ export interface DeriveStableKeysArgs {
    * that key reads, so execute-task need not derive it a second time.
    */
   uncachedKeys?: Map<string, string>
+  /**
+   * Filled with each unkeyed group's key and the upstream it folded:
+   * execute-task reuses the key when the live upstream matches.
+   */
+  groupKeys?: Map<string, UpfrontGroupKey>
 }
 
 export interface StableKey {
@@ -217,20 +227,27 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       // dependents that filter inputs.tasks through the group still
       // cascade (and forward their producers, above). They inherit
       // instability from any unstable member.
-      keyById.set(
-        id,
-        await computeGroupKey({
-          node,
-          upstream,
-          workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
-          gitFilesCache: args.gitFilesCache,
-          hashCache: args.hashCache,
-        }),
-      )
+      // `computeGroupKey`, with the unkeyed branch kept synchronous.
+      if (node.config.cache === undefined) {
+        const key = computeGroupHash(upstream)
+        keyById.set(id, key)
+        args.groupKeys?.set(id, { key, upstream })
+      } else {
+        keyById.set(
+          id,
+          await computeTaskHash({
+            node,
+            upstream,
+            workspaceRoot: args.workspaceRoot,
+            workspaceFingerprint: args.workspaceFingerprint,
+            cache: args.cache,
+            forwardArgs: args.forwardArgs,
+            nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
+            gitFilesCache: args.gitFilesCache,
+            hashCache: args.hashCache,
+          }),
+        )
+      }
       if (node.deps.some((d) => unstableById.has(d))) unstableById.add(id)
       continue
     }

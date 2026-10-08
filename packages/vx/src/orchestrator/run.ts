@@ -54,6 +54,7 @@ import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
+import type { ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
@@ -116,6 +117,7 @@ const emptyShortCircuit = (): ShortCircuit => ({
   preProbed: new Map(),
   restoreTier: new Set(),
   uncachedKeys: new Map(),
+  groupKeys: new Map(),
 })
 
 /**
@@ -938,9 +940,19 @@ async function runOnBus(
     // The scheduler's fail-fast stop, as the retry loop of a task already
     // in flight sees it.
     const failFast = new AbortController()
-    const buildExecuteArgs = (node: TaskNode, upstream: TaskOutcome[], reuseProbe = true) => {
+    // A literal of the fields every task carries, then each optional one
+    // assigned only when present: twelve conditional spreads per task cost
+    // ~18 ms of object copying on a 1,090-package warm run (X-149).
+    const track = telemetry?.track
+    const armSandbox = sandboxArmer !== null ? () => sandboxArmer.arm() : undefined
+    const buildExecuteArgs = (
+      node: TaskNode,
+      upstream: TaskOutcome[],
+      reuseProbe = true,
+    ): ExecuteArgs => {
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
+      const upfrontGroupKey = shortCircuit.groupKeys.get(node.id)
       if (
         options.continueMode === 'always' &&
         node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
@@ -948,7 +960,7 @@ async function runOnBus(
         taintSeeds.add(node.id)
       const tainted = taint.judge(node, upstream)
       if (tainted) taintedRan.add(node.id)
-      return {
+      const a: ExecuteArgs = {
         node,
         upstream,
         workspaceRoot,
@@ -956,31 +968,18 @@ async function runOnBus(
         cache,
         cachePolicy: policy,
         forwardArgs: options.forwardArgs,
-        ...(options.retries !== undefined ? { retries: options.retries } : {}),
-        ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
         log,
         executor: placements.executors.get(node.id) ?? UNPLACED_EXECUTOR,
-        ...(download.modeOf.get(node.id) === 'deferred' ? { download: 'deferred' as const } : {}),
         deferred: deferredOutputs,
-        ...(placements.remoteOnlyNoop.has(node.id) ? { remoteOnlyNoop: true } : {}),
-        ...(placements.remoteOnly.has(node.id) ? { remoteOnly: true } : {}),
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         cacheDir,
         runStartHrTimeNs,
         persistentRegistry,
         liveChildren,
-        ...(telemetry?.track !== undefined ? { track: telemetry.track } : {}),
-        ...(explainMiss !== undefined ? { explainMiss } : {}),
         gitFilesCache,
         hashCache,
         probesAfterWrites: lateProbes,
-        ...(probe !== undefined ? { preProbed: probe } : {}),
-        ...(upfrontKey !== undefined ? { upfrontKey } : {}),
-        ...(tainted ? { taintedUpstream: true } : {}),
-        ...(dependedOn.has(node.id) ? {} : { noDependants: true as const }),
-        ...(holders.has(node.id) ? { terminal: true as const } : {}),
         fingerprintWatch,
-        ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
         keyedProjects: keyed,
         outputDirSnapshots,
         deferSave: saveLane.defer,
@@ -988,6 +987,21 @@ async function runOnBus(
         stopSignal: stopRun.signal,
         failFast: failFast.signal,
       }
+      if (options.retries !== undefined) a.retries = options.retries
+      if (taskTimeoutDefault !== undefined) a.timeout = taskTimeoutDefault
+      if (download.modeOf.get(node.id) === 'deferred') a.download = 'deferred'
+      if (placements.remoteOnlyNoop.has(node.id)) a.remoteOnlyNoop = true
+      if (placements.remoteOnly.has(node.id)) a.remoteOnly = true
+      if (track !== undefined) a.track = track
+      if (explainMiss !== undefined) a.explainMiss = explainMiss
+      if (probe !== undefined) a.preProbed = probe
+      if (upfrontKey !== undefined) a.upfrontKey = upfrontKey
+      if (upfrontGroupKey !== undefined) a.upfrontGroupKey = upfrontGroupKey
+      if (tainted) a.taintedUpstream = true
+      if (!dependedOn.has(node.id)) a.noDependants = true
+      if (holders.has(node.id)) a.terminal = true
+      if (armSandbox !== undefined) a.armSandbox = armSandbox
+      return a
     }
 
     const executeWithDedup = admitTasks({

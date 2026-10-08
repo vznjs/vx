@@ -1156,3 +1156,16 @@ reaches no build task.` The plan now carries the run's own line
   is. Same refusals, same messages. A/B (compiled, warm, no restore, 11
   interleaved rounds, A/A beside): `build graph` median 96.3 → 48.5 ms
   (A/A 88.5), min 74.5 → 38.5; CPU median 1,665 → 1,478 ms (A/A 1,618).
+- **X-149.** A warm all-hit run keyed every unkeyed group twice: the
+  up-front pass and `executeGroupTask` each sorted, joined and hashed
+  ~30 upstream ids for the 1,090 `installDeps` groups. The up-front pass
+  now hands each group's key with the upstream it folded
+  (`ShortCircuit.groupKeys`); execute-task reuses it when the live
+  upstream has the same ids and keys in order, else derives it, without
+  an await. `buildExecuteArgs` and `keyedOutcome` assign optional fields
+  instead of spreading them per task. Keys unchanged. A/B (compiled,
+  warm, no restore, 31 interleaved rounds over two shared copies, A/A
+  beside): wall median 752 → 708 ms (A/A 751), min 620 → 581; CPU
+  median 1,480 → 1,418 ms (A/A 1,488); `run graph` stage median
+  (VX_TIMING, 11 rounds) 237 → 209 ms (A/A 255). Row:
+  `group-key-once.test.ts`.
