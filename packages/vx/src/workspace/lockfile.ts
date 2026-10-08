@@ -152,7 +152,8 @@ export async function frozenProjectConfigs(
 ): Promise<ProjectConfig[]> {
   const entries = metas.map((meta) => {
     const rel = relPosix(root, meta.configPath)
-    const entry = lock.projects[meta.name]
+    // Own entries only: `constructor` read Object's, "locked" at undefined (D-152).
+    const entry = Object.hasOwn(lock.projects, meta.name) ? lock.projects[meta.name] : undefined
     if (entry !== undefined && entry.configPath !== rel) {
       // A renamed or moved config: "has no entry for a" named an entry the
       // lock holds, under its old path (D-88).

@@ -114,7 +114,10 @@ function capturedProbe(retain: boolean, mib: number): string {
   return `
     import { runCommand } from ${JSON.stringify(RUNNER)}
     const r = await runCommand({
-      command: 'head -c ' + (${mib} * 1024 * 1024) + ' /dev/zero | tr "\\\\0" "a"',
+      // No \`tr\` to make the bytes printable: it cost ten times what \`head\`
+      // does here, and one more process per probe on a shared runner; the
+      // claim is about volume, which NUL bytes carry the same (both 8-bit).
+      command: 'head -c ' + (${mib} * 1024 * 1024) + ' /dev/zero',
       cwd: process.cwd(),
       env: process.env,
       capture: { stdout: ${retain}, stderr: ${retain} },
@@ -131,8 +134,11 @@ function capturedProbe(retain: boolean, mib: number): string {
   `
 }
 
-const CAP_FEW_MIB = 40
-const CAP_MANY_MIB = 160
+// 40 → 160 MiB, sequentially through four probes, outran the 60 s timeout on
+// a macOS runner holding six workers on three cores; the 4× margin over each
+// line below rests on the ratio of volumes, not on their size.
+const CAP_FEW_MIB = 20
+const CAP_MANY_MIB = 80
 const CAP_EXTRA_MIB = CAP_MANY_MIB - CAP_FEW_MIB
 
 describe('runCommand stream capture', () => {
@@ -150,10 +156,11 @@ describe('runCommand stream capture', () => {
 
       // Retaining is the documented default, and since 2026-09-16 what it
       // retains is BOUNDED (a head and a tail, `CAPTURE_*_CHARS`): the extra
-      // 120 MiB the child writes must not cost the extra 120 MiB. Measured
+      // 60 MiB the child writes must not cost the extra 60 MiB. Measured
       // 17 → 17 MiB (the two 8 MiB ends); full retention costs the whole
-      // 120, 4× this line. `tests/capture-cap.test.ts` pins that the head
-      // and the tail are still there.
+      // 60, 4× this line; 20 MiB still fills both ends.
+      // `tests/capture-cap.test.ts` pins that the head and the tail are still
+      // there.
       expect(keepMany - keepFew).toBeLessThan(CAP_EXTRA_MIB * 0.25)
 
       // Opted down, the stream is still fully drained, just not retained:

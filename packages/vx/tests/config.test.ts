@@ -165,12 +165,15 @@ describe('defineWorkspace', () => {
     defineWorkspace({ cacheDir: '.vx', pipeline: {} })
     // @ts-expect-error `maxAge` is not a cacheRetention key.
     defineWorkspace({ cacheRetention: { olderThan: '7d', maxAge: '1d' } })
+    // @ts-expect-error `upfrontKey` is a typo of `upfrontKeys` (D-155).
+    defineWorkspace({ rules: { exclusiveOutputs: false, upfrontKey: false } })
     // CONTROL: every declared key type-checks.
     defineWorkspace({
       concurrency: 4,
       cacheDir: '.vx',
       timeout: 1,
       cacheRetention: { olderThan: '7d', maxSize: '1g' },
+      rules: { exclusiveOutputs: false, upfrontKeys: false },
       plugins: [],
     })
   })

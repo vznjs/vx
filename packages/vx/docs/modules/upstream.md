@@ -24,6 +24,10 @@ NOT the same question:
 export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[]
 // `node.deps` less `node.orderOnly`: the dependencies a key may fold.
 export function keyedDeps(node: TaskNode): readonly string[]
+// A dependency as a key reads it (only `node` and `hash` matter): the
+// synthetic upstream the plan, the stable keys and the excluded-dependency
+// keys fold.
+export function keyedOutcome(node: TaskNode, hash: string | undefined): TaskOutcome
 
 export function filterUpstreamHashes(
   upstream: TaskOutcome[],

@@ -177,6 +177,22 @@ describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
     )
     expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
   })
+
+  it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
+    // The workspace file has no JSON rule before its schema; the fuzz found it.
+    expect(refusal({ cacheRetention: { olderThan: 30n } })).toBe(
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30n)`,
+    )
+    expect(refusal({ cacheRetention: { maxSize: Symbol('s') } })).toBe(
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got Symbol(s))`,
+    )
+    const p = testPlugin('fz-fp-bigint', {
+      fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: plugin 'fz-fp-bigint' claims fingerprint file 1n, which is not a file name at the workspace root`,
+    )
+  })
 })
 
 describe('task refusals the sweep found unheld (item 653)', () => {

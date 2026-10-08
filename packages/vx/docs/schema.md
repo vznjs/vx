@@ -197,7 +197,7 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
 - For a **normal task**, `timeout` bounds the total run time, counted
-  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
   task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
@@ -208,9 +208,10 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 - On a **plugin executor**, the timeout aborts the request's `signal`
-  instead (core cannot kill a process the executor spawned); a non-zero
-  exit after it is reported timed out, and an executor still running
-  after the kill grace is abandoned (H-12, H-14).
+  instead (core cannot kill a process the executor spawned); any exit
+  after it is reported timed out, a 0 from a child that trapped the stop
+  included (X-125), and an executor still running after the kill grace
+  is abandoned (H-12, H-14).
 
 **Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
 the largest delay a timer can hold. A larger value does _not_ mean "no
@@ -248,7 +249,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
   Nor is a task in flight when `--continue=never` stops the run: its
-  attempt finishes, and its failure is the last.
+  attempt finishes, and its failure is the last, even when its retry
+  was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
@@ -558,7 +560,7 @@ the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to 
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and `TMPDIR` values over these names:
+proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
@@ -577,7 +579,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
-`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
+`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
@@ -1054,7 +1056,10 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, a dangling one, or
+it (never following it). An output DIRECTORY that is a symlink
+(`dist -> real-out`) is followed: its target is cleaned, saved and
+restored as the output; one that resolves outside the project refuses
+the task, naming the link. A link to a directory, a dangling one, or
 one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
@@ -1108,7 +1113,8 @@ project dir (e.g. a root-level generated file). Same capture / restore
 into the artifact under a separate `workspace-outputs/<rel-to-root>`
 namespace so project and workspace outputs never collide. A project
 `outputs.files` glob under a top-level `workspace-outputs/` is refused
-at load: that name is the namespace.
+at load: that name is the namespace. A file another glob matches there
+(`**/*.js`) is refused at save, and the task is not cached.
 
 ```ts
 outputs: {
@@ -1167,7 +1173,7 @@ interface SandboxGrants {
   network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
   systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space'; each grants system-info and sysctl-read (macOS)
   unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
+  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host or another running task already holds fails the task)
   machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
@@ -1301,8 +1307,10 @@ of every task's denies and refuses those domains to every task, checked
 before the allowlist (B-21). A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
-`ignore: { network: ['<host>:<port>'] }` silences one. Until 2026-10-02
-Linux reported none, and the line could not be ignored on macOS.
+`ignore: { network: ['<host>:<port>'] }` silences one, matched as the
+proxy matches: case-blind, a trailing dot dropped (until 2026-10-08 the
+client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until
+2026-10-02 Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
@@ -1330,7 +1338,8 @@ Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a tas
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
-real path of every workspace package linked there. A project never names
+real path of every workspace package linked there, and in turn in each
+such package's own `node_modules`. A project never names
 a sibling to import what its `package.json` already depends on. A link
 back to the task's own project, or to a directory holding it, is not
 followed: npm and Yarn link every workspace package at the root, the
@@ -1530,7 +1539,7 @@ interface WorkspaceRules {
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
@@ -2015,3 +2024,4 @@ Workspace-config errors:
 | `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                                  | A fingerprint claim without its file list or its `affected` answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `plugin '<name>' claims fingerprint file "<file>", which is not a file name at the workspace root`                                                           | A claim names a path, or no name: a claim is a bare file at the root (`vx watch`'s root arm is not recursive).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                                     | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once`                  | One plugin package declared twice (`plugins: [bun(), bun()]`); the message named it as two plugins (D-158).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |

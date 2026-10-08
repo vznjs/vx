@@ -17,7 +17,7 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
 import type { CacheConfig, CacheInputs } from '../config.js'
 import {
@@ -33,6 +33,7 @@ import {
   slashBraceExpansions,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   taskGlob,
   UserError,
 } from '../util/index.js'
@@ -643,7 +644,11 @@ function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
   return (namesNodeModules ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(globFor)
 }
 
-/** Resolve declared output globs (project-relative) to actual produced files. */
+/**
+ * Resolve declared output globs (project-relative) to actual produced files.
+ * An output directory linked out of the project is refused by name (X-88):
+ * dropping its files silently saved an empty entry under a green run.
+ */
 export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
@@ -652,9 +657,11 @@ export async function resolveOutputs(args: {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
+  const trees = asTrees(positive)
+  refuseDirLinkedOut(args.projectDir, trees)
   const scanned = [
     ...(await scanUnion(
-      asTrees(positive),
+      trees,
       excludeGlobs,
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
@@ -668,6 +675,53 @@ export async function resolveOutputs(args: {
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
   return containedIn(args.projectDir, scanned).sort()
+}
+
+/**
+ * The literal head of each output glob, walked: the scan follows a link
+ * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link to a
+ * FILE is the archive's to judge (L-23); a dangling one the restore's.
+ */
+function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void {
+  let realRoot: string | undefined
+  for (const tree of trees) {
+    let at = projectDir
+    for (const part of staticPrefix(tree).split('/')) {
+      if (part === '' || part === '.') continue
+      at = path.join(at, part)
+      if (!isInside(projectDir, at)) break
+      let st
+      try {
+        st = lstatSync(at)
+      } catch {
+        break
+      }
+      if (!st.isSymbolicLink()) continue
+      let real: string
+      try {
+        real = realpathSync(at)
+        if (!statSync(real).isDirectory()) break
+      } catch {
+        break
+      }
+      realRoot ??= realOr(projectDir)
+      if (!isInside(realRoot, real)) {
+        throw new UserError(
+          `${at} is a symbolic link to ${real}, outside ${projectDir} — vx never cleans, saves ` +
+            'or restores declared outputs through a link that leaves the project. Remove the ' +
+            'link and re-run, or stop declaring outputs under it.',
+        )
+      }
+    }
+  }
+}
+
+function realOr(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
 }
 
 /**
@@ -708,16 +762,9 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
   // promise round trip per call was most of this function's cost on every
   // miss (B, 2026-09-30).
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+  const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
-  const resolved = uniqueDirs.map(real)
+  const resolved = uniqueDirs.map(realOrNull)
   const contained = new Set<string>()
   for (const [i, dir] of uniqueDirs.entries()) {
     const real = resolved[i]
@@ -899,7 +946,7 @@ const SYNC_CLEAN_MAX = 128
  * sends the reader to file a bug against a permission bit.
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
-  const files = notThroughLink(all, root)
+  const files = insideRoot(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -929,21 +976,14 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
 }
 
 /**
- * The paths whose directory is really where it sits, not reached through a
- * symlinked directory. A save follows `dist -> real-out` on purpose
- * (turborepo#13042), but a clean through a link deletes the target's
- * files: `public -> static` in the same project took the tracked
- * `static/logo.svg` before every run (X-5). The link is a declared
- * output's own entry; what it leads to is not.
+ * The paths whose directory resolves inside `root`. A link inside the
+ * project is followed, as the save follows it (turborepo#13042): a clean
+ * that skipped `dist -> real-out` left the last run's files for the next
+ * entry to save (X-88). One that leaves the project is never deleted
+ * through (X-5); `cleanOutputPaths` takes recorded rows, not the resolver's
+ * contained set, so the check is here too.
  */
-function notThroughLink(files: readonly string[], root: string): string[] {
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
+function insideRoot(files: readonly string[], root: string): string[] {
   // Resolved only once a directory exists to compare: after a clean pruned
   // the outputs (the common restore) nothing does, and the call was most
   // of an empty clean.
@@ -955,9 +995,8 @@ function notThroughLink(files: readonly string[], root: string): string[] {
     if (ok === undefined) {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
-      const r = real(dir)
-      ok =
-        r === null || r === path.join((realRoot ??= real(root) ?? root), path.relative(root, dir))
+      const r = realOrNull(dir)
+      ok = r === null || isInside((realRoot ??= realOrNull(root) ?? root), r)
       own.set(dir, ok)
     }
     return ok
@@ -1101,8 +1140,12 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
-function stripTrailingSlash(p: string): string {
-  return p.replace(/\/+$/, '')
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
 }
 
 // The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it
@@ -1354,6 +1397,18 @@ export function declaresInput(
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
   const matcher = workspaceMatcher(ws, cache.outputs.workspaceFiles ?? [])
   return matcher(workspaceRel)
+}
+
+/**
+ * Whether a cached task's `workspaceFiles` may name a file under `dir`
+ * (workspace-relative): a nested repository git reports as that one path,
+ * whose files the key folds and a match against the path alone misses.
+ * By the entries' static prefixes, so a glob that may descend counts.
+ */
+export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean {
+  const ws = cache.inputs.workspaceFiles
+  if (ws === undefined || ws.length === 0) return false
+  return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
 }
 
 function inPlan(plan: FilesPlan, rel: string): boolean {

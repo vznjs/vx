@@ -10,6 +10,7 @@
 
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
+import { env } from './env.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
@@ -41,12 +42,6 @@ export function assetsToUpload(
 ): string[] {
   const have = new Set(release.assets.map((a) => a.name))
   return files.filter((f) => f.startsWith(`vx-${os}-`) && !have.has(f)).sort()
-}
-
-function env(name: string): string {
-  const value = process.env[name]
-  if (value === undefined || value === '') throw new Error(`${name} is not set`)
-  return value
 }
 
 async function main(): Promise<void> {

@@ -30,7 +30,6 @@ export { defaultLogger, resolveOutputView } from './logger.js'
 export { detectColors, paint, type ColorSupport } from './colors.js'
 export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
-export { formatDuration } from './summary.js'
 export {
   createEventBus,
   wireForwarder,
