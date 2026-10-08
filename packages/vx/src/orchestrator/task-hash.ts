@@ -17,7 +17,7 @@ import {
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { span, relPosix, xxh3hex } from '../util/index.js'
+import { isUserError, relPosix, secretMask, span, UserError, xxh3hex } from '../util/index.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
@@ -296,6 +296,13 @@ async function resolveKeyInput(
           projectFilesCache: args.hashCache.projectFiles,
         }
       : {}),
+  }).catch((err: unknown) => {
+    // A failed probe's message quotes its command and output, and the probe
+    // runs in vx's own environment: `echo $NPM_TOKEN` printed the token in
+    // the task's stream and `--dry`'s stderr.
+    if (!isUserError(err)) throw err
+    const secrets = secretMask([process.env, cfg.exec?.env?.define], cfg.exec?.env?.secret)
+    throw secrets === null ? err : new UserError(secrets.mask(err.message))
   })
 
   const upstreamPairs = filterUpstreamHashes(
