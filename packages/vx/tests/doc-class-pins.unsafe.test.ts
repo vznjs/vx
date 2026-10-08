@@ -444,12 +444,13 @@ describe('every page stating the timeout ladder states all four rungs', () => {
     const pages = handAuthoredDocs().filter((p) =>
       readFileSync(p, 'utf8').includes('VX_TASK_TIMEOUT'),
     )
-    // cli.md, schema.md and the configure guide's workspace section (the
-    // workspace-config guide until the short site). A fourth copy lands
-    // here unpinned no more.
+    // cli.md, schema.md, the configure guide's workspace section (the
+    // workspace-config guide until the short site) and the feature
+    // inventory. A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
       'configure.md',
+      'features.md',
       'schema.md',
     ])
     for (const page of pages) {
