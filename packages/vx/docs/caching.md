@@ -1189,6 +1189,9 @@ root) and it holds everything, shared with no other workspace:
 ├── cache.db                                SQLite metadata + run history
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
+├── failures/<runId>.json                   a failed run's task output and the files it
+│                                           names (`vx last --format json`, getFailures);
+│                                           the newest 50 kept
 └── <hash>.tar.zst                          one artifact per cache entry:
     ├── stdout                              captured stdout (always present, may be empty)
     ├── outputs/<rel>                       declared output files, project-relative (when any)
@@ -1198,6 +1201,14 @@ root) and it holds everything, shared with no other workspace:
     │                                       packed under (v35), the miss's CPU and RSS
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
+
+`failures/` sits outside `cache.db` so the index layout, and every
+shared store under it, stays as it was. Each file is
+`{ runId, tasks: [{ taskId, project, task, exitCode, timedOut?, output, locations }] }`,
+written at run end (temp file + rename) only when a task failed with
+output; `output` is plain text (ANSI stripped, secrets masked, the first
+8 KiB and last 56 KiB). A refused write (`EACCES`, `ENOSPC`) costs only
+that output, never the run's verdict.
 
 `<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
 additive: tasks that don't declare `outputs.workspaceFiles` produce

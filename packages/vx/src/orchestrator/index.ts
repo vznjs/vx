@@ -158,6 +158,8 @@ export {
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
+export { runFailures, type RunFailures, type TaskFailure } from './run-failures.js'
+export type { OutputLocation } from './path-links.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export type {
   CacheEntryRow,

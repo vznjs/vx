@@ -28,6 +28,7 @@ const ARGS: Record<string, unknown> = {
   getRunHistory: {},
   explainCacheKey: { taskId: 'a#build' },
   whyDidThisRerun: { taskId: 'a#build' },
+  getFailures: {},
   getWorkspaceInfo: {},
 }
 
@@ -56,7 +57,7 @@ beforeAll(async () => {
   await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
   await writeFile(
     path.join(root, 'packages', 'a', 'vx.config.mjs'),
-    "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+    "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }, fail: { exec: { command: 'echo src/x.js:1:2; exit 1' } } } }\n",
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   // Two runs with an input changed between, so whyDidThisRerun has a
@@ -64,6 +65,9 @@ beforeAll(async () => {
   run()
   await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'y')
   run()
+  // A failure that names a file, so getFailures answers every key.
+  const failed = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'run', 'a#fail'], cwd: root })
+  expect(failed.exitCode).toBe(1)
   // A task lighter than vx records no peak, and history then omits
   // maxPeakRssBytes: one run with a peak makes the key reachable anywhere.
   const cache = new Cache(path.join(root, '.vx', 'cache'))

@@ -176,6 +176,7 @@ describe('package boundaries', () => {
       'refuseUnknownOptions',
       'resolveRunId',
       'run',
+      'runFailures',
       'splitTaskId',
       'whyDidThisRerunQuery',
       // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
