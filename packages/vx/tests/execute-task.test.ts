@@ -1594,7 +1594,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     ])
   })
 
-  it('a preProbed HIT restores only for a task that reads the cache (X-191)', async () => {
+  it('a preProbed HIT restores only for a task that reads the cache (X-193)', async () => {
     // The hit's fast path in `executeTask` sits ahead of the run path's own
     // read gate, so it carries that gate: a run with reads off (`--force`),
     // a remote-only task, or a remote-only no-op never restores.

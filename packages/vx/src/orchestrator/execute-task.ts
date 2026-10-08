@@ -262,7 +262,7 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
   // A probed hit needs none of the run path's set-up: the upstream folding,
   // timers and closures `executeCachedTask` builds on entry were ~15 µs of
-  // each of a warm run's hits (X-191). The same branch there handles it
+  // each of a warm run's hits (X-193). The same branch there handles it
   // when this one does not apply.
   const probed = args.preProbed
   if (probed?.hit != null && readsCache(args) && args.remoteOnlyNoop !== true) {

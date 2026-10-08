@@ -1258,7 +1258,7 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 198 → 167 ms in an earlier 14-round timing
   run.
   Rows: `settle-now.test.ts`.
-- **X-191.** A probed hit reached its restore only after
+- **X-193.** A probed hit reached its restore only after
   `executeCachedTask` had built the run path on entry: the upstream
   folding, timers and closures, ~15 µs of each warm hit. `executeTask`
   now restores a probed hit first, through the same guards hoisted out
