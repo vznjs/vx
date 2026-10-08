@@ -612,7 +612,14 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', 'hello'])
     expect(code).toBe(1)
-    expect(stderr).toContain('not inside a project')
+    expect(stderr).toBe(
+      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+    )
+    stderr = ''
+    expect(await run(['watch', 'hello'])).toBe(1)
+    expect(stderr).toBe(
+      'vx watch: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx watch --help`)\n',
+    )
   })
 
   it('cwd inside a project package resolves to that project', async () => {
@@ -2230,16 +2237,18 @@ describe('parsePruneArgs', () => {
   // sweep deleted each with the suite green).
   it('refuses a value it cannot parse instead of pruning by it', () => {
     expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({
-      error: 'invalid duration: abc (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({
-      error: 'invalid duration: 1.5d (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got 1.5d) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({
-      error: 'invalid size: abc (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({
-      error: 'invalid size: 1.5G (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got 1.5G) (see `vx cache --help`)',
     })
   })
 

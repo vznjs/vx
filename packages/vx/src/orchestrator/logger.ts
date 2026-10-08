@@ -19,9 +19,16 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatDuration, formatSummarySection, neverStarted, type RunContext } from './summary.js'
+import { formatSummarySection, neverStarted, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
-import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
+import {
+  appendTail,
+  createTail,
+  formatElapsed,
+  resetTail,
+  tailText,
+  type Tail,
+} from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
 
@@ -880,7 +887,7 @@ export function defaultLogger(
             } else {
               emitBlock(
                 `::group::${ghaData(
-                  `${node.id} (${outcomeWord(outcome)} ${formatDuration(outcome.durationMs)})`,
+                  `${node.id} (${outcomeWord(outcome)} ${formatElapsed(outcome.durationMs)})`,
                 )}\n${body}::endgroup::\n`,
               )
             }

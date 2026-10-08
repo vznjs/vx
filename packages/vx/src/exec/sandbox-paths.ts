@@ -82,7 +82,7 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
  * rest of the host is mounted read-only), or under a read grant, a write
  * grant or a baseline read, by its canonical path. A path no grant holds
  * under a denial is not there inside the sandbox, which the shell reports
- * as "not found" with no denial a trace can see (an `execve`).
+ * as "not found": a PATH search is a stat, which the trace does not stop on.
  */
 export function sandboxReads(
   sandbox: {

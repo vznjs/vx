@@ -1,11 +1,12 @@
-// `vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry]
+// `vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry]
 // [--force] [--mjs]` — one vx.config.ts per workspace package from an
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
 // live instead, as `vx init` writes it), and vx installed with the repo's
 // manager.
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json, nx.json or a Lerna-on-Nx lerna.json → Nx (the resolved
-// graph, exported by nx if absent);
+// graph, exported by nx if absent); `vite-plus` in the root package.json → Vite Task, last:
+// vite-plus is a whole toolchain, so beside turbo.json or Nx it is not the task runner.
 // The mappers return a plan; core's migration seam
 // (`applyMigration`) renders, guards, writes and reports, so what this
 // package writes reads exactly like what `vx init` writes.
@@ -37,6 +38,7 @@ import {
   parseModeAnswer,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
+import { migrateViteTask } from './migrate-vite-task.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
 import {
   extendWorkspaceFile,
@@ -52,7 +54,7 @@ export interface MigrateArgs {
   force: boolean
   /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
-  from?: 'turbo' | 'nx'
+  from?: 'turbo' | 'nx' | 'vite-task'
   /** `--native` / `--keep`; unset asks a terminal and is native elsewhere. */
   mode?: AdoptionMode
   /** `--no-install`: leave package.json's dependencies alone. */
@@ -63,7 +65,7 @@ export interface MigrateArgs {
 }
 
 const USAGE =
-  'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+  'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -81,10 +83,10 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
       out.mode = mode
     } else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx') {
+      if (v !== 'turbo' && v !== 'nx' && v !== 'vite-task') {
         return {
           ...out,
-          error: `--from must be turbo or nx (package.json scripts: \`vx init\`)`,
+          error: `--from must be turbo, nx or vite-task (package.json scripts: \`vx init\`)`,
         }
       }
       out.from = v
@@ -153,16 +155,31 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     throw new UserError('--from turbo, but no turbo.json at the workspace root')
   }
 
-  const runner: 'turbo' | 'nx' | undefined =
-    parsed.from ?? (hasTurbo ? 'turbo' : hasGraph || hasNxJson || lerna ? 'nx' : undefined)
+  const runner: 'turbo' | 'nx' | 'vite-task' | undefined =
+    parsed.from ??
+    (hasTurbo
+      ? 'turbo'
+      : hasGraph || hasNxJson || lerna
+        ? 'nx'
+        : (await hasVitePlus(root))
+          ? 'vite-task'
+          : undefined)
   if (runner === undefined) {
     throw new UserError(
-      'nothing to migrate: no turbo.json and no Nx workspace — ' +
+      'nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — ' +
         'for package.json scripts, run `vx init`',
     )
   }
-  const mode = parsed.mode ?? (await askMode(runner, lerna ? 'lerna.json' : undefined, parsed.dry))
-  if (mode === 'keep') return keep(root, runner, hasTurbo, lerna, parsed)
+  if (runner === 'vite-task' && parsed.mode === 'keep') {
+    throw new UserError(
+      '--keep: no plugin runs a Vite Task config live; drop --keep to write vx.config files',
+    )
+  }
+  const mode =
+    runner === 'vite-task'
+      ? 'native'
+      : (parsed.mode ?? (await askMode(runner, lerna ? 'lerna.json' : undefined, parsed.dry)))
+  if (mode === 'keep' && runner !== 'vite-task') return keep(root, runner, hasTurbo, lerna, parsed)
 
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
   // No workspace file yet: this run writes one, declaring the plugins the
@@ -170,7 +187,10 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const writesWorkspace = workspaceFileAt(root) === undefined
   let source: string
   let plan: MigrationPlan
-  if (runner === 'nx') {
+  if (runner === 'vite-task') {
+    source = 'vite.config run.tasks'
+    plan = await migrateViteTask(root, metas, format)
+  } else if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
       plan = await migrateNx(root, metas, format, undefined, writesWorkspace)
@@ -239,9 +259,21 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ],
     }
   }
+  // An executor target is an `nx-exec` line and a `.env` one an `nx-env`
+  // line: both bins are this package's, and `bunx` leaves none behind.
+  const runsBins = plan.projects.some((p) =>
+    p.tasks.some((t) => {
+      const cmd = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+      return typeof cmd === 'string' && /^nx-(exec|env) /.test(cmd)
+    }),
+  )
   const headerNotes = refused
     ? []
-    : await prepareRepo(root, ['@vzn/vx', ...plugins.map((p) => p.pkg)], parsed)
+    : await prepareRepo(
+        root,
+        ['@vzn/vx', ...(runsBins ? ['@vzn/vx-migrate'] : []), ...plugins.map((p) => p.pkg)],
+        parsed,
+      )
   return applyMigration({
     root,
     metas,
@@ -252,6 +284,17 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     dry: parsed.dry,
     force: parsed.force,
     format,
+  })
+}
+
+/** vite-plus (`vp run`) in the root package.json's dependencies. */
+async function hasVitePlus(root: string): Promise<boolean> {
+  const pkg = (await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .catch(() => ({}))) as Record<string, unknown>
+  return ['dependencies', 'devDependencies'].some((f) => {
+    const deps = pkg[f]
+    return typeof deps === 'object' && deps !== null && Object.hasOwn(deps, 'vite-plus')
   })
 }
 
