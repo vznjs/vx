@@ -2,7 +2,6 @@
 // decompression bomb before it can expand, and the bounded one-call /
 // streamed decoders the store and the ingest path share.
 
-import type { FileHandle } from 'node:fs/promises'
 import { CorruptArtifactError } from './layer.js'
 
 /**
@@ -177,8 +176,7 @@ export const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
  * and the result length in one call, a running count on the stream.
  */
 export async function decodedTar(
-  /** A handle reads one file, whatever replaces its name (cache.ts's restore). */
-  source: Uint8Array | Bun.BunFile | FileHandle,
+  source: Uint8Array | Bun.BunFile,
   hash: string,
   /**
    * The decompression ceiling: `Cache` passes its `artifactCeiling`, whose

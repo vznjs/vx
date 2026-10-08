@@ -713,16 +713,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   at once instead of waiting. `recordRunBundle`, `recordRuns` and the
   output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
   0 of 48. Rows: `index-write-wait.test.ts` (two).
-- **X-106.** A restore beside another process's save of the same key
-  (six runs on one cache dir, half of them `--force`) called the
-  artifact corrupt and dropped that process's good entry:
-  `Bun.file(src)` took the size from one stat and the bytes from a
-  later open, so a save renamed in between was read at the old length.
-  A small artifact is now read in one open, sized by its row; a
-  streamed one through one handle. 200 restores, four workers, min of
-  15, interleaved: 26.0–30.1 ms before, 26.2–29.7 after. Rows:
-  `restore-replaced-artifact.test.ts` (two; 16 of 300 small and 1 in
-  ~60 streamed restores failed before).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with

@@ -48,7 +48,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { type FileHandle, open, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createTables, inHashes, lazyStatement } from './schema.js'
 import {
@@ -630,7 +630,6 @@ export class Cache implements CacheLayer {
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
-  private readonly entrySize: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   /** Hit artifacts whose file time is past the grace: renewed at the flush (`ORPHAN_GRACE_MS`). */
   private readonly staleTimes = new Set<string>()
@@ -980,7 +979,6 @@ export class Cache implements CacheLayer {
     // table refuses here as it does on `get` (`SELECT 1` answers from the
     // index alone).
     this.entryExists = lazyStatement(this.db, 'SELECT exit_code FROM entries WHERE hash = ?')
-    this.entrySize = lazyStatement(this.db, 'SELECT size_bytes FROM entries WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
     // identical inputs derive the identical hash, so the rows are too.
@@ -1553,26 +1551,13 @@ export class Cache implements CacheLayer {
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
     const endExtract = span('restore: extract')
-    let handle: FileHandle | undefined
     try {
       // Every step here is an async filesystem call on purpose: a
       // synchronous restore of a small artifact is 2× faster ALONE (1.25 →
       // 0.62 ms sequential, 2026-09-10) and 30% slower in the run, where
       // four workers overlap their round trips and a blocking one stalls
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
-      //
-      // One open, sized by the row: `Bun.file(src)` took the size from a
-      // stat and the bytes from later opens, and a save of this key by
-      // another process renamed in between was read at the old length,
-      // called corrupt, and its good entry dropped (16 restores of 300
-      // against a re-saving process; 1 of 20 streamed).
-      const row = this.entrySize.get(hash) as { size_bytes: number } | null
-      if ((row?.size_bytes ?? 0) > STREAM_DECODE_FROM) handle = await open(src)
-      const tar = await decodedTar(
-        handle ?? (await Bun.file(src).bytes()),
-        hash,
-        this.artifactCeiling,
-      )
+      const tar = await decodedTar(Bun.file(src), hash, this.artifactCeiling)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
@@ -1662,7 +1647,6 @@ export class Cache implements CacheLayer {
       }
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     } finally {
-      await handle?.close()
       endExtract()
     }
   }
