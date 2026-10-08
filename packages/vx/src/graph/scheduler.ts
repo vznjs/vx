@@ -969,7 +969,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 }
 
 /** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
-function idleServers(
+export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,

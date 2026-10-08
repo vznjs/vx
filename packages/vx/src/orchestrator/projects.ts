@@ -43,16 +43,25 @@ export async function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (message: string) => void,
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }> {
-  const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
-  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
-  if (workspaceConfig !== null && hasHook(plugins, 'config')) {
-    // Re-validated after each plugin, as the `project` stage is: an edit
-    // the loader would refuse from a user (`concurrency: -3`) hung the run,
-    // and `cacheDir: 42` reached `path.resolve` as a TypeError.
-    await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
-      validateWorkspace(workspaceConfig, `vx.workspace (after plugin '${plugin.name}')`),
-    )
+  const loaded = await loadWorkspaceConfig(workspaceRoot)
+  const plugins = (loaded?.plugins ?? []) as readonly VxPlugin[]
+  if (loaded === null || !hasHook(plugins, 'config')) return { workspaceConfig: loaded, plugins }
+  // Bun keeps one module per specifier, so the file's export is one object
+  // per process: the CLI's selection pass, the run and each `vx watch`
+  // cycle handed the hooks what the last load's hooks had edited
+  // (`concurrency *= 2` doubled per load). The hooks edit a copy; the file
+  // holds data and plugins, and validation refused anything else.
+  const { plugins: list, ...data } = loaded
+  const workspaceConfig: WorkspaceConfig = {
+    ...structuredClone(data),
+    ...(list !== undefined ? { plugins: [...list] } : {}),
   }
+  // Re-validated after each plugin, as the `project` stage is: an edit
+  // the loader would refuse from a user (`concurrency: -3`) hung the run,
+  // and `cacheDir: 42` reached `path.resolve` as a TypeError.
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
+    validateWorkspace(workspaceConfig, `vx.workspace (after plugin '${plugin.name}')`),
+  )
   return { workspaceConfig, plugins }
 }
 
