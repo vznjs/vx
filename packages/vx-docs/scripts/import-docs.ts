@@ -41,6 +41,8 @@ export function cleanUrlFor(srcRel: string): string {
   if (srcRel === 'modules/README.md') return 'modules/'
   if (srcRel === 'modules/index.md') return 'modules/public-surface/'
   if (srcRel === 'turbo-nx-support.md') return 'compare/turbo-nx-support/'
+  // `features/` is the Features hub (src/pages/features/).
+  if (srcRel === 'features.md') return 'all-features/'
   // Astro slugs each path segment (github-slugger), which lowercases and
   // drops punctuation: `design/roadmap-1.0.md` is served at
   // `design/roadmap-10/`. tests/site-links.test.ts holds the two to agree.
@@ -60,6 +62,7 @@ export function outRelFor(srcRel: string): string {
   if (srcRel === 'modules/index.md') return 'modules/public-surface.md'
   // Beside the hand-authored compare page, whose URL it extends.
   if (srcRel === 'turbo-nx-support.md') return 'compare/turbo-nx-support.md'
+  if (srcRel === 'features.md') return 'all-features.md'
   return srcRel
 }
 

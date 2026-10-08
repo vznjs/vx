@@ -58,6 +58,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
       label: 'CLI',
       items: [
         { label: 'Commands', link: '/cli/' },
+        { label: 'Every feature', link: '/all-features/' },
         { label: 'What a run does', link: '/execution/' },
       ],
     },
