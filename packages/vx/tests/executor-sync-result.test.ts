@@ -53,7 +53,8 @@ for (const timeout of ['', ', timeout: 60000']) {
   it(`a synchronous throw from execute fails the task naming the plugin${label}`, async () => {
     const { lines, statuses } = await runWith(`execute(req) { throw new Error('boom') }`, timeout)
     const said = "plugin 'org/sync' (executor 'sync') failed in execute: boom"
-    expect(lines.filter((l) => l.includes('boom'))).toEqual([`${said}\n`, `[vx] app#t: ${said}\n`])
+    // A refusal: named once, on the task's own stream (C-85).
+    expect(lines.filter((l) => l.includes('boom'))).toEqual([`[vx] app#t: ${said}\n`])
     expect(statuses).toEqual(['failed'])
   })
 
