@@ -1617,7 +1617,7 @@ CREATE INDEX invocations_ci      ON invocations(ci);
 -- CASCADE sweeps the rows when a prune drops the entry.
 CREATE TABLE entry_inputs (
   entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
-  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin
+  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin|format
   name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
   hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
   PRIMARY KEY (entry_hash, kind, name),

@@ -549,8 +549,8 @@ describe('vx why (e2e) — the exact lines', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
-      expect(lines).toContain('  what changed (3 components, 3 unchanged):')
-      const head = lines.indexOf('  what changed (3 components, 3 unchanged):')
+      expect(lines).toContain('  what changed (3 components, 4 unchanged):')
+      const head = lines.indexOf('  what changed (3 components, 4 unchanged):')
       const rows = lines.slice(head + 1, lines.indexOf('', head))
       expect(rows).toHaveLength(3)
       expect(rows[0]).toMatch(/^ {4}added {3}file {5}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
@@ -591,6 +591,43 @@ describe('vx why (e2e) — the exact lines', () => {
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
         back.run("DELETE FROM entry_inputs WHERE kind = 'legacy'")
+        back.close()
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a key the format moved names the upgrade, not an input (X-142)',
+    async () => {
+      // An upgrade that bumps CACHE_VERSION moves every key with no input
+      // changed; the previous entry here stands for the older vx's.
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      const prev = (
+        db
+          .query(
+            "SELECT hash FROM runs WHERE project = 'app' AND task = 'build' ORDER BY rowid DESC LIMIT 1 OFFSET 1",
+          )
+          .get() as { hash: string }
+      ).hash
+      db.run(
+        "UPDATE entry_inputs SET hash = 'vx-cache-v0' WHERE entry_hash = ? AND kind = 'format'",
+        [prev],
+      )
+      db.close()
+      try {
+        const lines = (await vx(root, ['why', 'app#build'])).out.split('\n')
+        expect(lines.filter((l) => l.startsWith('    ') && l.includes('format'))).toEqual([
+          expect.stringMatching(
+            /^ {4}changed format {3}cache-version {2}vx-cache-v0 → vx-cache-v\d+$/,
+          ),
+          `    format   ${WHAT_TO_DO['format']}`,
+        ])
+      } finally {
+        const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+        back.run(
+          "UPDATE entry_inputs SET hash = (SELECT hash FROM entry_inputs WHERE kind = 'format' AND hash != 'vx-cache-v0' LIMIT 1) WHERE kind = 'format'",
+        )
         back.close()
       }
     },

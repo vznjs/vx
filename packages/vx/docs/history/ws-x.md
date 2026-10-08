@@ -1094,6 +1094,13 @@ watch`'s initial run held that run for good: the loop armed only after
   It now maps to the root project's name, as the run does (D-39). Row:
   `watch-root-scope.test.ts` › "watches the root project".
 
+- **X-142.** After an upgrade that bumped `CACHE_VERSION`, every task
+  missed once and `vx why` said `cache key changed … (inputs differ)` with
+  `no component-level difference was recorded`: the fold never recorded
+  the version. The capture now records it (`format cache-version`), so
+  `vx why` names the upgrade and says there is nothing to fix. Rows:
+  `why.test.ts` › "a key the format moved names the upgrade, not an
+  input (X-142)", `key-fold.test.ts`, `cache.test.ts`.
 - **X-140.** `vx last`'s "re-run what failed" line handed the run's
   forwarded args (`-- --shard 2`) to every failed task, but a run forwards
   them to requested tasks only: a failed dependency re-ran as another
