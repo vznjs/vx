@@ -566,3 +566,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   terminator (`X --fix`), which then closed nothing. One scan now reads
   quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
   `withForwardArgs` X-110 rows.
+- **X-111.** A traced sandboxed task whose shell died of a signal
+  (`kill -9 $$`, a SIGSEGV) showed `bash: line 1: 3 Killed { … }`
+  in its frame: the wrapper's bash reported
+  the job on its stderr, the task's, printing vx's whole wrapper with its
+  proxy port and paths. The wrapper's `wait` now prints nothing; the exit
+  code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
