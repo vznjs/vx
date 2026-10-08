@@ -27,7 +27,9 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
  * and how often it failed AFTER its first pass (`relapses`). A task with
  * no cache block keys on its config alone and runs every time, so its key
  * says nothing about its inputs: no reader counts it, as no run's row
- * calls it flaky. Every flakiness reader is a filter over this one
+ * calls it flaky. Nor is a row that names a `blocked_by`: it ran behind a
+ * failure (`--continue=always`), on bytes its key never named, so its
+ * pass or failure is not the key's. Every flakiness reader is a filter over this one
  * projection.
  */
 function keyOutcomesSql(source: string, where = ''): string {
@@ -42,7 +44,7 @@ function keyOutcomesSql(source: string, where = ''): string {
              CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
                THEN 1 ELSE 0 END AS passed
            FROM ${source}
-           WHERE ${KEYED_RUNS_SQL} AND cached IS NOT 0${where}))
+           WHERE ${KEYED_RUNS_SQL} AND cached IS NOT 0 AND blocked_by IS NULL${where}))
        GROUP BY project, task, hash`
 }
 
@@ -148,7 +150,7 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     const rows = db
       .query(
         `SELECT DISTINCT project, task, hash FROM runs
-         WHERE status = 'failed' AND hash IN (${chunk.map(() => '?').join(', ')})`,
+         WHERE status = 'failed' AND blocked_by IS NULL AND hash IN (${chunk.map(() => '?').join(', ')})`,
       )
       .all(...chunk.map((c) => c.hash)) as { project: string; task: string; hash: string }[]
     for (const r of rows) everFailed.add(keyOf(r))

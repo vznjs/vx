@@ -1387,6 +1387,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  affected?: AffectedReason
 }
 ```
 
@@ -1893,6 +1894,7 @@ export interface RunOptions {
   selectedByDiff?: boolean
   affected?: AffectedChanges
   selectedOutright?: readonly string[]
+  affectedReasons?: Map<string, AffectedReason>
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number
@@ -1910,6 +1912,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  json?: boolean
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
@@ -2017,6 +2020,7 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
   refused?: string
+  json?: RunSummaryJson
 }
 ```
 

@@ -45,6 +45,7 @@ Split from `run.ts` on 2026-09-10 (pure motion).
 ```ts
 export interface TaintTracker {
   judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
+  cause: (node: TaskNode, upstream: TaskOutcome[]) => string // the root blocker, a row's blocked_by
   settled: (outcome: TaskOutcome) => void // the scheduler's onFinish
 }
 export function taintTracker(

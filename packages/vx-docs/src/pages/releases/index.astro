@@ -1,0 +1,18 @@
+---
+// The Releases index: what each version changed, newest first, apart from
+// the blog's stories. components/starlight/PageTitle.astro draws the masthead.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import Listing from '../../components/blog/Listing.astro'
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Releases',
+    description: 'What each version of vx changed, with the stories behind the big ones on the blog.',
+    template: 'splash',
+    pagefind: false,
+  }}
+  hasSidebar={false}
+>
+  <Listing kind="releases" />
+</StarlightPage>

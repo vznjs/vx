@@ -69,3 +69,10 @@ and log output reads better. Each must cost the warm path nothing.
   `vx last --format json` adds `output` and `locations` to failed rows;
   `@vzn/vx-mcp` adds `getFailures`. Rows: `run-output.test.ts`, vx-mcp
   `tools.test.ts` › getFailures.
+- **DX-10.** `vx run --affected --dry` says why each requested task
+  was kept: `affected: <file> changed (an input), via lib#build` under
+  its row, and `affected: { kind, file?, project?, via? }` in
+  `--dry=json` (`schemas/plan.json`). Kinds: `input`, `project`,
+  `package`, `named`, `selected`. Gathered only when `planRun` asks
+  (`AffectedExplain`), so a run pays nothing. Rows:
+  `affected-dry-reasons.test.ts`.

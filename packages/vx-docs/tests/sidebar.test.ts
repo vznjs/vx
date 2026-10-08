@@ -18,6 +18,7 @@ const PLACES: [string, string][] = [
   ['Docs', 'quickstart/'],
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
+  ['Releases', 'releases/'],
 ]
 // The Docs are nine pages, no groups (design/site-short-2026-09.md's six, AI agents, Troubleshooting, Upgrading).
 const DOCS_PAGES: [string, string][] = [
@@ -137,7 +138,7 @@ describe('the sidebars', () => {
     const lists = { Docs: docs, Reference: reference }
     const wrong: string[] = []
     for (const rel of all) {
-      if (rel === '' || rel.startsWith('blog/')) continue
+      if (rel === '' || /^(?:blog|releases)\//.test(rel)) continue
       const page = html(rel)
       const list = sidebarList(page)
       if (list === undefined) continue
@@ -160,6 +161,8 @@ describe('the sidebars', () => {
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])
+    expect(places(html('releases/')).current).toEqual(['Releases'])
+    expect(places(html('releases/vx-0-0-625/')).current).toEqual(['Releases'])
   })
 
   it('no sidebar, on any page, links an internals page', () => {

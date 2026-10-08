@@ -1,22 +1,23 @@
 ---
-// The blog's index and each filter's page: on the index the newest post
-// leads, large; then the filter chips, then every other post as a card.
-// A chip is a link to its filter's page, so the listing needs no script.
+// The blog's index, each filter's page and the Releases page: on an index
+// the newest post leads, large; then the blog's filter chips, then every
+// other post as a card. A chip is a link to its filter's page, so the
+// listing needs no script.
 import Byline from './Byline.astro'
 import Card from './Card.astro'
 import Cover from './Cover.astro'
-import { blogHref, FILTERS, matches, posts } from '../../blog/posts.js'
+import { blogHref, FILTERS, matches, posts, type Kind } from '../../blog/posts.js'
 
-type Props = { filter?: string }
-const { filter } = Astro.props
-const all = await posts()
+type Props = { filter?: string; kind?: Kind }
+const { filter, kind = 'blog' } = Astro.props
+const all = await posts(kind)
 const shown = filter === undefined ? all : all.filter((p) => matches(p, filter))
 const lead = filter === undefined ? shown[0] : undefined
 const rest = lead ? shown.slice(1) : shown
 // A tag with no chip of its own shows one on its page.
 const extra =
   filter !== undefined && !FILTERS.some((f) => f.id === filter) ? [{ id: filter, label: filter }] : []
-const chips = [
+const chips = kind === 'releases' ? [] : [
   { id: undefined, label: 'All', href: blogHref(), n: all.length },
   ...[...FILTERS, ...extra].map((f) => ({
     id: f.id,
@@ -48,16 +49,18 @@ const chips = [
     )
   }
 
-  <nav class="vx-filters" aria-label="Filter posts">
-    {
-      chips.map((c) => (
-        <a href={c.href} aria-current={c.id === filter ? 'page' : undefined}>
-          {c.label}
-          <span class="n">{c.n}</span>
-        </a>
-      ))
-    }
-  </nav>
+  {
+    chips.length > 0 && (
+      <nav class="vx-filters" aria-label="Filter posts">
+        {chips.map((c) => (
+          <a href={c.href} aria-current={c.id === filter ? 'page' : undefined}>
+            {c.label}
+            <span class="n">{c.n}</span>
+          </a>
+        ))}
+      </nav>
+    )
+  }
 
   <div class="vx-grid">
     {rest.map((p) => <Card post={p} />)}

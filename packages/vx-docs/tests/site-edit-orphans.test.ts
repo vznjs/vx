@@ -33,7 +33,7 @@ const skipped = (f: string, html: string): boolean =>
   /http-equiv="refresh"/.test(html) ||
   f === '404.html' ||
   f === 'index.html' ||
-  /^blog\/(?:tags|authors|\d+)\/|^blog\/index\.html$/.test(f)
+  /^blog\/(?:tags|authors|\d+)\/|^(?:blog|releases)\/index\.html$/.test(f)
 
 it('every page has an edit link to a real file, and another page links to it', () => {
   const pages = built()

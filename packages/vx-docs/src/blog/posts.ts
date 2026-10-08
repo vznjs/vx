@@ -1,5 +1,6 @@
-// The blog's posts, read once from the docs collection (src/content/docs/
-// blog/), and what every blog view shows of them: the version chip a
+// The site's posts, read once from the docs collection: the blog's essays
+// (src/content/docs/blog/) and the release notes (src/content/docs/
+// releases/), and what every view shows of them: the version chip a
 // release carries, the topic filters, the related posts under a post.
 
 import { getCollection, type CollectionEntry } from 'astro:content'
@@ -10,8 +11,12 @@ export const AUTHORS: Record<string, Author> = {
   vzn: { name: 'vzn', title: 'vx maintainer', url: 'https://github.com/vznjs' },
 }
 
+/** Where a post lives: the blog (essays) or the Releases section. */
+export type Kind = 'blog' | 'releases'
+
 export type Post = {
   entry: CollectionEntry<'docs'>
+  kind: Kind
   slug: string
   href: string
   title: string
@@ -23,14 +28,12 @@ export type Post = {
   version: string | undefined
 }
 
-/** A filter on the listing: a tag page, or `essays`, every post but the releases. */
+/** A filter on the blog's listing: a tag page. */
 export type Filter = { id: string; label: string }
 
-// The chips over the grid: the two kinds of post, then the topics with
-// enough posts to be worth a chip. Every other tag keeps its page.
+// The chips over the blog's grid: the topics with enough posts to be worth
+// a chip. Every other tag keeps its page.
 export const FILTERS: Filter[] = [
-  { id: 'release', label: 'Releases' },
-  { id: 'essays', label: 'Essays' },
   { id: 'caching', label: 'Caching' },
   { id: 'performance', label: 'Performance' },
   { id: 'execution', label: 'Execution' },
@@ -43,19 +46,33 @@ export const FILTERS: Filter[] = [
 const base = import.meta.env.BASE_URL
 
 export const blogHref = (p = ''): string => `${base}blog/${p}`
+export const sectionHref = (kind: Kind, p = ''): string => `${base}${kind}/${p}`
 
 let cached: Post[] | undefined
 
-/** Every published post, newest first; a same-day tie goes by title. */
-export async function posts(): Promise<Post[]> {
+const kindOf = (id: string): Kind | undefined =>
+  id.startsWith('blog/') ? 'blog' : id.startsWith('releases/') ? 'releases' : undefined
+
+/** Every published post of a kind, newest first; a same-day tie goes by title. */
+export async function posts(kind: Kind = 'blog'): Promise<Post[]> {
+  return (await all()).filter((p) => p.kind === kind)
+}
+
+/** The post a route id names (`blog/hello-vx`, `releases/vx-0-0-625`). */
+export async function postAt(id: string): Promise<Post | undefined> {
+  return (await all()).find((p) => p.entry.id === id)
+}
+
+async function all(): Promise<Post[]> {
   if (cached) return cached
   const entries = await getCollection(
     'docs',
-    (e) => e.id.startsWith('blog/') && !(import.meta.env.PROD && e.data.draft),
+    (e) => kindOf(e.id) !== undefined && !(import.meta.env.PROD && e.data.draft),
   )
   cached = entries
     .map((entry): Post => {
-      const slug = entry.id.slice('blog/'.length)
+      const kind = kindOf(entry.id)!
+      const slug = entry.id.slice(kind.length + 1)
       const { date, excerpt } = entry.data
       if (!date || !excerpt)
         throw new Error(`${entry.filePath}: a post needs a date and an excerpt`)
@@ -64,11 +81,14 @@ export async function posts(): Promise<Post[]> {
         if (!a) throw new Error(`${entry.filePath}: unknown author ${key}`)
         return a
       })
-      const v = /^vx-(\d+)-(\d+)-(\d+)$/.exec(slug)
+      const v = kind === 'releases' ? /^vx-(\d+)-(\d+)-(\d+)$/.exec(slug) : null
+      if (kind === 'releases' && !v)
+        throw new Error(`${entry.filePath}: a release is vx-<x>-<y>-<z>.md`)
       return {
         entry,
+        kind,
         slug,
-        href: blogHref(`${slug}/`),
+        href: sectionHref(kind, `${slug}/`),
         title: entry.data.title,
         excerpt,
         date,
@@ -81,13 +101,11 @@ export async function posts(): Promise<Post[]> {
   return cached
 }
 
-export const matches = (p: Post, filter: string): boolean =>
-  filter === 'essays' ? p.version === undefined : p.tags.includes(filter)
+export const matches = (p: Post, filter: string): boolean => p.tags.includes(filter)
 
-/** Every filter a page exists for: each tag, and `essays`. */
+/** Every filter a blog page exists for: each tag an essay carries. */
 export async function filters(): Promise<Filter[]> {
-  const all = await posts()
-  const ids = new Set(['essays', ...all.flatMap((p) => p.tags)])
+  const ids = new Set((await posts()).flatMap((p) => p.tags))
   return [...ids].map((id) => FILTERS.find((f) => f.id === id) ?? { id, label: id })
 }
 
@@ -100,23 +118,20 @@ export const formatDate = (d: Date): string =>
   })
 
 /**
- * Three posts to read next: the nearest releases for a release, the posts
+ * Three posts to read next: the nearest releases for a release, the essays
  * sharing the most tags for an essay, newer first on a tie.
  */
-export async function related(slug: string): Promise<Post[]> {
-  const all = await posts()
-  const self = all.find((p) => p.slug === slug)!
-  const others = all.filter((p) => p !== self)
-  if (self.version) {
-    const at = all.indexOf(self)
+export async function related(self: Post): Promise<Post[]> {
+  const same = await posts(self.kind)
+  const others = same.filter((p) => p !== self)
+  if (self.kind === 'releases') {
+    const at = same.indexOf(self)
     return others
-      .filter((p) => p.version)
-      .sort((a, b) => Math.abs(all.indexOf(a) - at) - Math.abs(all.indexOf(b) - at))
+      .sort((a, b) => Math.abs(same.indexOf(a) - at) - Math.abs(same.indexOf(b) - at))
       .slice(0, 3)
   }
   const shared = (p: Post): number => p.tags.filter((t) => self.tags.includes(t)).length
   return others
-    .filter((p) => !p.version)
     .map((p, i) => ({ p, i, n: shared(p) }))
     .sort((a, b) => b.n - a.n || a.i - b.i)
     .slice(0, 3)

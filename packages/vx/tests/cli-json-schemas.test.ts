@@ -192,6 +192,12 @@ beforeAll(async () => {
             deps: [],
             executor: 'remote',
             download: 'deferred',
+            affected: {
+              kind: 'input',
+              file: 'packages/b/src/a.ts',
+              project: 'b',
+              via: ['b#build'],
+            },
           },
           { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
         ],
@@ -536,6 +542,7 @@ describe('each schema object is its source type', () => {
         executor: true,
         download: true,
         description: true,
+        affected: true,
       }),
     )
     expect(props('plan', 'properties', 'predicted')).toEqual(

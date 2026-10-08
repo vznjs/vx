@@ -4,6 +4,7 @@
 // behind `^build` runs when `ui#build` (or what it depends on) is reached,
 // and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
 
+import path from 'node:path'
 import type { WorkspaceRules } from '../config.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
 import {
@@ -55,6 +56,30 @@ function wholeProjects(
 }
 
 /**
+ * Why `--affected` kept a requested task (`vx run --affected --dry`):
+ * `input`, a changed `file` is one of its declared inputs; `project`, its
+ * project changed and the task reads it whole (an uncached task, a path no
+ * cached task declares, or no single `file`: a lockfile claim, a manifest
+ * edge, a config import); `package`, a `^` edge passes through `project`, a
+ * changed package with no such task; `named`, asked as `pkg#task`;
+ * `selected`, another filter selected its project outright. `via` is the
+ * `dependsOn` chain, nearest first, to the task the change seeded.
+ */
+export interface AffectedReason {
+  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  /** Workspace-relative. */
+  file?: string
+  project?: string
+  via?: string[]
+}
+
+/** Collects each kept task's `AffectedReason` when given; a run without one pays nothing. */
+export interface AffectedExplain {
+  workspaceRoot: string
+  reasons: Map<string, AffectedReason>
+}
+
+/**
  * The task ids of `ids` whose closure the change reaches, in their order.
  * A group seeds nothing (it runs nothing) unless it is keyed, as the default
  * `build` is; an uncached task seeds when a changed path lies in its project
@@ -69,8 +94,16 @@ export function affectedRoots(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
+  explain?: AffectedExplain,
 ): string[] {
   const whole = wholeProjects(changes, projects)
+  const seeds = explain === undefined ? null : new Map<string, AffectedReason>()
+  const through = explain === undefined ? null : new Map<string, string>()
+  const inProject = (name: string, rel: string | undefined): AffectedReason => {
+    if (rel === undefined) return { kind: 'project' }
+    const dir = path.relative(explain!.workspaceRoot, projects.get(name)!.dir)
+    return { kind: 'project', file: dir === '' ? rel : path.posix.join(dir, rel) }
+  }
   // The builder's `^name` walk (task-graph.ts), keeping only the packages
   // it passes through: a holder's own node is already in `deps`.
   const passesChanged = (n: TaskNode): boolean => {
@@ -89,7 +122,10 @@ export function affectedRoots(
         if (visited.has(target)) continue
         visited.add(target)
         if (holds(target)) continue
-        if (changes.projects.has(target)) return true
+        if (changes.projects.has(target)) {
+          seeds?.set(n.id, { kind: 'package', project: target })
+          return true
+        }
         frontier.push(...packageGraph.directDeps(target))
       }
     }
@@ -99,22 +135,35 @@ export function affectedRoots(
     const cache = n.config.cache
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
-    if (
-      cache !== undefined &&
-      (changes.changed.some((rel) => declaresInput(cache, null, rel)) ||
-        (changes.nested ?? []).some((dir) => workspaceFilesReachInto(cache, dir)))
-    ) {
-      return true
+    if (cache !== undefined) {
+      const file = changes.changed.find((rel) => declaresInput(cache, null, rel))
+      const dir =
+        file === undefined
+          ? (changes.nested ?? []).find((d) => workspaceFilesReachInto(cache, d))
+          : undefined
+      if (file !== undefined || dir !== undefined) {
+        seeds?.set(n.id, { kind: 'input', file: (file ?? dir)! })
+        return true
+      }
     }
     if (!changes.projects.has(n.projectName)) return false
+    const rels = changes.paths.get(n.projectName) ?? []
     // A group runs nothing; only the default `build` (projects.ts) is keyed.
     // An uncached task reads its project: a root file another task of it
     // declares (`workspaceFiles`) is no change there.
     if (cache === undefined) {
-      return !isGroupTask(n) && (whole.has(n.projectName) || changes.paths.has(n.projectName))
+      const hit = !isGroupTask(n) && (whole.has(n.projectName) || changes.paths.has(n.projectName))
+      if (hit) seeds?.set(n.id, inProject(n.projectName, rels[0]))
+      return hit
     }
-    if (whole.has(n.projectName)) return true
-    return (changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))
+    if (whole.has(n.projectName)) {
+      seeds?.set(n.id, inProject(n.projectName, undefined))
+      return true
+    }
+    const rel = rels.find((r) => declaresInput(cache, r, null))
+    if (rel === undefined) return false
+    if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
+    return true
   }
   const reached = new Map<string, boolean>()
   // Post-order on an explicit stack: a closure is as deep as the graph, and
@@ -145,6 +194,7 @@ export function affectedRoots(
       frame[1] = i
       if (i === deps.length || reached.get(deps[i]!) === true) {
         reached.set(id, i < deps.length)
+        if (i < deps.length) through?.set(id, deps[i]!)
         stack.pop()
         continue
       }
@@ -152,7 +202,20 @@ export function affectedRoots(
     }
     return reached.get(root)!
   }
-  return ids.filter(reaches)
+  const kept = ids.filter(reaches)
+  if (explain !== undefined) {
+    for (const root of kept) {
+      const via: string[] = []
+      let id = root
+      for (let next = through!.get(id); next !== undefined; next = through!.get(id)) {
+        via.push(next)
+        id = next
+      }
+      const seed = seeds!.get(id)!
+      explain.reasons.set(root, via.length > 0 ? { ...seed, via } : seed)
+    }
+  }
+  return kept
 }
 
 /**
@@ -167,15 +230,21 @@ export function keptByAffected<R extends { project: string; task: string }>(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
   keep: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> } = {},
+  explain?: AffectedExplain,
 ): R[] {
   const ids = requested.map((r) => `${r.project}#${r.task}`)
-  const reached = new Set(affectedRoots(nodes, ids, changes, projects, packageGraph))
-  return requested.filter(
-    (r, i) =>
-      keep.named?.has(ids[i]!) === true ||
-      keep.outright?.has(r.project) === true ||
-      reached.has(ids[i]!),
-  )
+  const reached = new Set(affectedRoots(nodes, ids, changes, projects, packageGraph, explain))
+  return requested.filter((r, i) => {
+    const id = ids[i]!
+    const why: AffectedReason['kind'] | null =
+      keep.named?.has(id) === true
+        ? 'named'
+        : keep.outright?.has(r.project) === true
+          ? 'selected'
+          : null
+    if (why !== null) explain?.reasons.set(id, { kind: why })
+    return why !== null || reached.has(id)
+  })
 }
 
 /**

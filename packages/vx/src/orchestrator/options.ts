@@ -5,9 +5,11 @@
 import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
+import type { AffectedReason } from './affected-tasks.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
+import type { RunSummaryJson } from './run-artifacts.js'
 import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 
 export interface RunOptions {
@@ -41,6 +43,8 @@ export interface RunOptions {
    * whether or not `affected` reaches them (X-10).
    */
   selectedOutright?: readonly string[]
+  /** Filled with why `--affected` kept each requested task; `planRun` (`--dry`) passes it. */
+  affectedReasons?: Map<string, AffectedReason>
   /**
    * Configs a selection pass in this same process already loaded and
    * staged with the same `cacheDir` and `frozen` (the CLI walks every
@@ -171,6 +175,12 @@ export interface RunOptions {
    * else is treated as the literal file path (cwd-relative).
    */
   summarize?: string
+  /**
+   * `vx run --format json`: the terminal renderer writes stderr, and the
+   * run hands back `RunSummary.json`, the `--summarize` document, for the
+   * caller to print on stdout.
+   */
+  json?: boolean
   /**
    * Text printed just above the run's footer, given the outcomes the
    * footer counts, after the `summaryTable`: nothing prints below the
@@ -312,6 +322,8 @@ export interface RunSummary {
    * caller prints it; `vx run` writes it to stderr.
    */
   refused?: string
+  /** The `--summarize` document, when `RunOptions.json` asked for it. */
+  json?: RunSummaryJson
 }
 
 export interface HeldPersistent {

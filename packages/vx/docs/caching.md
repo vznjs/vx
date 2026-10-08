@@ -1475,7 +1475,7 @@ CREATE TABLE runs (
   cached              INTEGER,          -- v25: 1 = declared a cache block; 0 = runs every time
   -- v27: why the task failed or was skipped, as the run's footer said it
   -- (items 267–270); NULL where the reason does not apply
-  blocked_by          TEXT,             -- a skip's root blocker (a task id)
+  blocked_by          TEXT,             -- a skip's root blocker, or what a task ran behind (a task id)
   timed_out           INTEGER,          -- 1 when vx's own timeout killed it
   sandbox_violations  INTEGER,          -- the sandbox's violation count
   not_ready           TEXT,             -- 'timeout' | 'exited' | 'spawn' (persistent task)

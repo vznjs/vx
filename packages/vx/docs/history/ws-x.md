@@ -1214,6 +1214,16 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 264 / 257 (A/A) → 237 ms; wall median 947 /
   932 → 912 ms. Row: `server-death-properties.test.ts` › "a graph with
   no server never asks whether one died".
+- **X-183.** Under `--continue=always` a task that PASSED behind its
+  failed dependency recorded that pass on its healthy key, so a later
+  healthy failure on the key read `flaky - passed 1× before` and `vx
+info` listed it. X-131 covered only the failure, by dropping its key.
+  Now every outcome that ran tainted keeps its key and names its root
+  blocker in `blocked_by`; the per-key flakiness projection and the
+  run's own detector skip such rows, and `vx why` diffs a tainted
+  failure again. Row: `flaky.test.ts` › "is not a pass a later failure
+  on the key relapses from" (red without the fix; a healthy relapse is
+  the control).
 - **X-191.** A save scanned the tar it had just packed through the
   restore's stream reader: async generators, a promise per chunk and a
   drain, most of a small save's scan. `scanTarBytes` now reads it in
@@ -1246,6 +1256,12 @@ reaches no build task.` The plan now carries the run's own line
   ^name and an --exclude-dependencies name only that project declares";
   each site's old test reddens its own field.
 
+- **X-195.** `vx run --format json` (roadmap: AI first): the
+  `--summarize` document (`schemas/summary.json`) alone on stdout when
+  the run ends; the frame and the tasks' output move to stderr; the exit
+  code is unchanged. Refuses `--dry`, a bare `--graph` and
+  `--report=markdown` beside it; `vx watch` refuses it. Turbo's `--json`
+  now points here. Rows: `run-format-json.test.ts`.
 - **X-194.** A task whose stdout starts with U+FEFF lost it twice: the
   runner's default `TextDecoder` drops a leading BOM, and bun:sqlite
   drops one from a bound string (its bytes, cast to TEXT, keep it). The
@@ -1265,6 +1281,17 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 198 → 167 ms in an earlier 14-round timing
   run.
   Rows: `settle-now.test.ts`.
+- **X-193.** A probed hit reached its restore only after
+  `executeCachedTask` had built the run path on entry: the upstream
+  folding, timers and closures, ~15 µs of each warm hit. `executeTask`
+  now restores a probed hit first, through the same guards hoisted out
+  of the closure (`restoreProbed`, `restoreOrMiss`, `fingerprintMoved`):
+  a moved fingerprint or a vanished artifact still demotes it. A/B on
+  top of X-192 (same bench, 2 × 25 rounds, copies swapped, A/A beside,
+  load ~7): wall paired 0.948 (A/A 0.977), CPU 0.943 (A/A 0.991).
+  Against main without X-192 it did not clear A/A (0.953, A/A 0.956).
+  Rows: `execute-task.test.ts` › "a preProbed HIT restores only for a
+  task that reads the cache", with the X-124 and vanished-artifact rows.
 
 - **X-196.** CI: core's twelve test shards leave the `ci` job for two
   runners of six beside it (`shards`); a `gate` job keeps the required
@@ -1277,3 +1304,9 @@ reaches no build task.` The plan now carries the run's own line
   sandbox-mask row lost its refused-write hint once; SRT feeds that
   record over a socket read after the child exits, unproven here (no
   bwrap).
+
+- **X-197.** CI, macOS: the same split as X-196. Core's shards run on
+  two macOS runners (`darwin-shards`) beside `core-darwin`, which keeps
+  the unsafe suite, the canary and the cross-compile; `darwin-gate`
+  keeps the required name "core tests (macOS)" and passes when both
+  passed or `changes` skipped both. Linux after X-196: 3m46, was 6m06.

@@ -21,6 +21,7 @@ export interface PlanTaskJson {
   executor?: string
   download?: 'deferred'
   description?: string
+  affected?: AffectedReason // why `--affected` kept it (affected-tasks.md)
 }
 export function formatPlanJson(plan: RunPlan): string
 export function formatGraphDot(plan: RunPlan): string
@@ -112,7 +113,7 @@ states it and `tests/cli-json-schemas.test.ts` holds it:
 }
 ```
 
-`p50Ms`, `executor` and `download` ride a task only when set, and
+`p50Ms`, `executor`, `download` and `affected` ride a task only when set, and
 `predicted` and `downloadDowngrades` ride the object only when the plan
 has them. The object enumerates its fields on purpose — the plan's
 internal shape is not the wire — so a new `PlannedTask` field is not on

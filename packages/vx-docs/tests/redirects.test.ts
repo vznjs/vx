@@ -141,6 +141,15 @@ const MERGED: Record<string, string> = {
   // It measured vx running turbo.json and Nx configs; the native-config
   // rerun has no page yet (owner, 2026-10-02).
   'benchmarks/real-repos/': 'benchmarks/',
+  // Release notes left the blog for their own section (owner, 2026-10-08).
+  'blog/tags/release/': 'releases/',
+  'blog/tags/essays/': 'blog/',
+  ...Object.fromEntries(
+    ['21', '75', '199', '242', '325', '360', '495', '520', '589', '625'].map((n) => [
+      `blog/vx-0-0-${n}/`,
+      `releases/vx-0-0-${n}/`,
+    ]),
+  ),
 }
 
 /** Where Astro's static redirect page sends the reader, if `html` is one. */

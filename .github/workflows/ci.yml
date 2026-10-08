@@ -437,7 +437,7 @@ jobs:
   # this job cannot import that flake into main; if the sandbox tests prove
   # stable on these runners over time, the flag can be promoted.
   core-darwin:
-    name: core tests (macOS)
+    name: core tests (macOS, unsafe)
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
     runs-on: macos-latest
@@ -474,7 +474,8 @@ jobs:
           # FSEvents delivers the watch probe here; the rows must not vanish
           # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+        # The twelve shards run in `darwin-shards`, beside this job.
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx --exclude-dependencies=test.bun.shard-1,test.bun.shard-2,test.bun.shard-3,test.bun.shard-4,test.bun.shard-5,test.bun.shard-6,test.bun.shard-7,test.bun.shard-8,test.bun.shard-9,test.bun.shard-10,test.bun.shard-11,test.bun.shard-12
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -512,3 +513,62 @@ jobs:
       # the same task for linux-x64 inside `vx run ci`.
       - name: compiled binary (check.binary)
         run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
+
+  # Core's shards on two macOS runners beside `core-darwin`: one 3-core
+  # runner spent 6m40 on ~1,100 s of tasks (2026-10-08).
+  darwin-shards:
+    name: core shards (macOS, ${{ matrix.part }})
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: 1-6
+            tasks: test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6
+          - part: 7-12
+            tasks: test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .vx/cache
+            ~/.vx
+          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
+          restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
+
+      - name: vx run core shards (darwin)
+        env:
+          VX_REQUIRE_WATCH_EVENTS: '1'
+        run: bun packages/vx/src/bin.ts run ${{ matrix.tasks }} --filter @vzn/vx
+
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .vx/cache
+            ~/.vx
+          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
+
+  # The required check: both macOS jobs passed, or `changes` skipped both.
+  darwin-gate:
+    name: core tests (macOS)
+    needs: [core-darwin, darwin-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: core-darwin and darwin-shards passed or were skipped
+        run: |
+          for r in "${{ needs.core-darwin.result }}" "${{ needs.darwin-shards.result }}"; do
+            case "$r" in success|skipped) ;; *) echo "::error::a macOS job ended $r"; exit 1 ;; esac
+          done

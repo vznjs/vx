@@ -17,6 +17,7 @@ export interface RunOptions {
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   affected?: AffectedChanges // --affected's diff: a bare task runs only when it reaches a seeded task (affected-tasks.md)
   selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
+  affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number
@@ -34,6 +35,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  json?: boolean // --format json: the terminal renderer writes stderr; RunSummary.json carries the document
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string // text printed just above the footer
   profile?: string
   handleSignals?: boolean
@@ -56,6 +58,7 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop(), servers }: what holdPersistent handed back
   refused?: string // why the run refused to start (ok false, nothing ran); the caller prints it, vx run on stderr
+  json?: RunSummaryJson // the --summarize document, when RunOptions.json asked for it
 }
 ```
 

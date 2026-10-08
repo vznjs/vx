@@ -483,6 +483,7 @@ than run with the args unheard.
 | `--verbosity <n>`                  | int (0+)       | `0`                                       | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--dry[=text\|json]`               | optional value | off                                       | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--graph[=<path>]`                 | optional value | off                                       | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--format <fmt>`                   | value          | `pretty`                                  | `json` prints the `--summarize` document on stdout when the run ends and moves every other line to stderr ([Machine-readable output](#machine-readable-output)). `--format=<fmt>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--summarize[=<path>]`             | optional value | off                                       | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--profile[=<path>]`               | optional value | off (`profile.json` when set)             | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--tag <k=v>`                      | repeatable     | (none)                                    | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -949,6 +950,26 @@ Every task with history carries `p50Ms`, hits included (only the text
 view's `~p50` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
 readable.
+
+**Why a task is affected.** Under `--affected`, each requested task the
+diff kept gets a line, and its JSON object an `affected` reason:
+
+```
+$ vx run build lint --affected=main --dry
+  ▶  app#build  cache miss — would exec  …
+                affected: packages/lib/src/a.ts changed (an input), via lib#build
+  ·  lib#lint   no-cache                 …
+                affected: packages/lib/src/a.ts changed (in its project)
+```
+
+`kind` is `input` (a changed `file` is a declared input), `project` (its
+project changed and the task reads it whole: an uncached task, or no
+single `file` for a lockfile claim, a manifest edge or a config import),
+`package` (a `^` edge passes a changed `project` with no such task),
+`named` (`pkg#task` beside a bare task) or `selected` (another filter
+selected its project). `via` is the `dependsOn` chain, nearest first, to
+the task the change reached. A dependency the kept tasks pull in carries
+none. The reasons are gathered only for a plan; a run pays nothing.
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):
@@ -1461,7 +1482,7 @@ run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
 - `--summarize` / `--profile` — would overwrite their target per cycle.
-- `--report` / `--report-file` / `--verbosity <n>` (n > 0) — all
+- `--report` / `--report-file` / `--verbosity <n>` (n > 0) / `--format json` — all
   format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
@@ -2172,7 +2193,7 @@ copy to the source.
 | turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                                    |
 | turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                                       |
 | turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                |
-| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                                                   |
+| turbo  | `--json`                                          | refuse  | use `--format json` for the run's result on stdout, `--dry=json` for the plan                                                                     |
 | turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                                              |
 | turbo  | `--preflight`                                     | refuse  | set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`                                                                                      |
 | turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                                                   |
@@ -2228,12 +2249,21 @@ schemas: each `{ … }` a verb's section shows is an object its schema
 closes with those keys, each object the verb prints whole is shown, and
 `vx info`'s field list is its schema's top level.
 
+`vx run --format json` prints, when the run ends, the `--summarize`
+document (`schemas/summary.json`: `runId`, `ok`, `exitCode`, one row per
+task with its status, exit code and key). Everything else the run writes,
+the frame and the tasks' output with it, goes to stderr, so
+`vx run build --all --format json | jq .ok` reads only the result. It
+refuses `--dry` (use `--dry=json`), a bare `--graph` and
+`--report=markdown`, which print on stdout too.
+
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
 script) writes that product alone there; a notice or warning it meets
 on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
-the tasks' output it carries. `tests/cli-streams.test.ts` holds each
+the tasks' output it carries, except under `--format json`, where that
+moves to stderr. `tests/cli-streams.test.ts` holds each
 product verb to it under a notice.
 
 ## `vx show`
@@ -2422,8 +2452,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   replayed one), and a pass that took a retry counts too, its failed
   attempts counted as failures. A task with no cache block keys on its
   config alone, so its key says nothing about its inputs: it is never
-  listed. A failure behind a failed dependency, in a run that continues
-  past failures, is that dependency's and counts on no key. `none` when
+  listed. A pass or a failure behind a failed dependency, in a run that
+  continues past failures, is not its key's and counts on no key. `none` when
   no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
