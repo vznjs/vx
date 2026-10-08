@@ -283,6 +283,7 @@ export function defaultLogger(
   let restoredLocal = 0
   let restoredRemote = 0
   let skippedCount = 0
+  let savedMs = 0
   // Cache-miss duration spread, accumulated incrementally (the same
   // numbers the final summary computes from the outcome list).
   let spreadMax = 0
@@ -369,6 +370,7 @@ export function defaultLogger(
         restoredRemote,
         miss: succeeded + failed - noCache,
         noCache,
+        savedMs,
         left: total - done,
         spread:
           spreadCount > 0
@@ -698,10 +700,12 @@ export function defaultLogger(
           case 'cache-hit':
             if (outcome.restored === false) upToDate++
             else restoredLocal++
+            savedMs += outcome.storedDurationMs ?? 0
             break
           case 'cache-hit-remote':
             if (outcome.restored === false) upToDate++
             else restoredRemote++
+            savedMs += outcome.storedDurationMs ?? 0
             break
           case 'skipped':
             skippedCount++

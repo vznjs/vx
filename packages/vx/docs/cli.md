@@ -2808,7 +2808,7 @@ footer. A broad run looks like:
 
   info      8 workers · local cache
   time      5.34s · max 5.20s · avg 5.20s · min 5.20s
-  result    2 tasks · 1 cached (50%) · 5.34s
+  result    2 tasks · 1 cached (50%) · 900ms saved · 5.34s
 ```
 
 The three bars are meters: `projects` is what the run covered against

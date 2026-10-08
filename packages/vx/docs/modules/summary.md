@@ -28,6 +28,7 @@ export interface SummaryStats {
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
+  savedMs?: number // the hits' stored exec times summed: what the cache skipped
   emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
 }
 
@@ -103,7 +104,9 @@ sum, said as one), the `time` row and the `result` row (`N tasks · N
 cached (P%) · time` over the tasks that consulted a cache (a skipped
 task never did, nor one still to run), `all cached` when each of them
 hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
-policy that reads and writes nothing), `N failed` after the
+policy that reads and writes nothing), then `<time> saved` (green:
+the hits' STORED exec times summed, what the cache skipped, never the
+restore this run paid; left out under 1 ms), `N failed` after the
 count; none on an empty run). `projects` and `info` only
 render when a `RunContext` is passed (the final footer); the live
 region shows the meters alone. The block above is
