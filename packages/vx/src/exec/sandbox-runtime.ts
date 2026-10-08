@@ -2394,22 +2394,6 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 }
 
 /**
- * Grant paths, with globs handled per platform.
- *
- * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
- * into `(subpath …)`, so a pattern is passed through and seatbelt matches
- * it — including files created DURING the run.
- *
- * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
- * The glob is expanded against the filesystem here, which means it covers
- * what exists when the task STARTS. A pattern matching a file the task
- * creates later grants nothing there — declare its directory instead.
- *
- * That last sentence is the whole contract, and until item 496 a task
- * that broke it learned so from its OWN tool. Measured, one task per
- * spelling, each writing files it declares:
- *
- *   write: ['g/**
  * The walls a glob grant can reach: each one under (or at) a glob's
  * literal head. On Linux `expandGrants` drops such a hit before the bind
  * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
@@ -2454,7 +2438,23 @@ export function darwinWallRules(
   return rules
 }
 
-/**']         ok — collapsed to the directory
+/**
+ * Grant paths, with globs handled per platform.
+ *
+ * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
+ * into `(subpath …)`, so a pattern is passed through and seatbelt matches
+ * it — including files created DURING the run.
+ *
+ * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
+ * The glob is expanded against the filesystem here, which means it covers
+ * what exists when the task STARTS. A pattern matching a file the task
+ * creates later grants nothing there — declare its directory instead.
+ *
+ * That last sentence is the whole contract, and until item 496 a task
+ * that broke it learned so from its OWN tool. Measured, one task per
+ * spelling, each writing files it declares:
+ *
+ *   write: ['g/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory
  *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
  *   write: ['g/*.txt']      FAILED, same
