@@ -407,7 +407,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           await held?.stop()
           held = undefined
           restartTimings()
-          const start = Date.now()
+          // On the mtime clock, as the arm is: from `Date.now()` a write the
+          // run made within a tick of it carried an earlier mtime and read as
+          // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+          const start = fsClockNow(cacheDir)
           const cycle = await runOrchestrator(opts)
           held = cycle.persistent
           if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
