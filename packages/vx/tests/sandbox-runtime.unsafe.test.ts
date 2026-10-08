@@ -3896,6 +3896,37 @@ describe.skipIf(process.platform !== 'darwin')('a bracketed route under seatbelt
     },
     TIMEOUT,
   )
+
+  // An exact regex grants a directory's entry alone; Linux binds it whole.
+  it(
+    'grants an escaped directory with its files',
+    async () => {
+      if (!(await sandboxAvailable('bracketed directory under seatbelt'))) return
+      await initSandbox()
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-brk-')))
+      try {
+        const proj = path.join(dir, 'app')
+        await mkdir(path.join(proj, 'out', '[id]'), { recursive: true })
+        const page = path.join(proj, 'out', '[id]', 'page.html')
+        await writeFile(page, 'page')
+        const r = await runSandboxed({
+          command: `/bin/cat '${page}'`,
+          cwd: proj,
+          env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+          reportLinked: [],
+          config: resolveSandboxConfig({ allow: { read: ['out/\\[id\\]'] } }, proj),
+        })
+        expect(r.stdout).toBe('page')
+      } finally {
+        await resetSandbox()
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 // Release-assets' darwin upload granted `systemInfo: ['hw.optional.neon']`
