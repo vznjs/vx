@@ -201,6 +201,9 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
+`{ nohoist }`) is the single project too, as bun and yarn read it.
+
 A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
 one (the list commented out), defers to `package.json`, as pnpm does.
 
@@ -264,8 +267,10 @@ Returns the project list sorted by `name`.
 Resolves the cache directory:
 
 - `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
-  `VX_CACHE_DIR`. Relative paths resolve against `root`; absolute
-  paths pass through.
+  `VX_CACHE_DIR`. Relative paths resolve against `root`, `~` and `~/`
+  against the home directory; absolute paths pass through.
+- The home directory itself is refused: the cache writes a `*`
+  `.gitignore` beside its index (D-153).
 - Default: `<root>/.vx/cache`.
 
 ### `resolveStoreRoot(root, config)`

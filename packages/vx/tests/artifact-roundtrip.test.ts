@@ -682,3 +682,54 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     expect(await Bun.file(path.join(root, 'evil.txt')).exists()).toBe(false)
   })
 })
+
+// The index reads a project row under `workspace-outputs/` as a workspace
+// output. The loader refuses a glob written under that name, but `**/*.js`
+// reaches a file there too: the save stored it, and every hit after was
+// "missing a recorded output", dropped and run again.
+describe('a project output under the reserved workspace-outputs/', () => {
+  let cache: Cache
+  let projectDir: string
+
+  beforeEach(() => {
+    projectDir = path.join(root, 'proj')
+    cache = new Cache(path.join(root, 'cache'))
+  })
+
+  afterEach(() => {
+    cache.close()
+  })
+
+  const save = (hash: string, rel: string) =>
+    cache.save({
+      hash,
+      entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir,
+      outputFiles: [path.join(projectDir, rel)],
+    })
+
+  it('is refused at save, and nothing is stored', async () => {
+    await write(path.join(projectDir, 'workspace-outputs/a.js'), 'A')
+    const err = await save('reserved', 'workspace-outputs/a.js').catch((e: unknown) => e)
+    expect((err as Error).message).toBe(
+      "output workspace-outputs/a.js is under workspace-outputs/, a name vx's artifacts reserve " +
+        "for outputs.workspaceFiles — write the task's files to another directory, or take them " +
+        "back with a '!' entry",
+    )
+    expect([
+      await cache.get('reserved'),
+      await Bun.file(cache.outputsPath('reserved')).exists(),
+    ]).toEqual([null, false])
+  })
+
+  // Controls: a neighbour's name and a nested one are ordinary outputs.
+  for (const rel of ['workspace-outputs2/a.js', 'out/workspace-outputs/a.js']) {
+    it(`${rel} saves and restores`, async () => {
+      await write(path.join(projectDir, rel), 'A')
+      await save('neighbour', rel)
+      await rm(path.join(projectDir, rel))
+      await cache.restoreOutputs('neighbour', projectDir, root)
+      expect(await Bun.file(path.join(projectDir, rel)).text()).toBe('A')
+    })
+  }
+})

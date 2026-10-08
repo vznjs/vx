@@ -80,9 +80,8 @@ describe('restoring into an output directory that links out of the project', () 
         expect(r.out).not.toContain('internal error')
         expect(r.out).toContain(
           `[vx] app#build: ${dist} is a symbolic link to ${outside}, outside ${appDir} — ` +
-            'a cache restore never writes through a link that leaves its directory. ' +
-            'Remove the link and re-run (the restore puts a real directory there), ' +
-            'or stop declaring outputs under it.',
+            'vx never cleans, saves or restores declared outputs through a link that ' +
+            'leaves the project. Remove the link and re-run, or stop declaring outputs under it.',
         )
         expect(lstatSync(dist).isSymbolicLink()).toBe(true)
         expect(existsSync(path.join(outside, 'o.txt'))).toBe(false)

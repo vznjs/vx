@@ -847,7 +847,7 @@ export function migrateScripts(
     const names = runnable.filter((n) => taskNameProblem(n) === null)
     if (meta !== rootMeta && !('build' in scripts)) {
       const hook = LIFECYCLE_BUILD_HOOKS.find(
-        (h) => typeof scripts[h] === 'string' && BUILDER.test(scripts[h] as string),
+        (h) => typeof scripts[h] === 'string' && BUILDER.test(scripts[h]),
       )
       if (hook !== undefined) lifecycleBuilds.push([meta.name, hook, scripts[hook] as string])
     }

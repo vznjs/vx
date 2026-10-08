@@ -43,6 +43,7 @@ export {
   relPosix,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   anyTaskGlob,
   isInstalledPath,
   taskGlob,
@@ -72,6 +73,7 @@ export { CORE_VERBS, MOVED_VERBS } from './verbs.js'
 export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.js'
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
+export { hangupIgnored } from './hangup.js'
 export { realPath } from './real-path.js'
 export {
   maskedCommand,

@@ -23,7 +23,8 @@ import type { TaskNode } from '../graph/index.js'
 export interface DeferredEntry {
   /** Fetches this task's outputs onto disk. At-most-once by construction. */
   materialize: () => Promise<void>
-  hash: string
+  /** The key a fetch saves the bytes under; absent when the inputs moved after it was taken. */
+  hash?: string
   entry: { taskId: string; command: string; durationMs: number; stdout: string }
 }
 
@@ -149,7 +150,7 @@ export class DeferredOutputs {
     // Convergence: an ordinary entry, so the next run is a plain local hit
     // and nothing downstream learns a second shape. Policy still governs —
     // a run that writes no local entries writes none here either.
-    if (this.args.localWrite) {
+    if (this.args.localWrite && entry.hash !== undefined) {
       await this.args.cache.save({
         hash: entry.hash,
         projectDir: producer.projectDir,

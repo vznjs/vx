@@ -262,6 +262,16 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
           ? `workspaceFiles output ${name.slice(WORKSPACE_OUTPUT_PREFIX.length)}`
           : `output ${name}`
+      // The index stores a project row as its bare rel and reads one under
+      // `workspace-outputs/` as a workspace output, so every hit of this
+      // entry was "missing a recorded output", dropped and run again. The
+      // loader refuses a glob written under the name; one that reaches it
+      // otherwise (`**/*.js`, `w*/**`) is refused here, where names are known.
+      if (name.startsWith(`outputs/${WORKSPACE_OUTPUT_PREFIX}`)) {
+        throw new UserError(
+          `${shown} is under workspace-outputs/, a name vx's artifacts reserve for outputs.workspaceFiles — write the task's files to another directory, or take them back with a '!' entry`,
+        )
+      }
       const dangling = (err: NodeJS.ErrnoException): never => {
         if (err.code === 'ENOENT') {
           throw new UserError(

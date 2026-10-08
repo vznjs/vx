@@ -76,6 +76,16 @@ function validateRules(rules: unknown, configPath: string): void {
 
 const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
+/**
+ * A refused value as a message quotes it. A workspace file is evaluated
+ * in-process and no JSON rule precedes its schema, so a value here may be
+ * one `JSON.stringify` throws on (`30n`) or drops (a symbol): the refusal
+ * became a TypeError with a stack.
+ */
+function shown(v: unknown): string {
+  return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
+}
+
 function validateRetention(retention: unknown, configPath: string): void {
   const where = `${configPath}: \`cacheRetention\``
   const field = (key: string) => `${configPath}: \`cacheRetention.${key}\``
@@ -93,12 +103,12 @@ function validateRetention(retention: unknown, configPath: string): void {
     (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
   ) {
     throw new UserError(
-      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${JSON.stringify(olderThan)})`,
+      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${shown(olderThan)})`,
     )
   }
   if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
     throw new UserError(
-      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${JSON.stringify(maxSize)})`,
+      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${shown(maxSize)})`,
     )
   }
   // The bounds `vx cache prune` refuses, for the same reason: each evicts
@@ -179,7 +189,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
     }
     const verbOwners = new Map<string, string>()
-    const fileClaimants = new Map<string, string>()
+    const fileClaimants = new Map<string, { name: string; at: number }>()
     for (const [i, p] of config.plugins.entries()) {
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
@@ -317,16 +327,23 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             /[/\\]/.test(file)
           ) {
             throw new UserError(
-              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which is not a file name at the workspace root`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file ${shown(file)}, which is not a file name at the workspace root`,
             )
           }
           const owner = fileClaimants.get(file)
-          if (owner !== undefined) {
+          // One package twice (`plugins: [bun(), bun()]`) read "plugins 'x'
+          // and 'x' both claim" (D-158).
+          if (owner !== undefined && owner.name === plug.name) {
             throw new UserError(
-              `${configPath}: plugins '${owner}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice (plugins[${owner.at}] and plugins[${i}]) — a file has one claimant; declare the plugin once`,
             )
           }
-          fileClaimants.set(file, plug.name)
+          if (owner !== undefined) {
+            throw new UserError(
+              `${configPath}: plugins '${owner.name}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+            )
+          }
+          fileClaimants.set(file, { name: plug.name, at: i })
         }
       }
       // A plugin must contribute at least one capability or lifecycle hook
