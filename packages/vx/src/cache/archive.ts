@@ -303,12 +303,12 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         )
       }
       const mode = st.mode & 0o777
-      meta.files[name] = [mode, Math.floor(st.mtimeMs)]
       return {
         name,
         abs: src,
         size: st.size,
         mode,
+        mtimeMs: Math.floor(st.mtimeMs),
         // ustar's octal field holds no sign: an mtime before 1970 made the
         // header unreadable and every save of it a "corrupt artifact". The
         // sidecar above carries the real value.
@@ -316,6 +316,8 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       }
     }),
   )
+  // In the outputs' order, not as each stat settled: one tree, one artifact.
+  for (const f of files) meta.files[f.name] = [f.mode, f.mtimeMs]
   const stdout = new TextEncoder().encode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
   const inputs: TarInput[] = [
