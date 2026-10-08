@@ -45,7 +45,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
-import { restartTimings } from '../util/index.js'
+import { hangupIgnored, restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -103,7 +103,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
-  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks)
+  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks, 'watch')
   if ('error' in resolved) {
     process.stderr.write(`vx watch: ${resolved.error}\n`)
     return 1
@@ -146,8 +146,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
   // A task runs in its own session (exec/kill-tree.ts): the terminal
-  // closing reaches the loop alone, and the loop passes it on.
-  process.once('SIGHUP', () => stop.abort('SIGHUP'))
+  // closing reaches the loop alone, and the loop passes it on — unless vx
+  // was started with it ignored (nohup).
+  if (!hangupIgnored()) process.once('SIGHUP', () => stop.abort('SIGHUP'))
 
   // Enumerate projects-in-scope so we know what dirs to watch: the bare
   // tasks' scope (`opts.projects`; undefined means "every project", or
@@ -471,8 +472,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
-  /** What existed at the arm, so a file born and gone since is no deletion (watch-judge.ts). */
-  const existedAtArm = gitFiles(workspaceRoot)
+  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
+  const atArm = gitFiles(workspaceRoot)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
   const changes = new ChangeJudge({
     workspaceRoot,
@@ -480,7 +481,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     held: () => held !== undefined,
     uncached: () => uncached,
     fenced: (ownDir, abs) => fenced(ownDir, abs),
-    ...(existedAtArm !== undefined ? { existedAtArm } : {}),
+    ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()

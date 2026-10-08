@@ -66,6 +66,23 @@ describe('whitespace-only values', () => {
   })
 })
 
+// A NUL in a workspace path or ref loaded, then failed the run with
+// Node's argument error: the cache dir's message blamed the workspace's
+// permissions, and affectedBase's named `args[3]` and nothing in the config.
+describe('a NUL in a workspace string', () => {
+  it('is refused in cacheDir and affectedBase', () => {
+    expect([
+      refusal({ cacheDir: 'a\0b' }),
+      refusal({ affectedBase: 'main\0x' }),
+      refusal({ affectedBase: 'origin/main' }),
+    ]).toEqual([
+      `${WS}: \`cacheDir\` holds a NUL, which no path can carry`,
+      `${WS}: \`affectedBase\` must be a git ref like 'origin/main'`,
+      null,
+    ])
+  })
+})
+
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
     expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)
@@ -160,6 +177,22 @@ describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
     )
     expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
   })
+
+  it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
+    // The workspace file has no JSON rule before its schema; the fuzz found it.
+    expect(refusal({ cacheRetention: { olderThan: 30n } })).toBe(
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30n)`,
+    )
+    expect(refusal({ cacheRetention: { maxSize: Symbol('s') } })).toBe(
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got Symbol(s))`,
+    )
+    const p = testPlugin('fz-fp-bigint', {
+      fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: plugin 'fz-fp-bigint' claims fingerprint file 1n, which is not a file name at the workspace root`,
+    )
+  })
 })
 
 describe('task refusals the sweep found unheld (item 653)', () => {
@@ -236,6 +269,18 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       `${CFG}: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
     )
     expect(taskRefusal({ exec: { command: 'x', env: { secret: ['GH_PAT'] } } })).toBeNull()
+    // `sh` (dash on Linux) drops a name that is no shell identifier from the
+    // environment it hands the command: `my.var` loaded clean and never
+    // reached the task there, and did under macOS's bash.
+    for (const n of ['my.var', 'A-B', '1A', 'A B', 'ü']) {
+      expect(define({ [n]: 'x' })).toBe(
+        `${CFG}: tasks.t.exec.env.define: ${JSON.stringify(n)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+      )
+      expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
+        `${CFG}: tasks.t.exec.env.passThrough: ${JSON.stringify(n)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+      )
+    }
+    expect(define({ _a1: 'x' })).toBeNull()
     // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
     expect(define({ A_B: 'x=y' })).toBeNull()
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()
@@ -477,6 +522,29 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     expect(
       cacheRefusal({ files: ['src/**'], tasks: ['^buidl'] }, { files: [] }, ['^build']),
     ).not.toBeNull()
+  })
+
+  // The selection picks among the task's own dependencies and a group's
+  // members are not among them (schema.md: name the group, whose hash
+  // rolls its members up), so a name reached only through a group would
+  // fold nothing; it is refused like a typo.
+  it('an inputs.tasks name reached only through a group is refused, in each form', () => {
+    const refused = (name: string, dep: string) =>
+      `${CFG}: tasks.t.cache.inputs.tasks: "${name}" names no task in tasks.t.dependsOn ('${dep}') — ` +
+      `it would match nothing and fold no upstream hash, decoupling the task from its ` +
+      `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +
+      `\`pkg#name\` one project's. Fix the name, or use [] to decouple on purpose.`
+    for (const [name, dep] of [
+      ['compile', 'all'],
+      ['^compile', '^all'],
+      ['lib#compile', 'lib#all'],
+    ] as const) {
+      expect(cacheRefusal({ files: ['src/**'], tasks: [name] }, { files: [] }, [dep])).toBe(
+        refused(name, dep),
+      )
+      // Control: the group itself is named.
+      expect(cacheRefusal({ files: ['src/**'], tasks: [dep] }, { files: [] }, [dep])).toBeNull()
+    }
   })
 })
 

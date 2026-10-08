@@ -42,6 +42,7 @@ import {
   readNxJson,
 } from './nx-map.js'
 import { exportGraph } from './export-graph.js'
+import { lernaJsonText } from './lerna.js'
 export type {
   NxExecutors,
   NxExecutorTarget,
@@ -295,7 +296,7 @@ const textOf = (file: string): Promise<string> =>
     .catch(() => '\0absent')
 
 /**
- * Everything the mapping reads: the graph, nx.json and its `extends` chain, every package manifest
+ * Everything the mapping reads: the graph, nx.json and its `extends` chain, lerna.json, every package manifest
  * and the package.json of each graph node no package matches (its
  * synthetic project's name), the `.env` names in every project dir,
  * NX_LOAD_DOT_ENV_FILES, whether the bins the tasks run are installed,
@@ -326,6 +327,8 @@ async function nxReads(
   return [
     graphText,
     ...(await Promise.all(chain.map(textOf))),
+    // Its presence orders each target after its dependencies' (`lerna run`).
+    String(await lernaJsonText(root)),
     // A config file added beside mapped tasks changes what an output may cover.
     JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
     ...(await Promise.all(unmatched.map((r) => textOf(path.join(root, r, 'package.json'))))),
@@ -521,7 +524,7 @@ async function graphInputKey(
   if (changed === null) return null
   // The cache dir holds the snapshot itself: a workspace that does not
   // ignore it would see the export move the key it was keyed on.
-  const cacheRel = path.relative(root, cacheDir).split(path.sep).join('/')
+  const cacheRel = relPosix(root, cacheDir)
   const inCache = (p: string): boolean =>
     cacheRel !== '' &&
     !cacheRel.startsWith('..') &&
@@ -537,7 +540,7 @@ async function graphInputKey(
   // stray write at the root (a report, a log) is not, and counting it
   // re-exported the graph on every run after it.
   // A `project.json` anywhere: a new one is a project no root lists yet.
-  const roots = dirs.map((d) => path.relative(root, d).split(path.sep).join('/'))
+  const roots = dirs.map((d) => relPosix(root, d))
   const graphFile = (p: string): boolean =>
     p === 'project.json' ||
     p.endsWith('/project.json') ||

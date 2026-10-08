@@ -9,6 +9,7 @@ import {
   CONFIG_EXIT,
   evalBudgetMs,
   evaluateConfigFresh,
+  thrownValueMessage,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
 import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
@@ -127,10 +128,12 @@ function servableSource(bytes: Uint8Array, loader: 'ts' | 'js'): string | null {
 }
 
 // What makes Bun run a file as CommonJS is one of these names at the top
-// level (an escaped `\u006dodule` too, so any backslash counts). Source
+// level (an escaped `\u006dodule` too, so any backslash counts), or
+// TypeScript's `export =`, which spells none of them. Source
 // with none of them runs as a module whichever path loads it, so it skips
 // the parse: 16–20 µs a config, 1,000 cold configs (2026-10-03).
-const COMMONJS_HINT = /\b(?:module|exports|require|this|__dirname|__filename)\b|\\/
+const COMMONJS_HINT =
+  /\b(?:module|exports|require|this|__dirname|__filename)\b|\\|\bexport\s*=(?!=)/
 
 /** vx's module-cache query, which no user wrote: stripped from anything shown to them. */
 const BUST_QUERY = /\?vx-(?:bust|held)=[^'"\s]*/g
@@ -189,7 +192,7 @@ async function loadDefaultExport(
     if (err instanceof Error && err.stack !== undefined) {
       err.stack = err.stack.replaceAll(specifier, configPath).replace(BUST_QUERY, '')
     }
-    throw configLoadError(err, configPath, kind) ?? err
+    throw loadFailure(err, configPath, kind)
   } finally {
     clearTimeout(deadline)
     unguard()
@@ -337,6 +340,16 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
     return new UserError(`${kind} config ${where}: ${message}`)
   }
   return null
+}
+
+/** What a failed load throws: Bun's own errors and non-Error throws as user errors, the rest as thrown. */
+function loadFailure(err: unknown, configPath: string, kind: string): unknown {
+  const user = configLoadError(err, configPath, kind)
+  if (user !== null) return user
+  if (err !== null && typeof err === 'object' && typeof (err as Error).message === 'string') {
+    return err
+  }
+  return new UserError(thrownValueMessage(kind, configPath, Bun.inspect(err, { compact: true })))
 }
 
 export interface LoadProjectConfigOptions {
@@ -521,7 +534,7 @@ export async function loadProjectConfigs(
     if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
-          throw configLoadError(err, configPath, 'Project') ?? err
+          throw loadFailure(err, configPath, 'Project')
         })
       : await loadDefaultExport(configPath, 'Project', bytes!)
     // Before anything reads through them: a replaced `Array.prototype.includes`
@@ -810,6 +823,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'env',
   'file',
   'hash',
+  'inspect',
   'main',
   'nanoseconds',
   'plugin',
@@ -818,6 +832,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'semver',
   'serve',
   'sleep',
+  'sleepSync',
   'spawn',
   'spawnSync',
   'stderr',

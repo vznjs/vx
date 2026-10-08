@@ -1,4 +1,4 @@
-import { constants, type Dirent } from 'node:fs'
+import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -267,11 +267,13 @@ async function readRootManifests(
       }
       catalogs = catalogsOf([parsed])
       const packages = (parsed as { packages?: unknown }).packages
-      if (packages !== undefined) {
+      // A list commented out leaves `packages:` null, which pnpm reads as
+      // absent; vx refused it as "must be an array" (D-149).
+      if (packages !== undefined && packages !== null) {
         return { globs: assertGlobList(packages, yamlPath, 'packages'), catalogs }
       }
     }
-    // No `packages:`: pnpm 10 keeps its settings and catalogs in this file
+    // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs in this file
     // for a single-package repo too. The root's package.json decides, as it
     // would without the file; read as an empty list, the root found zero
     // projects and every verb ran nothing and exited 0 (item 984).
@@ -288,13 +290,17 @@ async function readRootManifests(
     )
   }
   if (ws === undefined || ws === null) return { globs: ['.'], catalogs }
+  // bun's `{ catalog }` and yarn's `{ nohoist }` name no members, and both
+  // managers run the root alone; vx refused them as no array (D-151).
+  if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) {
+    return { globs: ['.'], catalogs }
+  }
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
-    const globs = assertGlobList(
-      (ws as { packages?: unknown }).packages ?? [],
-      pkgPath,
-      'workspaces.packages',
-    )
-    return { globs, catalogs }
+    const packages = (ws as { packages?: unknown }).packages
+    // Yarn 1 and 4 run the root alone under `packages: null`; read as an
+    // empty list, the root was no project and every verb ran nothing (D-150).
+    if (packages === null) return { globs: ['.'], catalogs }
+    return { globs: assertGlobList(packages, pkgPath, 'workspaces.packages'), catalogs }
   }
   return { globs: assertGlobList(ws, pkgPath, 'workspaces'), catalogs }
 }
@@ -348,8 +354,13 @@ export async function unreachedPackages(workspace: Workspace): Promise<string[]>
   return found.sort()
 }
 
-/** The line for `unreachedPackages`' finding: the cause, the packages, the glob to add. */
-export function unreachedHint(unreached: readonly string[]): string {
+/**
+ * The line for `unreachedPackages`' finding: the cause, the packages, the
+ * glob to add, and where. A `pnpm-workspace.yaml` with no `packages:` (pnpm
+ * keeps its settings there) is where pnpm reads the globs: the hint said
+ * there was no such file and named package.json, beside ngrx's (2026-10-07).
+ */
+export function unreachedHint(unreached: readonly string[], root: string): string {
   const n = unreached.length
   const shown = unreached.slice(0, 3).join(', ') + (n > 3 ? ` and ${n - 3} more` : '')
   const globs = [
@@ -357,11 +368,11 @@ export function unreachedHint(unreached: readonly string[]): string {
   ]
     .map((g) => `"${g}"`)
     .join(', ')
-  return (
-    `package.json declares no \`workspaces\` (and there is no pnpm-workspace.yaml), so the root is the only project ` +
-    `and ${n} package.json below it ${n === 1 ? 'is' : 'are'} not: ${shown}. ` +
-    `Add \`"workspaces": [${globs}]\` to package.json and re-run.`
-  )
+  const rest = `so the root is the only project and ${n} package.json below it ${n === 1 ? 'is' : 'are'} not: ${shown}.`
+  return existsSync(path.join(root, 'pnpm-workspace.yaml'))
+    ? `pnpm-workspace.yaml lists no \`packages\`, ${rest} Add \`packages: [${globs}]\` to pnpm-workspace.yaml and re-run.`
+    : `package.json declares no \`workspaces\` (and there is no pnpm-workspace.yaml), ${rest} ` +
+        `Add \`"workspaces": [${globs}]\` to package.json and re-run.`
 }
 
 /**
@@ -448,12 +459,20 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
+  const home = process.env['HOME'] || homedir()
   // No shell expands `~` in a config string or a quoted variable, and
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
-  if (rel.startsWith('~/')) {
-    return path.join(process.env['HOME'] || homedir(), rel.slice(1))
+  const dir =
+    rel === '~' || rel.startsWith('~/') ? path.join(home, rel.slice(1)) : path.resolve(root, rel)
+  // The cache writes a `*` .gitignore beside its index: a bare `~` made a
+  // directory named `~`, and expanded it would land in home itself (D-153).
+  if (path.resolve(dir) === path.resolve(home)) {
+    const source = config?.cacheDir !== undefined ? 'cacheDir' : 'VX_CACHE_DIR'
+    throw new UserError(
+      `${source} ${JSON.stringify(rel)} is the home directory itself, where the cache's \`*\` .gitignore and index would land — name a directory under it, like '~/.cache/vx'`,
+    )
   }
-  return path.resolve(root, rel)
+  return dir
 }
 
 /**
@@ -704,10 +723,15 @@ async function readManifest(root: string, dir: string, file: string): Promise<st
     )
     if (searchable) unreadable(err, file)
     process.stderr.write(
-      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+      `vx: ${shownDir(root, dir)} is not readable by this user — skipped, with any project in it\n`,
     )
     return null
   }
+}
+
+/** `dir` as a discovery line names it: the root's own path is '' (D-127, D-154). */
+function shownDir(root: string, dir: string): string {
+  return relPosix(root, dir) || 'the workspace root'
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
@@ -762,7 +786,7 @@ export async function discoverProjects(
         // same flight as the failed read, so naming it costs nothing.
         if (configPath !== null) {
           process.stderr.write(
-            `vx: ${relPosix(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
+            `vx: ${shownDir(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
           )
         }
         return null
@@ -793,9 +817,8 @@ export async function discoverProjects(
       // fine for a dir that declares no tasks; a dir with a vx config was
       // meant to run.
       if (configPath !== null) {
-        const rel = relPosix(workspace.root, dir)
         process.stderr.write(
-          `vx: ${rel === '' ? 'the workspace root' : rel} has a vx config but its package.json has no "name" — skipped\n`,
+          `vx: ${shownDir(workspace.root, dir)} has a vx config but its package.json has no "name" — skipped\n`,
         )
       }
       continue

@@ -337,6 +337,49 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
     },
     TIMEOUT,
   )
+
+  // The readiness timer SIGTERMed the group and the failed task's teardown
+  // SIGTERMed it again a turn later: a server whose handler is a one-shot
+  // (`process.once('SIGTERM', …)`, a trap that resets itself) died on the
+  // second mid-cleanup, as abort.test.ts's stop did before it signalled
+  // each group once. The marker it prints and the exit it makes on the way
+  // down are the timeout's, not a ready server or an early exit.
+  it(
+    'a readiness timeout signals the group once, and its cleanup finishes',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: 'echo $$ > pid.txt; trap "trap - TERM; sleep 0.2; echo done > clean.txt; echo Listening; exit 0" TERM; echo booting; while :; do sleep 0.05; done',
+                timeout: 500,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      const grace = process.env['VX_KILL_GRACE_MS']
+      process.env['VX_KILL_GRACE_MS'] = '3000'
+      const kill = vi.spyOn(process, 'kill')
+      try {
+        const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+        expect([r.outcomes[0]!.status, r.outcomes[0]!.notReady]).toEqual(['failed', 'timeout'])
+        const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
+        const terms = kill.mock.calls.filter((c) => c[0] === -pid && c[1] === 'SIGTERM')
+        expect(terms.length).toBe(1)
+        expect(readFileSync(path.join(dir, 'clean.txt'), 'utf8')).toBe('done\n')
+      } finally {
+        kill.mockRestore()
+        process.env['VX_KILL_GRACE_MS'] = grace
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('exec.timeout — loader validation', () => {

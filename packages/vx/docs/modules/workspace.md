@@ -101,7 +101,7 @@ export interface ProjectEntry {
 // Workspace members whose package globs match no directory — `vx run`
 // warns with `unreachedHint`, which names them and what to check.
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
-export function unreachedHint(unreached: readonly string[]): string
+export function unreachedHint(unreached: readonly string[], root: string): string
 
 // Whether a member glob reaches any package.json but the root's,
 // addressable or not; `vx init` names globs that reach none (M-46).
@@ -158,7 +158,11 @@ manifest-less `packages/tools`, and the standalone package below it ran
 in a workspace that does not list it. Nor can a directory discovery skips
 be claimed: a `node_modules` path, or a dot-dir a wildcard reached
 (`packages/*` over `packages/.tpl`), which `vx run` there answered "not
-inside a project". A `pnpm-workspace.yaml` is a hard
+inside a project". The walk matches each glob against the member's
+manifest path, as discovery does, so `packages/**` claims `packages`
+itself when it holds a `package.json` (npm lists it too); matched
+against the directory, it needed a segment below and a run from
+`packages` took it as its own root. A `pnpm-workspace.yaml` is a hard
 root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
@@ -181,7 +185,9 @@ itself IS the project. Throws a `UserError` if no candidate is found.
 one shallow scan (two levels, `node_modules` and dot directories
 skipped) for the `package.json` files the missing globs never reach, and
 `unreachedHint` is the line `vx init` and `vx run` print for them —
-the cause, the packages, the `workspaces` entry to add.
+the cause, the packages, the `workspaces` entry to add (the `packages`
+entry, where a `pnpm-workspace.yaml` holds pnpm's settings and no
+`packages:`).
 
 ### `loadWorkspace(root, reads?)`
 
@@ -194,6 +200,15 @@ Reads the package-glob list (through `reads`, so the manifest
 | npm / yarn / bun (new) | `package.json` `workspaces: string[]`                            |
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
+
+A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
+`{ nohoist }`) is the single project too, as bun and yarn read it.
+
+A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
+one (the list commented out), defers to `package.json`, as pnpm does.
+
+A yarn `workspaces: { packages: null }` is the single project too, as
+yarn 1 and 4 read it.
 
 From the same parsed manifests it takes the catalogs a `catalog:` spec
 resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
@@ -255,8 +270,10 @@ Returns the project list sorted by `name`.
 Resolves the cache directory:
 
 - `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
-  `VX_CACHE_DIR`. Relative paths resolve against `root`; absolute
-  paths pass through.
+  `VX_CACHE_DIR`. Relative paths resolve against `root`, `~` and `~/`
+  against the home directory; absolute paths pass through.
+- The home directory itself is refused: the cache writes a `*`
+  `.gitignore` beside its index (D-153).
 - Default: `<root>/.vx/cache`.
 
 ### `resolveStoreRoot(root, config)`

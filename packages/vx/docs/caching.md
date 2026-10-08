@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v41'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -110,7 +110,9 @@ over (in order):
 6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
-   pulled deps don't see them (their cache identity stays clean).
+   pulled deps don't see them (their cache identity stays clean) — and
+   to a command: a requested default `build` runs none and folds none
+   (X-119).
 7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
@@ -595,9 +597,10 @@ row, its stored stdout included, made a 200-task plan over 1 MB outputs
 Caching is controlled by a four-axis `CachePolicy` — **localRead**,
 **localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
 each enforced inside the matching cache layer at construction time. The
-local `Cache` gets a `{ read, write }` slice gating only its task
-artifact get/save (never `recordRun` / `stats` / `prune` / ingest /
-hashing); the `LayeredCache` additionally gates its own remote
+local `Cache` gets a `{ read, write }` slice gating its task artifact
+get/save, the config-evaluation cache's reads and writes, and the
+file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
+/ key derivation); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
@@ -678,6 +681,9 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+left remote (`--download=none`) is held to the same checks: a moved
+key still lets a local consumer fetch its outputs, but the fetch saves
+no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
@@ -705,7 +711,10 @@ over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way.
+key derivation, step 3) withholds the save the same way, and no key
+taken before it is probed or restored: a hit the up-front probe found
+goes back to the scheduler and runs once its deps are done. Until X-124
+that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
 policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
@@ -725,9 +734,9 @@ artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or an output directory that is a symlink out
-of the project (`workspaceFiles`: out of the workspace), whose files vx
-drops as outside. `outputs.files: []` is a deliberate cached
+writes never reached disk, or a `workspaceFiles` directory that is a
+symlink out of the workspace, whose files vx drops as outside (a project
+output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
@@ -1180,7 +1189,8 @@ root) and it holds everything, shared with no other workspace:
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
+    │                                       packed under (v35), the miss's CPU and RSS
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1299,9 +1309,11 @@ project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). Each refusal names
 the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed, and nothing is removed through a symlinked directory: a
-`public -> static` link in the project took the tracked `static/*`
-with it, X-5) and prunes the directories it emptied (before a miss it keeps
+followed). An output directory that is a symlink (`dist -> real-out`) is
+followed by the clean as by the save and restore, so its target is the
+output and an entry holds only what its run wrote (X-88); one that
+resolves outside the project refuses the task, naming the link, and
+nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1778,6 +1790,14 @@ breaking footer).
 
 ### History
 
+- **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
+  output directory linked inside its project was never cleaned, so an
+  entry could hold files a run of another key left there. The fix
+  cannot reach an entry already saved that way.
+- **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
+  X-34). An additive task's entry a hit replayed over a file the task
+  had removed, one that missed a same-size rewrite, and a runtime probe
+  answered before its upstream wrote.
 - **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the

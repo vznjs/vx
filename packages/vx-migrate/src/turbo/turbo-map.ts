@@ -28,7 +28,7 @@ import {
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
-import { packageScripts, relPosix } from '../paths.js'
+import { isRecord, packageScripts, relPosix } from '../paths.js'
 import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
 import {
   DOTENV_PROBE,
@@ -64,6 +64,8 @@ interface TurboJson {
   global?: { inputs?: string[]; env?: string[]; passThroughEnv?: string[]; envMode?: unknown }
   envMode?: unknown
 }
+
+const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** A name core takes in `cache.inputs.env` and `exec.env.passThrough`. */
 const keyable = (name: string): boolean =>
@@ -436,9 +438,6 @@ async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   checkTurboShape(parsed, relPosix(root, file))
   return parsed as TurboJson
 }
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const TOP_LISTS = [
   'globalDependencies',
@@ -1164,14 +1163,19 @@ export async function mapTurboWorkspace(
   // One with edges of its own (with-shell-commands' `tooling-config#build`
   // → `prebuild`) was a group, which keys nothing: Turbo's node still
   // hashes the package's files, so it is key-only with its edges. A node
-  // that starts persistent sidecars stays a group.
+  // that starts persistent sidecars stays a group. One a `^name` reaches
+  // whose own edges lack `^name` (opencode's `build: { dependsOn: [] }`)
+  // is key-only too: Turbo's `^build` stops at it, and core's walked past
+  // it to the builds below, running and keying ones Turbo never waits on.
   const keyOnly = new Map<string, Set<string>>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const { defined, defFor } = definitions(meta)
+    const depended = metas.some((m) => m !== meta && declares(m, meta.name))
     for (const name of defined) {
       const def = defFor(name)
-      if (!caretSelf.has(name) || !withScript.has(name) || transit.has(name)) continue
+      const stops = depended && caretNames.has(name) && !(def?.dependsOn ?? []).includes(`^${name}`)
+      if (!(caretSelf.has(name) || stops) || !withScript.has(name) || transit.has(name)) continue
       if (scripts[name] !== undefined || commandOverride(def) !== undefined) continue
       if (sidecarGroups.has(`${meta.name}#${name}`)) continue
       if (def?.cache === false || def?.persistent === true) continue
@@ -1291,7 +1295,13 @@ export async function mapTurboWorkspace(
       // Core gives a project with no `build` this very node (a group behind
       // `^build`, keyed on the project's files), so writing it is noise:
       // solid's three script-less packages each got a `build` running `true`.
-      if (noop && name === 'build' && (defFor(name)!.dependsOn ?? []).every((d) => d === '^build'))
+      const noopEdges = defFor(name)!.dependsOn ?? []
+      if (
+        noop &&
+        name === 'build' &&
+        noopEdges.includes('^build') &&
+        noopEdges.every((d) => d === '^build')
+      )
         continue
       if (
         override === undefined &&
@@ -1488,7 +1498,14 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
-  excludeWorkspaceOutputs(root, projects)
+  // A written config spreads the preset (`...globalInputs`), which the
+  // take-back pass must read as its globs: unread, opencode's configs
+  // read `packages/plugin/**` with no `!packages/plugin/dist/**` and
+  // core refused to load them.
+  const opaque = new Map<string, readonly string[]>()
+  for (const e of opts.splice('inputs', globals.inputs))
+    if (typeof e !== 'string') opaque.set(JSON.stringify(e), globals.inputs)
+  excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1882,10 +1899,12 @@ function buildTask(
     spelled,
   )
 
+  // A name that is no shell identifier never reached a task (`sh` drops it)
+  // and core refuses it in passThrough.
   const passThrough = uniq(
     [...global('env'), ...global('pass'), ...envNames, ...passNames],
     hidden('env', 'pass'),
-  )
+  ).filter((n) => typeof n !== 'string' || SHELL_NAME.test(n))
 
   const exec: Record<string, unknown> = { command }
   if (passThrough.length > 0) exec.env = { passThrough }

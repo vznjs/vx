@@ -463,6 +463,12 @@ describe('runPersistent', () => {
     ['^ after a progress frame', '50%%\\rready', '^ready', 'ready'],
     ['an SGR-bolded word', '\\033[1mLocal\\033[22m: http://localhost:5173\\n', 'Local:', 'ready'],
     ['^ past an OSC title', '\\033]0;vite\\007Local: http://x\\n', '^Local:', 'ready'],
+    [
+      "past tput sgr0's charset reset",
+      '\\033[1mListening\\033(B\\033[m on :3000\\n',
+      '^Listening on',
+      'ready',
+    ],
     ['control: ^ mid-line', 'not ready\\n', '^ready', 'timed out'],
     ['control: $ mid-line', 'ready now\\n', 'ready$', 'timed out'],
   ])(

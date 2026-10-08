@@ -6,6 +6,7 @@ const PLAYGROUND = [
   'packages/vx-docs/scripts/build-playground.ts',
   'packages/vx-docs/src/playground/**',
   'packages/vx-docs/tests/glob-fuzz.ts',
+  'packages/vx-docs/tests/helpers/rng.ts',
 ]
 
 export default defineProject({

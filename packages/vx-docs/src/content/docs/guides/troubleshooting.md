@@ -29,6 +29,9 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 
 - **Only one package ran.** `vx run build` runs the package you are in
   and what it depends on. Add `--all`.
+- **`0 tasks · build has no command in these projects`.** No selected
+  package gives `build` a command, so vx ran only its default group.
+  Give `build` an `exec.command` in the packages that build.
 - **A task runs every time.** It has no `cache` block. `vx init` leaves
   a TODO with the block to add.
 - **A task hit after you changed a file.** The file is not in

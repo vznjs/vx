@@ -137,6 +137,25 @@ describe.skipIf(!available || process.platform !== 'linux' || realStrace === nul
       expect(r.calls).toBe(1)
     })
 
+    // `timeout` bounds the task's total run time (schema.md): the retry
+    // gets what the first attempt left, not a fresh window. Each attempt
+    // fits the window alone; both together overrun it.
+    it("the retry runs only in what is left of the task's timeout", async () => {
+      const r = await runSandboxed({
+        command: 'sleep 1.2',
+        cwd: dir,
+        env: process.env,
+        baseAllowRead: [dir],
+        baseDenyRead: [],
+        reportWithin: dir,
+        reportLinked: [],
+        config: resolveSandboxConfig({ allow: { write: ['count'] } }, dir),
+        timeoutMs: 2000,
+      })
+      const calls = Number((await readFile(path.join(dir, 'count'), 'utf8')).trim())
+      expect([calls, r.timedOut, r.durationMs < 3000]).toEqual([2, true, true])
+    })
+
     // A stopping run has killed the children it holds; a retry would spawn
     // one after that kill, which nothing stops.
     it('a task whose run is stopping is not run again, whatever strace said', async () => {

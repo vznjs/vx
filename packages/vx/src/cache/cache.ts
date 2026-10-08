@@ -1366,7 +1366,7 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>> {
     return this.guard(async () => {
       const out = await this.getManyEntries(hashes)
-      if (ctx === undefined || !this.write || out.size === hashes.length) return out
+      if (ctx === undefined || !this.read || !this.write || out.size === hashes.length) return out
       // An artifact the index does not know is still a hit (`adopt`).
       for (const hash of hashes) {
         if (out.has(hash) || !(await this.adopt(hash, ctx(hash)))) continue

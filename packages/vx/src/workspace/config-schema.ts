@@ -76,6 +76,16 @@ function validateRules(rules: unknown, configPath: string): void {
 
 const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
+/**
+ * A refused value as a message quotes it. A workspace file is evaluated
+ * in-process and no JSON rule precedes its schema, so a value here may be
+ * one `JSON.stringify` throws on (`30n`) or drops (a symbol): the refusal
+ * became a TypeError with a stack.
+ */
+function shown(v: unknown): string {
+  return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
+}
+
 function validateRetention(retention: unknown, configPath: string): void {
   const where = `${configPath}: \`cacheRetention\``
   const field = (key: string) => `${configPath}: \`cacheRetention.${key}\``
@@ -93,12 +103,12 @@ function validateRetention(retention: unknown, configPath: string): void {
     (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
   ) {
     throw new UserError(
-      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${JSON.stringify(olderThan)})`,
+      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${shown(olderThan)})`,
     )
   }
   if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
     throw new UserError(
-      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${JSON.stringify(maxSize)})`,
+      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${shown(maxSize)})`,
     )
   }
   // The bounds `vx cache prune` refuses, for the same reason: each evicts
@@ -144,6 +154,11 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   ) {
     throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
   }
+  // No path can carry one: the mkdir's argument error was reported as an
+  // unwritable workspace.
+  if (typeof config.cacheDir === 'string' && config.cacheDir.includes('\0')) {
+    throw new UserError(`${configPath}: \`cacheDir\` holds a NUL, which no path can carry`)
+  }
   if (config.timeout !== undefined) {
     if (
       typeof config.timeout !== 'number' ||
@@ -156,8 +171,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   }
   if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
   if (config.affectedBase !== undefined) {
-    // A leading '-' would reach git as an option, not a ref.
-    if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
+    // A leading '-' would reach git as an option, not a ref; a NUL fails the
+    // spawn with an argument error naming nothing in this file.
+    if (
+      typeof config.affectedBase !== 'string' ||
+      !/^[^-\s\0][^\s\0]*$/.test(config.affectedBase)
+    ) {
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
     }
   }
@@ -170,7 +189,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
     }
     const verbOwners = new Map<string, string>()
-    const fileClaimants = new Map<string, string>()
+    const fileClaimants = new Map<string, { name: string; at: number }>()
     for (const [i, p] of config.plugins.entries()) {
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
@@ -308,16 +327,23 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             /[/\\]/.test(file)
           ) {
             throw new UserError(
-              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which is not a file name at the workspace root`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file ${shown(file)}, which is not a file name at the workspace root`,
             )
           }
           const owner = fileClaimants.get(file)
-          if (owner !== undefined) {
+          // One package twice (`plugins: [bun(), bun()]`) read "plugins 'x'
+          // and 'x' both claim" (D-158).
+          if (owner !== undefined && owner.name === plug.name) {
             throw new UserError(
-              `${configPath}: plugins '${owner}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file '${file}' twice (plugins[${owner.at}] and plugins[${i}]) — a file has one claimant; declare the plugin once`,
             )
           }
-          fileClaimants.set(file, plug.name)
+          if (owner !== undefined) {
+            throw new UserError(
+              `${configPath}: plugins '${owner.name}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+            )
+          }
+          fileClaimants.set(file, { name: plug.name, at: i })
         }
       }
       // A plugin must contribute at least one capability or lifecycle hook
@@ -463,6 +489,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `(got "${wild}") — list explicit env var names instead`,
             )
           }
+          for (const n of passThrough as string[])
+            assertShellName(n, `${where}.exec.env.passThrough`)
         }
         const secret = (env as { secret?: unknown }).secret
         if (
@@ -489,6 +517,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
               )
             }
+            assertShellName(k, `${where}.exec.env.define`)
             if (typeof val !== 'string' || val.includes('\0')) {
               throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
             }
@@ -1350,8 +1379,19 @@ function specForm(spec: string): SpecForm {
  * A name an environment can hold. An `=` splits at the first one, so
  * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
  * was dropped; a NUL failed the spawn with a hint about exit 127 (item
- * 999). Refused at load, where the config is named.
+ * 999). And the task runs under `sh -c`, whose dash (Linux) drops a
+ * variable whose name is no shell identifier: `my.var` reached a task
+ * under macOS's bash and nothing on Linux. Refused at load, where the
+ * config is named.
  */
+function assertShellName(name: string, field: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new UserError(
+      `${field}: ${JSON.stringify(name)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+    )
+  }
+}
+
 function isEnvName(name: unknown): name is string {
   return typeof name === 'string' && name.length > 0 && !name.includes('=') && !name.includes('\0')
 }

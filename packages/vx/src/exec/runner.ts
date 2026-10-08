@@ -18,8 +18,8 @@ import {
   closeSignalChannel,
   holdGroups,
   killTree,
-  markGroupIfGone,
   releaseGroup,
+  releaseServerGroup,
   signalThrough,
   guardLine,
   spawnGuarded,
@@ -485,12 +485,14 @@ const READY_MATCH_WINDOW_CHARS = 64 * 1024
 
 /**
  * Terminal escapes a `readyWhen` pattern is matched without: CSI (colour,
- * cursor), OSC (titles, links) and the two-byte forms. Vite under
+ * cursor), OSC (titles, links), charset picks (`tput sgr0` writes
+ * `\x1b(B\x1b[m`) and the two-byte forms. Vite under
  * `FORCE_COLOR` prints `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched
  * (item 1059). The streamed bytes keep them; only the tested text drops them.
  */
-// eslint-disable-next-line no-control-regex -- ESC is the point
-const TERMINAL_ESCAPE_RE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g
+const TERMINAL_ESCAPE_RE =
+  // eslint-disable-next-line no-control-regex -- ESC is the point
+  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[ -/]+[0-~]|[@-Z\\-_])/g
 
 /**
  * Why a persistent task never became ready — the reason every label and
@@ -621,7 +623,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   })
 
   const markReady = (): void => {
-    if (readyAt === undefined) {
+    // A marker printed on the way down, once the wait gave up, is not ready.
+    if (readyAt === undefined && gaveUpAt === undefined) {
       readyAt = Date.now()
       if (readyTimer !== undefined) clearTimeout(readyTimer)
       resolveReady()
@@ -709,40 +712,42 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
 
-  // Readiness deadline. Reject FIRST so the failure reads as a
-  // timeout, then SIGTERM — the exit handler's later reject is a
-  // no-op on the settled promise. Cleared the moment ready fires so
-  // a healthy server is never killed by a stale timer.
+  // Readiness deadline: SIGTERM, wait the grace for the GROUP, SIGKILL
+  // what is left, and only then reject. The caller's teardown used to
+  // signal the group again a turn after this SIGTERM, and a server whose
+  // handler is a one-shot (`process.once('SIGTERM')`, a trap that resets
+  // itself) died on the second mid-cleanup. Cleared the moment ready
+  // fires so a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
-    const giveUp = (): void => {
-      if (readyAt === undefined) {
-        gaveUpAt = Date.now()
-        rejectReady(
-          new PersistentReadyError(
-            `persistent task not ready within ${opts.timeoutMs}ms — ` +
-              `readyWhen pattern never matched; child killed`,
-            'timeout',
-          ),
-        )
-        // Listed on the group guard until the SIGKILL: the shell may die
-        // on the SIGTERM and let the group go while the server runs out
-        // the grace, and a vx that exits inside it (the timer is unref'd)
-        // leaves the server to the guard (kill-tree.ts, item 865).
-        const letGo = holdGroups([child])
+    const giveUp = async (): Promise<void> => {
+      if (readyAt !== undefined) return
+      gaveUpAt = Date.now()
+      // Listed on the group guard until the SIGKILL: the shell may die on
+      // the SIGTERM and let the group go while the server runs out the
+      // grace, and a vx killed inside it leaves the server to the guard
+      // (kill-tree.ts, item 865).
+      const letGo = holdGroups([child])
+      try {
         killTree(child, 'SIGTERM')
-        // Same escalation as `armTimeout`: a server that traps TERM and
-        // never became ready is not in the persistent registry, so nothing
-        // else would ever kill it — it outlived the run under init.
-        const killTimer = setTimeout(() => {
-          killTree(child, 'SIGKILL')
-          letGo()
-        }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
-        killTimer.unref?.()
+        // A server that traps TERM and never became ready is not in the
+        // persistent registry, so nothing else would ever kill it.
+        const left = await untilGroupsGone([child], killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
+        for (const c of left) killTree(c, 'SIGKILL')
+        await child.exited
+      } finally {
+        letGo()
       }
+      rejectReady(
+        new PersistentReadyError(
+          `persistent task not ready within ${opts.timeoutMs}ms — ` +
+            `readyWhen pattern never matched; child killed`,
+          'timeout',
+        ),
+      )
     }
     readyTimer = setTimeout(() => {
-      readyTimer = afterPendingExits(giveUp)
+      readyTimer = afterPendingExits(() => void giveUp())
     }, opts.timeoutMs)
   }
 
@@ -750,10 +755,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
     opts.liveChildren?.delete(child)
-    markGroupIfGone(child)
-    releaseGroup(child)
+    releaseServerGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
-    if (readyAt === undefined) {
+    if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(
         new PersistentReadyError(
           `persistent task exited before becoming ready (exit ${code ?? '?'})` +
