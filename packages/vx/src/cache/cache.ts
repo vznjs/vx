@@ -1570,13 +1570,14 @@ export class Cache implements CacheLayer {
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
-      if (
-        err instanceof ArchiveSecurityError ||
-        err instanceof CorruptArtifactError ||
-        err instanceof UserError
-      ) {
-        throw err
-      }
+      if (err instanceof CorruptArtifactError || err instanceof UserError) throw err
+      // The save and the ingest proved every name safe, so one that reads
+      // unsafe now is damaged or tampered bytes: a long name's pax record
+      // has no header checksum, and the name is judged before the CRC at
+      // the end is read. Thrown as is, it failed the task on every run with
+      // the entry kept (X-115).
+      if (err instanceof ArchiveSecurityError)
+        throw new CorruptArtifactError(hash, err.message, err)
       // What is on disk, not what is in the archive: a directory standing
       // where the entry holds a file, or a file where it needs a directory.
       // The clean removes the FILES the output globs select and the
