@@ -1,9 +1,9 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
-import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
@@ -20,10 +20,9 @@ import {
   gitRefusal,
   parseCachePolicy,
 } from '../cache/index.js'
-import { findCwdSelection, pickTask, resolveFilters } from './select.js'
+import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { loadCliWorkspace } from './workspace-config.js'
-import { MAX_TIMEOUT_MS, isUserError, parseDecimalInt, machineParallelism } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -118,7 +117,7 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
 }
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
- * its refusals pointed at `vx run --help` (M-58). */
+ * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
 export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
@@ -190,7 +189,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
       return {
         ...out,
-        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp(verb)}`,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
@@ -220,7 +219,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--retry requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null) {
-        return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
+        return { ...out, error: `--retry must be a non-negative integer (got ${v})` }
       }
       out.retries = n
     } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
@@ -239,19 +238,31 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         }
       }
       if (n === null || n <= 0) {
-        return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
+        return { ...out, error: `--timeout must be a positive integer in ms (got ${v})` }
       }
       out.timeout = n
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
+      if (v === undefined || v === '') {
+        return {
+          ...out,
+          error: `--output-logs requires a value (full, errors-only, hash-only, or none)`,
+        }
+      }
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
-        return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
+        return {
+          ...out,
+          error: `--output-logs must be full, errors-only, hash-only, or none (got ${v})`,
+        }
       }
       out.outputLogs = v
     } else if (a === '--download' || a?.startsWith('--download=')) {
       const v = a === '--download' ? before[++i] : a.slice('--download='.length)
+      if (v === undefined || v === '') {
+        return { ...out, error: `--download requires a value (all, toplevel, or none)` }
+      }
       if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
-        return { ...out, error: `--download must be all, toplevel, or none` }
+        return { ...out, error: `--download must be all, toplevel, or none (got ${v})` }
       }
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
@@ -306,8 +317,11 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.continueMode = 'always'
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
+      if (v === '') {
+        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+      }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
-        return { ...out, error: `--continue must be never, deps-ok, or always` }
+        return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
       }
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
@@ -371,7 +385,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}${seeHelp(verb)}` }
+      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }
@@ -433,6 +447,32 @@ function onCI(v: string | undefined): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
 }
 
+/** The filters a run's scope comes from: `--filter`s, with `--affected` as its `...[<base>]`. */
+async function scopeFilters(
+  parsed: RunArgs,
+  cwd: string,
+): Promise<{ filterStrings: string[]; affectedFilter?: string } | { error: string }> {
+  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
+  // changed projects AND their dependents — what a CI gate must run, what
+  // the flag's name says, what the guides promised while the sugar was the
+  // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
+  // "only what I touched" form. Merging it into the filter list means the
+  // same code path handles plain filter use, --affected alone, and the combo.
+  // Its place does not change the selection: `applyFilters` takes every
+  // include before any exclude (item 979), so `--affected --filter '!app'`
+  // drops app from either side (item 955 had put it first for that). First
+  // it stays, so a message naming the filters names it first.
+  const filterStrings = [...parsed.filters]
+  let affectedFilter: string | undefined
+  if (parsed.affected !== undefined) {
+    const f = await affectedFilterFor(cwd, parsed.affected)
+    if (typeof f === 'object') return f
+    affectedFilter = f
+    filterStrings.unshift(affectedFilter)
+  }
+  return { filterStrings, ...(affectedFilter !== undefined ? { affectedFilter } : {}) }
+}
+
 /**
  * Resolve parsed `vx run` argv into the `RunOptions` the orchestrator
  * consumes. Shared between `runCmd` and `watchCmd` so both subcommands
@@ -464,35 +504,9 @@ export async function resolveRunOptions(
     }
   }
 
-  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
-  // changed projects AND their dependents — what a CI gate must run, what
-  // the flag's name says, what the guides promised while the sugar was the
-  // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
-  // "only what I touched" form. Merging it into the filter list means the
-  // same code path handles plain filter use, --affected alone, and the combo.
-  // Its place does not change the selection: `applyFilters` takes every
-  // include before any exclude (item 979), so `--affected --filter '!app'`
-  // drops app from either side (item 955 had put it first for that). First
-  // it stays, so a message naming the filters names it first.
-  const filterStrings = [...parsed.filters]
-  let affectedFilter: string | undefined
-  if (parsed.affected !== undefined) {
-    const root = await findWorkspaceRoot(cwd)
-    let base = parsed.affected
-    // The workspace's `affectedBase` — or a plugin's `config` stage, from
-    // nx.json's `defaultBase` or `TURBO_SCM_BASE` — comes before the guess.
-    if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
-    if (base === '') {
-      try {
-        base = await defaultAffectedBase(root)
-      } catch (err) {
-        if (!isUserError(err)) throw err
-        return { error: err.message }
-      }
-    }
-    affectedFilter = `...[${base}]`
-    filterStrings.unshift(affectedFilter)
-  }
+  const scope = await scopeFilters(parsed, cwd)
+  if ('error' in scope) return scope
+  const { filterStrings, affectedFilter } = scope
 
   // Project scope applies to bare task names only. Anchored entries
   // (pkg#task) resolve directly to their own project regardless.
@@ -606,7 +620,7 @@ const TASKS_SHOWN = 12
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    process.stderr.write(`vx run: ${parsed.error}\n`)
+    process.stderr.write(`vx run: ${parsed.error}${seeHelp('run')}\n`)
     return 1
   }
 
@@ -636,14 +650,31 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(`${refusal.message}\n`)
       return 1
     }
-    const picked = await pickTask(
-      cwd,
-      {},
-      {
-        ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-        ...(parsed.frozen ? { frozen: true } : {}),
-      },
-    )
+    const load = {
+      ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
+      ...(parsed.frozen ? { frozen: true } : {}),
+    }
+    // `--filter` / `--affected` scope the menu, as they scope a bare task:
+    // the menu listed every project and the anchored pick ran outside it.
+    const scope = await scopeFilters(parsed, cwd)
+    if ('error' in scope) {
+      process.stderr.write(`vx run: ${scope.error}\n`)
+      return 1
+    }
+    let only: ReadonlySet<string> | undefined
+    if (scope.filterStrings.length > 0) {
+      const selected = await resolveFilters(cwd, scope.filterStrings, load, scope.affectedFilter)
+      if ('error' in selected) {
+        process.stderr.write(`vx run: ${selected.error}\n`)
+        return 1
+      }
+      if ('empty' in selected) {
+        process.stderr.write(`vx run: ${selected.empty}\n`)
+        return 0
+      }
+      only = new Set(selected.names)
+    }
+    const picked = await pickTask(cwd, {}, load, only)
     if (picked === 'interrupted') return 130
     if (!picked) return 1
     tasks = [`${picked.project}#${picked.task}`]

@@ -19,7 +19,9 @@ for each entry, and a trusted OID whose blob is another size is dropped:
 a filter since removed left a stat-clean entry git never re-reads (A-60).
 A filter that kept the size passes the check; `caching.md` names it and
 the remedy, `git add --renormalize .`.
-The verdict is kept by a hash of the index file (`blob_verdicts`), so a
+The verdict is kept by a hash of the index file, the pathspecs and the
+workspace's repo prefix (`blob_verdicts`; its paths are
+workspace-relative), so a
 warm run reads the file and one row and spawns nothing more; a changed
 index spawns the `--debug` listing, asks the cache's `blob_sizes` memo and
 one `git cat-file --batch-check` for the unknown ones; `applyGitEnumeration` runs the
@@ -77,7 +79,7 @@ export interface IndexBlobs {
   sizes: number[] // the worktree size the index recorded
 }
 export interface IndexBlobCheck {
-  key: string | undefined // xxh3 of the index file and the pathspecs: the verdict's key
+  key: string | undefined // xxh3 of the index file, prefix and pathspecs: the verdict's key
   blobs(): Promise<IndexBlobs | null> // the `--debug` listing, spawned on a miss
   rekey(): Promise<string | undefined> // the key now: a verdict is stored only for its index
 }

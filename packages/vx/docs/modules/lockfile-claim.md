@@ -53,9 +53,11 @@ Both are on the `@vzn/vx` façade.
   context object; a `WeakMap` on it makes the stat + read happen once
   per run, not once per task (1000 tasks cost 1000 stats, 47 ms in
   the plugin-stages row, before this).
-- **Once per process.** The file's size + mtime gate the read within a
-  process (a `vx watch` cycle); the content hash decides whether the
-  digests are current.
+- **Once per process.** The file's size, mtime, ctime and inode gate the
+  read within a process (a `vx watch` cycle), as `Cache.hashFile`'s memo
+  keys a file: size and mtime alone kept the digests of a same-size
+  lockfile copied in with its mtime (`cp -p`). The content hash decides
+  whether the digests are current.
 - **Every project folds the root importer's digest** beside its own
   (one xxh3 over both; the root project folds the root's alone). The
   root package's dependencies reach every task: their bins through the
@@ -97,8 +99,8 @@ the install applied the new one (item 1014). `extraFiles` names such
 files; their content hashes reach `digest` and join the memo's identity
 and the workspace-scope key. The memo records the files and their hashes,
 so a warm run re-hashes the files it names and parses only when one
-moved; within a process their size and mtime gate the read beside the
-lockfile's. `--affected` does not yet see a change to one (a path no
+moved; within a process the same identity gates the read beside the
+lockfile's, taken before each file is hashed. `--affected` does not yet see a change to one (a path no
 project owns): the key does.
 
 ## What it does NOT do
