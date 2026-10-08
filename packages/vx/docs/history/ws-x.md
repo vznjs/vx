@@ -1120,3 +1120,8 @@ reaches no build task.` The plan now carries the run's own line
   never locked: `vx lock --check` said up to date and `vx run --frozen`
   refused it with "run vx lock", which changed nothing. The lock now
   discovers as a run does. Row: `lock-discover-stage.test.ts`.
+- **X-144.** A `--frozen` run over a project whose config file was
+  deleted since `vx lock` loaded it config-less: its locked tasks
+  vanished and the run exited 0 having run the others. The lock now
+  refuses it as it does a moved config (D-88). Row:
+  `frozen-deleted-config.test.ts`.
