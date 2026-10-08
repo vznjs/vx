@@ -1214,3 +1214,13 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 264 / 257 (A/A) → 237 ms; wall median 947 /
   932 → 912 ms. Row: `server-death-properties.test.ts` › "a graph with
   no server never asks whether one died".
+- **X-183.** Under `--continue=always` a task that PASSED behind its
+  failed dependency recorded that pass on its healthy key, so a later
+  healthy failure on the key read `flaky - passed 1× before` and `vx
+info` listed it. X-131 covered only the failure, by dropping its key.
+  Now every outcome that ran tainted keeps its key and names its root
+  blocker in `blocked_by`; the per-key flakiness projection and the
+  run's own detector skip such rows, and `vx why` diffs a tainted
+  failure again. Row: `flaky.test.ts` › "is not a pass a later failure
+  on the key relapses from" (red without the fix; a healthy relapse is
+  the control).

@@ -970,7 +970,8 @@ async function runOnBus(
     // dispatch, and the tracker carries it to what is built on it.
     const taintSeeds = new Set(excluded.seeds)
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
-    const taintedRan = new Set<string>()
+    // Each task that ran tainted, and the task at the root of it.
+    const taintedRan = new Map<string, string>()
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
@@ -995,13 +996,16 @@ async function runOnBus(
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
       const upfrontGroupKey = shortCircuit.groupKeys.get(node.id)
-      if (
-        options.continueMode === 'always' &&
-        node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
-      )
-        taintSeeds.add(node.id)
+      let deadServer: string | undefined
+      if (options.continueMode === 'always') {
+        for (const d of node.deps) {
+          deadServer = deadServerBehind(nodes, serverDied, d)
+          if (deadServer !== undefined) break
+        }
+        if (deadServer !== undefined) taintSeeds.add(node.id)
+      }
       const tainted = taint.judge(node, upstream)
-      if (tainted) taintedRan.add(node.id)
+      if (tainted) taintedRan.set(node.id, deadServer ?? taint.cause(node, upstream))
       const a: ExecuteArgs = {
         node,
         upstream,
@@ -1861,7 +1865,7 @@ export function projectNamed(
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
 function flakyCandidates(
   outcomes: readonly TaskOutcome[],
-  tainted: ReadonlySet<string>,
+  tainted: ReadonlyMap<string, string>,
 ): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
@@ -1871,9 +1875,10 @@ function flakyCandidates(
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.
     if (o.hash === undefined || o.node.config.cache === undefined || isGroupTask(o.node)) continue
-    // Behind a failed dependency the failure is the dependency's: the key it
-    // had passed on read as a flake for thirty days.
-    if (o.status === 'failed' && tainted.has(o.node.id)) continue
+    // Behind a failed dependency the outcome is not the key's: a failure is
+    // the dependency's, and a pass built on bytes the key never named, so a
+    // later failure relapsed from it and read as a flake for thirty days.
+    if (tainted.has(o.node.id)) continue
     out.push({
       project: o.node.projectName,
       task: o.node.taskName,

@@ -625,7 +625,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `cache_hit`                               | convenience boolean (derivable from status)                               |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task              |
 | `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time         |
-| `blocked_by`                              | a skip's blocker (`project#task`)                                         |
+| `blocked_by`                              | a skip's blocker, or what a task ran behind (`project#task`)              |
 | `timed_out`                               | 1 when the failure was `exec.timeout`                                     |
 | `sandbox_violations`                      | the sandbox's violation count on a failure                                |
 | `not_ready`                               | a persistent task that never became ready: `timeout` / `exited` / `spawn` |
