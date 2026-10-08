@@ -615,9 +615,7 @@
           "[\"!x\"]",
           "[\"!!x\",\"y\"]",
           "[\".\"]",
-          "[\"**\"]",
           "[\"A=B\"]",
-          "[\"A*\"]",
           "[\"scope:web\"]"
         ],
         "$CONFIG: `tags` must be an array of non-empty strings": [
@@ -641,6 +639,12 @@
           "[3000]",
           "{}",
           "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: tag \"**\" holds '*', which makes it a pattern — `--filter tag:<name>` could not name it. Rename the tag.": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: tag \"A*\" holds '*', which makes it a pattern — `--filter tag:<name>` could not name it. Rename the tag.": [
+          "[\"A*\"]"
         ]
       },
       "tasks": {

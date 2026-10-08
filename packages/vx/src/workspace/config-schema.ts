@@ -28,7 +28,7 @@ import {
   asTrees,
   isLiteralPattern,
 } from '../util/index.js'
-import { compileNameGlob } from './filter.js'
+import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -349,6 +349,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string' || t.trim() === ''))
   ) {
     throw new UserError(`${configPath}: \`tags\` must be an array of non-empty strings`)
+  }
+  for (const tag of (tags ?? []) as string[]) {
+    const why = tagProblem(tag)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: tag ${JSON.stringify(tag)} ${why} — \`--filter tag:<name>\` could not ` +
+          `name it. Rename the tag.`,
+      )
+    }
   }
   const tasks = config.tasks
   if (tasks === undefined) return
@@ -1370,6 +1379,22 @@ export function taskNameProblem(name: string): string | null {
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
             : null
+}
+
+/**
+ * Why `--filter tag:<tag>` cannot name `tag`, or null. Asked of the filter
+ * parser itself, so a suffix it learns to read is refused here too: `v1...`
+ * read as a dependency walk from `v1`, `v[2]` as `v` changed since ref `2`.
+ */
+function tagProblem(tag: string): string | null {
+  if (tag.trim() !== tag) return 'has surrounding whitespace'
+  if (tag.includes('*')) return "holds '*', which makes it a pattern"
+  const f = parseFilter(`tag:${tag}`, '/')
+  if (f.gitSince !== undefined) {
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  }
+  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  return null
 }
 
 /**

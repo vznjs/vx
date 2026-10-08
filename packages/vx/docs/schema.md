@@ -80,7 +80,9 @@ and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
-Each is a non-empty string; anything else is refused at load. A
+Each is a non-empty string a tag filter can name, or it is refused at
+load: no surrounding whitespace, no `*` (a pattern), and no ending in
+`...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
 changes no task's behaviour, so editing one re-runs nothing.
@@ -1910,6 +1912,7 @@ lists the messages a user meets most:
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
+| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
