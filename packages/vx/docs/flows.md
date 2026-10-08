@@ -69,7 +69,7 @@ sequenceDiagram
         Note over T: path-traversal + symlink-clobber guards<br/>modes and millisecond mtimes applied from the<br/>.vx-meta.json sidecar (tar headers carry whole<br/>seconds) so the next run's stat-check passes
         H->>C: recordOutputStamps (inode + ctime)
     end
-    H->>H: replay cached stdout through logger
+    H->>H: replay cached output through logger
     H-->>X: status 'cache-hit', exit 0
 ```
 

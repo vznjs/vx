@@ -103,7 +103,9 @@ import type { CacheKeyInput } from './layer.js'
 // bytes on disk, the filter since removed, holds the CRLF build (A-60).
 // v39: an entry saved while a gitlink without `.git` held files the key
 // never listed sits under the key of that directory empty (A-61).
-export const CACHE_VERSION = 'vx-cache-v41'
+// v42: the stored output is both streams in order (orchestrator/output-log.ts);
+// a v41 entry holds stdout alone and replays no stderr.
+export const CACHE_VERSION = 'vx-cache-v42'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

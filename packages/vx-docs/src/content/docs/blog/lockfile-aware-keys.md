@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - plugins
-excerpt: "Out of the box vx folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo an astro bump re-keys 6 of 56 tasks, not all 56."
+excerpt: "Out of the box vx folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo an astro bump re-keys 6 of 57 tasks, not all 57."
 ---
 
 Out of the box, vx folds the whole lockfile into the workspace
@@ -50,9 +50,9 @@ The closure is exactly what the project's `node_modules` can resolve:
 - a `link:` or `workspace:` dependency folds the linked workspace
   package's whole reach, since what A can import through B is B's
   closure;
-- install-wide material every project folds: `lockfileVersion`,
-  `overrides`, `settings` (and, under `bun()`, `patchedDependencies`
-  and the catalogs).
+- install-wide material every project folds: the lockfile version and
+  fields such as pnpm's `settings`. Under `pnpm()` and `bun()`,
+  overrides, catalogs and patches count only where they reach.
 - the root package's own closure, folded into every project (added
   2026-09-24): the root's tools run from the root `node_modules/.bin`
   on every task's PATH, so a root devDependency bump that re-keyed
@@ -77,10 +77,10 @@ task and the rule that selects it are one rule, so they cannot drift.
 
 ## Measured in the repository that ships it
 
-vx's own repository declares `bun()`. Measured 2026-10-02 with
+vx's own repository declares `bun()`. Measured 2026-10-08 with
 `vx run ci --all --dry=json` before and after a version bump in
 `bun.lock`: bumping `astro`, which only the docs site reaches, re-keys
-that site's 6 tasks of the gate's 56; without the plugin, all 56
+that site's 6 tasks of the gate's 57; without the plugin, all 57
 re-key.
 
 The root's closure is in every key, and this repository's root links

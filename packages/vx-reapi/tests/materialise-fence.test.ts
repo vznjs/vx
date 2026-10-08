@@ -15,6 +15,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { materialiseOutputs } from '../src/executor.js'
@@ -50,15 +51,15 @@ const tree = (root: Directory, children: Directory[] = []) => {
   have.set(d.hash, bytes)
   return d
 }
-const req = () =>
+const req = (files = ['**'], workspaceFiles: string[] = []) =>
   ({
     taskId: 'pkg#build',
     cwd,
     workspaceRoot: ws,
-    outputs: { files: ['**'], workspaceFiles: [] },
+    outputs: { files, workspaceFiles },
   }) as unknown as Parameters<typeof materialiseOutputs>[1]
-const run = (result: object) =>
-  materialiseOutputs(client, req(), result, () => undefined).then(
+const run = (result: object, r = req()) =>
+  materialiseOutputs(client, r, result, () => undefined).then(
     () => 'written',
     (e: Error) => e.message,
   )
@@ -280,16 +281,52 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
       },
       [lib],
     )
-    const r = await run({
-      output_files: [{ path: '../root-out.txt', digest: blob('root') }],
-      output_symlinks: [{ path: 'current', target: 'dist/lib' }],
-      output_directories: [{ path: 'dist', tree_digest: d }],
-    })
+    const r = await run(
+      {
+        output_files: [{ path: '../root-out.txt', digest: blob('root') }],
+        output_symlinks: [{ path: 'current', target: 'dist/lib' }],
+        output_directories: [{ path: 'dist', tree_digest: d }],
+      },
+      req(['**'], ['root-out.txt']),
+    )
     expect(r).toBe('written')
     expect({
       root: await readFile(path.join(ws, 'root-out.txt'), 'utf8'),
       lib: await readFile(path.join(cwd, 'current', 'x.js'), 'utf8'),
       shared: await readlink(path.join(cwd, 'dist', 'shared')),
     }).toEqual({ root: 'root', lib: 'x', shared: '../../shared' })
+  })
+})
+
+describe('materialiseOutputs writes only what a declared glob names', () => {
+  it('a file or link inside the workspace but outside the declared outputs is not written', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    await mkdir(path.join(ws, 'other', 'src'), { recursive: true })
+    await writeFile(path.join(ws, 'other', 'src', 'x.js'), 'mine')
+    const r = await run(
+      {
+        output_files: [
+          {
+            path: '../.git/hooks/post-checkout',
+            digest: blob('#!/bin/sh\npwned\n'),
+            is_executable: true,
+          },
+          { path: '../other/src/x.js', digest: blob('pwned') },
+          { path: 'src/index.js', digest: blob('pwned') },
+          { path: 'dist/a.js', digest: blob('built') },
+        ],
+        output_symlinks: [{ path: 'lib/link', target: '../dist' }],
+      },
+      req(['dist/**']),
+    )
+    expect(r).toBe('written')
+    expect({
+      hook: existsSync(path.join(ws, '.git', 'hooks', 'post-checkout')),
+      other: await readFile(path.join(ws, 'other', 'src', 'x.js'), 'utf8'),
+      src: existsSync(path.join(cwd, 'src')),
+      lib: existsSync(path.join(cwd, 'lib')),
+      // CONTROL: the declared output is written.
+      dist: await readFile(path.join(cwd, 'dist', 'a.js'), 'utf8'),
+    }).toEqual({ hook: false, other: 'mine', src: false, lib: false, dist: 'built' })
   })
 })

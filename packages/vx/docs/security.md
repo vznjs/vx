@@ -66,8 +66,8 @@ the local store:
   remote answer larger than asked for are refused as they are read.
 
 Remote execution (`@vzn/vx-reapi`) holds each blob to its digest, and
-writes a server's outputs only inside the workspace, through no link
-that leads out of it.
+writes only the server's outputs a declared glob names, inside the
+workspace, through no link that leads out of it.
 
 ## What the sandbox stops
 

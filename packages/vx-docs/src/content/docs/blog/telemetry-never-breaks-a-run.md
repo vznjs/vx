@@ -69,7 +69,9 @@ fills is not a no-op call, it is no call.
 
 - **`@vzn/vx-otel`** maps each run to OTLP traces, metrics and logs over
   HTTP/JSON with no OpenTelemetry SDK dependency. The wire format is
-  small and the SDK is not.
+  small and the SDK is not. Each task's span is sent as the task ends,
+  so a dashboard follows a CI run while it runs; no send ever holds a
+  task.
 - **`@vzn/vx-ci`** writes every run as a GitHub Actions job summary
   and, given a token, a completed check run on the built commit, so a
   red run explains itself in the pull request's checks list.

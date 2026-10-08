@@ -8,7 +8,7 @@ fingerprint proof) and skip the restore when it is; otherwise clean the
 declared outputs (pruning only inside the declared trees, so a sibling's
 fresh directory stays; inputs.md) and restore the artifact; mark the exact changed paths
 against the git snapshot so a same-project consumer need not re-spawn
-git; replay the stored stdout; build the cache-hit outcome. Moved out
+git; replay the stored output, both streams in order; build the cache-hit outcome. Moved out
 of `execute-task.ts` on 2026-09-10 as pure code motion — the mirror of
 `miss-save.ts`.
 

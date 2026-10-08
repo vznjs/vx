@@ -1125,56 +1125,73 @@ const DROPPED_LINE = /^\n\[vx\] [\d.]+ MiB of output not kept — /
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 
+/** One piece of a task's output and the stream it came on. */
+export interface CapturedChunk {
+  text: string
+  /** True when the task wrote it to stderr. */
+  err: boolean
+}
+
 /**
  * A head-and-tail accumulator: the head fills once, the tail is a ring
  * of chunks trimmed from the front, so memory is bounded by the two
- * limits plus one chunk whatever the task prints.
+ * limits plus one chunk whatever the task prints. Each chunk keeps its
+ * stream, so one capture can hold both in the order they arrived.
  */
-class BoundedCapture {
-  private head = ''
-  private readonly tail: string[] = []
+export class BoundedCapture {
+  private readonly head: CapturedChunk[] = []
+  private headLen = 0
+  private readonly tail: CapturedChunk[] = []
   private tailLen = 0
   private dropped = 0
 
-  push(chunk: string): void {
+  push(text: string, err = false): void {
     // Once the tail has begun the head is closed, even a unit short of its
     // bound (the surrogate case below): a later short chunk fit there and
     // was retained ahead of the chunk before it.
-    if (this.tailLen === 0 && this.head.length < CAPTURE_HEAD_CHARS) {
-      let room = CAPTURE_HEAD_CHARS - this.head.length
-      if (chunk.length <= room) {
-        this.head += chunk
+    if (this.tailLen === 0 && this.headLen < CAPTURE_HEAD_CHARS) {
+      let room = CAPTURE_HEAD_CHARS - this.headLen
+      if (text.length <= room) {
+        this.head.push({ text, err })
+        this.headLen += text.length
         return
       }
       // Never between a surrogate pair's halves: the bounds count UTF-16
       // units, and a halved character read U+FFFD in the replay.
-      if (isHighSurrogate(chunk.charCodeAt(room - 1))) room--
-      this.head += chunk.slice(0, room)
-      chunk = chunk.slice(room)
+      if (isHighSurrogate(text.charCodeAt(room - 1))) room--
+      this.head.push({ text: text.slice(0, room), err })
+      this.headLen += room
+      text = text.slice(room)
     }
-    this.tail.push(chunk)
-    this.tailLen += chunk.length
+    this.tail.push({ text, err })
+    this.tailLen += text.length
     while (this.tailLen > CAPTURE_TAIL_CHARS) {
       const first = this.tail[0]!
       const excess = this.tailLen - CAPTURE_TAIL_CHARS
-      if (first.length <= excess) {
+      if (first.text.length <= excess) {
         this.tail.shift()
-        this.tailLen -= first.length
-        this.dropped += first.length
+        this.tailLen -= first.text.length
+        this.dropped += first.text.length
       } else {
-        const cut = isHighSurrogate(first.charCodeAt(excess - 1)) ? excess + 1 : excess
-        this.tail[0] = first.slice(cut)
+        const cut = isHighSurrogate(first.text.charCodeAt(excess - 1)) ? excess + 1 : excess
+        this.tail[0] = { text: first.text.slice(cut), err: first.err }
         this.tailLen -= cut
         this.dropped += cut
       }
     }
   }
 
-  text(): string {
-    const tail = this.tail.join('')
+  /** The kept chunks in arrival order, the dropped middle named on stdout. */
+  chunks(): CapturedChunk[] {
     return this.dropped === 0
-      ? this.head + tail
-      : this.head + droppedOutputLine(this.dropped) + tail
+      ? [...this.head, ...this.tail]
+      : [...this.head, { text: droppedOutputLine(this.dropped), err: false }, ...this.tail]
+  }
+
+  text(): string {
+    return this.chunks()
+      .map((c) => c.text)
+      .join('')
   }
 }
 

@@ -83,6 +83,8 @@ exits and a server exits only when the run tears it down.
 
 Persistent tasks are not cached. They have no end state to store. Their
 dependents can be; `e2e`'s key includes `dev`'s key, so a config change
-to the server re-runs the tests.
+to the server re-runs the tests. And a server only its cache hits need is
+never started: when every dependant is a confirmed hit, the run does not
+boot it.
 
 The guide is [Configure › Dev tasks](../../guides/configure/#dev-tasks).
