@@ -1267,8 +1267,10 @@ and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
 into the archive. Restore applies both, at their edges too: a mode of
-000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`) and one before 1970, whose
-tar header carries 0 since ustar's field holds no sign. Until 2026-09-27
+000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
+tar header carries 0 since ustar's field holds no sign, and one past
+March 2242, whose header carries the field's 11-digit maximum (X-114:
+the save failed `value … does not fit a 12-byte field`). Until 2026-09-27
 (A-4) the first two were skipped, so the file came back 0644 and
 stamped now and every later hit restored it again, and the third wrote
 a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,

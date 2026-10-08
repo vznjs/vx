@@ -147,6 +147,12 @@ describe('the sidecar at its edges', () => {
     expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
   })
 
+  it('packs and restores an mtime past what ustar holds (2242)', async () => {
+    // 11 octal digits of seconds end at 8^11 - 1, in March 2242.
+    const t = new Date(Date.UTC(2300, 0, 1))
+    expect((await roundTrip((f) => utimesSync(f, t, t))).mtimeMs).toBe(t.getTime())
+  })
+
   it('control: an ordinary mode and mtime round-trip as before', async () => {
     const st = await roundTrip((f) => {
       chmodSync(f, 0o755)

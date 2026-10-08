@@ -738,3 +738,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-114.** An output with an mtime past March 2242 (8^11 seconds, the
+  most ustar's 11 octal digits hold) failed every save of its task with
+  `value … does not fit a 12-byte field`, so the task never cached. The
+  header now carries the field's maximum, as one before 1970 carries 0;
+  the sidecar keeps the real mtime. Row: `archive-extract-meta.test.ts` ›
+  "packs and restores an mtime past what ustar holds (2242)".
