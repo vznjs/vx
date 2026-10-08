@@ -264,7 +264,7 @@ export function formatSummarySection(
   let spread = ''
   if (stats.spread !== null && stats.spread.count > 0) {
     const { maxMs, minMs, sumMs, count } = stats.spread
-    spread = ` ${dim(`\u00b7 max ${formatDuration(maxMs)} \u00b7 avg ${formatDuration(sumMs / count)} \u00b7 min ${formatDuration(minMs)}`)}`
+    spread = ` ${dim(`\u00b7 max ${formatElapsed(maxMs)} \u00b7 avg ${formatElapsed(sumMs / count)} \u00b7 min ${formatElapsed(minMs)}`)}`
   }
   // Run-shape footer (final summary only): worker pool + cache mode,
   // grouped with time under a blank line below the meters.
@@ -280,15 +280,15 @@ export function formatSummarySection(
     // (2026-09-15), so the line says it is a sum.
     if (stats.held !== undefined && stats.held.count > 0) {
       info.push(
-        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatDuration(stats.held.sumMs)} in all`,
+        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatElapsed(stats.held.sumMs)} in all`,
       )
     }
-    lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
+    lines.push('', row('info', join(info)), row('time', `${formatElapsed(totalMs)}${spread}`))
     // The run in one line, last, where the eye lands: what a Turbo user
     // reads first in its own summary (tasks, cached, time), in vx's words.
     if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, totalMs, colors)))
   } else {
-    lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
+    lines.push('', row('time', `${formatElapsed(totalMs)}${spread}`))
   }
   return lines
 }
@@ -320,7 +320,7 @@ function resultLine(
         : `${hits} cached (${Math.floor((hits / cacheable) * 100)}%)`,
     )
   if (noCache > 0) parts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-  parts.push(formatDuration(totalMs))
+  parts.push(formatElapsed(totalMs))
   return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
 
@@ -425,8 +425,4 @@ export function neverStarted(
   o: Pick<TaskOutcome, 'status'> & { wallclockStartNs?: unknown },
 ): boolean {
   return o.status === 'aborted' && o.wallclockStartNs === undefined
-}
-
-export function formatDuration(ms: number): string {
-  return formatElapsed(ms)
 }

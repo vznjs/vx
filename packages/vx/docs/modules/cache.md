@@ -301,7 +301,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v40' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v41' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -504,6 +504,8 @@ Reads via `get()` are non-blocking thanks to WAL.
   its target directory is created first, decided on where the link
   resolves (`resolveThrough`), and only when a `mkdir` has failed, so a
   clean tree pays nothing. A cycle of links is a `UserError` by name.
+  A path holding a backslash is resolved link by link (`realOf`): Bun's
+  `realpath` answers ENOENT for any such path.
   On any throw, nothing was renamed into place.
 
 `get(hash)`:
@@ -570,7 +572,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v40'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v41'`; `SCHEMA_VERSION` is
 `'v32'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

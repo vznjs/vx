@@ -246,6 +246,17 @@ describe('the walls a darwin config reaches', () => {
       ),
     ]).toEqual([{ read: [], write: walls }, undefined])
   })
+
+  it('a grant inside a wall spelled with escaped brackets keeps its path', () => {
+    const wall = path.join(dir, 'packages/[legacy]')
+    const grant = 'packages/\\[legacy\\]/src'
+    const r = asDarwin(() =>
+      resolveSandboxConfig({ allow: { read: [grant], write: [grant] } }, dir, [wall]),
+    )
+    expect(darwinWallRules(r, [])).toEqual([
+      `(deny file-write* (require-all (subpath "${wall}") (require-not (subpath "${wall}/src"))))`,
+    ])
+  })
 })
 
 // SRT compiles any deny path holding `[` as a regex, where the bracket
@@ -280,4 +291,136 @@ describe('a seatbelt wall whose name holds a bracket', () => {
   it('CONTROL: a plain wall is a subpath, no regex', () => {
     expect(regexes(['/ws', '/ws/app/legacy'])).toEqual([])
   })
+})
+
+// A baseline read (a `node_modules`, a linked dependency's directory) is a
+// name the filesystem handed back, never a pattern, yet it reached SRT raw
+// beside the task's grants: a dependency under `packages/[legacy]/`
+// compiled as a class that matched `packages/l` and never the directory,
+// and even spelled `[[]` a regex grants the entry alone, not its files.
+// `darwinWallRules` took such a baseline for a glob too, so a root task's
+// wall on that dependency carved nothing out. Linux binds it whole.
+describe('a seatbelt baseline whose name holds a bracket', () => {
+  const allowRegexes = (names: string[], grants: string[]): RegExp[] => {
+    const cfg = seatbeltBrackets(
+      {
+        filesystem: {
+          denyRead: ['/ws'],
+          allowRead: [...names, ...grants],
+          allowWrite: [],
+          denyWrite: [],
+        },
+      },
+      names,
+    )!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    return [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith('^/ws/'))
+      .map((r) => new RegExp(r))
+  }
+  const granted = (rx: RegExp[], p: string): boolean => rx.some((r) => r.test(p))
+
+  it('grants the directory and its subtree, and not a class member', () => {
+    const rx = allowRegexes(['/ws/packages/[legacy]', '/ws/packages/odd]'], [])
+    expect([
+      granted(rx, '/ws/packages/[legacy]'),
+      granted(rx, '/ws/packages/[legacy]/src/index.ts'),
+      granted(rx, '/ws/packages/odd]/index.ts'),
+      granted(rx, '/ws/packages/l'),
+      granted(rx, '/ws/packages/l/index.ts'),
+    ]).toEqual([true, true, true, false, false])
+  })
+
+  it("CONTROL: a task's grant keeps its spelling: an escape is a name, a bracket a class", () => {
+    const rx = allowRegexes([], ['/ws/app/pages/\\[id\\].tsx', '/ws/app/[ab].ts'])
+    expect([
+      granted(rx, '/ws/app/pages/[id].tsx'),
+      granted(rx, '/ws/app/pages/i.tsx'),
+      granted(rx, '/ws/app/a.ts'),
+      granted(rx, '/ws/app/[ab].ts'),
+    ]).toEqual([true, false, true, false])
+  })
+
+  it('carves the baseline out of a wall a glob reaches', () => {
+    expect(
+      darwinWallRules(
+        {
+          allowRead: ['/w/**/*.ts'],
+          allowWrite: [],
+          wallsReached: { read: ['/w/[b]'], write: [] },
+        },
+        ['/w/[b]'],
+      ),
+    ).toEqual([
+      '(deny file-read-data (require-all (subpath "/w/[b]") (require-not (subpath "/w/[b]"))))',
+    ])
+  })
+})
+
+// A grant whose only wildcards are escaped names one path, as a plain
+// literal does: `packages/\[legacy\]/src` is the directory `[legacy]/src`.
+// Counted as a glob, it reached every wall under `packages/` and its own
+// wall was denied with no carve-out, so macOS refused the path it named;
+// Linux's scan dropped the one hit as a wall. `packages/legacy/src` binds.
+describe('an escaped literal grant and the walls', () => {
+  const escaped = '/w/packages/\\[legacy\\]/src'
+  const plain = '/w/packages/legacy/src'
+  const wallOf = (g: string): string =>
+    g === plain ? '/w/packages/legacy' : '/w/packages/[legacy]'
+
+  it('reaches no wall, as the plain literal does', () => {
+    expect([escaped, plain].map((g) => wallsGlobsReach([g], [wallOf(g), '/w/packages/b']))).toEqual(
+      [[], []],
+    )
+  })
+
+  it('is carved out of the wall a glob reaches, as the plain literal is', () => {
+    expect(
+      [escaped, plain].map((g) =>
+        darwinWallRules(
+          {
+            allowRead: ['/w/**/*.ts', g],
+            allowWrite: [g],
+            wallsReached: { read: [wallOf(g)], write: [wallOf(g)] },
+          },
+          [],
+        ),
+      ),
+    ).toEqual(
+      ['/w/packages/[legacy]', '/w/packages/legacy'].map((w) => [
+        `(deny file-read-data (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+        `(deny file-write* (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+      ]),
+    )
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    'binds on Linux inside a wall, as the plain literal does',
+    async () => {
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-esc-')))
+      try {
+        const out: (readonly string[])[] = []
+        for (const [name, grant] of [
+          ['[legacy]', 'packages/\\[legacy\\]/src'],
+          ['legacy', 'packages/legacy/src'],
+        ] as const) {
+          await mkdir(path.join(dir, 'packages', name, 'src'), { recursive: true })
+          const walls = [path.join(dir, 'packages', name)]
+          out.push(resolveSandboxConfig({ allow: { read: [grant] } }, dir, walls).allowRead)
+        }
+        expect(out).toEqual([
+          [path.join(dir, 'packages/[legacy]/src')],
+          [path.join(dir, 'packages/legacy/src')],
+        ])
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })

@@ -329,6 +329,19 @@ describe('frozenProjectConfig — the trust model', () => {
     expect(err.message).toContain('vx lock')
   })
 
+  it('a project named like an Object.prototype member has no entry by inheritance (D-152)', async () => {
+    // `lock.projects.constructor` is Object's own constructor: the lock
+    // "locked" the package at undefined, and the refusal said it had moved.
+    for (const name of ['constructor', 'toString', '__proto__']) {
+      const err = await rejection(
+        frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.config.ts') }, root),
+      )
+      expect(err.message).toBe(
+        `vx-lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\` to refresh, or delete vx-lock.json`,
+      )
+    }
+  })
+
   it('refuses when the entry points at a DIFFERENT config path', async () => {
     // The MOVED/RENAMED case. The lock is keyed by project name, so a package
     // that moved directories still finds its entry by name — and the stored

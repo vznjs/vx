@@ -54,7 +54,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 
 export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn>
-  ready: Promise<void> // resolves once "ready"; rejects if exit before ready
+  ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
 }
 
@@ -265,7 +265,7 @@ descriptor. The `ready` promise:
 The pattern matcher buffers across chunk boundaries and tests each
 line of the pending fragment on its own — complete lines without
 their break (`\n` or `\r`), then the trailing partial line — with
-terminal escapes (CSI, OSC, two-byte) removed from the tested text
+terminal escapes (CSI, OSC, charset picks, two-byte) removed from the tested text
 only; the streamed bytes keep them. So `^`/`$` anchor per line, a
 colourised banner matches its plain text, and neither a match split
 across two reads nor a prompt-style marker without a trailing newline

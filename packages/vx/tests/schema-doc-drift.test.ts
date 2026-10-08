@@ -549,6 +549,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ plugins: [{ name: "p", setup() {} }] }'),
   ],
   [
+    // An async plugin factory called without `await` read as "must come from
+    // definePlugin" — it had (D-159).
+    'plugins[<i>] is a Promise — await the factory that returns the plugin',
+    workspaceConfig(`{ plugins: [Promise.resolve(${plugin('p', '{ setup() {} }')})] }`),
+  ],
+  [
     'plugins[<i>].name overrides the package name',
     workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
   ],
@@ -579,6 +585,14 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(
       `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
         `${plugin('b', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
+    ),
+  ],
+  [
+    // `plugins: [bun(), bun()]` read "plugins 'x' and 'x' both claim" (D-158).
+    "plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once",
+    workspaceConfig(
+      `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
+        `${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
     ),
   ],
 ]

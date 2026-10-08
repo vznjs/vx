@@ -45,7 +45,7 @@ import {
 } from './watch-filter.js'
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
-import { restartTimings } from '../util/index.js'
+import { hangupIgnored, restartTimings } from '../util/index.js'
 import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -103,7 +103,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
-  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks)
+  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks, 'watch')
   if ('error' in resolved) {
     process.stderr.write(`vx watch: ${resolved.error}\n`)
     return 1
@@ -146,8 +146,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
   // A task runs in its own session (exec/kill-tree.ts): the terminal
-  // closing reaches the loop alone, and the loop passes it on.
-  process.once('SIGHUP', () => stop.abort('SIGHUP'))
+  // closing reaches the loop alone, and the loop passes it on — unless vx
+  // was started with it ignored (nohup).
+  if (!hangupIgnored()) process.once('SIGHUP', () => stop.abort('SIGHUP'))
 
   // Enumerate projects-in-scope so we know what dirs to watch: the bare
   // tasks' scope (`opts.projects`; undefined means "every project", or

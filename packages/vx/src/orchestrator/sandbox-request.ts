@@ -326,8 +326,11 @@ export interface WithheldLink {
  * task is granted and what it is not.
  *
  * One level deep, plus one level inside a `@scope/` directory — the shape
- * a package manager writes. Anything already inside a granted directory
- * is dropped; what is left is a sibling project's real path.
+ * a package manager writes — and then the same in the `node_modules` of
+ * each granted target, so a dependency's own workspace dependencies are
+ * reached as the runtime reaches them. A target inside the granted
+ * `node_modules` or inside the package holding the link is dropped; what
+ * is left is a sibling project's real path.
  *
  * A link to the task's OWN project, or to a directory holding it, is
  * dropped too: npm and Yarn classic link every workspace package at the
@@ -371,20 +374,39 @@ async function linkedDeps(
     }
     return found
   }
+  const keyedDirs =
+    keyed === undefined ? undefined : new Set(await Promise.all([...keyed].map((d) => realpath(d))))
+  const grants = (target: string): boolean =>
+    keyedDirs === undefined || !atOrUnder(target, root) || keyedDirs.has(target)
   // Merged in `dirs` order, so the link a hint names is the project's own
-  // when both have one.
+  // when both have one. A granted package is scanned in turn: pnpm and
+  // Bun link a dependency's own workspace dependencies only under ITS
+  // `node_modules`, so `app -> ui -> core` left core hidden and the import
+  // of ui failed with ENOENT, unreported.
   const targets = new Map<string, { link: string; name: string }>()
-  for (const found of await Promise.all(dirs.map((d) => scan(d, '')))) {
-    for (const [target, link, name] of found) {
-      if (!targets.has(target)) targets.set(target, { link, name })
+  let frontier: Array<[nodeModules: string, owner: string | undefined]> = dirs.map((d) => [
+    d,
+    undefined,
+  ])
+  while (frontier.length > 0) {
+    const next: typeof frontier = []
+    const scans = await Promise.all(frontier.map(([d]) => scan(d, '')))
+    for (const [i, found] of scans.entries()) {
+      const owner = frontier[i]![1]
+      for (const [target, link, name] of found) {
+        if (targets.has(target) || (owner !== undefined && atOrUnder(target, owner))) continue
+        targets.set(target, { link, name })
+        if (grants(target)) {
+          next.push([path.join(target, 'node_modules'), target])
+        }
+      }
     }
+    frontier = next
   }
-  if (keyed === undefined) return { granted: [...targets.keys()], withheld: [] }
-  const keyedDirs = new Set(await Promise.all([...keyed].map((d) => realpath(d))))
   const granted: string[] = []
   const withheld: WithheldLink[] = []
   for (const [target, { link, name }] of targets) {
-    if (!atOrUnder(target, root) || keyedDirs.has(target)) granted.push(target)
+    if (grants(target)) granted.push(target)
     else
       withheld.push({
         dir: target,

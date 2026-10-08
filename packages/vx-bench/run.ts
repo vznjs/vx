@@ -10,6 +10,8 @@
 //   warm-no-restore— second run over an intact tree (stat-check skip
 //                    path; the steady-state dev loop)
 //   warm-restore   — outputs deleted, cache intact (full extract path)
+//   one edited     — one package's source changed per rep (one miss, every
+//                    other task a hit: the edit-and-rerun dev loop)
 //
 // vx is invoked as a real subprocess (`bun src/bin.ts run build --all
 // --frozen`, or the same through `$VX_BIN`) so process startup and discovery
@@ -20,7 +22,7 @@
 // does not (measured 2026-09-09 on a two-package workspace: 114 vs
 // 71 ms), so a small-workspace number should be taken through VX_BIN.
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
@@ -94,6 +96,14 @@ for (let i = 0; i < reps; i++) {
   warmRestore.push(await vxBuilt(ws))
 }
 
+// A fresh value each rep, so every rep misses the edited task.
+const edited = path.join(ws, 'packages', 'pkg-000', 'src', 'index.js')
+const oneEdited: number[] = []
+for (let i = 0; i < reps; i++) {
+  await writeFile(edited, `export const v = ${-1 - i}\n`)
+  oneEdited.push(await vxRun(ws))
+}
+
 await rm(ws, { recursive: true, force: true })
 
 const fmt = (xs: number[]) =>
@@ -102,3 +112,4 @@ console.log(`\nvx benchmark — ${projects} projects × build, median of ${reps}
 console.log(`  no-cache        : ${fmt(noCache)}`)
 console.log(`  warm, no restore: ${fmt(warmNoRestore)}`)
 console.log(`  warm, restore   : ${fmt(warmRestore)}`)
+console.log(`  one edited      : ${fmt(oneEdited)}`)

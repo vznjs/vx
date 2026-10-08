@@ -45,6 +45,33 @@ describe('a proxy record in the report', () => {
   it('CONTROL: is kept otherwise, and another list does not silence it', () => {
     expect([kept(), kept({ read: ['example.com:443'] })]).toEqual([[DENY], [DENY]])
   })
+
+  // The proxy records the host as the client spelled it (curl sends
+  // `CONNECT EXAMPLE.Com:443`, curl and Bun keep a trailing dot) and
+  // matches its lists case- and dot-blind; the ignore list matched the
+  // raw spelling, so a refusal the task named stayed and failed it.
+  const keptLine = (line: string, network: string[]) =>
+    reportableViolations([{ line, timestamp: new Date() }], {
+      within: PROJ,
+      config: resolveSandboxConfig({ ignore: { network } }, PROJ),
+    }).map((v) => v.line)
+  const deny = (target: string) => `deny network-outbound ${target} (host is not on the allow list)`
+
+  it('is silenced whatever the case or trailing dot of either spelling', () => {
+    expect([
+      keptLine(deny('EXAMPLE.Com:443'), ['example.com:443']),
+      keptLine(deny('example.com.:443'), ['example.com:443']),
+      keptLine(DENY, ['Example.COM:443']),
+      keptLine(deny('API.Example.com.:443'), ['*.example.com:443']),
+    ]).toEqual([[], [], [], []])
+  })
+
+  it('CONTROL: another port or host stays', () => {
+    expect([
+      keptLine(deny('EXAMPLE.Com:8443'), ['example.com:443']),
+      keptLine(deny('example.com.evil:443'), ['example.com:443']),
+    ]).toEqual([[deny('EXAMPLE.Com:8443')], [deny('example.com.evil:443')]])
+  })
 })
 
 const available = await sandboxAvailable('sandbox proxy denials test')

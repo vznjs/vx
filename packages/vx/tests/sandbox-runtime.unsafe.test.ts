@@ -2352,6 +2352,106 @@ describe.skipIf(!available || process.platform !== 'linux')(
       },
       TIMEOUT,
     )
+
+    // pnpm and Bun link ui's own dependency under ui's `node_modules`, so
+    // app -> ui -> core put core where the scan never looked: importing ui
+    // failed with ENOENT on core, no violation, cached or not.
+    /** app imports ui, ui re-exports core, each linked under its dependant. */
+    const chain = async (opts: { cache: boolean; uiKeysCore: boolean }): Promise<string> => {
+      const source = (dependsOn: string[]) => `
+        export default {
+          tasks: {
+            source: {
+              dependsOn: ${JSON.stringify(dependsOn)},
+              exec: { command: 'true' },
+              cache: { inputs: { files: ['*.js'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `
+      const core = await addProject(fixture.root, '@x/core', {
+        files: { 'index.js': 'export const core = "core 1"\n' },
+        config: source([]),
+      })
+      const ui = await addProject(fixture.root, '@x/ui', {
+        deps: { '@x/core': 'workspace:*' },
+        files: { 'index.js': 'export { core } from "@x/core"\n' },
+        config: source(opts.uiKeysCore ? ['^source'] : []),
+      })
+      const app = await addProject(fixture.root, '@x/app', {
+        deps: { '@x/ui': 'workspace:*' },
+        files: {
+          'src/check.js': 'import { core } from "@x/ui"\nawait Bun.write("dist/out.txt", core)\n',
+        },
+        config: `
+          export default {
+            tasks: {
+              test: {
+                exec: {
+                  command: 'mkdir -p dist && bun src/check.js',
+                  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+                },
+                dependsOn: ['^source'],
+                ${opts.cache ? "cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }," : ''}
+              },
+            },
+          }
+        `,
+      })
+      for (const [from, to] of [
+        [app, 'x-ui'],
+        [ui, 'x-core'],
+      ] as const) {
+        await mkdir(path.join(from, 'node_modules', '@x'), { recursive: true })
+        await symlink(`../../../${to}`, path.join(from, 'node_modules', '@x', to.slice(2)))
+      }
+      return core
+    }
+    const out = () =>
+      readFile(path.join(fixture.root, 'packages', 'x-app', 'dist', 'out.txt'), 'utf8')
+
+    it(
+      "a dependency's own workspace dependency is granted to a task with no `cache`",
+      async () => {
+        await chain({ cache: false, uiKeysCore: false })
+        const r = await runTest()
+        expectOk(r, fixture)
+        expect(testOutcome(r)?.sandboxViolations).toBeUndefined()
+        expect(await out()).toBe('core 1')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "a dependency's own workspace dependency the key answers for is granted, and an edit re-runs",
+      async () => {
+        const core = await chain({ cache: true, uiKeysCore: true })
+        expectOk(await runTest(), fixture)
+        expect(await out()).toBe('core 1')
+        await writeFile(path.join(core, 'index.js'), 'export const core = "core 2"\n')
+        const r = await runTest()
+        expect(testOutcome(r)?.status).toBe('success')
+        expect(await out()).toBe('core 2')
+      },
+      TIMEOUT,
+    )
+
+    it(
+      "a dependency's own workspace dependency the key does not answer for is withheld, with the hint",
+      async () => {
+        await chain({ cache: true, uiKeysCore: false })
+        const r = testOutcome(await runTest())
+        expect(r?.status).toBe('failed')
+        expect(r?.sandboxViolationLines?.at(-1)).toBe(
+          'vx: @x/app#test read `packages/x-core` through `packages/x-ui/node_modules/@x/core`, ' +
+            'and its key folds no task of @x/core, so an edit there would not re-run it. Add a ' +
+            '`dependsOn` edge that reaches one (`^build` where @x/core#build keys its sources, or ' +
+            'a `source` task: `@x/core#source`), or grant and key the files yourself ' +
+            '(`allow.read` plus `cache.inputs.workspaceFiles`).',
+        )
+      },
+      TIMEOUT,
+    )
   },
 )
 
@@ -3692,6 +3792,49 @@ describe('reportableViolations', () => {
       expect(lines(reportableViolations(produced, { within: alias, config: cfg }))).toEqual([
         `openat(x) = -1 ENOENT  [${d}/proj/kept.txt]`,
       ])
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
+
+  // The row above's seatbelt twin: the report judges a seatbelt record by
+  // `path`, where it lands, and `ignore` judged it by `target`, the path as
+  // logged. A record named through a link was reported inside the project
+  // and no pattern for it matched, so the denial `ignore` names failed the
+  // task.
+  it('matches an `ignore` pattern against where a seatbelt record lands', async () => {
+    const d = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-ignore-mac-')))
+    try {
+      await mkdir(path.join(d, 'proj'))
+      await symlink(path.join(d, 'proj'), path.join(d, 'alias'))
+      const alias = path.join(d, 'alias')
+      const recorded = [
+        mac('file-write-create', `${alias}/a.bun-build`),
+        mac('file-read-data', `${alias}/gen/x.ts`),
+        mac('file-read-data', `${alias}/kept.ts`),
+        mac('network-outbound', 'example.com:443'),
+      ]
+      const cfg = resolveSandboxConfig(
+        {
+          ignore: {
+            write: ['*.bun-build'],
+            read: ['gen/**'],
+            network: ['example.com:443'],
+          },
+        },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: cfg }))).toEqual([
+        `bun(1) deny(1) file-read-data ${alias}/kept.ts`,
+      ])
+      // CONTROL: each list still silences only its own operation.
+      const swapped = resolveSandboxConfig(
+        { ignore: { read: ['*.bun-build'], write: ['gen/**'] } },
+        alias,
+      )
+      expect(lines(reportableViolations(recorded, { within: alias, config: swapped }))).toEqual(
+        recorded.map((v) => v.line),
+      )
     } finally {
       await rm(d, { recursive: true, force: true })
     }
@@ -5550,7 +5693,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
   // `which strace` is the PATH lookup (util/which.ts), `strace --version`
   // the probe.
   describe('strace detection', () => {
-    const detecting = (pathDirs: string): unknown => {
+    const detecting = (pathDirs: string, together = false): unknown => {
       const src = path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts')
       const script = [
         `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(src)}`,
@@ -5562,7 +5705,10 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         `await initSandbox()`,
         `const dir = ${JSON.stringify(dir)}`,
         `const outs = []`,
-        `for (let i = 0; i < 2; i++) outs.push((await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout)`,
+        `const task = async () => (await runSandboxed({ command: 'echo ok', cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({}, dir) })).stdout`,
+        together
+          ? `outs.push(...(await Promise.all([task(), task()])))`
+          : `for (let i = 0; i < 2; i++) outs.push(await task())`,
         `console.log(JSON.stringify({ outs, calls }))`,
         `await resetSandbox()`,
       ].join('\n')
@@ -5688,6 +5834,25 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         { mode: 0o755 },
       )
       expect(detecting(`${bin}:${process.env['PATH']}`)).toEqual({
+        outs: ['ok\n', 'ok\n'],
+        calls: ['which strace', 'strace --version', 'trace'],
+        said: untraced(
+          'strace cannot trace here (strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted)',
+        ),
+      })
+    })
+
+    // A run starts a wave of tasks at once, and each asked before the
+    // first answer was memoized: one probe per task, not per run.
+    it('tasks that start together ask once', async () => {
+      const bin = path.join(dir, 'bin')
+      await mkdir(bin)
+      await writeFile(
+        path.join(bin, 'strace'),
+        `#!/bin/sh\n[ "$1" = --version ] && exec ${Bun.which('strace')} "$@"\necho "strace: attach: ptrace(PTRACE_SEIZE, 2): Operation not permitted" >&2\nexit 1\n`,
+        { mode: 0o755 },
+      )
+      expect(detecting(`${bin}:${process.env['PATH']}`, true)).toEqual({
         outs: ['ok\n', 'ok\n'],
         calls: ['which strace', 'strace --version', 'trace'],
         said: untraced(
