@@ -360,6 +360,10 @@ export async function resolveFilters(
 
   const unmatched: string[] = []
   const emptyWalks: string[] = []
+  // The `[<since>]` includes whose diff itself matched nothing: only then is
+  // "nothing affected" the fact. A diff that matched, then lost every
+  // project to an exclusion or an empty walk, says which (X-146).
+  const emptyDiffs = new Set<(typeof parsed)[number]>()
   const selected = applyFilters({
     filters: parsed,
     projects,
@@ -371,11 +375,12 @@ export async function resolveFilters(
     // matched nothing is worth flagging as a probable typo.
     onNoMatch: (f) => {
       if (f.gitSince === undefined) unmatched.push(f.raw)
+      else emptyDiffs.add(f)
     },
     // A pattern that matched, with nothing on the walk it asked for: the
     // fact to say, where "no projects matched" read as a typo (item 1030).
     onEmptyWalk: (f, matched) => {
-      if (f.negate || f.gitSince !== undefined) return
+      if (f.negate) return
       const which = matched.join(', ')
       emptyWalks.push(
         f.onlyDeps
@@ -389,28 +394,35 @@ export async function resolveFilters(
     // commit must not red `vx run … --affected=origin/main`. Only report an
     // error when the user named something concrete that failed to resolve.
     const includes = parsed.filter((f) => !f.negate)
+    // Every pattern matched and an exclusion took them all back: "no
+    // projects matched filter(s): one, !one" read as a typo of `one`.
+    const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
+    const excluded = `${negations.join(', ')} excluded every project the other filters matched`
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
-      const refs = includes.map((f) => f.gitSince).join(', ')
-      // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
-      // the branch under test) can never mark anything affected, and this
-      // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
-      const self = includes.find((f) => refIsHead(root, f.gitSince!))
-      const hint =
-        self === undefined
-          ? ''
-          : ` — ${self.gitSince} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
-      return { empty: `nothing affected since ${refs}${hint}` }
+      if (includes.every((f) => emptyDiffs.has(f))) {
+        const refs = includes.map((f) => f.gitSince).join(', ')
+        // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
+        // the branch under test) can never mark anything affected, and this
+        // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
+        const self = includes.find((f) => refIsHead(root, f.gitSince!))
+        const hint =
+          self === undefined
+            ? ''
+            : ` — ${self.gitSince} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
+        return { empty: `nothing affected since ${refs}${hint}` }
+      }
+      // The diff matched and a walk or an exclusion left nothing: still the
+      // exit-0 outcome (`--affected --filter '!docs'` on a docs-only change
+      // must not red CI), said as what happened (X-146).
+      return {
+        empty: `no projects selected: ${emptyWalks.length > 0 ? emptyWalks.join('; ') : excluded}`,
+      }
     }
     if (unmatched.length === 0 && emptyWalks.length > 0) {
       return { error: `no projects selected: ${emptyWalks.join('; ')}` }
     }
-    // Every pattern matched and an exclusion took them all back: "no
-    // projects matched filter(s): one, !one" read as a typo of `one`.
-    const negations = parsed.filter((f) => f.negate).map((f) => f.raw)
     if (unmatched.length === 0 && negations.length > 0) {
-      return {
-        error: `no projects selected: ${negations.join(', ')} excluded every project the other filters matched`,
-      }
+      return { error: `no projects selected: ${excluded}` }
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the
