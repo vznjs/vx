@@ -904,6 +904,23 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     })
   })
 
+  it('a floor given as a function is asked with the peak, and decides as a number would', () => {
+    const MB = 1024 * 1024
+    const at = (maxRSS: number) =>
+      ({ cpuTime: { total: 1_500_000n }, maxRSS }) as unknown as Parameters<
+        typeof resourceUsageToCpuRss
+      >[0]
+    const asked: number[] = []
+    const floorFor = (peak: number): number => {
+      asked.push(peak)
+      return 480 * MB
+    }
+    expect(resourceUsageToCpuRss(at(480 * MB), floorFor)).toEqual({ cpuMs: 1500 })
+    const over = 480 * MB + RSS_FLOOR_SLACK_BYTES + 1
+    expect(resourceUsageToCpuRss(at(over), floorFor)).toEqual({ cpuMs: 1500, peakRssBytes: over })
+    expect(asked).toEqual([480 * MB, over])
+  })
+
   it('the unit is decided by the number, not by the platform', () => {
     // Both directions of this file's history are here: the unconditional
     // ×1024 that made a 64 MB suite read as 64 GB, and the "bytes on every

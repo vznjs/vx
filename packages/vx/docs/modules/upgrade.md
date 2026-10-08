@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`vx upgrade [tag]` asks the GitHub release API for this os/arch's asset
+`vx upgrade [TAG]` asks the GitHub release API for this os/arch's asset
 and the SHA-256 digest the API publishes for it, downloads the asset,
 verifies the digest, and atomically renames it over the current
 executable. A mismatch — a cut or corrupted transfer — replaces

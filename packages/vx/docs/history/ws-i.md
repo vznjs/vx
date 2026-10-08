@@ -503,6 +503,10 @@ once the root and the workspace config are found so both refusals stay
 as fast; the two git facts are asked while it runs. 100 projects, 40
 rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
 
+I-64. A task's RSS floor reads `/proc/self/status` only when the last
+`VmHWM` cannot decide the peak (it never falls). 500 cold tasks: 500
+reads → 3, ~17 ms of the scheduler's thread (~35 µs a read in vx).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -820,3 +824,16 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
 - `vx show <task>` ~30 ms at 100 projects: it already loads only the
   named project; startup, the stream touch, the workspace config and
   discovery are the rest.
+
+## Probes refuted (2026-10-07)
+
+- Discovery at 2,000 projects (35–45 ms) waits on the CPU it shares
+  with the `git ls-files` walk started beside it: the per-directory
+  loop is 15–20 ms alone, 28–69 in the run. Flat promise arrays,
+  `readFile`, a `Bun.Glob` scan and capped concurrency: noise or worse.
+- `stable keys` at 2,000: the fold is ~10 ms of ~52 (26,010 xxh3 calls,
+  ~13 a task, cold JIT); a once-per-module version seed plus a lazy
+  `dirByProject` tied A/A (median 404.6 against 388.2 / 390.9). The
+  probe's three IN-queries are row-object building, not SQL.
+- Checkpoint on close (5–9 ms at 500): `bun:sqlite` exposes no
+  `NO_CKPT_ON_CLOSE`, and process exit closes and checkpoints anyway.

@@ -508,6 +508,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
@@ -547,3 +548,41 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   stores, granted by naming one in `allow.read`. Row:
   `sandbox-credential-stores.unsafe.test.ts` › "reads none unless
   granted, and the rest of home as before".
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".
+- **X-92.** `--affected` over a deep `dependsOn` chain ended in
+  `RangeError` and a stack: `affectedRoots` recursed once per edge, and
+  ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
+  closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
+  50,000-deep chain seeded at its bottom reaches its top", plus a
+  diamond control that passes both ways.
+- **X-93.** The `config` stage ran on the workspace file's export
+  itself, which Bun keeps as one object per process, so every load after
+  the first handed the hooks the last load's edits: `ws.concurrency *= 2`
+  over a declared 2 ran `vx run` on 8 workers (the CLI's selection pass,
+  then the run) and doubled again per `vx watch` cycle. The hooks now
+  edit a copy (data cloned, plugins kept). Row: `plugin-pipeline.test.ts`
+  › "every load in one process hands the hooks the declared config, not
+  the last edit".
+- **X-94.** A node a `graph` hook added was read as written: one with no
+  `projectDir` failed at its run as an internal error (a TypeError from
+  `path`), and one with a relative `projectDir` keyed and ran against
+  vx's own cwd. After each graph
+  plugin a node's `projectName` and `taskName` must be names and its
+  `projectDir` absolute, refused by the plugin's name. Row:
+  `plugin-pipeline.test.ts` › "a node a graph hook adds is refused,
+  naming the field, when it lacks a project or a task".
+- **X-95.** The scheduler counts a pooled executor's slots by its pool
+  name, which was the executor's name, and one package declared twice
+  (`@vzn/vx-reapi` against two clusters) names both executors alike: two
+  pools of 2 ran 2 tasks at once between them. `poolOfPlacement` now
+  gives each executor its own pool, a taken name taking `#2`, `#3`.
+  Rows: `plugin-capabilities.test.ts` › "capacity: two pooled executors
+  that share a name each keep their own capacity",
+  `placement.test.ts` › "two executors that share a name get two pools;
+  one executor keeps one".

@@ -269,6 +269,9 @@ interface BuildPosition {
   column?: number
 }
 
+/** A stack frame naming a file path, as a config's own throw has. */
+const NAMED_FRAME = /\n\s+at .*[\\/]/
+
 /**
  * Turn the two errors Bun's own loader throws into user errors naming the
  * file the user wrote; every other throw is the config's own and already
@@ -301,6 +304,13 @@ export function configLoadError(err: unknown, configPath: string, kind: string):
     return configLoadError(errors[0], configPath, kind)
   }
   if (typeof message !== 'string') return null
+  // Bun's JSON loader throws a `SyntaxError` whose stack, when it has one,
+  // holds no file frame: a malformed `import data from './data.json'`
+  // printed `vx: JSON Parse error: Expected '}'` and named nothing. A
+  // config's own `JSON.parse` has its line in the stack and passes through.
+  if (name === 'SyntaxError' && !NAMED_FRAME.test(String((err as { stack?: unknown }).stack))) {
+    return new UserError(`${kind} config ${configPath}: an import does not parse: ${message}`)
+  }
   if (name === 'ResolveMessage') {
     const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(message)?.[1]
     const what = spec === undefined ? message.replace(BUST_QUERY, '') : `cannot find '${spec}'`
@@ -665,14 +675,19 @@ export async function loadProjectConfigs(
  */
 // `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
 // => 7n` gave every task the key 00000000, and a changed command replayed
-// the old output (D-75).
+// the old output (D-75). `Bun` is read by its identifier, not through
+// globalThis: the docs playground bundles this file with the identifier
+// rewritten to its shim, and a browser has no global `Bun`.
 const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
   (name) =>
     [
       name,
       name
         .split('.')
-        .reduce<unknown>((o, k) => (o as Record<string, unknown>)[k], globalThis) as object,
+        .reduce<unknown>(
+          (o, k) => (o === globalThis && k === 'Bun' ? Bun : (o as Record<string, unknown>)[k]),
+          globalThis,
+        ) as object,
     ] as const,
 )
 
