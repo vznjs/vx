@@ -878,3 +878,21 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   abort is a timeout on a plugin executor too (X-125)",
   `execute-task.test.ts` › "the local executor's own timedOut decides an
   exit 0 after the request's abort (X-125)".
+- **X-129.** `vx run test --affected` where the changed project has no
+  vx config and another declares `test` exited 1, "no projects declare
+  task(s): test", against item 1024. The guard loaded the rest of the
+  workspace only when fewer projects were loaded than have configs; a
+  config-less project counts as loaded, so one changed member made the
+  counts equal and the declarer was never asked. It now asks by name.
+  Row: `affected-sparse-tasks.test.ts` › "exits 0 and says no affected
+  project declares the task".
+- **X-130.** The lockfile-claim memo was trusted on `version` and the
+  lockfile's hash, not on who wrote it. Two claimants of one file at the
+  same `version` (a plugin swapped in one cache dir) read each other's
+  memo; one with no `extraFiles` left an empty extras list, so the other's
+  patch edits never moved its key while the lockfile stayed put: a stale
+  hit. The memo now records the claimant (`part` and the source of
+  `digest` / `extraFiles`). A plugin release that changes its parse
+  without bumping `version` is the documented contract's breach, not this
+  path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
+  trusted".
