@@ -17,19 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { gitInit, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { GitFilesCache, populateGitFilesCache } from '../src/cache/inputs.js'
 import { gitPathspecs } from '../src/cache/git-inputs.js'
-
-// mulberry32: a seed reproduces a tree exactly, so a failing seed is a
-// fixture, not a flake.
-function rng(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+import { rng } from './helpers/rng.js'
 
 type State = 'clean' | 'modified' | 'deleted' | 'staged' | 'untracked' | 'ignored' | 'untracked-dir'
 const STATES: readonly State[] = [

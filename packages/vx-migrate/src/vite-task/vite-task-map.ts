@@ -67,6 +67,36 @@ function viteConfigFile(dir: string): string | null {
   return name === undefined ? null : path.join(dir, name)
 }
 
+// Bun's resolver reads `\` as a separator, even in a file: URL, so a config
+// under `a\b` was looked for under `a/b`. Resolved here, the path stays as
+// written; the file is read from it.
+const LITERAL_QUERY = /\?vx-literal$/
+let servingLiteral = false
+
+function importAsWritten(file: string): Promise<{ default?: unknown }> {
+  if (!file.includes('\\')) return import(file)
+  if (!servingLiteral) {
+    servingLiteral = true
+    Bun.plugin({
+      name: 'vx-migrate-literal',
+      setup(build) {
+        build.onResolve({ filter: LITERAL_QUERY }, (args) => ({
+          path: args.path,
+          namespace: 'file',
+        }))
+        build.onLoad({ filter: LITERAL_QUERY }, async (args) => {
+          const at = args.path.replace(LITERAL_QUERY, '')
+          return {
+            contents: await Bun.file(at).text(),
+            loader: /\.[cm]?ts$/.test(at) ? 'ts' : 'js',
+          }
+        })
+      },
+    })
+  }
+  return import(`${file}?vx-literal`)
+}
+
 /**
  * A package's `run` block, as `vp run` reads it: the config evaluated in
  * build mode (vite-plus resolves it with `command: 'build'`), a function
@@ -75,7 +105,7 @@ function viteConfigFile(dir: string): string | null {
 async function readRunConfig(file: string, root: string): Promise<RunConfig | null> {
   let config: unknown
   try {
-    config = ((await import(file)) as { default?: unknown }).default
+    config = (await importAsWritten(file)).default
     if (typeof config === 'function')
       config = await (config as (env: object) => unknown)({
         command: 'build',
@@ -89,7 +119,7 @@ async function readRunConfig(file: string, root: string): Promise<RunConfig | nu
     )
   }
   const run = (config as { run?: unknown } | null | undefined)?.run
-  return typeof run === 'object' && run !== null ? (run as RunConfig) : null
+  return typeof run === 'object' && run !== null ? run : null
 }
 
 /** `run.cache` at the root: what `vp run` caches with no flag. */
@@ -292,7 +322,7 @@ export async function mapViteTaskWorkspace(
     }
     for (const [name, raw] of Object.entries(own)) {
       const def: TaskDef =
-        typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : ((raw ?? {}) as TaskDef)
+        typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : (raw ?? {})
       tasks.push(
         mapTask(name, def, {
           pkgDir,
@@ -408,7 +438,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
     def.cache === false || !ctx.cacheOn
       ? null
       : typeof def.cache === 'object' && def.cache !== null
-        ? (def.cache as CacheDef)
+        ? def.cache
         : def
 
   const env = envNames('cache.env', cache?.env, todos, ctx)

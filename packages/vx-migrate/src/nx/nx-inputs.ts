@@ -77,7 +77,14 @@ export function expandNxInputs(
           todos.push(`input ${JSON.stringify(entry)}: glob syntax vx cannot take — map manually`)
           return
         }
-        const own = underProject(g, at.rel)
+        // Nx globs a `{workspaceRoot}` path over every file of the
+        // workspace, a vx project glob only over its project's own: on the
+        // root project TanStack Query's `{workspaceRoot}/**/package.json`
+        // (sherif's input) left every package's manifest out of the key.
+        const own =
+          (at.rel === '' || at.rel === '.') && s.startsWith('{workspaceRoot}')
+            ? null
+            : underProject(g, at.rel)
         if (own === null) into.wsFiles.push(neg + withProjectDir(g, at.rel, true))
         else into.files.push(neg + withProjectDir(own, at.rel, true))
         return

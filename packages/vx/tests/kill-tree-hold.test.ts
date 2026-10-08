@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { guardLine } from '../src/exec/kill-tree.js'
+import { guardLine, spawnGuarded } from '../src/exec/kill-tree.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
@@ -137,6 +137,9 @@ it('a task spawned after the guard died still runs, and is handed no guard', asy
 // running anything. The output is not compared: bash (macOS's sh) may
 // still flush the failed line into stdout in that window.
 it('the guard line runs its task when the guard’s pipe is broken', async () => {
+  // A live guard in this process too, as when another file in the shard
+  // started one: a line built outside a guarded spawn must not wait on it.
+  await spawnGuarded(() => Bun.spawn(['true'])).exited
   const reader = Bun.spawn(['true'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] })
   await reader.exited
   const task = Bun.spawn(['sh', '-c', `${guardLine(3)}echo ran`], {
