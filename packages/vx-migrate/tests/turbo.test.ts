@@ -937,6 +937,33 @@ describe('per-package turbo.json', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a climbed glob escapes the package dir it keeps, so a brace in its name stays literal',
+    async () => {
+      await writeFile(
+        path.join(root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n  - "nested/*/*"\n',
+      )
+      const web = path.join(root, 'nested', 'g{1}', 'web')
+      await mkdir(web, { recursive: true })
+      await writeFile(
+        path.join(web, 'package.json'),
+        JSON.stringify({ name: 'web', version: '1.0.0', scripts: { build: 'echo web' } }),
+      )
+      await writeFile(
+        path.join(web, 'turbo.json'),
+        JSON.stringify({ extends: ['//'], tasks: { build: { inputs: ['../shared/**'] } } }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['web#build'], log: silent() })
+      const node = plan.tasks.find((t) => t.node.id === 'web#build')!.node
+      expect(node.config.cache!.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'nested/g\\{1\\}/shared/**',
+      ])
+    },
+    TIMEOUT,
+  )
 })
 
 describe('the mapping reads the packages core discovered', () => {
@@ -1297,6 +1324,30 @@ describe("the root's workspace dependencies", () => {
       const reached = await key()
       await edit(2)
       expect(await key()).not.toBe(reached)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'key every task on a dependency whose dir name holds a brace',
+    async () => {
+      const dir = path.join(root, 'packages', 'r{x,y}')
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'rules' }))
+      await writeFile(path.join(dir, 'src', 'index.js'), '// 0\n')
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, devDependencies: { rules: 'workspace:*' } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#test'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#test')!.hash
+      }
+      const before = await key()
+      expect(before).not.toBe('')
+      await writeFile(path.join(dir, 'src', 'index.js'), '// 1\n')
+      expect(await key()).not.toBe(before)
     },
     TIMEOUT,
   )
