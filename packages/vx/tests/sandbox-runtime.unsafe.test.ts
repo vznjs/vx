@@ -3212,9 +3212,33 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
 
   it('dedups per syscall AND path, so two calls on one path stay two lines', async () => {
     const ws = path.join(dir, 'ws')
+    // A probe's ENOENT counts only where the host has the path.
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'x'), '')
     expect(
       await targets([at(`${ws}/x`), `1 access("${ws}/x", 4) = -1 ENOENT (x)`].join('\n')),
     ).toEqual([`${ws}/x`, `${ws}/x`])
+  })
+
+  it("drops a probe's ENOENT where the host has no file, never an openat's", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'gen.sh'), '')
+    const exec = (p: string): string =>
+      `1 execve("${p}", ["${p}", "f()"], 0x7ffd /* 9 vars */) = -1 ENOENT (x)`
+    expect(
+      (
+        await produce(
+          [
+            exec(`${ws}/gen.sh`),
+            exec(`${ws}/gone.sh`),
+            `1 faccessat2(AT_FDCWD, "${ws}/gone", X_OK, AT_EACCESS) = -1 ENOENT (x)`,
+            `1 access("${ws}/gone", R_OK) = -1 EACCES (x)`,
+            at(`${ws}/gone`),
+          ].join('\n'),
+        )
+      ).map((v) => `${v.line.split('(')[0]} ${v.target}`),
+    ).toEqual([`execve ${ws}/gen.sh`, `access ${ws}/gone`, `openat ${ws}/gone`])
   })
 
   // Item 652: the row above holds the KEY; nothing held the dedup itself —
@@ -5117,6 +5141,37 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(r.violations.map((v) => v.target)).toEqual([path.join(proj, 'src', 'secret.txt')])
   })
 
+  // An exec or an access probe of a hidden file was untraced, so
+  // `./gen.sh || fallback` passed with no report. A hidden path answers
+  // ENOENT, as a missing one does: only the host's file is a refusal.
+  it('reports a refused exec or access probe, not a probe of a missing file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'gen.sh'), '#!/bin/sh\necho gen\n', { mode: 0o755 })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args(
+        './src/gen.sh || test -r src/x.txt || ./src/gone.sh || test -x src/gone || echo fell back',
+        {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+        },
+      ),
+    )
+    // `test -r` is `faccessat2`, `faccessat` or `access` by libc and kernel.
+    const call = (line: string): string =>
+      line.split('(')[0]!.replace(/^f?access(at2?)?$/, 'access')
+    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
+      0,
+      'fell back\n',
+      [`execve ${path.join(proj, 'src', 'gen.sh')}`, `access ${path.join(proj, 'src', 'x.txt')}`],
+    ])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
@@ -5230,8 +5285,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces openat only, through the seccomp filter', async () => {
-    // The flag is the difference between tracing one syscall and stopping
+  it('traces the reads, execs and access probes, through the seccomp filter', async () => {
+    // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     try {
@@ -5246,7 +5301,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',

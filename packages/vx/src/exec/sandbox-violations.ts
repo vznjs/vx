@@ -4,7 +4,7 @@
 // task's owner can act on — inside the project, minus the loopback denial
 // no grant can avoid, minus what the task chose to ignore.
 
-import { statSync } from 'node:fs'
+import { lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import { bindableReads, bindableWrites } from './sandbox-binds.js'
@@ -24,6 +24,7 @@ import type {
  *   <pid> openat(AT_FDCWD, "<path>", <flags>) = -1 ENOENT (...)
  *   <pid> access("<path>", <mode>) = -1 EACCES (...)
  *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
+ *   <pid> execve("<path>", ["<argv0>", ...], <envp>) = -1 ENOENT (...)
  *
  * …but ONLY when the syscall completes without another traced process
  * interleaving. Under `-f` strace splits an interrupted call across two
@@ -40,21 +41,26 @@ import type {
  * (`cStringPath` decodes it). Paths that are relative resolve against the
  * task's cwd (set by Bun.spawn).
  */
-const SYSCALLS = 'openat|access|statx|newfstatat'
+const SYSCALLS = 'openat|execve|faccessat2|faccessat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
 // a quote (`4</ws/q"d>`). Captured: a relative path is in that directory.
 const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
+// The rest of the call: an `execve`'s argv strings may hold a `)`
+// (`sh -c "f()"`), so it reads to the result at the line's end.
+const ARGS = '.*'
 const STRACE_DONE_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
 const STRACE_UNFINISHED_RE = new RegExp(
-  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*<unfinished`,
+  `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}${ARGS}<unfinished`,
 )
 const STRACE_RESUMED_RE = new RegExp(
   `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
+/** The calls that ask whether a path is there rather than read it. */
+const PROBES = new Set(['execve', 'faccessat2', 'faccessat', 'access', 'statx', 'newfstatat'])
 /** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
 const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
 /**
@@ -384,6 +390,11 @@ export async function parseStraceViolations(
     // Skip paths the user explicitly allowed (and their descendants).
     if (isUnderAny(abs, allowAbs)) continue
     if (read === true && !undeclared(abs)) continue
+    // A hidden path answers ENOENT, as a missing one does: a probe
+    // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
+    // the host has the file.
+    if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatSync(abs, { throwIfNoEntry: false }))
+      continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -401,9 +412,9 @@ export async function parseStraceViolations(
             timestamp: new Date(),
             target: abs,
             path: abs,
-            // The trace is `-e trace=openat`, and an openat is a read or a
-            // write depending on flags the trace does not carry — so either
-            // list can silence it.
+            // An openat is a read or a write depending on flags the parse
+            // does not keep, and `access` may ask either — so either list
+            // can silence it.
             ignorable: ['read', 'write'],
           },
     )
