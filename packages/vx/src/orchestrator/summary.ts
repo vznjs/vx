@@ -6,6 +6,7 @@
 import type { TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
+import { isCacheHit } from './telemetry.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import { formatElapsed } from '../util/index.js'
@@ -381,7 +382,7 @@ export function formatRunSummary(
     .map((o) => o.durationMs)
   let savedMs = 0
   for (const o of outcomes)
-    if ((o.status === 'cache-hit' || o.status === 'cache-hit-remote') && !isGroupTask(o.node))
+    if (isCacheHit(o.status) && !isGroupTask(o.node))
       savedMs += o.storedDurationMs ?? 0
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
