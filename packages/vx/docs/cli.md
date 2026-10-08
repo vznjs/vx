@@ -1484,9 +1484,11 @@ After eviction, prune sweeps the cache directory for **orphans**: a
 drops every table and leaves the artifacts behind, as a deleted
 `cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
 renamed. A run that asks for an orphan's key indexes it again from its
-bytes and hits; one no task asks for again is only reclaimed here. Files younger than one hour are left alone: a save
-renames its artifact into place before the row commits, so a fresh
-row-less file is a save in flight. Only the names vx writes are taken:
+bytes and hits; one no task asks for again is only reclaimed here. The
+policy judges a row-less artifact as it judges an entry, by its file
+time plus an hour (a hit renews a file time over an hour old): another
+vx version sharing the store may still use it. A temp goes once it is an
+hour old; nothing younger than an hour is taken. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
 the one a save makes, so a `release.tar.zst` beside the index in a
 `cacheDir` you share is never touched (item 968). The converse, an
@@ -1539,8 +1541,8 @@ or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
-artifact past the hour's grace in the workspace's own directory is an
-orphan (item 1083).
+artifact in the workspace's own directory is row-less, judged by the
+policy on its file time (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
