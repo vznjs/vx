@@ -67,7 +67,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/nav src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/playground src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../vx/src/**'],
@@ -84,6 +84,7 @@ export default defineProject({
             'src/env.d.ts',
             'src/blog/**',
             'src/components/**',
+            'src/features/**',
             'src/llms/**',
             'src/nav/**',
             'src/pages/**',
@@ -198,6 +199,10 @@ export default defineProject({
             // reads the kit's styles, the widgets' and the theme's tokens, and
             // with landing.test.ts the landing's picture.
             'src/nav/**',
+            // features.test.ts holds the feature data's copy, commands and
+            // config examples, and its images on disk.
+            'src/features/**',
+            'src/assets/features/**',
             'src/components/guide/**',
             'src/components/landing/**',
             'src/components/Demo.astro',

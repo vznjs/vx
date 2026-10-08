@@ -18,8 +18,10 @@
   "devDependencies": {
     "@vzn/vx": "workspace:*",
     "@vzn/vx-ci": "workspace:*",
+    "@vzn/vx-lockfile": "workspace:*",
     "@vzn/vx-mcp": "workspace:*",
     "@vzn/vx-otel": "workspace:*",
+    "@vzn/vx-reapi": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*"
   }
 }

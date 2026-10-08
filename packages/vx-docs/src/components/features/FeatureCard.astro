@@ -1,0 +1,29 @@
+---
+// One feature as a card: its image, category, title and hook, the whole
+// card a link to its page.
+import { categoryOf, inlineHtml, type Feature } from '../../features/features.js'
+import FeatureImage from './FeatureImage.astro'
+
+interface Props {
+  feature: Feature
+  showCategory?: boolean
+}
+const { feature: f, showCategory = true } = Astro.props
+const base = import.meta.env.BASE_URL
+---
+
+<a class="fcard" href={`${base}features/${f.slug}/`} data-category={f.category}>
+  <span class="fcard-img">
+    <FeatureImage
+      file={f.image}
+      alt=""
+      widths={[400, 640, 800]}
+      sizes="(max-width: 620px) 128px, (max-width: 900px) 45vw, (max-width: 1100px) 31vw, 290px"
+    />
+  </span>
+  <div class="fcard-body">
+    {showCategory && <span class="fcard-cat">{categoryOf(f).title}</span>}
+    <h3 class="fcard-title">{f.title}</h3>
+    <p class="fcard-hook" set:html={inlineHtml(f.hook)} />
+  </div>
+</a>

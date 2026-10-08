@@ -123,7 +123,7 @@ export default defineConfig({
           },
         },
       ],
-      // The site's chrome: the three places in the header (and atop the phone
+      // The site's chrome: the places in the header (and atop the phone
       // menu), the landing's fonts, and dark as the default theme. The blog's
       // posts take a hero and related posts here (src/components/blog/); its
       // index, tag pages and feed are src/pages/blog/.
