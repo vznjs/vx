@@ -3,8 +3,6 @@ export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly storeDir: string | undefined
-  readonly storeFallback: string | null
-  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
