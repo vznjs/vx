@@ -82,6 +82,8 @@ export interface RunPlan {
   unresolvedTasks?: readonly string[]
   /** What `vx run` appends to that refusal: the nearest declared names, or how to declare one. */
   unresolvedHint?: string
+  /** Set when `--affected` left nothing to run: the line the run would print, and why. */
+  noneAffected?: string
   /**
    * Producers `--download` WANTED to defer but could not, mapped to why.
    * Without this the gate is invisible: a user asks for `--download=none`,
