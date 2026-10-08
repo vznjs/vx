@@ -13,7 +13,7 @@ Distributed builds usually arrive as a platform: a service that owns
 the graph, agents that run it, a dashboard that shows it. vx's version
 is a plugin that fills two seams, `executor` and `cache`, against a
 wire that already exists: Bazel's Remote Execution API, spoken by
-NativeLink, BuildBuddy, Buildfarm and bazel-remote.
+NativeLink, BuildBuddy, Buildbarn and bazel-remote.
 
 ```ts
 // vx.workspace.ts
