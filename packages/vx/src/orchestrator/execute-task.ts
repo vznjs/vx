@@ -1039,15 +1039,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // An executor that stopped on the timeout's abort timed out, whatever
     // its exit: a child that traps the TERM and exits 0 left partial outputs
     // a pass would save (X-125), as the local runner's own `timedOut` says.
-    // The local executor's clock is that runner's; this one only signals it,
-    // and a 0 between the two timers is a finish, not a kill.
-    if (
-      timeoutFired &&
-      res.timedOut !== true &&
-      (res.exitCode !== 0 || !isLocalExecutor(args.executor))
-    ) {
-      res = { ...res, timedOut: true }
-    }
+    // Core never arms the clock on a local request, so a local result's
+    // `timedOut` is the runner's alone.
+    if (timeoutFired && res.timedOut !== true) res = { ...res, timedOut: true }
     violations = [...res.violations]
     // A denial under a dependency the key does not answer for says only
     // ENOENT; the line beside it names the package and how to key it. Only
