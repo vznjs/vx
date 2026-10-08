@@ -211,9 +211,13 @@ describe('release assets (scripts/release-assets.ts)', () => {
   it("uploads the os's binaries the release lacks, so a re-run completes the set", () => {
     const files = ['vx-linux-x64', 'vx-darwin-arm64', 'vx-linux-arm64', 'npm', 'vx-darwin-x64']
     expect(assetsToUpload('linux', files, release('v1', true))).toEqual([
+      'THIRD_PARTY_NOTICES.txt',
       'vx-linux-arm64',
       'vx-linux-x64',
     ])
+    expect(
+      assetsToUpload('linux', files, release('v1', true, ['THIRD_PARTY_NOTICES.txt'])),
+    ).toEqual(['vx-linux-arm64', 'vx-linux-x64'])
     expect(assetsToUpload('darwin', files, release('v1', true, ['vx-darwin-arm64']))).toEqual([
       'vx-darwin-x64',
     ])
