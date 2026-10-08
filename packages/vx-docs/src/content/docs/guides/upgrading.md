@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
 
+## cache: bump CACHE_VERSION to vx-cache-v41
+
+every cached task misses once after upgrading to vx-cache-v41.
+
 ## workspace: refuse env names sh would drop
 
 exec.env define and passThrough names must be shell identifiers ([A-Za-z_][A-Za-z0-9_]*); other names are refused at load.

@@ -233,6 +233,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         At<T, 'cacheRetention'>,
         NonNullable<WorkspaceConfig['cacheRetention']>
       >
+      rules?: Known<At<T, 'rules'>, WorkspaceRules>
     },
 ): T
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)

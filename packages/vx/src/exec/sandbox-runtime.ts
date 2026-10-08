@@ -1180,7 +1180,12 @@ async function wrapIn(
   tmp: string,
 ): ReturnType<typeof wrapSandboxedCommand> {
   // After the tag: SRT keys violations by the command's first 100 chars.
-  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
+  // TMP and TEMP pass through from the host, whose temp directory the
+  // sandbox mounts read-only: a tool reading them failed to write there.
+  const alsoTmp = ['TMP', 'TEMP'].filter((name) => args.env[name] !== undefined)
+  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${alsoTmp
+    .map((name) => `export ${name}="$TMPDIR"; `)
+    .join('')}${javaToolOptionsFix(
     process.env['JAVA_TOOL_OPTIONS'],
     args.env['JAVA_TOOL_OPTIONS'],
   )}${userCommand}`

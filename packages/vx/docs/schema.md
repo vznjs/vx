@@ -559,7 +559,7 @@ the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to 
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and `TMPDIR` values over these names:
+proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
@@ -1055,7 +1055,10 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, a dangling one, or
+it (never following it). An output DIRECTORY that is a symlink
+(`dist -> real-out`) is followed: its target is cleaned, saved and
+restored as the output; one that resolves outside the project refuses
+the task, naming the link. A link to a directory, a dangling one, or
 one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
@@ -1332,7 +1335,8 @@ Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a tas
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
-real path of every workspace package linked there. A project never names
+real path of every workspace package linked there, and in turn in each
+such package's own `node_modules`. A project never names
 a sibling to import what its `package.json` already depends on. A link
 back to the task's own project, or to a directory holding it, is not
 followed: npm and Yarn link every workspace package at the root, the
@@ -1532,7 +1536,7 @@ interface WorkspaceRules {
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a

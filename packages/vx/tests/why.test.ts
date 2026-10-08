@@ -336,7 +336,13 @@ describe('parseWhyArgs', () => {
   it('an empty target is no target, and vx show refuses one (E-35)', () => {
     // As a query '' is a part of every name: its hint listed the workspace.
     expect(parseWhyArgs([''])).toEqual({ format: 'pretty' })
-    expect(parseShowArgs(['']).error).toBe('empty target (omit it to list every project)')
+    expect(parseShowArgs(['']).error).toBe(
+      'empty target (omit it to list every project) (see `vx show --help`)',
+    )
+    // A swallowed flag is no pattern (run's X-13, for show).
+    const want = '--filter requires a value: a project name, glob or path (see `vx show --help`)'
+    expect(parseShowArgs(['--filter', '--format', 'json']).error).toBe(want)
+    expect(parseShowArgs(['--filter']).error).toBe(want)
   })
 
   it('rejects unknown flags, bad formats, empty --run, extra positionals', () => {
