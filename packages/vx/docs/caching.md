@@ -1340,7 +1340,9 @@ left is never a hit. `vx cache prune` sweeps row-less files, and so does a run w
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due), once
 they are older than an hour (a save renames the artifact into place
-before its row commits, so a fresh row-less file is a save in flight).
+before its row commits, so a fresh row-less file is a save in flight;
+re-indexing touches the artifact's mtime before it links its temp, so
+the sweep sees that one fresh too).
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).

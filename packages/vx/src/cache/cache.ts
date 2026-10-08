@@ -44,6 +44,7 @@ import {
   openSync,
   readdirSync,
   renameSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
@@ -1219,6 +1220,12 @@ export class Cache implements CacheLayer {
     if (!existsSync(finalPath)) return false
     const tmpPath = this.tempPath(hash)
     try {
+      // Touched first: a link shares the inode's mtime, and a row-less
+      // artifact or temp older than the grace window is an orphan to a
+      // concurrent prune, which took both mid-adopt. Any listing that
+      // holds the temp then stats a fresh file.
+      const now = new Date()
+      utimesSync(finalPath, now, now)
       // A second name for the same bytes: the index step renames it over
       // the artifact inside its write transaction, as for a save.
       linkSync(finalPath, tmpPath)

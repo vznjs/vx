@@ -533,3 +533,9 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   `Bun.file` over a private hard link (`Cache.pinArtifact`), unlinked
   when the PUT ends. Row: `layered-cache.test.ts` › "a re-save of the
   key during an upload leaves every read of its body the same".
+- **X-108.** Adopting a row-less artifact hard-linked it to a temp that
+  kept the artifact's old mtime, so a concurrent `vx cache prune` took
+  the temp and the artifact as hour-old orphans mid-adopt and the hit
+  became a miss. `adopt` now touches the artifact before linking. Row:
+  `cache.test.ts` › "a prune during an adopt leaves the artifact it is
+  indexing".
