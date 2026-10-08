@@ -1370,6 +1370,14 @@ time plus an hour. A temp a crashed save left goes once it is an hour
 old, and nothing younger than an hour is taken. Re-indexing touches the
 artifact's mtime before it links its temp, so the sweep sees that one
 fresh too.
+
+A row's `accessed_at` is renewed the same way: a hit renews it only once
+it is over an hour old (owner, 2026-10-08). Renewing every hit rewrote
+2,180 rows at a warm 1,090-package run's close, ~30 ms. So the policy
+reads a row's last use as `accessed_at` plus an hour too: an entry used
+within `olderThan` is never pruned, and one may stay up to an hour past
+it (`tests/cache.test.ts` › "an entry used within the age limit is never
+pruned").
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
@@ -1422,7 +1430,7 @@ CREATE TABLE entries (
   duration_ms  INTEGER NOT NULL,
   size_bytes   INTEGER NOT NULL,  -- artifact size
   created_at   INTEGER NOT NULL,  -- ms-epoch
-  accessed_at  INTEGER NOT NULL,  -- ms-epoch; bumps batch at flush (LRU)
+  accessed_at  INTEGER NOT NULL,  -- ms-epoch; a hit renews it once over an hour old (LRU)
   cpu_ms         INTEGER,         -- v26: the producing execution's usage, from
   peak_rss_bytes INTEGER          --      the artifact's sidecar (save + ingest)
 );
@@ -1706,8 +1714,8 @@ built to defeat it can). Details and the deny-list:
   `output_files` and its `output_dirs`) plus an `existsSync` of the
   artifact.
   Restore is a tar.zst extract, skipped entirely when the on-disk
-  tree already matches. `accessed_at` bumps are batched into one
-  UPDATE at flush time.
+  tree already matches. `accessed_at` bumps (only rows over an hour
+  old) are batched into one UPDATE at flush time.
 - **Cache write** is one in-process tar.zst pack + atomic rename +
   one SQLite transaction. Hashing dominates the run; storage itself
   is cheap. The remote upload (if any) is backgrounded.
