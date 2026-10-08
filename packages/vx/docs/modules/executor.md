@@ -37,7 +37,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's way to give a task back, and core's test for it (matched by
   name, so another copy of `@vzn/vx` is recognised); see below. Only the
   first is on `@vzn/vx`.
-- `withForwardArgs(command, args)` — the line the local executor runs:
+- Runner's `withForwardArgs(command, args)` — the line the local executor runs:
   the args after `--` shell-quoted, before a trailing comment, never on a
   heredoc's terminator. On `@vzn/vx` for an executor that runs
   `ExecuteRequest.command` itself: the example's own join lost the args to
