@@ -5,7 +5,7 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterEach, expect, it, spyOn } from 'bun:test'
 import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 
 let tmp: string | undefined
@@ -54,4 +54,30 @@ it('CONTROL: two packages that share a name are still refused', async () => {
       await member(path.join(real, 'apps', 'docs'), 'docs')
     }),
   ).toStartWith('Duplicate package name "docs" in workspace: apps/docs and packages/docs')
+})
+
+// Bun's realpath answers ENOENT for any path holding a backslash (1.4.2),
+// and the grouping's ENOENT ended discovery with a stack.
+it('keeps a member and a link to it whose name holds a backslash as one project', async () => {
+  expect(
+    await workspace(async (real) => {
+      await member(path.join(real, 'packages', 'docs'), 'docs')
+      await symlink('../packages/docs', path.join(real, 'apps', 'do\\cs'))
+    }),
+  ).toEqual(['docs packages/docs'])
+})
+
+it('leaves out a pair without configs when one sits under a backslash', async () => {
+  const spy = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  try {
+    expect(
+      await workspace(async (real) => {
+        await member(path.join(real, 'packages', 'docs'), 'docs')
+        await member(path.join(real, 'packages', 'pair'), 'pair', false)
+        await member(path.join(real, 'apps', 'pa\\ir'), 'pair', false)
+      }),
+    ).toEqual(['docs packages/docs'])
+  } finally {
+    spy.mockRestore()
+  }
 })

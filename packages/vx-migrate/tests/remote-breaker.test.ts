@@ -64,6 +64,27 @@ describe('OutageBreaker', () => {
     await late
     expect(await settle(b.send(ok(200)))).toBe(OPEN)
   })
+
+  it("judges a hit by its body: read to the end or cancelled resets, a body's error counts", async () => {
+    t = 0
+    const hit = (body: string | ReadableStream) => () => Promise.resolve(new Response(body))
+    const fails = new ReadableStream({ pull: (c) => c.error(new Error('stalled')) })
+    for (const reset of [
+      (b: OutageBreaker) => b.send(hit('x'), true).then((r) => r.text()),
+      (b: OutageBreaker) => b.send(hit('x'), true).then((r) => r.body?.cancel()),
+    ]) {
+      const b = new OutageBreaker(() => t)
+      for (let i = 0; i < 2; i++) await settle(b.send(down))
+      await reset(b)
+      for (let i = 0; i < 2; i++) await settle(b.send(down))
+      expect(await settle(b.send(ok(200)))).toBe(200)
+    }
+    const b = new OutageBreaker(() => t)
+    for (let i = 0; i < 2; i++) await settle(b.send(down))
+    const res = await b.send(hit(fails), true)
+    expect(await res.text().catch((e: Error) => e.message)).toBe('stalled')
+    expect(await settle(b.send(ok(200)))).toBe(OPEN)
+  })
 })
 
 describe('a hung server costs three deadlines, not one per request', () => {
@@ -106,5 +127,111 @@ describe('a hung server costs three deadlines, not one per request', () => {
       ...Array(3).fill('no answer within 50 ms'),
       ...Array(3).fill(OPEN),
     ])
+  })
+})
+
+describe('a hit whose body stalls past the deadline is an outage too', () => {
+  let seen = 0
+  const stalled = Bun.serve({
+    port: 0,
+    fetch: () => {
+      seen++
+      return new Response(new ReadableStream({ start: (c) => c.enqueue(new Uint8Array([1])) }))
+    },
+  })
+  afterAll(() => void stalled.stop(true))
+
+  // Read to the end, as core's ingest reads a hit.
+  async function count(get: () => Promise<{ body: Response } | null>): Promise<string[]> {
+    seen = 0
+    const errors: string[] = []
+    for (let i = 0; i < 6; i++)
+      await get()
+        .then((r) => r?.body.arrayBuffer())
+        .catch((e: Error) => errors.push(e.message))
+    expect(seen).toBe(3)
+    return errors
+  }
+
+  it('turboCache()', async () => {
+    const c = new TurboRemoteCache(
+      resolveTurboCacheConfig(
+        { apiUrl: stalled.url.origin, token: 't', timeoutMs: 50, retries: 0 },
+        {},
+      )!,
+    )
+    expect(await count(() => c.get('abc'))).toEqual([
+      ...Array(3).fill('no answer within 50 ms'),
+      ...Array(3).fill(OPEN),
+    ])
+  })
+
+  it('nxCache()', async () => {
+    const c = new NxRemoteCache(
+      resolveNxCacheConfig({ server: stalled.url.origin, timeoutMs: 50, retries: 0 }, {})!,
+    )
+    expect(await count(() => c.get('abc'))).toEqual([
+      ...Array(3).fill('no answer within 50 ms'),
+      ...Array(3).fill(OPEN),
+    ])
+  })
+})
+
+describe('a GET body read no further is cancelled', () => {
+  async function cancelled(
+    get: (fetchImpl: typeof fetch) => Promise<unknown>,
+    status: number,
+    headers: Record<string, string> = {},
+  ): Promise<boolean> {
+    let done = false
+    const fetchImpl = (() =>
+      Promise.resolve(
+        new Response(new ReadableStream({ cancel: () => void (done = true) }), {
+          status,
+          headers,
+        }),
+      )) as unknown as typeof fetch
+    await get(fetchImpl).catch(() => undefined)
+    return done
+  }
+  const turbo = (f: typeof fetch) =>
+    new TurboRemoteCache(
+      resolveTurboCacheConfig({ apiUrl: 'http://cache.test', token: 't', retries: 0 }, {})!,
+      f,
+    ).get('abc')
+  const nx = (f: typeof fetch) =>
+    new NxRemoteCache(
+      resolveNxCacheConfig({ server: 'http://cache.test', retries: 0 }, {})!,
+      f,
+    ).get('abc')
+
+  for (const [name, get] of [
+    ['turboCache()', turbo],
+    ['nxCache()', nx],
+  ] as const)
+    it(name, async () => {
+      expect([await cancelled(get, 404), await cancelled(get, 500)]).toEqual([true, true])
+    })
+
+  it('turboCache(): a signed hit past its bound', async () => {
+    const signed = (f: typeof fetch) =>
+      new TurboRemoteCache(
+        resolveTurboCacheConfig(
+          {
+            apiUrl: 'http://cache.test',
+            token: 't',
+            teamId: 'team_1',
+            signatureKey: 'k'.repeat(40),
+          },
+          {},
+        )!,
+        f,
+        undefined,
+        undefined,
+        8,
+      ).get('abc')
+    expect(await cancelled(signed, 200, { 'content-length': '9', 'x-artifact-tag': 'x' })).toBe(
+      true,
+    )
   })
 })
