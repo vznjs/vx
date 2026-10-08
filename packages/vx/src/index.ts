@@ -168,6 +168,9 @@ export type {
   DiscoverContext,
   NamedProject,
   PluginSetupContext,
+  PluginHookName,
+  PluginHookHandlers,
+  RunStartInfo,
 } from './orchestrator/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
 // (`runCommand` / `runSandboxed`, the local executor's own primitives, left
@@ -176,6 +179,12 @@ export type {
 // A remote executor gives a task back to the local floor by rejecting with
 // this (B-100): core runs it here and says why once.
 export { executorFallback } from './exec/index.js'
+// How the local executor puts the args after `--` on a command, for an
+// executor that runs `ExecuteRequest.command` itself: `@vzn/vx-reapi` and
+// the `vx init --plugin executor` example each joined their own, and a
+// trailing comment or a template literal's closing newline lost the args
+// there while the local floor kept them (X-112).
+export { withForwardArgs } from './exec/index.js'
 export type {
   ExecuteRequest,
   ExecuteResult,

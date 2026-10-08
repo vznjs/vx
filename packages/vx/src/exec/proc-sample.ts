@@ -26,7 +26,7 @@ interface Proc {
 
 /**
  * Linux's `/proc/<pid>/stat` counts CPU in USER_HZ ticks, fixed at 100 by
- * the ABI on every architecture; `tests/proc-sample.test.ts` pins it by
+ * the ABI on every architecture; `tests/proc-sample.unsafe.test.ts` pins it by
  * burning a known span and reading it back.
  */
 const TICK_MS = 10
@@ -134,12 +134,16 @@ async function psTable(): Promise<Map<number, Proc> | undefined> {
   return table
 }
 
-/** `ps`'s `time`: `[[dd-]hh:]mm:ss[.cc]`, macOS printing hundredths. */
+/**
+ * `ps`'s `time`: `[[dd-]hh:]mm:ss[.cc]`, macOS printing hundredths after
+ * the locale's decimal point — `0:01,50` under a German or French locale.
+ */
 export function psTimeMs(s: string): number | undefined {
   const dash = s.indexOf('-')
   const days = dash === -1 ? 0 : Number(s.slice(0, dash))
   const parts = s
     .slice(dash + 1)
+    .replace(',', '.')
     .split(':')
     .map(Number)
   if (parts.length < 2 || parts.some((n) => !Number.isFinite(n)) || !Number.isFinite(days)) {

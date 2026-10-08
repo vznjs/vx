@@ -5,6 +5,7 @@ package.json
 src/blocks.ts
 src/bun.ts
 src/index.ts
+src/json.ts
 src/npm.ts
 src/pnpm.ts
 src/prune.ts

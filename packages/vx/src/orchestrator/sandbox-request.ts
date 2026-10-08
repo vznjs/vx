@@ -24,7 +24,7 @@ import {
   type SandboxViolation,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { grantPrefix, UserError } from '../util/index.js'
+import { grantPrefix, relPosix, UserError } from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from '../workspace/index.js'
 
 /**
@@ -271,7 +271,7 @@ export async function sandboxRequestFor(
     // could copy a key into an output the cache shares (L-41).
     baseDenyRead: [
       ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
-      ...credentialStores(workspaceRoot),
+      ...(await credentialStores(workspaceRoot, config.allowWrite)),
     ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
@@ -350,6 +350,7 @@ async function linkedDeps(
   keyed: ReadonlySet<string> | undefined,
 ): Promise<{ granted: string[]; withheld: WithheldLink[] }> {
   const [self, root] = await Promise.all([realpath(projectDir), realpath(workspaceRoot)])
+  const realDirs = dirs.map(toRealPath)
   const scan = async (dir: string, scope: string): Promise<Array<[string, string, string]>> => {
     const found: Array<[target: string, link: string, name: string]> = []
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -359,7 +360,7 @@ async function linkedDeps(
         const target = await realpath(full).catch(() => undefined)
         if (
           target !== undefined &&
-          !dirs.some((d) => atOrUnder(target, d)) &&
+          !realDirs.some((d) => atOrUnder(target, d)) &&
           !atOrUnder(self, target)
         ) {
           found.push([target, full, scope + e.name])
@@ -388,8 +389,8 @@ async function linkedDeps(
       withheld.push({
         dir: target,
         name,
-        target: posixRel(root, target),
-        link: posixRel(workspaceRoot, link),
+        target: relPosix(root, target),
+        link: relPosix(workspaceRoot, link),
       })
   }
   return { granted, withheld }
@@ -419,11 +420,6 @@ export function reachedWithheld(
   return withheld.filter((w) =>
     violations.some((v) => v.path !== undefined && atOrUnder(v.path, w.dir)),
   )
-}
-
-/** `p` relative to `from`, with `/` separators. */
-function posixRel(from: string, p: string): string {
-  return path.relative(from, p).split(path.sep).join('/')
 }
 
 /**
@@ -565,7 +561,7 @@ export function placeholderSweeper(placeholders: readonly Placeholder[]): () => 
  * never reddens a pass and never buries a real denial.
  */
 export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string {
-  const rel = path.relative(projectDir, placeholder).split(path.sep).join('/')
+  const rel = relPosix(projectDir, placeholder)
   return (
     `vx: the sandbox write grant \`${rel}\` named nothing on disk, so vx bound it as an empty ` +
     `file, which the task never wrote (removed again). If the task creates a directory there ` +
@@ -598,8 +594,18 @@ const CREDENTIAL_STORES = [
 /** The stores present on this host, learned once per home. */
 let presentStores: { home: string; paths: string[] } | undefined
 
-/** The credential stores to deny, less any that holds the workspace. */
-function credentialStores(workspaceRoot: string): string[] {
+/**
+ * The credential stores to deny, less any that holds the workspace, and
+ * punched around the task's write grants: a grant names a store as a read
+ * does. Denied whole, the store's mask landed on the grant's bind (a file
+ * grant binds its directory on Linux), so `write: ['~/.npmrc']` wrote to
+ * /dev/null with exit 0, and `~/.aws/config` left `~/.aws/credentials`
+ * readable. A grant above a store does not name it, so it stays denied.
+ */
+async function credentialStores(
+  workspaceRoot: string,
+  writes: readonly string[],
+): Promise<string[]> {
   const home = homedir()
   if (presentStores?.home !== home) {
     presentStores = {
@@ -607,9 +613,19 @@ function credentialStores(workspaceRoot: string): string[] {
       paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
     }
   }
-  return presentStores.paths.filter(
+  const stores = presentStores.paths.filter(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
+  return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
+}
+
+/** `dir` denied, or its entries no write grant lies under or at when one is inside it. */
+async function denyAround(dir: string, writes: readonly string[]): Promise<string[]> {
+  const inside = writes.filter((w) => atOrUnder(w, dir))
+  if (inside.length === 0) return [dir]
+  if (inside.includes(dir)) return []
+  const entries = await readdir(dir).catch(() => [])
+  return (await Promise.all(entries.map((e) => denyAround(path.join(dir, e), inside)))).flat()
 }
 
 /** `~/x` against the user's home; anything else unchanged. */

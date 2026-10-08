@@ -42,7 +42,10 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   renameSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
@@ -109,12 +112,13 @@ import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
 
 /**
- * An artifact or temp file without an `entries` row is reaped by
- * `prune()` only once it is this old. A save renames the artifact into
- * place inside its `BEGIN IMMEDIATE` row transaction (A-3), so a live
- * artifact without a row is one whose commit failed and was taken back
- * out; a crashed save's temp is stale long before this. Generous on purpose — a false orphan costs a
- * re-run, a leaked temp costs disk.
+ * An artifact or temp file without an `entries` row is never reaped
+ * younger than this: a crashed save's temp is stale long before it. A
+ * row-less artifact may still be in use (another vx version's open dropped
+ * its row), so past this it is judged by the retention policy, its file
+ * time standing for `accessed_at`. A hit renews a file time older than
+ * this, so the file time trails the last use by at most this much, and
+ * the policy reads the file time plus this as the last use.
  */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
@@ -241,9 +245,89 @@ export const SCHEMA_VERSION = 'v32'
 /** The tables a store holds: dropped from a workspace index that held them itself. */
 const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
 
+/**
+ * An index that records a schema other than this vx's: the one an opener
+ * that writes resets. Reads the recorded version alone and touches
+ * nothing; an unreadable file is left to the open to refuse.
+ */
+function indexOfAnotherSchema(dbFile: string): boolean {
+  let found: string | undefined
+  try {
+    const db = new Database(dbFile, { readonly: true })
+    try {
+      found = (
+        db.query("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
+          value: string
+        } | null
+      )?.value
+    } finally {
+      closeDb(db)
+    }
+  } catch {
+    return false
+  }
+  return found !== undefined && found !== SCHEMA_VERSION
+}
+
 /** An entry row with its stdout, which lives apart (v29); none stored reads as ''. */
 const SELECT_ENTRY =
   "SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash"
+
+/** A file the orphan sweep may judge: a row-less artifact, or a temp. */
+interface RowlessFile {
+  file: string
+  size: number
+  mtimeMs: number
+  temp: boolean
+}
+
+/**
+ * What a prune takes under `policy`: index rows by `accessed_at` and
+ * row-less artifacts by file time, under one rule (a temp always). The
+ * rows are the non-phantom ones; the files are past the in-flight grace.
+ */
+function pickVictims(
+  rows: ReadonlyArray<{ hash: string; size_bytes: number; accessed_at: number }>,
+  files: readonly RowlessFile[],
+  policy: { olderThanMs?: number; maxBytes?: number },
+): { hashes: Set<string>; bytesFreed: number; files: RowlessFile[] } {
+  const { olderThanMs, maxBytes } = policy
+  const hashes = new Set<string>()
+  let bytesFreed = 0
+  const taken: RowlessFile[] = []
+  const kept: Array<{ at: number; size: number; row?: string; file?: RowlessFile }> = []
+  let remaining = 0
+  for (const r of rows) {
+    if (olderThanMs !== undefined && r.accessed_at < olderThanMs) {
+      hashes.add(r.hash)
+      bytesFreed += r.size_bytes
+    } else {
+      kept.push({ at: r.accessed_at, size: r.size_bytes, row: r.hash })
+      remaining += r.size_bytes
+    }
+  }
+  for (const f of files) {
+    const at = f.mtimeMs + ORPHAN_GRACE_MS
+    if (f.temp || (olderThanMs !== undefined && at < olderThanMs)) taken.push(f)
+    else {
+      kept.push({ at, size: f.size, file: f })
+      remaining += f.size
+    }
+  }
+  if (maxBytes !== undefined && remaining > maxBytes) {
+    kept.sort((a, b) => a.at - b.at)
+    for (const k of kept) {
+      if (remaining <= maxBytes) break
+      remaining -= k.size
+      if (k.file !== undefined) taken.push(k.file)
+      else {
+        hashes.add(k.row!)
+        bytesFreed += k.size
+      }
+    }
+  }
+  return { hashes, bytesFreed, files: taken }
+}
 
 /**
  * Artifacts `indexed` does not hold, and temps, past the in-flight grace
@@ -255,7 +339,7 @@ const SELECT_ENTRY =
 async function scanOrphanFiles(
   cacheDir: string,
   indexedHashes: () => ReadonlySet<string>,
-): Promise<Array<{ file: string; size: number }>> {
+): Promise<RowlessFile[]> {
   let names: string[]
   try {
     names = await readdir(cacheDir)
@@ -264,19 +348,22 @@ async function scanOrphanFiles(
   }
   const indexed = indexedHashes()
   const cutoff = Date.now() - ORPHAN_GRACE_MS
-  const candidates: string[] = []
+  const candidates: Array<{ name: string; temp: boolean }> = []
   for (const name of names) {
     const m = VX_ARTIFACT_NAME.exec(name)
     if (m === null) continue
-    if (m[2] !== undefined || !indexed.has(m[1]!)) candidates.push(name)
+    const temp = m[2] !== undefined
+    if (temp || !indexed.has(m[1]!)) candidates.push({ name, temp })
   }
-  const found: Array<{ file: string; size: number }> = []
+  const found: RowlessFile[] = []
   await Promise.all(
-    candidates.map(async (name) => {
+    candidates.map(async ({ name, temp }) => {
       const file = path.join(cacheDir, name)
       try {
         const st = await stat(file)
-        if (st.isFile() && st.mtimeMs <= cutoff) found.push({ file, size: st.size })
+        if (st.isFile() && st.mtimeMs <= cutoff) {
+          found.push({ file, size: st.size, mtimeMs: st.mtimeMs, temp })
+        }
       } catch {
         // Gone between readdir and stat: not an orphan any more.
       }
@@ -373,7 +460,7 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * it there", and the ignore file is created exclusively instead of probed
  * first. An existing cache costs three calls; it cost six.
  */
-function openCacheDir(cacheDir: string): string | null {
+function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
   const ignore = path.join(cacheDir, '.gitignore')
   try {
     accessSync(cacheDir, constants.W_OK)
@@ -390,7 +477,7 @@ function openCacheDir(cacheDir: string): string | null {
     // A FILE at `cacheDir` passed the `access` above; mkdir names it.
     if (code === 'ENOTDIR') makeCacheDir(cacheDir)
     if (code !== 'ENOENT') return errorText(err)
-    refuseManifestDir(cacheDir)
+    refuseManifestDir(cacheDir, workspaceRoot)
   }
   try {
     writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
@@ -456,20 +543,49 @@ const IGNORE_ALL = '*\n'
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
  * matched nothing and a changed source replayed the old output, and the
- * artifacts landed among the sources (item 997). Asked only when there is
- * no index yet, so an open cache pays nothing for it.
+ * artifacts landed among the sources (item 997). A directory that holds
+ * projects (`'packages'`) or the workspace (`'..'`, `'/'`) does the same
+ * one level up. Asked only when there is no index yet, so an open cache
+ * pays nothing for it.
  */
-function refuseManifestDir(cacheDir: string): void {
-  for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
-    if (!existsSync(path.join(cacheDir, manifest))) continue
+function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined): void {
+  const manifestIn = (dir: string): string | undefined =>
+    MANIFESTS.find((m) => existsSync(path.join(dir, m)))
+  const own = manifestIn(cacheDir)
+  if (own !== undefined) {
     throw new UserError(
-      `cache directory ${cacheDir} holds a ${manifest}: it is the workspace's or a project's own ` +
+      `cache directory ${cacheDir} holds a ${own}: it is the workspace's or a project's own ` +
         `directory, and vx would keep its index there under a \`*\` .gitignore that hides every file ` +
-        `in it from git and from the cache keys. Point \`cacheDir\` in vx.workspace.ts (or ` +
-        `--cache-dir) at a directory of its own, such as .vx/cache.`,
+        `in it from git and from the cache keys. ${OWN_DIR_HINT}`,
+    )
+  }
+  let held: string | undefined
+  if (workspaceRoot !== undefined) {
+    const rel = path.relative(cacheDir, workspaceRoot)
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) held = workspaceRoot
+  }
+  if (held === undefined) {
+    for (const entry of readdirSync(cacheDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const sub = path.join(cacheDir, entry.name)
+      if (manifestIn(sub) !== undefined) {
+        held = sub
+        break
+      }
+    }
+  }
+  if (held !== undefined) {
+    throw new UserError(
+      `cache directory ${cacheDir} holds ${held}, a project or workspace directory, and vx would keep ` +
+        `its index there under a \`*\` .gitignore that hides it from git and from the cache keys. ` +
+        OWN_DIR_HINT,
     )
   }
 }
+
+const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
+const OWN_DIR_HINT =
+  'Point `cacheDir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -515,6 +631,8 @@ export class Cache implements CacheLayer {
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
+  /** Hit artifacts whose file time is past the grace: renewed at the flush (`ORPHAN_GRACE_MS`). */
+  private readonly staleTimes = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -578,41 +696,6 @@ export class Cache implements CacheLayer {
     return new Cache(cacheDir, undefined, undefined, undefined, 'inspect')
   }
 
-  /**
-   * What a real prune reaps from an index of an EARLIER schema, which it
-   * resets first, leaving every aged artifact row-less: a dry run that
-   * refused it could not preview the biggest prune there is, the one
-   * after an upgrade (item 1083). Reads the recorded version alone and
-   * touches nothing. Null for an absent, current, newer or unreadable
-   * index; `Cache.inspect` answers those.
-   */
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null> {
-    const dbFile = path.join(cacheDir, 'cache.db')
-    if (!existsSync(dbFile)) return null
-    let found: string | undefined
-    try {
-      const db = new Database(dbFile, { readonly: true })
-      try {
-        found = (
-          db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as {
-            value: string
-          } | null
-        )?.value
-      } finally {
-        closeDb(db)
-      }
-    } catch {
-      return null
-    }
-    if (found === undefined || found === SCHEMA_VERSION) return null
-    const aged = await scanOrphanFiles(cacheDir, () => new Set())
-    let orphanBytes = 0
-    for (const o of aged) orphanBytes += o.size
-    return { found, orphans: aged.length, orphanBytes }
-  }
-
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
@@ -625,23 +708,25 @@ export class Cache implements CacheLayer {
      */
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     /**
-     * `'inspect'`: a reading verb (`why`, `last`, `info`, a dry prune). It
-     * never resets the index: a schema it cannot read is refused, named,
-     * and left as it was.
+     * `'inspect'`: a reading verb (`why`, `last`, `info`). It never resets
+     * the index: a schema it cannot read is refused, named, and left as it
+     * was. `'preview'`: a dry prune, which reads such an index as the reset
+     * the real prune does first leaves it, empty, with the store still
+     * reached, so it names what that prune takes (item 1083).
      */
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     /**
      * The shared store's directory, unversioned: every key is seeded with
      * `CACHE_VERSION`, so two vx versions never read each other's entries,
      * and the store's own schema is `store_meta.schema` (`matchStoreSchema`). Or
      * `null` for an index that holds its entries itself (a `cacheDir`).
      * Undefined follows the layout the index records: a reading verb, a
-     * plugin's handle. An `'inspect'` open reads it only where the index
+     * plugin's handle. A reading open reads it only where the index
      * records none (deleted, or never written beside a run's store).
      */
     storeRoot?: string | null,
   ) {
-    this.inspecting = mode === 'inspect'
+    this.inspecting = mode !== 'open'
     this.read = localPolicy.read
     // The directory exists before the DB opens — bun:sqlite won't create
     // parent dirs for us. A directory this user cannot write into is a
@@ -657,8 +742,10 @@ export class Cache implements CacheLayer {
     // said "no recorded runs yet" (item 900).
     const dbFile = path.join(cacheDir, 'cache.db')
     this.dbFile = dbFile
-    const absent = mode === 'inspect' && !existsSync(dbFile)
-    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir)
+    const absent =
+      mode !== 'open' &&
+      (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
+    this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
     try {
       this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
@@ -749,7 +836,7 @@ export class Cache implements CacheLayer {
     // 2026-10-06; a newer one used to be refused, item 896). A reading verb
     // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
-      if (mode === 'inspect') {
+      if (mode !== 'open') {
         throw new UserError(
           `the cache at ${cacheDir} holds index schema ${found} from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
         )
@@ -803,7 +890,7 @@ export class Cache implements CacheLayer {
         )?.value,
     )
     let storeDir =
-      mode === 'inspect'
+      mode !== 'open'
         ? (recorded ?? (typeof storeRoot === 'string' ? storeRoot : undefined))
         : storeRoot === undefined
           ? recorded
@@ -847,17 +934,10 @@ export class Cache implements CacheLayer {
     this.storeDir = storeDir
     this.artifactDir = storeDir ?? cacheDir
     if (storeDir !== undefined) {
-      this.attachStore(storeDir, mode === 'inspect')
+      this.attachStore(storeDir, mode !== 'open')
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
-    }
-
-    createTables(this.db, storeDir === undefined ? 'main' : 'store')
-    if (storeDir !== undefined && mode === 'open' && this.writeBlocked === null) {
-      this.db
-        .prepare(
-          "INSERT INTO store.store_meta(key, value) VALUES ('schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        )
-        .run(SCHEMA_VERSION)
+    } else {
+      createTables(this.db, 'main')
     }
     if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
       if (storeDir === undefined)
@@ -988,50 +1068,63 @@ export class Cache implements CacheLayer {
    * reads it: a store another `SCHEMA_VERSION` wrote has its tables dropped
    * (owner, 2026-10-06), the artifacts kept. Each is indexed again from its
    * own bytes on its next hit (`adopt`). A reading verb reads such a store
-   * as empty and changes nothing.
+   * as empty and changes nothing. Creates the store's tables either way.
    */
   private matchStoreSchema(writable: boolean): SchemaReset | null {
-    const tables = new Set(
-      (
-        this.db
-          .prepare("SELECT name FROM store.sqlite_master WHERE type = 'table'")
-          .all() as Array<{
-          name: string
-        }>
-      ).map((r) => r.name),
-    )
-    if (!tables.has('entries')) return null
-    const found = tables.has('store_meta')
-      ? (
-          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
-            value: string
-          } | null
-        )?.value
-      : undefined
-    if (found === SCHEMA_VERSION) return null
-    if (!writable) {
-      this.db.exec('DETACH DATABASE store')
-      this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+    const read = (): { has: boolean; found: string | undefined } => {
+      const tables = new Set(
+        (
+          this.db
+            .prepare("SELECT name FROM store.sqlite_master WHERE type = 'table'")
+            .all() as Array<{
+            name: string
+          }>
+        ).map((r) => r.name),
+      )
+      const found = tables.has('store_meta')
+        ? (
+            this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
+              value: string
+            } | null
+          )?.value
+        : undefined
+      return { has: tables.has('entries'), found }
+    }
+    const seen = read()
+    if (seen.has && seen.found === SCHEMA_VERSION) {
+      createTables(this.db, 'store')
       return null
     }
-    let reset: SchemaReset | null = null
-    this.db
-      .transaction(() => {
-        // Re-read under the write lock: another workspace's open may have
-        // reset it first.
-        const now = (
-          this.db.prepare("SELECT value FROM store.store_meta WHERE key = 'schema'").get() as {
-            value: string
-          } | null
-        )?.value
-        if (now === SCHEMA_VERSION) return
-        for (const t of STORE_TABLES) {
-          if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
+    if (!writable) {
+      if (seen.has) {
+        this.db.exec('DETACH DATABASE store')
+        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+      }
+      createTables(this.db, 'store')
+      return null
+    }
+    // Re-read, drop, create and stamp under one write lock: as separate
+    // transactions, another vx's open landing after the drop made its own
+    // tables, and this one's `CREATE IF NOT EXISTS` kept them under its stamp.
+    return this.db
+      .transaction((): SchemaReset | null => {
+        const now = read()
+        let reset: SchemaReset | null = null
+        if (now.has && now.found !== SCHEMA_VERSION) {
+          for (const t of STORE_TABLES) {
+            if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
+          }
+          reset = { from: now.found ?? 'an earlier schema', to: SCHEMA_VERSION }
         }
-        reset = { from: found ?? 'an earlier schema', to: SCHEMA_VERSION }
+        createTables(this.db, 'store')
+        this.db
+          .prepare(
+            "INSERT INTO store.store_meta(key, value) VALUES ('schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          )
+          .run(SCHEMA_VERSION)
+        return reset
       })
       .immediate()
-    return reset
   }
 
   // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
@@ -1192,6 +1285,12 @@ export class Cache implements CacheLayer {
       // A second name for the same bytes: the index step renames it over
       // the artifact inside its write transaction, as for a save.
       linkSync(finalPath, tmpPath)
+      // The link shares the artifact's inode and so its mtime, which an
+      // artifact that needs adopting has had for hours: another process's
+      // orphan sweep read the temp as a crashed save's and took it, and the
+      // artifact with it, while this adopt was scanning them.
+      const now = new Date()
+      utimesSync(tmpPath, now, now)
     } catch {
       return false
     }
@@ -1232,7 +1331,9 @@ export class Cache implements CacheLayer {
 
     // Verify the tar artifact actually exists. The DB and the
     // filesystem can drift if someone manually deletes the cache dir.
-    if (!existsSync(this.tarPath(hash))) return null
+    const st = statSync(this.tarPath(hash), { throwIfNoEntry: false })
+    if (st === undefined) return null
+    if (st.mtimeMs < Date.now() - ORPHAN_GRACE_MS) this.staleTimes.add(hash)
 
     // Deferred: per-hit UPDATEs cost ~60 ms across 2000+ probes on a
     // full-cache run. Hashes are collected and flushed as ONE batched
@@ -1265,7 +1366,7 @@ export class Cache implements CacheLayer {
   ): Promise<Map<string, CacheEntry>> {
     return this.guard(async () => {
       const out = await this.getManyEntries(hashes)
-      if (ctx === undefined || !this.write || out.size === hashes.length) return out
+      if (ctx === undefined || !this.read || !this.write || out.size === hashes.length) return out
       // An artifact the index does not know is still a hit (`adopt`).
       for (const hash of hashes) {
         if (out.has(hash) || !(await this.adopt(hash, ctx(hash)))) continue
@@ -1282,8 +1383,12 @@ export class Cache implements CacheLayer {
     const { test, params } = inHashes(hashes)
     const rows = this.db.query(`${SELECT_ENTRY} WHERE e.hash ${test}`).all(...params) as EntryRow[]
     if (rows.length === 0) return out
-    const present = rows.map((r) => existsSync(this.tarPath(r.hash)))
-    const live = rows.filter((_r, i) => present[i])
+    const graceStart = Date.now() - ORPHAN_GRACE_MS
+    const live = rows.filter((r) => {
+      const st = statSync(this.tarPath(r.hash), { throwIfNoEntry: false })
+      if (st !== undefined && st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
+      return st !== undefined
+    })
     const liveHashes = live.map((r) => r.hash)
     const fileRows = this.loadOutputFilesBatch(liveHashes)
     const dirRows = this.loadOutputDirsBatch(liveHashes)
@@ -2011,6 +2116,17 @@ export class Cache implements CacheLayer {
     const hashes = [...this.touched]
     this.touched.clear()
     const now = Date.now()
+    // The file time is the last use another vx version's sweep can see:
+    // its open dropped this index's rows (`pickVictims`).
+    const at = new Date(now)
+    for (const hash of this.staleTimes) {
+      try {
+        utimesSync(this.tarPath(hash), at, at)
+      } catch {
+        // Gone, or another user's file: a sweep judges its old time.
+      }
+    }
+    this.staleTimes.clear()
     // LRU bookkeeping: on a full disk the bumps are dropped, never the prune
     // or the stats that asked for them (A-14).
     try {
@@ -2125,21 +2241,26 @@ export class Cache implements CacheLayer {
     // above never sees them (upstream survey, nx#35483: 9 MiB of them sat
     // under a 1 MB limit). Listing the directory to find them costs 0.5 ms
     // per 1,000 entries (4.9 ms at 10,000), every run; the sweep's own
-    // clock in `schema_meta` costs one indexed read. An orphan is reapable
-    // only an hour after its last write anyway, so an hourly sweep reaps
-    // it within two.
+    // clock in `schema_meta` costs one indexed read. The sweep is the
+    // policy's own prune, with the row-less files counted.
     const swept = this.db.prepare('SELECT value FROM schema_meta WHERE key = ?').get(SWEPT_AT) as {
       value: string
     } | null
     if (swept !== null && now - Number(swept.value) < ORPHAN_GRACE_MS) return null
-    return { evicted: 0, bytesFreed: 0, ...(await this.reapOrphans(now)) }
+    return this.pruneIndex(
+      {
+        ...(olderThanMs !== undefined ? { olderThanMs } : {}),
+        ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
+      },
+      now,
+    )
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {
     return this.guard(() => this.pruneIndex(options))
   }
 
-  private async pruneIndex(options: PruneOptions): Promise<PruneResult> {
+  private async pruneIndex(options: PruneOptions, now: number = Date.now()): Promise<PruneResult> {
     this.flushAccessed()
     // Before any entry is deleted, so a kept entry's pending snapshot is on
     // disk whatever the eviction does next. A pruned hash's snapshot cannot
@@ -2151,50 +2272,24 @@ export class Cache implements CacheLayer {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
     }
 
-    const victims = new Set<string>()
-    let bytesFreed = 0
     // Rows whose artifact is gone (deleted by hand, or by a disk cleaner):
     // never a hit, and their bytes are on no disk, but `--max-size` counted
     // them and evicted real entries to make room for them (item 975). None
     // is evicted or freed, whatever its age (item 1081); the ones past the
     // grace window are dropped.
-    const { phantoms, stale } = await this.phantomRows()
-
-    if (olderThanMs !== undefined) {
-      const rows = this.db
-        .prepare('SELECT hash, size_bytes FROM entries WHERE accessed_at < ?')
-        .all(olderThanMs) as Array<{ hash: string; size_bytes: number }>
-      for (const r of rows) {
-        if (phantoms.has(r.hash)) continue
-        victims.add(r.hash)
-        bytesFreed += r.size_bytes
-      }
-    }
-
-    if (maxBytes !== undefined) {
-      const totalRow = this.db
-        .prepare('SELECT COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
-        .get() as { bytes: number }
-      let phantomBytes = 0
-      for (const b of phantoms.values()) phantomBytes += b
-      let remaining = totalRow.bytes - phantomBytes - bytesFreed
-      if (remaining > maxBytes) {
-        // Exclude already-picked victims in JS, not via a SQL NOT-IN —
-        // an IN-list over tens of thousands of TTL victims would blow
-        // SQLite's bound-parameter ceiling (see flushAccessed's 900 cap).
-        const candidates = (
-          this.db
-            .prepare('SELECT hash, size_bytes FROM entries ORDER BY accessed_at ASC')
-            .all() as Array<{ hash: string; size_bytes: number }>
-        ).filter((row) => !victims.has(row.hash) && !phantoms.has(row.hash))
-        for (const row of candidates) {
-          if (remaining <= maxBytes) break
-          victims.add(row.hash)
-          bytesFreed += row.size_bytes
-          remaining -= row.size_bytes
-        }
-      }
-    }
+    const { phantoms, stale, rows } = await this.phantomRows()
+    const picked = pickVictims(
+      rows.filter((r) => !phantoms.has(r.hash)),
+      await this.scanOrphans(),
+      {
+        ...(olderThanMs !== undefined ? { olderThanMs } : {}),
+        ...(maxBytes !== undefined ? { maxBytes } : {}),
+      },
+    )
+    const victims = picked.hashes
+    const { bytesFreed } = picked
+    let orphanBytes = 0
+    for (const o of picked.files) orphanBytes += o.size
 
     // Delete DB rows in a single transaction (one fsync; ON DELETE
     // CASCADE clears `output_files`) and unlink artifacts in parallel.
@@ -2203,13 +2298,7 @@ export class Cache implements CacheLayer {
     // flushAccessed so a huge eviction stays under any build's
     // bound-parameter ceiling.
     if (dryRun) {
-      const orphans = await this.orphanStats()
-      return {
-        evicted: victims.size,
-        bytesFreed,
-        orphans: orphans.orphans,
-        orphanBytes: orphans.orphanBytes,
-      }
+      return { evicted: victims.size, bytesFreed, orphans: picked.files.length, orphanBytes }
     }
     if (victims.size > 0 || stale.length > 0) {
       const hashes = [...victims]
@@ -2239,23 +2328,21 @@ export class Cache implements CacheLayer {
     } catch (err) {
       if (!isIndexFull(err)) throw err
     }
-    const orphans = await this.reapOrphans()
+    const orphans = await this.reapOrphans(picked.files, now)
     return { evicted: victims.size, bytesFreed, ...orphans }
   }
 
   /**
-   * Unlink artifacts the index does not know: a `<hash>.tar.zst` with no
-   * `entries` row (a `SCHEMA_VERSION` drop, a `cache.db` deleted by hand)
-   * and a `<hash>.tar.zst.tmp-*` a crashed save never renamed. Nothing
-   * else reaps them — a lookup starts at the row, and a save of the same
-   * key renames over the file, so a key that never recurs leaks its bytes
-   * forever. Files younger than the grace window are left alone: a save
-   * renames the artifact into place BEFORE its row commits, and its temp
-   * exists while the bytes are still being written, so a fresh file
-   * without a row is a save in flight, not an orphan.
+   * Unlink the row-less files `pickVictims` took: a `<hash>.tar.zst` with
+   * no `entries` row (another vx version's open dropped it, a `cache.db`
+   * deleted by hand) past the policy, and a `<hash>.tar.zst.tmp-*` a
+   * crashed save never renamed. Nothing else reaps them — a lookup starts
+   * at the row, and a save of the same key renames over the file, so a key
+   * that never recurs leaks its bytes forever.
    */
   private async reapOrphans(
-    now: number = Date.now(),
+    taken: readonly RowlessFile[],
+    now: number,
   ): Promise<{ orphans: number; orphanBytes: number }> {
     try {
       this.db
@@ -2268,7 +2355,7 @@ export class Cache implements CacheLayer {
     let orphans = 0
     let orphanBytes = 0
     await Promise.all(
-      (await this.scanOrphans()).map(async (o) => {
+      taken.map(async (o) => {
         try {
           // unlink, not `rm({ force })`: force swallows ENOENT, and a file a
           // concurrent prune took first must not be counted as ours.
@@ -2292,7 +2379,11 @@ export class Cache implements CacheLayer {
    * dropped — a row is never deleted on one listing's word while it may be
    * in use. An unreadable directory judges nothing.
    */
-  private async phantomRows(): Promise<{ phantoms: Map<string, number>; stale: string[] }> {
+  private async phantomRows(): Promise<{
+    phantoms: Map<string, number>
+    stale: string[]
+    rows: Array<{ hash: string; size_bytes: number; accessed_at: number }>
+  }> {
     const graceStart = Date.now() - ORPHAN_GRACE_MS
     const rows = this.db
       .prepare('SELECT hash, size_bytes, accessed_at FROM entries')
@@ -2305,7 +2396,7 @@ export class Cache implements CacheLayer {
     try {
       names = await readdir(this.artifactDir)
     } catch {
-      return { phantoms: new Map(), stale: [] }
+      return { phantoms: new Map(), stale: [], rows }
     }
     const present = new Set(names)
     const phantoms = new Map<string, number>()
@@ -2315,10 +2406,10 @@ export class Cache implements CacheLayer {
       phantoms.set(r.hash, r.size_bytes)
       if (r.accessed_at < graceStart) stale.push(r.hash)
     }
-    return { phantoms, stale }
+    return { phantoms, stale, rows }
   }
 
-  /** What `prune()` would reap right now, for `vx info` to say before anyone prunes. */
+  /** Row-less files past the in-flight grace, for `vx info`: a prune reaps them by its policy. */
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }> {
     const found = await this.scanOrphans()
     let orphanBytes = 0
@@ -2327,7 +2418,7 @@ export class Cache implements CacheLayer {
   }
 
   /** Row-less artifacts and temps past the in-flight grace window: one readdir, one stat per candidate. */
-  private async scanOrphans(): Promise<Array<{ file: string; size: number }>> {
+  private async scanOrphans(): Promise<RowlessFile[]> {
     const found = await scanOrphanFiles(
       this.artifactDir,
       () =>

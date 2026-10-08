@@ -548,7 +548,9 @@ describe('executor capability — end-to-end via run()', () => {
         tasks: ['hello'],
         log: {
           ...makeSilentLogger(),
-          taskStderr: (n, c) => void (c.startsWith('[vx]') && seen.push(`${n.id}: ${c}`)),
+          // Every chunk: execute-task wrote the bare message and the
+          // scheduler's line followed it, two copies in one frame.
+          taskStderr: (n, c) => void seen.push(`${n.id}: ${c}`),
           taskComplete: (n) => void seen.push(`done ${n.id}`),
         },
         handleSignals: false,
@@ -598,14 +600,15 @@ describe('executor capability — end-to-end via run()', () => {
         concurrency: 1,
         log: {
           ...makeSilentLogger(),
-          // Each task's own frame line, where a name added twice showed.
-          taskStderr: (n, c) => void (c.startsWith('plugin ') && seen.push(`${n.id}: ${c}`)),
+          // Each task's own frame line, where a name added twice showed:
+          // the second task's text then differed from the first's.
+          taskStderr: (n, c) => void seen.push(`${n.id}: ${c}`),
         },
         handleSignals: false,
       })
       expect(seen.sort()).toEqual([
-        "pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
-        "pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        "pkg-a#a: [vx] pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        'pkg-a#b: [vx] pkg-a#b: as pkg-a#a above\n',
       ])
     } finally {
       cleanup()
@@ -908,6 +911,62 @@ describe('executor capability — end-to-end via run()', () => {
       })
       expect(summary.ok).toBe(true)
       expect((globalThis as unknown as { __vxPeak: number }).__vxPeak).toBe(6)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('capacity: two pooled executors that share a name each keep their own capacity', async () => {
+    // The scheduler counted a pool by its executor's NAME, and a package
+    // declared twice (`@vzn/vx-reapi` against two clusters) names both
+    // executors alike: the two pools of 2 ran 2 tasks at once between them.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      const tasks = Array.from(
+        { length: 8 },
+        (_, i) => `t${i}: { exec: { command: 'echo ${i}' } }`,
+      ).join(',')
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { ${tasks} } }`,
+      )
+      const pool = (low: boolean): string => `{ executor() {
+               return {
+                 name: 'pool',
+                 remote: true,
+                 capacity: 2,
+                 accepts: (p) => (Number(p.taskId.slice(-1)) < 4) === ${low},
+                 async execute(req) {
+                   globalThis.__vxInflight = (globalThis.__vxInflight ?? 0) + 1
+                   globalThis.__vxPeak = Math.max(globalThis.__vxPeak ?? 0, globalThis.__vxInflight)
+                   await new Promise((r) => setTimeout(r, 150))
+                   globalThis.__vxInflight--
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource('org/pool-low', pool(true)),
+          pluginSource('org/pool-high', pool(false)),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as { __vxPeak: number; __vxInflight: number }
+      g.__vxPeak = 0
+      g.__vxInflight = 0
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: Array.from({ length: 8 }, (_, i) => `t${i}`),
+        concurrency: 1,
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(g.__vxPeak).toBe(4)
     } finally {
       cleanup()
     }

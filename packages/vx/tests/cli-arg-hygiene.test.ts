@@ -261,10 +261,10 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--max-size=1G']).format).toBeUndefined()
     const seeHelp = ' (see `vx cache --help`)'
     expect(parsePruneArgs(['--max-size=1G', '--format', 'xml']).error).toBe(
-      `--format must be pretty or json${seeHelp}`,
+      `--format must be pretty or json (got xml)${seeHelp}`,
     )
     expect(parsePruneArgs(['--max-size=1G', '--format']).error).toBe(
-      `--format must be pretty or json${seeHelp}`,
+      `--format requires a value: pretty or json${seeHelp}`,
     )
   })
 
@@ -304,8 +304,33 @@ describe('value flags accept the = form', () => {
   it('--output-logs=', () => {
     expect(parseRunArgs(['build', '--output-logs=none']).outputLogs).toBe('none')
     expect(parseRunArgs(['build', '--output-logs=errors-only']).outputLogs).toBe('errors-only')
-    expect(parseRunArgs(['build', '--output-logs=loud']).error).toMatch(/--output-logs must be/)
-    expect(parseRunArgs(['build', '--output-logs=']).error).toMatch(/--output-logs must be/)
+    expect(parseRunArgs(['build', '--output-logs=loud']).error).toBe(
+      '--output-logs must be full, errors-only, hash-only, or none (got loud)',
+    )
+    expect(parseRunArgs(['build', '--output-logs=']).error).toBe(
+      '--output-logs requires a value (full, errors-only, hash-only, or none)',
+    )
+    expect(parseRunArgs(['build', '--output-logs']).error).toBe(
+      '--output-logs requires a value (full, errors-only, hash-only, or none)',
+    )
+  })
+
+  it('--download= and --continue= echo the bad value', () => {
+    expect(parseRunArgs(['build', '--download=some']).error).toBe(
+      '--download must be all, toplevel, or none (got some)',
+    )
+    expect(parseRunArgs(['build', '--download']).error).toBe(
+      '--download requires a value (all, toplevel, or none)',
+    )
+    expect(parseRunArgs(['build', '--download=']).error).toBe(
+      '--download requires a value (all, toplevel, or none)',
+    )
+    expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
+      '--continue must be never, deps-ok, or always (got sometimes)',
+    )
+    expect(parseRunArgs(['build', '--continue=']).error).toBe(
+      '--continue= requires a mode (never, deps-ok, or always)',
+    )
   })
 
   it('--verbosity=', () => {

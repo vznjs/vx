@@ -19,7 +19,7 @@ export type TaskNameFor = (project: string, target: string, configuration: strin
  * "depends on …#codegen but no such task is declared". Dropped here as
  * Nx drops it, for this project and a named one alike.
  */
-export type HasTarget = (project: string, target: string) => boolean
+type HasTarget = (project: string, target: string) => boolean
 
 /**
  * The graph nodes a `projects` list names, ported from Nx's

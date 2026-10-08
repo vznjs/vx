@@ -3,6 +3,7 @@
 // `GITHUB_TOKEN` with `checks: write`; the plugin declines the check (not
 // the whole sink) without one, so the summary still works token-less.
 import type { RunSummaryRecord } from '@vzn/vx'
+import { truncateUtf8 } from './summary.js'
 
 export type FetchFn = (
   url: string,
@@ -67,14 +68,11 @@ function isCertificateRefusal(err: unknown): boolean {
  * summary's does.
  */
 export function clampSummary(markdown: string): string {
-  const MAX = 65_535
-  if (markdown.length * 3 <= MAX) return markdown
-  const bytes = new TextEncoder().encode(markdown)
-  if (bytes.byteLength <= MAX) return markdown
-  const suffix = '\n\n…truncated by @vzn/vx-ci (65535-char Checks API limit)'
-  let end = MAX - new TextEncoder().encode(suffix).byteLength
-  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
-  return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
+  return truncateUtf8(
+    markdown,
+    65_535,
+    '\n\n…truncated by @vzn/vx-ci (65535-char Checks API limit)',
+  )
 }
 
 export function buildCheckRunPayload(args: {

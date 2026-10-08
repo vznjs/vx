@@ -2,7 +2,8 @@
 // workspace-root globs. Extracted from `buildTask` in item 606.
 
 import path from 'node:path'
-import { minimatchToVx } from '../glob-grammar.js'
+import { isLiteralPattern } from '@vzn/vx'
+import { literalGlob, minimatchToVx } from '../glob-grammar.js'
 import { takingBack } from '../shared-outputs.js'
 
 interface NxOutputs {
@@ -18,12 +19,13 @@ interface NxOutputs {
  * became the literal glob `coverage/{projectRoot}/**`, saved nothing, and a
  * hit restored nothing. Null when a token is left or the path leaves the
  * workspace; a brace set is no token (item 914 — 912 read one as a gap).
+ * The project dir comes back masked: {@link withProjectDir} writes it in.
  */
 export function nxWorkspacePath(s: string, projectRel: string, projectName: string): string | null {
   const rel = projectRel === '.' ? '' : projectRel
   const p = s
     .replaceAll('{workspaceRoot}', '')
-    .replaceAll('{projectRoot}', rel)
+    .replaceAll('{projectRoot}', masked(rel))
     .replaceAll('{projectName}', projectName)
   // A token left over is a gap; a brace set (`*.{ts,tsx}`) is a glob.
   if (/\{[\w.]+\}/.test(p)) return null
@@ -31,10 +33,38 @@ export function nxWorkspacePath(s: string, projectRel: string, projectName: stri
   return n === '.' || n === '..' || n.startsWith('../') ? null : n
 }
 
+// A project dir is a path, never a glob: `packages/a{b}` read as a token
+// dropped every `{projectRoot}` path, and `packages/[x]` translated as a
+// class reached `packages/x`. Each dir segment stands in as `\uE000<i>\uE001`
+// until the glob is vx's, so `..` still pops one.
+const MASKED = /\uE000(\d+)\uE001/g
+
+function masked(rel: string): string {
+  return rel === ''
+    ? ''
+    : rel
+        .split('/')
+        .map((_, i) => `\uE000${i}\uE001`)
+        .join('/')
+}
+
+/** `p` with the masked project dir written back: as a path, or escaped for a glob. */
+export function withProjectDir(p: string, projectRel: string, asGlob: boolean): string {
+  const segs = projectRel.split('/')
+  return p.replace(MASKED, (_, i: string, at: number) => {
+    const seg = segs[Number(i)]!
+    if (!asGlob) return seg
+    // Only a glob's head reads `!` as a negation.
+    return at === 0 ? literalGlob(seg) : literalGlob(`/${seg}`).slice(1)
+  })
+}
+
 /** A workspace path relative to the project dir, or null when it lies outside. */
 export function underProject(p: string, projectRel: string): string | null {
   if (projectRel === '.' || projectRel === '') return p
-  return p.startsWith(`${projectRel}/`) ? p.slice(projectRel.length + 1) : null
+  for (const dir of [masked(projectRel), projectRel])
+    if (p.startsWith(`${dir}/`)) return p.slice(dir.length + 1)
+  return null
 }
 
 /**
@@ -64,15 +94,16 @@ export function nxDefaultOutputs(
   }
   if (targetName !== 'build' && targetName !== 'prepare') return []
   const root = projectRel === '.' ? '' : projectRel
-  const at = (p: string): string => path.posix.join(root, p)
+  // As tokens, so the dir stays a path whatever its name holds.
+  const at = (p: string): string => (root === '' ? p : `{projectRoot}/${p}`)
   const held = ['build', 'public'].filter((d) => tops === undefined || tops.has(d))
   if (held.length > 0)
     todos.push(
-      `no outputs declared: Nx also caches ${held.map(at).join(' and ')} for this target — vx cleans an output before the run, so add ${held.length === 1 ? 'it' : 'them'} to the outputs by hand only if ${held.length === 1 ? 'it holds' : 'they hold'} nothing committed`,
+      `no outputs declared: Nx also caches ${held.map((d) => path.posix.join(root, d)).join(' and ')} for this target — vx cleans an output before the run, so add ${held.length === 1 ? 'it' : 'them'} to the outputs by hand only if ${held.length === 1 ? 'it holds' : 'they hold'} nothing committed`,
     )
   // The root project's two are one path.
   return [
-    ...new Set([path.posix.join('dist', root), at('dist')]),
+    ...new Set([root === '' ? 'dist' : '{workspaceRoot}/dist/{projectRoot}', at('dist')]),
     ...['build', 'public'].filter((d) => !held.includes(d)).map(at),
   ]
 }
@@ -145,7 +176,7 @@ export function mapNxOutputs(
     const norm = path.posix.normalize(s.replace(/^\/+/, ''))
     if (norm === '..' || norm.startsWith('../')) {
       todos.push(
-        `output ${JSON.stringify(o)} resolves to ${JSON.stringify(norm)}, outside the workspace — ` +
+        `output ${JSON.stringify(o)} resolves to ${JSON.stringify(withProjectDir(norm, projectRel, false))}, outside the workspace — ` +
           'vx caches only inside it; dropped',
       )
       continue
@@ -158,9 +189,18 @@ export function mapNxOutputs(
     for (const g of globs) {
       const gn = g.startsWith('!') ? '!' : ''
       const gs = g.slice(gn.length)
-      if (projectRel === '.') outFiles.push(g)
-      else if (gs.startsWith(`${projectRel}/`)) outFiles.push(gn + gs.slice(projectRel.length + 1))
-      else wsOutFiles.push(gn + path.posix.normalize(gs).replace(/^\.\//, ''))
+      const own = underProject(gs, projectRel)
+      if (own !== null) {
+        outFiles.push(gn + withProjectDir(own, projectRel, true))
+        continue
+      }
+      const m = path.posix.normalize(gs).replace(/^\.\//, '')
+      const w = withProjectDir(m, projectRel, true)
+      wsOutFiles.push(gn + w)
+      // An escaped brace makes a literal a glob, which core matches as the
+      // path alone (`asTrees` adds the tree only to a literal).
+      if (w !== withProjectDir(m, projectRel, false) && isLiteralPattern(m.replace(MASKED, '')))
+        wsOutFiles.push(`${gn}${w}/**`)
     }
   }
   return { outFiles: takingBack(outFiles), wsOutFiles: takingBack(wsOutFiles) }
@@ -217,9 +257,19 @@ export function nxProjectOutputs(
       projectName,
       scratch,
     )
-    for (const f of [...outFiles.map((f) => path.posix.join(rel, f)), ...wsOutFiles]) {
+    const literal = (f: string): string | null => {
       const lit = f.replace(/\/\*\*(\/\*)?$/, '')
-      if (!lit.startsWith('!') && !/[*?[{]/.test(lit)) out.add(lit)
+      return lit.startsWith('!') || /[*?[]|(?<!\\)[{}]/.test(lit)
+        ? null
+        : lit.replace(/\\([{}!])/g, '$1')
+    }
+    for (const f of outFiles) {
+      const lit = literal(f)
+      if (lit !== null) out.add(path.posix.join(rel, lit))
+    }
+    for (const f of wsOutFiles) {
+      const lit = literal(f)
+      if (lit !== null) out.add(lit)
     }
   }
   const r = [...out]

@@ -44,17 +44,22 @@ const OTHER_OUTPUTS = [
   'vx-docs/dist/**',
   'vx-docs/public/playground/planner.js',
   ...[
+    'api',
     'architecture',
     'benchmarks',
     'caching',
     'cli',
+    'compare/turbo-nx-support',
     'comparison',
     'execution',
     'flows',
     'optimizations',
     'overview',
+    'parity',
     'patterns',
     'schema',
+    'security',
+    'upstream-ledger',
   ].map((page) => `vx-docs/src/content/docs/${page}.md`),
   'vx-docs/src/content/docs/modules/**',
   'vx-docs/src/content/docs/design/**',
@@ -406,7 +411,10 @@ export default defineProject({
           // workflows and the root files (bins, boundaries, exports, the
           // runner, the site's samples); until item 613 the key saw only
           // this package, so an edit elsewhere left the suite an up-to-date
-          // hit in the gate.
+          // hit in the gate. CONTRIBUTING.md (readme-links, site-samples),
+          // LICENSE (build-npm, npm-pack) and the cache-bump skill
+          // (doc-references) were read unkeyed the same way, so CI's restored
+          // cache replayed the suite over an edit to them.
           workspaceFiles: [
             'packages/*/**',
             'examples/**',
@@ -414,6 +422,9 @@ export default defineProject({
             'scripts/**',
             'CLAUDE.md',
             'README.md',
+            'CONTRIBUTING.md',
+            'LICENSE',
+            '.claude/skills/**',
             'vx.config.ts',
             'vx.workspace.ts',
             ...OTHER_OUTPUTS,

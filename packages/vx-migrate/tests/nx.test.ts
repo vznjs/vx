@@ -220,7 +220,8 @@ describe('nx()', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build', 'lint', 'all'], log })
       const ids = plan.tasks.map((t) => t.node.id).sort()
-      expect(ids).toEqual(['app#all', 'app#build', 'lib#build', 'lib#lint', 'ws#build'])
+      // The root's default build is no match for a bare name (X-102).
+      expect(ids).toEqual(['app#all', 'app#build', 'lib#build', 'lib#lint'])
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual(['lib#build'])
       // The default configuration is folded in and named.
@@ -1493,7 +1494,7 @@ describe('nx() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
+        out: 'vx lock: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')

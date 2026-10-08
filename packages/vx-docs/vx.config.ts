@@ -14,19 +14,26 @@ const PROOFS = [
   'packages/vx-migrate/tests/turbo.test.ts',
 ]
 
-// What `import` generates from packages/vx/docs.
+// What `import` generates from packages/vx/docs: a hit restores only these,
+// so a page missing here vanishes from the site on a hit. Pinned to the
+// .gitignore manifest by tests/sidebar-coverage.test.ts.
 const IMPORTED = [
+  'src/content/docs/api.md',
   'src/content/docs/architecture.md',
   'src/content/docs/benchmarks.md',
   'src/content/docs/caching.md',
   'src/content/docs/cli.md',
+  'src/content/docs/compare/turbo-nx-support.md',
   'src/content/docs/comparison.md',
   'src/content/docs/execution.md',
   'src/content/docs/flows.md',
   'src/content/docs/optimizations.md',
   'src/content/docs/overview.md',
+  'src/content/docs/parity.md',
   'src/content/docs/patterns.md',
   'src/content/docs/schema.md',
+  'src/content/docs/security.md',
+  'src/content/docs/upstream-ledger.md',
   'src/content/docs/modules/**',
   'src/content/docs/design/**',
 ]

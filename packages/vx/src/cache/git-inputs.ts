@@ -8,11 +8,12 @@
 import path from 'node:path'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import {
-  UserError,
   executablePath,
   gitSpawnRefusal,
   isInstalledPath,
   notAWorkTree,
+  relPosix,
+  UserError,
   xxh3hex,
 } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
@@ -70,7 +71,9 @@ export function repoFacts(dir: string): RepoFacts | null {
   // One line per flag, in order. A git that does not know
   // `--show-object-format` echoes it back, as it does any unknown flag,
   // which reads as sha1 — what the flag's own spawn answered there too.
-  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder()
+  const [prefix = '', commonDir = '', format = '', indexFile = ''] = new TextDecoder('utf-8', {
+    ignoreBOM: true,
+  })
     .decode(proc.stdout)
     .split('\n')
     .map((l) => l.trim())
@@ -115,10 +118,10 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
         if (!st.isDirectory() || !existsSync(path.join(dotGit, 'HEAD'))) return undefined
         const objectFormat = configObjectFormat(readFileSync(path.join(dotGit, 'config'), 'utf8'))
         if (objectFormat === undefined) return undefined
-        const below = path.relative(at, real).split(path.sep).join('/')
+        const below = relPosix(at, real)
         return {
           prefix: below === '' ? '' : `${below}/`,
-          commonDir: path.relative(real, dotGit).split(path.sep).join('/'),
+          commonDir: relPosix(real, dotGit),
           objectFormat,
           indexFile: path.relative(real, path.join(dotGit, 'index')).split(path.sep).join('/'),
         }
@@ -270,7 +273,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       for (const rel of relPaths) {
         const abs = path.resolve(workspaceRoot, rel)
         if (abs.startsWith(key + path.sep)) {
-          under.push(path.relative(key, abs).split(path.sep).join('/'))
+          under.push(relPosix(key, abs))
         }
       }
       if (under.length > 0) this.recordChanged(key, under)
@@ -427,8 +430,10 @@ function decodeGitZ(bytes: Uint8Array): { text: string; undecodable: Set<string>
   return { text, undecodable }
 }
 
-const LOSSY_UTF8 = new TextDecoder()
-const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true })
+// A default decoder strips a leading U+FEFF: the first path git lists
+// would lose it and name no file.
+const LOSSY_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
@@ -1193,7 +1198,7 @@ export function gitPathspecs(
   projectDirs: readonly string[],
   workspaceWide: boolean,
 ): string[] {
-  const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
+  const rels = projectDirs.map((d) => relPosix(workspaceRoot, d))
   const scoped =
     !workspaceWide &&
     rels.length > 0 &&
@@ -1299,8 +1304,11 @@ export async function startGitEnumeration(
   const facts = repoFacts(workspaceRoot)
   // The blob-size check's verdict is a function of the index's entries, so
   // the index file's bytes key it: one read, where `ls-files --debug` and a
-  // lookup per entry cost 550 ms at 100,000 files (A-60).
-  const pathspecKey = xxh3hex(pathspecs.join('\0'))
+  // lookup per entry cost 550 ms at 100,000 files (A-60). The verdict's
+  // paths are workspace-relative, so the repo→workspace prefix keys it too:
+  // a nested workspace sharing the cache read the outer one's verdict and
+  // trusted a resized blob.
+  const pathspecKey = xxh3hex([facts?.prefix ?? '', ...pathspecs].join('\0'))
   const indexFile =
     facts === null || facts.indexFile === ''
       ? undefined
@@ -1516,9 +1524,10 @@ export async function applyGitEnumeration(
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
-  // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
-  // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
-  // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
+  // ~9k files; ~5 ms this way). Every path under `dir/` sorts in
+  // [`dir/`, `dir0`): '0' is the code unit after '/'. An upper bound of
+  // `dir/` + U+FFFF left out a file whose name starts with U+FFFF, and
+  // it never entered the key.
   // Git lists in order; a list that already is skips the sort.
   let inOrder = true
   for (let i = 1; i < all.length; i++) {
@@ -1552,10 +1561,15 @@ export async function applyGitEnumeration(
     return lo
   }
   for (const projectDir of projectDirs) {
-    const relPrefix =
+    const spelled =
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
-        : path.relative(workspaceRoot, projectDir).split(path.sep).join('/')
+        : relPosix(workspaceRoot, projectDir)
+    // macOS git reports paths NFC (core.precomposeunicode) while a dir
+    // discovered by readdir keeps the spelling it was created with: match
+    // NFC, and key the OIDs by the project's spelling, which is how
+    // `resolveFiles` looks them up.
+    const relPrefix = spelled.normalize('NFC')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()
@@ -1565,14 +1579,16 @@ export async function applyGitEnumeration(
     }
     const prefix = `${relPrefix}/`
     const start = lowerBound(prefix)
-    const end = lowerBound(`${prefix}￿`)
+    const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
     const projOids = new Map<string, string>()
+    const projAbs =
+      relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
       matches.push(rel.slice(prefix.length))
       const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(abs(rel), oid)
+      if (oid !== undefined) projOids.set(projAbs(rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A

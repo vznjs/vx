@@ -121,6 +121,12 @@ export interface TaskOutcome {
    */
   unkeyed?: true
   /**
+   * The run's cache policy read and wrote nothing (`--no-cache`,
+   * `--cache=local:`): no cache answered for this task, so a run of it is
+   * `no-cache`, not a miss. Set by `run()`; `ranNoCache` reads it.
+   */
+  cacheOff?: true
+  /**
    * On a `skipped` outcome: the task at the ROOT of what blocked it — the
    * failed (or aborted) upstream, followed through any chain of skips
    * between. Absent when the skip was fail-fast's (no upstream failed).
@@ -208,7 +214,7 @@ export interface ScheduleOptions {
    *   - 'deps-ok': a failed/skipped/aborted upstream skips its
    *     dependents; independent siblings keep running.
    *   - 'never': the first failure stops dispatch — in-flight tasks
-   *     finish naturally, everything not yet started completes as
+   *     finish their attempt but start no retry, everything not yet started completes as
    *     skipped (restore-tier included: a fail-fast run stops
    *     restoring too).
    *   - 'always': dependents run even when an upstream failed. Their
@@ -227,6 +233,11 @@ export interface ScheduleOptions {
    * 'never' it stops dispatch.
    */
   serverDied?: (id: string) => boolean
+  /**
+   * Called once, when 'never' stops dispatch: a task in flight then
+   * finishes its attempt but starts no retry.
+   */
+  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -287,9 +298,10 @@ export interface ScheduleOptions {
    * Admission over the worker count: asked for every exec-tier task about
    * to start on this machine, with the ids of the exec-tier tasks running
    * here right now (added on dispatch, so two asks in one tick see each
-   * other). `false` parks the task until something finishes. Undefined →
-   * count-only, the legacy path byte for byte. Restore-tier hits and
-   * pooled tasks hold no local resources and are never asked.
+   * other; removed when `execute` resolves, which for a persistent task is
+   * at ready). `false` parks the task until something finishes. Undefined →
+   * count-only, the legacy path byte for byte. Restore-tier hits, pooled
+   * tasks and groups hold no local resources: never asked, never listed.
    */
   admit?: (id: string, running: ReadonlySet<string>) => boolean
   /**
@@ -389,19 +401,26 @@ class ReadyHeap {
 /**
  * The dead server a dependency stands for: itself, or one a group reaches.
  * A group is a name for its deps, and it finished the moment the server
- * was ready, so a task behind it ran against the dead one.
+ * was ready, so a task behind it ran against the dead one. Walked with a
+ * stack and a seen set: recursion threw `RangeError` on a deep chain of
+ * groups, and re-walked a group each path reached it by.
  */
 export function deadServerBehind(
   nodes: ReadonlyMap<string, TaskNode>,
   serverDied: (id: string) => boolean,
   id: string,
 ): string | undefined {
-  if (serverDied(id)) return id
-  const n = nodes.get(id)
-  if (n === undefined || !isGroupTask(n)) return undefined
-  for (const d of n.deps) {
-    const dead = deadServerBehind(nodes, serverDied, d)
-    if (dead !== undefined) return dead
+  const stack = [id]
+  const seen = new Set<string>()
+  while (stack.length > 0) {
+    const at = stack.pop()!
+    if (seen.has(at)) continue
+    seen.add(at)
+    if (serverDied(at)) return at
+    const n = nodes.get(at)
+    if (n === undefined || !isGroupTask(n)) continue
+    // Reversed, so the first dep is walked first, as the order it names them.
+    for (let i = n.deps.length - 1; i >= 0; i--) stack.push(n.deps[i]!)
   }
   return undefined
 }
@@ -424,6 +443,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // dequeued task is skipped instead of dispatched (in-flight tasks
   // finish naturally and their dependents drain through the same path).
   let failFastTripped = false
+  const tripFailFast = (): void => {
+    if (failFastTripped) return
+    failFastTripped = true
+    options.onFailFast?.()
+  }
   const outcomes = new Map<string, TaskOutcome>()
 
   // Reverse adjacency + pending dep counts. Built once. A task becomes
@@ -572,8 +596,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
   }
   // The policy sees exec-tier local tasks only; a restore is a tar
-  // extract and a pooled task runs on someone else's capacity.
-  const local = (id: string): boolean => !inRestoreTier(id) && poolOf?.(id) === undefined
+  // extract, a pooled task runs on someone else's capacity, and a group
+  // runs nothing, so a packing policy that counted one parked work for it.
+  const local = (id: string): boolean =>
+    !inRestoreTier(id) && poolOf?.(id) === undefined && !isGroupTask(nodes.get(id) as TaskNode)
   const admits = (id: string): boolean => !local(id) || admitPolicy!(id, running)
   // With no policy nothing reads `running`, so nothing is tracked: the
   // count-only dispatch allocates no closure and touches no set per task.
@@ -588,7 +614,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
     const finishOne = (id: string, outcome: TaskOutcome): void => {
-      if (continueMode === 'never' && outcome.status === 'failed') failFastTripped = true
+      if (continueMode === 'never' && outcome.status === 'failed') tripFailFast()
       outcomes.set(id, outcome)
       // A dormant server is asked again: the dispatch settles it once its
       // last dependant is in.
@@ -686,7 +712,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     const willSkip = (id: string): boolean => {
       if (failFastTripped || aborted()) return true
       if (continueMode === 'never' && servers.some(serverDied)) {
-        failFastTripped = true
+        tripFailFast()
         return true
       }
       if (inRestoreTier(id)) return false
@@ -959,7 +985,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 }
 
 /** Persistent tasks nobody asked for whose every dependant is a restore-tier hit. */
-function idleServers(
+export function idleServers(
   nodes: ReadonlyMap<string, TaskNode>,
   dependents: ReadonlyMap<string, string[]>,
   restoreTier: ReadonlySet<string> | undefined,
