@@ -394,7 +394,8 @@ Semantics:
   and that task runs once it is ready. A dependant whose key the
   server's writes could change (one in its own project, unless a sandbox
   bounds the server's writes) is not probed ahead of it, so there the
-  server still starts.
+  server still starts. `vx run --dry` says so: such a server is
+  `not started` (`not-started` in `--dry=json`), not `would exec`.
 - **Exit before ready ⇒ failed.** If the persistent task crashes or
   exits before `readyWhen` matches, the task is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
@@ -403,7 +404,8 @@ Semantics:
   as its `128 + n` code), at once while the graph still runs (`… while
 the run went on`), so a dependant failing against it reads why. Its own outcome is `failed` with that exit
   code, and the footer counts it so (item 1071). An exit 0 on its own is
-  fine (a daemon that forks and returns).
+  fine (a daemon that forks and returns), and one kept only as a
+  dependency does not end the foreground hold (WD-3).
 - **End-of-graph SIGTERM.** Once the rest of the graph finishes
   (success OR failure of downstream), the orchestrator sends `SIGTERM`
   to every persistent subprocess it does not keep, and waits for them to

@@ -505,6 +505,7 @@ export type CacheStatus =
   | 'miss'
   | 'no-cache'
   | 'group'
+  | 'not-started'
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
