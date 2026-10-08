@@ -89,7 +89,8 @@ The git-relative `[<since>]` form is parsed into a `gitSince` field,
 alone or after a name or `{dir}` selector it narrows (`@scope/*[main]`,
 `{./apps/*}[HEAD~1]`: the selected packages that changed, D-44; an
 unbraced `./` path keeps its brackets as a glob class; `<name>...[ref]`
-also takes the dependants of what changed, as Turbo reads it), but resolution
+also takes the dependants of what changed, as Turbo reads it, over a graph
+that holds the configs' cross-project `dependsOn` edges), but resolution
 happens upstream (`cli/select.ts` calls
 `workspace/affected.ts:affectedProjects` once per distinct ref and
 passes the result via `affectedByFilter`). A tag lives in the config,
