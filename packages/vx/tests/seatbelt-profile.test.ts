@@ -351,3 +351,91 @@ describe('a seatbelt baseline whose name holds a bracket', () => {
     ])
   })
 })
+
+// SRT rewrites `*` and `?` inside a class too, and compiles a backslash as
+// a literal one, so a grant's escaped `a\*.txt` granted `a\bc.txt` — a name
+// the task never declared — and never `a*.txt`. A baseline's `*` is a name
+// as well, and matched its siblings.
+describe('a seatbelt grant naming a literal star or question mark', () => {
+  const allowRegexes = (names: string[], read: string[], write: string[]): RegExp[] => {
+    const cfg = seatbeltBrackets(
+      {
+        filesystem: {
+          denyRead: ['/ws'],
+          allowRead: [...names, ...read],
+          allowWrite: write,
+          denyWrite: [],
+        },
+      },
+      names,
+    )!.filesystem!
+    const profile = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig: { denyOnly: cfg.denyRead, allowWithinDeny: cfg.allowRead! },
+      writeConfig: { allowOnly: cfg.allowWrite, denyWithinAllow: [] },
+    })
+    return [...profile.matchAll(/\(regex ("(?:[^"\\]|\\.)*")\)/g)]
+      .map((m) => JSON.parse(m[1]!) as string)
+      .filter((r) => r.startsWith('^/ws/'))
+      .map((r) => new RegExp(r))
+  }
+  const granted = (rx: RegExp[], p: string): boolean => rx.some((r) => r.test(p))
+  const stderrOf = <T>(fn: () => T): string[] => {
+    const said: string[] = []
+    const write = process.stderr.write
+    process.stderr.write = (s: string | Uint8Array): boolean => {
+      said.push(String(s))
+      return true
+    }
+    try {
+      fn()
+    } finally {
+      process.stderr.write = write
+    }
+    return said
+  }
+
+  it('grants no other name for an escaped one, read or write', () => {
+    let rx: RegExp[] = []
+    stderrOf(() => {
+      rx = allowRegexes([], ['/ws/app/a\\*.txt'], ['/ws/app/q\\?.txt', '/ws/app/d\\*/**'])
+    })
+    expect(
+      ['/ws/app/a\\bc.txt', '/ws/app/abc.txt', '/ws/app/q\\x.txt', '/ws/app/d\\x/f'].map((p) =>
+        granted(rx, p),
+      ),
+    ).toEqual([false, false, false, false])
+  })
+
+  it("grants no sibling of a baseline's literal star", () => {
+    let rx: RegExp[] = []
+    stderrOf(() => {
+      rx = allowRegexes(['/ws/node_modules/a*b'], [], [])
+    })
+    expect(granted(rx, '/ws/node_modules/aXb')).toBe(false)
+  })
+
+  it('CONTROL: a glob, and a glob after an escaped backslash, still match', () => {
+    const rx = allowRegexes([], ['/ws/app/*.txt', '/ws/app/e\\\\*.txt'], [])
+    expect(
+      ['/ws/app/abc.txt', '/ws/app/e\\x.txt', '/ws/app/src/x.txt'].map((p) => granted(rx, p)),
+    ).toEqual([true, true, false])
+  })
+
+  it('says so once per grant, naming the directory above it', () => {
+    const cfg = {
+      filesystem: { denyRead: [], allowRead: ['/w/once/x\\?.txt'], allowWrite: [], denyWrite: [] },
+    }
+    expect(
+      stderrOf(() => {
+        seatbeltBrackets(cfg)
+        seatbeltBrackets(cfg)
+      }),
+    ).toEqual([
+      '[vx] sandbox: the read grant /w/once/x\\?.txt names a literal ?, which the macOS ' +
+        'sandbox reads as a pattern and cannot spell as a name, so it is not granted. Rename ' +
+        'it, or grant the directory above it: /w/once/\n',
+    ])
+  })
+})
