@@ -50,7 +50,7 @@ you grant exactly what the tool needs:
   `systemInfo`, `gitConfig` for the rare tool that must write
   `.git/config`, and the macOS-specific `machLookup` and `pty`.
 
-Two lists sit beside `allow`. `deny.network` refuses domains for the
+Two lists sit beside `allow`. `deny` (its one field is `network`) refuses domains for the
 whole run, checked before the allowlist, so a domain in both is
 denied. `ignore` keeps a denial out of the report without granting it.
 
