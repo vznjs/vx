@@ -1300,7 +1300,8 @@ no key, so a task whose output depends on one declares it as a key input
 (`inputs.runtime`, `inputs.env`) — the sandbox does not catch it (item
 966).
 The one exception is where tools keep credentials, denied unless a
-grant names one (`read: ['.', '~/.npmrc']` for a publish), since a
+grant names one (`read: ['.', '~/.npmrc']` for a publish; a write grant at
+or inside a store frees that path alone), since a
 dependency the task ran could copy a key into an output the cache
 shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.config/gcloud`, `~/.config/gh`, `~/.docker/config.json`, `~/.netrc`,
