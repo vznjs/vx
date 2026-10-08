@@ -1736,12 +1736,22 @@ const TRACER_RETRY_LINE =
  * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
-  const { tracerFailed, ...first } = await runSandboxedOnce(args)
+  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce(args)
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
   if (!tracerFailed || args.signal?.aborted === true) return first
   args.onStderr?.(TRACER_RETRY_LINE)
-  const { tracerFailed: _again, ...second } = await runSandboxedOnce(args)
+  // `timeout` bounds the task's whole run (schema.md), so the retry gets
+  // what the first attempt left of it, not a fresh window.
+  const {
+    tracerFailed: _again,
+    ranMs: _ran,
+    ...second
+  } = await runSandboxedOnce(
+    args.timeoutMs === undefined
+      ? args
+      : { ...args, timeoutMs: Math.max(0, args.timeoutMs - ranMs) },
+  )
   return {
     ...second,
     durationMs: first.durationMs + second.durationMs,
@@ -1808,7 +1818,7 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
  */
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
-): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
+): Promise<SandboxedRunResult & { tracerFailed: boolean; ranMs: number }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
@@ -1858,6 +1868,7 @@ async function runSandboxedOnce(
       signal,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   }
   // Beside the task directories, which every sandbox replaces with its own:
@@ -1910,6 +1921,7 @@ async function runSandboxedOnce(
       spawnFailed: true,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
@@ -1919,6 +1931,7 @@ async function runSandboxedOnce(
   args.liveChildren?.add(proc)
   args.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, args.timeoutMs)
+  const armedAt = Date.now()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -1943,6 +1956,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
+  const ranMs = Date.now() - armedAt
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
@@ -2120,6 +2134,7 @@ async function runSandboxedOnce(
     // that is someone else's. macOS's `sandbox-exec` execs the command, so
     // its usage is the task's.
     ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
+    ranMs,
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
