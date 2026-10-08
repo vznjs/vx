@@ -131,3 +131,38 @@ it('a ladder of group diamonds asks of each node once', () => {
   expect(deadServerBehind(nodes, died, 'l0')).toBeUndefined()
   expect(asked).toBe(2 * RUNGS)
 })
+
+it('a graph with no server never asks whether one died', async () => {
+  const task = (id: string, deps: string[]): TaskNode =>
+    ({
+      id,
+      projectName: 'p',
+      taskName: id,
+      projectDir: '/',
+      config: { exec: { command: 'x' } },
+      deps,
+      requested: true,
+    }) as TaskNode
+  const nodes = new Map<string, TaskNode>([
+    ['a', task('a', [])],
+    ['g', group('g', ['a'])],
+    ['b', task('b', ['g', 'a'])],
+  ])
+  const asked: string[] = []
+  const out = await runGraph({
+    nodes,
+    concurrency: 2,
+    continueMode: 'deps-ok',
+    execute: async (node) => ({ node, status: 'success', exitCode: 0, durationMs: 1 }),
+    serverDied: (id) => {
+      asked.push(id)
+      return false
+    },
+  })
+  expect([...out.values()].map((o) => `${o.node.id}:${o.status}`).sort()).toEqual([
+    'a:success',
+    'b:success',
+    'g:success',
+  ])
+  expect(asked).toEqual([])
+})

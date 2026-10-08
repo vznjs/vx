@@ -1184,3 +1184,15 @@ reaches no build task.` The plan now carries the run's own line
   52.0 → 18.1 ms (A/A 55.3, unlocked 78.7); restore 49.3 → 20.3 ms (A/A
   47.1, unlocked 97.5). Rows: `lockfile-boundary.test.ts`,
   `frozen-selection.test.ts`.
+- **X-171.** The scheduler's warm-run overhead, three pieces. With no
+  persistent task in the graph nothing can die, so `willSkip` no longer
+  walks `deadServerBehind` (a stack and a set) for each dependency of
+  every exec-tier task. The ready heap reads each id's priority once at
+  push instead of two map lookups per comparison. `tieredReverseDepCount`
+  skips the transitive closure when no exec-tier task depends on another
+  (a warm run's groups): every count is 0. Same order, same outcomes.
+  A/B (compiled, warm, no restore, 1,090 packages, 20 interleaved rounds
+  over two shared copies, A/A beside, host shared with other benches):
+  `run graph` stage median 264 / 257 (A/A) → 237 ms; wall median 947 /
+  932 → 912 ms. Row: `server-death-properties.test.ts` › "a graph with
+  no server never asks whether one died".
