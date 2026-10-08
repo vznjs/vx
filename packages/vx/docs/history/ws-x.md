@@ -1145,3 +1145,14 @@ reaches no build task.` The plan now carries the run's own line
   `vx show build` printed a block per project. Both now skip it as the
   picker and the run do; `vx show` and `vx info` still count it. Rows:
   `default-build-not-declared.test.ts`, `show-default-build.test.ts`.
+- **X-148.** The Oct 7 graph checks (`rules.exclusiveOutputs`,
+  `rules.upfrontKeys`, the self-clean refusal) took the warm `build graph`
+  stage on the 1,090-package bench from 32 to ~96 ms: each project's
+  reader/writer bucket built the full path index, and every task split
+  its globs twice per check. Two globs whose first path segments differ
+  (`src/**`, `dist/**`) select disjoint sets, so a bucket, or a task's
+  inputs against its own outputs, with no shared segment and no wildcard
+  in one is skipped before indexing; a list with no `!` entry is read as
+  is. Same refusals, same messages. A/B (compiled, warm, no restore, 11
+  interleaved rounds, A/A beside): `build graph` median 96.3 → 48.5 ms
+  (A/A 88.5), min 74.5 → 38.5; CPU median 1,665 → 1,478 ms (A/A 1,618).
