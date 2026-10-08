@@ -721,6 +721,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return 1
     }
     if (plan.tasks.length === 0) {
+      // The run's own line: a dry run that guessed from the scope alone
+      // said no affected project declared a task one did (X-141).
+      if (plan.noneAffected !== undefined) {
+        process.stderr.write(`${plan.noneAffected}\n`)
+        return 0
+      }
       if (opts.selectedByDiff === true) {
         process.stderr.write(`vx run: no affected project declares task(s): ${tasks.join(', ')}.\n`)
         return 0

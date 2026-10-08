@@ -1088,3 +1088,10 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   "no projects in scope": the anchor was taken as a project named `//`.
   It now maps to the root project's name, as the run does (D-39). Row:
   `watch-root-scope.test.ts` › "watches the root project".
+
+- **X-141.** `vx run build --affected --dry` on a change no `build` task
+  reaches said `no affected project declares task(s): build`, though the
+  changed project declares it; the run says `Nothing affected: the change
+reaches no build task.` The plan now carries the run's own line
+  (`RunPlan.noneAffected`). Row: `affected-dependents.test.ts` › "a change
+  no requested task reaches is a clean "nothing affected"".
