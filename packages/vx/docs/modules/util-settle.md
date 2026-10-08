@@ -13,7 +13,8 @@ settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // VX_KILL_GRACE_MS, else defaultMs
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
-noteStopped(ms: number): void                     // a Ctrl-Z's stop, measured by its handler
+noteStopping(): void                              // a Ctrl-Z's stop begins (SIGTSTP handler)
+noteResumed(): void                               // and ends (SIGCONT handler)
 runningTimeout(fn, ms): { clear(): void }         // setTimeout that counts no stop
 ```
 
@@ -46,17 +47,21 @@ runningTimeout(fn, ms): { clear(): void }         // setTimeout that counts no s
   done, and the verb settles first with the run's verdict; the claim
   keeps bin.ts from exiting 1 ahead of it.
 
-- `noteStopped` / `runningTimeout`: a Ctrl-Z stops a run's tasks with
-  vx (`signals.md`), so a task's `exec.timeout` and a persistent task's
-  readiness deadline (`exec/runner.ts`) count only the time vx ran. A
-  wall-clock timer that came due during the stop fired the moment vx
-  resumed; this one, when it fires, re-arms for the stopped time noted
-  since it was armed. The handler notes the stop before any timer runs:
-  its own SIGSTOP returns on the resume.
+- `noteStopping` / `noteResumed` / `runningTimeout`: a Ctrl-Z stops a
+  run's tasks with vx (`signals.md`), so a task's `exec.timeout` and a
+  persistent task's readiness deadline (`exec/runner.ts`) count only the
+  time vx ran. A wall-clock timer that came due during the stop fired the
+  moment vx resumed; this one, when it fires, re-arms for the stopped
+  time noted since it was armed. One that fires between the two notes is
+  parked until the resume: on the resume a due timer runs ahead of the
+  SIGCONT handler. The stop is not measured around vx's own SIGSTOP:
+  that return is no proof the stop landed, and on macOS such a stop
+  counted nothing (CI, 2026-10-08).
 
 ## Tests
 
-`tests/util-settle.test.ts` (both deadlines and the grace knob);
+`tests/util-settle.test.ts` (both deadlines and the grace knob; a timer
+due during a stop waits for the resume);
 `tests/timeout-bounds.test.ts`; `tests/exit-held-loop.test.ts` and
 `tests/signal-handling.test.ts` (the exit claim; a stop longer than
 the timeout fails neither a one-shot task nor a readiness wait).

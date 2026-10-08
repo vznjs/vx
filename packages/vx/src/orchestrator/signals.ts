@@ -14,7 +14,13 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { claimExitForSignal, killGraceMs, noteStopped, settleWithin } from '../util/index.js'
+import {
+  claimExitForSignal,
+  killGraceMs,
+  noteResumed,
+  noteStopping,
+  settleWithin,
+} from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
@@ -154,16 +160,22 @@ export function forwardSignals(args: {
   }
   // A Ctrl-Z stops vx's group, and a task is in a session of its own:
   // without this it ran on, writing, while vx was stopped. Each group is
-  // stopped, then vx stops itself; the SIGSTOP returns once a SIGCONT
-  // (`fg`, `bg`) resumes vx, before any timer runs, so the stop is
-  // measured and noted here and the tasks resumed with it.
+  // stopped, then vx stops itself, and the SIGCONT that resumes vx (`fg`,
+  // `bg`) resumes them. Not on the return of vx's own SIGSTOP: that
+  // return is no proof the stop landed, and on macOS the groups resumed
+  // there ran on while vx stood (CI, 2026-10-08).
+  let stopped: Child[] | undefined
   const onSigtstp = (): void => {
-    const children = [...new Set(everyChild())]
-    for (const child of children) killTree(child, 'SIGSTOP')
-    const stoppedAt = performance.now()
+    stopped ??= [...new Set(everyChild())]
+    for (const child of stopped) killTree(child, 'SIGSTOP')
+    noteStopping()
     process.kill(process.pid, 'SIGSTOP')
-    noteStopped(performance.now() - stoppedAt)
-    for (const child of children) killTree(child, 'SIGCONT')
+  }
+  const onSigcont = (): void => {
+    if (stopped === undefined) return
+    noteResumed()
+    for (const child of stopped) killTree(child, 'SIGCONT')
+    stopped = undefined
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
@@ -173,6 +185,7 @@ export function forwardSignals(args: {
     process.on('SIGTERM', onSigterm)
     process.on('SIGHUP', onSighup)
     process.on('SIGTSTP', onSigtstp)
+    process.on('SIGCONT', onSigcont)
   }
   return {
     remove: () => {
@@ -180,6 +193,7 @@ export function forwardSignals(args: {
       process.off('SIGTERM', onSigterm)
       process.off('SIGHUP', onSighup)
       process.off('SIGTSTP', onSigtstp)
+      process.off('SIGCONT', onSigcont)
     },
   }
 }

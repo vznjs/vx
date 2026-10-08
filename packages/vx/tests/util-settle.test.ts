@@ -28,7 +28,14 @@
 
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
-import { killGraceMs, settleWithin, teardownTimeoutMs } from '../src/util/settle.js'
+import {
+  killGraceMs,
+  noteResumed,
+  noteStopping,
+  runningTimeout,
+  settleWithin,
+  teardownTimeoutMs,
+} from '../src/util/settle.js'
 import { MAX_TIMEOUT_MS } from '../src/util/num.js'
 
 /** The documented fallback, restated here so a change to it fails loudly. */
@@ -637,5 +644,36 @@ describe('killGraceMs — the SIGTERM→SIGKILL grace knob', () => {
       process.env['VX_KILL_GRACE_MS'] = raw
       expect(killGraceMs(2000)).toBe(2000)
     }
+  })
+})
+
+// A Ctrl-Z's stop runs from the SIGTSTP handler to the SIGCONT one: on
+// macOS a stop measured around vx's own SIGSTOP counted nothing. And on
+// the resume a timer due in the stop runs ahead of the SIGCONT handler,
+// so one that fires between the two waits for the second.
+describe('runningTimeout — a timer due during a stop waits for the resume', () => {
+  it('fires only after its own budget of running time', async () => {
+    const start = performance.now()
+    let firedAt: number | undefined
+    runningTimeout(() => (firedAt = performance.now()), 40)
+    noteStopping()
+    await Bun.sleep(100)
+    expect(firedAt).toBeUndefined()
+    noteResumed()
+    expect(firedAt).toBeUndefined()
+    await Bun.sleep(200)
+    // Due at 40 ms of running time: 100 ms stopped plus the 40.
+    expect(firedAt! - start).toBeGreaterThanOrEqual(135)
+  })
+
+  it('a timer cleared while parked never fires', async () => {
+    let fired = false
+    const t = runningTimeout(() => (fired = true), 20)
+    noteStopping()
+    await Bun.sleep(60)
+    t.clear()
+    noteResumed()
+    await Bun.sleep(150)
+    expect(fired).toBe(false)
   })
 })

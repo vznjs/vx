@@ -816,7 +816,7 @@ describe('every page numbering the key parts folds plugin before inputs', () => 
   })
 })
 
-// `signals.ts` registers THREE stop handlers (and SIGTSTP, below), and the
+// `signals.ts` registers THREE stop handlers (and Ctrl-Z's two, below), and the
 // third is the one the docs kept dropping: SIGHUP, which matters
 // precisely because a task runs in its own session, so a closing
 // terminal reaches vx and nothing else —
@@ -831,11 +831,11 @@ describe('every page enumerating the run signal handlers names all three', () =>
       path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts'),
       'utf8',
     )
-    // SIGTSTP is registered too, but it ends nothing: a Ctrl-Z stops the
+    // SIGTSTP and SIGCONT are registered too, but end nothing: a Ctrl-Z stops the
     // tasks with vx and resumes them on `fg`, with no exit code to travel
     // beside 130/143/129. The set this pin holds is the stopping one.
     const registered = [...src.matchAll(/process\.on\('(SIG[A-Z]+)'/g)].map((m) => m[1]!)
-    expect(registered.sort()).toEqual(['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGTSTP'])
+    expect(registered.sort()).toEqual(['SIGCONT', 'SIGHUP', 'SIGINT', 'SIGTERM', 'SIGTSTP'])
 
     const pages: string[] = []
     const wrong: string[] = []

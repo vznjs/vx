@@ -55,13 +55,15 @@ terminal stops its foreground group, vx's, and a task is in a session of
 its own: before, vx stopped and its tasks ran on, writing, and nothing
 resumed them on `fg` because nothing had stopped them. The handler
 SIGSTOPs every live group and the ready persistent ones, then stops vx
-with SIGSTOP; that call returns once a SIGCONT (`fg`, `bg`) resumes vx,
-and the handler SIGCONTs the same groups. A Linux sandboxed task gets
-both down its fd-3 channel (`sandbox-runtime.md`): its group is in the
-sandbox's pid namespace. The stop is measured around vx's own SIGSTOP
-and noted (`noteStopped`, `util-settle.md`) before any timer runs, so a
-task's `exec.timeout` and a readiness deadline count only the time vx
-ran; before, one that came due during the stop fired on the resume. A
+with SIGSTOP; the SIGCONT that resumes vx (`fg`, `bg`) has a handler of
+its own, which SIGCONTs the same groups. Not on the return of vx's own
+SIGSTOP: that return is no proof the stop landed, and on macOS the
+groups resumed there ran on while vx stood (CI, 2026-10-08). A Linux
+sandboxed task gets both down its fd-3 channel (`sandbox-runtime.md`):
+its group is in the sandbox's pid namespace. The stop runs from one
+handler to the other (`noteStopping`, `noteResumed`, `util-settle.md`),
+so a task's `exec.timeout` and a readiness deadline count only the time
+vx ran; before, one that came due during the stop fired on the resume. A
 `durationMs`, a kill grace and the history still read the wall clock.
 Only a SIGTSTP is handled: a SIGSTOP to vx alone (`kill -STOP`) cannot
 be caught and stops vx alone, as before. A SIGTSTP to a vx whose group
@@ -101,7 +103,7 @@ export function forwardSignals(args: {
   stop: (signal: StopSignal) => void // aborts run()'s own controller
   done: Promise<void> // settles once run() has left its finally
   boundMs: number // how long a signal waits for `done`
-}): SignalForwarding // { remove(): void }; handles SIGINT, SIGTERM, SIGHUP and SIGTSTP
+}): SignalForwarding // { remove(): void }; handles SIGINT, SIGTERM, SIGHUP, SIGTSTP and SIGCONT
 ```
 
 The two registries stay with `run()`, which hands them to the runner

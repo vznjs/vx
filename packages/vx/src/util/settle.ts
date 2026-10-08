@@ -87,28 +87,61 @@ export function exitClaimedBySignal(): boolean {
 // Time vx spent stopped by a Ctrl-Z (`orchestrator/signals.ts`): its
 // tasks were stopped with it, so a task timeout does not count it.
 let stoppedMs = 0
+// When the current stop began; undefined while vx runs.
+let stoppedSince: number | undefined
+// Timers that came due between a stop and its resume: re-armed on the resume.
+const parked = new Set<() => void>()
 
-/** Add a stop's length to the clock `runningTimeout` reads. */
-export function noteStopped(ms: number): void {
-  stoppedMs += ms
+/**
+ * A Ctrl-Z's stop begins. It ends at `noteResumed`, never at the return of
+ * vx's own SIGSTOP: that return is no proof the stop landed, and on macOS
+ * a stop measured around it counted nothing (CI, 2026-10-08).
+ */
+export function noteStopping(): void {
+  stoppedSince ??= performance.now()
+}
+
+/** The stop `noteStopping` began has ended: count it and re-arm what came due in it. */
+export function noteResumed(): void {
+  if (stoppedSince === undefined) return
+  stoppedMs += performance.now() - stoppedSince
+  stoppedSince = undefined
+  const due = [...parked]
+  parked.clear()
+  for (const rearm of due) rearm()
 }
 
 /**
  * `setTimeout` for `ms` of time vx was not stopped. A timer is due on the
  * wall clock, so one that came due during a Ctrl-Z fired the moment vx
  * resumed and killed a task that had run a fraction of its budget; this
- * one first waits out the stop it slept through. The stop is noted before
- * any timer can run: the handler measures it around its own SIGSTOP.
+ * one first waits out the stop it slept through. One that fires before
+ * the resume is noted (a timer can run ahead of the SIGCONT handler)
+ * waits for it.
  */
 export function runningTimeout(fn: () => void, ms: number): { clear(): void } {
   let timer: ReturnType<typeof setTimeout>
+  let rearm: (() => void) | undefined
   const arm = (wait: number, since: number): void => {
     timer = setTimeout(() => {
+      if (stoppedSince !== undefined) {
+        rearm = () => {
+          rearm = undefined
+          arm(stoppedMs - since, stoppedMs)
+        }
+        parked.add(rearm)
+        return
+      }
       const owed = stoppedMs - since
       if (owed > 0) arm(owed, stoppedMs)
       else fn()
     }, wait)
   }
   arm(ms, stoppedMs)
-  return { clear: () => clearTimeout(timer) }
+  return {
+    clear: () => {
+      clearTimeout(timer)
+      if (rearm !== undefined) parked.delete(rearm)
+    },
+  }
 }
