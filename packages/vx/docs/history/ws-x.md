@@ -1245,3 +1245,16 @@ reaches no build task.` The plan now carries the run's own line
   (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
   ^name and an --exclude-dependencies name only that project declares";
   each site's old test reddens its own field.
+- **X-192.** A warm run dispatched each of its 1,090 unkeyed groups
+  (`installDeps`) like a task: a slot, an admission ask, an `execute`
+  promise and the completion callbacks, for a node that runs nothing and
+  whose key is its upstream's. The scheduler now asks
+  `ScheduleOptions.settleNow` of a due exec-tier task, and the run
+  answers for an unkeyed group with `unkeyedGroupOutcome`, synchronous,
+  in the same tick; a taint or `--continue=always` keeps the full path.
+  A/B (compiled, warm, no restore, 1,090 packages, 2 × 25 interleaved
+  rounds with the copies swapped, A/A beside, load 5–8 from a parallel
+  bench): wall paired 0.977 (A/A 1.021), CPU 0.997 (A/A 1.021);
+  `run graph` stage median 198 → 167 ms in an earlier 14-round timing
+  run.
+  Rows: `settle-now.test.ts`.
