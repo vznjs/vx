@@ -4,6 +4,7 @@
 // release carries, the topic filters, the related posts under a post.
 
 import { getCollection, type CollectionEntry } from 'astro:content'
+import { FALLBACK, TONES } from './tones.js'
 
 export type Author = { name: string; title: string; url: string }
 
@@ -138,18 +139,10 @@ export async function related(self: Post): Promise<Post[]> {
     .map((x) => x.p)
 }
 
-// A cover drawn in CSS for a post without an image: its hue from its
-// first tag that names one, from the landing's palette.
-const TONES: [string[], string][] = [
-  [['caching', 'correctness', 'sandbox'], '#5ee0ff'],
-  [['performance', 'benchmarks', 'internals'], '#ff9d42'],
-  [['plugins', 'execution', 'remote-execution', 'agents', 'telemetry', 'ci'], '#6aa8ff'],
-  [['dx', 'config', 'migration', 'turborepo', 'nx', 'comparison'], '#ff5e9c'],
-]
-
+/** A drawn cover's hue (src/blog/tones.ts). */
 export function tone(p: Post): string {
   for (const t of p.tags) for (const [tags, c] of TONES) if (tags.includes(t)) return c
-  return '#c6f84e'
+  return FALLBACK
 }
 
 /** The label a post's kicker and cover show: its version, else its first filter's name. */
