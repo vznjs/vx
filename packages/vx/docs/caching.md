@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v41'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -110,7 +110,9 @@ over (in order):
 6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
-   pulled deps don't see them (their cache identity stays clean).
+   pulled deps don't see them (their cache identity stays clean) — and
+   to a command: a requested default `build` runs none and folds none
+   (X-119).
 7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
@@ -726,9 +728,9 @@ artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or an output directory that is a symlink out
-of the project (`workspaceFiles`: out of the workspace), whose files vx
-drops as outside. `outputs.files: []` is a deliberate cached
+writes never reached disk, or a `workspaceFiles` directory that is a
+symlink out of the workspace, whose files vx drops as outside (a project
+output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
@@ -1299,9 +1301,11 @@ project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). Each refusal names
 the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed, and nothing is removed through a symlinked directory: a
-`public -> static` link in the project took the tracked `static/*`
-with it, X-5) and prunes the directories it emptied (before a miss it keeps
+followed). An output directory that is a symlink (`dist -> real-out`) is
+followed by the clean as by the save and restore, so its target is the
+output and an entry holds only what its run wrote (X-88); one that
+resolves outside the project refuses the task, naming the link, and
+nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1778,6 +1782,10 @@ breaking footer).
 
 ### History
 
+- **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
+  output directory linked inside its project was never cleaned, so an
+  entry could hold files a run of another key left there. The fix
+  cannot reach an entry already saved that way.
 - **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
   X-34). An additive task's entry a hit replayed over a file the task
   had removed, one that missed a same-size rewrite, and a runtime probe

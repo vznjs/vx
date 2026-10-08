@@ -137,7 +137,11 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   the workspace root's, plus the real path of every workspace link in
   them (one level, and one level inside `@scope/`): a dependency is
   not a reach-out. Never a link to the task's own project or a
-  directory holding it.
+  directory holding it. Each granted target's own `node_modules` is
+  scanned the same way: pnpm and Bun link ui's workspace dependency
+  core only under ui's, so `app -> ui -> core` hid core and app's import
+  of ui failed with ENOENT and no violation (2026-10-08). A withheld
+  target's links are not followed.
 - **Declaring `cache` may narrow that grant, never widen one**
   (2026-09-24). For a task with `cache`, a link target inside the
   workspace root is granted only when it IS the directory of a project
@@ -175,7 +179,8 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
 `tests/sandbox*.unsafe.test.ts` (the sandbox cannot nest, so the CI
 job runs them with `VX_REQUIRE_SANDBOX=1`); `tests/sandbox-request.test.ts`
 for the pre-created paths, the sweep and the exact link grant (uncached,
-keyed, keyed on nothing, each through a symlinked root);
+keyed, keyed on nothing, each through a symlinked root; a transitive
+link under a dependency's own `node_modules`);
 `tests/execute-task*.test.ts` for the request shape;
 `tests/undeclared-writes.test.ts` for `undeclaredWriteReach`, each
 grant shape.

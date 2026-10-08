@@ -16,7 +16,7 @@ import {
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span, relPosix, xxh3hex } from '../util/index.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
@@ -338,7 +338,10 @@ async function resolveKeyInput(
     fileHashes,
   )
 
-  const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
+  // Args after `--` reach a requested command; the default build (a keyed
+  // group) runs none, and folded, they moved every key that folds its own.
+  const effectiveForwardArgs =
+    args.node.requested && !isGroupTask(args.node) ? (args.forwardArgs ?? []) : []
 
   const input: CacheKeyInput = {
     taskId: args.node.id,

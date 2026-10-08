@@ -21,34 +21,40 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 
 /**
  * Per-key outcome projection: every keyed (project, task, hash) under
- * `source` (a relation with `project`, `task`, `hash`, `status`, `cache_hit`
- * columns) with how often it failed and how often it passed — a pass being
- * an executed success or a cache hit, which replays a success. Every
+ * `source` (`runs`, or a relation with its `id`, `project`, `task`, `hash`,
+ * `status`, `cache_hit` columns) with how often it failed, how often it
+ * passed — an executed success or a cache hit, which replays a success —
+ * and how often it failed AFTER its first pass (`relapses`). Every
  * flakiness reader is a filter over this one projection.
  */
 function keyOutcomesSql(source: string, where = ''): string {
-  return `SELECT project, task, hash,
-       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-       SUM(CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END)
-         AS retried_failures,
-       SUM(CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
-           THEN 1 ELSE 0 END) AS passes
-       FROM ${source}
-       WHERE ${KEYED_RUNS_SQL}${where}
+  return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
+       SUM(retried) AS retried_failures,
+       SUM(CASE WHEN failed = 1 AND id > first_pass THEN 1 ELSE 0 END) AS relapses
+       FROM (SELECT project, task, hash, id, failed, passed, retried,
+           MIN(CASE WHEN passed = 1 THEN id END) OVER (PARTITION BY project, task, hash) AS first_pass
+         FROM (SELECT project, task, hash, id,
+             CASE WHEN status = 'failed' THEN 1 ELSE 0 END AS failed,
+             CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END AS retried,
+             CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
+               THEN 1 ELSE 0 END AS passed
+           FROM ${source}
+           WHERE ${KEYED_RUNS_SQL}${where}))
        GROUP BY project, task, hash`
 }
 
 /**
  * Per-key outcome subquery: the distinct cache keys under `source` that
- * produced BOTH a failure and a success — the definitional flake: identical
- * inputs, different outcomes. A failure whose key never succeeded is a
- * legitimate break (a changed input that fails), which belongs to the
- * regressions surface, not flakiness. One projection of the rule serves the
+ * FAILED AFTER THEY HAD PASSED — the definitional flake: identical inputs,
+ * a green result, then a red one. A failure whose key never succeeded is a
+ * legitimate break (a changed input that fails), and failures that end in
+ * a first pass are a recovery (a missing tool installed, a service brought
+ * up): neither is flakiness. One projection of the rule serves the
  * all-time query below and the windowed one in `history.ts`.
  */
 export function mixedOutcomeKeysSql(source: string, where = ''): string {
   return `SELECT project, task FROM (${keyOutcomesSql(source, where)})
-       WHERE failures > 0 AND passes > 0`
+       WHERE relapses > 0`
 }
 
 /** Mixed-outcome keys of one (project, task) over its WHOLE recorded history. */
@@ -63,7 +69,7 @@ export function mixedOutcomeKeyCount(db: Database, project: string, task: string
 
 /**
  * The verdict. Flaky requires a NONDETERMINISM signal: a within-run retry,
- * or a cache key that both failed and succeeded (`mixedKeys`). Failures
+ * or a cache key that failed after it had passed (`mixedKeys`). Failures
  * alone — each on its own key — are legitimate breaks, however many there
  * are. `mixedKeys` is a thunk so a task that never failed is stable without
  * the key count being computed at all.
@@ -120,9 +126,9 @@ const keyOf = (c: { project: string; task: string; hash: string }): string =>
 
 /**
  * Which of this run's executed tasks are flaky, judged BEFORE the run's own
- * rows are recorded: a pass on a key that has failed before, a failure on
- * a key that has passed before, or a within-run retry. The counts fold this
- * run in.
+ * rows are recorded: a failure on a key that has passed before, a pass on a
+ * key that already did so, or a within-run retry. A first pass after only
+ * failures is a recovery, not a flake. The counts fold this run in.
  *
  * The cost follows the run's colour. No candidate (every task a hit or a
  * skip): no query. A green miss: one probe of the `runs_failed` partial
@@ -148,7 +154,7 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     (c) => c.status === 'failed' || c.attempts > 1 || everFailed.has(keyOf(c)),
   )
   if (suspects.length === 0) return []
-  const counts = new Map<string, { passes: number; failures: number }>()
+  const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
     const rows = db
       .query(keyOutcomesSql('runs', ` AND hash IN (${chunk.map(() => '?').join(', ')})`))
@@ -158,27 +164,30 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
       hash: string
       passes: number
       failures: number
+      relapses: number
     }[]
-    for (const r of rows) counts.set(keyOf(r), { passes: r.passes, failures: r.failures })
+    for (const r of rows)
+      counts.set(keyOf(r), { passes: r.passes, failures: r.failures, relapses: r.relapses })
   })
   const out: FlakyFinding[] = []
   for (const c of suspects) {
-    const before = counts.get(keyOf(c)) ?? { passes: 0, failures: 0 }
+    const before = counts.get(keyOf(c)) ?? { passes: 0, failures: 0, relapses: 0 }
+    const relapsed = c.status === 'failed' ? before.passes > 0 : before.relapses > 0
+    if (!relapsed && c.attempts <= 1) continue
     const passes = before.passes + (c.status === 'success' ? 1 : 0)
     const failures = before.failures + (c.status === 'failed' ? 1 : 0)
-    if (!(passes > 0 && failures > 0) && c.attempts <= 1) continue
     out.push({ ...c, taskId: `${c.project}#${c.task}`, passes, failures })
   }
   return out
 }
 
-/** One task the recorded history shows both passing and failing on unchanged inputs. */
+/** One task the recorded history shows failing on a key that had passed. */
 export interface FlakyTask {
   /** `project#task`. */
   taskId: string
   project: string
   task: string
-  /** Distinct cache keys that both passed and failed. */
+  /** Distinct cache keys that failed after they had passed. */
   keys: number
   /** Outcomes over those keys. */
   passes: number
@@ -186,7 +195,7 @@ export interface FlakyTask {
 }
 
 /**
- * Every task with a mixed-outcome key anywhere in the retained history
+ * Every task with a key that failed after it had passed anywhere in the retained history
  * (30 days, `RunHistory.pruneOlderThan`), most failures first: the
  * doctor's list. A pass that took a retry mixes its key on its own: it is
  * one `success` row whose failed attempts count as failures (`vx info`
@@ -198,8 +207,8 @@ export function flakyTasks(db: Database): FlakyTask[] {
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures
        FROM (SELECT project, task, passes, failures + retried_failures AS failures
-             FROM (${keyOutcomesSql('runs')}))
-       WHERE failures > 0 AND passes > 0
+             FROM (${keyOutcomesSql('runs')})
+             WHERE relapses > 0 OR retried_failures > 0)
        GROUP BY project, task
        ORDER BY failures DESC, passes DESC, project, task`,
     )
