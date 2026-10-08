@@ -6,7 +6,13 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  cachesNothing,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -1018,6 +1024,7 @@ async function runOnBus(
     // is one probe of the failed-row index.
     const flaky: FlakyFinding[] = []
     const historyDb = prepared.localCache.dbHandle()
+    const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
       const candidates = flakyCandidates([o])
       if (candidates.length === 0) return
@@ -1045,6 +1052,7 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        if (cacheOff) o.cacheOff = true
         taint.settled(o)
         judgeFlaky(o)
         log.taskComplete(o.node, o)
@@ -1091,8 +1099,6 @@ async function runOnBus(
     ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
 
     mark('run graph')
-    // Clear the status line for good before the summary prints.
-    log.runEnd?.()
 
     // A server that died on its own before the stop failed, whatever its
     // outcome said when it became ready: the footer counted it a success
@@ -1102,8 +1108,11 @@ async function runOnBus(
     const failServer = (id: string, code: number | string): void => {
       const o = outcomes.get(id)
       if (o === undefined) return
-      const exitCode = typeof code === 'number' ? code : signalExitCode(code)
-      outcomes.set(id, { ...o, status: 'failed', exitCode })
+      // In place: the renderer holds this outcome (events carry live refs)
+      // and closes the server's output block from it at runEnd, where a
+      // copy left it reading `running` under its exit line (WD-10).
+      o.status = 'failed'
+      o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
     }
     for (const c of crashedPersistent) failServer(c.id, c.code)
     keepAlive.nodes.forEach((n, i) => {
@@ -1112,6 +1121,8 @@ async function runOnBus(
       if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
       failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
     })
+    // Clear the status line for good before the summary prints.
+    log.runEnd?.()
     const list = [...outcomes.values()]
     const ok = list.every((o) => isPassStatus(o.status))
 
@@ -1344,6 +1355,8 @@ async function runOnBus(
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    const above = options.beforeFooter?.(list, ok)
+    if (above) log.status(above.replace(/\n$/, ''))
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a

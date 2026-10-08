@@ -510,6 +510,8 @@ export interface CaptureConfig {
   stdout?: boolean
   stderr?: boolean
 }
+== type Catalogs (src/workspace/workspace.ts)
+export type Catalogs = ReadonlyMap<string, Readonly<Record<string, unknown>>>
 == type CgroupProbe (src/util/cgroup.ts)
 export interface CgroupProbe {
   readonly root?: string
@@ -1073,6 +1075,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 == type PruneOptions (src/cache/layer.ts)
 export interface PruneOptions {
@@ -1200,6 +1203,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -1465,6 +1469,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -1665,6 +1670,7 @@ export interface WhyDidThisRerun {
 export interface Workspace {
   root: string
   packageGlobs: string[]
+  catalogs?: Catalogs
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

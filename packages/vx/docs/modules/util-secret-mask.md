@@ -13,6 +13,7 @@ export const MASKED = '***'
 export interface SecretMask {
   mask(text: string): string
   stream(): { push(chunk: string): string; end(): string }
+  maskCut(head: string, tail: string): [string, string] // also the pieces a cut left
 }
 export function secretMask(
   sources: readonly (Record<string, string | undefined> | undefined)[],
@@ -43,7 +44,9 @@ split across two chunks is caught and output that cannot be one (a
 `readyWhen` line, a start marker) is never delayed. `maskedEmitter` emits a held tail
 25 ms after the last chunk when none follows, so a long task's last
 characters do not wait for its exit; a value split by a longer pause
-between two writes is not caught.
+between two writes is not caught. `maskCut` masks the two sides of a
+cut whose middle is gone: a value the cut split leaves a piece at the
+end of `head` or the start of `tail`, and each piece is masked too.
 
 Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
 `orchestrator/hit-restore.ts` (a replayed hit's stdout),

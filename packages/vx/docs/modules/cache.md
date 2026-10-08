@@ -328,6 +328,7 @@ export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 // The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
+export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
 ```
 
 ## Key derivation (`Cache.key`)

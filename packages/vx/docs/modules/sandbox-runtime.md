@@ -277,8 +277,8 @@ export function absolutize(p: string, cwd?: string): string
 // one copy of the check the sandbox code makes.
 export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
-// Whether a sandboxed task may read a file: a read, write or baseline
-// grant at or above its canonical path (the shell verdict asks it).
+// Whether a sandboxed task may read a file: no denial, or a read, write or
+// baseline grant, at or above its canonical path (the shell verdict asks it).
 export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
@@ -388,8 +388,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      store's Linux feed is ignored) AND (on Linux) from the strace log
      the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`. A wrap that
-     spawned nothing (a spawn that failed, a stop before it) calls it
-     too: SRT removes the empty mount-point stubs bwrap made on the host
+     spawned nothing (a spawn that failed, a stop before it, a macOS
+     profile refused for its shape) calls it too, and drops its task
+     dir: SRT removes the empty mount-point stubs bwrap made on the host
      (`.bashrc`, `.vscode`, … under a write grant) only once every wrap
      has, and one missed call kept every later task's stubs until the
      reset. A held `localBinding` port is refused before the wrap.
