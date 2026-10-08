@@ -4,7 +4,7 @@
 // (`nx-exec-live.test.ts`, gated on VX_NX_MODULES); this one pins the bin's
 // own contract — argv, the graph injection, the exit — without a network
 // install.
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -317,5 +317,52 @@ describe('nx-exec', () => {
     const r = await nxExec(['x:y', '--project', 'app', '--target', 'build'])
     expect(r.code).toBe(1)
     expect(r.err).toContain(`cannot resolve \`nx\` from ${cwd}`)
+  })
+
+  it('both bins run through the .bin symlink npm makes, under --preserve-symlinks-main', async () => {
+    // Differential: the main module's path stayed `.bin/<bin>`, so
+    // `require('./nx-dotenv.cjs')` looked in `.bin` and the bin died
+    // MODULE_NOT_FOUND with a stack. `nx` itself resolves from the cwd,
+    // so the dotenv run proves Nx's own requires under the flag too.
+    const src = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src')
+    await mkdir(src, { recursive: true })
+    for (const f of ['nx-exec.cjs', 'nx-env.cjs', 'nx-dotenv.cjs']) {
+      await copyFile(path.join(path.dirname(BIN), f), path.join(src, f))
+    }
+    const dotBin = path.join(root, 'node_modules', '.bin')
+    await mkdir(dotBin, { recursive: true })
+    await symlink('../@vzn/vx-migrate/src/nx-exec.cjs', path.join(dotBin, 'nx-exec'))
+    await symlink('../@vzn/vx-migrate/src/nx-env.cjs', path.join(dotBin, 'nx-env'))
+    await writeFile(path.join(cwd, 'a.env'), 'FROM_DOTENV=a\n')
+    const run = async (bin: string, args: string[], opts: string) => {
+      const p = Bun.spawn(['node', path.join(dotBin, bin), ...args], {
+        cwd,
+        env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', HOME: root, NODE_OPTIONS: opts },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(p.stdout).text(),
+        new Response(p.stderr).text(),
+        p.exited,
+      ])
+      return { opts, code, out, err }
+    }
+    for (const opts of [
+      '',
+      '--preserve-symlinks-main',
+      '--preserve-symlinks --preserve-symlinks-main',
+    ]) {
+      await rm(path.join(root, 'record.json'), { force: true })
+      const ex = await run(
+        'nx-exec',
+        ['x:y', '--project', 'app', '--target', 'build', '--dotenv', 'a.env'],
+        opts,
+      )
+      expect(ex).toEqual({ opts, code: 0, out: '', err: '' })
+      expect((await record())['env']).toEqual({ NX_DAEMON: 'false', FROM_DOTENV: 'a' })
+      const env = await run('nx-env', ['--dotenv', 'a.env', '--', 'echo "$FROM_DOTENV"'], opts)
+      expect(env).toEqual({ opts, code: 0, out: 'a\n', err: '' })
+    }
   })
 })

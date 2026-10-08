@@ -4,7 +4,8 @@
 // once. Restore goes to the layer that produced the hit — remembered per
 // hash — because an entry's artifact lives wherever it was found.
 //
-// A layer that throws in a lookup is a miss there and the walk goes on; one
+// A layer that throws in a lookup (a batch row load or a has-many included)
+// is a miss there and the walk goes on; a throwing drain is passed; one
 // that throws in a save is skipped and the rest still save. Unisolated, a
 // plugin layer's throw ended the walk before the local floor under it: its
 // `get` failed the task, its `save` kept the entry from every later layer
@@ -122,14 +123,22 @@ export class ChainedCache implements CacheLayer {
       const found = await this.ask(
         layer,
         'remoteHasMany',
-        async () => (await layer.remoteHasMany?.(hashes)) ?? null,
+        // The shape check and the mark sit inside the ask: a layer that
+        // answers a non-Set or throws marking gave no answer.
+        async () => {
+          const got: unknown = (await layer.remoteHasMany?.(hashes)) ?? null
+          if (got === null) return null
+          if (!(got instanceof Set)) throw new TypeError('remoteHasMany answered a non-Set')
+          const set = got as Set<string>
+          layer.markRemoteAbsent?.(hashes.filter((h) => !set.has(h)))
+          return set
+        },
         null,
       )
       if (found === null) {
         complete = false
         continue
       }
-      layer.markRemoteAbsent?.(hashes.filter((h) => !found.has(h)))
       out ??= new Set()
       for (const h of found) out.add(h)
     }
@@ -142,15 +151,24 @@ export class ChainedCache implements CacheLayer {
   }
 
   async drainUploads(): Promise<void> {
-    await Promise.all(this.layers.map((l) => l.drainUploads?.()))
+    await Promise.all(
+      this.layers.map((l) =>
+        this.ask(l, 'drainUploads', async () => l.drainUploads?.(), undefined),
+      ),
+    )
   }
 
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
     const out = new Map<string, OutputFileRow[]>()
-    for (const layer of this.layers) {
-      for (const [h, rows] of layer.loadOutputFilesBatch(hashes)) {
-        if (!out.has(h)) out.set(h, rows)
+    for (const [i, layer] of this.layers.entries()) {
+      let rows: Map<string, OutputFileRow[]>
+      try {
+        rows = layer.loadOutputFilesBatch(hashes)
+      } catch (err) {
+        this.onLayerError(i, 'loadOutputFilesBatch', err)
+        continue
       }
+      for (const [h, r] of rows) if (!out.has(h)) out.set(h, r)
     }
     return out
   }

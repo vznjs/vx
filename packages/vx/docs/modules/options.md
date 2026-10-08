@@ -34,6 +34,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string // text printed just above the footer
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal

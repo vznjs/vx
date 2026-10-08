@@ -57,10 +57,7 @@ it("a thrown executor message is masked in the task's stream, the error and tele
   })
   const said =
     "plugin 'org/echoer' (executor 'echoer') failed in execute: server said: env API_TOKEN=***"
-  expect(lines.filter((l) => l.includes('server said'))).toEqual([
-    `${said}\n`,
-    `[vx] app#t: ${said}\n`,
-  ])
+  expect(lines.filter((l) => l.includes('server said'))).toEqual([`[vx] app#t: ${said}\n`])
   expect(
     JSON.stringify({ lines, records, outcomes: r.outcomes.map((o) => o.status) }).includes(SECRET),
   ).toBe(false)

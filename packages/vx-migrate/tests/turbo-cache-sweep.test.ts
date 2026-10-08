@@ -172,6 +172,29 @@ describe('the upload', () => {
     ])
   })
 
+  it('any 2xx is stored, as for turbo; a 3xx or 4xx is not', async () => {
+    // Turbo's client takes any 2xx (`error_for_status`); a server answering
+    // 201 or 204 stored the artifact and vx counted a failed upload.
+    const verdict = async (status: number) => {
+      const { fetchImpl } = stub(() => new Response(null, { status }))
+      return cacheWith(fetchImpl)
+        .put('aa', new Blob(['x']), { durationMs: 1 })
+        .then(
+          () => 'ok',
+          (err: Error) => err.message,
+        )
+    }
+    expect(await Promise.all([200, 201, 202, 204, 299, 304, 400].map(verdict))).toEqual([
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+      'HTTP 304',
+      'HTTP 400',
+    ])
+  })
+
   it('runs under the upload deadline, not the request one', async () => {
     // A server that answers after 300 ms: past the 50 ms request deadline,
     // inside the 10 s upload one. The HEAD is the control: same server,
