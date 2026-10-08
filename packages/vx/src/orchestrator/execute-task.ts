@@ -270,35 +270,65 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * through us.
  */
 async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
+  if (args.node.config.cache === undefined) {
+    return unkeyedGroupOutcome(
+      args.node,
+      args.upstream,
+      args.upfrontGroupKey,
+      args.runStartHrTimeNs,
+    )
+  }
   const wallclockNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // `computeGroupKey`: an unkeyed group's key is its upstream's alone, so
-  // the up-front one stands when that upstream is unchanged.
-  const upfront = args.upfrontGroupKey
-  const hash =
-    args.node.config.cache === undefined
-      ? upfront !== undefined && sameUpstream(args.upstream, upfront.upstream)
-        ? upfront.key
-        : computeGroupHash(args.upstream)
-      : await computeTaskHash({
-          node: args.node,
-          upstream: args.upstream,
-          workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })
-  return {
+  const hash = await computeTaskHash({
     node: args.node,
+    upstream: args.upstream,
+    workspaceRoot: args.workspaceRoot,
+    workspaceFingerprint: args.workspaceFingerprint,
+    cache: args.cache,
+    forwardArgs: args.forwardArgs,
+    nestedProjectDirs: args.nestedProjectDirs,
+    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+    ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+  })
+  return groupOutcome(args.node, args.upstream, hash, wallclockNs)
+}
+
+/**
+ * An unkeyed group's outcome (no `cache`, no key of its own): its key is
+ * its upstream's alone (`computeGroupKey`), so the up-front one stands when
+ * that upstream is unchanged. Synchronous: the scheduler settles such a
+ * group in place (`ScheduleOptions.settleNow`), and `upstream` is the key's
+ * (`keyUpstream`).
+ */
+export function unkeyedGroupOutcome(
+  node: TaskNode,
+  upstream: TaskOutcome[],
+  upfront: UpfrontGroupKey | undefined,
+  runStartHrTimeNs: bigint,
+): TaskOutcome {
+  const wallclockNs = process.hrtime.bigint() - runStartHrTimeNs
+  const hash =
+    upfront !== undefined && sameUpstream(upstream, upfront.upstream)
+      ? upfront.key
+      : computeGroupHash(upstream)
+  return groupOutcome(node, upstream, hash, wallclockNs)
+}
+
+function groupOutcome(
+  node: TaskNode,
+  upstream: TaskOutcome[],
+  hash: string,
+  wallclockNs: bigint,
+): TaskOutcome {
+  return {
+    node,
     status: 'success',
     exitCode: 0,
     durationMs: 0,
     hash,
     // What this group stands for. A dependent expands it to describe the
     // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
-    groupUpstream: args.upstream,
+    groupUpstream: upstream,
     wallclockStartNs: wallclockNs,
     wallclockEndNs: wallclockNs,
   }
