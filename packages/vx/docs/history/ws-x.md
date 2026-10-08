@@ -567,4 +567,6 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   after, 616.5 A/A. Rows: `runner.test.ts` › "a task's stdout and
   stderr are pipes it can open by path", `sandbox-runtime.unsafe.test.ts`
   › "a sandboxed task and server open /dev/stdout and /dev/stderr by
-  path" and its plain twin.
+  path" and its plain twin. On macOS a sandboxed task failed the same
+  writes EPERM: seatbelt judges the resolved `/dev/fd/1`, which SRT's
+  `/dev/stdout` grant does not name, so vx grants `/dev/fd` there.

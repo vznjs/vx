@@ -1193,6 +1193,11 @@ async function wrapIn(
     customConfig!.filesystem!.denyRead!.push(baselines.cwd)
   }
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
+  // Seatbelt judges `/dev/stdout` by the path the kernel resolves it to,
+  // `/dev/fd/1`, which SRT's default `/dev/stdout` grant does not name, so
+  // `echo x > /dev/stdout` failed EPERM (X-113). `/dev/fd/N` reopens only a
+  // descriptor the task already holds.
+  if (process.platform === 'darwin') customConfig!.filesystem!.allowWrite!.push('/dev/fd')
   if (scopedDenyScan) {
     customConfig!.filesystem!.denyWrite!.push(
       ...scopedMandatoryDenies(
