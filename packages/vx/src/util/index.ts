@@ -18,6 +18,7 @@ export {
   notAWorkTree,
   OUT_OF_FDS_HINT,
 } from './errors.js'
+export { configErrorFrame } from './config-frame.js'
 export { xxh3, xxh3hex } from './hash.js'
 export {
   beginRun,

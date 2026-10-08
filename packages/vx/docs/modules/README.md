@@ -169,26 +169,26 @@ here, itself or in a brace group.
 
 ## Utilities
 
-| File                                               | Topic                                                                                                     |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| [`util-paths.md`](./util-paths.md)                 | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                        |
-| [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                 |
-| [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                       |
-| [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting.                                  |
-| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_TIMING=1` stage table + per-task spans.                                    |
-| [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                |
-| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                    |
-| [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                      |
-| [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                   |
-| [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                   |
-| [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                        |
-| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.              |
-| [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                   |
-| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.             |
-| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.       |
-| [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.              |
-|                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration` (cli-cache.md) and the core verb list (cli.md). |
-|                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                 |
+| File                                               | Topic                                                                                                                               |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [`util-paths.md`](./util-paths.md)                 | `src/util/paths.ts` — POSIX-path normaliser for stable cache keys.                                                                  |
+| [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                           |
+| [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                 |
+| [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line. |
+| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_TIMING=1` stage table + per-task spans.                                                              |
+| [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                          |
+| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                              |
+| [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                |
+| [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                             |
+| [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                             |
+| [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                  |
+| [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                        |
+| [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                             |
+| [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                       |
+| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.                                 |
+| [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.                                        |
+|                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration` (cli-cache.md) and the core verb list (cli.md).                           |
+|                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                                           |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).

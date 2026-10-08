@@ -28,3 +28,9 @@ and log output reads better. Each must cost the warm path nothing.
   `critical path`, and every row says `blocks N`, its unfinished
   dependents. Computed in the forecast's pass, twice a second at most,
   live region only. Rows: `forecast.test.ts` › "names the running task".
+- **DX-5.** A config refusal names its line: `packages/b/vx.config.ts:4:15: tasks.build.exec has unknown field "comand"`,
+  with the lines up to it and a caret. Read from the message the schema
+  already writes (so a refusal from the config worker is placed too),
+  located by walking the path's keys in the source; a field the file
+  does not hold prints as before. Error path only. Rows:
+  `config-frame.test.ts`, `config-error-audit.test.ts`.

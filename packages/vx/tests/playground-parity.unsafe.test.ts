@@ -775,7 +775,8 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
       )
       const page = await evaluate(FUNCTION_TEXT)
       expect(cli.exitCode).toBe(1)
-      expect(cli.stderr).toBe(`vx: ${refusal(file)}\n`)
+      // The CLI names the same refusal at its line, a frame under it.
+      expect(cli.stderr).toStartWith(`vx: ${refusal(`${path.relative(ws, file)}:2:48`)}\n\n`)
       expect(worker).toBe(refusal(file))
       expect(page).toEqual({ ok: false, error: refusal('vx.config.mjs') })
     } finally {

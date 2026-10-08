@@ -79,3 +79,11 @@ plugin may throw its own class named `UserError` without importing core's.
 `isExecutableMissing(err)` is Bun's `ENOENT` for a spawn that could not
 run at all, and `gitSpawnRefusal(cwd)` the one `UserError` for a git that
 is not on PATH — the input enumeration and `--affected` say it (item 241): install git, not "git init".
+
+`configErrorFrame(message, cwd)` (`src/util/config-frame.ts`) is how
+`bin.ts` prints a config refusal: from the message the schema writes
+(`<file>: tasks.<name>.<path> …`, or `<file> has unknown field …`) it
+finds the field's key in the file, path segment after path segment, and
+returns the message with the file at `line:col` (relative to `cwd`
+unless that climbs out) and the lines up to it with a caret; undefined
+when it cannot place the field, and the message prints as it was.

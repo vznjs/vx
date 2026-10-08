@@ -30,8 +30,15 @@ async function main(): Promise<void> {
     // is set, and `exitOnceFlushed` exits after both streams have ended.
     process.exitCode = code
   } catch (err) {
-    const { fsRefusalHint, isFsRefusal, isOutOfFds, isUserError, maskedLine, OUT_OF_FDS_HINT } =
-      await import('./util/index.js')
+    const {
+      configErrorFrame,
+      fsRefusalHint,
+      isFsRefusal,
+      isOutOfFds,
+      isUserError,
+      maskedLine,
+      OUT_OF_FDS_HINT,
+    } = await import('./util/index.js')
     // A plugin's failure quotes what it was told (a remote's reply, a
     // header), and a config's own throw is its author's text: a secret in
     // either reached stderr whole (L-11).
@@ -44,7 +51,8 @@ async function main(): Promise<void> {
       // A message that already names the tool (`vx why: …`, thrown by a verb
       // that wants its own name in the line) is printed as it is; prefixing
       // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
-      const m = err.message
+      // A config refusal names its line and shows it.
+      const m = configErrorFrame(err.message, process.cwd()) ?? err.message
       say(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
     } else if (isOutOfFds(err)) {
       say(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)

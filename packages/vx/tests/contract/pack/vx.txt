@@ -125,6 +125,7 @@ src/orchestrator/terminal-signals.ts
 src/orchestrator/upstream.ts
 src/util/bun-version.ts
 src/util/cgroup.ts
+src/util/config-frame.ts
 src/util/edit-distance.ts
 src/util/errors.ts
 src/util/hangup.ts
