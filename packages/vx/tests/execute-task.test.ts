@@ -1594,6 +1594,36 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     ])
   })
 
+  it('a preProbed HIT restores only for a task that reads the cache (X-191)', async () => {
+    // The hit's fast path in `executeTask` sits ahead of the run path's own
+    // read gate, so it carries that gate: a run with reads off (`--force`),
+    // a remote-only task, or a remote-only no-op never restores.
+    await writeFile(path.join(b.dir, 'out.txt'), 'CACHED')
+    await b.cache.save({
+      hash: 'feedfacefeedface',
+      projectDir: b.dir,
+      outputFiles: [path.join(b.dir, 'out.txt')],
+      entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    const hit = (await b.cache.get('feedfacefeedface'))!
+    const args = {
+      ...baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] })),
+      preProbed: { hash: 'feedfacefeedface', hit },
+    }
+    const run = async (extra: object): Promise<string> => {
+      await writeFile(path.join(b.dir, 'out.txt'), 'BEFORE')
+      const o = await executeTask({ ...args, ...extra } as never)
+      return `${o.status}:${await readFile(path.join(b.dir, 'out.txt'), 'utf8')}`
+    }
+    const force = { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true }
+    expect([
+      await run({ cachePolicy: force }),
+      await run({ remoteOnly: true }),
+      await run({ remoteOnlyNoop: true }),
+      await run({}),
+    ]).toEqual(['success:executed\n', 'success:executed\n', 'success:BEFORE', 'cache-hit:CACHED'])
+  })
+
   it('a preProbed MISS skips the probe and keeps the up-front hash VERBATIM', async () => {
     // The up-front key is authoritative for a classified task: dependents
     // fold it, and it is the key a later run's classify reproduces. The hash

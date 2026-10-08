@@ -260,7 +260,85 @@ export interface ExecuteArgs {
 export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (isGroupTask(args.node)) return executeGroupTask(args)
   if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
+  // A probed hit needs none of the run path's set-up: the upstream folding,
+  // timers and closures `executeCachedTask` builds on entry were ~15 µs of
+  // each of a warm run's hits (X-191). The same branch there handles it
+  // when this one does not apply.
+  const probed = args.preProbed
+  if (probed?.hit != null && readsCache(args) && args.remoteOnlyNoop !== true) {
+    return restoreProbed(
+      args,
+      probed.hash,
+      probed.hit,
+      process.hrtime.bigint() - args.runStartHrTimeNs,
+    )
+  }
   return executeCachedTask(args)
+}
+
+/** Whether this task reads the cache: a cached, not remote-only task with a read axis on. */
+function readsCache(args: ExecuteArgs): boolean {
+  const policy = args.cachePolicy ?? FULL_CACHE_POLICY
+  return (
+    args.remoteOnly !== true &&
+    args.node.config.cache !== undefined &&
+    (policy.localRead || policy.remoteRead)
+  )
+}
+
+/**
+ * Restore the up-front probe's hit, or demote it. A key taken before a task
+ * rewrote the lockfile names an install the tree no longer holds, and the
+ * lazy path never probes one (X-124): demoted like a vanished hit, it runs
+ * dep-gated. The hit may be restoring AHEAD of this task's deps, and a
+ * command run now would build from outputs they have not written yet and
+ * save that under the good key: the scheduler runs it again once they are
+ * done (admission drops the probe).
+ */
+async function restoreProbed(
+  args: ExecuteArgs,
+  hash: string,
+  hit: CacheEntry,
+  taskStartNs: bigint,
+): Promise<TaskOutcome> {
+  const cacheOpStart = performance.now()
+  const restored = fingerprintMoved(args)
+    ? null
+    : await restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs)
+  if (restored !== null) return restored
+  throw new RestoreDemoted(args.node.id)
+}
+
+/**
+ * A hit restored, or null when its artifact was removed after the probe (a
+ * prune, another workspace's retention on a shared cache directory): a
+ * miss. The restore has wiped the declared outputs by then; the run path
+ * cleans them again and the task writes them.
+ */
+async function restoreOrMiss(
+  args: ExecuteArgs,
+  hash: string,
+  hit: CacheEntry,
+  cacheOpStart: number,
+  taskStartNs: bigint,
+): Promise<TaskOutcome | null> {
+  try {
+    return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
+  } catch (err) {
+    if (!(err instanceof ArtifactVanishedError)) throw err
+    args.log.status(`[vx] ${args.node.id}: ${err.message} — running it`)
+    return null
+  }
+}
+
+/**
+ * The workspace fingerprint every key here folded has moved (a task
+ * rewrote the lockfile), said once per run.
+ */
+function fingerprintMoved(args: ExecuteArgs): boolean {
+  if (args.fingerprintWatch?.moved() === undefined) return false
+  args.fingerprintWatch.say(args.log)
+  return true
 }
 
 /**
@@ -853,40 +931,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the probe already ran — restore its hit, or (null hit) fall straight
   // to the run path as a known stable miss. No second cache.get.
   if (willRead) {
-    const cacheOpStart = performance.now()
-    // A hit whose artifact was removed after the probe (a prune, another
-    // workspace's retention on a shared cache directory) is a miss. The
-    // restore has wiped the declared outputs by then; the run path cleans
-    // them again and the task writes them.
-    const restoreOrMiss = async (hit: CacheEntry): Promise<TaskOutcome | null> => {
-      try {
-        return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
-      } catch (err) {
-        if (!(err instanceof ArtifactVanishedError)) throw err
-        log.status(`[vx] ${node.id}: ${err.message} — running it`)
-        return null
-      }
-    }
     if (preProbed !== undefined) {
-      if (preProbed.hit !== null) {
-        // A key taken before a task rewrote the lockfile names an install
-        // the tree no longer holds, and the lazy path below never probes
-        // one (X-124): demoted like a vanished hit, it runs dep-gated.
-        const restored = fingerprintMoved() ? null : await restoreOrMiss(preProbed.hit)
-        if (restored !== null) return restored
-        // The up-front probe's hit may be restoring AHEAD of this task's
-        // deps, and a command run now would build from outputs they have
-        // not written yet and save that under the good key. The scheduler
-        // runs it again once they are done (admission drops the probe).
-        throw new RestoreDemoted(node.id)
-      }
+      if (preProbed.hit !== null) return restoreProbed(args, hash, preProbed.hit, taskStartNs)
       // Confirmed stable miss — skip the probe, fall through to run.
-    } else if (!fingerprintMoved()) {
+    } else if (!fingerprintMoved(args)) {
+      const cacheOpStart = performance.now()
       const endProbe = span('cache.get')
       const hit = await cache.get(hash, getContext(node, step.command))
       endProbe()
       if (hit) {
-        const restored = await restoreOrMiss(hit)
+        const restored = await restoreOrMiss(args, hash, hit, cacheOpStart, taskStartNs)
         if (restored !== null) return restored
       }
     }
@@ -1467,16 +1521,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   /**
-   * The workspace fingerprint every key here folded has moved (a task
-   * rewrote the lockfile), said once per run.
-   */
-  function fingerprintMoved(): boolean {
-    if (args.fingerprintWatch?.moved() === undefined) return false
-    args.fingerprintWatch.say(log)
-    return true
-  }
-
-  /**
    * What an additive run saves as its own, or undefined when it removed a
    * file it found: no entry replays a removal (`ownOutputsSince`), so the
    * task saves nothing and runs again.
@@ -1521,7 +1565,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    * withholds it too: the key folded the old one.
    */
   async function keyStillTrue(): Promise<boolean> {
-    if (fingerprintMoved()) {
+    if (fingerprintMoved(args)) {
       unkeyed = true
       return false
     }

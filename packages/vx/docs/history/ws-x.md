@@ -1239,3 +1239,14 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 198 → 167 ms in an earlier 14-round timing
   run.
   Rows: `settle-now.test.ts`.
+- **X-191.** A probed hit reached its restore only after
+  `executeCachedTask` had built the run path on entry: the upstream
+  folding, timers and closures, ~15 µs of each warm hit. `executeTask`
+  now restores a probed hit first, through the same guards hoisted out
+  of the closure (`restoreProbed`, `restoreOrMiss`, `fingerprintMoved`):
+  a moved fingerprint or a vanished artifact still demotes it. A/B on
+  top of X-192 (same bench, 2 × 25 rounds, copies swapped, A/A beside,
+  load ~7): wall paired 0.948 (A/A 0.977), CPU 0.943 (A/A 0.991).
+  Against main without X-192 it did not clear A/A (0.953, A/A 0.956).
+  Rows: `execute-task.test.ts` › "a preProbed HIT restores only for a
+  task that reads the cache", with the X-124 and vanished-artifact rows.
