@@ -16,7 +16,35 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test', 'check.site'],
+      dependsOn: ['lint', 'test', 'check.site', 'check.perf'],
+    },
+
+    // The per-PR performance guard (perf-guard.ts): exact work counts and
+    // box-normalized times of core's hot paths against perf-baseline.json.
+    // Core's source reaches the key through install's ^build.
+    'check.perf': {
+      description: 'perf-guard.ts: hot-path counts and times against perf-baseline.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun perf-guard.ts',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
+      cache: {
+        inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
+        outputs: { files: [] },
+      },
+    },
+
+    // Records this platform's numbers after a change meant to move them.
+    'perf.update': {
+      description: 'perf-guard.ts --update: rewrite perf-baseline.json for this platform',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun perf-guard.ts --update',
+        sandbox: {
+          allow: { read: ['**/*'], write: ['perf-baseline.json'], systemInfo: ['vfs.disk-space'] },
+        },
+      },
     },
 
     // The landing page's benchmark rows, the benchmarks doc's stress
