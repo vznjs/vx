@@ -264,8 +264,10 @@ Returns the project list sorted by `name`.
 Resolves the cache directory:
 
 - `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
-  `VX_CACHE_DIR`. Relative paths resolve against `root`; absolute
-  paths pass through.
+  `VX_CACHE_DIR`. Relative paths resolve against `root`, `~` and `~/`
+  against the home directory; absolute paths pass through.
+- The home directory itself is refused: the cache writes a `*`
+  `.gitignore` beside its index (D-153).
 - Default: `<root>/.vx/cache`.
 
 ### `resolveStoreRoot(root, config)`
