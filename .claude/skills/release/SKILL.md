@@ -65,14 +65,20 @@ main).
 ## 4. Share on Bluesky
 
 The @vzn-vx.bsky.social account and its scripts live in the project's
-shared folder, `/mnt/project-files/x-posts/_source/` (its README §
-Posting to Bluesky). Post one short line on the headline changes plus
-the post's URL, under 300 graphemes, no hype words, speed as "N×
-faster":
+shared folder, `/mnt/project-files/x-posts/_source/`, owned by the
+Marketing thread (its README § Posting to Bluesky). One release post a
+day at most, plain and factual: what changed in one line, no hype words,
+speed as "N× faster", under 300 graphemes. The link goes in the card,
+not the text. The site is out of the proxy's reach, so pass the card's
+title and description (the post's title and excerpt):
 
 ```sh
-NODE_USE_ENV_PROXY=1 node /mnt/project-files/x-posts/_source/bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/
+cd /mnt/project-files/x-posts/_source
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "<post title>" --desc "<excerpt>" --dry
 ```
+
+Read the `--dry` record, then run it again without `--dry`. It logs to
+`posted.json` and `activity-log.md` and refuses a second post of a URL.
 
 ## 5. Report
 
