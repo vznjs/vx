@@ -525,6 +525,33 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** A restore beside another process's save of the same key
+  (six runs on one cache dir, half of them `--force`) called the
+  artifact corrupt and dropped that process's good entry:
+  `Bun.file(src)` took the size from one stat and the bytes from a
+  later open, so a save renamed in between was read at the old length.
+  A small artifact is now read in one open, sized by its row; a
+  streamed one through one handle. 200 restores, four workers, min of
+  15, interleaved: 26.0–30.1 ms before, 26.2–29.7 after. Rows:
+  `restore-replaced-artifact.test.ts` (two; 16 of 300 small and 1 in
+  ~60 streamed restores failed before).
 - **X-92.** `--affected` over a deep `dependsOn` chain ended in
   `RangeError` and a stack: `affectedRoots` recursed once per edge, and
   ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The

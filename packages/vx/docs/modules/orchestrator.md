@@ -284,7 +284,10 @@ reproduced on vx 2026-09-24). So a lock naming this process's OWN pid
 is stale (a run of this process shares the lock and never meets its
 entry), and on Linux the entry also carries the holder's start time
 (field 22 of `/proc/<pid>/stat`), so a live pid another process now
-wears is stale as well. The start time is read once per process for
+wears is stale as well. A process inside a task of the run that holds
+the lock (`VX_RUN_WORKSPACE` names the same lock) is refused rather than
+left to wait for its own parent: `vx cache prune` in a task waited for
+good (X-104). The start time is read once per process for
 its entry and once per holder while waiting; elsewhere, where it
 would cost a `ps` spawn per run, and under a procfs mounted for another
 pid namespace (`util/procfs.ts`), the lock trusts the pid

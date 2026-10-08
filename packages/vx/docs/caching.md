@@ -1041,7 +1041,12 @@ second run waits, saying after a second whom it waits for:
 ```
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
-land by rename); a task's OUTPUT TREE was not — both runs cleaned and
+land by rename; a transaction that reads before it writes takes the
+lock at BEGIN, since SQLite answers its later write `database is locked`
+at once: a run's history was lost so in 13 of 48 runs on one shared
+cache dir, X-105; and a restore reads its artifact through one open, so a
+save of the same key that another process renames in mid-restore is
+read as one whole file, X-106); a task's OUTPUT TREE was not — both runs cleaned and
 restored the same `dist/`, and a clean landing while the other run's
 restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root

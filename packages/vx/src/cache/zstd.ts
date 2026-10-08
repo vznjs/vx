@@ -2,6 +2,7 @@
 // decompression bomb before it can expand, and the bounded one-call /
 // streamed decoders the store and the ingest path share.
 
+import type { FileHandle } from 'node:fs/promises'
 import { CorruptArtifactError } from './layer.js'
 
 /**
@@ -176,7 +177,8 @@ export const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
  * and the result length in one call, a running count on the stream.
  */
 export async function decodedTar(
-  source: Uint8Array | Bun.BunFile,
+  /** A handle reads one file, whatever replaces its name (cache.ts's restore). */
+  source: Uint8Array | Bun.BunFile | FileHandle,
   hash: string,
   /**
    * The decompression ceiling: `Cache` passes its `artifactCeiling`, whose
@@ -193,6 +195,14 @@ export async function decodedTar(
       return zstdDecodeStream(new Blob([source]), hash, cap)
     }
     return oneChunk(await zstdDecompressBounded(source, hash, cap))
+  }
+  if (!(source instanceof Blob)) {
+    const head = new Uint8Array(32)
+    const { bytesRead } = await source.read(head, 0, head.length, 0)
+    assertDeclaredSize(head.subarray(0, bytesRead), hash, cap)
+    // Bun's file stream over the handle's descriptor: the handle's own web
+    // stream reads 16 KiB at a time, 10x slower on 60 MiB.
+    return zstdDecodeStream(Bun.file(source.fd), hash, cap)
   }
   if (source.size <= STREAM_DECODE_FROM) {
     const bytes = await source.bytes()
