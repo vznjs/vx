@@ -1654,7 +1654,7 @@ machinery by design.
 import { defineProject, defineWorkspace } from '@vzn/vx/config'
 
 // Identity functions; their purpose is type inference.
-defineProject<T extends ProjectConfig>(config: T): T
+defineProject<const T extends ProjectConfig>(config: T): T
 defineWorkspace<T extends WorkspaceConfig>(config: T): T
 ```
 
@@ -1663,11 +1663,11 @@ autocomplete for task names in `dependsOn` against your declared
 tasks, strict validation against the schema, errors at edit time
 rather than at `vx run` time.
 
-They cost one runtime import of `@vzn/vx` per config file — a second
-copy of core loaded into every run (~17 ms on a two-package workspace,
-measured 2026-09-09; the `vx` process already holds the first). The
-type-only form gives the same editor checking for free, and is what
-`vx init` / `@vzn/vx-migrate` write:
+They cost one runtime import of `@vzn/vx/config` per config file:
+`src/config.ts`, which imports nothing, so it is cheap, but it must
+resolve from the config's directory. The type-only form gives the same
+editor checking with no runtime import, and is what `vx init` /
+`@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx/config'
