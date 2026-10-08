@@ -19,7 +19,7 @@ import {
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners } from './config-imports.js'
+import { configImportOwners, realpathOr } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -811,14 +811,6 @@ function isDirectory(abs: string): boolean {
     return statSync(abs).isDirectory()
   } catch {
     return false
-  }
-}
-
-function realpathOr(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return p
   }
 }
 

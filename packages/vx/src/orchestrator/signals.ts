@@ -69,7 +69,9 @@ export async function terminateChildren(
   signal: ForwardedSignal = 'SIGTERM',
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
-  const children = live()
+  // A ready server is in both of run()'s lists: signalled twice, it read
+  // the second as a repeated Ctrl-C (force quit).
+  const children = [...new Set(live())]
   // On the group guard's list until the sweep below is done: a shell that
   // dies on the signal lets its group go while what it forked runs out
   // the grace (kill-tree.ts, `holdGroups`).

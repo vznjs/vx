@@ -34,9 +34,9 @@ vx lock [--check]
 vx init [--dry] [--force] [--mjs] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
-vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
-vx upgrade [tag]      # self-update a compiled binary
+vx upgrade [TAG]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
 # Meta
@@ -123,11 +123,11 @@ If no task name is given:
 
 Exit codes:
 
-| Code                  | When                                                                                                                                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                   |
-| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                               |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
+| Code                  | When                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                        |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                    |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT.
@@ -707,7 +707,7 @@ tracks the run live. Top to bottom:
    a requested persistent task keeps vx in the foreground, with the
    persistent tasks it depends on, until it — or, with several, the
    first of them — exits (one kept only as a dependency that exits 0,
-   a daemon that forked and returned, does not end it); the rest are then torn
+   a daemon that forked and returned, does not end it); the rest still up are then torn
    down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
    the task and its code (`vx: app#dev exited with code 1; stopping 1
 other persistent task`), and a non-zero exit makes the run exit 1
@@ -876,6 +876,7 @@ Status legend:
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
 | `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
 | `∅`    | `@noop` — task would not run anywhere                                                      |
+| `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
 `--dry=json` emits the same data as a structured object, alone on stdout
@@ -915,7 +916,7 @@ vx run ci --graph=graph.dot
 
 Node `fillcolor` varies by predicted status (green = local hit,
 sky-blue = remote hit, orange = miss, gray = no-cache, fuchsia =
-group). Edges are unstyled.
+group, white = not started). Edges are unstyled.
 
 ## Run artifacts (`--summarize`, `--profile`)
 
@@ -1247,7 +1248,8 @@ run...` precedes it.
    task's input; the cycle after it re-evaluates the file. A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
-   the configs. A file the workspace config imports is loaded once per
+   the configs; so is one inside a project, which re-reads the set as the
+   config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
    run stale (item 949). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
@@ -1337,7 +1339,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
    and the cache keys decide what executes (the startup diff, asked
    again, kept an edit made since out of every cycle). Events arriving
    while a run is in flight queue and drain after the current cycle.
-   Re-runs are debounced ~150ms after the last event.
+   Re-runs are debounced ~150ms after the last event, and wait at most
+   1 s after the first, so a writer that never pauses holds no edit back.
 4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
 
 ### Path filtering
@@ -1441,8 +1444,11 @@ watch`.
 
 ## `vx cache prune`
 
-Evict old or oversized cache entries. Operates on
-`<cacheDir>/cache.db` plus the on-disk `<hash>.tar.zst` artifacts.
+Evict old or oversized cache entries. Operates on the entries and
+`<hash>.tar.zst` artifacts of the store the workspace's index records
+(`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
+`<cacheDir>` itself when the workspace names one (`cacheDir`,
+`VX_CACHE_DIR`, `--cache-dir`).
 
 `prune` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
@@ -1523,9 +1529,10 @@ Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
-which the real prune resets first, it says so on stderr and names every
-artifact past the hour's grace as an orphan, since that is what the
-reset leaves (item 1083).
+which the real prune resets first, it reads the index as that reset
+leaves it: the shared store's entries still face the policy, and every
+artifact past the hour's grace in the workspace's own directory is an
+orphan (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
@@ -1713,7 +1720,7 @@ version in a comment; bump the SHA and the comment together.
 Self-update the compiled binary in place: asks the GitHub release API
 for this platform's asset and the SHA-256 digest it publishes,
 downloads the asset, verifies the digest, and atomically replaces the
-running executable (`vx upgrade <tag>` pins a specific release; default
+running executable (`vx upgrade TAG` pins a specific release; default
 latest; a second tag is refused, not dropped). A download that does not match the digest replaces nothing —
 `the download did not match the release's SHA-256 … nothing replaced` —
 and a release that publishes no digest for the asset is refused before
@@ -2053,7 +2060,7 @@ copy to the source.
 | turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                        |
 | turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
 | turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
-| turbo  | `--no-cache`                                      | same    | `--no-cache`                                                                                                                  |
+| turbo  | `--no-cache`                                      | same    | `--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`                                   |
 | turbo  | `--cache <v>`                                     | same    | `--cache local:rw,remote:r`                                                                                                   |
 | turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
 | turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
@@ -2354,11 +2361,11 @@ per-component input fingerprints core persists on every miss. Read-only over the
 `cache.db`: no config evaluation, no re-hash.
 
 ```
-vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]
+vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 ```
 
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run <id>` pins a specific run (a unique
+immediately-previous run; `--run RUNID` pins a specific run (a unique
 prefix of the id is enough; a task that run did not run is refused,
 pointing at `vx last --list`, and so is an id no run carries). History is
 the cache directory's, not the checkout's: worktrees that share one
@@ -2503,7 +2510,7 @@ line in aligned columns (verdict, start, run id, counts, duration,
 command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
 and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
-`--list 1.5` is refused as a count); `vx last <runId>` replays a
+`--list 1.5` is refused as a count); `vx last RUNID` replays a
 specific one, and the two do not combine (a word beside `--list` no run
 id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only

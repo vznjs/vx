@@ -1488,6 +1488,12 @@ function assertStringArray(v: unknown, where: string): void {
   if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
     throw new UserError(`${where} must be an array of non-empty strings`)
   }
+  // No path, host or name holds a NUL; a write grant with one reached the
+  // placeholder create as an internal error.
+  const nul = (v as string[]).find((s) => s.includes('\0'))
+  if (nul !== undefined) {
+    throw new UserError(`${where}: ${JSON.stringify(nul)} holds a NUL byte`)
+  }
 }
 
 /**

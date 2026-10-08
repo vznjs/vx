@@ -103,6 +103,55 @@ describe('spareTrackedOutputs — a reader the take-back hides a committed file 
   })
 })
 
+describe('spareTrackedOutputs — an output naming one committed file', () => {
+  const reader = (inputs: Record<string, string[]>) => ({
+    name: 'build',
+    task: { exec: { command: 'b' }, cache: { inputs } } as Record<string, unknown>,
+  })
+  // hono/middleware: lint declared the committed `eslint-suppressions.json`,
+  // and every build and typecheck beside it ran uncached.
+  it('drops the entry and the `!` readers got for it; readers stay cached', () => {
+    const lint = {
+      name: 'lint',
+      task: {
+        exec: { command: 'eslint' },
+        cache: {
+          inputs: { files: ['**/*'] },
+          outputs: { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
+        },
+      } as Record<string, unknown>,
+    }
+    const build = reader({ files: ['**/*', '!eslint-suppressions.json', '!dist/**'] })
+    const rootReader = reader({
+      files: ['src/**'],
+      workspaceFiles: ['packages/a/**', '!packages/a/eslint-suppressions.json'],
+    })
+    // CONTROL: another project's own file of that name stays taken back.
+    const other = reader({ files: ['**/*', '!eslint-suppressions.json'] })
+    const todos = spareTrackedOutputs(
+      '/w',
+      [
+        { name: 'a', dir: '/w/packages/a', tasks: [lint, build] },
+        { name: 'b', dir: '/w/packages/b', tasks: [rootReader, other] },
+      ],
+      ['packages/a/eslint-suppressions.json', 'packages/a/src/index.ts'],
+    )
+    expect([
+      lint.task['cache'],
+      build.task['cache'],
+      rootReader.task['cache'],
+      other.task['cache'],
+      todos,
+    ]).toEqual([
+      { inputs: { files: ['**/*'] }, outputs: { files: ['.cache/.eslintcache'] } },
+      { inputs: { files: ['**/*', '!dist/**'] } },
+      { inputs: { files: ['src/**'], workspaceFiles: ['packages/a/**'] } },
+      { inputs: { files: ['**/*', '!eslint-suppressions.json'] } },
+      [],
+    ])
+  })
+})
+
 describe('trackedKinds', () => {
   it('reads each directory’s own files, the root’s all of them, extensions lower-cased', () => {
     const kinds = trackedKinds([
