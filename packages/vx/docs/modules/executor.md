@@ -37,6 +37,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor's way to give a task back, and core's test for it (matched by
   name, so another copy of `@vzn/vx` is recognised); see below. Only the
   first is on `@vzn/vx`.
+- Runner's `withForwardArgs(command, args)` — the line the local executor runs:
+  the args after `--` shell-quoted, before a trailing comment, never on a
+  heredoc's terminator. On `@vzn/vx` for an executor that runs
+  `ExecuteRequest.command` itself: the example's own join lost the args to
+  a trailing comment and split `'a b'` (X-112).
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's
   `execute` after the request's abort, never the local one's (H-14).

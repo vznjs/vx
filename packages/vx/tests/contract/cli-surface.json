@@ -64,6 +64,8 @@
       "--verbosity"
     ],
     "show": [
+      "--affected",
+      "--filter",
       "--format",
       "--help"
     ],
@@ -235,6 +237,12 @@
       "1",
       "10",
       "2"
+    ],
+    "show --affected": [
+      "*"
+    ],
+    "show --filter": [
+      "*"
     ],
     "show --format": [
       "json",

@@ -119,6 +119,8 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
   /** Tasks an `admit` policy held with a worker free, and the waits summed. Absent with no hold. */
   held?: { count: number; sumMs: number }
+  /** A run of groups only: their names, so `0 tasks` says why. */
+  emptyGroups?: readonly string[]
 }
 
 /**
@@ -213,7 +215,14 @@ export function formatSummarySection(
     // No legend line until the first bucket lands (live: all-gray bar).
     if (taskParts.length > 0) lines.push(legend(taskParts))
   } else {
-    lines.push(row('tasks', dim('0 tasks')))
+    const groups = stats.emptyGroups ?? []
+    // `vx run build` where no project gives build a command runs the default
+    // group alone: say so, or it reads like a selection that matched nothing.
+    const why =
+      groups.length > 0
+        ? ` ${dim('\u00b7')} ${dim(`${groups.join(', ')} ${groups.length === 1 ? 'has' : 'have'} no command in these projects`)}`
+        : ''
+    lines.push(row('tasks', dim('0 tasks') + why))
     // A stop before any task finished still names what it took down.
     if (taskParts.length > 0) lines.push(legend(taskParts))
   }
@@ -366,6 +375,9 @@ export function formatRunSummary(
     .map((o) => o.durationMs)
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
+  const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
+    ? [...new Set(outcomes.map((o) => o.node.taskName))]
+    : []
   return formatSummarySection(
     {
       failed: t.failed,
@@ -396,6 +408,7 @@ export function formatRunSummary(
             },
           }
         : {}),
+      ...(emptyGroups.length > 0 ? { emptyGroups } : {}),
     },
     totalMs,
     colors,

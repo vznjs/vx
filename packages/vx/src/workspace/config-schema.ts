@@ -28,7 +28,7 @@ import {
   asTrees,
   isLiteralPattern,
 } from '../util/index.js'
-import { compileNameGlob } from './filter.js'
+import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -78,6 +78,7 @@ const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
 function validateRetention(retention: unknown, configPath: string): void {
   const where = `${configPath}: \`cacheRetention\``
+  const field = (key: string) => `${configPath}: \`cacheRetention.${key}\``
   if (retention === null || typeof retention !== 'object' || Array.isArray(retention)) {
     throw new UserError(`${where} must be { olderThan?: '30d', maxSize?: '10G' }`)
   }
@@ -91,23 +92,27 @@ function validateRetention(retention: unknown, configPath: string): void {
     olderThan !== undefined &&
     (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
   ) {
-    throw new UserError(`${where}.olderThan must be a duration like '30d', '12h', '90m' or '45s'`)
+    throw new UserError(
+      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${JSON.stringify(olderThan)})`,
+    )
   }
   if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
-    throw new UserError(`${where}.maxSize must be a size like '10G', '500MB' or '64KB'`)
+    throw new UserError(
+      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${JSON.stringify(maxSize)})`,
+    )
   }
   // The bounds `vx cache prune` refuses, for the same reason: each evicts
   // every entry, and here it would do so at the end of every run, the
   // entries that run just saved included, so nothing ever hits (item 969).
   if (olderThan !== undefined && parseDuration(olderThan) === 0) {
-    throw new UserError(`${where}.olderThan of 0 evicts every entry after every run`)
+    throw new UserError(`${field('olderThan')} of 0 evicts every entry after every run`)
   }
   if (maxSize !== undefined && parseSize(maxSize) === 0) {
-    throw new UserError(`${where}.maxSize of 0 evicts every entry after every run`)
+    throw new UserError(`${field('maxSize')} of 0 evicts every entry after every run`)
   }
   if (maxSize !== undefined && /^\d+$/.test(maxSize)) {
     throw new UserError(
-      `${where}.maxSize '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}M', '${maxSize}G')`,
+      `${field('maxSize')} '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}M', '${maxSize}G')`,
     )
   }
 }
@@ -230,6 +235,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         if (plug.commands === null || typeof plug.commands !== 'object') {
           throw new UserError(`${configPath}: \`plugins[${i}].commands\` must be an object`)
         }
+        // A list of commands loaded as the verbs `0`, `1`, … that help listed.
+        if (Array.isArray(plug.commands)) {
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].commands\` must be an object keyed by verb, not an array`,
+          )
+        }
         for (const [verb, cmd] of Object.entries(plug.commands as Record<string, unknown>)) {
           const c = cmd as { description?: unknown; run?: unknown } | null
           if (
@@ -344,6 +355,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string' || t.trim() === ''))
   ) {
     throw new UserError(`${configPath}: \`tags\` must be an array of non-empty strings`)
+  }
+  for (const tag of (tags ?? []) as string[]) {
+    const why = tagProblem(tag)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: tag ${JSON.stringify(tag)} ${why} — \`--filter tag:<name>\` could not ` +
+          `name it. Rename the tag.`,
+      )
+    }
   }
   const tasks = config.tasks
   if (tasks === undefined) return
@@ -1365,6 +1385,22 @@ export function taskNameProblem(name: string): string | null {
           : name.startsWith('^') || name.startsWith('!')
             ? `starts with '${name[0]}', which names dependencies' tasks or negates`
             : null
+}
+
+/**
+ * Why `--filter tag:<tag>` cannot name `tag`, or null. Asked of the filter
+ * parser itself, so a suffix it learns to read is refused here too: `v1...`
+ * read as a dependency walk from `v1`, `v[2]` as `v` changed since ref `2`.
+ */
+function tagProblem(tag: string): string | null {
+  if (tag.trim() !== tag) return 'has surrounding whitespace'
+  if (tag.includes('*')) return "holds '*', which makes it a pattern"
+  const f = parseFilter(`tag:${tag}`, '/')
+  if (f.gitSince !== undefined) {
+    return `ends in "[${f.gitSince}]", which a filter reads as a git range`
+  }
+  if (f.withDeps || f.onlyDeps) return "ends in '...', which a filter reads as a dependency walk"
+  return null
 }
 
 /**
