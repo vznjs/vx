@@ -31,7 +31,9 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   refactors, docs, CI. Verify every command, flag and config key in an
   example against current source; prefer real output from a fixture
   run of `bun packages/vx/src/bin.ts …` in the scratchpad.
-- Title `vx 0.0.<N+1>: <two or three headline changes>`, date today,
+- Title `vx 0.0.<N+1>: <one short headline>`: the release's story in
+  a few plain words ("Runs that explain themselves"), never a list of
+  features (owner, 2026-10-08). Date today,
   tag `release`, an excerpt, an intro, `**In this release**` links,
   one `##` per change with one example and its PR links,
   `## Breaking changes` when any, then How to update and Learn more as

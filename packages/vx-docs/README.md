@@ -116,7 +116,9 @@ Each release gets a post, written before it is cut
 (`.claude/skills/release/SKILL.md`); the first ten batch the per-merge
 releases up to v0.0.625. A post holds at most ten changes a user would
 notice, each a `##` section with one example and its PR links, then
-Breaking changes, How to update and Learn more. The slug is `vx-0-0-<version>`, the tag `release`, and the date
+Breaking changes, How to update and Learn more. The title is the
+version and one short headline (`vx 0.0.625: Runs that explain
+themselves`), never a list of features. The slug is `vx-0-0-<version>`, the tag `release`, and the date
 the release's day. The design essays stay beside them.
 
 ## Commands
