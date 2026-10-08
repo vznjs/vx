@@ -6,7 +6,13 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { Cache, type CacheLayer, type CachePolicy, stopRuntimeProbes } from '../cache/index.js'
+import {
+  Cache,
+  type CacheLayer,
+  type CachePolicy,
+  cachesNothing,
+  stopRuntimeProbes,
+} from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
   resetSandbox,
@@ -44,6 +50,7 @@ import {
   secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
+import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -1017,6 +1024,7 @@ async function runOnBus(
     // is one probe of the failed-row index.
     const flaky: FlakyFinding[] = []
     const historyDb = prepared.localCache.dbHandle()
+    const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
       const candidates = flakyCandidates([o])
       if (candidates.length === 0) return
@@ -1044,6 +1052,7 @@ async function runOnBus(
         log.taskStart?.(node)
       },
       onFinish: (o) => {
+        if (cacheOff) o.cacheOff = true
         taint.settled(o)
         judgeFlaky(o)
         log.taskComplete(o.node, o)
@@ -1346,6 +1355,8 @@ async function runOnBus(
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
+    const above = options.beforeFooter?.(list, ok)
+    if (above) log.status(above.replace(/\n$/, ''))
     for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
@@ -1430,7 +1441,9 @@ async function runOnBus(
       await summarize(ok && first.code === 0, final)
       if (historyAfterWait) {
         recordHistory(() => {
-          const local = Cache.inspect(prepared.cacheDir)
+          // A writer's open: another vx version may have reset the index
+          // to its schema during the session, and a mismatch resets silently.
+          const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && first.code === 0))
           } finally {
@@ -1632,7 +1645,7 @@ async function initHint(prepared: {
   // Single-project mode with packages the root's missing `workspaces`
   // never reaches: `vx init` would find no scripts either (item 248).
   const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
-  if (unreached.length > 0) return ` ${unreachedHint(unreached)}`
+  if (unreached.length > 0) return ` ${unreachedHint(unreached, prepared.workspaceRoot)}`
   return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 
@@ -1649,8 +1662,11 @@ function didYouMean(
   elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
+  // What a bare name can select: a default `build` is no match (X-102).
   const allTasks = new Set<string>()
-  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  for (const p of projects.values()) {
+    for (const t of tasksOf(p)) if (!isDefaultBuild(p.config.tasks![t])) allTasks.add(t)
+  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near
