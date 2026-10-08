@@ -486,8 +486,10 @@ function parentsOfNewNested(
   projects: readonly ProjectMeta[],
 ): Set<string> {
   const out = new Set<string>()
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   for (const [rel, bytes] of atBase) {
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
     if (!dirToName.has(dir)) continue
@@ -847,8 +849,10 @@ function projectsContaining(
   // O(files · path-depth) instead of O(files · projects): independent of the
   // project count, which is what a big --affected diff on a 1000-project repo
   // pays for.
+  // Keyed NFC: macOS git reports paths NFC (core.precomposeunicode) while a
+  // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
-  for (const p of projects) dirToName.set(p.dir, p.name)
+  for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
   // A member linked in from elsewhere in the tree (`pkgs/b -> ../ext/b`) is
   // indexed by its link, and git reports its files at their real place
   // (`ext/b/src/a.txt`), which resolved to no project: an edit there
@@ -859,18 +863,18 @@ function projectsContaining(
     const real = realDirs.get(p.dir) ?? p.dir
     const rel = path.relative(realRoot, real)
     if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-    const spelled = path.resolve(workspaceRoot, rel)
-    if (spelled !== p.dir && !dirToName.has(spelled)) dirToName.set(spelled, p.name)
+    const spelled = path.resolve(workspaceRoot, rel).normalize('NFC')
+    if (!dirToName.has(spelled)) dirToName.set(spelled, p.name)
   }
   const owned = new Set<string>()
   for (const rel of changedRelPaths) {
-    let dir = path.resolve(workspaceRoot, rel)
+    let dir = path.resolve(workspaceRoot, rel).normalize('NFC')
     let hit = false
     for (;;) {
       const name = dirToName.get(dir)
       if (name !== undefined) {
         owned.add(name)
-        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel)))
+        on?.path(name, relPosix(dir, path.resolve(workspaceRoot, rel).normalize('NFC')))
         hit = true
         break
       }
@@ -889,7 +893,7 @@ function projectsContaining(
     // this, `--affected` after an edit inside selected none of them.
     const abs = path.resolve(workspaceRoot, rel)
     if (isDirectory(abs)) {
-      const prefix = abs + path.sep
+      const prefix = abs.normalize('NFC') + path.sep
       for (const [dir, name] of dirToName) {
         if (!dir.startsWith(prefix)) continue
         owned.add(name)

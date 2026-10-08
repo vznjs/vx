@@ -267,7 +267,8 @@ platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
 git is spawned only for a repository with no parseable remote: one
 `rev-list` for its root commit, asynchronously, so `prepareRun` asks it
 before discovery and awaits it when the cache opens; shallow is read from
-the common dir's `shallow` file). Null
+the common dir's `shallow` file; the root is realpathed first, as git
+resolves it, so a symlinked path to the workspace is the same id). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
