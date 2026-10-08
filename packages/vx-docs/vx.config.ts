@@ -18,6 +18,7 @@ const PROOFS = [
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
 const IMPORTED = [
+  'src/content/docs/all-features.md',
   'src/content/docs/api.md',
   'src/content/docs/architecture.md',
   'src/content/docs/benchmarks.md',

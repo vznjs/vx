@@ -44,6 +44,7 @@ const OTHER_OUTPUTS = [
   'vx-docs/dist/**',
   'vx-docs/public/playground/planner.js',
   ...[
+    'all-features',
     'api',
     'architecture',
     'benchmarks',
