@@ -88,6 +88,52 @@ it('a guard that never drains kills no released group at a clean exit', async ()
   ).toEqual([0, true])
 }, 20_000)
 
+/** Stop the guard behind a queue too full for one more line, then start a task. */
+const BEHIND = `
+  const { writeSync } = await import('node:fs')
+  await task()
+  guard.kill('SIGSTOP')
+  try {
+    for (;;) writeSync(guard.stdio[3], '\\n')
+  } catch {}
+  const t = task()
+  await Bun.sleep(300)
+`
+
+it("a task's own listing waits out a full queue", async () => {
+  // The task's `+` line hit the full queue (EAGAIN) and was lost: the
+  // kill -9 left its group.
+  expect(
+    await scenario(`${BEHIND}
+      guard.kill('SIGCONT')
+      await t
+      process.kill(process.pid, 'SIGKILL')
+    `),
+  ).toEqual([137, false])
+}, 20_000)
+
+it('a task waiting on a full queue runs once the guard dies', async () => {
+  expect(
+    await scenario(`${BEHIND}
+      guard.kill('SIGKILL')
+      await t
+    `),
+  ).toEqual([0, true])
+}, 20_000)
+
+it('a group listed twice is released by one release', async () => {
+  // A shell that keeps a failed printf buffered sends its line again with
+  // the retry. A clean exit must leave the released task's grandchild.
+  expect(
+    await scenario(`
+      const { writeSync } = await import('node:fs')
+      const t = await task()
+      writeSync(guard.stdio[3], '+' + t.pid + '\\n')
+      releaseGroup(t)
+    `),
+  ).toEqual([0, true])
+}, 20_000)
+
 it('CONTROL: a listed group dies with a kill -9 of vx', async () => {
   expect(
     await scenario(`
