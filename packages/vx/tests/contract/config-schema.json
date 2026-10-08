@@ -164,74 +164,188 @@
       },
       "cacheRetention.olderThan": {
         "ok": ["<absent>", "\"30d\""],
-        "$CONFIG: `cacheRetention`.olderThan must be a duration like '30d', '12h', '90m' or '45s'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cacheRetention.maxSize": {
         "ok": ["<absent>", "\"10G\""],
-        "$CONFIG: `cacheRetention`.maxSize must be a size like '10G', '500MB' or '64KB'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got null)": [
+          "null"
         ],
-        "$CONFIG: `cacheRetention`.maxSize '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')": [
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cacheRetention.maxSize` '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')": [
           "\"10\""
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
         ]
       },
       "affectedBase": {
