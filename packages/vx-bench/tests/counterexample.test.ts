@@ -19,10 +19,12 @@ import { priorities, simulate, type SimTask } from '../schedule-policy.js'
 
 const expectedTasks: SimTask[] = [
   { id: 'a-long', dur: 60_000, deps: [] },
-  { id: 'b-left', dur: 29_750, deps: [] },
-  { id: 'c-right', dur: 29_750, deps: [] },
+  { id: 'b-left', dur: 29_750, deps: ['f-left-gate'] },
+  { id: 'c-right', dur: 29_750, deps: ['g-right-gate'] },
   { id: 'd-left-child', dur: 250, deps: ['b-left'] },
   { id: 'e-right-child', dur: 250, deps: ['c-right'] },
+  { id: 'f-left-gate', dur: 0, deps: [] },
+  { id: 'g-right-gate', dur: 0, deps: [] },
 ]
 
 // Explicit observed events, not generated from the baseline/witness being tested.
@@ -60,25 +62,34 @@ function conformingRun() {
 }
 
 describe('counterexample shape and exact ideal', () => {
-  it('has the exact declared heterogeneous costs and only the two parent-child edges', () => {
+  it('has five heterogeneous costs, two zero root gates and exactly four declared edges', () => {
     expect(counterexampleShape()).toEqual(expectedTasks)
     expect(counterexampleShape(2, 0.1)).toEqual([
       { id: 'a-long', dur: 2000, deps: [] },
-      { id: 'b-left', dur: 900, deps: [] },
-      { id: 'c-right', dur: 900, deps: [] },
+      { id: 'b-left', dur: 900, deps: ['f-left-gate'] },
+      { id: 'c-right', dur: 900, deps: ['g-right-gate'] },
       { id: 'd-left-child', dur: 100, deps: ['b-left'] },
       { id: 'e-right-child', dur: 100, deps: ['c-right'] },
+      { id: 'f-left-gate', dur: 0, deps: [] },
+      { id: 'g-right-gate', dur: 0, deps: [] },
     ])
   })
 
   it('attains the work and critical-path lower bounds with an explicit feasible witness', () => {
     const baseline = analyticBaseline()
     expect(baseline.concurrency).toBe(2)
+    expect(baseline.caseLabel).toBe('two commandless readiness gates')
+    expect(baseline.dagNodes).toBe(7)
+    expect(baseline.executableTasks).toBe(5)
+    expect(baseline.commandlessGates).toEqual(['f-left-gate', 'g-right-gate'])
+    expect(expectedTasks.reduce((sum, task) => sum + task.dur, 0)).toBe(120_000)
     expect(baseline.workMs).toBe(120_000)
     expect(baseline.workBoundMs).toBe(60_000)
     expect(baseline.criticalPathMs).toBe(60_000)
     expect(baseline.idealMs).toBe(60_000)
     expect(baseline.witness).toEqual([
+      { id: 'f-left-gate', worker: 0, startMs: 0, endMs: 0 },
+      { id: 'g-right-gate', worker: 0, startMs: 0, endMs: 0 },
       { id: 'a-long', worker: 0, startMs: 0, endMs: 60_000 },
       { id: 'b-left', worker: 1, startMs: 0, endMs: 29_750 },
       { id: 'd-left-child', worker: 1, startMs: 29_750, endMs: 30_000 },
@@ -112,15 +123,56 @@ describe('counterexample shape and exact ideal', () => {
       'c-right': 1,
       'd-left-child': 0,
       'e-right-child': 0,
+      'f-left-gate': 2,
+      'g-right-gate': 2,
     })
     const fifo = simulate(tasks, new Map(), 2)
     const ranked = simulate(tasks, count, 2)
-    expect(fifo.order).toEqual(['a-long', 'b-left', 'c-right', 'd-left-child', 'e-right-child'])
+    expect(fifo.order).toEqual([
+      'a-long',
+      'f-left-gate',
+      'g-right-gate',
+      'b-left',
+      'c-right',
+      'd-left-child',
+      'e-right-child',
+    ])
     expect(fifo.makespan).toBe(60_000)
-    expect(ranked.order).toEqual(['b-left', 'c-right', 'a-long', 'd-left-child', 'e-right-child'])
+    expect(ranked.order).toEqual([
+      'f-left-gate',
+      'g-right-gate',
+      'b-left',
+      'c-right',
+      'a-long',
+      'd-left-child',
+      'e-right-child',
+    ])
     expect(ranked.makespan).toBe(89_750)
     expect(ranked.makespan - analyticBaseline().idealMs).toBe(29_750)
     expect(ranked.makespan / fifo.makespan).toBeLessThan(1.5)
+  })
+
+  it('keeps the original minimal five-node graph as a separate analytic control, not a filtered dataset', () => {
+    const minimal: SimTask[] = [
+      { id: 'a-long', dur: 60_000, deps: [] },
+      { id: 'b-left', dur: 29_750, deps: [] },
+      { id: 'c-right', dur: 29_750, deps: [] },
+      { id: 'd-left-child', dur: 250, deps: ['b-left'] },
+      { id: 'e-right-child', dur: 250, deps: ['c-right'] },
+    ]
+    expect(simulate(minimal, new Map(), 2).makespan).toBe(60_000)
+    expect(simulate(minimal, priorities('count', minimal, new Set()), 2).makespan).toBe(89_750)
+    expect(analyticBaseline().predecessor).toEqual({
+      caseLabel: 'minimal five-task DAG without readiness gates',
+      sourceCommit: 'd2095b889ef5915a5ba73c964599d3ad7b1ad478',
+      artifacts: [
+        'counterexample-preliminary-results.json',
+        'COUNTEREXAMPLE-PRELIMINARY.md',
+        'counterexample-preliminary-samples.jsonl',
+      ],
+      comparisonPolicy:
+        'The earlier case, including adverse Turborepo runs, stays separate and unchanged. Do not replace, pool, or filter its samples when measuring this different shared DAG.',
+    })
   })
 
   it('keeps the control: count beats FIFO on an equal-cost chain beside independent tasks', () => {
@@ -202,13 +254,29 @@ describe('CLI and native fixture equivalence', () => {
       'd-left-child',
       'e-right-child',
     ])
+    expect(Object.keys(vx.tasks)).toEqual([
+      'a-long',
+      'b-left',
+      'c-right',
+      'd-left-child',
+      'e-right-child',
+      'f-left-gate',
+      'g-right-gate',
+    ])
+    expect(Object.keys(turbo.tasks)).toEqual(Object.keys(vx.tasks))
     for (const task of expectedTasks) {
+      expect(vx.tasks[task.id].dependsOn).toEqual(task.deps)
+      expect(turbo.tasks[task.id].dependsOn).toEqual(task.deps)
+      if (task.dur === 0) {
+        expect(pkg.scripts[task.id]).toBeUndefined()
+        expect(vx.tasks[task.id]).toEqual({ dependsOn: [] })
+        expect(turbo.tasks[task.id]).toEqual({ dependsOn: [] })
+        continue
+      }
       expect(pkg.scripts[task.id]).toBe(
         `bun --no-env-file --no-install src/task.mjs ${task.id} ${task.dur}`,
       )
       expect(vx.tasks[task.id].exec.command).toBe(pkg.scripts[task.id])
-      expect(vx.tasks[task.id].dependsOn).toEqual(task.deps)
-      expect(turbo.tasks[task.id].dependsOn).toEqual(task.deps)
       expect(vx.tasks[task.id].cache.inputs.files).toEqual(['src/**'])
       expect(turbo.tasks[task.id].inputs).toEqual(['src/**'])
       expect(vx.tasks[task.id].cache.outputs.files).toEqual([`dist/${task.id}.json`])
@@ -270,8 +338,10 @@ describe('CLI and native fixture equivalence', () => {
       expect(env[name]).toBeUndefined()
   })
 
-  it('requires a real zero-hit CLI summary, refusing missing or nonzero summaries', () => {
+  it('counts five executable tasks in CLI summaries, not the two commandless groups', () => {
     expect(cliCacheHits('vx', '5 success · 5 total\n5 miss', '')).toBe(0)
+    expect(cliCacheHits('vx', '7 success · 7 total\n5 miss', '')).toBeNull()
+    expect(cliCacheHits('turbo', 'Cached: 0 cached, 7 total', '')).toBeNull()
     expect(cliCacheHits('vx', '5 success · 5 total\n5 miss · 1 up-to-date', '')).toBe(1)
     expect(cliCacheHits('vx', 'no summary', '')).toBeNull()
     expect(cliCacheHits('turbo', 'Cached: 0 cached, 5 total', '')).toBe(0)
@@ -537,13 +607,41 @@ describe('attempt journaling without subprocesses', () => {
 describe('trace conformance', () => {
   it('checks the complete expected execution set, outputs, durations, edges and concurrency', () => {
     expect(assertTraceConformance(expectedTasks, conformingRun())).toEqual({
+      dagNodes: 7,
       executions: 5,
+      untracedCommandlessNodes: ['f-left-gate', 'g-right-gate'],
+      untracedMeaning:
+        'Commandless root gates have no task processes, outputs or trace timestamps; their readiness timing is not trace-verified.',
       cacheHits: 0,
       peakConcurrency: 2,
       observedDispatchOrder: ['a-long', 'b-left', 'd-left-child', 'c-right', 'e-right-child'],
       orderMeaning:
         'host-monotonic task-process start order; not internal scheduler dispatch order',
     })
+  })
+
+  it('never pretends commandless gates executed, wrote outputs or had observed timing', () => {
+    const fabricatedGate = conformingRun()
+    fabricatedGate.events[0]!.id = 'f-left-gate'
+    fabricatedGate.events[0]!.durationMs = 0
+    expect(() => assertTraceConformance(expectedTasks, fabricatedGate)).toThrow(
+      'invalid trace event',
+    )
+    const gateOutput = conformingRun()
+    gateOutput.outputs['f-left-gate.json'] = '{}\n'
+    expect(() => assertTraceConformance(expectedTasks, gateOutput)).toThrow('exactly five output')
+    const nonRootGate = expectedTasks.map((task) =>
+      task.id === 'f-left-gate' ? { ...task, deps: ['a-long'] } : task,
+    )
+    expect(() => assertTraceConformance(nonRootGate, conformingRun())).toThrow(
+      'untraced commandless root gates only',
+    )
+    const undeclared = expectedTasks.map((task) =>
+      task.id === 'b-left' ? { ...task, deps: ['missing-gate'] } : task,
+    )
+    expect(() => assertTraceConformance(undeclared, conformingRun())).toThrow(
+      'undeclared dependency',
+    )
   })
 
   it('preserves the append-order trace and stable observed order for tied starts', () => {
@@ -715,6 +813,16 @@ describe('honest measured total and excess reporting', () => {
     })
     expect(report).toContain('SYNTHETIC COUNTEREXAMPLE')
     expect(report).toContain('NOT a general performance guarantee')
+    expect(report).toContain(
+      'Analytical case: two commandless readiness gates; 7 DAG nodes, 5 executable tasks.',
+    )
+    expect(report).toContain('not guaranteed runner behavior')
+    expect(report).toContain('their readiness timing is not trace-verified')
+    expect(report).toContain('including adverse Turborepo runs')
+    expect(report).toContain('counterexample-preliminary-results.json')
+    expect(report).toContain('COUNTEREXAMPLE-PRELIMINARY.md')
+    expect(report).toContain('counterexample-preliminary-samples.jsonl')
+    expect(report).toContain('Do not replace, pool, or filter its samples')
     expect(report).toContain('TOTAL ratio (vx / Turborepo): 1.492×')
     expect(report).toContain('EXCESS ratio ((vx − ideal) / (Turborepo − ideal)): 149.000×')
     expect(report).toContain('Excess denominator: 200.000 ms')

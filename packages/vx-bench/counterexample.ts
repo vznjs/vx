@@ -105,17 +105,38 @@ export function counterexampleShape(longSeconds = 60, leafSeconds = 0.25): SimTa
   const parentMs = (longSeconds * 1000) / 2 - leafSeconds * 1000
   return [
     { id: 'a-long', dur: longSeconds * 1000, deps: [] },
-    { id: 'b-left', dur: parentMs, deps: [] },
-    { id: 'c-right', dur: parentMs, deps: [] },
+    { id: 'b-left', dur: parentMs, deps: ['f-left-gate'] },
+    { id: 'c-right', dur: parentMs, deps: ['g-right-gate'] },
     { id: 'd-left-child', dur: leafSeconds * 1000, deps: ['b-left'] },
     { id: 'e-right-child', dur: leafSeconds * 1000, deps: ['c-right'] },
+    { id: 'f-left-gate', dur: 0, deps: [] },
+    { id: 'g-right-gate', dur: 0, deps: [] },
   ]
 }
 
 export function analyticBaseline(longSeconds = 60, leafSeconds = 0.25) {
-  const [long, left, right, leftChild, rightChild] = counterexampleShape(longSeconds, leafSeconds)
+  const tasks = counterexampleShape(longSeconds, leafSeconds)
+  const [long, left, right, leftChild, rightChild, leftGate, rightGate] = tasks
   const half = long!.dur / 2
   return {
+    caseId: 'two-commandless-readiness-gates',
+    caseLabel: 'two commandless readiness gates',
+    dagNodes: tasks.length,
+    executableTasks: tasks.filter((task) => task.dur > 0).length,
+    commandlessGates: [leftGate!.id, rightGate!.id],
+    gatePurpose:
+      'Both runners receive the same zero-cost readiness gates. This controls when parents become ready: count priority may admit newly ready parents ahead of the independent long task, while a FIFO semaphore may retain the already waiting long task. These are hypotheses about ordering, not guaranteed runner behavior; keep every observed task-start order.',
+    predecessor: {
+      caseLabel: 'minimal five-task DAG without readiness gates',
+      sourceCommit: 'd2095b889ef5915a5ba73c964599d3ad7b1ad478',
+      artifacts: [
+        'counterexample-preliminary-results.json',
+        'COUNTEREXAMPLE-PRELIMINARY.md',
+        'counterexample-preliminary-samples.jsonl',
+      ],
+      comparisonPolicy:
+        'The earlier case, including adverse Turborepo runs, stays separate and unchanged. Do not replace, pool, or filter its samples when measuring this different shared DAG.',
+    },
     concurrency: 2,
     workMs: 2 * long!.dur,
     workBoundMs: long!.dur,
@@ -124,7 +145,8 @@ export function analyticBaseline(longSeconds = 60, leafSeconds = 0.25) {
     proof: 'max(work / 2, critical path) = long; the feasible witness attains that lower bound',
     assumptions: [
       'Two identical workers; non-preemptive tasks; exact declared waiting durations.',
-      'Only the two declared parent-child edges constrain scheduling.',
+      'Four declared edges: two zero-cost root gates precede their parents, and each parent precedes its child.',
+      'The two commandless gates have no process, script, outputs or trace timestamps. Only executable dependency timing is trace-verified.',
       'Zero process startup, hashing, cache, I/O and runner overhead in the analytic ideal.',
       'Measured CLI excess includes all such overhead, timer overshoot and scheduling delay.',
       'Waiting tasks occupy a worker but are not a CPU-heavy workload.',
@@ -133,6 +155,8 @@ export function analyticBaseline(longSeconds = 60, leafSeconds = 0.25) {
       'Turborepo ready order is not assumed to be FIFO; every observed order is retained.',
     ],
     witness: [
+      { id: leftGate!.id, worker: 0, startMs: 0, endMs: 0 },
+      { id: rightGate!.id, worker: 0, startMs: 0, endMs: 0 },
       { id: long!.id, worker: 0, startMs: 0, endMs: long!.dur },
       { id: left!.id, worker: 1, startMs: 0, endMs: left!.dur },
       { id: leftChild!.id, worker: 1, startMs: left!.dur, endMs: half },
@@ -227,10 +251,12 @@ native.close()
 export function counterexampleFixtureFiles(tasks: readonly SimTask[], installTurbo: boolean) {
   const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n'
   const scripts = Object.fromEntries(
-    tasks.map((task) => [
-      task.id,
-      `bun --no-env-file --no-install src/task.mjs ${task.id} ${task.dur}`,
-    ]),
+    tasks
+      .filter((task) => task.dur > 0)
+      .map((task) => [
+        task.id,
+        `bun --no-env-file --no-install src/task.mjs ${task.id} ${task.dur}`,
+      ]),
   )
   const inputs = ['src/**']
   return {
@@ -248,7 +274,9 @@ export function counterexampleFixtureFiles(tasks: readonly SimTask[], installTur
       tasks: Object.fromEntries(
         tasks.map((task) => [
           task.id,
-          { dependsOn: task.deps, inputs, outputs: [`dist/${task.id}.json`] },
+          task.dur > 0
+            ? { dependsOn: task.deps, inputs, outputs: [`dist/${task.id}.json`] }
+            : { dependsOn: task.deps },
         ]),
       ),
     }),
@@ -262,11 +290,13 @@ export function counterexampleFixtureFiles(tasks: readonly SimTask[], installTur
       tasks: Object.fromEntries(
         tasks.map((task) => [
           task.id,
-          {
-            dependsOn: task.deps,
-            exec: { command: scripts[task.id] },
-            cache: { inputs: { files: inputs }, outputs: { files: [`dist/${task.id}.json`] } },
-          },
+          task.dur > 0
+            ? {
+                dependsOn: task.deps,
+                exec: { command: scripts[task.id] },
+                cache: { inputs: { files: inputs }, outputs: { files: [`dist/${task.id}.json`] } },
+              }
+            : { dependsOn: task.deps },
         ]),
       ),
     })}`,
@@ -316,10 +346,21 @@ interface TraceRun {
 export function assertTraceConformance(tasks: readonly SimTask[], run: TraceRun) {
   if (run.exitCode !== 0) throw new Error(`child failed: exit ${run.exitCode}`)
   if (run.cacheHits !== 0) throw new Error(`expected zero cache hits, observed ${run.cacheHits}`)
-  if (run.events.length !== tasks.length * 2)
+  const executable = tasks.filter((task) => task.dur > 0)
+  const commandless = tasks.filter((task) => task.dur === 0)
+  const nodes = new Map(tasks.map((task) => [task.id, task]))
+  if (
+    nodes.size !== tasks.length ||
+    tasks.some((task) => !Number.isFinite(task.dur) || task.dur < 0)
+  )
+    throw new Error('invalid DAG nodes or durations')
+  if (executable.length !== 5) throw new Error('expected exactly five executable DAG nodes')
+  if (commandless.some((task) => task.deps.length !== 0))
+    throw new Error('trace conformance supports untraced commandless root gates only')
+  if (run.events.length !== executable.length * 2)
     throw new Error('expected exactly five starts and five ends')
-  const ids = new Set(tasks.map((task) => task.id))
-  if (Object.keys(run.outputs).length !== tasks.length)
+  const ids = new Set(executable.map((task) => task.id))
+  if (Object.keys(run.outputs).length !== executable.length)
     throw new Error('expected exactly five output files')
   const starts = new Map<string, TraceEvent>()
   const ends = new Map<string, TraceEvent>()
@@ -340,7 +381,7 @@ export function assertTraceConformance(tasks: readonly SimTask[], run: TraceRun)
     if (event.phase === 'end' && !starts.has(event.id))
       throw new Error(`end precedes start: ${event.id}`)
   }
-  for (const task of tasks) {
+  for (const task of executable) {
     const start = starts.get(task.id)
     const end = ends.get(task.id)
     if (!start || !end) throw new Error(`missing execution: ${task.id}`)
@@ -353,6 +394,10 @@ export function assertTraceConformance(tasks: readonly SimTask[], run: TraceRun)
     const expected = JSON.stringify({ id: task.id, durationMs: task.dur }) + '\n'
     if (run.outputs[`${task.id}.json`] !== expected) throw new Error(`wrong output: ${task.id}`)
     for (const dep of task.deps) {
+      const parent = nodes.get(dep)
+      if (!parent) throw new Error(`undeclared dependency: ${dep} -> ${task.id}`)
+      // A commandless root is a structural prerequisite, not an observed process span.
+      if (parent.dur === 0) continue
       if (!ends.has(dep) || BigInt(start.monotonicNs) < BigInt(ends.get(dep)!.monotonicNs)) {
         throw new Error(`dependency timing violated: ${dep} -> ${task.id}`)
       }
@@ -371,7 +416,11 @@ export function assertTraceConformance(tasks: readonly SimTask[], run: TraceRun)
   }
   if (active !== 0) throw new Error('unfinished trace')
   return {
+    dagNodes: tasks.length,
     executions: starts.size,
+    untracedCommandlessNodes: commandless.map((task) => task.id),
+    untracedMeaning:
+      'Commandless root gates have no task processes, outputs or trace timestamps; their readiness timing is not trace-verified.',
     cacheHits: 0,
     peakConcurrency,
     observedDispatchOrder: sorted
@@ -387,7 +436,8 @@ export function cliCacheHits(runner: Runner, stdout: string, stderr: string): nu
     const cached = /Cached:\s+(\d+) cached,\s+5 total/.exec(log)
     return cached ? Number(cached[1]) : null
   }
-  // The footer is the runner's aggregate; an absent/changed summary fails closed.
+  // vx's terminal tally excludes commandless groups: seven DAG nodes still mean five total/miss.
+  // An absent/changed executable-task summary fails closed.
   if (!/\b5 success\b/.test(log) || !/\b5 total\b/.test(log) || !/\b5 miss\b/.test(log)) return null
   const hits = [...log.matchAll(/\b(\d+) (up-to-date|local|remote)\b/g)]
   return hits.reduce((sum, match) => sum + Number(match[1]), 0)
@@ -621,10 +671,16 @@ export function renderCounterexampleReport(
     '',
     `Status: ${result.status}. No favorable-sample filtering; failed runs are fatal.`,
     '',
+    `Analytical case: ${result.model.caseLabel}; ${result.model.dagNodes} DAG nodes, ${result.model.executableTasks} executable tasks.`,
+    result.model.gatePurpose,
+    `Untraced commandless root gates: ${result.model.commandlessGates.join(', ')}. They have no scripts, output files or task-process traces; their readiness timing is not trace-verified.`,
+    `Earlier comparator: ${result.model.predecessor.caseLabel}, source commit ${result.model.predecessor.sourceCommit}; retained separately in packages/vx-bench/${result.model.predecessor.artifacts.join(', packages/vx-bench/')}.`,
+    result.model.predecessor.comparisonPolicy,
+    '',
     `Analytic ideal: ${fmt(result.model.idealMs)} ms; work ${fmt(result.model.workMs)} ms; critical path ${fmt(result.model.criticalPathMs)} ms; concurrency 2.`,
     result.model.proof,
     '',
-    'Witness: worker 0 runs a-long; worker 1 runs b-left → d-left-child → c-right → e-right-child.',
+    'Witness: both root gates complete at zero duration on worker 0, then worker 0 runs a-long; worker 1 runs b-left → d-left-child → c-right → e-right-child.',
     '',
     ...result.model.assumptions.map((assumption) => `- ${assumption}`),
     '',
