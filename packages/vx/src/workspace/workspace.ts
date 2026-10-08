@@ -296,12 +296,11 @@ async function readRootManifests(
     return { globs: ['.'], catalogs }
   }
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
-    const globs = assertGlobList(
-      (ws as { packages?: unknown }).packages ?? [],
-      pkgPath,
-      'workspaces.packages',
-    )
-    return { globs, catalogs }
+    const packages = (ws as { packages?: unknown }).packages
+    // Yarn 1 and 4 run the root alone under `packages: null`; read as an
+    // empty list, the root was no project and every verb ran nothing (D-150).
+    if (packages === null) return { globs: ['.'], catalogs }
+    return { globs: assertGlobList(packages, pkgPath, 'workspaces.packages'), catalogs }
   }
   return { globs: assertGlobList(ws, pkgPath, 'workspaces'), catalogs }
 }
