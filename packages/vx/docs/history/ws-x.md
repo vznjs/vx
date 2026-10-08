@@ -539,3 +539,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   became a miss. `adopt` now touches the artifact before linking. Row:
   `cache.test.ts` › "a prune during an adopt leaves the artifact it is
   indexing".
+- **X-109.** A reading verb (`vx info`, `why`, `last`) over a shared
+  `store.db` with no tables yet switched its journal and created its
+  tables statement by statement under no write lock, racing a writing
+  opener making that store. `Cache.inspect` now reads such a store
+  as an empty one in memory and writes nothing to it. Row:
+  `shared-store.test.ts` › "a reading verb's handle on an empty store
+  writes nothing to it".

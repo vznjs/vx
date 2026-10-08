@@ -991,13 +991,25 @@ export class Cache implements CacheLayer {
    * Attach the shared store as `store`, with the pragmas the index takes:
    * WAL for both, so a workspace's run and another's share the store as
    * two runs on one `--cache-dir` share an index. A reading verb over a
-   * store with no file yet reads an empty one in memory.
+   * store with no file or no tables yet reads an empty one in memory.
    */
   private attachStore(storeDir: string, inspecting: boolean): void {
     const storeFile = path.join(storeDir, 'store.db')
-    const absent = inspecting && !existsSync(storeFile)
+    let absent = inspecting && !existsSync(storeFile)
     try {
       this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+      // One with no tables yet is read empty in memory too: the journal
+      // switch and the table creation below are writes, under no write
+      // lock, racing an opener making that store.
+      if (
+        inspecting &&
+        !absent &&
+        this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
+      ) {
+        this.db.exec('DETACH DATABASE store')
+        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+        absent = true
+      }
       this.db.exec('PRAGMA store.journal_mode = WAL')
       if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA store.journal_size_limit = 67108864')
