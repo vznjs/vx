@@ -37,10 +37,23 @@ const storage = Bun.serve({
   },
 })
 
+// A host the API redirects its preflight to: it admits the token to itself.
+const elsewhereSeen: Seen[] = []
+const elsewhere = Bun.serve({
+  port: 0,
+  fetch(req) {
+    elsewhereSeen.push({ method: req.method, url: new URL(req.url), headers: req.headers })
+    return req.method === 'OPTIONS'
+      ? new Response(null, { headers: { 'Access-Control-Allow-Headers': 'Authorization' } })
+      : new Response('', { status: 404 })
+  },
+})
+
 // The cache API: answers OPTIONS with a Location (relative for its own
 // paths, absolute for the bucket) and serves its own `/own/` path.
 const apiSeen: Seen[] = []
 let toBucket = false
+let redirect = false
 const own = new Map<string, Uint8Array>()
 const api = Bun.serve({
   port: 0,
@@ -52,6 +65,7 @@ const api = Bun.serve({
     if (req.method === 'OPTIONS') {
       const hash = url.pathname.split('/').pop()!
       if (url.searchParams.get('slug') !== 'team') return new Response('no team', { status: 400 })
+      if (redirect) return Response.redirect(`${elsewhere.url.origin}${url.pathname}`, 307)
       return toBucket
         ? new Response(null, {
             headers: { Location: `${storage.url.origin}/b/${hash}?sig=ok` },
@@ -76,6 +90,7 @@ const api = Bun.serve({
 afterAll(() => {
   void api.stop(true)
   void storage.stop(true)
+  void elsewhere.stop(true)
 })
 
 function cache(preflight: boolean): TurboRemoteCache {
@@ -141,6 +156,20 @@ describe('TurboRemoteCache with preflight', () => {
     expect(storeSeen.map((s) => `${s.method} ${s.url.pathname}${s.url.search}`)).toEqual([
       `PUT /b/${HASH}?sig=ok`,
       `GET /b/${HASH}?sig=ok`,
+    ])
+  })
+
+  it('a redirected preflight is not followed: the token never reaches the redirect target', async () => {
+    toBucket = false
+    redirect = true
+    elsewhereSeen.length = 0
+    try {
+      expect(await cache(true).has(HASH)).toBe(false)
+    } finally {
+      redirect = false
+    }
+    expect(elsewhereSeen.map((s) => [s.method, s.headers.get('authorization')])).toEqual([
+      ['HEAD', null],
     ])
   })
 
