@@ -1057,3 +1057,18 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   the failed cycle's own re-arm line; it now counts re-arms. Rows:
   `config-cache.test.ts` › "the watch list keeps an import whose file is
   gone", `watch-recreated-dirs.test.ts` › "an edit to a restored preset".
+
+- **X-135.** `rules.upfrontKeys` never compared a task's `inputs.files`
+  with another task's `outputs.workspaceFiles`, which can land in its
+  project: `app#build` reading `**` beside a `gen` writing
+  `app/gen/**` loaded with no edge between them, and the up-front probe
+  of `app#build` (kept out of the restore tier, still reused) keyed what
+  the project held before `gen` ran. The rule now rebases each project
+  reader to the root and refuses the pair, naming `!gen/**` in the
+  project's terms. vx-migrate's `excludeWorkspaceOutputs` takes such an
+  output back from a package's inputs (Turbo's `**/*` beside a codegen
+  writing `../lib/generated/**`), or runs a literal reader uncached.
+  Rows: `input-overlap.test.ts` › "refuses a files input over another
+  task's workspaceFiles output in its project"; vx-migrate
+  `shared-outputs.test.ts` › "takes another task's workspace output back
+  from a project's own inputs".
