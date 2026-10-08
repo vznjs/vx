@@ -53,8 +53,6 @@ for (const timeout of ['', ', timeout: 60000']) {
   it(`a synchronous throw from execute fails the task naming the plugin${label}`, async () => {
     const { lines, statuses } = await runWith(`execute(req) { throw new Error('boom') }`, timeout)
     const said = "plugin 'org/sync' (executor 'sync') failed in execute: boom"
-    // Once, in the task's own stream: execute-task leaves the line to the
-    // scheduler's onError since #2872, and a second copy was the defect.
     expect(lines.filter((l) => l.includes('boom'))).toEqual([`[vx] app#t: ${said}\n`])
     expect(statuses).toEqual(['failed'])
   })

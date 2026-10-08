@@ -1686,15 +1686,9 @@ export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
   if (liveServers.delete(tag)) {
-    // A server's wrap counts as a live sandbox in SRT until this, and SRT
-    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
-    // grant) only at a count of 0: one stopped server kept every later
-    // task's stubs in the workspace until the reset.
-    try {
-      srtLoaded!.SandboxManager.cleanupAfterCommand()
-    } catch {
-      // best-effort, as a one-shot task's
-    }
+    // A server's wrap stays counted until it stops: one stopped server
+    // kept every later task's stubs in the workspace until the reset.
+    afterCommand(srtLoaded!.SandboxManager)
     if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
@@ -2023,6 +2017,7 @@ async function runSandboxedOnce(
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
             scratch,
+            [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
