@@ -836,7 +836,8 @@ With the rule off, an edge fixes the order, and the dependant is
   file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
-  before a restore (its rows only);
+  before a restore (its rows only, pruning emptied directories only
+  inside its declared trees, so a sibling's fresh directory stays);
 - its "already current" check requires its rows present and current and
   ignores everything else under the glob;
 - it is **never restore-tier**: it restores or runs after its upstream,
@@ -1157,7 +1158,9 @@ two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. A home this user cannot write keeps the store
+when its task next hits. The check, drop, re-create and stamp are one
+write transaction, so another version's open waits rather than landing
+between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
@@ -1338,9 +1341,14 @@ the task's declared outputs), and hits; one that fails the check is a
 miss, and the save that follows replaces it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
-the policy sums index rows, so orphans alone never make it due), once
-they are older than an hour (a save renames the artifact into place
-before its row commits, so a fresh row-less file is a save in flight).
+the policy sums index rows, so orphans alone never make it due). A
+row-less artifact may be in use: two vx versions share one store, and
+each open drops the other's rows. So the policy judges it as it judges a
+row, its file time standing for `accessed_at`: past `olderThan` it goes,
+and under `maxSize` it counts, oldest use first with the rows. A hit
+renews a file time over an hour old, so the last use is read as the file
+time plus an hour. A temp a crashed save left goes once it is an hour
+old, and nothing younger than an hour is taken.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).

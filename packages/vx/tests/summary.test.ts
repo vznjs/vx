@@ -112,6 +112,28 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.includes('from cache'))).toBeUndefined()
   })
 
+  it('a run of command-less groups says why it ran 0 tasks', () => {
+    const group = (id: string): TaskOutcome => {
+      const [projectName, taskName] = id.split('#')
+      return {
+        node: { id, projectName, taskName, config: {} } as TaskNode,
+        status: 'success',
+        exitCode: 0,
+        durationMs: 0,
+      }
+    }
+    expect(formatRunSummary([group('a#build'), group('b#build')], 0)[2]).toBe(
+      '  tasks     0 tasks · build has no command in these projects',
+    )
+    expect(formatRunSummary([group('a#build'), group('a#check')], 0)[2]).toBe(
+      '  tasks     0 tasks · build, check have no command in these projects',
+    )
+    // Control: a run with one command task is not a run of groups.
+    expect(
+      formatRunSummary([group('a#build'), outcome('a#x', 'aborted', 130)], 0)[2],
+    ).not.toContain('no command')
+  })
+
   it('injects ANSI escapes around counts + stamp when colors are enabled', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'failed', 1)], 42, {
       enabled: true,

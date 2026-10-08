@@ -305,8 +305,9 @@ describe('vx migrate (turbo)', () => {
       expect(seed.exec?.interactive).toBe(true)
       expect(seed.cache).toBeUndefined()
 
-      // No package declares a `deploy` script → task not emitted.
-      expect(tasks.deploy).toBeUndefined()
+      // No package declares a `deploy` script → Turbo's no-op node, a group
+      // with no edge, so `vx run deploy` exits 0 as `turbo run deploy` does.
+      expect(tasks.deploy).toEqual({ dependsOn: [] })
     },
     TIMEOUT,
   )
@@ -400,8 +401,9 @@ describe('vx migrate (turbo)', () => {
     // to inputs.workspaceFiles instead of a TODO); test and seed clean.
     // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
     // persistent and nothing depends on it, so its readiness note is no
-    // TODO: it counts as clean (item 602).
-    expect(result.out).toContain('5 tasks migrated clean')
+    // TODO: it counts as clean (item 602). Each package's `deploy` (no
+    // script anywhere) is an empty group, clean.
+    expect(result.out).toContain('7 tasks migrated clean')
     expect(result.out).toContain('4 TODO')
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual(['app#build', 'lib#build'])
@@ -651,6 +653,11 @@ describe('vx migrate (lerna)', () => {
   for (const [label, files, mapped] of [
     ['Lerna installed', { 'lerna.json': '{}', ...lerna9 }, true],
     ['Lerna 9 declared', { 'lerna.json': '{}', 'package.json': runs({ lerna: '^9.0.7' }) }, true],
+    [
+      'Lerna 9 declared, both files saved with a BOM',
+      { 'lerna.json': '\uFEFF{}', 'package.json': '\uFEFF' + runs({ lerna: '^9.0.7' }) },
+      true,
+    ],
     [
       'Lerna 5 that opts in',
       { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },

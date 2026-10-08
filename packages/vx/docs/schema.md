@@ -80,7 +80,9 @@ and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
-Each is a non-empty string; anything else is refused at load. A
+Each is a non-empty string a tag filter can name, or it is refused at
+load: no surrounding whitespace, no `*` (a pattern), and no ending in
+`...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
 changes no task's behaviour, so editing one re-runs nothing.
@@ -108,7 +110,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -191,7 +196,9 @@ no limit.
 build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time. A task
+- For a **normal task**, `timeout` bounds the total run time, counted
+  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -472,7 +479,8 @@ highest priority:
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
    against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
    `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME`.
    Nothing else from the parent environment reaches a task —
    that is the whole list. When neither `FORCE_COLOR` nor a non-empty
    `NO_COLOR` reaches the task by any layer, vx sets `FORCE_COLOR=1`
@@ -725,7 +733,9 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
+what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
+plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
@@ -818,7 +828,8 @@ backslash stays an escape.
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
-`outputs.workspaceFiles` (a task never invalidates itself).
+outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
+in its own project (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
 watches the workspace root recursively (any file can be an input once
@@ -1343,6 +1354,11 @@ reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
 
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
+
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
@@ -1402,7 +1418,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1522,7 +1539,7 @@ interface WorkspaceRules {
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
-  orphan sweep (artifacts no index row counts, older than an hour —
+  orphan sweep (artifacts no index row counts, judged by file time —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
@@ -1908,6 +1925,7 @@ lists the messages a user meets most:
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
+| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
@@ -1940,17 +1958,18 @@ is no object (Turbo's `cache: false`) and a `persistent` that is none
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
-| Symptom                                                                              | Cause                                                                                                                                                                                                                                                      |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `failed to parse <file>: <why>`                                                      | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
-| `<file>: packages must be an array of glob strings`                                  | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
-| `<file>: must be a JSON object`                                                      | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
-| `<file>: "name" must be a string with no surrounding whitespace`                     | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
-| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`              | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
-| `<file>: must be a mapping (packages: and pnpm's settings)`                          | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
-| `<file>: workspaces must be an array of glob strings`                                | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
-| `<file>: workspaces.packages must be an array of glob strings`                       | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
-| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read` | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
+| Symptom                                                                                                      | Cause                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                                                              | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
+| `<file>: packages must be an array of glob strings`                                                          | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
+| `<file>: must be a JSON object`                                                                              | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
+| `<file>: "name" must be a string with no surrounding whitespace`                                             | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`                                      | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
+| `<file>: must be a mapping (packages: and pnpm's settings)`                                                  | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:` (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                                     |
+| `<file>: workspaces must be an array of glob strings`                                                        | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
+| `workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root` | A member glob (`../ext/*`, an absolute path) reached a package outside the root. npm and pnpm take one; `--affected` asks git from the root and missed edits there. Move the root up to a directory that holds every member.                               |
+| `<file>: workspaces.packages must be an array of glob strings`                                               | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
+| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`                         | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
 Workspace-config errors:
 

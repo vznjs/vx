@@ -23,6 +23,7 @@ afterAll(async () => {
 
 const sandbox = (allowRead: string[], allowWrite: string[] = []) => ({
   baseAllowRead: [path.join(dir, 'node_modules')],
+  baseDenyRead: [dir],
   config: { allowRead, allowWrite },
 })
 
@@ -45,6 +46,18 @@ describe('a script the sandbox hides', () => {
       sandboxReads(sandbox([path.join(dir, 'src')]), path.join(dir, 'src', 'link.sh')),
       sandboxReads(sandbox([`${dir}-other`]), f),
     ]).toEqual([true, true, true, false, false, false])
+  })
+
+  // Only the workspace root and the credential stores are denied: a tool
+  // outside them (`/opt/tool/bin/x`) runs, and its missing `#!`
+  // interpreter is the verdict, not a grant it never needed.
+  it('reads a file outside every denial with no grant', () => {
+    const f = path.join(`${dir}-other`, 'tool.sh')
+    expect([
+      sandboxReads(sandbox([]), f),
+      sandboxReads({ ...sandbox([]), baseDenyRead: [`${dir}-other`] }, f),
+      sandboxReads({ ...sandbox([f]), baseDenyRead: [`${dir}-other`] }, f),
+    ]).toEqual([true, false, true])
   })
 
   // CONTROL: unsandboxed, the file's own state is still the verdict.
