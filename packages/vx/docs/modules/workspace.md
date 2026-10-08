@@ -158,7 +158,11 @@ manifest-less `packages/tools`, and the standalone package below it ran
 in a workspace that does not list it. Nor can a directory discovery skips
 be claimed: a `node_modules` path, or a dot-dir a wildcard reached
 (`packages/*` over `packages/.tpl`), which `vx run` there answered "not
-inside a project". A `pnpm-workspace.yaml` is a hard
+inside a project". The walk matches each glob against the member's
+manifest path, as discovery does, so `packages/**` claims `packages`
+itself when it holds a `package.json` (npm lists it too); matched
+against the directory, it needed a segment below and a run from
+`packages` took it as its own root. A `pnpm-workspace.yaml` is a hard
 root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
@@ -194,6 +198,9 @@ Reads the package-glob list (through `reads`, so the manifest
 | npm / yarn / bun (new) | `package.json` `workspaces: string[]`                            |
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
+
+A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
+one (the list commented out), defers to `package.json`, as pnpm does.
 
 From the same parsed manifests it takes the catalogs a `catalog:` spec
 resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,

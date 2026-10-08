@@ -1685,15 +1685,9 @@ export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
   if (liveServers.delete(tag)) {
-    // A server's wrap counts as a live sandbox in SRT until this, and SRT
-    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
-    // grant) only at a count of 0: one stopped server kept every later
-    // task's stubs in the workspace until the reset.
-    try {
-      srtLoaded!.SandboxManager.cleanupAfterCommand()
-    } catch {
-      // best-effort, as a one-shot task's
-    }
+    // A server's wrap stays counted until it stops: one stopped server
+    // kept every later task's stubs in the workspace until the reset.
+    afterCommand(srtLoaded!.SandboxManager)
     if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
@@ -2022,6 +2016,7 @@ async function runSandboxedOnce(
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
             scratch,
+            [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2394,22 +2389,6 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 }
 
 /**
- * Grant paths, with globs handled per platform.
- *
- * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
- * into `(subpath …)`, so a pattern is passed through and seatbelt matches
- * it — including files created DURING the run.
- *
- * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
- * The glob is expanded against the filesystem here, which means it covers
- * what exists when the task STARTS. A pattern matching a file the task
- * creates later grants nothing there — declare its directory instead.
- *
- * That last sentence is the whole contract, and until item 496 a task
- * that broke it learned so from its OWN tool. Measured, one task per
- * spelling, each writing files it declares:
- *
- *   write: ['g/**
  * The walls a glob grant can reach: each one under (or at) a glob's
  * literal head. On Linux `expandGrants` drops such a hit before the bind
  * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
@@ -2454,7 +2433,23 @@ export function darwinWallRules(
   return rules
 }
 
-/**']         ok — collapsed to the directory
+/**
+ * Grant paths, with globs handled per platform.
+ *
+ * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
+ * into `(subpath …)`, so a pattern is passed through and seatbelt matches
+ * it — including files created DURING the run.
+ *
+ * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
+ * The glob is expanded against the filesystem here, which means it covers
+ * what exists when the task STARTS. A pattern matching a file the task
+ * creates later grants nothing there — declare its directory instead.
+ *
+ * That last sentence is the whole contract, and until item 496 a task
+ * that broke it learned so from its OWN tool. Measured, one task per
+ * spelling, each writing files it declares:
+ *
+ *   write: ['g/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory
  *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
  *   write: ['g/*.txt']      FAILED, same

@@ -48,6 +48,7 @@ export interface TurboCacheOptions {
   timeoutMs?: number
   uploadTimeoutMs?: number
   retries?: number
+  preflight?: boolean
 }
 == type TurboPluginOptions (src/turbo/index.ts)
 export interface TurboPluginOptions {

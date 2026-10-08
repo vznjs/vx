@@ -2231,16 +2231,18 @@ describe('parsePruneArgs', () => {
   // sweep deleted each with the suite green).
   it('refuses a value it cannot parse instead of pruning by it', () => {
     expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({
-      error: 'invalid duration: abc (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({
-      error: 'invalid duration: 1.5d (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got 1.5d) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({
-      error: 'invalid size: abc (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({
-      error: 'invalid size: 1.5G (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got 1.5G) (see `vx cache --help`)',
     })
   })
 

@@ -63,6 +63,8 @@ export interface JudgeContext {
   fenced?(ownDir: string, abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
+  /** The files git tracked at the arm; absent when git could not answer. */
+  trackedAtArm?: ReadonlySet<string>
 }
 
 export class ChangeJudge {
@@ -146,13 +148,17 @@ export class ChangeJudge {
     return false
   }
 
-  private writtenDuringLastCycle(abs: string, openWhileHeld = false): boolean {
+  /** `spell` (git's spelling, see `gitSpeller`) given: a held server's write counts outside a cycle too. */
+  private writtenDuringLastCycle(abs: string, spell?: (p: string) => string): boolean {
     // A server the last cycle left running is still that cycle's: its
     // writes land after the cycle ended, and with a closed window a dev
     // server that rewrites a log in its project restarted itself forever
     // with no word of it, 12 restarts in 8 s (item 948). The initial run's
-    // server is one too, from the arm on.
-    const open = openWhileHeld && this.ctx.held()
+    // server is one too, from the arm on. Not a tracked file: that is the
+    // user's edit, and three saves of one source file were told to
+    // .gitignore it as a server's write (WD-7).
+    const open =
+      spell !== undefined && this.ctx.held() && this.ctx.trackedAtArm?.has(spell(abs)) !== true
     if (this.lastCycle === undefined && !open) return false
     try {
       const m = fs.statSync(abs).mtimeMs
@@ -202,7 +208,7 @@ export class ChangeJudge {
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
     const byServer = firstAbs !== undefined && this.ctx.held()
-    if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, true)) {
+    if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, spell)) {
       this.streak.n = 0
       return first
     }

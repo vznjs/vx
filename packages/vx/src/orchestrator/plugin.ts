@@ -606,7 +606,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   const { plugins, bus, workspaceRoot, cacheDir } = args
   const warn = args.warn ?? ((m) => console.error(m))
   const disposers: Array<() => void> = []
-  const disabled = new Set<string>()
+  // By object, not name: one package can export two plugins.
+  const disabled = new Set<Plugin>()
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
@@ -620,6 +621,13 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       throw new UserError(`plugin '${plugin.name}' setup is not a function`)
     }
 
+    const fail = (where: string, err: unknown): void => {
+      if (disabled.has(plugin)) return
+      disabled.add(plugin)
+      warn(
+        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
     const ctx: PluginContext = {
       workspaceRoot,
       cacheDir,
@@ -630,7 +638,18 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       bus: {
         emit: (event) => bus.emit(event),
         subscribe(subscriber) {
-          const dispose = bus.subscribe(subscriber)
+          // Isolated like an `on` handler: the bus itself swallows a throw.
+          const dispose = bus.subscribe((event) => {
+            if (disabled.has(plugin)) return
+            let ret: unknown
+            try {
+              ret = subscriber(event)
+            } catch (err) {
+              fail('a bus subscriber', err)
+              return
+            }
+            if (ret instanceof Promise) ret.catch((err: unknown) => fail('a bus subscriber', err))
+          })
           disposers.push(dispose)
           return dispose
         },
@@ -643,15 +662,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
             `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
           )
         }
-        const fail = (err: unknown): void => {
-          if (disabled.has(plugin.name)) return
-          disabled.add(plugin.name)
-          warn(
-            `[vx] plugin '${plugin.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
-          )
-        }
+        const onFail = (err: unknown): void => fail(hook, err)
         const dispose = bus.subscribe((event) => {
-          if (disabled.has(plugin.name)) return
+          if (disabled.has(plugin)) return
           // Not awaited: the bus is synchronous and plugin work runs off the
           // critical path. A handler's rejection is caught like its throw.
           let ret: unknown
@@ -686,10 +699,10 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
                 break
             }
           } catch (err) {
-            fail(err)
+            onFail(err)
             return
           }
-          if (ret instanceof Promise) ret.catch(fail)
+          if (ret instanceof Promise) ret.catch(onFail)
         })
         disposers.push(dispose)
       },
@@ -698,6 +711,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     try {
       await plugin.setup(ctx)
     } catch (err) {
+      // Earlier plugins' subscriptions too: the caller never gets the
+      // disposer, and a bus that outlives the run would keep them.
+      for (const d of disposers) d()
       throw new PluginSetupError(
         plugin,
         `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,
