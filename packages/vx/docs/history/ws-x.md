@@ -1026,6 +1026,27 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   without bumping `version` is the documented contract's breach, not this
   path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
   trusted".
+- **X-131.** Under `--continue=always` a task that ran behind its failed
+  dependency failed on the key it had passed on: its row said `flaky -
+passed 1× before` and `vx info` listed it for thirty days, though the
+  failure was the dependency's. Such a failure is now no flaky candidate
+  and is recorded keyless (`''`, which the key readers skip). Row:
+  `flaky.test.ts` › "is not a flake on the key it had passed on".
+- **X-132.** `vx info` listed as flaky a task with no cache block that
+  passed and then failed, though no run's row calls one flaky: its key is
+  its config alone, so "same inputs" meant nothing. The shared per-key
+  projection now skips rows recorded `cached = 0`, so the doctor, the
+  per-run detector and the history's failure mode agree. Row:
+  `flaky.test.ts` › "is not on the flaky list after a pass and a
+  failure".
+
+- **X-134.** A persistent task that printed its `readyWhen` marker and
+  exited at once read as "exited before becoming ready" under load: the
+  exit landed before the readers took the line (persistent.test.ts'
+  forwardArgs row, CI and 12 of 15 local runs under `yes` load). The exit
+  now waits for the readers, bounded by the task drain's 250 ms, before
+  judging. Row: `runner.test.ts` › "a marker read after the shell exited,
+  inside the drain bound, is ready" (10 of 10 without the fix).
 
 - **X-133.** `vx watch` lost a config import whose file was deleted:
   since #3207 a failed cycle re-reads the watch set, and the import list

@@ -69,7 +69,10 @@ const CONFIG = (dep: boolean) => `export default {
       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
     fail: { exec: { command: 'exit 3' } },
-    flaky: { exec: { command: 'test -f ../../flag' } },
+    flaky: {
+      exec: { command: 'test -f ../../flag' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+    },
   },
 }`
 
@@ -155,7 +158,7 @@ beforeAll(async () => {
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky']).code).toBe(0)
   await unlink(path.join(root, 'flag'))
-  expect(vx(['run', 'lib#flaky']).code).toBe(1)
+  expect(vx(['run', 'lib#flaky', '--force']).code).toBe(1)
 
   for (const a of [[], ['kitchen'], ['bare'], ['kitchen#all'], ['build']]) json('show', a)
   json('info', [])
