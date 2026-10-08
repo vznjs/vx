@@ -3,7 +3,7 @@
 // that nothing here can run. Inside a workspace, and for `--help` / `-h`
 // anywhere, it is the reference as before.
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { realpathSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -30,6 +30,7 @@ beforeEach(async () => {
   process.chdir(dir)
 })
 afterEach(async () => {
+  mock.restore()
   process.chdir(cwd)
   await rm(dir, { recursive: true, force: true })
 })
