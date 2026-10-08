@@ -851,6 +851,19 @@ describe('malformed workspace manifests', () => {
     )
   })
 
+  it('a null `workspaces.packages` is the root alone, as yarn reads it (D-150)', async () => {
+    // Yarn 1.22 and 4.5 both ran the root alone; vx read an empty member
+    // list, so the root was no project and every verb ran nothing.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'app', workspaces: { packages: null } }),
+    )
+    await mkdir(path.join(dir, 'packages/a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
+    const projects = await listProjects(await loadWorkspace(dir))
+    expect(projects.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
+  })
+
   it('rejects a pnpm `packages:` string instead of a list', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages: "packages/*"\n')
     await expect(loadWorkspace(dir)).rejects.toThrow(/`packages` must be an array of glob strings/)
