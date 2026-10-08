@@ -2484,7 +2484,9 @@ id), `env` (a declared variable, by digest), `runtime` and
 fingerprint: the lockfile and the other root manifests), `config` (the
 evaluated task config), `upstream` (a dependency's input key — a
 lockfile change moves it too, so that row rides with the
-fingerprint's) and `plugin` (a `key` plugin's material, by name).
+fingerprint's), `plugin` (a `key` plugin's material, by name) and
+`format` (the key format vx itself folds: it moves only with an
+upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
