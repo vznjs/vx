@@ -86,7 +86,7 @@ export function watchRefusal(parsed: RunArgs): string | null {
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
   if (parsed.error) {
-    process.stderr.write(`vx watch: ${parsed.error}\n`)
+    process.stderr.write(`vx watch: ${parsed.error}${seeHelp('watch')}\n`)
     return 1
   }
 

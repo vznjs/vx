@@ -1157,7 +1157,9 @@ two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. A home this user cannot write keeps the store
+when its task next hits. The check, drop, re-create and stamp are one
+write transaction, so another version's open waits rather than landing
+between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
@@ -1370,13 +1372,14 @@ when its task next asks for its key (below).
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'config_evals_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
 -- The config-evaluation cache (§ Config evaluation cache): the validated,
 -- JSON-serialised result of a provably pure config, keyed by everything
--- the evaluation could have observed. Machine-local.
+-- the evaluation could have observed. Machine-local. Rows not written in
+-- 30 days are swept at most once a day (`config_evals_swept_at`).
 CREATE TABLE config_evals (
   key        TEXT PRIMARY KEY,
   json       TEXT NOT NULL,

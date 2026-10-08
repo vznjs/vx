@@ -404,6 +404,30 @@ describe('repoIdOf', () => {
     expect(await build(a)).toEqual({ status: 'success', restored: undefined })
   })
 
+  // The dry prune on an earlier index counted only the workspace's own
+  // directory, so it named 0 entries where the real prune, which resets the
+  // index and keeps the store, evicted the store's.
+  it('a dry prune on an earlier index names what the real prune takes from the store', async () => {
+    const a = await workspace()
+    await build(a)
+    const db = new Database(path.join(a.root, '.vx', 'cache', 'cache.db'))
+    db.query("UPDATE schema_meta SET value = 'v0' WHERE key = 'version'").run()
+    db.close()
+    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const vx = (...args: string[]): string[] => {
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'cache', 'prune', '--max-size', '1B', ...args],
+        cwd: a.root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      return [String(p.exitCode), p.stdout.toString(), p.stderr.toString()]
+    }
+    const dry = vx('--dry-run', '--format', 'json')
+    const wet = vx('--format', 'json')
+    expect(dry).toEqual(['0', wet[1]!.replace('"dryRun":false', '"dryRun":true'), ''])
+    expect(JSON.parse(wet[1]!)).toMatchObject({ evicted: 1 })
+  })
+
   it('reads the four url shapes Nx reads', () => {
     expect(parseRemoteUrl('git@GitHub.com:Acme/App.git')).toBe('GitHub.com/Acme/App')
     expect(parseRemoteUrl('https://u:p@github.com/acme/app.git')).toBe('github.com/acme/app')

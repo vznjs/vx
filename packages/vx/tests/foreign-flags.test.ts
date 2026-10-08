@@ -254,7 +254,7 @@ describe('Turbo and Nx flags on vx run', () => {
     }
     // CONTROL: a camelCase name with no Nx flag behind it stays unknown.
     expect(parseRunArgs(['build', '--dryRun']).error).toBe(
-      'unknown flag: --dryRun (did you mean --dry?) (see `vx run --help`)',
+      'unknown flag: --dryRun (did you mean --dry?)',
     )
   })
 
