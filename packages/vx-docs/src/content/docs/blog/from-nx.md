@@ -69,7 +69,8 @@ were, and the server executors — `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
 `@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio`, `@nx/web:file-server` and
 `@angular-devkit/build-angular:dev-server`
-— come through as persistent tasks, whatever the target is called.
+— come through as persistent tasks, whatever the target is called, as
+does any target Nx itself marks `continuous`.
 Nothing is silently wrong.
 
 ## Read the graph Nx actually uses
@@ -79,13 +80,15 @@ graph, after every plugin has inferred its targets. The migration reads
 that:
 
 ```bash
-bun add -d @vzn/vx
 bunx @vzn/vx-migrate --dry   # preview the generated vx.config.ts files and a report
 bunx @vzn/vx-migrate         # write them; never overwrites without --force
 ```
 
 It asks your installed `nx` for the graph (`nx graph`) rather than
-guessing at plugin-inferred targets from `nx.json`. The generated
+guessing at plugin-inferred targets from `nx.json`. In a terminal it
+asks native (the default) or keep (`--keep`, the `nx()` file `vx init`
+writes), then writes `vx.workspace.ts` and installs what the files
+import. The generated
 files freeze that snapshot as static config: review them and fill the
 TODOs.
 
@@ -100,7 +103,7 @@ TODOs.
 | `outputs`                             | `cache.outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
-| `parallelism: false`                  | `--concurrency 1`, or a schedule-plugin `cpus` reservation above the worker count |
+| `parallelism: false`                  | a TODO naming `--concurrency 1`               |
 | `nx watch`                            | `vx watch`                                    |
 | `targetDefaults`                      | already applied in the graph; share them as a preset you import |
 

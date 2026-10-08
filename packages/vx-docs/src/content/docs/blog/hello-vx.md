@@ -25,8 +25,8 @@ Where to look next:
 - [Quickstart](../../quickstart/) — a workspace running under vx in a few
   minutes, or [add vx to an existing repo](../../quickstart/#an-existing-repo)
   one package at a time.
-- [Benchmarks](../../benchmarks/) — vx, Turborepo and Nx on the same
-  3,270-task graph, each in its own native config.
+- [Benchmarks](../../benchmarks/) — vx, Turborepo, Nx and Vite Task on
+  the same 3,270-task graph, each in its own native config.
 - [Architecture](../../architecture/) — the pipeline, its seams, and why
   the cache can be trusted.
 

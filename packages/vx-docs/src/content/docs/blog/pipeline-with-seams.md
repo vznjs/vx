@@ -38,7 +38,7 @@ setup and teardown wrap the run; commands adds a verb
 | `cache`       | Provide a layer where artifacts live.                                                      |
 | `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
-| `commands`    | Add a CLI verb. Core's verbs match first; nothing can shadow `vx run`.                     |
+| `commands`    | Add a CLI verb. A verb named like a core verb is refused, so nothing shadows `vx run`.     |
 | `teardown`    | Flush and close at the end of the run.                                                     |
 
 A plugin is `definePlugin(import.meta, hooks)`. Its name is its package

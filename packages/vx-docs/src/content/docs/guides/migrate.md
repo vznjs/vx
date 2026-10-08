@@ -159,7 +159,7 @@ npx vx run test --all      # 3 up-to-date
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |
-| `interruptible` | nothing: `vx watch` re-spawns every persistent task each cycle |
+| `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
 | `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime`, a probe of just the files its globs name |

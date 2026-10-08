@@ -69,7 +69,7 @@ Rules:
 - `cache: false` or `persistent: true` → no `cache` block; a persistent task gets `exec.persistent: {}` and, when some task depends on it, the consumer's `persistentTodo`.
 - A task's `description` (Turbo 2.11.5's schema) is the vx task's `description`.
 - `outputLogs: "new-only"` maps to nothing: frames for the tasks that ran and a one-liner per cache hit is vx's default flow already. The other values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
-- `interruptible` maps to nothing: `vx watch` stops and re-spawns every persistent task each cycle.
+- `interruptible` maps to nothing: `vx watch` keeps a persistent task up across cycles and restarts it only when its config changes or it dies.
 - A task's `tags` (Turbo main, after 2.11.5) map to nothing: Turbo keeps them out of the hash and the run.
 - `envMode: "loose"` (top-level or in `global`, or `TURBO_ENV_MODE=loose`, which wins) is a note: Turbo hands every task the whole environment, vx only the declared names.
 - The workspace keys vx has a home for, top level or in `global`, fill what `vx.workspace.ts` leaves unset: `concurrency` (`"10"`, `"50%"` of the cores) → `concurrency`; `cacheMaxSize` / `cacheMaxAge` (`"0"` is off; weeks become days, a bare number days; a size in Turbo's grammar, `7.5GB` or bare bytes, restated whole: `7680MB`) → `cacheRetention.maxSize` / `.olderThan`. `TURBO_CONCURRENCY`, `TURBO_CACHE_MAX_SIZE` and `TURBO_CACHE_MAX_AGE` win over turbo.json, as under Turbo; a set one decides, its `0` included.

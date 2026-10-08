@@ -1214,3 +1214,15 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 264 / 257 (A/A) → 237 ms; wall median 947 /
   932 → 912 ms. Row: `server-death-properties.test.ts` › "a graph with
   no server never asks whether one died".
+- **X-182.** The hunt-17 finding (`vx run test --affected` exits 1 when
+  the changed project has no vx config) no longer reproduces: X-129
+  fixed it, and its row holds. Its class did not go: two more sites
+  judged "is the load partial" by count, and a config-less project in
+  the closure counts as loaded. `vx run lint --filter docs`, where
+  `docs` (lint `dependsOn: ['^gen']`) depends on config-less `util` and
+  only `app` declares `gen`, refused "no project in the workspace
+  declares gen"; `--exclude-dependencies=gen` there refused the name as
+  a typo. Both exit 0 run whole. `prepareRun` now asks once, by name
+  (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
+  ^name and an --exclude-dependencies name only that project declares";
+  each site's old test reddens its own field.

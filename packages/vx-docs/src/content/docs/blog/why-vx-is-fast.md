@@ -12,13 +12,14 @@ excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with
 The headline number is the one you pay on every uncached build: what
 the runner adds on top of your tasks. On a synthetic workspace of
 1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 40s, two seconds over the schedule.
-Turborepo finishes in 4m 59s (vx 1.3× faster) and Nx in 3m 49s
-(vx 1.03× faster).
+finishes the cold build in 3m 40s, Nx in 3m 49s and Turborepo in
+4m 59s. vx adds 2 s; Turborepo adds 1 min 21 s (vx 34× faster), Nx 11 s
+(vx 4.7× faster) and Vite Task 1 min 11 s (vx 30× faster).
 Warm, a fully cached `vx run build test --all` finishes in 393ms,
-Turborepo in 463ms (vx 1.1× faster) and Nx in 6.45s (vx 16× faster); the
-cold build burns 17 s of CPU in vx, 21 s in Turborepo (vx 1.2× faster)
-and 52 s in Nx (vx 3× faster), each runner in its own native
+Turborepo in 463ms (vx 1.1× faster), Nx in 6.45s (vx 16× faster) and
+Vite Task in 2.49s (vx 6.3× faster). The cold build burns 17 s of CPU
+in vx, 21 s in Turborepo (vx 1.2× faster), 52 s in Nx (vx 3× faster)
+and 12 s in Vite Task (vx 1.4× slower), each runner in its own native
 config.
 
 None of that comes from a microbenchmark trick. It comes from five
@@ -32,7 +33,7 @@ read each file and hash it, or keep a daemon around so they do not have
 to. vx spawns one `git ls-files -s`, which returns the file list *and*
 every clean file's blob object id, and one concurrent `git status` to
 prune anything that diverges from the index. Clean-tree key derivation
-costs zero source-file reads, zero stats and zero database lookups.
+costs zero source-file reads and zero per-file stats.
 
 Dirty files get the identical blob id computed in-process, so a key
 never flips when you commit. That class of spurious miss, "I committed
@@ -66,8 +67,8 @@ onto a current tree costs about what an untouched tree costs.
 
 A cache entry is one `tar.zst` archive plus SQLite rows. Metadata and
 the captured stdout live in the index (the stdout in a side table, so
-the run's access-time bump never rewrites it), so a hit is one indexed
-`SELECT` and a replay from it, not a decompression. The same bytes go over
+the run's access-time bump never rewrites it), so a hit is a few indexed
+`SELECT`s and a replay from them, not a decompression. The same bytes go over
 the wire to a remote cache; nothing is repacked at the boundary.
 Packing is in-process (vx's own streaming tar), the publish is an atomic
 rename, and each save is a single transaction.

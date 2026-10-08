@@ -2,6 +2,7 @@
 // placement acceptance. The gRPC-touching half lives in reapi-e2e.test.ts.
 
 import { describe, expect, it } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -374,7 +375,7 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
     }
   })
 
-  it('CONTROL: whole-tree capture only warns — the file may be incidental', async () => {
+  it('CONTROL: whole-tree capture skips an undeclared file — no fetch, no write, no failure', async () => {
     // `*.js` has a wildcard FIRST segment, so it maps to '' and the worker
     // returns the entire working directory: inputs and undeclared siblings
     // ride along. A blob missing for one of THOSE is not this task's hole,
@@ -383,7 +384,7 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
     try {
       const warns: string[] = []
       await materialiseOutputs(stub(new Map()), req(['*.js'], dir), result, (m) => warns.push(m))
-      expect(warns.some((w) => w.includes('out.txt'))).toBe(true)
+      expect([warns, existsSync(path.join(dir, 'out.txt'))]).toEqual([[], false])
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
