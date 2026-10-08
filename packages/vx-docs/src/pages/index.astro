@@ -66,10 +66,10 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)', vt: '1 min 11 s (vx 30× faster)' },
-  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 1.4× slower)' },
-  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 1.5× faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4× faster)' },
-  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
+  { label: 'Cold build: time the runner adds', vx: '4 s', turbo: '1 min 25 s (vx 21× faster)', nx: '17 s (vx 4.4× faster)', vt: '1 min 14 s (vx 18× faster)' },
+  { label: 'Cold build: CPU burned', vx: '25 s', turbo: '34 s (vx 1.3× faster)', nx: '1 min 22 s (vx 3.2× faster)', vt: '18 s (vx 1.4× slower)' },
+  { label: 'Fully cached run (restored)', vx: '1.73 s', turbo: '1.40 s (vx 1.3× slower)', nx: '9.44 s (vx 5.4× faster)', vt: '3.68 s (vx 2.1× faster)' },
+  { label: 'Fully cached run (up-to-date)', vx: '847 ms', turbo: '725 ms (vx 1.2× slower)', nx: '9.16 s (vx 10× faster)', vt: '3.42 s (vx 4× faster)' },
 ]
 const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
 

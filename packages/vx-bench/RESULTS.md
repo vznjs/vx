@@ -7,22 +7,24 @@
 - **Concurrency:** 10 (pinned identically for every runner).
 - **Measured:** whole-repo `build`+`test`, median of 1, one runner at a time, wall-clock of the CLI invocation.
 - **vx:** runs from a `vx lock` snapshot (`--frozen`), taken once before the reps; `vx (no lock)` evaluates every config on every run.
-- **Host:** Linux 6.18.44-fc-v64 · 4 cores · linux/x64
-- **Date:** 2026-10-04
+- **Host:** Linux 6.18.44-fc-v80 · 4 cores · linux/x64
+- **Date:** 2026-10-08
 
-| Runner           | Version  | Fresh (cold)     | Warm (no restore) | Warm (restore)   | CPU, cold         | CPU, warm         |
-| ---------------- | -------- | ---------------- | ----------------- | ---------------- | ----------------- | ----------------- |
-| baseline (ideal) | —        | 3m 38s           | 24 ms             | 93 ms            | 9.09 s            | 32 ms             |
-| vx               | vx 0.0.0 | 3m 40s           | 393 ms            | 650 ms           | 17.27 s           | 745 ms            |
-| vx (no lock)     | vx 0.0.0 | 3m 41s (1.0× vx) | 473 ms (1.2× vx)  | 780 ms (1.2× vx) | 18.79 s (1.1× vx) | 894 ms (1.2× vx)  |
-| turbo            | 2.11.7   | 4m 59s (1.4× vx) | 463 ms (1.2× vx)  | 997 ms (1.5× vx) | 21.04 s (1.2× vx) | 897 ms (1.2× vx)  |
-| nx               | 23.2.1   | 3m 49s (1.0× vx) | 6.45 s (16.4× vx) | 6.25 s (9.6× vx) | 52.19 s (3.0× vx) | 7.52 s (10.1× vx) |
-| vite-task        | 1.0.0    | 4m 49s (1.3× vx) | 2.49 s (6.3× vx)  | 2.64 s (4.1× vx) | 12.46 s (0.7× vx) | 2.48 s (3.3× vx)  |
+| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | Top edited | CPU, cold | CPU, warm |
+| ------ | ------- | ------------ | ----------------- | -------------- | ---------- | --------- | --------- |
+| baseline (ideal) | — | 3m 38s | 35 ms | 174 ms | — | 12.46 s | 47 ms |
+| vx | vx 0.0.0 | 3m 42s | 847 ms | 1.73 s | 2.00 s | 25.27 s | 1.46 s |
+| vx (no lock) | vx 0.0.0 | 3m 42s (1.0× vx) | 922 ms (1.1× vx) | 1.62 s (0.9× vx) | 1.99 s (1.0× vx) | 26.89 s (1.1× vx) | 1.58 s (1.1× vx) |
+| turbo | 2.11.7 | 5m 3s (1.4× vx) | 725 ms (0.9× vx) | 1.40 s (0.8× vx) | 1.72 s (0.9× vx) | 34.33 s (1.4× vx) | 1.43 s (1.0× vx) |
+| nx | 23.3.0 | 3m 55s (1.1× vx) | 9.16 s (10.8× vx) | 9.44 s (5.5× vx) | 11.35 s (5.7× vx) | 1m 22s (3.2× vx) | 10.51 s (7.2× vx) |
+| vite-task | 1.1.0 | 4m 52s (1.3× vx) | 3.42 s (4.0× vx) | 3.68 s (2.1× vx) | 4.84 s (2.4× vx) | 18.30 s (0.7× vx) | 3.43 s (2.3× vx) |
 
-**Cache states.** _Fresh_ clears the runner's cache and runs cold (key
-derivation + execution + save). _Warm, no restore_ re-runs with the cache
-warm and outputs intact (the steady-state dev loop). _Warm, restore_
+**Cache states.** *Fresh* clears the runner's cache and every `dist/`, then runs cold (key
+derivation + execution + save). *Warm, no restore* re-runs with the cache
+warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every `dist/` first, so the runner restores outputs from cache.
+*Top edited* changes the top package's source once per rep with the rest
+warm: two tasks run (its `build` and `test`), every other task is a hit.
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
