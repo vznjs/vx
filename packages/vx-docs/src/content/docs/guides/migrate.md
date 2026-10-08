@@ -83,8 +83,9 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 ```text
 $ bunx @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
-note: vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what turbo did, remove turbo() (and its import), then turbo.json
-note: Turbo keys each package on its own package-lock.json entries; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
+note: dropped turbo() from vx.workspace.ts
+note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
+note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 
 3 tasks migrated clean, 0 TODOs
 files written:
@@ -231,8 +232,8 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 $ bunx @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
-note: vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a vx.config does not declare; the configs written here declare them all. Once `vx run` does what nx did, remove nx() (and its import), then nx.json
-note: Nx keys each project on the npm packages it depends on in package-lock.json; vx keys every task on the whole file, so a dependency bump re-runs them all. Declare npm() from @vzn/vx-lockfile in vx.workspace.ts to key each task on its package's dependency closure
+note: dropped nx() from vx.workspace.ts
+note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
 
 2 tasks migrated clean, 0 TODOs
 files written:

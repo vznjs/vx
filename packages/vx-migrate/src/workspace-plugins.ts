@@ -89,3 +89,32 @@ export function extendWorkspaceFile(
     `}${tail}`,
   ].join('\n')
 }
+
+/**
+ * The plugins of a workspace file vx wrote (`vx init`, `--keep`, a native
+ * migration): `@vzn` imports and argument-less calls, nothing else. Null
+ * for any other file, which is the user's and left alone.
+ */
+export function generatedPlugins(text: string): WorkspacePlugin[] | null {
+  const pkgOf = new Map<string, string>()
+  const body: string[] = []
+  for (const line of text.split('\n')) {
+    const m = /^import \{ ([\w, ]+) \} from '(@vzn\/[\w./-]+)'$/.exec(line)
+    if (m !== null) for (const name of m[1]!.split(',')) pkgOf.set(name.trim(), m[2]!)
+    else if (line !== "import type { WorkspaceConfig } from '@vzn/vx/config'") body.push(line)
+  }
+  const m =
+    /^export default \{\s*plugins:\s*\[((?:\s*\w+\(\)\s*,?)*)\s*\],?\s*\}(?: satisfies WorkspaceConfig)?$/.exec(
+      body.join('\n').trim(),
+    )
+  if (m === null) return null
+  const factories = [...m[1]!.matchAll(/(\w+)\(\)/g)].map((c) => c[1]!)
+  // No plugin at all is a file vx never wrote.
+  if (
+    factories.length === 0 ||
+    factories.length !== pkgOf.size ||
+    factories.some((f) => !pkgOf.has(f))
+  )
+    return null
+  return factories.map((factory) => ({ pkg: pkgOf.get(factory)!, factory }))
+}
