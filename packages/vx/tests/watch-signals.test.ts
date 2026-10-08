@@ -162,24 +162,22 @@ describe('vx watch under a signal (e2e)', () => {
   }, 20_000)
 
   // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
-  // so the SIGINT lands while the cycle is still stopping it.
+  // so the SIGINT lands while the cycle is still stopping it. A server is
+  // stopped only when its own config changed, so the edit is to that.
   it('SIGINT while a cycle stops the held server runs no cycle after it', async () => {
-    const dir = await addProject(
-      root,
-      'app',
-      `
+    const config = (nap: string): string => `
         export default {
           tasks: {
             dev: {
               exec: {
-                command: "trap 'echo TERM > got.txt; sleep 0.6; exit 0' TERM; echo READY; while :; do sleep 0.05; done",
+                command: "trap 'echo TERM > got.txt; sleep 0.6; exit 0' TERM; echo READY; while :; do sleep ${nap}; done",
                 persistent: { readyWhen: 'READY' },
               },
             },
           },
         }
-      `,
-    )
+      `
+    const dir = await addProject(root, 'app', config('0.05'))
     await Bun.write(path.join(dir, 'src.txt'), 'a')
     const proc = Bun.spawn([process.execPath, BIN, 'watch', 'dev', '--all'], {
       cwd: root,
@@ -192,7 +190,7 @@ describe('vx watch under a signal (e2e)', () => {
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
     })()
     await waitForText(async () => out, 'watching', 10_000)
-    await Bun.write(path.join(dir, 'src.txt'), 'b')
+    await Bun.write(path.join(dir, 'vx.config.mjs'), config('0.06'))
     const got = path.join(dir, 'got.txt')
     await waitForText(async () => ((await Bun.file(got).exists()) ? 'yes' : ''), 'yes', 10_000)
     proc.kill('SIGINT')

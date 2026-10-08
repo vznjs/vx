@@ -215,6 +215,18 @@ export interface RunOptions {
    */
   holdPersistent?: boolean
   /**
+   * The servers an earlier `holdPersistent` run handed back. Each one still
+   * up whose task this run would start again, with the same resolved
+   * config, is kept running and reported ready instead of restarted; what
+   * it writes reaches this run's renderer from then on. The rest are
+   * stopped before the graph starts, so a new one never meets the old
+   * one's port. The watch loop sets it: `vx watch dev` rebuilds what the
+   * server depends on and leaves the server up. The caller still stops
+   * the earlier hand-back afterwards; that stops only what this run did
+   * not take.
+   */
+  keep?: HeldPersistent
+  /**
    * Print the per-task table (`--verbosity 1`) just above the footer: the
    * footer is the run's last word, so the caller cannot print it after.
    */
@@ -305,6 +317,18 @@ export interface RunSummary {
 export interface HeldPersistent {
   /** The held tasks' ids, `pkg#task`. */
   ids: readonly string[]
-  /** Send every held task `signal` (default SIGTERM), then SIGKILL after the kill grace; resolves once each is gone. */
+  /** Send every held task a later run did not take `signal` (default SIGTERM), then SIGKILL after the kill grace; resolves once each is gone. */
   stop(signal?: 'SIGINT' | 'SIGTERM'): Promise<void>
+  /** Each held server by id, for a later run's `RunOptions.keep`. */
+  servers: ReadonlyMap<string, HeldServer>
+}
+
+export interface HeldServer {
+  child: ReturnType<typeof Bun.spawn>
+  /** The task's resolved config as the run that started it saw it: a later run keeps the server only while its own reads the same. */
+  config: string
+  /** Where what the server writes goes; a run that keeps it points this at its own bus. */
+  out: { bus: EventBus }
+  /** A later run took the server (kept or stopped it): the hand-back's `stop()` and exit notice leave it alone. */
+  handOver(): void
 }

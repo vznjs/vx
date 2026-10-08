@@ -39,6 +39,7 @@ export interface RunOptions {
   handleSignals?: boolean
   signal?: AbortSignal
   holdPersistent?: boolean // hand requested persistent tasks, and those they depend on, back on RunSummary.persistent
+  keep?: HeldPersistent // an earlier hand-back: a server still up whose task is unchanged stays up; the rest stop first
   summaryTable?: boolean // --verbosity 1: the per-task table, just above the footer
   tty?: boolean // vx's stdin is a terminal: each exec.interactive task is handed it, alone
   log?: Logger
@@ -53,7 +54,7 @@ export interface RunOptions {
 export interface RunSummary {
   ok: boolean
   outcomes: TaskOutcome[]
-  persistent?: HeldPersistent // { ids, stop() }: what holdPersistent handed back
+  persistent?: HeldPersistent // { ids, stop(), servers }: what holdPersistent handed back
   refused?: string // why the run refused to start (ok false, nothing ran); the caller prints it, vx run on stderr
 }
 ```

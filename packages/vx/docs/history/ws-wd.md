@@ -29,3 +29,17 @@
 - **WD-11.** The line naming the kept server that ended the foreground wait counted every other kept server as stopped, dead ones included: `stopping 1 other persistent task` after both servers had crashed. It now counts only those still up, and says nothing when none is. Row: `tests/keep-alive.test.ts` › "the server that ends the wait counts only the others still up".
 
 - **WD-20.** A watch cycle's start was read off `Date.now()` while mtimes come from the kernel's coarse clock, which lags it by up to a tick. A write the run made in that tick read as an edit, so an uncached task's rewrite of an ignored file it reads started an extra cycle. The start is taken from the mtime clock (`fsClockNow`) now, as the arm is. Row: `tests/watch-cycle-clock.test.ts` › "a cycle's own write is the run's though the fine clock runs ahead of mtimes".
+
+- **WD-27.** `vx watch dev` restarted the dev server on every cycle, an
+  edit inside the app included, so the dev tool's own reload never got
+  the chance (turborepo#12654's report, on vx). A cycle now takes the
+  last one's servers as `RunOptions.keep`: one still up whose task is in
+  the graph with the same resolved config and forwarded args stays up and
+  reads ready at once, and its output is pointed at the new cycle's bus;
+  the graph under it re-runs as the keys decide, so an edit in a library
+  rebuilds only what leads to the app. A config change or a death
+  restarts it, stopped before the graph (the WD-22 stop still runs
+  nothing). Rows: `held-persistent.test.ts` › "a later run keeps an
+  unchanged held server, rebuilds its deps, and replaces a changed one";
+  `watch-loop.test.ts` › "the dev server stays up across cycles and is
+  replaced when its config changes".

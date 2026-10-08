@@ -123,7 +123,7 @@ describe('module pages state what their file does since the fix', () => {
 
   it('orchestrator.md: a held server that dies after the run is named (#2442)', () => {
     expect(src('orchestrator/run.ts')).toContain(
-      'if (!stopping && code !== 0) log.status(`vx: ${n.id} exited with code ${code}`)',
+      'if (!stopping && !handed.has(child) && code !== 0)',
     )
     const held = blocks('modules/orchestrator.md', 'RunOptions.holdPersistent')
     expect(held.length).toBe(1)

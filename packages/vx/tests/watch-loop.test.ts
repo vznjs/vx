@@ -474,10 +474,12 @@ describe('vx watch with a persistent task (e2e)', () => {
   // One `time` line per run's summary: the count says how many runs have ended.
   const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
 
-  it('the dev server stays up while watch idles and is replaced when the next cycle starts', async () => {
-    // cli.md: the previous server stops BETWEEN cycles. Until the fix it
-    // stopped at the END of each one, so it was dead whenever watch sat
-    // idle (turborepo#9421, #13115 reproduced on vx).
+  it('the dev server stays up across cycles and is replaced when its config changes', async () => {
+    // cli.md: a cycle keeps a server still up whose task is unchanged; the
+    // dev tool's own reload takes the edit. Until then every cycle restarted
+    // it, so `vx watch dev` dropped the server on each save. Before that it
+    // stopped at the END of each cycle, dead whenever watch sat idle
+    // (turborepo#9421, #13115 reproduced on vx).
     watch = startWatch(root, ['--all'], {}, 'dev')
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
@@ -487,6 +489,13 @@ describe('vx watch with a persistent task (e2e)', () => {
 
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
     await until(() => runsEnded(w) === 2, 'the end of the cycle after an edit')
+    expect(await readPids()).toEqual([first!])
+    expect(isAlive(first!)).toBe(true)
+
+    // Its own config changed: the old one goes before the new one starts.
+    const cfg = path.join(dir, 'vx.config.mjs')
+    await writeFile(cfg, (await readFile(cfg, 'utf8')).replace('echo READY', 'echo READY again'))
+    await until(() => runsEnded(w) === 3, 'the end of the cycle after a config edit')
     const all = await readPids()
     expect(all).toHaveLength(2)
     expect(isAlive(first!)).toBe(false)
@@ -497,17 +506,17 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(isAlive(all[1]!)).toBe(false)
   }, 40_000)
 
-  it('a server that rewrites a file in its project is named after three restarts (item 948)', async () => {
-    // Its write lands after the cycle that started it ended, so the streak
-    // never counted it: 12 restarts in 8 s and no word of why.
-    // The first server writes only once watch is armed: a write before the
-    // arm is the initial run's, never an event, and a loaded runner took
-    // longer than the 0.3 s to arm, so no cycle ever started (CI, 2026-10-06).
+  it('a server that keeps rewriting a file in its project is named after three cycles (item 948)', async () => {
+    // Its write lands after the cycle before ended, so the streak never
+    // counted it: 12 cycles in 8 s and no word of why.
+    // It writes only once watch is armed: a write before the arm is the
+    // initial run's, never an event, and a loaded runner took longer than
+    // the 0.3 s to arm, so no cycle ever started (CI, 2026-10-06).
     const armed = path.join(outside, 'armed')
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: { dev: { exec: {
-        command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; sleep 0.3; date +%s%N > server.log; exec sleep 1000',
+        command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; while :; do sleep 0.3; date +%s%N > server.log; done',
         persistent: { readyWhen: 'READY' },
       } } } }\n`,
     )

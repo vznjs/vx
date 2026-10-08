@@ -6,6 +6,7 @@
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
+import type { HeldServer } from './options.js'
 
 type Child = ReturnType<typeof Bun.spawn>
 
@@ -115,4 +116,39 @@ export interface CrashedPersistent {
 /** The child has exited or been killed; Bun sets these once it reaps it. */
 export function hasEnded(child: Child): boolean {
   return child.exitCode !== null || child.signalCode !== null
+}
+
+/** A server's identity across watch cycles: its resolved config and the args forwarded to it. */
+export function serverConfig(node: TaskNode, forwardArgs: readonly string[] | undefined): string {
+  return JSON.stringify([node.config, forwardArgs ?? []])
+}
+
+/**
+ * Split an earlier run's held servers into the ones this graph may keep
+ * (still up, a node of this graph, same config) and the ones it stops. A
+ * stopped one is handed over now, so the earlier run names no exit; a kept
+ * one only when its task is reached, and one never reached (a dependency
+ * failed) is the earlier run's to stop.
+ */
+export function takeHeldServers(
+  held: ReadonlyMap<string, HeldServer> | undefined,
+  nodes: ReadonlyMap<string, TaskNode>,
+  forwardArgs: readonly string[] | undefined,
+): { kept: Map<string, HeldServer>; stale: Child[] } {
+  const kept = new Map<string, HeldServer>()
+  const stale: Child[] = []
+  for (const [id, server] of held ?? []) {
+    if (hasEnded(server.child)) continue
+    const node = nodes.get(id)
+    if (
+      node?.config.exec?.persistent !== undefined &&
+      serverConfig(node, forwardArgs) === server.config
+    )
+      kept.set(id, server)
+    else {
+      server.handOver()
+      stale.push(server.child)
+    }
+  }
+  return { kept, stale }
 }
