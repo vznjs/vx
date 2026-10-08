@@ -706,10 +706,15 @@ async function readManifest(root: string, dir: string, file: string): Promise<st
     )
     if (searchable) unreadable(err, file)
     process.stderr.write(
-      `vx: ${relPosix(root, dir)} is not readable by this user — skipped, with any project in it\n`,
+      `vx: ${shownDir(root, dir)} is not readable by this user — skipped, with any project in it\n`,
     )
     return null
   }
+}
+
+/** `dir` as a discovery line names it: the root's own path is '' (D-127, D-154). */
+function shownDir(root: string, dir: string): string {
+  return relPosix(root, dir) || 'the workspace root'
 }
 
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
@@ -764,7 +769,7 @@ export async function discoverProjects(
         // same flight as the failed read, so naming it costs nothing.
         if (configPath !== null) {
           process.stderr.write(
-            `vx: ${relPosix(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
+            `vx: ${shownDir(workspace.root, dir)} has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n`,
           )
         }
         return null
@@ -795,9 +800,8 @@ export async function discoverProjects(
       // fine for a dir that declares no tasks; a dir with a vx config was
       // meant to run.
       if (configPath !== null) {
-        const rel = relPosix(workspace.root, dir)
         process.stderr.write(
-          `vx: ${rel === '' ? 'the workspace root' : rel} has a vx config but its package.json has no "name" — skipped\n`,
+          `vx: ${shownDir(workspace.root, dir)} has a vx config but its package.json has no "name" — skipped\n`,
         )
       }
       continue
