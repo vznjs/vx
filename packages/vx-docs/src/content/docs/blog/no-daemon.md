@@ -6,7 +6,7 @@ authors:
 tags:
   - design
   - performance
-excerpt: "A daemon answers 'what changed' quickly by keeping a second copy of the truth. vx keeps no copy. Every run pays its own discovery and still wins the warm benchmarks, because the discovery was made cheap instead of being hidden."
+excerpt: "A daemon answers 'what changed' quickly by keeping a second copy of the truth. vx keeps no copy. Every run pays its own discovery; the retained synthetic warm measurements show how cheap that path can be, not a universal speed ranking."
 ---
 
 Nx runs a daemon by default. Turborepo shipped one and, since 2.8.11,
@@ -53,10 +53,16 @@ stopped mattering:
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result is a fully cached run of 3,270 tasks in 393ms with no
-process left behind, against Turborepo's 463ms (vx 1.1× faster) and
-Nx's 6.45s (vx 16× faster). vx has
-no daemon to turn on.
+The retained synthetic layered run has 3,270 task nodes and answers
+fully cached in 393ms with no process left behind, against Turborepo's
+463ms (vx 1.1× faster) and Nx's 6.45s (vx 16× faster).
+
+> **Scope:** That is one repetition per runner/state on a uniform-sleep
+> graph, not a general win from removing a daemon. Cold wall time includes
+> scheduling delay as well as runner work. See the separate
+> [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case; default vx counts unique transitive
+> dependents, not task durations.
 
 ## The invariant, stated plainly
 
@@ -67,5 +73,5 @@ staleness window because there is no second copy that could be stale.
 watcher limits are exhausted, all take the same path and give the same
 answer.
 
-That is worth more than a daemon's best case, and it costs less than a
-daemon's average case.
+That removes a state-management trade-off. The retained measurements
+show its cost on those workloads, not a daemon's average case.

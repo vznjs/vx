@@ -34,6 +34,12 @@ unknowable at the moment the key is most useful.
 
 ## Keys before execution
 
+> **Measurement scope:** The retained 1.07× improvement below is an A/B
+> result for that mixed workload, not a general scheduling guarantee.
+> See the separate [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case: default vx ranks by unique
+> transitive-dependent count, not duration-aware critical-path length.
+
 With input-based cascade, every key in the graph is a pure function of
 the working tree, the configs and the environment. All of them can be
 derived up front, before a single task starts, and that is the property

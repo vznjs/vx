@@ -30,9 +30,14 @@ copy of a hot loop is redrawn rather than crossed.
 **Perf first.** Measure before and after. A/B arms interleaved,
 min-of-N, the "before" arm in an immutable git worktree, one workspace
 copy per arm pre-warmed by that arm. A change to the warm path without
-a number is not done. This has killed features that felt obviously
-good: lookahead scheduling was measured against the plain critical-path
-priority and lost, so it is on the rejected list.
+a number is not done. Earlier scheduling experiments rejected lookahead
+for the workloads measured then; that is not a proof for every graph.
+Default vx priority counts unique transitive dependents, not remaining
+duration. `@vzn/vx-schedule-history` can supply duration-aware priorities
+when declared. The separate
+[scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+and its retained preliminary case put those limits alongside the earlier
+measurements.
 
 **Explicit over magical.** Caching is opt-in; `cache.inputs.files` is
 required; nothing is inferred. The sandbox is how a task proves what it

@@ -281,14 +281,39 @@ longer evaluate on every run, check-attr overlaps git status, the
 telemetry context reads files instead of spawning git, and a literal
 file output no longer walks its glob on each hit.
 
-**Positioning (owner, 2026-10-02; `docs/history/ws-r.md`).** vx is the
-fastest task runner, shown by the native-config benchmark with every
-competitor cell as `(vx N× faster|slower)` (owner, 2026-10-04: "say how
-many X", replacing the percentage). Never say vx works in, runs
+**Positioning (2026-10-08; prior record `docs/history/ws-r.md`).** Native-config
+benchmarks are scoped to their synthetic workloads, not a universal "fastest" claim.
+Each multiple names its metric; cold baseline-subtracted excess is not whole-build speedup.
+Never say vx works in, runs
 or speeds up a Turbo or Nx repo: `@vzn/vx-migrate` / `vx init` is a
 temporary start toward native config. The real-repo rows measured
 `turbo()` / `nx()` and are off the README and site; they need a rerun
 on migrated native config before they are quoted again.
+
+**Scheduling counterexample (2026-10-08, ready for review).** Five alternating rounds
+of real native CLIs on macOS arm64 / Apple M4 Max, Bun 1.4.2 and Turborepo 2.11.7:
+vx median 89.916 s, Turborepo 60.255 s, analytic ideal 60 s. Total ratio 1.492×;
+excess ratio 117.321×, with observed envelope 86.244–128.438×. Round 1's paired
+excess ratio is 86.293×; neither the median nor envelope is an every-round guarantee.
+
+The shared seven-node DAG has five executable waiting tasks and two commandless
+root gates. Gates control readiness, not executable work; their timing is not
+process-traced. Exact measured source/harness: `b8238866`. The earlier ungated case
+and its 91.267 s Turborepo observation remain separate in
+`vx-bench/counterexample-preliminary-results.json`; its total ratio is 1.4873× and
+its excess ratio is unresolved. Earlier harness: `d2095b88`. No samples were omitted
+or pooled; formatting preserved every JSON value and journal byte.
+
+`vx-bench/update-site.ts` validates native provenance, traces, all ten zero-hit
+samples and summary math before publishing both cases. README, landing, benchmark
+reference, copied claims and metadata distinguish total from excess and scope the
+workload. Original dated measurements remain; no scheduler code changed.
+
+Verification: 140 publication-focused tests and 251 follow-up checks passed. After
+fixing stale claim pins, staging new test consumers, isolating package-manager HOME
+and supplying standalone Yarn, `vx run ci --all --concurrency=4` passed all 57 tasks
+on pinned Bun 1.4.2. The default 14-worker attempt had process-lifecycle and local
+package-manager failures; those tests passed unchanged on the verified rerun.
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped

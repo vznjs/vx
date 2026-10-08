@@ -133,6 +133,14 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Scheduler + execution
 
+Topological correctness and bounded parallelism do not imply identical
+ready-task order. Default vx ranks ready tasks by unique transitive-dependent
+count, not remaining critical-path duration. A long independent task can
+rank below short parents. `@vzn/vx-schedule-history` can supply duration-based
+priorities when declared; neither policy guarantees the best schedule.
+See the separate [scheduling counterexample](./benchmarks.md#synthetic-scheduling-counterexample)
+and its retained preliminary case alongside the uniform-sleep layered result.
+
 | Pattern                                                       | Source                                             | vx source                                                                   |
 | ------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------- |
 | Topological order, bounded parallelism                        | Turbo + Nx                                         | `src/graph/scheduler.ts`                                                    |
@@ -179,9 +187,13 @@ cache meter carries the message.)
 
 ## Performance
 
-Sharing the patterns doesn't mean sharing the overhead. On the
+The dated table below measures end-to-end wall time, not isolated hash
+or scheduler overhead. It is one repetition per runner/state on the
 476-package / 1,428-node synthetic workspace
-(`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02):
+(`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02), not a universal ranking.
+Compare it with the separate
+[scheduling counterexample](./benchmarks.md#synthetic-scheduling-counterexample),
+including its retained preliminary case, rather than pooling different graphs.
 
 | Runner | Fresh (cold)          | Warm (no restore)       | Warm (restore)          |
 | ------ | --------------------- | ----------------------- | ----------------------- |

@@ -85,8 +85,16 @@ the hooks are how it gets built.
 
 ## What that buys, measured
 
-Numbers come from `packages/vx-bench/` and are reproducible; the invariant behind
-each is recorded in [optimizations.md](./optimizations.md).
+Numbers come from `packages/vx-bench/`; the invariant behind each is
+recorded in [optimizations.md](./optimizations.md). The dated timings
+below describe synthetic workspaces on the stated machine, not a
+universal speed ranking. The separate
+[scheduling counterexample](./benchmarks.md#synthetic-scheduling-counterexample)
+and its retained preliminary case sit alongside the uniform-sleep
+layered result. End-to-end wall time is not baseline-subtracted excess:
+excess includes scheduling delay and idle workers as well as runner work.
+Default vx counts unique transitive dependents, not task durations;
+`@vzn/vx-schedule-history` can supply duration-aware priorities when declared.
 
 - A fully-cached run on a 100-project workspace completes in **74 ms**
   wall-clock; on 476 packages / 1,428 tasks in **297 ms**, where

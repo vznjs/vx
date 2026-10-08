@@ -252,6 +252,21 @@ For a timeout, the first one set wins: a task's `exec.timeout`, then
 `--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the
 cache key. There is no `globalInputs`: import a shared array instead.
 
+### Ready-task order
+
+`concurrency` sets the worker limit, not which ready task starts first.
+Default vx ranks ready tasks by unique transitive-dependent count, with
+ready-queue enqueue order breaking ties. It does not use task durations or compute
+remaining critical-path duration, so short parents can rank above a long
+independent task. `@vzn/vx-schedule-history`, when explicitly declared,
+can supply duration-based priorities learned from past runs; it is not a
+core default or a guarantee of an optimal schedule.
+
+See [Concurrency](../../execution/#concurrency) and the separate synthetic
+[scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample),
+including its retained preliminary case. Synthetic timings are not a
+promise that the same order wins on your builds.
+
 ## Lockfiles
 
 Without a plugin, the lockfile is in every task's key, so one install

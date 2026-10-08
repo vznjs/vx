@@ -45,6 +45,12 @@ the better fix is giving each task its own output path.
 
 ## Why it is also the fast path
 
+> **Benchmark scope:** Current-tree and restore measurements describe their
+> stated cache states on synthetic workloads, not every build. The separate
+> [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case concern ready-task order; cache
+> correctness does not guarantee the shortest end-to-end schedule.
+
 Owning the outputs is what makes the warm-on-warm case cheap. Because
 vx knows the tree after any hit is the snapshot, it records a
 fingerprint per output file `(size, mode, mtime-ms, inode, ctime)` alongside the

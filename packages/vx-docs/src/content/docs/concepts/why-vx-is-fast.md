@@ -10,16 +10,22 @@ the raw numbers in [Benchmarks](../../benchmarks/).
 
 ## The numbers
 
-These are reproducible on your own machine, not marketing figures:
+> **Scope:** These are retained measurements on stated hardware and workloads,
+> not a universal speed ranking. The uniform-sleep layered stress graph has
+> one repetition per runner/state. Read the separate
+> [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case alongside it. Default vx counts unique
+> transitive dependents, not remaining critical-path duration.
 
-- **The runner's overhead on a cold build**, the number to read first.
-  On the 3,270-task workspace the tasks alone take 3m 38s under an ideal
-  schedule; vx finishes in 3m 40s (+0:02), Turborepo in 4m 59s (+1:21,
-  vx 1.3× faster), Nx in 3m 49s (+0:11, vx 1.03× faster) — one unit for
-  every runner. A runner that adds seconds to a three-minute build is a
-  different tool from one that adds a minute and a half, and the
-  per-package figure (2 ms, 74 ms and 10 ms per package) is how each
-  grows with the codebase.
+- **Cold wall time and baseline-subtracted excess.** On the synthetic
+  layered workspace of 1,090 packages, 3,270 task nodes (2,180 executable
+  tasks and 1,090 groups), the tasks alone take 3m 38s under an ideal
+  schedule. vx finishes in 3m 40s (+0:02), Turborepo in 4m 59s (+1:21,
+  vx 1.3× faster), Nx in 3m 49s (+0:11, vx 1.03× faster).
+  The parenthesized deltas include scheduling delay and idle workers as
+  well as runner work, not pure hashing overhead. The per-package figures
+  (2 ms, 74 ms and 10 ms) normalize this one graph; they do not predict
+  how another codebase scales.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
@@ -30,9 +36,11 @@ These are reproducible on your own machine, not marketing figures:
   every artifact, so it costs more than the untouched tree; the
   current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
-  one repo (1,090 packages, 100 dependency layers, a `build`,
-  `installDeps` and `test` task each: 3,270 tasks) and runs all three runners across the same three cache states.
-  vx leads on the warm paths; the committed results live in
+  a synthetic workspace (1,090 packages, 100 dependency layers, a `build`,
+  `installDeps` and `test` node each: 3,270 nodes). Non-bottom packages
+  have 11 actual dependencies, capped by the layer's package pool, not
+  the requested 30. It runs the runners across the same three cache states.
+  vx leads on the warm paths in this retained run; the committed results live in
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
   a command away.
 
@@ -56,8 +64,8 @@ and faster:
    files it recorded before a restore. Turborepo/Nx
    restore additively.
 4. **Daemonless.** No background process, no staleness window, no socket
-   to corrupt — and the fastest warm/cached runs in the head-to-head
-   benchmark all the same.
+   to corrupt. The retained synthetic head-to-head has lower warm/cached
+   times for vx; that is a workload-specific observation, not a guarantee.
 
 ## The mechanics under the hood
 

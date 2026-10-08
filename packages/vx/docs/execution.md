@@ -588,6 +588,21 @@ The colors / framing modules:
 - Failure of a task doesn't pause the scheduler — independent
   siblings continue running and starting (unless `--continue=never`).
 
+### Ready-task priority
+
+Default vx ranks ready exec-tier tasks by unique transitive-dependent count,
+with ready-queue enqueue order breaking ties. The bitset computes that count exactly;
+it does not compute remaining critical-path duration. Short parents can
+rank above a long independent task, leaving workers idle later in a run.
+`@vzn/vx-schedule-history` can supply duration-based priorities when explicitly
+declared, using durations learned from earlier runs. Neither order is a
+general guarantee of the shortest schedule.
+
+The separate [scheduling counterexample](./benchmarks.md#synthetic-scheduling-counterexample)
+and its retained preliminary case document synthetic workloads and real CLI
+traces, not a universal ranking. Baseline-subtracted wall-time excess includes
+scheduling delay as well as runner work; it is not pure hashing overhead.
+
 ### Executor pools
 
 `concurrency` counts LOCAL worker slots. An executor that runs its tasks
@@ -693,7 +708,7 @@ run already happened.
   test failing shouldn't stop an unrelated build. Independent siblings
   continue; only dependents are skipped. `--continue=never` opts into
   fail-fast.
-- **Misses own the worker pool.** A miss is the critical path, so
+- **Misses own the worker pool.** Misses may gate downstream work, so
   the exec lane is `concurrency` wide and only executions take it.
   Restores run on their own lane, so warm work never queues behind
   ordering it doesn't need and never takes a slot from real work.

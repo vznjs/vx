@@ -47,13 +47,10 @@ export default defineProject({
       },
     },
 
-    // The landing page's benchmark rows, the benchmarks doc's stress
-    // section and the README's benchmark table are generated from
-    // results.json by update-site.ts; `--check` fails when any
-    // drifted. All live outside this project, so the task declares the
-    // reads and folds the files as inputs.
+    // Both independent datasets render into the same three publication files.
+    // The counterexample must be complete and conforming before any file changes.
     'check.site': {
-      description: 'update-site.ts --check: the site matches results.json',
+      description: 'update-site.ts --check: publication matches both validated benchmark datasets',
       dependsOn: ['install'],
       exec: {
         command: 'bun update-site.ts --check',
@@ -61,6 +58,10 @@ export default defineProject({
           allow: {
             read: [
               '**/*',
+              'counterexample-results.json',
+              'counterexample-preliminary-results.json',
+              'COUNTEREXAMPLE-PRELIMINARY.md',
+              'counterexample-preliminary-samples.jsonl',
               '../vx-docs/src/pages/index.astro',
               '../vx/docs/benchmarks.md',
               '../../README.md',
@@ -71,7 +72,16 @@ export default defineProject({
       },
       cache: {
         inputs: {
-          files: ['update-site.ts', 'results.json'],
+          files: [
+            'update-site.ts',
+            'results.json',
+            'counterexample-results.json',
+            'counterexample-preliminary-results.json',
+            'COUNTEREXAMPLE-PRELIMINARY.md',
+            'counterexample-preliminary-samples.jsonl',
+            'counterexample.ts',
+            'schedule-policy.ts',
+          ],
           workspaceFiles: [
             'packages/vx-docs/src/pages/index.astro',
             'packages/vx/docs/benchmarks.md',
@@ -145,7 +155,15 @@ export default defineProject({
       },
       dependsOn: ['install'],
       cache: {
-        inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
+        inputs: {
+          files: [
+            '*.ts',
+            'tests/**',
+            'results.json',
+            'counterexample-results.json',
+            'package.json',
+          ],
+        },
         outputs: { files: [] },
       },
     },

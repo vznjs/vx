@@ -550,12 +550,15 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
     }
     const by = (name: string): Record<string, number | string> =>
       results.rows.find((r) => r['runner'] === name) as Record<string, number | string>
-    // The table's four columns, left to right.
-    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx'] as const
+    // Keep the dated stress table separate from the counterexample's different run.
+    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx', 'vite-task'] as const
 
-    const start = doc.indexOf('## A real monorepo: 3,270 tasks')
+    const start = doc.indexOf('<!-- stress:start -->')
+    const end = doc.indexOf('<!-- stress:end -->', start)
     expect(start).toBeGreaterThan(0)
-    const table = doc.slice(start, doc.indexOf('**Baseline** is the theoretical best', start))
+    expect(end).toBeGreaterThan(start)
+    const table = doc.slice(start, end)
+    expect(table).toContain('## Synthetic layered stress graph: 3,270 task nodes')
     const wrong: string[] = []
     let rowsChecked = 0
 
@@ -571,7 +574,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       const field = FIELD[label]!
       rowsChecked += 1
       const vxMs = by('vx')[field] as number
-      cells.slice(1, 5).forEach((cell, i) => {
+      cells.slice(1, 6).forEach((cell, i) => {
         const runner = runners[i]!
         const shown = parse(
           cell
@@ -591,11 +594,15 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
         if (shown.ms !== Math.round(actual / shown.step) * shown.step) {
           wrong.push(`${field}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
         }
-        const ratio = /\(([\d.]+)×\)/.exec(cell)
+        const ratio = /\(vx ([\d.]+)× (faster|slower)\)/.exec(cell)
         if (ratio === null) return
-        const want = actual / vxMs
-        if (Math.abs(Number(ratio[1]) - want) > 0.05) {
-          wrong.push(`${field}/${runner}: page ${ratio[1]}×, file ${want.toFixed(2)}×`)
+        const want = ratio[2] === 'faster' ? actual / vxMs : vxMs / actual
+        const shownRatio = Number(ratio[1])
+        const precision = 10 ** -(ratio[1]!.split('.')[1]?.length ?? 0)
+        // Published rounding must remain conservative for vx and within its printed step.
+        const gap = ratio[2] === 'faster' ? want - shownRatio : shownRatio - want
+        if (gap < -1e-9 || gap >= precision + 1e-9) {
+          wrong.push(`${field}/${runner}: page ${ratio[1]}×, file ${want.toFixed(3)}×`)
         }
       })
     }
@@ -616,9 +623,8 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       const s = Math.round(ms / 1000)
       return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
     }
-    // `3m 38s cold` is workBoundMs; the floors are the baseline's own warm,
-    // restore and task-shell CPU numbers.
-    expect(doc).toContain(`${secs(baseline['workBoundMs']!).replace('m 0', 'm ')} cold`)
+    // The cold ideal is the modeled makespan; the measured floors are distinct.
+    expect(doc).toContain(`${secs(baseline['fresh']!).replace('m 0', 'm ')} cold`)
     expect(doc).toContain(`critical path ${secs(baseline['criticalPathMs']!).replace('m 0', 'm ')}`)
     expect(doc).toContain(`git walk ${Math.round(baseline['warmNoRestore']!)}ms`)
     expect(doc).toContain(`raw copy ${Math.round(baseline['warmRestore']!)}ms`)
@@ -627,13 +633,12 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
     // The per-package overhead sentence: each runner's cold time over the
     // ideal schedule, and that difference divided by the package count.
     const overhead = (runner: string): number =>
-      (rows.find((r) => r['runner'] === runner)!['fresh'] as number) - baseline['workBoundMs']!
-    expect(doc).toContain(`is\n${(overhead('vx') / 1000).toFixed(2)}s on 3,270 tasks`)
-    expect(doc).toContain(`(${Math.round(overhead('vx') / packages)} ms per package)`)
-    expect(doc).toContain(`${(overhead('vx (no lock)') / 1000).toFixed(2)}s\nwith no lock`)
-    expect(doc).toContain(`(${Math.round(overhead('turbo') / packages)} ms per package)`)
-    expect(doc).toContain(
-      `(${Math.round(overhead('nx') / packages).toLocaleString('en-US')} ms per package)`,
-    )
+      (rows.find((r) => r['runner'] === runner)!['fresh'] as number) - baseline['fresh']!
+    const normalized = doc.replace(/\s+/g, ' ')
+    expect(normalized).toContain(`is ${(overhead('vx') / 1000).toFixed(2)}s on 3,270 tasks`)
+    expect(normalized).toContain(`${(overhead('vx (no lock)') / 1000).toFixed(2)}s with no lock`)
+    for (const runner of ['vx', 'turbo', 'nx', 'vite-task']) {
+      expect(normalized).toContain(`(${Math.round(overhead(runner) / packages)} ms per package)`)
+    }
   })
 })

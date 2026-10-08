@@ -20,7 +20,8 @@ below is a simplification.
 ## A temporary start
 
 `nx()` from `@vzn/vx-migrate` is a bridge while you migrate, not a way
-to keep Nx's config: vx is fast on native config. It fills vx's `project` stage from the resolved
+to keep Nx's config: the current benchmarks measure native config, not
+this bridge. It fills vx's `project` stage from the resolved
 project graph, so every project's targets are vx tasks with their
 inputs, outputs and `dependsOn`, and `vx run build --all` runs what
 `nx run-many -t build` ran, under vx's cache. `npx vx init` writes the
@@ -114,6 +115,12 @@ Neither exists in vx and neither will — a TypeScript config composes,
 so a shared input list is an import.
 
 ## What you drop, and what replaces it
+
+> **Measurement scope:** The figures here are one repetition per runner/state
+> on the synthetic uniform-sleep layered graph, using native configs, not
+> a prediction for an Nx migration. Read the separate
+> [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case before choosing on speed alone.
 
 - **The daemon.** vx has [none](../no-daemon/). On the 3,270-task
   benchmark, on native config, a fully cached run is 393ms to Nx's

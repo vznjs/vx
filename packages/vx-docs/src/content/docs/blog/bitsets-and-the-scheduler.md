@@ -37,22 +37,30 @@ answer it needed.
 
 ## The tick
 
-Priority in vx is "most blocked first": the task with the most
-transitive dependents goes to the worker pool first, because finishing
-it releases the most work. The scheduler keeps ready tasks in an exact
-binary max-heap, ordered by that count and breaking ties in
-graph-insertion order, and on every completion decrements the pending
+Default priority in vx is "most blocked first": the ready task with the
+most unique transitive dependents goes to the worker pool first. This
+counts downstream nodes, not their durations or remaining critical-path
+length; a long independent task can rank below short parents. The
+scheduler keeps ready tasks in an exact binary max-heap, ordered by
+that count and breaking ties in
+ready-queue enqueue order, and on every completion decrements the pending
 dependency count of the completed task's direct dependents and pushes
 the ones that reached zero. No re-scan of the graph: each edge is
 touched once, for O(E) over the run, plus one O(log N) heap operation
 per task that becomes ready and one per dispatch.
 
-That is also why lookahead and idle-insertion scheduling are on the
-repository's rejected list: they were measured, and the critical-path
-priority already ties or wins. The one refinement worth having is
-learning the real durations, which is what `@vzn/vx-schedule-history`
-does on the `schedule` seam: order by the critical path measured in
-previous runs instead of by edge count.
+The earlier lookahead and idle-insertion experiments were rejected for
+the workloads measured then, not because the default is duration-aware
+or generally optimal. `@vzn/vx-schedule-history`, when explicitly
+declared, supplies priorities from remaining critical-path duration
+learned in previous runs instead of the default dependent count.
+
+> **Scope:** The bitset computation and 1.07× restore-tier result are
+> workload-specific measurements, not proof of the best dispatch order.
+> See the separate [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case for real CLI traces alongside the
+> analytic schedules. A cheaper priority computation need not produce
+> a shorter end-to-end run.
 
 ## Two tiers: misses own the pool, hits backfill
 

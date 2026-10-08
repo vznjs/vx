@@ -373,7 +373,7 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
       '3m 40s',
       '4m 59s',
       '3m 49s',
-      '10 ms per',
+      '10 ms',
       '1,090 packages',
       '100 dependency layers',
       '74 ms',
@@ -780,7 +780,7 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turbo 2.11.7', 'Nx 23.2.1']) {
+    for (const version of ['Turborepo 2.11.7', 'Nx 23.2.1']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }
@@ -2164,7 +2164,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
       "(vx 16× and 1.1× faster), Nx's daemon off as in CI.",
     )
     expect(post('honest-benchmarks.md')).toContain(
-      "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
+      "CI (`CI=1`: Nx's daemon off, and Turborepo uses none for `turbo run`)",
     )
     expect(post('honest-benchmarks.md')).not.toContain('with their daemons on')
   })
@@ -2436,7 +2436,7 @@ describe('the headline Nx column runs nx:run-commands', () => {
       'nx:noop',
       'nx:run-commands',
     ])
-    expect(bench).toContain('every Nx task an `nx:run-commands` target')
+    expect(bench).toContain('Nx 23.2.1 with `nx:run-commands`')
     expect(bench).toContain('6m 59s (vx 1.9× faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })

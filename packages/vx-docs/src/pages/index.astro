@@ -1,23 +1,19 @@
 ---
-// vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
-// only through migration): the hero, the benchmark chart and why it is
-// faster, how to start, then the one diagram with its six callouts and the four pillars.
-// Standalone (its own nav, footer and theme), static, one script for the
-// copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
-// kicker are written by packages/vx-bench/update-site.ts from results.json
-// (check.site guards them). tests/landing.test.ts holds the rest.
+// Standalone landing: two independent synthetic workloads, not a universal speed claim.
+// update-site.ts validates both datasets before writing the generated measurements;
+// check.site guards their regions and landing.test.ts holds the built presentation.
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
 import '../styles/charts.css'
-import { parseDuration, renderBars } from '../plugins/data-charts.ts'
+import { parseDuration, renderBars, type BarGroup } from '../plugins/data-charts.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
-const TITLE = 'vx — the fastest task runner for JS monorepos'
+const TITLE = 'vx — a task runner and build cache for JS monorepos'
 const DESCRIPTION =
-  'Less time added than Turborepo, Nx and Vite Task, cold and cached, each measured in its own native config. MIT, no account.'
+  'Native-config measurements of two synthetic workloads, including a scheduling counterexample. End-to-end time and baseline-subtracted excess are separate metrics.'
 // Absolute, as a link preview fetches it from wherever the link was pasted.
 const siteUrl = new URL(base, Astro.site).href
 
@@ -66,10 +62,11 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: time the runner adds', vx: '2 s', turbo: '1 min 21 s (vx 34× faster)', nx: '11 s (vx 4.7× faster)', vt: '1 min 11 s (vx 30× faster)' },
-  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.2× faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 1.4× slower)' },
-  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 1.5× faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4× faster)' },
-  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 1.1× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
+  { label: 'Cold build: whole wall time', vx: '3m 40s', turbo: '4m 59s (vx 1.3× faster)', nx: '3m 49s (vx 1.03× faster)', vt: '4m 49s (vx 1.3× faster)' },
+  { label: 'Cold build: baseline-subtracted excess', vx: '2.33s', turbo: '1m 21s (vx 34× faster)', nx: '10.98s (vx 4.7× faster)', vt: '1m 11s (vx 30× faster)' },
+  { label: 'Cold build: CPU burned', vx: '17.27s', turbo: '21.04s (vx 1.2× faster)', nx: '52.19s (vx 3× faster)', vt: '12.46s (vx 1.4× slower)' },
+  { label: 'Fully cached run (restored)', vx: '650ms', turbo: '997ms (vx 1.5× faster)', nx: '6.25s (vx 9.6× faster)', vt: '2.64s (vx 4× faster)' },
+  { label: 'Fully cached run (up-to-date)', vx: '393ms', turbo: '463ms (vx 1.1× faster)', nx: '6.45s (vx 16× faster)', vt: '2.49s (vx 6.3× faster)' },
 ]
 const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
 
@@ -94,14 +91,24 @@ const benchBars = renderBars(
   })),
 )
 
-// The hero's three numbers, each the multiple a benchTable cell already
-// states, so a new run moves them with the chart.
-const timesOf = (cell: string): string => `${/^vx ([\d.]+)× faster$/.exec(vsOf(cell)[1])![1]}×`
-const [addsRow, cpuRow, , cachedRow] = benchTable
+const benchScope = "Synthetic layered stress graph (2026-10-04): 1,090 packages, 2,180 executable tasks + 1,090 ordering/group nodes; single repetition per runner/state, concurrency 10."
+
+// counterexample:data:start
+const counterexampleScope = "Synthetic scheduling counterexample (2026-10-08): 7 DAG nodes, 5 executable waiting tasks and 2 commandless root gates, two workers, five alternating rounds, ten conforming actual CLI samples, zero cache hits and zero exit codes."
+const counterexampleRows = [{"label":"End-to-end wall time: median; min–max","vx":"89.916 s; 89.899 s–89.992 s","turbo":"60.255 s; 60.234 s–60.347 s"},{"label":"Baseline-subtracted excess: median; min–max","vx":"29.916 s; 29.899 s–29.992 s","turbo":"0.255 s; 0.234 s–0.347 s"}]
+const counterexampleGroups: BarGroup[] = [{"title":"End-to-end wall time: median; min–max","bars":[{"name":"vx","ms":89915.84075,"value":"89.916 s; 89.899 s–89.992 s"},{"name":"Turborepo","ms":60254.991375,"value":"60.255 s; 60.234 s–60.347 s"}]},{"title":"Baseline-subtracted excess: median; min–max","bars":[{"name":"vx","ms":29915.840750000003,"value":"29.916 s; 29.899 s–29.992 s"},{"name":"Turborepo","ms":254.9913749999978,"value":"0.255 s; 0.234 s–0.347 s"}]}]
+const counterexampleNotes = ["End-to-end ratio of all-five-round medians (vx / Turborepo): 1.492×; all-sample envelope 1.490–1.494×.","Excess ratio of all-five-round medians ((vx − ideal) / (Turborepo − ideal)): 117.321×; all-sample envelope 86.24358–128.43789×.","All five rounds are retained; 1 paired excess ratio is below 100×, and a ratio of all-sample medians is not an every-round threshold or a universal guarantee.","Paired round 1: end-to-end vx/Turborepo ratio 1.48999×; baseline-subtracted excess ratio 86.29344×.","Paired round 2: end-to-end vx/Turborepo ratio 1.49197×; baseline-subtracted excess ratio 117.25320×.","Paired round 3: end-to-end vx/Turborepo ratio 1.49126×; baseline-subtracted excess ratio 102.75401×.","Paired round 4: end-to-end vx/Turborepo ratio 1.49384×; baseline-subtracted excess ratio 123.97604×.","Paired round 5: end-to-end vx/Turborepo ratio 1.49330×; baseline-subtracted excess ratio 128.24447×.","Both runners receive the same zero-cost readiness gates.","This controls when parents become ready: count priority may admit newly ready parents ahead of the independent long task, while a FIFO semaphore may retain the already waiting long task.","These are hypotheses about ordering, not guaranteed runner behavior; keep every observed task-start order.","Only the five executable tasks have observed process spans and output files; commandless gate readiness timing is not trace-verified.","The retained earlier minimal five-task case includes an adverse Turborepo root-order run and an unresolved excess ratio; it is a different shared DAG, not a discarded outlier or a subset of this primary measurement.","Analytic ideal 60.000 s; commandless gates add no modeled work or duration.","Median excess denominator 254.991 ms; configured noise floor 1 ms; nonpositive or noise/spread-dominated denominators suppress the excess ratio.","Envelopes are observed min/max combinations, not confidence intervals; an excess multiple is not that multiple slower whole builds.","Default vx counts dependent tasks, so the two parents can delay the long independent task; it does not know durations or guarantee an optimal schedule.","darwin/arm64 25.6.0, Apple M4 Max, 14 cores, Bun 1.4.2+744846f84, vx 0.0.0, native-direct Turborepo 2.11.7; source commit b82388663a445a9ee099be0f80c81ff66c90c638."]
+const counterexamplePreliminaryLinks = [{"label":"counterexample-preliminary-results.json","href":"https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-results.json"},{"label":"COUNTEREXAMPLE-PRELIMINARY.md","href":"https://github.com/vznjs/vx/blob/main/packages/vx-bench/COUNTEREXAMPLE-PRELIMINARY.md"},{"label":"counterexample-preliminary-samples.jsonl","href":"https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-samples.jsonl"}]
+// counterexample:data:end
+
+// The retained stress graph's multiples, never a claim about the independent counterexample.
+const addsRow = benchTable.find((r) => /excess|time the runner adds/.test(r.label))!
+const cpuRow = benchTable.find((r) => r.label === 'Cold build: CPU burned')!
+const cachedRow = benchTable.find((r) => r.label === 'Fully cached run (up-to-date)')!
 const wins = [
-  { n: timesOf(addsRow!.turbo), line: 'less time added to a cold build than Turborepo' },
-  { n: timesOf(cpuRow!.turbo), line: 'less CPU burned on a cold build than Turborepo' },
-  { n: timesOf(cachedRow!.nx), line: 'faster fully cached run than Nx' },
+  { n: vsOf(addsRow.turbo)[1], line: 'cold baseline-subtracted excess vs Turborepo, stress graph only' },
+  { n: vsOf(cpuRow.turbo)[1], line: 'cold CPU vs Turborepo, stress graph only' },
+  { n: vsOf(cachedRow.nx)[1], line: 'fully cached run vs Nx, stress graph only' },
 ]
 
 // Where vx differs from both, each cell as the choosing page's model says it
@@ -194,7 +201,7 @@ const footCols = {
     <meta property="og:title" content={TITLE} />
     <meta property="og:description" content={DESCRIPTION} />
     <meta property="og:image" content={`${siteUrl}og.png`} />
-    <meta property="og:image:alt" content="vx: the fastest task runner for JS monorepos" />
+    <meta property="og:image:alt" content="vx: a task runner and build cache for JS monorepos" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -240,8 +247,9 @@ const footCols = {
 
       <section class="hero">
         <div class="container">
-          <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
-          <p class="lede">Measured against Turborepo, Nx and Vite Task, each in its own native config.</p>
+          <h1>A task runner and <span class="phosphor">build cache</span> for JS monorepos.</h1>
+          <p class="lede">Native-config benchmarks show different scheduling trade-offs, not a universal speed ranking.</p>
+          <p class="bench-scope">The following multiples describe only the synthetic layered stress graph with a single repetition; cold excess is not whole-build speedup.</p>
           <ul class="wins">
             {
               wins.map((w) => (
@@ -283,12 +291,35 @@ const footCols = {
         <div class="container">
           <div class="section-head">
             <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
-            <h2>Least time added, cold and cached.</h2>
+            <h2>Two synthetic workloads, different trade-offs.</h2>
           </div>
-          <div class="bench-panel">
+          <article class="bench-panel" id="counterexample-case">
+            <h3>Synthetic scheduling counterexample</h3>
+            <p>{counterexampleScope}</p>
+            <Fragment set:html={renderBars(counterexampleGroups)} />
+            {
+              counterexampleRows.length > 0 && (
+                <table>
+                  <thead><tr><th scope="col">Metric</th><th scope="col">vx</th><th scope="col">Turborepo</th></tr></thead>
+                  <tbody>
+                    {counterexampleRows.map((r) => <tr><th scope="row">{r.label}</th><td>{r.vx}</td><td>{r.turbo}</td></tr>)}
+                  </tbody>
+                </table>
+              )
+            }
+            {counterexampleNotes.map((note) => <p>{note}</p>)}
+            <nav aria-label="Retained preliminary measurement">
+              {counterexamplePreliminaryLinks.map((link) => <a class="section-link" href={link.href}>{link.label}</a>)}
+            </nav>
+            <a class="section-link" href={href('benchmarks/#synthetic-scheduling-counterexample')}>Methodology, raw samples and the exact baseline <span class="arr">→</span></a>
+          </article>
+          <article class="bench-panel" id="stress-case">
+            <h3>Synthetic layered stress graph</h3>
+            <p>{benchScope}</p>
             <Fragment set:html={benchBars} />
             <p class="bench-formula">{benchFormula}</p>
-          </div>
+            <p>Cold excess compares wall time minus the analytic ideal, including scheduling delay and runner work; its multiple is not the whole-build speedup.</p>
+          </article>
           <ul class="reasons">
             {
               reasons.map((r) => (

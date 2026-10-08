@@ -6,15 +6,23 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'The retained synthetic 3,270-node layered graph answered fully cached in about half a second with no daemon. Five structural decisions contribute to that path; graph shape and ready-task order also matter.'
 ---
 
-The headline number is the one you pay on every uncached build: what
-the runner adds on top of your tasks. On a synthetic workspace of
-1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 40s, Nx in 3m 49s and Turborepo in
-4m 59s. vx adds 2 s; Turborepo adds 1 min 21 s (vx 34× faster), Nx 11 s
-(vx 4.7× faster) and Vite Task 1 min 11 s (vx 30× faster).
+> **Scope:** These retained figures describe one repetition per runner/state
+> on a synthetic uniform-sleep layered graph, not every uncached build.
+> The separate [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case show why graph shape and ready-task order
+> matter. Default vx uses unique transitive-dependent counts, not durations.
+
+On that synthetic workspace of 1,090 packages and 3,270 task nodes,
+with 2,180 executable tasks and 1,090 groups, the ideal schedule is
+3m 38s. vx finishes the cold run in 3m 40s, Nx in 3m 49s and Turborepo
+in 4m 59s. vx's baseline-subtracted excess is about 2 s; Turborepo's
+is 1 min 21 s (34× the excess), Nx's 11 s (4.7×) and Vite Task's
+1 min 11 s (30×). Those are excess ratios, not end-to-end speedups:
+Turborepo's total wall time is about 1.36× vx's. Excess includes idle
+workers and scheduling delay, not just hashing or scheduler CPU.
 Warm, a fully cached `vx run build test --all` finishes in 393ms,
 Turborepo in 463ms (vx 1.1× faster), Nx in 6.45s (vx 16× faster) and
 Vite Task in 2.49s (vx 6.3× faster). The cold build burns 17 s of CPU
@@ -22,9 +30,9 @@ in vx, 21 s in Turborepo (vx 1.2× faster), 52 s in Nx (vx 3× faster)
 and 12 s in Vite Task (vx 1.4× slower), each runner in its own native
 config.
 
-None of that comes from a microbenchmark trick. It comes from five
-decisions, and every one of them is also a reason to trust the cache
-more, not less.
+Five structural decisions contribute to those measured paths, and each
+also affects cache correctness. They do not explain every wall-time
+difference: on a cold graph, dispatch order matters too.
 
 ## 1. The cache key is already in git's index
 
@@ -48,8 +56,8 @@ Scheduling priority and the package graph are computed over packed
 bitsets with popcount instead of set-union depth-first search. On the
 3,270-task graph that turned an 8.5 s priority computation into
 single-digit milliseconds. The scheduler tick re-scans nothing: ready
-tasks come off an exact most-blocked-first binary heap, a completion
-decrements its direct dependents' counters and pushes the ones that
+tasks come off a binary heap ranked by unique transitive-dependent
+count. A completion decrements its direct dependents' counters and pushes the ones that
 reach zero, and the run costs one pass over the edges plus an
 `O(log N)` heap operation per task.
 

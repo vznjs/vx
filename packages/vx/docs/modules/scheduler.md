@@ -213,8 +213,19 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
 Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
-tasks). Ties break in graph-insertion order: `ReadyHeap` is a binary
+tasks). Ties break in ready-queue enqueue order: `ReadyHeap` is a binary
 max-heap ordered by (priority DESC, enqueue-seq ASC).
+
+This default count measures unique downstream nodes, not their durations
+or remaining critical-path length. Computing the count exactly does not
+make the resulting schedule optimal: short parents can outrank a long
+independent task. The separate
+[scheduling counterexample](../benchmarks.md#synthetic-scheduling-counterexample)
+and its retained preliminary case put actual CLI traces beside analytic
+schedules. Its wall-time excess includes scheduling delay and idle workers,
+not just the cost of computing priorities or hashes. The uniform-sleep
+layered result is a different workload, not a universal ranking.
+
 With a restore tier the count is `tieredReverseDepCount` (item 754): a
 restore-tier task never waits on its deps, so it blocks only the
 exec-tier tasks that depend on it. Its dependents do wait on its deps:

@@ -218,10 +218,11 @@ describe('the landing page', () => {
   it('says what vx is in one line, then the sections in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('The fastest task runner for JS monorepos.')
+    expect(text(h1[0]![1]!)).toBe('A task runner and build cache for JS monorepos.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'Measured against Turborepo, Nx and Vite Task, each in its own native config.',
+      'Native-config benchmarks show different scheduling trade-offs, not a universal speed ranking.',
     )
+    expect(text(hero)).not.toMatch(/fastest|least time added/i)
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
     expect(h1[0]!.index!).toBeLessThan(ids[0]!.index!)
@@ -273,25 +274,94 @@ describe('the landing page', () => {
     expect(run).not.toMatch(/<script\b|\son[a-z]+=/)
   })
 
-  // The numbers are check.site's; the shape is here: one chart per number,
-  // vx's bar first, every other tool's bar saying how vx compares, each bar
-  // as long as its time against the slowest, the formula under the chart,
-  // and three reasons under it.
-  it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
+  // check.site holds the figures; these rows hold the separate built cases and metric labels.
+  const cases = () => [
+    ...section(html, 'bench').matchAll(/<article\b[^>]*id="([\w-]+)"[^>]*>([\s\S]*?)<\/article>/g),
+  ]
+  const charts = (body: string) =>
+    [...body.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map((m) => m[1]!)
+  const captions = (body: string) =>
+    charts(body).map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))
+
+  it('shows both independent workloads, with end-to-end counterexample time first', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Least time added, cold and cached.')
-    expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
-    expect(bench).not.toContain('<table')
-    const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
-      (m) => m[1]!,
+    expect(text(bench)).toContain('Two synthetic workloads, different trade-offs.')
+    const panels = cases()
+    expect(panels.map((m) => m[1])).toEqual(['counterexample-case', 'stress-case'])
+    expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(2)
+    const counterexample = panels[0]![2]!
+    expect(captions(counterexample)).toEqual([
+      'End-to-end wall time: median; min–max',
+      'Baseline-subtracted excess: median; min–max',
+    ])
+    expect(text(counterexample)).toContain(
+      'five alternating rounds, ten conforming actual CLI samples',
     )
-    expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
-      'Cold build: time the runner adds',
+    expect(text(counterexample)).toContain('zero cache hits and zero exit codes')
+    expect(text(counterexample)).toContain(
+      '7 DAG nodes, 5 executable waiting tasks and 2 commandless root gates',
+    )
+    expect(text(counterexample)).toContain('readiness timing is not trace-verified')
+    expect(text(counterexample)).toContain(
+      'adverse Turborepo root-order run and an unresolved excess ratio',
+    )
+    expect(text(counterexample)).toContain(
+      'not a discarded outlier or a subset of this primary measurement',
+    )
+    const archived = [
+      ...counterexample.matchAll(
+        /href="(https:\/\/github\.com\/vznjs\/vx\/blob\/main\/packages\/vx-bench\/[^"\s]+)"/g,
+      ),
+    ].map((m) => m[1])
+    expect(archived).toEqual([
+      'https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-results.json',
+      'https://github.com/vznjs/vx/blob/main/packages/vx-bench/COUNTEREXAMPLE-PRELIMINARY.md',
+      'https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-samples.jsonl',
+    ])
+    expect(text(counterexample)).toContain('native-direct Turborepo')
+    expect(text(counterexample)).toContain('not confidence intervals')
+    expect(text(counterexample)).toContain('not that multiple slower whole builds')
+    expect(text(counterexample)).toContain('Default vx counts dependent tasks')
+    expect(text(counterexample)).toContain('configured noise floor')
+    expect(text(counterexample)).toContain('ratio of all-five-round medians')
+    expect(text(counterexample)).toContain('not an every-round threshold or a universal guarantee')
+    expect(
+      [...text(counterexample).matchAll(/Paired round (\d):/g)].map((m) => Number(m[1])),
+    ).toEqual([1, 2, 3, 4, 5])
+    expect(text(counterexample).indexOf('End-to-end ratio')).toBeLessThan(
+      text(counterexample).indexOf('Excess ratio'),
+    )
+    expect(text(counterexample)).not.toMatch(/Publication pending|Infinity|NaN|fastest/)
+    const rows = [...counterexample.matchAll(/<tr>([\s\S]*?)<\/tr>/g)]
+    expect(rows).toHaveLength(3)
+    for (const figure of charts(counterexample)) {
+      const names = [...figure.matchAll(/<span class="vx-bar-name">([\s\S]*?)<\/span>/g)].map((m) =>
+        text(m[1]!),
+      )
+      expect(names).toEqual(['vx', 'Turborepo'])
+      const values = [...figure.matchAll(/<span class="vx-bar-value">([\s\S]*?)<\/span>/g)].map(
+        (m) => text(m[1]!),
+      )
+      expect(values).toHaveLength(2)
+      expect(values.every((v) => /[\d.]+ s; [\d.]+ s–[\d.]+ s/.test(v))).toBe(true)
+    }
+  })
+
+  it('retains the synthetic single-repetition stress graph with whole wall time beside excess', () => {
+    const stress = cases()[1]![2]!
+    expect(text(stress)).toContain('single repetition')
+    expect(text(stress)).toContain('executable tasks +')
+    expect(text(stress)).toContain('ordering/group nodes')
+    expect(text(stress)).toContain('its multiple is not the whole-build speedup')
+    expect(stress).not.toContain('<table')
+    expect(captions(stress)).toEqual([
+      'Cold build: whole wall time',
+      'Cold build: baseline-subtracted excess',
       'Cold build: CPU burned',
       'Fully cached run (restored)',
       'Fully cached run (up-to-date)',
     ])
-    for (const f of figures) {
+    for (const f of charts(stress)) {
       const bars = [
         ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
       ]
@@ -302,38 +372,41 @@ describe('the landing page', () => {
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
-      expect(notes.slice(1).filter((n) => !/^vx [\d.]+× (?:faster|slower)$/.test(n ?? ''))).toEqual(
-        [],
-      )
+      expect(
+        notes
+          .slice(1)
+          .every((n) =>
+            /^vx [\d.]+× (?:faster|slower)$|^vx same$|^ratio unresolved:/.test(n ?? ''),
+          ),
+      ).toBe(true)
     }
-    expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
+    expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(stress)![1]!)).toBe(
       'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).',
     )
-    const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
-      text(m[1]!),
-    )
-    expect(notes).toHaveLength(1)
-    const reasons = [...bench.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => text(m[1]!))
+    const reasons = [...section(html, 'bench').matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)]
     expect(reasons).toHaveLength(3)
   })
 
-  // The hero's three numbers are the chart's own multiples (owner,
-  // 2026-10-04: "show off best traits of vx vs competitors").
-  it('leads with three multiples the chart states', () => {
+  it('immediately scopes the hero multiples to the retained stress graph and their own metrics', () => {
     const wins = [
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
-      'less time added to a cold build than Turborepo',
-      'less CPU burned on a cold build than Turborepo',
-      'faster fully cached run than Nx',
+      'cold baseline-subtracted excess vs Turborepo, stress graph only',
+      'cold CPU vs Turborepo, stress graph only',
+      'fully cached run vs Nx, stress graph only',
     ])
-    const bench = section(html, 'bench')
-    const notes = [...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+)× faster<\/span>/g)].map(
-      (m) => `${m[1]}×`,
+    const scope = /<p class="bench-scope">([\s\S]*?)<\/p>/.exec(hero)!
+    expect(text(scope[1]!)).toBe(
+      'The following multiples describe only the synthetic layered stress graph with a single repetition; cold excess is not whole-build speedup.',
     )
-    // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[9]!])
+    expect(scope.index!).toBeLessThan(wins[0]!.index!)
+    const figures = charts(cases()[1]![2]!)
+    const notes = (i: number) =>
+      [...figures[i]!.matchAll(/<span class="vx-bar-note">([\s\S]*?)<\/span>/g)].map((m) =>
+        text(m[1]!),
+      )
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes(1)[0]!, notes(2)[0]!, notes(4)[1]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.
@@ -512,12 +585,15 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual(['vx — the fastest task runner for JS monorepos'])
-    // The search result's and the card's headline says what vx is: the
-    // cinematic landing's slogan outlived the page it headed.
+    expect(meta(page(), 'og:title')).toEqual([
+      'vx — a task runner and build cache for JS monorepos',
+    ])
     expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
-      'vx — the fastest task runner for JS monorepos',
+      'vx — a task runner and build cache for JS monorepos',
     )
+    expect(meta(page(), 'og:description')).toEqual([
+      'Native-config measurements of two synthetic workloads, including a scheduling counterexample. End-to-end time and baseline-subtracted excess are separate metrics.',
+    ])
   })
 
   // The PNG is rendered from public/og.svg; the card said "a faster runner

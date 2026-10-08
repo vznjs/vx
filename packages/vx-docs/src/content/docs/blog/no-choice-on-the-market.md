@@ -12,6 +12,13 @@ excerpt: "Turborepo is fast and stops at the edge of a laptop. Nx scales and is 
 vx exists because of a gap, and the gap is easiest to describe by what
 sits on either side of it.
 
+> **Measurement scope:** The timing and CPU figures below are retained from
+> one repetition per runner/state on a synthetic uniform-sleep layered graph,
+> not evidence that one runner is always faster. See the separate
+> [scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+> and its retained preliminary case. Default vx counts unique transitive
+> dependents; it does not rank by remaining task duration.
+
 ## Turborepo: fast, and it stops
 
 Turborepo got the important thing right. One `turbo.json`, a

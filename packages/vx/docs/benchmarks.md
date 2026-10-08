@@ -1,7 +1,8 @@
 # Benchmarks
 
-Empirical overhead numbers vs. Turborepo and Nx on synthetic workspaces.
-Updated as the runners evolve.
+Real CLI timings on synthetic workspaces, with each runner's native config.
+The layered stress result and heterogeneous scheduling counterexample are independent datasets, not a universal speed ranking.
+End-to-end wall time and baseline-subtracted excess are different metrics; excess includes scheduling delay as well as runner work.
 
 Every harness (`compare.ts`, `run.ts`, `ab.ts`, `real/turbo-repo.sh`,
 `real/nx-repo.sh`) runs vx from a `vx lock` snapshot (`--frozen`), the
@@ -355,84 +356,132 @@ probes each forked task runs cost ~8 ms of it. These tables used to say
 Nx's daemon was on; `CI=1` had always turned it off, and the harness
 keeps it off on purpose: it simulates CI.
 
-### Why Turborepo is slower cold
+### Ready-task order on the layered stress graph
 
-The order it starts ready tasks in, not its CPU (21 s cold against vx's
-17 s at 3,270 tasks). Turborepo has no ranking: its walker hands out
-tasks as they become ready and each waits for a semaphore slot
-(`crates/turborepo-engine/src/execute.rs`). When a layer's builds finish,
-the next layer's builds become ready together with that layer's tests,
-and in ready order the tests go first, so every build on the 100-layer
-critical path waits about a second. `listSchedule(nodes, 10, 'fifo')`
-replays that order on the benchmark's graph: 4m 58s, against Turborepo's
-measured 4m 59s and 3m 38s ranked (`packages/vx-bench/tests/ideal.test.ts`).
-No `turbo.json` key changes the order. vx ranks ready tasks by remaining
-critical path, Nx by how many tasks wait on each.
+The retained layered run exposes a ready-order effect, not a general ranking of schedulers.
+A FIFO simulation starts a layer's tests ahead of the next layer's builds;
+`listSchedule(nodes, 10, 'fifo')` reads 4m 58s, close to the measured
+Turborepo 4m 59s, versus the model's 3m 38s ranked schedule
+(`packages/vx-bench/tests/ideal.test.ts`). This agreement is not proof that
+Turborepo always dispatches FIFO; the counterexample retains actual task-start traces.
 
-## A real monorepo: 3,270 tasks, 100 layers (2026-10-04)
+Default vx ranks by transitive dependent counts, **not** remaining critical-path duration.
+On the uniform-duration layered graph that structural heuristic works well;
+on heterogeneous tasks it can start short parents before a long independent task.
+`@vzn/vx-schedule-history` can supply duration-based priorities when explicitly declared,
+but the default-native counterexample runs with no plugins and no learned history.
+Neither the count heuristic nor a critical-path-first list schedule is generally optimal.
 
-The shape that actually stresses a task runner: **100 dependency layers**,
-~11 packages per layer, ~30 deps per package, three tasks each
-(`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
-task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
-every runner pinned to concurrency 10. `bun packages/vx-bench/compare.ts 100 11 1`,
-this machine (linux x64, 4 cores), Turbo 2.11.7, Nx 23.2.1, every Nx task an `nx:run-commands` target,
-Vite Task (`vp run`, vite-plus 1.0.0), its tasks in each package's `vite.config.ts`.
-vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
-as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
-config per run.
-The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
+<!-- stress:start -->
 
-|                                 | vx                                                       | vx, no lock | Turborepo               | Nx                       | Vite Task               |
-| ------------------------------- | -------------------------------------------------------- | ----------- | ----------------------- | ------------------------ | ----------------------- |
-| **Cold** (nothing cached)       | **3m 40s**                                               | 3m 41s      | 4m 59s (vx 1.3× faster) | 3m 49s (vx 1.03× faster) | 4m 49s (vx 1.3× faster) |
-| **Warm**, nothing to rebuild    | **393ms**                                                | 473ms       | 463ms (vx 1.1× faster)  | 6.45s (vx 16× faster)    | 2.49s (vx 6.3× faster)  |
-| **Warm**, restore outputs       | **650ms**                                                | 780ms       | 997ms (vx 1.5× faster)  | 6.25s (vx 9.6× faster)   | 2.64s (vx 4× faster)    |
-| **CPU burned**, cold (user+sys) | **17.27s**                                               | 18.79s      | 21.04s (vx 1.2× faster) | 52.19s (vx 3× faster)    | 12.46s (vx 1.4× slower) |
-| **CPU burned**, warm (user+sys) | **745ms**                                                | 894ms       | 897ms (vx 1.2× faster)  | 7.52s (vx 10× faster)    | 2.48s (vx 3.3× faster)  |
-| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                        | —           | —                       | —                        | —                       |
-| _Measured floors_ (context)     | git walk 24ms · walk + raw copy 93ms · task shells 9.09s | —           | —                       | —                        | —                       |
+## Synthetic layered stress graph: 3,270 task nodes, 100 layers (2026-10-04)
+
+Synthetic layered stress graph (2026-10-04): 1,090 packages, 2,180 executable tasks + 1,090 ordering/group nodes; single repetition per runner/state, concurrency 10.
+This is generated, not a real repository: 100 dependency layers,
+99 layers of 11 packages plus one top package,
+11 dependencies per non-bottom package (requested 30, capped by the pool),
+2,180 executable `build`/`test` tasks and 1,090 `installDeps` ordering/group nodes.
+The tasks wait 1 second; these counts describe the vx/Turborepo/Nx graph.
+Vite Task uses direct build/test dependency edges and an empty `vp-all` aggregator per package instead of `installDeps`.
+`bun packages/vx-bench/compare.ts 100 11 1`, linux x64, 4 cores,
+Turborepo 2.11.7, Nx 23.2.1 with `nx:run-commands`, Vite Task 1.0.0.
+vx runs from a `vx lock` snapshot (`--frozen`); _vx, no lock_ evaluates the configs per run.
+The existing `packages/vx-bench/RESULTS.md` / `results.json` remain this dated run.
+A single repetition establishes no spread or statistical confidence.
+
+|                                            | vx                                                       | vx, no lock | Turborepo               | Nx                       | Vite Task               |
+| ------------------------------------------ | -------------------------------------------------------- | ----------- | ----------------------- | ------------------------ | ----------------------- |
+| **Cold** (nothing cached)                  | **3m 40s**                                               | 3m 41s      | 4m 59s (vx 1.3× faster) | 3m 49s (vx 1.03× faster) | 4m 49s (vx 1.3× faster) |
+| **Warm**, nothing to rebuild               | **393ms**                                                | 473ms       | 463ms (vx 1.1× faster)  | 6.45s (vx 16× faster)    | 2.49s (vx 6.3× faster)  |
+| **Warm**, restore outputs                  | **650ms**                                                | 780ms       | 997ms (vx 1.5× faster)  | 6.25s (vx 9.6× faster)   | 2.64s (vx 4× faster)    |
+| **CPU burned**, cold (user+sys)            | **17.27s**                                               | 18.79s      | 21.04s (vx 1.2× faster) | 52.19s (vx 3× faster)    | 12.46s (vx 1.4× slower) |
+| **CPU burned**, warm (user+sys)            | **745ms**                                                | 894ms       | 897ms (vx 1.2× faster)  | 7.52s (vx 10× faster)    | 2.48s (vx 3.3× faster)  |
+| _Baseline_ (analytic ideal for this shape) | 3m 38s cold; 0 warm, restore, runner CPU                 | —           | —                       | —                        | —                       |
+| _Measured floors_ (context)                | git walk 24ms · walk + raw copy 93ms · task shells 9.09s | —           | —                       | —                        | —                       |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
 
-**Baseline** is the theoretical best case, so each row shows its overhead:
-cold is the tasks' own durations list-scheduled on 10 workers along the
-exact dependency graph (critical path 1m 40s, total work ÷
-workers 3m 38s); a cached run, a restore and the CPU a
-runner burns are 0 in theory, so every measured number in those rows is
-the runner. vx's cold overhead over the ideal schedule is
+**Baseline** is an analytic task-duration model, not a measured CLI run:
+critical path 1m 40s, total work ÷ 10 workers 3m 38s.
+The feasible list schedule attains 3m 38s on this shape; that is not a general proof that critical-path-first is optimal.
+Cold excess compares wall time minus the analytic ideal, including scheduling delay and runner work; its multiple is not the whole-build speedup.
+vx's cold excess is
 2.33s on 3,270 tasks (2 ms per package), 2.52s
-with no lock; Turborepo's is
-1m 21s (74 ms per package), Nx's 10.98s
-(10 ms per package) and Vite Task's 1m 11s
-(65 ms per package) — the number to read first, in one unit for every
-runner: a runner that adds seconds to a three-minute build is a
-different tool from one that adds a minute and a half. For context, the
-**measured floors** row gives what the cheapest possible implementation
-of each step costs on this machine: one `git status -uall` walk (the
-cost of asking what changed), that walk plus a raw copy of every output
-file, and the task shells themselves under `xargs -P 10` (which vary by
-about two seconds between runs).
+with no lock; Turborepo's is 1m 21s (74 ms per package),
+Nx's 10.98s (10 ms per package), Vite Task's 1m 11s (65 ms per package).
+The whole-wall row compares complete invocations without subtraction.
 
-**CPU** is user + system time of the invocation and every child it
-waited for. The tasks are `sleep`, so this is the runner's own work; a
-daemon that outlives the invocation (Nx's) is not counted, so Nx's CPU
-is a floor.
+**CPU** is user + system time of the invocation and waited-for descendants, including task shells;
+waiting tasks are not representative of compiler CPU consumption, and detached daemons are not counted.
+The measured floors are a git walk, raw output copy and task shells, not interchangeable baselines for those metrics.
 
-> Methodology note: a synthetic graph with `sleep`-based tasks isolates
-> _runner_ overhead from real compilation. All four runners are
-> configured **identically** — same commands, the same `src/**` inputs and
-> `dist/**` outputs, the same concurrency. (Hashing `**/*` instead would
-> include each task's own output in its inputs and break caching for
-> everyone.) An earlier run of this shape (June 2026, a 4-core Linux box)
-> read cold 3m 48s / 8m 18s / 8m 27s and CPU 22.7 s / 1,250 s / 2,038 s;
-> cold wall time depends on how many cores the runners' overhead competes
-> with the tasks for, which is why the CPU row is the one that travels.
+> Historical context: an earlier run of this shape (June 2026, a 4-core Linux box)
+> read cold 3m 48s / 8m 18s / 8m 27s and CPU 22.7 s / 1,250 s / 2,038 s.
+> Different hardware, versions and harness configurations are not a controlled comparison.
+
+<!-- stress:end -->
+
+<!-- counterexample:start -->
+
+## Synthetic scheduling counterexample
+
+Synthetic scheduling counterexample (2026-10-08): 7 DAG nodes, 5 executable waiting tasks and 2 commandless root gates, two workers, five alternating rounds, ten conforming actual CLI samples, zero cache hits and zero exit codes.
+
+**Controlled readiness, identical executable work.** Both runners receive the same zero-cost readiness gates. This controls when parents become ready: count priority may admit newly ready parents ahead of the independent long task, while a FIFO semaphore may retain the already waiting long task. These are hypotheses about ordering, not guaranteed runner behavior; keep every observed task-start order.
+The root gates `f-left-gate` and `g-right-gate` precede their respective parents in both native configs.
+They have no commands, scripts, outputs or trace events; positive-duration commands are unchanged, and the analytic total work and ideal remain the same.
+Only the five executable tasks have observed process spans and output files; commandless gate readiness timing is not trace-verified.
+
+**Retained preliminary case.** The retained earlier minimal five-task case includes an adverse Turborepo root-order run and an unresolved excess ratio; it is a different shared DAG, not a discarded outlier or a subset of this primary measurement.
+All earlier samples, including the unfavorable ordering, remain separate and unchanged; they are never pooled into the primary medians or filtered away.
+Earlier harness preserved at commit `d2095b889ef5915a5ba73c964599d3ad7b1ad478`; each raw artifact keeps its own recorded core/tool provenance.
+[counterexample-preliminary-results.json](https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-results.json) · [COUNTEREXAMPLE-PRELIMINARY.md](https://github.com/vznjs/vx/blob/main/packages/vx-bench/COUNTEREXAMPLE-PRELIMINARY.md) · [counterexample-preliminary-samples.jsonl](https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-preliminary-samples.jsonl)
+
+| Metric                                      | vx                          | Turborepo                   |
+| ------------------------------------------- | --------------------------- | --------------------------- |
+| End-to-end wall time: median; min–max       | 89.916 s; 89.899 s–89.992 s | 60.255 s; 60.234 s–60.347 s |
+| Baseline-subtracted excess: median; min–max | 29.916 s; 29.899 s–29.992 s | 0.255 s; 0.234 s–0.347 s    |
+
+End-to-end ratio of all-five-round medians (vx / Turborepo): 1.492×; all-sample envelope 1.490–1.494×.
+
+Excess ratio of all-five-round medians ((vx − ideal) / (Turborepo − ideal)): 117.321×; all-sample envelope 86.24358–128.43789×.
+
+All five rounds are retained; 1 paired excess ratio is below 100×, and a ratio of all-sample medians is not an every-round threshold or a universal guarantee.
+
+Paired round 1: end-to-end vx/Turborepo ratio 1.48999×; baseline-subtracted excess ratio 86.29344×.
+
+Paired round 2: end-to-end vx/Turborepo ratio 1.49197×; baseline-subtracted excess ratio 117.25320×.
+
+Paired round 3: end-to-end vx/Turborepo ratio 1.49126×; baseline-subtracted excess ratio 102.75401×.
+
+Paired round 4: end-to-end vx/Turborepo ratio 1.49384×; baseline-subtracted excess ratio 123.97604×.
+
+Paired round 5: end-to-end vx/Turborepo ratio 1.49330×; baseline-subtracted excess ratio 128.24447×.
+
+Analytic ideal 60.000 s: the feasible two-worker witness attains both work/2 and the critical-path lower bound.
+Median excess denominator 254.991 ms; configured noise floor 1 ms; nonpositive or noise/spread-dominated denominators suppress the excess ratio.
+Envelopes are observed min/max combinations, not confidence intervals; an excess multiple is not that multiple slower whole builds.
+Default vx counts dependent tasks, so the two parents can delay the long independent task; it does not know durations or guarantee an optimal schedule.
+darwin/arm64 25.6.0, Apple M4 Max, 14 cores, Bun 1.4.2+744846f84, vx 0.0.0, native-direct Turborepo 2.11.7; source commit b82388663a445a9ee099be0f80c81ff66c90c638.
+No outliers are omitted; this measures waiting commands, not real compilation or a universal ranking.
+[Raw samples and provenance](https://github.com/vznjs/vx/blob/main/packages/vx-bench/counterexample-results.json) ·
+[Full report](https://github.com/vznjs/vx/blob/main/packages/vx-bench/COUNTEREXAMPLE.md).
+
+Reproduce into a new output directory (the harness refuses overwriting earlier measurements):
+
+`bun packages/vx-bench/counterexample.ts --long 60 --leaf 0.25 --reps 5 --noise-ms 1 --output NEW_DIRECTORY`
+
+Each sample records native argv, stdout/stderr, CPU accounting, exact output contents and shared-monotonic start/end traces for five executable tasks.
+The seven-node graph also has two commandless root gates; no process timestamps or output files are invented for them.
+The publisher independently checks the artifact's status, five-round order, native provenance, gated graph/witness, every executable trace and all primary summary calculations before writing any page.
+
+<!-- counterexample:end -->
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx)
 
 `packages/vx-bench/compare.ts` scaffolds **one** shared monorepo matching the shape
-above — `layers` × `perLayer` packages, ~30 deps each, three tasks
+above — `(layers - 1) × perLayer + 1` packages, dependency count capped at
+`min(DEPS_PER_PKG, perLayer)` (11 in the headline graph), three task nodes
 (`build` + `installDeps` + `test`) with the **identical** shell command,
 `src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
 Turbo, and Nx across three cache states, then times one edit to the top
@@ -449,7 +498,7 @@ skips the work.
 bun packages/vx-bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
 bun packages/vx-bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
 BASELINE_ONLY=1 bun packages/vx-bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
-bun packages/vx-bench/update-site.ts             # rewrite the landing page, the README's bench sentence and chart, and this doc's stress section from results.json (--check to verify)
+bun packages/vx-bench/update-site.ts             # publish both datasets only after the counterexample completes; --check refuses drift or invalid/incomplete measurements
 BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 
@@ -510,8 +559,8 @@ workspace read, the cache open) is spread over more of them, and nothing
 in the run grows faster than the graph. A cold run at 1,000 packages is
 two seconds; a warm one is under two hundred milliseconds. These are the
 runner's own costs on a trivial task; the 3,270-task table at the top,
-where each task sleeps a second and every runner is scheduled the same
-way, is where the same shape is compared against Turborepo and Nx.
+where each executable task sleeps a second and the runners share the graph
+and concurrency but choose different ready-task orders, compares that shape against Turborepo and Nx.
 
 ## Real repos
 

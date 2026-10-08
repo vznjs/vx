@@ -24,8 +24,8 @@ choose a tool for stated reasons, including when that tool is not vx.
 
 vx's maintainers wrote this page. Every claim about another tool links to
 that tool's own documentation, checked against its docs source on
-2026-09-24. Every claim about vx links to the page or the test that holds
-it. When a tool's docs say nothing about something, this page says "its
+2026-09-24. Every claim about vx links to its documentation, a test, or
+an explicitly scoped measurement. When a tool's docs say nothing about something, this page says "its
 docs describe no …". That is not the same as "it cannot".
 
 ## A choice, not a checkmark
@@ -92,6 +92,14 @@ both tables show everything.
 
 ## What vx's choices cost
 
+- **Scheduling is a heuristic.** Default vx ranks ready tasks by unique
+  transitive-dependent count, not task duration or remaining critical-path
+  duration. A long independent task can start after short parents.
+  `@vzn/vx-schedule-history` can use learned durations when declared, but
+  neither policy guarantees the best schedule. The native-config
+  [scheduling counterexample](../benchmarks/#synthetic-scheduling-counterexample)
+  and its retained preliminary case are separate from the uniform-sleep
+  layered benchmark; neither dataset establishes a universal speed ranking.
 - **Bun only.** vx runs its configs and plugins on Bun: Bun 1.4 or later
   from source, or the Bun inside its binary. A config or plugin that needs
   an API only Node has does not run, and Windows means WSL

@@ -550,11 +550,17 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'By default, the task with the most tasks waiting on it. @vzn/vx-schedule-history ranks by the remaining critical path learned from past runs. Cache restores get their own lane.',
-        buys: 'A documented order that works on the first run, and a better one once there is history.',
+          'By default, the ready task with the most unique transitive dependents. @vzn/vx-schedule-history can rank by remaining critical-path duration learned from past runs when declared. Cache restores get their own lane.',
+        buys: 'A documented structural order on the first run, and an optional duration-aware policy once there is history.',
         costs:
-          'The default cannot see that a task is long. The plugin needs history and must be declared; it runs on one machine.',
-        sources: [{ label: 'What a run does: concurrency', href: 'execution/#concurrency' }],
+          'The default cannot see that a task is long: short parents can rank above a long independent task. Neither policy guarantees the best schedule. The plugin needs history and must be declared; it runs on one machine.',
+        sources: [
+          { label: 'What a run does: concurrency', href: 'execution/#concurrency' },
+          {
+            label: 'Scheduling counterexample',
+            href: 'benchmarks/#synthetic-scheduling-counterexample',
+          },
+        ],
       },
       turbo: {
         chose: '--concurrency, 10 by default. Its docs do not say which ready task starts first.',

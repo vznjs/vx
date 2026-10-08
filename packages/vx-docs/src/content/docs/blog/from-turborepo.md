@@ -19,8 +19,11 @@ changes is where the config lives and what it can say.
 
 `turbo()` from `@vzn/vx-migrate` fills vx's `project` stage from your existing
 `turbo.json` and each package's scripts. It is a bridge while you
-migrate, not a way to keep turbo.json: vx is fast on native config, and
-only native config is what its benchmarks measure. `vx init` writes it
+migrate, not a way to keep `turbo.json`: the current benchmarks measure
+native config, not the bridge. Their synthetic workloads are not a
+prediction for your migration; see the separate
+[scheduling counterexample](../../benchmarks/#synthetic-scheduling-counterexample)
+and its retained preliminary case. `vx init` writes the bridge file
 beside `turbo.json`:
 
 ```bash

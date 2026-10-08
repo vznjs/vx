@@ -2,7 +2,7 @@
 /**
  * REAL CLI measurements of a synthetic scheduling counterexample, not a general speed guarantee.
  *
- * bun packages/vx-bench/counterexample.ts --long 60 --leaf 0.25 --reps 5
+ * bun packages/vx-bench/counterexample.ts --long 60 --leaf 0.25 --reps 5 --output <new-directory>
  * bun packages/vx-bench/counterexample.ts --long 1 --leaf 0.05 --reps 2 --output <new-directory>
  * VX_BIN and TURBO_BIN accept standalone executables; otherwise preparation compiles vx and
  * installs turbo@2.11.7 ONLY in the generated fixture. Preparation is outside all sample timers.
