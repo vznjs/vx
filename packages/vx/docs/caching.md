@@ -538,12 +538,12 @@ Hard invariants of the remote prefetch:
   local probes are the short-circuit's (§ Local restore tier). The
   prefetch never adds an upfront _local_ `get` / `isOutputsCurrent` /
   stat pass.
-- **Stable keys only.** A task whose `cache.inputs.files` could match
-  an upstream's declared output has a _preliminary_ key until that
-  upstream runs (e.g. a consumer that globs `**/*` over a sibling's
-  `generated.txt`). Prefetching it would target the wrong artifact, so
-  it's skipped — its key resolves correctly via the lazy read-through
-  in `execute-task`. Instability propagates: a task that folds an
+- **Stable keys only.** A task with a _preliminary_ key (§ Local
+  restore tier's stability gate: undeclared writes, an
+  `outputs.workspaceFiles` producer upstream, or, with
+  `rules.upfrontKeys: false`, input globs that match an upstream's
+  declared outputs) is not prefetched: its key would name the wrong
+  artifact, and it resolves via the lazy read-through in `execute-task`. Instability propagates: a task that folds an
   unstable upstream is itself unstable. When in doubt, skip.
 - **At most once.** The `LayeredCache` keeps an in-flight map keyed by
   hash; `prefetch` and `get` share it, and a settled `false` (remote

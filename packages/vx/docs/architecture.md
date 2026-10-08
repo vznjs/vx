@@ -345,8 +345,9 @@ never branches on layering.
    - Anchored positionals (`pkg#build`) bypass the scope and target
      directly.
    - `--affected[=<base>]` adds a filter `...[<base>]` resolved via
-     git (the candidate projects), and `prepare` keeps the requested
-     tasks whose `dependsOn` closure the change reaches.
+     git (the candidate projects; with a `graph` plugin, every project
+     once anything changed), and `prepare` keeps the requested tasks
+     whose `dependsOn` closure the change reaches, in the final graph.
    - No positionals + TTY → interactive picker → emits a single
      `pkg#task`.
 
