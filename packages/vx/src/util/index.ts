@@ -74,7 +74,7 @@ export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
 export { hangupIgnored } from './hangup.js'
-export { realPath } from './real-path.js'
+export { realPath, realpathOf } from './real-path.js'
 export {
   maskedCommand,
   maskedEmitter,
