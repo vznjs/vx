@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
-import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
+import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -842,7 +842,7 @@ function rootDependencyGlobs(
   const out: string[] = []
   for (const name of seen) {
     const rel = relPosix(root, byName.get(name)!.dir)
-    if (rel !== '' && rel !== '.') out.push(`${rel}/**`)
+    if (rel !== '' && rel !== '.') out.push(`${literalGlob(rel)}/**`)
   }
   return out.sort()
 }
@@ -1730,7 +1730,7 @@ function buildTask(
   const climbed = (glob: string): string | null => {
     const body = glob.startsWith('!') ? glob.slice(1) : glob
     if (!body.startsWith('../')) return null
-    const anchored = path.posix.normalize(path.posix.join(pkgDir, body))
+    const anchored = path.posix.normalize(path.posix.join(literalGlob(pkgDir), body))
     if (anchored.startsWith('../')) return null
     return (glob.startsWith('!') ? '!' : '') + anchored
   }

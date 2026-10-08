@@ -976,6 +976,40 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
     expect(seen).not.toContain(path.join('packages', 'b', 'src', 'b.ts'))
   })
 
+  it('excludes the task’s own project outputs from its workspaceFiles', async () => {
+    // A task's `outputs.files` reached by its own root-anchored input glob
+    // moved its key with every build: no run of it was ever saved.
+    await write(path.join(projA, 'out.json'), '{}')
+    const got = await resolveInputs({
+      projectDir: projA,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['packages/a/**', 'packages/b/**'] },
+      ownOutputs: ['out.json'],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
+      'packages/a/src/a.ts',
+      'packages/b/src/b.ts',
+    ])
+  })
+
+  it('excludes the task’s own workspace outputs from its project files', async () => {
+    // The other direction: an `outputs.workspaceFiles` entry inside the
+    // task's own project, under its `files` glob.
+    await write(path.join(projA, 'out.json'), '{}')
+    const got = await resolveInputs({
+      projectDir: projA,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      ownWorkspaceOutputs: ['packages/a/out.json', 'packages/b/src/b.ts'],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual(['packages/a/src/a.ts'])
+  })
+
   it('a path reachable from BOTH lists contributes exactly once', async () => {
     // When the project dir IS the workspace root — the root `"."` member of this
     // very repo — the two globs enumerate the same tree and every file arrives

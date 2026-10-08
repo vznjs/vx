@@ -518,6 +518,27 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
+  from another lane, which refuses it by name.
+- **X-79.** A task's own output reached through the other namespace was
+  an input: `outputs.files: ['out.json']` under its
+  `inputs.workspaceFiles: ['packages/a/*.json']`, or an
+  `outputs.workspaceFiles` entry in its project under `inputs.files`.
+  Each build moved the key, the recheck said the file "changed after its
+  key was taken … declare it in cache.outputs" (it was), and no run was
+  ever saved. Both input halves now drop both output fields. A key that
+  folded such a file moves and misses once; it held no wrong bytes, so
+  no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
+  project outputs from its workspaceFiles", "excludes the task’s own
+  workspace outputs from its project files".
+- **X-80.** `lockfileClaim`'s in-process gate (a `vx watch` cycle, the MCP
+  server) re-read the lockfile and its extra files only when size or
+  mtime moved, so a same-size lockfile copied in with its mtime kept
+  (`cp -p`, `tar -x`) kept the old per-project digests and replayed the
+  old install's outputs. It now gates on size, mtime, ctime and inode,
+  as `Cache.hashFile` does, and stats each extra file before hashing it.
+  Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
+  kept is read again in the same process".
 - **X-68.** `--continue=never` kept retrying a task already in flight:
   `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
   four attempts, since the retry loop asked only the run's stop. The

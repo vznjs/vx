@@ -268,7 +268,8 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
-  `<base>` itself, not the merge base. A ref that does
+  `<base>` itself, not the merge base. An exclusion (`^main`) is refused
+  the same way, naming `main`. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
@@ -1342,7 +1343,7 @@ watch events within 2000 ms; polling every 250 ms instead`.
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event, and wait at most
    1 s after the first, so a writer that never pauses holds no edit back.
-4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
+4. **Exit.** `SIGINT` (Ctrl+C) exits 0; once the cycle in flight is down, `vx watch: stopped` is the last line.
 
 ### Path filtering
 
@@ -2650,7 +2651,10 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
-Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
+Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`. A sandboxed
+task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
+else `/tmp/claude`), the sandbox runtime's own convention
+(`docs/modules/sandbox-runtime.md`).
 
 ## Output format
 

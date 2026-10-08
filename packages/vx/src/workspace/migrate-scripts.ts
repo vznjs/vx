@@ -541,7 +541,7 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
 function lernaPackages(dir: string): string[] | undefined {
   let json: unknown
   try {
-    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8'))
+    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8').replace(/^\uFEFF/, ''))
   } catch {
     return undefined
   }
