@@ -14,6 +14,8 @@ import { isCacheHit, taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
+  /** Tasks that ran behind a failed dependency (`--continue=always`). */
+  tainted?: ReadonlySet<string>
   runId: string
   /** Wall-clock ms at run start; every per-task ns offset is anchored to it. */
   startedAtMs: number
@@ -66,7 +68,11 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.status === 'aborted') continue
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     runs.push({
-      ...(o.hash !== undefined ? { hash: o.hash } : {}),
+      // A failure behind a failed dependency is recorded keyless (`''`, which
+      // the key readers skip): the flaky list asks a key whether it failed.
+      ...(o.hash !== undefined && !(o.status === 'failed' && input.tainted?.has(o.node.id) === true)
+        ? { hash: o.hash }
+        : {}),
       project: o.node.projectName,
       task: o.node.taskName,
       status: o.status,
