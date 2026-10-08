@@ -540,7 +540,12 @@ exec: {
 Every name in these lists (and in `cache.inputs.env`) must be one an
 environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
-child split at its `=` or not at all.
+child split at its `=` or not at all. A `passThrough` or `define` name is
+also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
+`sh -c`, and dash (Linux's `sh`) drops any other name from the environment
+it hands the command, so `my.var` reached a task on macOS and never on
+Linux. `cache.inputs.env` takes any such name: the key reads it from vx's
+own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
