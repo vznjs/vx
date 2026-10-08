@@ -7,17 +7,7 @@
 // packages/vx/docs/design/playground-spike-2026-09.md § xxh3).
 import { describe, expect, it } from 'bun:test'
 import { bunXxHash3, xxHash3 } from '../src/playground/shim/xxh3.js'
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let t = a
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+import { mulberry32 } from './helpers/rng.js'
 
 // The spike's seed, so these rows are the design note's table.
 const rand = mulberry32(676)

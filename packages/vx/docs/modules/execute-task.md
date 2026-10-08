@@ -121,9 +121,13 @@ one-shot handler mid-cleanup.
      before scheduling, so every attempt of a task runs in the same
      place. With no executor plugin declared that is the local floor —
      `runCommand` / `runSandboxed` exactly as before. The request's
-     `signal`, which arms `exec.timeout`, is made last, once the
-     sandbox is armed: armed first, a 60 ms `echo` timed out unrun
-     under the runtime's ~200 ms probe.
+     `signal`, which arms a plugin executor's `exec.timeout`, is made
+     last, once the sandbox is armed: armed first, a 60 ms `echo` timed
+     out unrun under the runtime's ~200 ms probe. A local request's
+     signal carries no timeout: the runner times the task from its
+     spawn, and a clock on the signal also timed the sandbox's wrap, so
+     a wrap slower than the timeout failed and retried a task that never
+     ran.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one
