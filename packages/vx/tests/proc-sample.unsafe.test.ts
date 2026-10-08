@@ -139,19 +139,36 @@ describe('the telemetry source samples a tracked task', () => {
   })
 
   it('each second until untracked, then never again', async () => {
+    // The clock is ticked by hand: a 2.3 s wall sleep saw one sample, not
+    // two, on a slow macOS runner. The period is asserted, the ticks driven.
+    const clock: { ms: number[]; fire?: () => Promise<void>; stops: number } = { ms: [], stops: 0 }
     const records: TelemetryRecord[] = []
     const source = createTelemetrySource({
       sinks: [{ wants: ['task.sample'], onRecord: (r) => void records.push(r) }],
       run: RUN,
+      every: (ms, fn) => {
+        clock.ms.push(ms)
+        clock.fire = fn
+        return () => void clock.stops++
+      },
     })
     const child = burner()
     try {
       const untrack = source.track!('p#t', child.pid)
-      await Bun.sleep(2_300)
+      expect([clock.ms, records.length]).toEqual([[1_000], 0])
+      await clock.fire!()
+      // The second look comes once the tree has burned more, however slow the host.
+      const first = (records[0] as Extract<TelemetryRecord, { kind: 'task.sample' }>).cpuMs
+      while (((await sampleTrees([child.pid])).get(child.pid)?.cpuMs ?? 0) <= first) {
+        await Bun.sleep(20)
+      }
+      await clock.fire!()
+      expect([records.length, clock.stops]).toEqual([2, 0])
       untrack()
-      const n = records.length
-      await Bun.sleep(1_200)
-      expect([n, records.length]).toEqual([2, 2])
+      expect(clock.stops).toBe(1)
+      // A tick already due when the timer stopped delivers nothing.
+      await clock.fire!()
+      expect([clock.ms, records.length]).toEqual([[1_000], 2])
       const [a, b] = records as Extract<TelemetryRecord, { kind: 'task.sample' }>[]
       expect([a!.kind, a!.taskId, a!.runId]).toEqual(['task.sample', 'p#t', 'r'])
       // Cumulative CPU of a burning tree rises between looks.
