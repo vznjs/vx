@@ -30,7 +30,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `globalEnv` | mapped, with a note | Added to every task's `cache.inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. |
 | `globalPassThroughEnv` | mapped, with a note | Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. |
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
-| `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `timeout` and `uploadTimeout`, below env vars and options. |
+| `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `preflight`, `timeout` and `uploadTimeout`, below env vars and options. |
 | `tags` | not applicable | Package tags feed only Turbo boundaries; never read. |
 | `tasks` | supported | Each task (or Turbo 1 `pipeline`) becomes a vx task for the packages that declare the script, and a key-only one where a `^` edge reaches a package without it (`dependsOn`, below); a task no package has a script for is a group task in each package that defines it, as Turbo runs a no-op node there and exits 0. A script that names `$npm_package_name`, `$npm_package_version` or `$npm_lifecycle_event` gets it defined, as the package manager Turbo runs it through sets it. |
 | `ui` | not applicable | Terminal UI choice. |
@@ -53,7 +53,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `remoteCache.apiUrl` | supported | The cache URL when neither the option nor `TURBO_API` is set, as in Turbo. |
 | `remoteCache.enabled` | mapped, with a note | `false` turns `turboCache()` off unless its options name a cache. |
 | `remoteCache.loginUrl` | not applicable | Used only by `turbo login`; vx has no login. |
-| `remoteCache.preflight` | not supported | Ignored; `turboCache()` sends no CORS preflight. |
+| `remoteCache.preflight` | supported | `true` sends Turbo's `OPTIONS` preflight and follows its `Location`, below `TURBO_PREFLIGHT` (1 or 0) and `turboCache({ preflight })`. |
 | `remoteCache.signature` | supported | `true` signs and verifies with `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, as in Turbo, and `TURBO_SIGNATURE` (1 or 0) overrides it; with signing off the env key is not read. `turboCache({ signatureKey })` signs either way. |
 | `remoteCache.teamId` | supported | Used when neither the option nor `TURBO_TEAMID` is set. |
 | `remoteCache.teamSlug` | supported | Used when neither the option nor `TURBO_TEAM` is set. |
