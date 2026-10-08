@@ -524,11 +524,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // exited before ready keeps its own exit code rather than a made-up 1.
     // One the readiness timeout is killing reports the signal's, as an
     // ordinary timeout does (X-24).
+    // A readiness timeout rejects once the group is gone (runner.ts), so a
+    // server that ignored the TERM holds no port into the next `vx watch`
+    // cycle, and a second signal here would cut a one-shot handler short.
     const ready = err instanceof PersistentReadyError ? err : undefined
-    // The timer's SIGKILL is a grace away and the shell may die on the
-    // TERM first: a server that ignores it held its port past run() into
-    // the next `vx watch` cycle. Return once the group is gone.
-    if (ready?.reason === 'timeout') await terminateChildren(() => [spawn.child])
     return {
       node,
       status: 'failed',
