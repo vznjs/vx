@@ -24,8 +24,9 @@ import {
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
-import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
 import { exportGraph } from './nx/export-graph.js'
+import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   install,
@@ -163,12 +164,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   if (mode === 'keep') return keep(root, runner, hasTurbo, lerna, parsed)
 
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
+  // No workspace file yet: this run writes one, declaring the plugins the
+  // repo calls for and the run settings nx.json holds.
+  const writesWorkspace = workspaceFileAt(root) === undefined
   let source: string
   let plan: MigrationPlan
   if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas, format)
+      plan = await migrateNx(root, metas, format, undefined, writesWorkspace)
     } else {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
@@ -184,7 +188,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, format, snapshot)
+        plan = await migrateNx(root, metas, format, snapshot, writesWorkspace)
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -205,16 +209,24 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           existsSync(path.join(p.dir, configName))),
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
-  // No workspace file yet: write one declaring the plugins the repo calls
-  // for, and drop the note that told the user to declare the lockfile one.
-  const plugins = workspaceFileAt(root) === undefined ? workspacePlugins(root) : []
-  if (plugins.length > 0) {
+  // Drop the note that told the user to declare the lockfile plugin.
+  const plugins = writesWorkspace ? workspacePlugins(root) : []
+  if (writesWorkspace) {
+    const fields =
+      runner === 'nx'
+        ? nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json).flatMap((f) =>
+            f.source === undefined ? [] : [{ field: f.field, source: f.source }],
+          )
+        : []
     plan = {
       ...plan,
       headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
       extraFiles: [
         ...plan.extraFiles,
-        { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
+        {
+          relPath: `vx.workspace.${format}`,
+          contents: renderWorkspaceFile(plugins, format, fields),
+        },
       ],
     }
   }
@@ -380,7 +392,10 @@ const LERNA_RUN = /(?:^|[\s;&|(])lerna\s+run\s/
 function lernaOnNx(root: string): boolean {
   const json = (file: string): Record<string, unknown> | undefined => {
     try {
-      return JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      return JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) as Record<
+        string,
+        unknown
+      >
     } catch {
       return undefined
     }

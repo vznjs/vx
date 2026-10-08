@@ -90,8 +90,6 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** Before a miss: keep each wildcard glob's root (`dist` for `dist/**`). */
-  keepGlobRoots?: boolean
 }): Promise<string[]>
 
 /**
@@ -154,6 +152,7 @@ export async function ownWorkspaceOutputsSince(
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void>
 
 // Kill every runtime probe still running that these memos (one run's
@@ -214,8 +213,11 @@ other walker: a project outside a git work tree is a `UserError`
 5. **Boundary ignores** — a path under a nested project's directory
    (relative to this project), by ancestor lookup, not a glob (A-11).
    Cross-project isolation contract.
-6. **Own outputs** — declared `cache.outputs.files` are excluded.
-   Prevents self-invalidation.
+6. **Own outputs** — declared `cache.outputs.files` are excluded, and so
+   are the task's `outputs.workspaceFiles` that land in its project; a
+   `workspaceFiles` input drops both namespaces too. Prevents
+   self-invalidation: an output one namespace reached through the other
+   moved the key with every build, and no run was saved.
 7. **Existence check** — `git ls-files --cached` can surface a
    deleted-but-tracked path; we drop entries that are not on disk so
    the hasher doesn't throw ENOENT. "On disk" is an `lstat`: a regular
@@ -275,11 +277,17 @@ pass for `outputs.workspaceFiles`, anchored at the workspace root and
 deliberately without the project-dir exclusion.
 
 `cleanOutputs` removes every match, then the directories it emptied,
-bottom-up and never the root itself (a directory left standing where
-the cached entry holds a file of the same name blocks the restore).
-Before a miss (`keepGlobRoots`) it keeps the directory each wildcard
-glob is rooted at: the task writes under it, and removing it cost an
-rmdir and the task's mkdir (B-49). A
+bottom-up, but only inside the trees the task declared (before a miss
+and before a restore alike; `cleanWorkspaceOutputs` too): below each
+wildcard glob's root, and at or below each literal output (a directory
+left standing where the entry or the task needs a file of the same name
+blocks it). The glob's root stays, since the task writes under it and
+removing it cost an rmdir and the task's mkdir (B-49). A directory above
+it or holding a literal output (`out` for `out/a.txt`) stays, since a
+sibling task running beside this one may have just made it and not yet
+written into it. An additive task's clean by its recorded rows
+(`cleanOutputPaths`, item 588) prunes by the same scope, from the
+task's declared outputs. A
 declared output the process cannot remove — another user's `dist/`, a
 read-only checkout — is a `UserError` naming the path, not an internal
 error.

@@ -80,7 +80,9 @@ and one starting with `^` (dependencies' tasks) or `!` (a negation).
 
 `tags` label the project for selection: `--filter tag:<name>` selects
 the projects carrying one (`cli.md` § Filter DSL), as Nx's `tag:` does.
-Each is a non-empty string; anything else is refused at load. A
+Each is a non-empty string a tag filter can name, or it is refused at
+load: no surrounding whitespace, no `*` (a pattern), and no ending in
+`...` (a dependency walk) or `[<ref>]` (a git range). A
 `project` plugin may set or edit them (`nx()` gives each project its Nx
 `tags` unless the vx.config has its own). A tag is in no cache key: it
 changes no task's behaviour, so editing one re-runs nothing.
@@ -108,7 +110,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -191,7 +196,9 @@ no limit.
 build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time. A task
+- For a **normal task**, `timeout` bounds the total run time, counted
+  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -819,7 +826,8 @@ backslash stays an escape.
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
-`outputs.workspaceFiles` (a task never invalidates itself).
+outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
+in its own project (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
 watches the workspace root recursively (any file can be an input once
@@ -1344,6 +1352,11 @@ reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
 
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
+
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
@@ -1403,7 +1416,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1909,6 +1923,7 @@ lists the messages a user meets most:
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout: <n> ms exceeds the maximum timer delay`                                                                                | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
+| `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,

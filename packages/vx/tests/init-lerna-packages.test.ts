@@ -23,6 +23,9 @@ it('names lerna.json packages a lone root does not reach', async () => {
     expect(notes([root])).toEqual([
       'lerna.json lists the packages ("modules/*", "tools/*"), but package.json declares no `workspaces`, so vx sees the root alone: add `"workspaces": ["modules/*", "tools/*"]` to package.json and run `vx init` again',
     ])
+    // A byte-order mark is stripped, as Lerna strips it.
+    await writeFile(path.join(dir, 'lerna.json'), '\uFEFF{ "packages": ["modules/*"] }')
+    expect(notes([root])[0]).toContain('("modules/*")')
     // Lerna's default when lerna.json names none.
     await writeFile(path.join(dir, 'lerna.json'), '{ "version": "1.0.0" }')
     expect(notes([root])[0]).toContain('("packages/*")')

@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 config array fields are typed readonly; code that mutates a resolved config list must copy it first.
 
+## workspace: refuse a tag that --filter tag: cannot name
+
+a tag that --filter tag: cannot select (`**`, an upper-case glob such as `A*`) is now refused at config load.
+
 ## cache: record the dry prune's API in the contract
 
 Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.

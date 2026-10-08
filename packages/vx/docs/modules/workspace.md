@@ -61,6 +61,7 @@ export interface PackageJson {
 export interface Workspace {
   root: string
   packageGlobs: string[] // patterns relative to root
+  catalogs?: Catalogs // catalog name ('default' for `catalog:`) → key → spec
 }
 
 export interface ProjectMeta {
@@ -68,6 +69,7 @@ export interface ProjectMeta {
   dir: string // absolute project directory
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
+  catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
@@ -193,6 +195,13 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+From the same parsed manifests it takes the catalogs a `catalog:` spec
+resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
+without that file, the root `package.json`'s, at the top level or under
+`workspaces` (bun). Discovery hands them to every `ProjectMeta`, so each
+package graph built from the metas resolves `catalog:` alike
+(`package-graph.md`).
+
 ### `listProjects(workspace)`
 
 Globs every `package.json` matching the patterns (`Bun.Glob`,
@@ -255,10 +264,14 @@ Resolves the cache directory:
 Where the repository's shared store lives: `~/.vx/<id>/cache` on every
 platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
 (`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
-git is spawned only for a repository with no parseable remote: one
-`rev-list` for its root commit, asynchronously, so `prepareRun` asks it
+git is spawned only when the config file cannot settle it: `remote -v`
+when it names a remote none of whose urls parse, holds an `include` or
+`url` rewrite, or sets `extensions.worktreeConfig` (as Nx; a remote-less
+config spawns none of it), then `rev-list` for a root commit,
+asynchronously, so `prepareRun` asks it
 before discovery and awaits it when the cache opens; shallow is read from
-the common dir's `shallow` file). Null
+the common dir's `shallow` file; the root is realpathed first, as git
+resolves it, so a symlinked path to the workspace is the same id). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
