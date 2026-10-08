@@ -426,7 +426,11 @@ a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 At or below 256 KiB (`ON_THREAD_MAX`) that call, and a save's reads of
 its outputs, run on the calling thread: a thread-pool round trip cost
 more CPU than the work for a one-file artifact. A save scans the tar it
-packed rather than decoding its own bytes back; an ingest decodes.
+packed rather than decoding its own bytes back, in memory and on the
+calling thread (`scanTarBytes`); an ingest decodes and scans the stream.
+Both scanners run one header decoder (`TarDecoder`), so a save indexes
+the names, sizes, modes and mtimes a restore reads and refuses the
+names a restore refuses (`tests/scan-tar-bytes.test.ts`).
 
 SQLite stores metadata only:
 

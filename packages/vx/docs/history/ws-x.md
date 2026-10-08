@@ -1214,3 +1214,21 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 264 / 257 (A/A) → 237 ms; wall median 947 /
   932 → 912 ms. Row: `server-death-properties.test.ts` › "a graph with
   no server never asks whether one died".
+- **X-191.** A save scanned the tar it had just packed through the
+  restore's stream reader: async generators, a promise per chunk and a
+  drain, most of a small save's scan. `scanTarBytes` now reads it in
+  memory on the calling thread. Both scanners run one header decoder
+  (`TarDecoder` in `tar-stream.ts`) and one result fold, and the
+  in-memory reader checks a body against the tar's end when it is read,
+  as the stream checks it when drained, so the two refuse a damaged
+  archive with the same class and message at the same point. Step 1 of
+  `docs/design/cache-save-cpu-2026-10.md`. Micro (Bun 1.4.2, 1,000
+  scans, min of 7): one 400 B output 49 → 14 µs, ten outputs 120 → 47,
+  a hundred 979 → 377. The 1,090-package cold A/B (compiled, the
+  no-sleep copies, 20 interleaved rounds × two swapped assignments, A/A
+  beside) did not resolve it: CPU paired median new/old 0.999 and 1.046
+  against A/A 1.105 and 0.917, so the expected 0.3–0.4 s sits under
+  the copies' noise. Rows: `scan-tar-bytes.test.ts` (seeded name
+  shapes, every flipped byte, every truncation, skipped entries, the
+  checksum's absence, hostile names, save rows against ingest rows);
+  `archive-security.test.ts` reads every fixture with both scanners.

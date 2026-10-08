@@ -187,30 +187,45 @@ class Source {
   }
 }
 
+/** What one header block means, decided by `TarDecoder.header`. */
+type HeaderStep =
+  /** A zero block: the first half of the end marker. */
+  | { kind: 'zero' }
+  /** The second zero block in a row: the archive is over. */
+  | { kind: 'end' }
+  /** An extended header (`x`, `L`) or a global one (`g`); its padded body follows. */
+  | { kind: 'extended'; type: 'x' | 'L' | 'g'; size: number; padded: number }
+  /** An entry; its padded body follows. */
+  | { kind: 'entry'; name: string; size: number; type: string; mtimeMs: number; padded: number }
+
+const ZERO: HeaderStep = { kind: 'zero' }
+const END: HeaderStep = { kind: 'end' }
+
 /**
- * Iterate a tar stream entry by entry. Each entry's `body` MUST be fully
- * consumed (or the iterator drains it) before the next entry is read.
+ * The dialect, decoded off whole blocks with no I/O: the one copy of the
+ * header rules both readers run — `tarEntries` over a stream (restore,
+ * ingest) and `tarEntriesSync` over a tar in memory (a save's own) — so
+ * a name a save indexes is the name a restore reads.
  */
-export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGenerator<TarEntry> {
-  const src = new Source(stream[Symbol.asyncIterator]())
-  let pendingPath: string | undefined
-  let pendingSize: number | undefined
-  let zeroBlocks = 0
-  for (;;) {
-    const h = await src.exact(BLOCK, 'a header')
-    if (h === null) {
-      if (zeroBlocks === 0) throw new TarFormatError('archive has no end-of-archive marker')
-      return
-    }
+class TarDecoder {
+  private pendingPath: string | undefined
+  private pendingSize: number | undefined
+  private zeroBlocks = 0
+
+  /** The bytes ended at a header boundary: clean only after a zero block. */
+  eof(): void {
+    if (this.zeroBlocks === 0) throw new TarFormatError('archive has no end-of-archive marker')
+  }
+
+  header(h: Uint8Array): HeaderStep {
     if (isZeroBlock(h)) {
-      zeroBlocks++
-      if (zeroBlocks >= 2) return
-      continue
+      this.zeroBlocks++
+      return this.zeroBlocks >= 2 ? END : ZERO
     }
-    zeroBlocks = 0
+    this.zeroBlocks = 0
     if (!checksumOk(h)) throw new TarFormatError('header checksum mismatch')
     const type = h[156] === 0 ? '0' : String.fromCharCode(h[156]!)
-    const size = pendingSize ?? octal(h, 124, 12)
+    const size = this.pendingSize ?? octal(h, 124, 12)
     const mtimeMs = octal(h, 136, 12) * 1000
     const padded = Math.ceil(size / BLOCK) * BLOCK
     // POSIX `ustar\0` only: old GNU's `ustar  ` keeps atime and ctime at
@@ -218,44 +233,67 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
     // `<atime>…/<name>`.
     const prefix = field(h, 257, 6) === 'ustar' ? field(h, 345, 155) : ''
     const rawName = field(h, 0, 100)
-    let name = pendingPath ?? (prefix ? `${prefix}/${rawName}` : rawName)
-    pendingPath = undefined
-    pendingSize = undefined
-
-    if ((type === 'x' || type === 'L' || type === 'g') && size > MAX_EXTENDED_HEADER) {
-      throw new TarFormatError(
-        `extended header of ${size} bytes, past ${MAX_EXTENDED_HEADER} (a hostile archive?)`,
-      )
-    }
-    if (type === 'x' || type === 'L') {
-      // Extended header: applies to the NEXT entry only.
-      const body = await src.exact(padded, 'an extended header')
-      if (body === null) throw new TarFormatError('archive ends inside an extended header')
-      if (type === 'x') {
-        const pax = parsePax(body.subarray(0, size))
-        const p = pax.get('path')
-        if (p !== undefined) pendingPath = p
-        const s = pax.get('size')
-        if (s !== undefined) {
-          // Digits only: `Number` reads `0.5` and `-1`, and a fractional
-          // size moved the reader to a fractional offset.
-          if (!/^[0-9]+$/.test(s) || !Number.isSafeInteger(Number(s))) {
-            throw new TarFormatError(`bad pax size: ${JSON.stringify(s)}`)
-          }
-          pendingSize = Number(s)
-        }
-      } else {
-        pendingPath = field(body, 0, size)
+    const name = this.pendingPath ?? (prefix ? `${prefix}/${rawName}` : rawName)
+    this.pendingPath = undefined
+    this.pendingSize = undefined
+    if (type === 'x' || type === 'L' || type === 'g') {
+      if (size > MAX_EXTENDED_HEADER) {
+        throw new TarFormatError(
+          `extended header of ${size} bytes, past ${MAX_EXTENDED_HEADER} (a hostile archive?)`,
+        )
       }
-      continue
+      return { kind: 'extended', type, size, padded }
     }
-    if (type === 'g') {
-      // pax global header: not used by Bun.Archive; skip its body.
-      await src.exact(padded, 'a global header')
-      continue
-    }
-    name = name.replace(/\/+$/, type === '5' ? '/' : '')
+    const trimmed = name.replace(/\/+$/, type === '5' ? '/' : '')
+    return { kind: 'entry', name: trimmed, size, type, mtimeMs, padded }
+  }
 
+  /** An `x` or `L` header's padded body: it applies to the NEXT entry only. */
+  extended(type: 'x' | 'L', body: Uint8Array, size: number): void {
+    if (type === 'L') {
+      this.pendingPath = field(body, 0, size)
+      return
+    }
+    const pax = parsePax(body.subarray(0, size))
+    const p = pax.get('path')
+    if (p !== undefined) this.pendingPath = p
+    const s = pax.get('size')
+    if (s !== undefined) {
+      // Digits only: `Number` reads `0.5` and `-1`, and a fractional
+      // size moved the reader to a fractional offset.
+      if (!/^[0-9]+$/.test(s) || !Number.isSafeInteger(Number(s))) {
+        throw new TarFormatError(`bad pax size: ${JSON.stringify(s)}`)
+      }
+      this.pendingSize = Number(s)
+    }
+  }
+}
+
+const extendedWhat = (type: 'x' | 'L' | 'g'): string =>
+  type === 'g' ? 'a global header' : 'an extended header'
+
+/**
+ * Iterate a tar stream entry by entry. Each entry's `body` MUST be fully
+ * consumed (or the iterator drains it) before the next entry is read.
+ */
+export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGenerator<TarEntry> {
+  const src = new Source(stream[Symbol.asyncIterator]())
+  const tar = new TarDecoder()
+  for (;;) {
+    const h = await src.exact(BLOCK, 'a header')
+    if (h === null) return tar.eof()
+    const step = tar.header(h)
+    if (step.kind === 'end') return
+    if (step.kind === 'zero') continue
+    if (step.kind === 'extended') {
+      const body = await src.exact(step.padded, extendedWhat(step.type))
+      // pax global header: not used by Bun.Archive; its body is skipped.
+      if (step.type === 'g') continue
+      if (body === null) throw new TarFormatError('archive ends inside an extended header')
+      tar.extended(step.type, body, step.size)
+      continue
+    }
+    const { name, size, padded } = step
     let drained = false
     const body = (async function* (): AsyncIterable<Uint8Array> {
       if (size > 0) for await (const c of src.take(size, `entry ${name}`)) yield c
@@ -265,13 +303,83 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
       }
       drained = true
     })()
-    yield { name, size, type, mtimeMs, body }
+    yield { name, size, type: step.type, mtimeMs: step.mtimeMs, body }
     if (!drained) {
       // The caller skipped this body: drain it so the next header lines up.
       for await (const _ of body) {
         // discard
       }
     }
+  }
+}
+
+/** One entry of a tar in memory. `body()` is a view, checked against the tar's end when asked for. */
+interface TarBytesEntry {
+  name: string
+  size: number
+  type: string
+  mtimeMs: number
+  body(): Uint8Array
+}
+
+/**
+ * `tarEntries` over a tar already in memory, synchronously, through the
+ * same decoder. A body is checked against the tar's end when it is read,
+ * as the stream reader checks it when it is drained, so the two refuse
+ * a damaged archive with the same class at the same point.
+ */
+export function* tarEntriesSync(tar: Uint8Array): Generator<TarBytesEntry> {
+  const dec = new TarDecoder()
+  const len = tar.byteLength
+  let off = 0
+  for (;;) {
+    if (off === len) return dec.eof()
+    if (len - off < BLOCK) {
+      throw new TarFormatError(`archive ends inside a header (${len - off} of ${BLOCK} bytes)`)
+    }
+    const step = dec.header(tar.subarray(off, off + BLOCK))
+    off += BLOCK
+    if (step.kind === 'end') return
+    if (step.kind === 'zero') continue
+    if (step.kind === 'extended') {
+      const left = len - off
+      if (left < step.padded) {
+        if (left > 0) {
+          throw new TarFormatError(
+            `archive ends inside ${extendedWhat(step.type)} (${left} of ${step.padded} bytes)`,
+          )
+        }
+        // At the very end a global header's body is skipped as absent, and
+        // the end marker it lacks is what refuses the archive.
+        if (step.type === 'g') continue
+        throw new TarFormatError('archive ends inside an extended header')
+      }
+      if (step.type !== 'g') dec.extended(step.type, tar.subarray(off, off + step.padded), step.size)
+      off += step.padded
+      continue
+    }
+    const { name, size, padded } = step
+    const at = off
+    // The stream reader's messages, word for word: the parity rows compare them.
+    const body = (): Uint8Array => {
+      const left = len - at
+      if (left < size) {
+        throw new TarFormatError(`archive ends inside entry ${name} (${left} of ${size} bytes)`)
+      }
+      if (left < padded) {
+        const pad = left - size
+        throw new TarFormatError(
+          pad === 0
+            ? `archive ends inside padding after ${name}`
+            : `archive ends inside padding after ${name} (${pad} of ${padded - size} bytes)`,
+        )
+      }
+      return tar.subarray(at, at + size)
+    }
+    yield { name, size, type: step.type, mtimeMs: step.mtimeMs, body }
+    // A body the caller skipped is still checked, as the stream drains it.
+    body()
+    off += padded
   }
 }
 
