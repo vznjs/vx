@@ -836,3 +836,32 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   task cycle among declared builds is refused, as a run of those builds
   already was. Row: `task-graph.test.ts` › "an edge by name to a default
   build on a cycle goes on past it, as ^build does".
+- **X-123.** A task left remote (`--download=none`) whose inputs moved
+  between its key and the describe before the command was saved under
+  the old key once a local consumer fetched it: the remote built over the
+  edit, and once the edit was reverted the next run hit those bytes. The
+  eager save withheld it (item 743); the deferred one asked nothing. It
+  now takes the same check, and a moved key registers the fetch with no
+  key, so the consumer still gets the bytes and nothing is saved. Rows:
+  `execute-task.test.ts` › "the DEFERRED save site refuses a key the
+  inputs no longer match (X-123)", `download-policy.test.ts` › "an entry
+  with no key is fetched for its consumer but saves nothing (X-123)".
+- **X-124.** A hit the up-front probe found was restored after a task
+  had rewritten the lockfile the workspace fingerprint folds: its key named
+  the install the run started on, so a task with no edge to `install`
+  that restored after it put back bytes built against the old install,
+  while the lazy path refuses to probe past that move (item 750). Such a
+  hit now goes back to the scheduler as a vanished one does and runs
+  once its deps are done. Row: `execute-task.test.ts` › "a preProbed HIT
+  is not restored once a task rewrote the lockfile (X-124)".
+- **X-125.** On a plugin executor, a task whose child trapped the
+  timeout's stop and exited 0 passed: core recorded `timedOut` only for a
+  non-zero exit, so the partial outputs were saved and the next run
+  replayed them as a green hit. The local executor fails the same child
+  as timed out. Any exit after the timeout's abort is now a timeout on a
+  plugin executor; the local one keeps its runner's own verdict, since
+  core's request timer starts before the spawn. Rows:
+  `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
+  abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".
