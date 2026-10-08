@@ -205,6 +205,11 @@ The command itself comes from your `package.json` script, with its
    `@vzn/vx-migrate` installed while a config still runs an `nx-exec`
    line, and `@vzn/vx-migrate` while one runs an `nx-env` line.
 
+A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
+runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
+from the graph `nx graph` exports. `vx init` adopts by `nx.json` alone and
+maps such a repo's scripts instead.
+
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
