@@ -43,7 +43,8 @@
 // waited for itself forever (nx#36473 reproduced on vx, 2026-09-24). So a
 // lock naming OUR pid is stale unless this process placed that entry and
 // has not left it (`placed`) — and on Linux the entry also carries the holder's start
-// time, so a pid another process now wears is stale too. Where the lock
+// time, so a pid another process now wears is stale too, and so is a
+// holder procfs shows as a zombie (killed, not yet reaped). Where the lock
 // cannot be made or read for any reason but "held" (a temp directory this
 // user cannot write), the run says so once and proceeds unlocked: the
 // lock is a courtesy between cooperating runs, and refusing to run would
@@ -183,7 +184,7 @@ function ownLockRoot(lockDir: string): void {
 
 interface Holder {
   pid: number
-  /** The holder's start time as `startTime` read it; null where the lock names none. */
+  /** The holder's start time as `procStat` read it; null where the lock names none. */
   start: string | null
   /** The entry in the lock directory that names it. */
   entry: string
@@ -223,17 +224,18 @@ async function holder(lockDir: string): Promise<Holder | 'free' | null> {
 }
 
 /**
- * When a process started, in clock ticks since boot: field 22 of
- * `/proc/<pid>/stat`. Two processes that wore one pid differ here. Null
- * off Linux, where the answer costs a `ps` spawn per run, under a procfs
- * mounted for another pid namespace, and for a pid procfs does not show.
+ * `/proc/<pid>/stat` from field 3 on: the state first, and at [19] field
+ * 22, the start time in clock ticks since boot, where two processes that
+ * wore one pid differ. Null off Linux, where the answer costs a `ps`
+ * spawn, under a procfs mounted for another pid namespace, and for a pid
+ * procfs does not show.
  */
-function startTime(pid: number | 'self'): string | null {
+function procStat(pid: number | 'self'): string[] | null {
   if (!procfsIsOwn()) return null
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     // Fields after the LAST ')' start at field 3; comm may hold spaces.
-    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null
+    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')
   } catch {
     return null
   }
@@ -244,21 +246,24 @@ let ownId: string | undefined
 /** Tells this process's takings of a lock apart, and their staging names. */
 let takings = 0
 function nextEntry(): string {
-  ownId ??= `h-${process.pid}-${startTime('self') ?? 'x'}`
+  ownId ??= `h-${process.pid}-${procStat('self')?.[19] ?? 'x'}`
   return `${ownId}-${++takings}`
 }
 
 /**
- * Is the lock's holder a live run of another process? `sameAsLast`: this
- * holder's start time already matched on an earlier poll, so a wait reads
- * procfs once per holder, not once per poll.
+ * Is the lock's holder a live run of another process? Read on every poll:
+ * a holder killed whose parent does not reap it (a container's pid 1 that
+ * never waits) is a zombie, which signal 0 still reaches and whose start
+ * time still matches, and a wait that trusted either waited for it until
+ * the reaper came, or for good.
  */
-function holderLive(h: Holder, sameAsLast: boolean): boolean {
+function holderLive(h: Holder): boolean {
   if (h.pid === process.pid) return placed.has(h.entry)
   if (!alive(h.pid)) return false
-  if (h.start === null || sameAsLast) return true
-  const now = startTime(h.pid)
-  return now === null || now === h.start
+  const stat = procStat(h.pid)
+  if (stat === null) return true
+  if (stat[0] === 'Z' || stat[0] === 'X') return false
+  return h.start === null || stat[19] === h.start
 }
 
 function alive(pid: number): boolean {
@@ -326,7 +331,6 @@ export async function acquireRunLock(
   const lockDir = runLockPath(workspaceRoot, opts.dir)
   const started = Date.now()
   let said = false
-  let lastLive: Holder | undefined
   const release = async (): Promise<void> => {
     const left = (heldHere.get(lockDir) ?? 1) - 1
     if (left > 0) {
@@ -377,7 +381,7 @@ export async function acquireRunLock(
           await rm(lockDir, { recursive: true, force: true })
           continue
         }
-      } else if (!holderLive(h, lastLive?.entry === h.entry && lastLive.start === h.start)) {
+      } else if (!holderLive(h)) {
         if (h.entry === LEGACY_PID) await rm(lockDir, { recursive: true, force: true })
         else await leave(lockDir, h.entry)
         continue
@@ -391,12 +395,9 @@ export async function acquireRunLock(
       )
       return async () => {}
     }
-    if (h !== null) {
-      lastLive = h
-      if (!said && Date.now() - started >= SAY_AFTER_MS) {
-        said = true
-        opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
-      }
+    if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
+      said = true
+      opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
     }
     await Bun.sleep(POLL_MS)
   }

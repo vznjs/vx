@@ -9,6 +9,9 @@ import * as fsPromises from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 const realFs = { ...fs }
 const real = { ...fsPromises }
@@ -159,21 +162,115 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     }
   })
 
-  it("a wait reads a live holder's start time once, not once per poll", async () => {
-    const child = Bun.spawn(['sleep', '30'], { stdout: 'ignore', stderr: 'ignore' })
+  /**
+   * A process whose parent never reaps it (`sleep`, as a container's pid 1
+   * that never waits): killed, it stays a zombie until the parent goes.
+   */
+  async function unreaped(): Promise<{ pid: number; reaper: ReturnType<typeof Bun.spawn> }> {
+    const reaper = Bun.spawn(['sh', '-c', 'sleep 30 & echo $!; exec sleep 60'], {
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const reader = reaper.stdout.getReader()
+    let text = ''
+    while (!text.includes('\n')) text += new TextDecoder().decode((await reader.read()).value)
+    reader.releaseLock()
+    return { pid: Number(text.trim()), reaper }
+  }
+
+  async function zombie(pid: number): Promise<void> {
+    process.kill(pid, 'SIGKILL')
+    const deadline = Date.now() + 4_000
+    while (!realFs.readFileSync(`/proc/${pid}/stat`, 'utf8').includes(') Z ')) {
+      expect(Date.now()).toBeLessThan(deadline)
+      await Bun.sleep(5)
+    }
+  }
+
+  it('a holder killed and not yet reaped is stale: a zombie holds nothing', async () => {
+    const { pid, reaper } = await unreaped()
+    // A failing wait is aborted, or it takes the lock once the reaper goes and holds it from the rows after.
+    const stop = new AbortController()
     try {
       await real.mkdir(lockDir())
-      await real.writeFile(path.join(lockDir(), `h-${child.pid}-${startOf(child.pid)}-1`), '')
-      await waitsFor(() => {
-        expect(reads.filter((r) => r === `/proc/${child.pid}/stat`)).toEqual([
-          `/proc/${child.pid}/stat`,
-        ])
-        child.kill()
-      }, 5)
+      await real.writeFile(path.join(lockDir(), `h-${pid}-${startOf(pid)}-1`), '')
+      await zombie(pid)
+      const acquired = acquireRunLock('/w/app', { dir, log, signal: stop.signal })
+      expect(await quick(acquired)).not.toBe('waiting')
+      await (
+        await acquired
+      )()
+      expect(lines).toEqual([])
     } finally {
-      child.kill()
+      stop.abort()
+      reaper.kill()
     }
   })
+
+  it('a holder killed mid-wait and not reaped is reclaimed: each poll reads it', async () => {
+    const { pid, reaper } = await unreaped()
+    try {
+      await real.mkdir(lockDir())
+      await real.writeFile(path.join(lockDir(), `h-${pid}-${startOf(pid)}-1`), '')
+      await waitsFor(() => void zombie(pid))
+    } finally {
+      reaper.kill()
+    }
+  })
+
+  it('a vx killed with SIGKILL and not reaped does not hold the next run', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-run-lock-zombie-' })
+    try {
+      await addProject(root, 'app', {
+        config: `
+            export default {
+              tasks: {
+                build: { exec: { command: 'touch started && while [ ! -f release ]; do sleep 0.05; done' } },
+              },
+            }
+          `,
+      })
+      const pidFile = path.join(root, 'vx.pid')
+      const env = { ...process.env, NO_COLOR: '1' }
+      // vx's parent is `sleep`, which never reaps it.
+      const reaper = Bun.spawn(
+        [
+          'sh',
+          '-c',
+          '"$0" "$1" run build --all >/dev/null 2>&1 & echo $! > "$2"; exec sleep 60',
+          process.execPath,
+          BIN,
+          pidFile,
+        ],
+        { cwd: root, env },
+      )
+      const app = path.join(root, 'packages', 'app')
+      try {
+        const deadline = Date.now() + 10_000
+        while (!realFs.existsSync(path.join(app, 'started'))) {
+          expect(Date.now()).toBeLessThan(deadline)
+          await Bun.sleep(20)
+        }
+        await zombie(Number(realFs.readFileSync(pidFile, 'utf8')))
+        await real.rm(path.join(app, 'started'))
+        await real.writeFile(path.join(app, 'release'), '')
+        const next = Bun.spawn([process.execPath, BIN, 'run', 'build', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env,
+        })
+        const ended = await Promise.race([next.exited, Bun.sleep(8_000).then(() => 'waiting')])
+        next.kill('SIGKILL')
+        const err = await new Response(next.stderr).text()
+        expect(`${ended}\n${err}`).toBe('0\n')
+      } finally {
+        reaper.kill()
+      }
+    } finally {
+      await real.rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   it("an older vx's pid file rewritten mid-wait is read again: a new holder's start is checked", async () => {
     // The entry is `pid` both times; only the start time says the holder changed.
