@@ -175,7 +175,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (n === null)
         return {
           ...out,
-          error: `invalid concurrency: ${v} (a positive integer, or a share of the cores such as 50%)`,
+          error: `--concurrency must be a positive integer, or a share of the cores such as 50% (got ${v})`,
         }
       out.concurrency = n
     } else if (a === '--all') {
@@ -323,14 +323,15 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined)
         return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
-      if (n === null) return { ...out, error: `invalid verbosity: ${v} (a non-negative integer)` }
+      if (n === null)
+        return { ...out, error: `--verbosity must be a non-negative integer (got ${v})` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
       if (fmt !== 'text' && fmt !== 'json') {
-        return { ...out, error: `invalid --dry value: ${fmt} (text or json)` }
+        return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
     } else if (a === '--graph') {
@@ -358,7 +359,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
       // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
       const eq = raw.indexOf('=')
-      if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
+      if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
     } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
       const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
@@ -375,7 +376,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (a?.startsWith('--report=')) {
       const fmt = a.slice('--report='.length)
       if (fmt !== 'markdown') {
-        return { ...out, error: `invalid --report value: ${fmt} (only markdown)` }
+        return { ...out, error: `--report must be markdown (got ${fmt})` }
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
