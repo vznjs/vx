@@ -1315,7 +1315,8 @@ run...` precedes it.
    server the last cycle left running counts as that cycle for as long
    as it runs, so a log it rewrites in its project is named too, with
    `.gitignore` as the remedy (a persistent task declares no outputs;
-   item 948). When any project's config declares
+   item 948). A file git tracks is never blamed on the server: three
+   saves of a source file are the user's (WD-7). When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
