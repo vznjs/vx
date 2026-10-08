@@ -14,7 +14,7 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { claimExitForSignal, killGraceMs, settleWithin } from '../util/index.js'
+import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
@@ -158,7 +158,8 @@ export function forwardSignals(args: {
   if (args.enabled) {
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
-    process.on('SIGHUP', onSighup)
+    // A hang-up vx was started deaf to (nohup) stays ignored.
+    if (!hangupIgnored()) process.on('SIGHUP', onSighup)
   }
   return {
     remove: () => {
