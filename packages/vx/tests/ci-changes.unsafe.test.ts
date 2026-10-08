@@ -93,7 +93,7 @@ function run(cwd: string): { code: number; stderr: string; out: string } {
   return { code: r.exitCode, stderr: r.stderr.toString(), out: readFileSync(out, 'utf8') }
 }
 
-function needsPackages(change: (root: string) => void): string {
+function outputs(change: (root: string) => void): string {
   const r = run(mergeRef(change))
   expect({ code: r.code, stderr: r.stderr }).toEqual({ code: 0, stderr: '' })
   return r.out
@@ -103,12 +103,15 @@ describe('the changes job', () => {
   it('runs on a pull request alone, as one bash step', () => {
     expect(changes?.if).toBe("github.event_name == 'pull_request'")
     expect(diff?.shell).toBe('bash')
-    expect(changes?.outputs).toEqual({ packages: '${{ steps.diff.outputs.packages }}' })
+    expect(changes?.outputs).toEqual({
+      packages: '${{ steps.diff.outputs.packages }}',
+      darwin: '${{ steps.diff.outputs.darwin }}',
+    })
   })
 
   it("skips the plugin suites for a diff they cannot read: core's tests and docs, the site, prose", () => {
     expect(
-      needsPackages((root) => {
+      outputs((root) => {
         write(root, 'packages/vx/tests/x.test.ts', 'x\n')
         write(root, 'packages/vx/docs/a.md', 'changed\n')
         write(root, 'packages/vx-docs/src/content/docs/a.md', 'x\n')
@@ -119,7 +122,50 @@ describe('the changes job', () => {
         write(root, 'CLAUDE.md', 'x\n')
         write(root, '.claude/skills/x/SKILL.md', 'x\n')
       }),
-    ).toBe('packages=false\n')
+    ).toBe('packages=false\ndarwin=true\n')
+  })
+
+  it('skips the macOS job for a diff confined to the site, the bench and prose', () => {
+    expect(
+      outputs((root) => {
+        write(root, 'packages/vx-docs/src/content/docs/a.md', 'x\n')
+        write(root, 'packages/vx-bench/run.ts', 'x\n')
+        write(root, 'README.md', 'changed\n')
+        write(root, 'CLAUDE.md', 'x\n')
+        write(root, 'CONTRIBUTING.md', 'x\n')
+        write(root, 'SECURITY.md', 'x\n')
+        write(root, '.claude/skills/x/SKILL.md', 'x\n')
+      }),
+    ).toBe('packages=false\ndarwin=false\n')
+  })
+
+  // Core and the plugins are where macOS diverges; one such path beside a
+  // site edit runs the job.
+  it.each([
+    'packages/vx/src/a.ts',
+    'packages/vx/tests/x.test.ts',
+    'packages/vx/docs/a.md',
+    'packages/vx/README.md',
+    'packages/vx-otel/tests/x.test.ts',
+    'packages/vx-plugin-examples/plugins/x.ts',
+    'packages/vx-docs/vx.config.ts',
+    'packages/vx-docs/package.json',
+    'packages/vx-bench/vx.config.ts',
+    'packages/vx-bench/package.json',
+    'LICENSE',
+    'bun.lock',
+    'package.json',
+    'vx.workspace.ts',
+    '.github/workflows/ci.yml',
+    'examples/basic/README.md',
+    'scripts/x.ts',
+  ])('runs the macOS job for %s', (file) => {
+    expect(
+      outputs((root) => {
+        write(root, 'packages/vx-docs/b.md', 'x\n')
+        write(root, file, 'changed\n')
+      }),
+    ).toMatch(/^darwin=true$/m)
   })
 
   // One path the plugin suites can reach turns the job on, whatever else
@@ -145,21 +191,21 @@ describe('the changes job', () => {
     'scripts/x.ts',
   ])('runs the plugin suites for %s', (file) => {
     expect(
-      needsPackages((root) => {
+      outputs((root) => {
         write(root, 'packages/vx/docs/b.md', 'x\n')
         write(root, file, 'changed\n')
       }),
-    ).toBe('packages=true\n')
+    ).toMatch(/^packages=true$/m)
   })
 
   it('sees the path a move leaves, not only the one it lands on', () => {
     expect(
-      needsPackages((root) => git(root, 'mv', 'packages/vx/src/a.ts', 'packages/vx/docs/a.ts')),
-    ).toBe('packages=true\n')
+      outputs((root) => git(root, 'mv', 'packages/vx/src/a.ts', 'packages/vx/docs/a.ts')),
+    ).toBe('packages=true\ndarwin=true\n')
   })
 
   it('runs everything when the merge changes nothing', () => {
-    expect(needsPackages(() => {})).toBe('packages=true\n')
+    expect(outputs(() => {})).toBe('packages=true\ndarwin=true\n')
   })
 
   it('fails, and so runs everything, when git cannot answer', () => {
@@ -179,7 +225,7 @@ describe('the gating', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })
 
-  it('gates only the plugin packages job, and runs it unless changes said no', () => {
+  it('gates the plugin and macOS jobs on changes, and runs each unless it said no', () => {
     const gated = Object.entries(doc.jobs)
       .filter(([name, j]) => name !== 'changes' && (j.if !== undefined || j.needs !== undefined))
       .map(([name, j]) => [name, j.needs, j.if])
@@ -188,6 +234,12 @@ describe('the gating', () => {
         'packages',
         'changes',
         "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages == 'true') }}",
+      ],
+      ['binary-linux-arm64', undefined, "github.event_name != 'pull_request'"],
+      [
+        'core-darwin',
+        'changes',
+        "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}",
       ],
     ])
   })
