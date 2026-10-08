@@ -1599,7 +1599,8 @@ everything, making any per-run re-check redundant.
 Freeze every project's **resolved** config into `vx-lock.json` at the
 workspace root. Configs are programs; `vx lock` evaluates them in the
 current environment and stores the post-evaluation objects plus a
-content hash of each config file.
+content hash of each config file. "Every project" is the set a run
+sees, a plugin's `discover` stage included (X-143).
 
 ```
 vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
