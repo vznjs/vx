@@ -158,6 +158,7 @@ export class Cache implements CacheLayer {
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void

@@ -1363,7 +1363,9 @@ row, its file time standing for `accessed_at`: past `olderThan` it goes,
 and under `maxSize` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
 time plus an hour. A temp a crashed save left goes once it is an hour
-old, and nothing younger than an hour is taken.
+old, and nothing younger than an hour is taken. Re-indexing touches the
+artifact's mtime before it links its temp, so the sweep sees that one
+fresh too.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
