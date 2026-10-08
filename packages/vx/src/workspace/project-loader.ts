@@ -818,6 +818,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'semver',
   'serve',
   'sleep',
+  'sleepSync',
   'spawn',
   'spawnSync',
   'stderr',
