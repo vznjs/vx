@@ -64,6 +64,7 @@ anything beneath it changes.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
+   stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
 6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
@@ -97,8 +98,10 @@ gone (SIGTERM, grace, SIGKILL), not when its shell exits.
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
-     `dist/` doesn't survive into a fresh exec; the directory each
-     wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
+     `dist/` doesn't survive into a fresh exec: it prunes only inside
+     the declared trees, so a glob's root stays (B-49) and a directory
+     above it or holding a literal output, which a sibling task may just
+     have made to write into, stays too (inputs.md).
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
@@ -155,7 +158,8 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
-An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
+`rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
@@ -218,8 +222,8 @@ is a file, and the file says why, under either code: missing (the
 resolved path), a directory, not executable by this user, a `#!` line ending in CRLF
 (the interpreter's name ends in `\r`), a `#!` interpreter that does not
 exist, or no `#!` line at all (the loader refused a binary). For a
-sandboxed task a file the host has but no grant reads (`sandboxReads`)
-is named as hidden by the sandbox: it is not there inside, and the
+sandboxed task a file the host has under a denial no grant reads
+(`sandboxReads`) is named as hidden by the sandbox: it is not there inside, and the
 `#!` line was blamed (B-66). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
 blame the file (bash 3.2 names the interpreter itself; macOS runs

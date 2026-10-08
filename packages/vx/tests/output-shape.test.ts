@@ -339,3 +339,122 @@ esac
     TIMEOUT,
   )
 })
+
+// A literal output names a file or a tree, so the clean prunes the literal's
+// own directory: a miss or a restore that needs a file there finds none.
+describe('a literal output across a shape change (e2e)', () => {
+  it(
+    'misses and restores replace a directory with a file and back',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-output-shape-literal-' })
+      try {
+        const app = await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'sh build.sh' },
+                  cache: { inputs: { files: ['shape.txt', 'build.sh'] }, outputs: { files: ['dist/out'] } },
+                },
+              },
+            }
+          `,
+          files: {
+            // No `rm`: the clean is all that clears the other shape.
+            'build.sh': `set -e
+mkdir -p dist
+case "$(cat shape.txt)" in
+  dir) mkdir dist/out && echo inner > dist/out/inner.txt ;;
+  file) echo flat > dist/out ;;
+esac
+`,
+          },
+        })
+        const build = async (shape: 'dir' | 'file', status: 'success' | 'cache-hit') => {
+          await writeFile(path.join(app, 'shape.txt'), shape)
+          const r = await summarized(root, ['app#build'])
+          expect({ code: r.code, status: r.tasks.get('app#build')?.['status'] }).toEqual({
+            code: 0,
+            status,
+          })
+          expect(await shapeOf(app)).toEqual(EXPECTED[shape])
+        }
+        await build('dir', 'success')
+        await build('file', 'success')
+        await build('dir', 'cache-hit')
+        await build('file', 'cache-hit')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// A restore's clean removed a stray `out/a.txt` and pruned the emptied
+// `out/`, which a sibling running beside it had just made and was about to
+// write into: the sibling failed "Directory nonexistent". The entry holds
+// nothing under `out`, so the restore never put it back; with one that
+// does, the same prune opens a window between the clean and the extract.
+describe('a restore beside a sibling writing into its directory (e2e)', () => {
+  for (const [where, dir, outputs] of [
+    ['project', 'out', `{ files: ['out/a.txt'] }`],
+    ['workspace', '../../out', `{ files: [], workspaceFiles: ['out/a.txt'] }`],
+  ] as const) {
+    it(
+      `leaves the sibling's ${where} directory standing`,
+      async () => {
+        const root = await makeWorkspace({ prefix: 'vx-restore-sibling-' })
+        try {
+          // The gate misses every run (its seed moves) and holds the build
+          // until the sibling has made its directory. The build reads the
+          // gate's constant output (allowed by `upfrontKeys: false`) and
+          // folds no key of it, so it is keyed after the gate, not restored
+          // ahead of the schedule, and hits.
+          await writeFile(
+            path.join(root, 'vx.workspace.mjs'),
+            'export default { rules: { upfrontKeys: false } }\n',
+          )
+          const app = await addProject(root, 'app', {
+            config: `
+              export default {
+                tasks: {
+                  gate: {
+                    exec: { command: 'while [ ! -e ../../ready ]; do sleep 0.01; done; echo g > gate.out' },
+                    cache: { inputs: { files: ['seed.txt'] }, outputs: { files: ['gate.out'] } },
+                  },
+                  build: {
+                    dependsOn: ['gate'],
+                    exec: { command: 'true' },
+                    cache: { inputs: { files: ['gate.out'], tasks: [] }, outputs: ${outputs} },
+                  },
+                  after: { dependsOn: ['build'], exec: { command: 'touch ../../go' } },
+                  other: {
+                    exec: { command: 'mkdir -p ${dir} && touch ../../ready && while [ ! -e ../../go ]; do sleep 0.01; done; echo b > ${dir}/b.txt' },
+                  },
+                },
+              }
+            `,
+            files: { 'seed.txt': '1' },
+          })
+          await writeFile(path.join(root, 'ready'), '')
+          const first = await summarized(root, ['app#build'])
+          expect(first.tasks.get('app#build')?.['status']).toBe('success')
+          await rm(path.join(root, 'ready'))
+          await writeFile(path.join(app, 'seed.txt'), '2')
+          await Bun.write(path.join(app, dir, 'a.txt'), 'stray')
+
+          const r = await summarized(root, ['app#after', 'app#other'])
+          const status = Object.fromEntries(
+            ['app#build', 'app#other'].map((id) => [id, r.tasks.get(id)?.['status']]),
+          )
+          expect(status).toEqual({ 'app#build': 'cache-hit', 'app#other': 'success' })
+          expect(await readFile(path.join(app, dir, 'b.txt'), 'utf8')).toBe('b\n')
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+})

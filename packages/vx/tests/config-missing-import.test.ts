@@ -121,6 +121,12 @@ describe('unprovidedBareImports', () => {
     await mkdir(from)
     const src = `import a from '@acme/self/tasks'\nimport b from '@acme/other'\n`
     expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@acme/other'])
+    // Bun resolves it through a manifest with a byte-order mark too.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      '\uFEFF' + JSON.stringify({ name: '@acme/self', exports: { './tasks': './tasks.ts' } }),
+    )
+    expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@acme/other'])
   })
 
   it('CONTROL: a self-name without exports, or past a nearer package.json, is listed (D-29)', async () => {

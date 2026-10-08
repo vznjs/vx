@@ -205,6 +205,11 @@ key of its own, so the default build (`**`) is exempt. Each domain runs
 through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
 project check in milliseconds.
 
+Whatever the rules, `refuseSelfClean` refuses a task whose own outputs
+take back one of its input entries whole (`src/**` as both): vx removes
+a task's outputs before it runs, so it would delete its own sources. An
+in-place rewriter (a formatter) declares no outputs.
+
 ## What this does NOT do
 
 - It doesn't check that `cache.inputs.tasks` names resolve to declared

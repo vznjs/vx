@@ -98,7 +98,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   // Up to 128 paths a clean removes synchronously, past it in parallel
   // (`SYNC_CLEAN_MAX`); both sides of the boundary hold the same contract.
   for (const n of [128, 129]) {
-    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the top`, async () => {
+    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the glob's root`, async () => {
       for (let i = 0; i < n; i++) await write(path.join(projectDir, 'dist', `d${i}`, 'f.js'))
       await write(path.join(projectDir, 'src', 'x.js'), 'source')
 
@@ -109,7 +109,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
       })
 
       expect(cleaned.length).toBe(n)
-      expect(await readdir(projectDir)).toEqual(['src'])
+      expect((await readdir(projectDir)).sort()).toEqual(['dist', 'src'])
+      expect(await readdir(path.join(projectDir, 'dist'))).toEqual([])
       expect(await readFile(path.join(projectDir, 'src', 'x.js'), 'utf8')).toBe('source')
     })
 
@@ -1408,11 +1409,11 @@ describe('inputs.ts edges', () => {
     expect(existsSync(root)).toBe(true) // CONTROL: never the root
   })
 
-  it('a workspace-output clean prunes the directories it emptied', async () => {
+  it('a workspace-output clean prunes the directories it emptied below the glob’s root', async () => {
     await write(path.join(root, 'gen', 'deep', 'x.txt'))
     await write(path.join(root, 'keep', 'y.txt'))
     await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['gen/**'] })
-    expect(existsSync(path.join(root, 'gen'))).toBe(false)
+    expect(await readdir(path.join(root, 'gen'))).toEqual([])
     expect(existsSync(path.join(root, 'keep', 'y.txt'))).toBe(true) // CONTROL
   })
 })
