@@ -486,6 +486,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -557,8 +558,7 @@ export async function resolveRunOptions(
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
-        error:
-          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+        error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
     projects = [cwdProject.name]

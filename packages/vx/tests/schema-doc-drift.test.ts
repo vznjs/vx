@@ -503,6 +503,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
   ['cacheDir is only whitespace — name a directory', workspaceConfig('{ cacheDir: "   " }')],
+  ['cacheDir holds a NUL, which no path can carry', workspaceConfig('{ cacheDir: "a\\0b" }')],
   [
     "affectedBase must be a git ref like 'origin/main'",
     workspaceConfig('{ affectedBase: "--output=x" }'),

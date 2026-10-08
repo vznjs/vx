@@ -144,6 +144,11 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   ) {
     throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
   }
+  // No path can carry one: the mkdir's argument error was reported as an
+  // unwritable workspace.
+  if (typeof config.cacheDir === 'string' && config.cacheDir.includes('\0')) {
+    throw new UserError(`${configPath}: \`cacheDir\` holds a NUL, which no path can carry`)
+  }
   if (config.timeout !== undefined) {
     if (
       typeof config.timeout !== 'number' ||
@@ -156,8 +161,12 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   }
   if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
   if (config.affectedBase !== undefined) {
-    // A leading '-' would reach git as an option, not a ref.
-    if (typeof config.affectedBase !== 'string' || !/^[^-\s]\S*$/.test(config.affectedBase)) {
+    // A leading '-' would reach git as an option, not a ref; a NUL fails the
+    // spawn with an argument error naming nothing in this file.
+    if (
+      typeof config.affectedBase !== 'string' ||
+      !/^[^-\s\0][^\s\0]*$/.test(config.affectedBase)
+    ) {
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
     }
   }
@@ -463,6 +472,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `(got "${wild}") — list explicit env var names instead`,
             )
           }
+          for (const n of passThrough as string[])
+            assertShellName(n, `${where}.exec.env.passThrough`)
         }
         const secret = (env as { secret?: unknown }).secret
         if (
@@ -489,6 +500,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
                 `${where}.exec.env.define: ${JSON.stringify(k)} is not an env var name (non-empty, no '=' or NUL)`,
               )
             }
+            assertShellName(k, `${where}.exec.env.define`)
             if (typeof val !== 'string' || val.includes('\0')) {
               throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
             }
@@ -1350,8 +1362,19 @@ function specForm(spec: string): SpecForm {
  * A name an environment can hold. An `=` splits at the first one, so
  * `define: { 'A=B': 'x' }` gave the child `A` with the value `B=x`; `''`
  * was dropped; a NUL failed the spawn with a hint about exit 127 (item
- * 999). Refused at load, where the config is named.
+ * 999). And the task runs under `sh -c`, whose dash (Linux) drops a
+ * variable whose name is no shell identifier: `my.var` reached a task
+ * under macOS's bash and nothing on Linux. Refused at load, where the
+ * config is named.
  */
+function assertShellName(name: string, field: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new UserError(
+      `${field}: ${JSON.stringify(name)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+    )
+  }
+}
+
 function isEnvName(name: unknown): name is string {
   return typeof name === 'string' && name.length > 0 && !name.includes('=') && !name.includes('\0')
 }

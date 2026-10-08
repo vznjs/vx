@@ -709,7 +709,7 @@ describe('vx migrate (lerna)', () => {
               ? [0, '', true, 1]
               : [
                   1,
-                  'vx-migrate: nothing to migrate: no turbo.json and no Nx workspace — for package.json scripts, run `vx init`\n',
+                  'vx-migrate: nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — for package.json scripts, run `vx init`\n',
                   false,
                   0,
                 ],
@@ -1315,11 +1315,11 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  // Turbo and Nx only (owner, 2026-10-01): lage, wireit and scripts are refused.
-  it('--from takes turbo or nx; any other name, scripts included, names `vx init`', () => {
+  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1): lage, wireit and scripts are refused.
+  it('--from takes turbo, nx or vite-task; any other name, scripts included, names `vx init`', () => {
     for (const v of ['scripts', 'lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo or nx (package.json scripts: `vx init`)',
+        '--from must be turbo, nx or vite-task (package.json scripts: `vx init`)',
       )
   })
 })
@@ -1501,7 +1501,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({

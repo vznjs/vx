@@ -1407,8 +1407,14 @@ function ownGroupCommand(
   return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
-/** What strace stops on: the reads, and what moves or makes a process's cwd. */
-const TRACED_CALLS = 'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+/**
+ * What strace stops on: the reads, the execs and access probes (a refused
+ * `./gen.sh || fallback` passed unreported), and what moves or makes a
+ * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
+ * `git status` 30%, where the execs and probes cost nothing measurable.
+ */
+const TRACED_CALLS =
+  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -1685,15 +1691,9 @@ export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
   if (liveServers.delete(tag)) {
-    // A server's wrap counts as a live sandbox in SRT until this, and SRT
-    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
-    // grant) only at a count of 0: one stopped server kept every later
-    // task's stubs in the workspace until the reset.
-    try {
-      srtLoaded!.SandboxManager.cleanupAfterCommand()
-    } catch {
-      // best-effort, as a one-shot task's
-    }
+    // A server's wrap stays counted until it stops: one stopped server
+    // kept every later task's stubs in the workspace until the reset.
+    afterCommand(srtLoaded!.SandboxManager)
     if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
@@ -1817,11 +1817,11 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace only `openat` — it's the actual file-read attempt, the
-  // signal the user cares about. `statx` / `newfstatat` / `access`
-  // are mostly shell PATH-walking and stat probes that aren't
-  // actionable (we'd report every node_modules/.bin entry the shell
-  // checks before resolving a command).
+  // We trace `openat`, the read itself, plus `execve` and the access
+  // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
+  // is a tax on every stat-heavy task. A probe's ENOENT counts only where
+  // the host has the path (`parseStraceViolations`), so a PATH walk past
+  // a missing `node_modules/.bin` entry reports nothing.
   //
   // `--seccomp-bpf` is what makes that filter cheap: without it strace
   // ptrace-stops the tracee on EVERY syscall and discards the untraced
@@ -1831,7 +1831,7 @@ async function runSandboxedOnce(
   // 24/24; under `strace -f -e trace=openat` the same four fail with
   // medians 2.5–7× over budget; with `--seccomp-bpf` 24/24 again), and
   // it taxed every other sandboxed task the same way. With the flag the
-  // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
+  // kernel filter stops only on the traced calls. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
@@ -2022,6 +2022,7 @@ async function runSandboxedOnce(
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
             scratch,
+            [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2279,8 +2280,12 @@ function sbplToken(value: string, field: string): string {
  */
 export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
+  // A name is an info type to one caller and a sysctl to another (Bun
+  // reads `hw.optional.neon` with sysctl-read), so it grants both.
   for (const t of c.systemInfo ?? []) {
-    rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
+    const name = sbplToken(t, 'allow.systemInfo')
+    rules.push(`(allow system-info (info-type "${name}"))`)
+    rules.push(`(allow sysctl-read (sysctl-name "${name}"))`)
   }
   if (localBindingOn(c)) {
     // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is
