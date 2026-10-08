@@ -65,13 +65,16 @@ export function closeSignalChannel(child: Child): void {
 let guardFd: number | null | undefined
 
 // Three lists: groups (`+`/`-`), single pids (`=`/`_`) and paths to
-// remove (`@`/`!`), killed and removed in that order at EOF.
+// remove (`@`/`!`), killed and removed in that order at EOF. A
+// group is listed once however often its line arrives: a `-` strikes
+// one entry, and a shell that keeps a failed printf buffered (bash as
+// macOS's sh, B-10) sends the line again with its retry.
 const GUARD_SCRIPT = [
   "g=' ' k=' ' f=' '",
   'while IFS= read -r l; do',
   '  p=${l#?}',
   '  case $l in',
-  '    +*) g="$g$p " ;;',
+  '    +*) case $g in *" $p "*) ;; *) g="$g$p " ;; esac ;;',
   '    -*) case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
   '    =*) k="$k$p " ;;',
   '    _*) case $k in *" $p "*) k="${k%% $p *} ${k#* $p }" ;; esac ;;',
@@ -168,8 +171,22 @@ function guardWrite(line: string): void {
  */
 export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child {
   startGuard()
-  return spawn(typeof guardFd === 'number' ? guardFd : undefined)
+  if (typeof guardFd !== 'number') return spawn(undefined)
+  handingTo = guardProc?.pid
+  try {
+    return spawn(guardFd)
+  } finally {
+    handingTo = undefined
+  }
 }
+
+/**
+ * The guard whose pipe `spawnGuarded` is handing over right now. Only a
+ * line built for that hand-over retries: its pipe is broken only once
+ * the guard has exited, so `kill -0` ends the wait. A line for any other
+ * pipe would wait on a guard that has nothing to do with it.
+ */
+let handingTo: number | undefined
 
 /**
  * The shell line that lists `$$`'s group on the guard's pipe at `fd` and
@@ -177,9 +194,22 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
  * shell, which leads its group (every guarded spawn is `detached`); a
  * program that is not a shell is `exec`'d after it. A write to a guard
  * that has died is ignored rather than a SIGPIPE that kills the task.
+ * The pipe is vx's own nonblocking one, so a full queue fails the write
+ * (EAGAIN) and the group went unlisted: the write is retried while the
+ * guard lives. The shell cannot tell EAGAIN from EPIPE, so the guard's
+ * pid ends the wait, and vx SIGKILLs a guard it gives up on.
  */
 export function guardLine(fd: number): string {
-  return `trap '' PIPE; printf '+%s\\n' $$ >&${fd} 2>/dev/null; trap - PIPE; exec ${fd}>&-; `
+  const add = `printf '+%s\\n' $$ >&${fd} 2>/dev/null`
+  // `kill -0` counts a zombie, and a guard vx has not reaped (its event
+  // loop busy, or an init that never reaps an orphan after vx's kill -9)
+  // kept the shell spinning. Where /proc is ours, its state says dead;
+  // `##*) ` cuts at the LAST ')', as comm may hold one.
+  const alive = procfsIsOwn()
+    ? `{ read -r vx_g </proc/${handingTo}/stat; } 2>/dev/null && case "\${vx_g##*) }" in [ZX]*) false ;; esac`
+    : `kill -0 ${handingTo} 2>/dev/null`
+  const retry = handingTo === undefined ? '' : ` || until ${add}; do ${alive} || break; done`
+  return `trap '' PIPE; ${add}${retry}; trap - PIPE; exec ${fd}>&-; `
 }
 
 /**

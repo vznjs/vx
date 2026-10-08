@@ -97,8 +97,6 @@ export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly storeDir: string | undefined
-  readonly storeFallback: string | null
-  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
@@ -1157,6 +1155,16 @@ A task's command as vx shows it: its secret values masked.
 
 ```ts
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+```
+
+## `maskedLine`
+
+function · `src/util/secret-mask.ts`
+
+A line vx prints for no one task (a plugin's warning): this process's secrets masked.
+
+```ts
+export function maskedLine(line: string): string
 ```
 
 ## `MigrationFormat`

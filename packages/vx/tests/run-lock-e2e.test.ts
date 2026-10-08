@@ -188,6 +188,25 @@ describe('two runs on one workspace', () => {
   )
 
   it(
+    '`vx cache prune` from a task of a run on the workspace is refused, not left waiting',
+    async () => {
+      // The run holds the lock until it ends and the prune waited for it:
+      // a wait with no end. The row's own timeout bounds it (macOS has no
+      // `timeout`).
+      await addProject(root, 'app', {
+        config: `export default { tasks: { prune: { exec: { command: '${process.execPath} ${BIN} cache prune --older-than 30d' } } } }`,
+      })
+      const r = await vx(root, ['run', 'prune', '--all'])
+      expect(r.code).toBe(1)
+      expect(r.out + r.err).toContain(
+        'runs inside task app#prune of a vx run on this workspace, which holds its run lock until it ends',
+      )
+      expect(r.out + r.err).toContain('failed (exit 1)')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a finished run leaves no lock directory behind',
     async () => {
       // The release was fired and forgotten at close, and the CLI exits as

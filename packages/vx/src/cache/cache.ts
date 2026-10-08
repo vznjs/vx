@@ -661,15 +661,6 @@ export class Cache implements CacheLayer {
   readonly storeDir: string | undefined
 
   /**
-   * The store this open was asked for and could not use, with why: the
-   * entries went to a store inside `cacheDir` instead.
-   */
-  readonly storeFallback: string | null = null
-
-  /** Set when this open moved a workspace index's own entries out for a shared store. */
-  readonly storeMoved: { from: string; to: string } | null = null
-
-  /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
    * reports null. vx prints nothing for it: the cache is vx's to keep
@@ -849,24 +840,33 @@ export class Cache implements CacheLayer {
         this.schemaReset = this.db
           .transaction((): SchemaReset | null => {
             const found = readVersion()
-            if (found !== undefined && found !== SCHEMA_VERSION) refuseUnreadable(found)
-            if (found === undefined) {
-              this.db
-                .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
-                .run(SCHEMA_VERSION)
-              return null
-            }
             if (found === SCHEMA_VERSION) return null
+            if (found !== undefined) refuseUnreadable(found)
             // `main.` on every name: unqualified, a table the index lacks
             // resolves to an attached store's (none is attached yet; this
             // keeps it so).
-            this.db.exec(
-              'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
-            )
+            if (found !== undefined) {
+              this.db.exec(
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
+              )
+            }
+            // The tables land under the same write lock as the stamp: made
+            // after it, another vx's reset could stamp its own schema in
+            // between and keep these tables under it. An index beside a
+            // store keeps no entry tables (they would shadow the store's).
+            createTables(this.db, 'main')
+            const recordedStore = this.db
+              .prepare("SELECT 1 FROM schema_meta WHERE key = 'store_dir'")
+              .get()
+            if (storeRoot === undefined ? recordedStore != null : storeRoot !== null) {
+              for (const t of STORE_TABLES) this.db.exec(`DROP TABLE main.${t}`)
+            }
             this.db
-              .prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'")
+              .prepare(
+                "INSERT INTO schema_meta(key, value) VALUES ('version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+              )
               .run(SCHEMA_VERSION)
-            return { from: found, to: SCHEMA_VERSION }
+            return found === undefined ? null : { from: found, to: SCHEMA_VERSION }
           })
           .immediate()
       } catch (err) {
@@ -904,8 +904,6 @@ export class Cache implements CacheLayer {
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
-          // Said by the open that falls back; the ones after it find it recorded.
-          if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
           storeDir = fallback
           openCacheDir(fallback)
         }
@@ -922,13 +920,11 @@ export class Cache implements CacheLayer {
             .get() != null,
       )
       if (holds) {
-        const had = this.db.prepare('SELECT 1 FROM main.entries LIMIT 1').get() != null
         this.db
           .transaction(() => {
             for (const t of STORE_TABLES) this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
           })
           .immediate()
-        if (had) this.storeMoved = { from: cacheDir, to: storeDir }
       }
     }
     this.storeDir = storeDir
@@ -1796,6 +1792,9 @@ export class Cache implements CacheLayer {
         hash,
         `remote body runs past ${cap} bytes (the artifact ceiling's bound)`,
       )
+    // Every refusal releases the remote body: a held response pins its
+    // connection, and a layer that settles on the body's end never hears.
+    let counted: ReadableStream<Uint8Array> | undefined
     try {
       if (body instanceof Blob) {
         if (body.size > cap) throw past()
@@ -1804,7 +1803,7 @@ export class Cache implements CacheLayer {
         throw past()
       } else {
         let n = 0
-        const counted = body.body?.pipeThrough(
+        counted = body.body?.pipeThrough(
           new TransformStream<Uint8Array, Uint8Array>({
             transform(chunk, controller) {
               n += chunk.byteLength
@@ -1816,6 +1815,9 @@ export class Cache implements CacheLayer {
         await Bun.write(tmpPath, new Response(counted ?? null))
       }
     } catch (err) {
+      // A failed write leaves the pipe's end unlocked; cancelling it
+      // cancels the source. A body refused by its length is cancelled itself.
+      if (!(body instanceof Blob)) void (counted ?? body.body)?.cancel(err).catch(() => undefined)
       await unlink(tmpPath).catch(() => undefined)
       throw err
     }
@@ -2321,9 +2323,9 @@ export class Cache implements CacheLayer {
     // Delete DB rows in a single transaction (one fsync; ON DELETE
     // CASCADE clears `output_files`) and unlink artifacts in parallel.
     // Replaces N round-trips + serialized rm with one transaction + a
-    // Promise.all over the unlinks. The IN-list is chunked at 900 like
-    // flushAccessed so a huge eviction stays under any build's
-    // bound-parameter ceiling.
+    // Promise.all over the unlinks. The hash list binds as one `json_each`
+    // parameter, so a huge eviction stays under any build's bound-parameter
+    // ceiling.
     if (dryRun) {
       return { evicted: victims.size, bytesFreed, orphans: picked.files.length, orphanBytes }
     }

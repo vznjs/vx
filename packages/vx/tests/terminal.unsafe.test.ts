@@ -127,6 +127,51 @@ describe('an interactive task under a vx on a terminal', () => {
     const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)} } } } }`
     expect(await onTerminal(config, 'app#ask')).toEqual({ code: 0, answers: ['got:[]'] })
   }, 20_000)
+
+  // vx dies of a stopping signal (signals.ts) so a shell script running it
+  // stops too, but dying skips Bun's exit, which puts back the terminal it
+  // started with. A run that handed the terminal over exits instead: a
+  // Ctrl-C'd task that had turned echo off left the shell typing blind.
+  it('a Ctrl-C after the task turned echo off gives the terminal back with echo on', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-interactive-echo-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { t: { exec: { command: 'echo "PTS=$(tty)"; stty -echo; echo ARMED; sleep 30', interactive: true } } } }`,
+      })
+      const echoOf = (pts: string): string =>
+        // `stty -a` reads its stdin on Linux and macOS alike; `-F` is GNU's.
+        Bun.spawnSync(['stty', '-a'], { stdin: Bun.file(pts) })
+          .stdout.toString()
+          .includes('-echo ')
+          ? 'off'
+          : 'on'
+      let screen = ''
+      let pts = ''
+      let armed = ''
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#t', '--output-logs=full'], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (pts === '' && /^ARMED\r?$/m.test(screen)) {
+              pts = /^PTS=(\/dev\/\S+)/m.exec(screen)![1]!
+              armed = echoOf(pts)
+              term.write('\x03')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGKILL'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      const after = echoOf(pts)
+      proc.terminal?.close()
+      expect({ code, armed, after }).toEqual({ code: 130, armed: 'off', after: 'on' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
 })
 
 // A task that holds the terminal and sets it raw, then dies without putting
@@ -242,6 +287,49 @@ describe('the picker outside a git work tree', () => {
         lines: [
           `vx requires git: ${root} is not inside a git work tree. Run 'git init' in your workspace root. (git: fatal: not a git repository (or any of the parent directories): .git)`,
         ],
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
+// `vx last` prints the run's command as a line to paste: a run whose task
+// came from the picker recorded `vx run -- x`, which opens the picker again
+// and drops the choice.
+describe('a task picked on a terminal', () => {
+  it('is named in the command `vx last` replays', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-tty-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn([process.execPath, BIN, 'run', '--', 'x'], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const last = Bun.spawnSync([process.execPath, BIN, 'last'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect({ code, command: last.stdout.toString().split('\n')[1] }).toEqual({
+        code: 0,
+        command: '  $ vx run app#build -- x',
       })
     } finally {
       await rm(root, { recursive: true, force: true })

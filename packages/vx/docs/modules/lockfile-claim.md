@@ -44,7 +44,9 @@ Both are on the `@vzn/vx` façade.
 ## Construction rules
 
 - **Once per content.** The digests are memoised under the cache dir
-  (`lockfile-claims/<file>.json`) by `version` + the file's xxh3, so a
+  (`lockfile-claims/<file>.json`) by `version`, the claimant (its
+  `part` and its functions' source: another claimant of the file at the
+  same `version` does not read it) and the file's xxh3, so a
   warm run pays one read, one hash and one small JSON read — never a
   parse. Written to a temp name and renamed, so a reader never sees a
   half memo and two concurrent runs each land a whole one; a memo that

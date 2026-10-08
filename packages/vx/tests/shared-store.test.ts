@@ -84,6 +84,15 @@ async function build(f: Fixture): Promise<{ status: string; restored: boolean | 
   return { status: o.status, restored: o.restored }
 }
 
+/**
+ * What the runs said besides each run's summary block: the task lines, and
+ * any line vx printed of its own (a store fallback, a move, a reset).
+ */
+function said(f: Fixture): { log: string[]; err: string[] } {
+  const summary = /^(|─ vx .*|  (projects|tasks|cache|info|time|result) .*| {12}\S.*)$/
+  return { log: f.log.filter((l) => !summary.test(l)), err: f.err }
+}
+
 /** Rows of `table` in a workspace's own index, read beside vx's handle. */
 function rows(f: Fixture, sql: string): unknown[] {
   const db = new Database(path.join(f.root, '.vx', 'cache', 'cache.db'), { readonly: true })
@@ -165,7 +174,10 @@ describe('the shared store', () => {
     expect((await build(a)).status).toBe('cache-hit')
     const fallback = path.join(a.root, '.vx', 'cache')
     expect(existsSync(path.join(fallback, 'store.db'))).toBe(true)
-    expect(a.log.filter((l) => l.includes('shared cache store'))).toEqual([])
+    expect(said(a)).toEqual({
+      log: ['task app#build success', 'task app#build cache-hit'],
+      err: [],
+    })
   })
 
   it('a ~/.vx of ours open to other users is closed to 700 and used', async () => {
@@ -175,9 +187,9 @@ describe('the shared store', () => {
     expect((await build(a)).status).toBe('success')
     expect([
       (statSync(path.join(home, '.vx')).mode & 0o777).toString(8),
-      a.log.filter((l) => l.includes('shared cache store')),
+      said(a),
       (await stores()).length,
-    ]).toEqual(['700', [], 1])
+    ]).toEqual(['700', { log: ['task app#build success'], err: [] }, 1])
   })
 
   it('makes each level of the store owner-only', async () => {
@@ -203,7 +215,10 @@ describe('the shared store', () => {
       { status: 'cache-hit' },
     ])
     // The move is vx's own upkeep: nothing printed (owner, 2026-10-06).
-    expect(a.log.filter((l) => l.includes('shared store'))).toEqual([])
+    expect(said(a)).toEqual({
+      log: ['task app#build success', 'task app#build success', 'task app#build cache-hit'],
+      err: [],
+    })
   })
 
   it('another repository keeps its own store', async () => {
@@ -242,7 +257,10 @@ describe('the shared store', () => {
     await rm(path.join(a.pkg, 'out.txt'))
     expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
     expect(await build(a)).toEqual({ status: 'cache-hit', restored: false })
-    expect(a.log.filter((l) => l.includes('re-indexed'))).toEqual([])
+    expect(said(a)).toEqual({
+      log: ['task app#build success', 'task app#build cache-hit', 'task app#build cache-hit'],
+      err: [],
+    })
   })
 
   it("a reading verb's handle follows the store the index records", async () => {
