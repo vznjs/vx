@@ -229,6 +229,11 @@ describe('vx last (e2e)', () => {
       expect(fwd.out.trimEnd().split('\n').at(-1)).toBe(
         '  re-run what failed: vx run app#boom -- x y',
       )
+      // A dependency never got the args (X-140): pasted with them, the line
+      // ran another command under another key than the one that failed.
+      await vx(root, ['run', 'app#after', '--', 'x', 'y'])
+      const dep = await vx(root, ['last'])
+      expect(dep.out.trimEnd().split('\n').at(-1)).toBe('  re-run what failed: vx run app#boom')
     },
     TIMEOUT,
   )
@@ -523,6 +528,7 @@ describe('formatTaskRows', () => {
       timedOut: null,
       sandboxViolations: null,
       notReady: null,
+      forwarded: false,
       ...over,
     }) as RunSummaryRow
   const hit = (n: number, ms: number) =>

@@ -356,7 +356,8 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count. A server
+  without a newline (`printf 'Listening on :3000'`) count, and so does
+  output read up to 250 ms after the shell exits. A server
   not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
@@ -586,7 +587,14 @@ replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
 `cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), any error `vx mcp` answers an agent with, a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
+secret passed after `--`) and its `--tag`s. So are every string of a
+task `vx show` prints (a runtime probe, `readyWhen`, the description),
+the description `--dry` and the task picker print, a runtime probe's
+command as the run history stores it and `vx why` names its row (two
+probes that mask alike are numbered, `echo *** (2)`), the readiness
+notice's pattern, a sandbox violation line, `vx info`'s config errors,
+the error a verb ends on (a plugin's failure, a config's own throw) and
+`vx watch`'s `cycle failed` line. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
 A value
@@ -1609,7 +1617,9 @@ vx.workspace.ts to let a dependant add to its upstream's outputs.`
   - **`upfrontKeys`** (X-54) — a cached task whose `inputs.files` can
     match a same-project task's `outputs.files`, or whose
     `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
-    or another project's `outputs.files` read from the root, is refused,
+    or another project's `outputs.files` read from the root, or whose
+    `inputs.files` can match another task's `outputs.workspaceFiles`
+    landing in its project (X-135), is refused,
     edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:

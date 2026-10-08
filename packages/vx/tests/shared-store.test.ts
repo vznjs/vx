@@ -274,6 +274,29 @@ describe('the shared store', () => {
       cache.close()
     }
   })
+
+  it("a reading verb's handle on an empty store writes nothing to it", async () => {
+    // Another opener may be making the store: a reader that made its tables
+    // statement by statement, outside the write lock, raced that opener.
+    const a = await workspace()
+    await build(a)
+    const file = path.join(await store(), 'store.db')
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) rmSync(f, { force: true })
+    await writeFile(file, '')
+    const cache = Cache.inspect(path.join(a.root, '.vx', 'cache'))
+    try {
+      expect(cache.stats().entryCount).toBe(0)
+    } finally {
+      cache.close()
+    }
+    expect(statSync(file).size).toBe(0)
+    const db = new Database(file, { readonly: true })
+    try {
+      expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all()).toEqual([])
+    } finally {
+      db.close()
+    }
+  })
 })
 
 describe('resolveStoreRoot', () => {

@@ -82,7 +82,8 @@ export interface RemoteCacheLayer {
   /**
    * Store an artifact (fire-and-forget from LayeredCache's perspective).
    * `body` is file-backed (`Bun.file`) when the local store holds the
-   * artifact, so a plugin that streams it never holds it whole.
+   * artifact, so a plugin that streams it never holds it whole, and every
+   * read of it sees the same bytes.
    */
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
@@ -549,12 +550,12 @@ export class LayeredCache implements CacheLayer {
     // succeeded; we don't fail it on cache-server issues.
     //
     // The job hands the plugin a file-backed Blob over the local artifact,
-    // opened when the plugin reads it: a queued job holds a path, not a
-    // buffer, and a plugin that streams the Blob never holds it whole. The
-    // artifact is content-addressed and immutable, so a deferred read sees
-    // the same bytes; if a concurrent `vx cache prune` removed it first the
-    // plugin's read throws and this upload is skipped — the never-fail
-    // contract.
+    // pinned under a private name when the job starts (`pinArtifact`): a
+    // queued job holds a path, not a buffer, a plugin that streams the Blob
+    // never holds it whole, and every read of it sees the same bytes though
+    // a re-save of the key renames others over the live name. If a
+    // concurrent `vx cache prune` removed the artifact first the pin throws
+    // and this upload is skipped — the never-fail contract.
     const hash = args.hash
     const durationMs = args.entry.durationMs
     // Local writes disabled (`--cache=local:,remote:rw`): there is no
@@ -575,9 +576,11 @@ export class LayeredCache implements CacheLayer {
     this.enqueueUpload(async () => {
       const tally = this.local.uploads
       const start = performance.now()
+      let release: (() => Promise<void>) | undefined
       try {
-        const body =
-          packed !== undefined ? new Blob([packed]) : Bun.file(this.local.outputsPath(hash))
+        let body: Blob
+        if (packed !== undefined) body = new Blob([packed])
+        else ({ body, release } = this.local.pinArtifact(hash))
         await this.wire.put(hash, body, { durationMs })
         tally.count++
         tally.bytes += body.size
@@ -585,6 +588,8 @@ export class LayeredCache implements CacheLayer {
       } catch (err) {
         tally.failed++
         this.reportRemoteError('upload', hash, err)
+      } finally {
+        await release?.()
       }
     })
   }

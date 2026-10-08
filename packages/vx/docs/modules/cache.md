@@ -238,7 +238,7 @@ export interface InvocationRecord {
 // path only), via INSERT OR IGNORE.
 export interface TaskInputRow {
   entryHash: string
-  kind: string // file|env|runtime|ws-runtime|upstream|plugin|package|config|forward|workspace
+  kind: string // file|env|runtime|ws-runtime|upstream|plugin|package|config|forward|workspace|format
   name: string
   hash: string
 }
@@ -495,9 +495,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   that entry as a miss and runs the task. An artifact that is not a
   readable archive or lacks an output the index recorded
   (`CorruptArtifactError`) is dropped, unless the cache is read-only,
-  and throws `ArtifactVanishedError` the same way (A-52). Throws
-  `ArchiveSecurityError` on an unsafe name or an
-  escape by name. A directory on the tree side that links out of the
+  and throws `ArtifactVanishedError` the same way (A-52). So is one
+  holding an unsafe name or an escape by name (`ArchiveSecurityError`,
+  as the `CorruptArtifactError`'s cause): the save proved every name
+  safe, so the bytes changed since (X-115). A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
   that stays inside the anchor is written through, a dangling one too:
@@ -591,7 +592,9 @@ verb) refuses a schema it cannot read with a `UserError` that names the
 directory and both versions and leaves the index as it was (item 896). Over a directory
 with no `cache.db`, `Cache.inspect` reads an empty index in memory and
 creates nothing on disk: no directory, no `.gitignore`, no database
-(item 900). A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
+(item 900). A shared `store.db` with no file or no tables yet is read
+the same way, so a reading verb never writes a store another opener may
+be making. A `cache.db` SQLite cannot read (`SQLITE_NOTADB`,
 `SQLITE_CORRUPT*` from the open's first statements) is refused by both
 opens with a `UserError` naming the file and the remedy (remove it with
 its `-wal` and `-shm`; the index holds nothing a run cannot rebuild):

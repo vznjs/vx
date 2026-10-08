@@ -1208,7 +1208,7 @@ describe('stale cache hits', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
       )
-      await writeLocalWorkspace(root)
+      await waitForProducers(root)
       await write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
       await write(
         path.join(root, 'pkgs/app/package.json'),

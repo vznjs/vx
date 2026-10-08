@@ -22,10 +22,13 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 /**
  * Per-key outcome projection: every keyed (project, task, hash) under
  * `source` (`runs`, or a relation with its `id`, `project`, `task`, `hash`,
- * `status`, `cache_hit` columns) with how often it failed, how often it
+ * `status`, `cache_hit`, `cached` columns) with how often it failed, how often it
  * passed — an executed success or a cache hit, which replays a success —
- * and how often it failed AFTER its first pass (`relapses`). Every
- * flakiness reader is a filter over this one projection.
+ * and how often it failed AFTER its first pass (`relapses`). A task with
+ * no cache block keys on its config alone and runs every time, so its key
+ * says nothing about its inputs: no reader counts it, as no run's row
+ * calls it flaky. Every flakiness reader is a filter over this one
+ * projection.
  */
 function keyOutcomesSql(source: string, where = ''): string {
   return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
@@ -39,7 +42,7 @@ function keyOutcomesSql(source: string, where = ''): string {
              CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
                THEN 1 ELSE 0 END AS passed
            FROM ${source}
-           WHERE ${KEYED_RUNS_SQL}${where}))
+           WHERE ${KEYED_RUNS_SQL} AND cached IS NOT 0${where}))
        GROUP BY project, task, hash`
 }
 

@@ -661,15 +661,6 @@ export class Cache implements CacheLayer {
   readonly storeDir: string | undefined
 
   /**
-   * The store this open was asked for and could not use, with why: the
-   * entries went to a store inside `cacheDir` instead. Never printed.
-   */
-  readonly storeFallback: string | null = null
-
-  /** Set when this open moved a workspace index's own entries out for a shared store. */
-  readonly storeMoved: { from: string; to: string } | null = null
-
-  /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
    * reports null. vx prints nothing for it: the cache is vx's to keep
@@ -913,9 +904,6 @@ export class Cache implements CacheLayer {
         // the entries stay in this workspace rather than fail the run.
         const fallback = cacheDir
         if (fallback !== storeDir) {
-          // Set by the open that falls back, never printed; the ones after it
-          // find it recorded.
-          if (recorded !== fallback) this.storeFallback = `${storeDir} (${blocked})`
           storeDir = fallback
           openCacheDir(fallback)
         }
@@ -932,13 +920,11 @@ export class Cache implements CacheLayer {
             .get() != null,
       )
       if (holds) {
-        const had = this.db.prepare('SELECT 1 FROM main.entries LIMIT 1').get() != null
         this.db
           .transaction(() => {
             for (const t of STORE_TABLES) this.db.exec(`DROP TABLE IF EXISTS main.${t}`)
           })
           .immediate()
-        if (had) this.storeMoved = { from: cacheDir, to: storeDir }
       }
     }
     this.storeDir = storeDir
@@ -1050,13 +1036,25 @@ export class Cache implements CacheLayer {
    * Attach the shared store as `store`, with the pragmas the index takes:
    * WAL for both, so a workspace's run and another's share the store as
    * two runs on one `--cache-dir` share an index. A reading verb over a
-   * store with no file yet reads an empty one in memory.
+   * store with no file or no tables yet reads an empty one in memory.
    */
   private attachStore(storeDir: string, inspecting: boolean): void {
     const storeFile = path.join(storeDir, 'store.db')
-    const absent = inspecting && !existsSync(storeFile)
+    let absent = inspecting && !existsSync(storeFile)
     try {
       this.db.prepare('ATTACH DATABASE ? AS store').run(absent ? ':memory:' : storeFile)
+      // One with no tables yet is read empty in memory too: the journal
+      // switch and the table creation below are writes, under no write
+      // lock, racing an opener making that store.
+      if (
+        inspecting &&
+        !absent &&
+        this.db.prepare("SELECT 1 FROM store.sqlite_master WHERE name = 'entries'").get() == null
+      ) {
+        this.db.exec('DETACH DATABASE store')
+        this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
+        absent = true
+      }
       this.db.exec('PRAGMA store.journal_mode = WAL')
       if (!absent) this.db.fileControl('store', SQLITE_FCNTL_PERSIST_WAL, 1)
       this.db.exec('PRAGMA store.journal_size_limit = 67108864')
@@ -1572,13 +1570,14 @@ export class Cache implements CacheLayer {
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
-      if (
-        err instanceof ArchiveSecurityError ||
-        err instanceof CorruptArtifactError ||
-        err instanceof UserError
-      ) {
-        throw err
-      }
+      if (err instanceof CorruptArtifactError || err instanceof UserError) throw err
+      // The save and the ingest proved every name safe, so one that reads
+      // unsafe now is damaged or tampered bytes: a long name's pax record
+      // has no header checksum, and the name is judged before the CRC at
+      // the end is read. Thrown as is, it failed the task on every run with
+      // the entry kept (X-115).
+      if (err instanceof ArchiveSecurityError)
+        throw new CorruptArtifactError(hash, err.message, err)
       // What is on disk, not what is in the archive: a directory standing
       // where the entry holds a file, or a file where it needs a directory.
       // The clean removes the FILES the output globs select and the
@@ -1758,6 +1757,21 @@ export class Cache implements CacheLayer {
    */
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array> {
     return this.packArtifact(args)
+  }
+
+  /**
+   * The artifact under a private second name, for a body read more than
+   * once (a digest pass then an upload, a retry). The live name is not
+   * stable: a re-save of the key renames other bytes over it, and a body
+   * opened by path read those mid-upload (a digest of one artifact over
+   * the bytes of another). A `Bun.file` over an fd is no answer — its
+   * second read starts where the first ended. Throws when the artifact is
+   * gone; `release` unlinks the name.
+   */
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> } {
+    const pinned = this.tempPath(hash)
+    linkSync(this.tarPath(hash), pinned)
+    return { body: Bun.file(pinned), release: () => unlink(pinned).catch(() => undefined) }
   }
 
   /**
@@ -2310,9 +2324,9 @@ export class Cache implements CacheLayer {
     // Delete DB rows in a single transaction (one fsync; ON DELETE
     // CASCADE clears `output_files`) and unlink artifacts in parallel.
     // Replaces N round-trips + serialized rm with one transaction + a
-    // Promise.all over the unlinks. The IN-list is chunked at 900 like
-    // flushAccessed so a huge eviction stays under any build's
-    // bound-parameter ceiling.
+    // Promise.all over the unlinks. The hash list binds as one `json_each`
+    // parameter, so a huge eviction stays under any build's bound-parameter
+    // ceiling.
     if (dryRun) {
       return { evicted: victims.size, bytesFreed, orphans: picked.files.length, orphanBytes }
     }

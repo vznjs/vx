@@ -853,6 +853,22 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(await configImports(cfg)).toEqual([await realpath(preset)])
   })
 
+  it('the watch list keeps an import whose file is gone, by the name it would have', async () => {
+    // `vx watch` re-reads the list after a cycle that failed on the missing
+    // preset; without it, the preset's return was no event.
+    const cfg = await write(
+      'packages/m/vx.config.mjs',
+      "import { a } from '../../shared/a.mjs'\nimport { b } from './b'\nexport default { tasks: { build: { exec: { command: a + b } } } }\n",
+    )
+    const dir = path.join(await realpath(root), 'packages/m')
+    expect(await configImports(cfg)).toEqual([
+      path.join(dir, '../../shared/a.mjs'),
+      ...['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json'].map((e) =>
+        path.join(dir, `b${e}`),
+      ),
+    ])
+  })
+
   it("a config linked in from elsewhere keys the imports beside its REAL path, not the link's (item 950)", async () => {
     const shared = await write('shared/preset.mjs', "export const cmd = 'echo shared-one'\n")
     await write(

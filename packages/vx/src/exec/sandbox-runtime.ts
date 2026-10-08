@@ -55,6 +55,7 @@ import {
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
+  TaskPipes,
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
@@ -1281,6 +1282,11 @@ async function wrapIn(
     customConfig!.filesystem!.denyRead!.push(baselines.cwd)
   }
   customConfig!.filesystem!.allowWrite!.push(toRealPath(tmp))
+  // Seatbelt judges `/dev/stdout` by the path the kernel resolves it to,
+  // `/dev/fd/1`, which SRT's default `/dev/stdout` grant does not name, so
+  // `echo x > /dev/stdout` failed EPERM (X-113). `/dev/fd/N` reopens only a
+  // descriptor the task already holds.
+  if (process.platform === 'darwin') customConfig!.filesystem!.allowWrite!.push('/dev/fd')
   if (scopedDenyScan) {
     customConfig!.filesystem!.denyWrite!.push(
       ...scopedMandatoryDenies(
@@ -1548,6 +1554,12 @@ function literalReadPaths(
  * `/**` is stripped before the compile). A task's read grant whose only
  * brackets are escaped names one path too, and Linux binds it whole, so
  * it gets the same subtree: `out/\[id\]` read `out/[id]` and none of it.
+ *
+ * A `*` or `?` meant as itself (escaped in a grant, or in a baseline's
+ * name) has no spelling: SRT's rewrite of each runs inside a class too,
+ * and a backslash compiles as a literal one, so `a\*.txt` granted
+ * `a\bc.txt` and never `a*.txt`. Left out and said once, as on Linux
+ * (`bindableReads`).
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
@@ -1557,7 +1569,9 @@ export function seatbeltBrackets(
   if (fs === undefined) return config
   const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
   const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
+  const baseline = new Set(names)
   const read = (p: string): string[] => {
+    if (!seatbeltSpells(p, 'read', baseline.has(p))) return []
     const name = bracketed.has(p) ? p : /\\[[\]]/.test(p) ? namedPath(p) : undefined
     if (name === undefined) return [literal(p)]
     const at = name.replaceAll('[', '[[]')
@@ -1568,12 +1582,34 @@ export function seatbeltBrackets(
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: fs.allowWrite.map(literal),
+      allowWrite: fs.allowWrite.filter((p) => seatbeltSpells(p, 'write', false)).map(literal),
       ...(fs.allowRead !== undefined
         ? { allowRead: [...new Set(fs.allowRead.flatMap(read))] }
         : {}),
     },
   }
+}
+
+/** A `*` or `?` behind an odd run of backslashes: the grant means the character. */
+const ESCAPED_WILDCARD = /(?:^|[^\\])(?:\\\\)*\\[*?]/
+
+const warnedUnspellable = new Set<string>()
+
+/** Whether seatbelt's SRT can take `grant` as written; said once when not. */
+function seatbeltSpells(grant: string, kind: 'read' | 'write', name: boolean): boolean {
+  const m = name ? /[*?]/.exec(grant) : ESCAPED_WILDCARD.exec(grant)
+  if (m === null) return true
+  const at = name ? m.index : m.index + m[0].length - 2
+  if (!warnedUnspellable.has(`${kind} ${grant}`)) {
+    warnedUnspellable.add(`${kind} ${grant}`)
+    process.stderr.write(
+      `[vx] sandbox: the ${kind} grant ${grant} names a literal ${grant[at + (name ? 0 : 1)]}, ` +
+        `which the macOS sandbox reads as a pattern and cannot spell as a name, so it is not ` +
+        `granted. Rename it, or grant the directory above it: ` +
+        `${grant.slice(0, grant.lastIndexOf(path.sep, at) + 1)}\n`,
+    )
+  }
+  return false
 }
 
 /** SRT's wrap, with the socket lift and the git-config grant this task asked for, or none (L-6, B-41). */
@@ -1982,6 +2018,7 @@ async function runSandboxedOnce(
   if (straceLog) unlinkOnExit(straceLog)
   let proc: ReturnType<typeof Bun.spawn>
   let traceFd: number | undefined
+  const pipes = new TaskPipes()
   try {
     // Resolved on vx's own PATH (util/which.ts), not the task's, where a
     // project's node_modules/.bin comes first.
@@ -1996,8 +2033,7 @@ async function runSandboxedOnce(
         env: args.env as Record<string, string>,
         stdio: [
           'ignore',
-          'pipe',
-          'pipe',
+          ...pipes.stdio,
           forwardsSignals ? 'pipe' : 'ignore',
           guard ?? 'ignore',
           ...(traceFd === undefined ? [] : [traceFd]),
@@ -2008,6 +2044,7 @@ async function runSandboxedOnce(
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
+    pipes.close()
     if (straceLog) {
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
@@ -2030,6 +2067,7 @@ async function runSandboxedOnce(
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
     if (traceFd !== undefined) closeSync(traceFd)
+    pipes.spawned()
   }
 
   args.liveChildren?.add(proc)
@@ -2040,10 +2078,11 @@ async function runSandboxedOnce(
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
   let straceSpoke = false
+  const [out, err] = pipes.streams(proc)
   const streams = Promise.all([
-    streamToString(proc.stdout, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(out, args.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
-      proc.stderr,
+      err,
       (chunk) => {
         // Read whatever the capture setting: a line of strace's own says
         // the trace stopped short.
@@ -2055,7 +2094,7 @@ async function runSandboxedOnce(
       ac.signal,
       args.capture?.stderr ?? true,
     ),
-  ])
+  ]).finally(() => pipes.close())
   // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.

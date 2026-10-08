@@ -1389,7 +1389,7 @@ interface Side {
   node: TaskNode
   globs: readonly string[]
   reads: boolean
-  /** The project's root-relative dir for a rebased `files` output. */
+  /** The project's root-relative dir for rebased `files` globs. */
   rel?: string
 }
 
@@ -1407,7 +1407,9 @@ interface Side {
  * scope mirrors `detectOutputCollisions`: `inputs.files` against another
  * same-project task's `outputs.files`; root-anchored `inputs.workspaceFiles`
  * against every other task's `outputs.workspaceFiles` and, with the root
- * known, its `outputs.files` rebased to the root. A task's own outputs are
+ * known, its `outputs.files` rebased to the root; and, with the root known,
+ * `inputs.files` rebased to the root against another task's
+ * `outputs.workspaceFiles`, which may land in any project (X-135). A task's own outputs are
  * already subtracted from its inputs, and an output the reader's `!` entries
  * take back whole is no overlap. A keyed group is exempt: the default
  * `build` reads `**` of a config-less dependency and runs nothing, and its
@@ -1416,6 +1418,8 @@ interface Side {
 function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
   const byProject = new Map<string, Side[]>()
   const rooted: Side[] = []
+  const wsWriters: Side[] = []
+  const filesReaders: TaskNode[] = []
   const filesWriters: TaskNode[] = []
   let projectReaders = false
   let rootReaders = false
@@ -1433,12 +1437,17 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       bucket(n.projectName).push({ node: n, globs: outFiles, reads: false })
       filesWriters.push(n)
     }
-    if (outWs.length > 0) rooted.push({ node: n, globs: outWs, reads: false })
+    if (outWs.length > 0) {
+      const side = { node: n, globs: outWs, reads: false }
+      rooted.push(side)
+      wsWriters.push(side)
+    }
     if (isGroupTask(n)) continue
     const inFiles = splitNegations(cache.inputs.files).positive
     const inWs = splitNegations(cache.inputs.workspaceFiles ?? []).positive
     if (inFiles.length > 0) {
       bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
+      filesReaders.push(n)
       projectReaders = true
     }
     if (inWs.length > 0) {
@@ -1456,6 +1465,23 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       )) {
         readsOutputs(sides[i]!, sides[j]!, 'files')
       }
+    }
+  }
+  if (projectReaders && wsWriters.length > 0 && workspaceRoot !== undefined) {
+    const sides = [...wsWriters]
+    for (const node of filesReaders) {
+      const rel = relPosix(workspaceRoot, node.projectDir)
+      const globs = splitNegations(node.config.cache!.inputs.files).positive.map((g) =>
+        rel === '' ? g : `${rel}/${g}`,
+      )
+      sides.push({ node, globs, reads: true, rel })
+    }
+    for (const [i, j] of overlapCandidates(
+      sides,
+      (s) => s.globs,
+      (s) => s.reads,
+    )) {
+      readsOutputs(sides[i]!, sides[j]!, 'files')
     }
   }
   if (!rootReaders) return
@@ -1481,6 +1507,8 @@ function readsOutputs(x: Side, y: Side, field: 'files' | 'workspaceFiles'): void
   if (x.reads === y.reads || x.node === y.node) return
   const [reader, writer] = x.reads ? [x, y] : [y, x]
   const cache = reader.node.config.cache!
+  // A reader rebased to the root (X-135) speaks in its project's terms.
+  const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
   // What the reader's key never reads: its `!` entries and its own outputs.
   const takeBack = [
     ...splitNegations(field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []))
@@ -1488,18 +1516,19 @@ function readsOutputs(x: Side, y: Side, field: 'files' | 'workspaceFiles'): void
     ...splitNegations(
       field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
     ).positive,
-  ]
+  ].map((g) => at + g)
   for (const go of writer.globs) {
     if (outputTakenBack(go, takeBack)) continue
     for (const gi of reader.globs) {
       if (!outputsOverlap(gi, go)) continue
       const shown =
         writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
+      const out = at !== '' && go.startsWith(at) ? go.slice(at.length) : go
       throw new UserError(
-        `${reader.node.id} reads ${JSON.stringify(gi)} in cache.inputs.${field}, which matches ` +
+        `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in cache.inputs.${field}, which matches ` +
           `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
           `another task's outputs (the dependency's key already cascades through dependsOn). ` +
-          `Exclude it: add ${JSON.stringify(`!${go}`)} to ${reader.node.id}'s ` +
+          `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
           `cache.inputs.${field}, or set rules: { upfrontKeys: false } in vx.workspace.ts to ` +
           `let it wait for its producer.`,
       )

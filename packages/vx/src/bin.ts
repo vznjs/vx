@@ -30,8 +30,12 @@ async function main(): Promise<void> {
     // is set, and `exitOnceFlushed` exits after both streams have ended.
     process.exitCode = code
   } catch (err) {
-    const { fsRefusalHint, isFsRefusal, isOutOfFds, isUserError, OUT_OF_FDS_HINT } =
+    const { fsRefusalHint, isFsRefusal, isOutOfFds, isUserError, maskedLine, OUT_OF_FDS_HINT } =
       await import('./util/index.js')
+    // A plugin's failure quotes what it was told (a remote's reply, a
+    // header), and a config's own throw is its author's text: a secret in
+    // either reached stderr whole (L-11).
+    const say = (line: string): void => void process.stderr.write(maskedLine(line))
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act
     // on. Everything else gets the full stack so internal bugs are
@@ -41,16 +45,16 @@ async function main(): Promise<void> {
       // that wants its own name in the line) is printed as it is; prefixing
       // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
       const m = err.message
-      process.stderr.write(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
+      say(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
     } else if (isOutOfFds(err)) {
-      process.stderr.write(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
+      say(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
     } else if (isFsRefusal(err)) {
       // The file system's refusal names the path; the stack would name
       // the verb's write, which the reader cannot act on either.
-      process.stderr.write(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
+      say(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
     } else {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
-      process.stderr.write(`vx: ${message}\n`)
+      say(`vx: ${message}\n`)
     }
     // Same reason as the success path above: a large stderr is truncated by
     // `process.exit` too, and an error message cut in half is the one a

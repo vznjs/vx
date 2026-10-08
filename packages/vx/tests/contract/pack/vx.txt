@@ -41,6 +41,7 @@ src/cli/select.ts
 src/cli/show.ts
 src/cli/task-verb.ts
 src/cli/upgrade.ts
+src/cli/watch-cycle.ts
 src/cli/watch-filter.ts
 src/cli/watch-fs.ts
 src/cli/watch-judge.ts

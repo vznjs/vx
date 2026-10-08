@@ -1051,7 +1051,10 @@ second run waits, saying after a second whom it waits for:
 ```
 
 The cache itself was always safe (SQLite waits on its lock, artifacts
-land by rename); a task's OUTPUT TREE was not — both runs cleaned and
+land by rename; a transaction that reads before it writes takes the
+lock at BEGIN, since SQLite answers its later write `database is locked`
+at once: a run's history was lost so in 13 of 48 runs on one shared
+cache dir, X-105); a task's OUTPUT TREE was not — both runs cleaned and
 restored the same `dist/`, and a clean landing while the other run's
 restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root
@@ -1090,7 +1093,7 @@ healthy key (`tests/vanished-artifact.test.ts`).
 
 A local artifact whose bytes are wrong (a failed checksum, a torn
 write, one past the artifact ceiling, an entry missing a recorded
-output) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+output, a name that now reads unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
 for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
 error on every run until `--force` before A-52. A cache the run may
@@ -1277,8 +1280,10 @@ and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
 into the archive. Restore applies both, at their edges too: a mode of
-000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`) and one before 1970, whose
-tar header carries 0 since ustar's field holds no sign. Until 2026-09-27
+000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
+tar header carries 0 since ustar's field holds no sign, and one past
+March 2242, whose header carries the field's 11-digit maximum (X-114:
+the save failed `value … does not fit a 12-byte field`). Until 2026-09-27
 (A-4) the first two were skipped, so the file came back 0644 and
 stamped now and every later hit restored it again, and the third wrote
 a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,
@@ -1360,7 +1365,9 @@ row, its file time standing for `accessed_at`: past `olderThan` it goes,
 and under `maxSize` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
 time plus an hour. A temp a crashed save left goes once it is an hour
-old, and nothing younger than an hour is taken.
+old, and nothing younger than an hour is taken. Re-indexing touches the
+artifact's mtime before it links its temp, so the sweep sees that one
+fresh too.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
@@ -1610,7 +1617,7 @@ CREATE INDEX invocations_ci      ON invocations(ci);
 -- CASCADE sweeps the rows when a prune drops the entry.
 CREATE TABLE entry_inputs (
   entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
-  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin
+  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin|format
   name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
   hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
   PRIMARY KEY (entry_hash, kind, name),

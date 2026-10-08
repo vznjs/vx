@@ -404,7 +404,9 @@ export function resolveSharedWorkspaceOutputs(
  * their workspace path, is taken back from a reader's workspace inputs
  * (Turbo's `globalDependencies` and `$TURBO_ROOT$` entries, Nx's
  * `{workspaceRoot}` filesets). Run after `resolveSharedWorkspaceOutputs`,
- * over what stays cached.
+ * over what stays cached. A project's own `inputs.files` meets every other
+ * task's `outputs.workspaceFiles` the same way, at its workspace path: such
+ * an output lands in any project, and core refuses the reader (X-135).
  */
 export function excludeWorkspaceOutputs(
   root: string,
@@ -420,7 +422,7 @@ export function excludeWorkspaceOutputs(
     Array.isArray(v)
       ? v.filter((f): f is string => typeof f === 'string' && !f.startsWith('!'))
       : []
-  const writers: { task: GeneratedTask; id: string; globs: string[] }[] = []
+  const writers: { task: GeneratedTask; id: string; globs: string[]; ws: string[] }[] = []
   const { index, candidates } = prefixIndex()
   for (const p of projects) {
     const rel = relPosix(root, p.dir)
@@ -436,7 +438,12 @@ export function excludeWorkspaceOutputs(
       ]
       if (globs.length === 0) continue
       index(writers.length, globs)
-      writers.push({ task: t, id: `${p.name}#${t.name}`, globs })
+      writers.push({
+        task: t,
+        id: `${p.name}#${t.name}`,
+        globs,
+        ws: positive(outputs?.workspaceFiles),
+      })
     }
   }
   if (writers.length === 0) return
@@ -466,6 +473,40 @@ export function excludeWorkspaceOutputs(
             break
           }
           files.push(`!${out}`)
+        }
+        if (t.task?.['cache'] === undefined) break
+      }
+    }
+  }
+  for (const p of projects) {
+    const rel = relPosix(root, p.dir)
+    const at = rel === '' ? '' : `${rel}/`
+    for (const t of p.tasks) {
+      const files = inputsOf(t)?.files
+      if (files === undefined) continue
+      const reads = positive(files).map((g) => at + g.replace(/^(\.\/)+/, ''))
+      if (reads.length === 0) continue
+      for (const i of candidates(reads)) {
+        const w = writers[i]!
+        if (w.task === t) continue
+        for (const out of w.ws) {
+          const back = `!${out.slice(at.length)}`
+          if (out.startsWith(at) && files.includes(back)) continue
+          const read = reads.filter((g) => outputsOverlap(g, out))
+          if (read.length === 0) continue
+          // An output that reaches in from above (`**/gen/**`) has no
+          // project-relative `!` that takes it back.
+          const literal = out.startsWith(at) ? read.find((g) => isLiteralPattern(g)) : read[0]
+          if (literal !== undefined) {
+            delete t.task!['cache']
+            t.todos.push(
+              `reads ${JSON.stringify(literal.slice(at.length))}, which ${w.id} writes — vx keys ` +
+                'a task only on files no other task writes, so it runs uncached; read the ' +
+                'source instead in a vx.config to cache it',
+            )
+            break
+          }
+          files.push(back)
         }
         if (t.task?.['cache'] === undefined) break
       }

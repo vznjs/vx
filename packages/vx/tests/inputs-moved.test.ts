@@ -248,6 +248,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
   it(
     "a workspace output it created in another project reaches that project's reader",
     async () => {
+      await waitForProducers(root)
       // Its save would have marked the output against `app`'s listing; the
       // save is withheld, and the listing must not outlive the write.
       await addProject(root, 'lib', {

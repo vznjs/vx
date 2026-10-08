@@ -1,3 +1,4 @@
+import { fstatSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -507,6 +508,20 @@ describe('runPersistent', () => {
       readyWhen: 'Listening',
     })
     await expect(spawn.ready).rejects.toThrow(/exited before becoming ready/)
+  })
+
+  // The exit can land before the readers take the marker the task printed:
+  // `echo READY; exit` read as never ready under CI load. A grandchild that
+  // prints just after the shell exits opens the same gap on an idle box.
+  it('a marker read after the shell exited, inside the drain bound, is ready', async () => {
+    const spawn = runPersistent({
+      command: '(sleep 0.05; echo READY) & exit 0',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'READY',
+    })
+    await spawn.ready
+    await spawn.child.exited
   })
 })
 
@@ -1427,4 +1442,102 @@ describe('runCommand — the rows its sweep asked for', () => {
     await Bun.sleep(2_000)
     expect(await Bun.file(path.join(dir, 'late.txt')).exists()).toBe(true)
   }, 20_000)
+})
+
+// Bun's `'pipe'` is a socketpair, and Linux opens `/dev/stdout` through
+// `/proc/self/fd/1`, which a socket refuses: `echo x > /dev/stdout` failed
+// "No such device or address" in every task (X-113). macOS dups the
+// descriptor instead, so the rows hold there with or without the fix.
+describe("a task's stdout and stderr are pipes it can open by path", () => {
+  const env = { PATH: process.env.PATH ?? '' }
+  let cwd: string
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-pipes-'))
+  })
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('runCommand: a write to /dev/stdout and a tee to /dev/stderr succeed', async () => {
+    const r = await runCommand({
+      command: 'echo x > /dev/stdout; echo y | tee /dev/stderr',
+      cwd,
+      env,
+    })
+    expect({ exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }).toEqual({
+      exitCode: 0,
+      stdout: 'x\ny\n',
+      stderr: 'y\n',
+    })
+  })
+
+  it('runPersistent: a server announcing itself on /dev/stdout becomes ready', async () => {
+    const live: string[] = []
+    const spawn = runPersistent({
+      command: 'echo Listening > /dev/stdout && exec sleep 30',
+      cwd,
+      env,
+      readyWhen: 'Listening',
+      onStdout: (c) => live.push(c),
+    })
+    try {
+      await spawn.ready
+      expect(live.join('')).toBe('Listening\n')
+    } finally {
+      spawn.child.kill('SIGKILL')
+      await spawn.child.exited
+    }
+  })
+
+  // The guard (kill-tree.ts) is spawned between a first task's pipes and
+  // its own spawn, and lives as long as vx: a write end it inherited held
+  // that task's stdout open, and its reader waited out the drain bound.
+  it("the first task's output ends at its exit: no long-lived spawn holds its write end", async () => {
+    const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
+    const script = `
+      const { runCommand } = await import(${JSON.stringify(runner)})
+      const r = await runCommand({ command: 'echo hi', cwd: ${JSON.stringify(cwd)}, env: { PATH: process.env.PATH ?? '' } })
+      process.stdout.write(JSON.stringify({ stdout: r.stdout, stderr: r.stderr }))
+    `
+    const proc = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'inherit' })
+    const out = await new Response(proc.stdout).text()
+    expect(await proc.exited).toBe(0)
+    expect(JSON.parse(out)).toEqual({ stdout: 'hi\n', stderr: '' })
+  })
+
+  // Found by fstat, not /proc/self/fd: under vx's sandbox /proc is
+  // another pid namespace's. A set, not a count: a descriptor an earlier
+  // row left closing closed inside the window and hid nothing but read as
+  // two fewer (macOS CI).
+  const openFds = (): Set<number> => {
+    const open = new Set<number>()
+    for (let fd = 0; fd < 1024; fd++) {
+      try {
+        fstatSync(fd)
+        open.add(fd)
+      } catch {
+        // not open
+      }
+    }
+    return open
+  }
+
+  it('every descriptor a task took is closed after it: plain, cut, spawn-failed, persistent', async () => {
+    await runCommand({ command: 'true', cwd, env })
+    const before = openFds()
+    for (let i = 0; i < 20; i++) await runCommand({ command: 'echo a; echo b >&2', cwd, env })
+    // The drain bound cancels the readers while a backgrounded child holds the pipe.
+    const cut = await runCommand({ command: 'sleep 2 & echo up', cwd, env })
+    expect(cut.stderr).toContain(POST_EXIT_CUT_LINE)
+    const failed = await runCommand({ command: 'true', cwd: path.join(cwd, 'missing'), env })
+    expect(failed.spawnFailed).toBe(true)
+    const spawn = runPersistent({ command: 'echo up; exec sleep 30', cwd, env, readyWhen: 'up' })
+    await spawn.ready
+    spawn.child.kill('SIGKILL')
+    await spawn.child.exited
+    await Bun.sleep(50)
+    expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
+  }, 10_000)
 })
