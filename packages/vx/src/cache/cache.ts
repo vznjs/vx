@@ -1769,6 +1769,9 @@ export class Cache implements CacheLayer {
         hash,
         `remote body runs past ${cap} bytes (the artifact ceiling's bound)`,
       )
+    // Every refusal releases the remote body: a held response pins its
+    // connection, and a layer that settles on the body's end never hears.
+    let counted: ReadableStream<Uint8Array> | undefined
     try {
       if (body instanceof Blob) {
         if (body.size > cap) throw past()
@@ -1777,7 +1780,7 @@ export class Cache implements CacheLayer {
         throw past()
       } else {
         let n = 0
-        const counted = body.body?.pipeThrough(
+        counted = body.body?.pipeThrough(
           new TransformStream<Uint8Array, Uint8Array>({
             transform(chunk, controller) {
               n += chunk.byteLength
@@ -1789,6 +1792,9 @@ export class Cache implements CacheLayer {
         await Bun.write(tmpPath, new Response(counted ?? null))
       }
     } catch (err) {
+      // A failed write leaves the pipe's end unlocked; cancelling it
+      // cancels the source. A body refused by its length is cancelled itself.
+      if (!(body instanceof Blob)) void (counted ?? body.body)?.cancel(err).catch(() => undefined)
       await unlink(tmpPath).catch(() => undefined)
       throw err
     }
