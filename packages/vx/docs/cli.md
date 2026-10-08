@@ -771,7 +771,9 @@ command.
 
 Explicit override; always beats the flow and CI defaults. `full`
 (frames for executed work, one-liners for quiet cache hits),
-`errors-only` (only failed tasks print; the CI noise budget),
+`errors-only` (only failed tasks print, a server that died on its
+own after ready included, with what it wrote since; the CI noise
+budget),
 `hash-only` (one line per task — outcome word, task id, cache key — and
 no log output at all; the run's audit trail of which key each task
 resolved to, Turbo parity), `none` (no per-task output). The
