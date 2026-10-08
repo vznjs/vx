@@ -914,7 +914,10 @@ function notThroughLink(files: readonly string[], root: string): string[] {
       return null
     }
   }
-  const realRoot = real(root) ?? root
+  // Resolved only once a directory exists to compare: after a clean pruned
+  // the outputs (the common restore) nothing does, and the call was most
+  // of an empty clean.
+  let realRoot: string | undefined
   const own = new Map<string, boolean>()
   return files.filter((f) => {
     const dir = path.dirname(f)
@@ -923,7 +926,8 @@ function notThroughLink(files: readonly string[], root: string): string[] {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
       const r = real(dir)
-      ok = r === null || r === path.join(realRoot, path.relative(root, dir))
+      ok =
+        r === null || r === path.join((realRoot ??= real(root) ?? root), path.relative(root, dir))
       own.set(dir, ok)
     }
     return ok

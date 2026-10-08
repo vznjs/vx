@@ -512,6 +512,11 @@ I-65. The config-eval retention sweep runs once a day on its own
 `created_at`, so every close read every row and its JSON, 1–6 ms at
 8,000 rows (2 MB).
 
+I-66. A clean resolves the project root only once a directory exists
+to compare it with. After a restore's outputs were pruned nothing does,
+and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
+(2,000 calls, min of 5), ~9 ms of a 2,000-task restore.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
