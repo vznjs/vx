@@ -407,6 +407,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         try {
           await held?.stop()
           held = undefined
+          // A Ctrl-C while the old server shut down ran a cycle anyway: a
+          // `not run` row and a footer printed above `stopped` (WD-22).
+          if (stop.aborted) break
           restartTimings()
           // On the mtime clock, as the arm is: from `Date.now()` a write the
           // run made within a tick of it carried an earlier mtime and read as
@@ -416,10 +419,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           held = cycle.persistent
           if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
           changes.lastCycle = { start, end: Date.now() }
-          if (reread && !stop.aborted) {
-            reread = false
-            await rearm()
-          }
         } catch (err) {
           // A re-run can fail catastrophically when the workspace
           // itself moved out from under us — e.g. the user deleted
@@ -430,6 +429,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // is the canonical exit; we don't unilaterally abort here.
           const message = err instanceof Error ? err.message : String(err)
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+        }
+        // After a failed cycle too: a package added with a config that does
+        // not load yet fails its cycle, and unarmed, the fix to that config
+        // was never an event.
+        if (reread && !stop.aborted) {
+          reread = false
+          await rearm()
         }
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.

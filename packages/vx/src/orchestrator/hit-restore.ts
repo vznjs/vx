@@ -130,7 +130,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         // set that shrank would otherwise vouch for a tree it never saw,
         // and the failure it would let through is a skipped restore.
         const covers = dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))
-        setKnown = covers && (await args.cache.outputDirsCurrent!(node.projectDir, dirRows))
+        setKnown = covers && (await args.cache.outputDirsCurrent(node.projectDir, dirRows))
         endDirs()
       }
       let treeMatches: boolean

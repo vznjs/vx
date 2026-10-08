@@ -1184,6 +1184,34 @@ describe('persistent post-ready output', () => {
     }
   })
 
+  // WD-25: run.ts fails a server that died on its own in place before
+  // runEnd; errors-only dropped its tail with the healthy ones', so a
+  // crash that failed the run printed none of what the server said.
+  it("errors-only prints a crashed server's tail, and none still does not", () => {
+    for (const mode of ['errors-only', 'none'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      const outcome = mkOutcome(n, 'success', { durationMs: 7 })
+      log.taskComplete(n, outcome)
+      log.taskStderr(n, 'EADDRINUSE\n')
+      outcome.status = 'failed'
+      outcome.exitCode = 3
+      log.runEnd?.()
+      expect(out.text()).toBe(
+        mode === 'none'
+          ? ''
+          : '┌─ ▸ app#server > $ sh ./server.sh\n' +
+              '├─ STDERR (since ready) ────────────────────────────────────\n' +
+              '\n' +
+              'EADDRINUSE\n' +
+              '\n' +
+              '└─ ▸ app#server ── (7ms) failed (exit 3)\n' +
+              '\n',
+      )
+    }
+  })
+
   it('the tail is bounded and says how much of the head it dropped', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)

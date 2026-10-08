@@ -5,7 +5,7 @@
 // against all of them at once). `turbo()` and `nx()` each carried this
 // skeleton until item 592; what differs is only how the mapping is made.
 
-import { definePlugin, type ProjectHookContext, type TaskConfig, type VxPlugin } from '@vzn/vx'
+import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
 import { headStamp, spareTrackedOutputs, trackedFiles } from './tracked-outputs.js'
@@ -111,8 +111,7 @@ export function adoptionPlugin(
         // only reads a stage-given task after validating it. The copy was
         // the per-process memo's guard and cost 10 ms per run at 1,000
         // projects, 3,000 clones (item 609).
-        if (!Object.hasOwn(config.tasks, t.name))
-          config.tasks[t.name] = t.task as unknown as TaskConfig
+        if (!Object.hasOwn(config.tasks, t.name)) config.tasks[t.name] = t.task
       }
     },
     // The root files the mapping reads (`turbo.json`, `nx.json`) shape every

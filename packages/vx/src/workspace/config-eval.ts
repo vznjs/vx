@@ -271,10 +271,11 @@ export function evalBudgetMs(): number {
   // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
   // back rather than clamping, because honouring ~24.8 days would hang
   // `vx watch` forever on a worker the OS killed — and unbounded makes it 1 ms,
-  // so EVERY config load times out instead. Both ends break the same feature.
+  // so EVERY config load times out instead. Both ends break the same feature,
+  // and `0` is the second end: it fired on the next tick (D-157).
   if (raw !== undefined && /^[0-9]+$/.test(raw)) {
     const n = Number(raw)
-    if (n <= MAX_TIMEOUT_MS) return n
+    if (n > 0 && n <= MAX_TIMEOUT_MS) return n
   }
   return 30_000
 }
