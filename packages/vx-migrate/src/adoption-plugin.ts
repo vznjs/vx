@@ -111,7 +111,8 @@ export function adoptionPlugin(
         // only reads a stage-given task after validating it. The copy was
         // the per-process memo's guard and cost 10 ms per run at 1,000
         // projects, 3,000 clones (item 609).
-        config.tasks[t.name] ??= t.task as unknown as TaskConfig
+        if (!Object.hasOwn(config.tasks, t.name))
+          config.tasks[t.name] = t.task as unknown as TaskConfig
       }
     },
     // The root files the mapping reads (`turbo.json`, `nx.json`) shape every

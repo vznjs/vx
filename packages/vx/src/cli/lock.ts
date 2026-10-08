@@ -20,7 +20,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 
-export interface LockArgs {
+interface LockArgs {
   check: boolean
   error?: string
 }
@@ -99,7 +99,7 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
   await writeLockfile(root, lock)
   const n = metas.length
   process.stdout.write(
-    `vx: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
+    `vx lock: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
   )
   return 0
 }
@@ -199,6 +199,6 @@ async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): P
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const skipped = bare === 0 ? '' : `; ${bare} without a vx.config not audited`
-  process.stdout.write(`vx: lock is up to date (${audited}${skipped})\n`)
+  process.stdout.write(`vx lock --check: up to date (${audited}${skipped})\n`)
   return 0
 }
