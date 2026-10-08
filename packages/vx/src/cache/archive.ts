@@ -569,7 +569,7 @@ async function bytesOf(body: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
 }
 
 const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
-  new TextDecoder().decode(await bytesOf(body))
+  new TextDecoder('utf-8', { ignoreBOM: true }).decode(await bytesOf(body))
 
 /** One staged entry: written at `tmp`, renamed to `target` on commit. */
 interface Staged {

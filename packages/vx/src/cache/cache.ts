@@ -536,6 +536,7 @@ function ensurePrivateDir(dir: string): string | null {
 // enumeration on the bench workspace before its generator ignored `.vx`. An
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
+const utf8 = new TextEncoder()
 const IGNORE_ALL = '*\n'
 
 /**
@@ -966,7 +967,7 @@ export class Cache implements CacheLayer {
     )
     this.upsertStdout = lazyStatement(
       this.db,
-      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
@@ -2118,7 +2119,13 @@ export class Cache implements CacheLayer {
         scanned.exec?.peakRssBytes ?? null,
       )
       if (stdoutText === '') deleteStdout.run(hash)
-      else upsertStdout.run(hash, stdoutText)
+      // bun:sqlite drops a leading U+FEFF from a bound string; its UTF-8
+      // bytes, cast to TEXT, keep it.
+      else
+        upsertStdout.run(
+          hash,
+          stdoutText.startsWith('\uFEFF') ? utf8.encode(stdoutText) : stdoutText,
+        )
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's rows are identical — keep the first set, skip the rest.
