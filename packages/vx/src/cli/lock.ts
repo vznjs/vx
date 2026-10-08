@@ -8,7 +8,6 @@ import { relPosix, secretMask, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
-  listProjects,
   loadProjectConfig,
   loadWorkspace,
   LOCKFILE_NAME,
@@ -19,6 +18,7 @@ import {
   type LockfileEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
+import { discoverCliProjects } from './workspace-config.js'
 
 interface LockArgs {
   check: boolean
@@ -49,7 +49,13 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd(), reads)
   const workspace = await loadWorkspace(root, reads)
-  const all = await listProjects(workspace)
+  // As a run discovers them: a project a plugin's `discover` stage adds
+  // was left out of the lock, and every `--frozen` run then refused it
+  // with "run vx lock", which changed nothing (X-143).
+  // Sorted by name, as core's discovery is, for stable lockfile diffs.
+  const all = (await discoverCliProjects(workspace)).sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  )
   const metas = all.filter((m): m is ConfiguredMeta => m.configPath !== null)
   // A project with no vx.config has nothing to freeze: its tasks (a plugin's,
   // or none) load live under --frozen too, so both verbs say how many the
@@ -83,7 +89,7 @@ function bareNote(bare: number): string {
 
 async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
   const entries = await Promise.all(metas.map((m) => evaluateEntry(root, m)))
-  // `listProjects` sorts by name — stable lockfile diffs for free. Defined,
+  // Sorted by name above — stable lockfile diffs. Defined,
   // not assigned: a project named `__proto__` set the map's prototype (D-152).
   const projects: Record<string, LockfileEntry> = Object.fromEntries(
     metas.map((m, i) => [m.name, entries[i]!]),
