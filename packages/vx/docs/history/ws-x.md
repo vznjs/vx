@@ -786,3 +786,19 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-121.** Under `--exclude-dependencies` the sandbox's keyed set
+  stood a group in by its `deps`, which hold order-only edges and lack
+  the dropped members its hash folds (`keyUpstream`). Two groups over
+  different dropped tasks got one stand-in, the selection kept one, and
+  a sandboxed task was denied a linked sibling its key answers for. The
+  stand-in now lists the keyed members. A denial, never a stale hit:
+  units matched only where the hashes did not. Row:
+  `keyed-projects.test.ts` › "a group under --exclude-dependencies
+  stands in for the dependencies its hash folds".
+- **X-PHA.** Refuted: `cache.inputs.tasks: ['compile']` on a task that
+  reaches `compile` only through a group does not fold nothing at hash
+  time; the loader refuses it in all three forms ("names no task in …
+  dependsOn"), since schema.md has a selection name the group, whose
+  hash rolls its members up. Pinned so the refusal stays. Row:
+  `config-schema-refusals.test.ts` › "an inputs.tasks name reached only
+  through a group is refused, in each form".
