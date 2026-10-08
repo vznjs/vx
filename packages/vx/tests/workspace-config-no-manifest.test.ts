@@ -42,3 +42,30 @@ it('names a member dir that has a vx config but no package.json', async () => {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+it('names the workspace root when it has a vx config but no package.json (D-154)', async () => {
+  // A pnpm root keeps its member list in pnpm-workspace.yaml; with a root
+  // vx config and no package.json the line read "vx:  has a vx config".
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-no-manifest-'))
+  const written: string[] = []
+  const real = process.stderr.write.bind(process.stderr)
+  try {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
+    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+    await mkdir(path.join(dir, 'packages', 'a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
+    process.stderr.write = ((chunk: unknown): boolean => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    process.stderr.write = real
+    expect(names).toEqual(['a'])
+    expect(written).toEqual([
+      'vx: the workspace root has a vx config but no package.json — skipped: vx names a project by its package.json "name"\n',
+    ])
+  } finally {
+    process.stderr.write = real
+    await rm(dir, { recursive: true, force: true })
+  }
+})

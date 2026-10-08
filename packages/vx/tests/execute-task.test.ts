@@ -25,7 +25,7 @@ import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpe
 import { Cache, GitFilesCache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { UserError } from '../src/util/index.js'
-import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { RestoreDemoted, type TaskNode, type TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
@@ -821,6 +821,51 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
     },
     TIMEOUT,
   )
+
+  // The loop asked fail-fast once, before the retry's output clean and
+  // request build; a sibling failing during those awaits still got the
+  // retry spawned. The trip lands on the retry line, past that check.
+  it('fail-fast tripped while a retry prepares starts no retry', async () => {
+    const b = await bench()
+    try {
+      const n = node(
+        b,
+        {
+          exec: { command: 'true', retries: 2 },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        },
+        'proj#flaky',
+      )
+      const drive = async (trip: boolean) => {
+        const failFast = new AbortController()
+        const log: Logger = {
+          ...capturingLogger({ root: '', out: [], err: [] }),
+          taskStderr(_n, chunk) {
+            if (trip && chunk.startsWith('vx: retrying')) failFast.abort()
+          },
+        }
+        let calls = 0
+        const failing = {
+          name: 'org/failing',
+          execute: async () => {
+            calls++
+            return { exitCode: 1, durationMs: 1, stdout: '', stderr: '', violations: [] }
+          },
+        } as never
+        const o = await executeTask({
+          ...baseArgs(b, n, log),
+          executor: failing,
+          failFast: failFast.signal,
+        })
+        return [calls, o.status, o.exitCode, o.attempts, o.failedAttempts?.length]
+      }
+      expect(await drive(true)).toEqual([1, 'failed', 1, undefined, undefined])
+      // CONTROL: no trip, every retry runs.
+      expect(await drive(false)).toEqual([3, 'failed', 1, 3, 2])
+    } finally {
+      await closeBench(b)
+    }
+  })
 })
 
 describe('execute-task — what one attempt may hand the next', () => {
@@ -1374,6 +1419,68 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     expect([ok.status, registered]).toEqual(['success', ['proj#build']])
   })
 
+  it('the DEFERRED save site refuses a key the inputs no longer match (X-123)', async () => {
+    // The remote ran over the inputs described just before the command;
+    // the closure is saved, once fetched, under the key taken earlier. With
+    // an input edited in between, that save filed the edit's bytes under the
+    // old key, and once the edit was reverted the next run hit them. The
+    // eager site withholds the same save (item 743).
+    const registered: [string, string | undefined][] = []
+    const deferred = {
+      register: (id: string, e: { hash?: string }) => {
+        registered.push([id, e.hash])
+      },
+      materializeFor: async () => undefined,
+    }
+    const far: TaskExecutor = {
+      name: 'far',
+      remote: true,
+      async execute(req: ExecuteRequest) {
+        await writeFile(path.join(req.cwd, 'out.txt'), 'far\n')
+        return {
+          exitCode: 0,
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          violations: [],
+          outputs: { kind: 'deferred' as const, materialize: async () => undefined },
+        }
+      },
+    }
+    const status: string[] = []
+    const args = baseArgs(b, node(b, CACHEABLE), {
+      ...capturingLogger({ root: '', out: [], err: [] }),
+      status: (l) => status.push(l),
+    })
+    const stale = await executeTask({
+      ...args,
+      executor: far,
+      download: 'deferred' as const,
+      deferred: deferred as never,
+      preProbed: { hash: 'deadbeefdeadbeef', hit: null },
+    } as never)
+    // Still registered: a local consumer fetches the bytes, with no key.
+    expect([stale.status, stale.unkeyed, registered, status]).toEqual([
+      'success',
+      true,
+      [['proj#build', undefined]],
+      [
+        '[vx] proj#build: its inputs changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
+      ],
+    ])
+    // CONTROL: the key the describe re-derives registers with it.
+    registered.length = 0
+    const key = await computeTaskHash(args)
+    const held = await executeTask({
+      ...args,
+      executor: far,
+      download: 'deferred' as const,
+      deferred: deferred as never,
+      preProbed: { hash: key, hit: null },
+    } as never)
+    expect([held.status, registered]).toEqual(['success', [['proj#build', key]]])
+  })
+
   it('a remote-ONLY task leaves this machine alone: no clean, no restore, no local save', async () => {
     // `exec.remote: 'only'` on an executor that reports `remote: true` means
     // the work AND its result live on the far side — "restoring node_modules
@@ -1440,6 +1547,53 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
     // The command would have written "executed"; the restore wins.
     expect(await readFile(path.join(b.dir, 'out.txt'), 'utf8')).toBe('CACHED')
     getSpy.mockRestore()
+  })
+
+  it('a preProbed HIT is not restored once a task rewrote the lockfile (X-124)', async () => {
+    // The up-front probe was keyed on the lockfile the run read. A task that
+    // rewrote it since leaves that key naming an install the tree no longer
+    // holds; the lazy path refuses to probe past it, and the up-front hit
+    // restored the old install's bytes regardless. It goes back to the
+    // scheduler, which dispatches it again once its deps are done.
+    await writeFile(path.join(b.dir, 'out.txt'), 'CACHED')
+    await b.cache.save({
+      hash: 'feedfacefeedface',
+      projectDir: b.dir,
+      outputFiles: [path.join(b.dir, 'out.txt')],
+      entry: { taskId: 'proj#build', command: 'x', durationMs: 1, stdout: '' },
+    })
+    const hit = (await b.cache.get('feedfacefeedface'))!
+    await writeFile(path.join(b.dir, 'out.txt'), 'BEFORE')
+    const said: string[] = []
+    const watch = (moved: string[] | undefined) => ({
+      moved: () => moved,
+      say: () => void said.push('moved'),
+      wrote() {},
+    })
+    const args = baseArgs(b, node(b, CACHEABLE), capturingLogger({ root: '', out: [], err: [] }))
+    const demoted = await executeTask({
+      ...args,
+      preProbed: { hash: 'feedfacefeedface', hit },
+      fingerprintWatch: watch(['bun.lock']) as never,
+    }).then(
+      (o) => o.status,
+      (err: unknown) => (err instanceof RestoreDemoted ? 'demoted' : String(err)),
+    )
+    expect([demoted, said, await readFile(path.join(b.dir, 'out.txt'), 'utf8')]).toEqual([
+      'demoted',
+      ['moved'],
+      'BEFORE',
+    ])
+    // CONTROL: with the lockfile where the run read it, the hit restores.
+    const o = await executeTask({
+      ...args,
+      preProbed: { hash: 'feedfacefeedface', hit },
+      fingerprintWatch: watch(undefined) as never,
+    })
+    expect([o.status, await readFile(path.join(b.dir, 'out.txt'), 'utf8')]).toEqual([
+      'cache-hit',
+      'CACHED',
+    ])
   })
 
   it('a preProbed MISS skips the probe and keeps the up-front hash VERBATIM', async () => {
@@ -2292,6 +2446,24 @@ describe('execute-task edges', () => {
       undefined,
       1,
     ])
+  })
+
+  it("the local executor's own timedOut decides an exit 0 after the request's abort (X-125)", async () => {
+    // Core's request timer starts before the runner's, which counts from the
+    // spawn: a 0 between the two is a finish, and the runner, which says
+    // when it killed, did not.
+    const local = localExecutor()
+    local.execute = (req: ExecuteRequest) =>
+      new Promise((resolve) =>
+        req.signal!.addEventListener('abort', () =>
+          resolve({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }),
+        ),
+      )
+    const o = await executeTask({
+      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: 50 } }), log),
+      executor: local,
+    })
+    expect([o.status, o.exitCode, o.timedOut]).toEqual(['success', 0, undefined])
   })
 
   it('stops retrying at the first success', async () => {

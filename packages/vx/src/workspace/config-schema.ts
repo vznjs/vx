@@ -76,6 +76,16 @@ function validateRules(rules: unknown, configPath: string): void {
 
 const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
+/**
+ * A refused value as a message quotes it. A workspace file is evaluated
+ * in-process and no JSON rule precedes its schema, so a value here may be
+ * one `JSON.stringify` throws on (`30n`) or drops (a symbol): the refusal
+ * became a TypeError with a stack.
+ */
+function shown(v: unknown): string {
+  return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
+}
+
 function validateRetention(retention: unknown, configPath: string): void {
   const where = `${configPath}: \`cacheRetention\``
   const field = (key: string) => `${configPath}: \`cacheRetention.${key}\``
@@ -93,12 +103,12 @@ function validateRetention(retention: unknown, configPath: string): void {
     (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
   ) {
     throw new UserError(
-      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${JSON.stringify(olderThan)})`,
+      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${shown(olderThan)})`,
     )
   }
   if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
     throw new UserError(
-      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${JSON.stringify(maxSize)})`,
+      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${shown(maxSize)})`,
     )
   }
   // The bounds `vx cache prune` refuses, for the same reason: each evicts
@@ -199,6 +209,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       // one whose `name` was overwritten after the stamp, is refused here —
       // the one boundary every plugin crosses.
       const pkg = (p as Record<symbol, unknown>)[PLUGIN_PACKAGE]
+      // An async factory called without `await` was told its plugin did not
+      // come from definePlugin — it had (D-159).
+      if (pkg === undefined && typeof (p as { then?: unknown }).then === 'function') {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` is a Promise — await the factory that returns the plugin`,
+        )
+      }
       if (typeof pkg !== 'string' || pkg.length === 0) {
         throw new UserError(
           `${configPath}: \`plugins[${i}]\` must come from definePlugin(import.meta, { … }) — a plugin's name is its package name`,
@@ -323,7 +340,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             /[/\\]/.test(file)
           ) {
             throw new UserError(
-              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which is not a file name at the workspace root`,
+              `${configPath}: plugin '${plug.name}' claims fingerprint file ${shown(file)}, which is not a file name at the workspace root`,
             )
           }
           const owner = fileClaimants.get(file)

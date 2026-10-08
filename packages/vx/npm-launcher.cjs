@@ -18,12 +18,16 @@
 // CommonJS, not ESM: Node's ESM loader cost every `vx` call ~8 ms of a
 // ~65 ms launch (min of 21, interleaved, Node 22, 2026-10-01).
 const { execFileSync, spawn, spawnSync } = require('node:child_process')
-const { existsSync, readFileSync } = require('node:fs')
+const { existsSync, readFileSync, realpathSync } = require('node:fs')
 const { constants: osConstants } = require('node:os')
 const { dirname, join } = require('node:path')
 
-const here = __dirname
-const pkg = require('./package.json')
+// The real directory, not `__dirname`: npm's `node_modules/.bin/vx` is a
+// symlink to this file, and under `--preserve-symlinks-main` (NODE_OPTIONS)
+// `__dirname` is `.bin`, where `./package.json` does not resolve and
+// the launcher died MODULE_NOT_FOUND before vx started.
+const here = dirname(realpathSync(__filename))
+const pkg = require(join(here, 'package.json'))
 
 // Derive the platform-package prefix + binary basename from this package's
 // name. `base` is the unscoped name — the command AND the binary filename

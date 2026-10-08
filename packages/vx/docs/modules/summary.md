@@ -58,8 +58,6 @@ export function formatRunSummary(
 export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[]
 
 export function neverStarted(o: TaskOutcome): boolean
-
-export function formatDuration(ms: number): string
 ```
 
 Nothing prints below the footer (owner, 2026-10-06): a task's own facts

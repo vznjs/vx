@@ -336,6 +336,44 @@ export const later = () => import('tool/plugin.mjs')
     )
   })
 
+  it('a dir holding a glob character is listed as itself, not as a pattern', async () => {
+    // `packages/a[1]` written raw is a class: it matched `packages/a1`, so
+    // neither vx nor bun found the pruned project in the copy.
+    const root = await bare()
+    await rm(path.join(root, 'packages', 'a'), { recursive: true })
+    const dirs = ['a[1]', 'b*', 'c{d}', 'plain']
+    for (const d of dirs)
+      await write(path.join(root, 'packages', d, 'package.json'), `{ "name": "p-${d[0]}" }\n`)
+    // Decoys each raw pattern would match instead.
+    for (const d of ['a1', 'bx', 'cd'])
+      await write(path.join(root, 'packages', d, 'package.json'), `{ "name": "decoy-${d}" }\n`)
+    const names = dirs.map((d) => `p-${d[0]}`)
+    expect(vx(root, 'prune', ...names).code).toBe(0)
+    const out = path.join(root, 'out')
+    const ws = (await Bun.file(path.join(out, 'package.json')).json()) as { workspaces: string[] }
+    expect(ws.workspaces).toEqual([
+      'packages/a[[]1]',
+      'packages/b[*]',
+      'packages/c[{]d}',
+      'packages/plain',
+    ])
+    for (const d of ['a1', 'bx', 'cd'])
+      await write(path.join(out, 'packages', d, 'package.json'), `{ "name": "decoy-${d}" }\n`)
+    const shown = vx(out, 'show', '--format', 'json')
+    expect(shown.code).toBe(0)
+    expect((JSON.parse(shown.stdout) as { dir: string }[]).map((p) => p.dir).sort()).toEqual(
+      dirs.map((d) => `packages/${d}`).sort(),
+    )
+    const bun = install('bun', out, await scratch('vx-prune-home-'), false)
+    expect(bun.code).toBe(0)
+    const lock = Bun.JSONC.parse(await Bun.file(path.join(out, 'bun.lock')).text()) as {
+      workspaces: Record<string, unknown>
+    }
+    expect(Object.keys(lock.workspaces).sort()).toEqual(
+      ['', ...dirs.map((d) => `packages/${d}`)].sort(),
+    )
+  })
+
   it('a binary bun.lockb with no bun.lock', async () => {
     const root = await bare()
     await write(path.join(root, 'bun.lockb'), 'bun-lockfile-format-v0\n')
