@@ -350,12 +350,16 @@ jobs:
       # cap is 10 240, which the whole suite in one process does not clear.
       # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
       # suites skip; the canary below is what watches enforcement.
+      # Six workers on three cores: the suite mostly waits (sleeps, kill
+      # graces, child exits), so at one worker per core the job's wall
+      # time was its task time over three while the cores sat idle, and
+      # this is the slowest runner every pull request queues for.
       - name: vx run test (core, darwin)
         env:
           # FSEvents delivers the watch probe here; the rows must not vanish
           # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx --concurrency 6
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
