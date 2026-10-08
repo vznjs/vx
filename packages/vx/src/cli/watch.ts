@@ -406,6 +406,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         try {
           await held?.stop()
           held = undefined
+          // A Ctrl-C while the old server shut down ran a cycle anyway: a
+          // `not run` row and a footer printed above `stopped` (WD-22).
+          if (stop.aborted) break
           restartTimings()
           // On the mtime clock, as the arm is: from `Date.now()` a write the
           // run made within a tick of it carried an earlier mtime and read as
