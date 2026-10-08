@@ -415,11 +415,11 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['01a0', '--failed']).error).toBe(
       'a run id and --failed do not combine: replay 01a0',
     )
-    expect(parseLastArgs(['--list=0']).error).toMatch(/1\.\.500/)
+    expect(parseLastArgs(['--list=0']).error).toMatch(/from 1 to 500/)
     // The ceiling: 500 is taken, 501 is refused.
     expect([parseLastArgs(['--list=500']).list, parseLastArgs(['--list=501']).error]).toEqual([
       500,
-      'invalid --list: 501 (expected 1..500)',
+      '--list must be a whole number from 1 to 500 (got 501) (see `vx last --help`)',
     ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
@@ -454,7 +454,11 @@ describe('parseLastArgs', () => {
       { list: 1, runId: undefined, error: undefined },
       { list: 1, runId: undefined, error: undefined },
       { list: 10, runId: undefined, error: undefined },
-      { list: undefined, runId: undefined, error: 'invalid --list: 0 (expected 1..500)' },
+      {
+        list: undefined,
+        runId: undefined,
+        error: '--list must be a whole number from 1 to 500 (got 0) (see `vx last --help`)',
+      },
     ])
     expect(pick(['01a0dee9-run', '--list']).error).toBe(
       'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
@@ -474,9 +478,9 @@ describe('parseLastArgs', () => {
       error(['--list', '2', 'extra']),
       error(['extra', '--list']),
     ]).toEqual([
-      'invalid --list: 1.5 (expected 1..500)',
-      'invalid --list: abc (expected 1..500)',
-      'invalid --list: -3 (expected 1..500)',
+      '--list must be a whole number from 1 to 500 (got 1.5) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got abc) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got -3) (see `vx last --help`)',
       'unexpected argument: extra (see `vx last --help`)',
       'unexpected argument: extra (see `vx last --help`)',
     ])

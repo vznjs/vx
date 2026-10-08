@@ -595,9 +595,10 @@ row, its stored stdout included, made a 200-task plan over 1 MB outputs
 Caching is controlled by a four-axis `CachePolicy` — **localRead**,
 **localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
 each enforced inside the matching cache layer at construction time. The
-local `Cache` gets a `{ read, write }` slice gating only its task
-artifact get/save (never `recordRun` / `stats` / `prune` / ingest /
-hashing); the `LayeredCache` additionally gates its own remote
+local `Cache` gets a `{ read, write }` slice gating its task artifact
+get/save, the config-evaluation cache's reads and writes, and the
+file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
+/ key derivation); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
@@ -1180,7 +1181,8 @@ root) and it holds everything, shared with no other workspace:
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
+    │                                       packed under (v35), the miss's CPU and RSS
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1776,6 +1778,10 @@ breaking footer).
 
 ### History
 
+- **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
+  X-34). An additive task's entry a hit replayed over a file the task
+  had removed, one that missed a same-size rewrite, and a runtime probe
+  answered before its upstream wrote.
 - **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the

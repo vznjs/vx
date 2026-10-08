@@ -11,6 +11,7 @@ src/index.ts
 src/mapping-cache.ts
 src/migrate-nx.ts
 src/migrate-turbo.ts
+src/migrate-vite-task.ts
 src/migrate.ts
 src/nx-cache/index.ts
 src/nx-command.ts
@@ -28,14 +29,17 @@ src/nx/nx-outputs.ts
 src/nx/nx-upstream.ts
 src/paths.ts
 src/plugin-gaps.ts
+src/remote-breaker.ts
 src/remote-deadline.ts
 src/remote-retry.ts
 src/remote-token.ts
 src/script-command.ts
 src/shared-outputs.ts
+src/spelled-env.ts
 src/tracked-outputs.ts
 src/turbo-cache/index.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts
+src/vite-task/vite-task-map.ts
 src/workspace-notes.ts
 src/workspace-plugins.ts

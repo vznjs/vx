@@ -104,7 +104,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
-  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks)
+  const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks, 'watch')
   if ('error' in resolved) {
     process.stderr.write(`vx watch: ${resolved.error}\n`)
     return 1
