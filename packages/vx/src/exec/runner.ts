@@ -849,7 +849,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       }
     }
     const reader = stream.getReader()
-    const decoder = new TextDecoder()
+    const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
     try {
       while (true) {
         const { value, done } = await reader.read()
@@ -1213,7 +1213,7 @@ export async function streamToString(
   if (!stream || typeof stream === 'number') return ''
   const full = new BoundedCapture()
   const reader = stream.getReader()
-  const decoder = new TextDecoder()
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
   // On abort, cancel the read so a pending `reader.read()` resolves
   // `done` and we return whatever we captured. Needed for the timeout
   // path: SIGTERMing `sh` doesn't close the pipe if an orphaned
