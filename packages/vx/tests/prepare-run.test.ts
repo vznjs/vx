@@ -396,6 +396,46 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
   )
 })
 
+// X-182: the whole-workspace check ran only when fewer projects were loaded
+// than have configs. `cart` has no config but counts as loaded, so app's
+// closure (app, cart) matched the configured count (app, web), web was never
+// asked, and a name only web declares was refused as a typo.
+describe('a config-less project in the closure does not hide a declarer outside it', () => {
+  const bare = async (name: string): Promise<void> => {
+    const dir = path.join(root, 'packages', name)
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+  }
+  const outcome = async (opts: Parameters<typeof prepare>[0]): Promise<string[] | string> => {
+    try {
+      return [...(await prepare(opts)).nodes.keys()].sort()
+    } catch (err) {
+      return err instanceof UserError ? err.message : String(err)
+    }
+  }
+
+  it(
+    'a ^name and an --exclude-dependencies name only that project declares',
+    async () => {
+      await pkg('app', cfg(task('test', ['^pack']), task('lint')), ['cart'])
+      await bare('cart')
+      await pkg('web', cfg(task('pack')))
+
+      expect({
+        dep: await outcome({ tasks: ['app#test'] }),
+        exclude: await outcome({ tasks: ['app#lint'], excludeDependencies: ['pack'] }),
+        // Control: a name nobody declares is still refused.
+        depTypo: await outcome({ tasks: ['app#lint'], excludeDependencies: ['pakc'] }),
+      }).toEqual({
+        dep: ['app#test'],
+        exclude: ['app#lint'],
+        depTypo: '--exclude-dependencies names a task no project declares: pakc.',
+      })
+    },
+    TIMEOUT,
+  )
+})
+
 // The builder takes a 50,000-deep chain on its own stack (nx#28788, item
 // 737); `--exclude-dependencies` then keys the whole dropped chain, and
 // that walk must not recurse once per edge either.
