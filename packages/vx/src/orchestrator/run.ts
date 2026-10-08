@@ -1660,7 +1660,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
-  const prepared = await prepareRun(options, log, reasons)
+  const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
   try {
     if (prepared.unresolvedTasks.length > 0) {
       return {

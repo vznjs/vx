@@ -66,7 +66,7 @@ import {
   loadWorkspacePlugins,
   type LoadedProjects,
 } from './projects.js'
-import { type AffectedReason, keptByAffected } from './affected-tasks.js'
+import { keptByAffected } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
@@ -182,12 +182,7 @@ export interface PreparedRun {
  * caller-specific (run logs + returns NOT-ok; planRun returns an
  * empty plan).
  */
-export async function prepareRun(
-  options: RunOptions,
-  log: Logger,
-  /** Filled with why `--affected` kept each requested task (`--dry` only). */
-  affectedReasons?: Map<string, AffectedReason>,
-): Promise<PreparedRun> {
+export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   beginRun()
   mark('startup')
   // The root manifest is read once for the root, the globs and the
@@ -564,7 +559,7 @@ export async function prepareRun(
           named: new Set(tasks.filter((t) => t.includes('#'))),
           outright: new Set(options.selectedOutright),
         },
-        affectedReasons && { workspaceRoot, reasons: affectedReasons },
+        options.affectedReasons && { workspaceRoot, reasons: options.affectedReasons },
       )
       if (kept.length === 0) return emptyRun('none-affected')
       if (before !== null) {

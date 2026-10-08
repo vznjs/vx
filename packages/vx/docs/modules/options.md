@@ -17,6 +17,7 @@ export interface RunOptions {
   selectedByDiff?: boolean // `projects` came from a git diff: bare names judged workspace-wide (item 1024)
   affected?: AffectedChanges // --affected's diff: a bare task runs only when it reaches a seeded task (affected-tasks.md)
   selectedOutright?: readonly string[] // projects a non-affected --filter named: their tasks run beside affected ones (X-10)
+  affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number

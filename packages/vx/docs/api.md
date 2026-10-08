@@ -1588,11 +1588,7 @@ caller-specific (run logs + returns NOT-ok; planRun returns an
 empty plan).
 
 ```ts
-export async function prepareRun(
-  options: RunOptions,
-  log: Logger,
-  affectedReasons?: Map<string, AffectedReason>,
-): Promise<PreparedRun>
+export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
 ```
 
 ## `ProjectConfig`
@@ -1898,6 +1894,7 @@ export interface RunOptions {
   selectedByDiff?: boolean
   affected?: AffectedChanges
   selectedOutright?: readonly string[]
+  affectedReasons?: Map<string, AffectedReason>
   staged?: ReadonlyMap<string, ProjectEntry>
   discovered?: { root: string; projects: ProjectMeta[] }
   concurrency?: number

@@ -48,7 +48,7 @@ or `affectedRoots` reaches it. `affectedTaskProjects` is `vx show <task>
 opened and no key derived, so the list is the projects the run keeps
 (X-147).
 
-Given an `AffectedExplain` (`planRun` passes one through `prepareRun`),
+Given an `AffectedExplain` (`planRun` passes one as `RunOptions.affectedReasons`),
 both record why each kept request survived: the seed's changed file or
 package, and the `dependsOn` chain that carried it. Without one no map
 is filled and the walk does what it did.
