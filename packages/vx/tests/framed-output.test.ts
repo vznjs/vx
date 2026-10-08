@@ -229,18 +229,18 @@ describe('the compact one-liners', () => {
 })
 
 describe('formatTaskBlock', () => {
-  it('renders an executed task with command + stdout sections, content raw (no border)', () => {
+  it('renders an executed task with command + output section, content raw (no border)', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
-      { stdout: 'Found 0 warnings and 0 errors.\nFinished in 327ms.\n' },
+      { output: [{ text: 'Found 0 warnings and 0 errors.\nFinished in 327ms.\n', err: false }] },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > success\n' +
         '\n' +
         '$ oxlint .\n' +
         '\n' +
-        '├─ STDOUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         'Finished in 327ms.\n' +
@@ -249,11 +249,54 @@ describe('formatTaskBlock', () => {
     )
   })
 
+  it('interleaved streams keep their order, a line taking the stream that began it', () => {
+    const out = formatTaskBlock(
+      node('@vzn/vx#test', 'vitest'),
+      outcome('@vzn/vx#test', 'failed', { durationMs: 5, exitCode: 1 }),
+      {
+        output: [
+          { text: '✓ adds\n✗ subtracts\n', err: false },
+          { text: '  expected 1 got 2\n', err: true },
+          { text: '✓ multi', err: false },
+          { text: 'plies\n1 failed', err: true },
+        ],
+      },
+    )
+    // Without colour the lines are the task's bytes, in order.
+    expect(out).toContain('\n✓ adds\n✗ subtracts\n  expected 1 got 2\n✓ multiplies\n1 failed\n\n└─')
+    // With colour, only the lines stderr began are red.
+    const red = (t: string) => `\x1b[38;2;239;68;68m${t}\x1b[0m`
+    const painted = formatTaskBlock(
+      node('@vzn/vx#test', 'vitest'),
+      outcome('@vzn/vx#test', 'failed', { durationMs: 5, exitCode: 1 }),
+      {
+        output: [
+          { text: '✓ adds\n', err: false },
+          { text: '  expected 1 got 2\n', err: true },
+          { text: '✓ multi', err: false },
+          { text: 'plies\n1 failed', err: true },
+        ],
+      },
+      { enabled: true },
+    )
+    expect(painted).toContain(
+      `\n✓ adds\n${red('  expected 1 got 2')}\n✓ multiplies\n${red('1 failed')}\n`,
+    )
+    // A line the task coloured keeps its colours: no red around a reset.
+    const colored = formatTaskBlock(
+      node('@vzn/vx#test', 'vitest'),
+      outcome('@vzn/vx#test', 'failed', { durationMs: 5, exitCode: 1 }),
+      { output: [{ text: '\x1b[31mFAIL\x1b[0m x\n', err: true }] },
+      { enabled: true },
+    )
+    expect(colored).toContain('\n\x1b[31mFAIL\x1b[0m x\n')
+  })
+
   it('whitespace-only stdout renders no stdout section', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#lint', 'oxlint .'),
       outcome('@vzn/vx#lint', 'success', { durationMs: 5 }),
-      { stdout: '   \n\n' },
+      { output: [{ text: '   \n\n', err: false }] },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > success\n' +
@@ -285,11 +328,11 @@ describe('formatTaskBlock', () => {
         hash: 'abcdef0123456789',
         restored: true,
       }),
-      { stdout: 'Found 0 warnings and 0 errors.\n' },
+      { output: [{ text: 'Found 0 warnings and 0 errors.\n', err: false }] },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#lint > restored-local • abcdef01\n' +
-        '├─ STDOUT ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
         '\n' +
         'Found 0 warnings and 0 errors.\n' +
         '\n' +
@@ -335,14 +378,14 @@ describe('formatTaskBlock', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1234, exitCode: 2 }),
-      { stderr: 'error TS1234: oops\n' },
+      { output: [{ text: 'error TS1234: oops\n', err: true }] },
     )
     expect(out).toBe(
       '┌─ @vzn/vx#build > failed (exit 2)\n' +
         '\n' +
         '$ tsc\n' +
         '\n' +
-        '├─ STDERR ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
         '\n' +
         'error TS1234: oops\n' +
         '\n' +
@@ -362,14 +405,14 @@ describe('formatTaskBlock', () => {
           'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js',
         ],
       }),
-      { stderr: 'touch: dist/index.js: Operation not permitted\n' },
+      { output: [{ text: 'touch: dist/index.js: Operation not permitted\n', err: true }] },
     )
     expect(out).toBe(
       '┌─ @bench/top#build > failed (exit 1, 2 sandbox violations)\n' +
         '\n' +
         '$ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
         '\n' +
-        '├─ STDERR ──────────────────────────────────────────────────\n' +
+        '├─ OUTPUT ──────────────────────────────────────────────────\n' +
         '\n' +
         'touch: dist/index.js: Operation not permitted\n' +
         '\n' +
@@ -427,20 +470,24 @@ describe('formatTaskBlock', () => {
     expect(out).toContain('abcdef01')
   })
 
-  it('section labels render bold and state-colored; content lines stay raw (no border, no indent)', () => {
+  it('the section label renders bold; stdout stays raw, stderr red (no border, no indent)', () => {
     const out = formatTaskBlock(
       node('@vzn/vx#build', 'tsc'),
       outcome('@vzn/vx#build', 'failed', { durationMs: 1, exitCode: 1 }),
-      { stdout: 'out line\n', stderr: 'err line\n' },
+      {
+        output: [
+          { text: 'out line\n', err: false },
+          { text: 'err line\n', err: true },
+        ],
+      },
       { enabled: true },
     )
     // command renders as a dim `$ cmd` line; section labels are
     // bold + state-colored with a dim trailing rule.
     expect(out).toContain('\x1b[2m$ tsc\x1b[0m')
-    expect(out).toContain('\x1b[1m\x1b[38;2;34;197;94mSTDOUT\x1b[0m')
-    expect(out).toContain('\x1b[1m\x1b[38;2;239;68;68mSTDERR\x1b[0m')
-    expect(out).toContain('\nout line\n')
-    expect(out).toContain('\nerr line\n')
+    expect(out).toContain('\x1b[1mOUTPUT\x1b[0m')
+    // One section, in order: stdout raw, stderr red.
+    expect(out).toContain('\nout line\n\x1b[38;2;239;68;68merr line\x1b[0m\n')
     expect(out).not.toContain('│')
   })
 

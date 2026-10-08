@@ -59,11 +59,15 @@ const ABORTED = '#f97316' // orange-500 — killed by a shutdown signal
 const LOCAL = '#38bdf8' // sky-400 — local cache hit
 const REMOTE = '#2563eb' // blue-600 — remote cache hit
 
+/** A piece of a task's output, as written: `err` for stderr. */
+export interface OutputChunk {
+  text: string
+  err: boolean
+}
+
 export interface TaskBlockBody {
-  /** stdout chunks accumulated during the task. Renders under `├─ stdout`. */
-  stdout?: string
-  /** stderr chunks. Renders under `├─ stderr`. */
-  stderr?: string
+  /** What the task wrote, in order. Renders under `├─ OUTPUT`, stderr lines marked. */
+  output?: readonly OutputChunk[]
   /**
    * Characters the capture dropped from the head of each stream. Non-zero
    * only for a task whose output is bounded (a persistent one — nothing
@@ -92,8 +96,7 @@ export function formatTaskBlock(
   // pass already make.
   if (isGroupTask(node)) return ''
 
-  const stdout = body.stdout ?? ''
-  const stderr = body.stderr ?? ''
+  const output = body.output ?? []
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
@@ -110,8 +113,7 @@ export function formatTaskBlock(
     lines.push('', corner(`$ ${shownCommand(node, forwardArgs)}`), '')
   }
 
-  pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
-  pushStreamSection(lines, stderr, 'STDERR', ERROR, body.droppedStderr ?? 0, colors)
+  pushOutputSection(lines, output, (body.droppedStdout ?? 0) + (body.droppedStderr ?? 0), colors)
 
   lines.push(...violationSection(outcome, colors))
 
@@ -138,6 +140,48 @@ function pushStreamSection(
     lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
   }
   pushBodyLines(lines, text)
+  lines.push('')
+}
+
+/**
+ * The one `├─ OUTPUT` section: the task's lines in the order it wrote
+ * them, so an error stays beside what it is about (a test runner prints
+ * progress to stdout and the failure to stderr). A stderr line is red;
+ * without colour it is the task's bytes untouched. A line the task
+ * coloured itself keeps its own colours, since a reset inside it would
+ * end ours mid-line. A line takes the stream that began it.
+ */
+function pushOutputSection(
+  lines: string[],
+  output: readonly OutputChunk[],
+  lost: number,
+  colors: ColorSupport,
+): void {
+  if (output.every((c) => c.text.trim().length === 0)) return
+  lines.push(sectionLine('OUTPUT', '', colors), '')
+  if (lost > 0) {
+    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+  }
+  const body: Array<{ text: string; err: boolean }> = []
+  let open: { parts: string[]; err: boolean } | null = null
+  for (const c of output) {
+    let rest = c.text
+    while (rest.length > 0) {
+      const nl = rest.indexOf('\n')
+      const piece = nl < 0 ? rest : rest.slice(0, nl)
+      if (open === null) open = { parts: [], err: c.err }
+      open.parts.push(piece)
+      if (nl < 0) break
+      body.push({ text: open.parts.join(''), err: open.err })
+      open = null
+      rest = rest.slice(nl + 1)
+    }
+  }
+  if (open !== null) body.push({ text: open.parts.join(''), err: open.err })
+  for (const l of body) {
+    if (!l.err || !colors.enabled) lines.push(l.text)
+    else lines.push(l.text.includes('\x1b') ? l.text : paint(ERROR, l.text, colors))
+  }
   lines.push('')
 }
 
@@ -520,7 +564,9 @@ function isPersistentNode(node: TaskNode): boolean {
 export function formatPersistentTailBlock(
   node: TaskNode,
   outcome: TaskOutcome,
-  body: TaskBlockBody,
+  // Two bounded tails, one per stream: their order is lost, so the
+  // streams print apart.
+  body: { stdout?: string; stderr?: string },
   dropped: { stdout?: number; stderr?: number } = {},
   colors: ColorSupport = NO_COLOR,
   forwardArgs: readonly string[] = [],

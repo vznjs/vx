@@ -34,3 +34,10 @@ and log output reads better. Each must cost the warm path nothing.
   located by walking the path's keys in the source; a field the file
   does not hold prints as before. Error path only. Rows:
   `config-frame.test.ts`, `config-error-audit.test.ts`.
+- **DX-6.** A task frame prints its output as one `├─ OUTPUT` section
+  in the order vx read it (owner's pick, 2026-10-08), not STDOUT then
+  STDERR: a test runner's failure on stderr stays beside the test that
+  printed it on stdout. Stderr lines render red when colour is on, and
+  plain output stays the task's bytes; a line the task coloured keeps its colours. The logger keeps
+  one ordered buffer per task instead of two. Rows:
+  `framed-output.test.ts` › "interleaved streams keep their order".

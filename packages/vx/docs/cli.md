@@ -2789,14 +2789,11 @@ Frame anatomy:
 
 $ bun test
 
-├─ STDOUT ──────────────────────────────────────────────────
+├─ OUTPUT ──────────────────────────────────────────────────
 
 2 pass
-1 fail
-
-├─ STDERR ──────────────────────────────────────────────────
-
 error: expected 3, got 2
+1 fail
 
 ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
 
@@ -2807,12 +2804,22 @@ write ../shared/notes.txt
 
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
-shows none), `STDOUT` / `STDERR` only when the stream is non-empty,
+shows none), `OUTPUT` only when the task wrote something,
 `SANDBOX VIOLATIONS (N)` only when the sandbox recorded some or vx
 has a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit
 N)`, …) and the footer repeats it after the duration. A test renders
 this block and checks it against this page, byte for byte.
+
+`OUTPUT` holds what the task wrote in the order vx read it, so an
+error stays beside the test that printed it: a stderr line renders
+red when colour is on (a line the task coloured itself keeps its own
+colours, and a line takes the stream that began it); without colour
+the lines are the task's bytes.
+The two streams are two pipes, so lines written within the same
+instant may read stdout first; a cache hit replays stdout alone. A
+persistent task's tail after ready keeps `STDOUT (since ready)` and
+`STDERR (since ready)` apart: its bounded tails hold no order.
 
 Frame corners and rules render dim, section labels (`├─ …`) bold in
 their state colour; the id keeps its identity coloring. Content lines are **raw** — no left border, no
