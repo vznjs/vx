@@ -67,7 +67,7 @@ type PluginHookName = keyof PluginHookHandlers
   `cache` factory fails the run in one
   line naming the plugin and the hook: what a plugin shapes is
   load-bearing. The observers are isolated (observability never breaks a
-  run): a `telemetry` factory or sink, a `ctx.on` handler and `teardown`
+  run): a `telemetry` factory or sink, a `ctx.on` handler or `ctx.bus` subscriber (switching off its whole plugin, not its package) and `teardown`
   are warned and switched off,
   and a throwing `admit` (or one that answers a Promise) admits from then
   on. An async hook's rejection counts as its throw. `ctx.on` with a

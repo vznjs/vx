@@ -33,6 +33,7 @@ import {
   missingPackages,
   MODE_QUESTION,
   ownVersion,
+  packageManagerOf,
   parseModeAnswer,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
@@ -177,6 +178,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
       // a temp file; the user ran that step by hand until 2026-10-01.
+      // A fresh clone: the export's own reason names the plugin's `graph`
+      // option, which the CLI does not take.
+      if (!existsSync(path.join(root, 'node_modules', '.bin', 'nx'))) {
+        throw new UserError(
+          `nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — ` +
+            `run \`${packageManagerOf(root, process.env['npm_config_user_agent'])} install\`, then vx-migrate again`,
+        )
+      }
       const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-nx-'))
       try {
         const snapshot = path.join(tmp, 'project-graph.json')
