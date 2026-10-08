@@ -21,7 +21,8 @@ A project whose config and plugins declare no `build` gets one, after the
 ## Public surface
 
 ```ts
-// the default build; the picker and the "tasks here" hint leave it out
+// the default build; the picker, the "tasks here" and `vx build` hints and
+// `vx show <task>` leave it out
 export function isDefaultBuild(task: TaskConfig | undefined): boolean
 
 export function loadWorkspacePlugins(

@@ -508,6 +508,8 @@ refused with the `vx run` that runs it: `vx build` names
 `vx build app` names `vx run build --filter app`, and `vx app#build`
 names `vx run app#build`. A typo of a task (`vx biuld`) names the task
 and the same `vx run`, unless a verb is as close (`vx rnu` hints `run`).
+The default `build` is no declared task, so it is no hint: where it is
+the only `build`, `vx build` is an unknown command.
 It stays a refusal: a plugin verb of the same
 name is the verb, and would change what `vx build` means the day one
 was declared.
@@ -2239,7 +2241,9 @@ config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
 from every project declaring `build` (an array of the one-task shape
-in JSON).
+in JSON). The default `build` is declared by none: it counts in the
+list and `vx show <project>`, but `vx show build`, like
+`vx run build --all`, does not name it (X-145).
 
 ```
 $ vx show app#build
