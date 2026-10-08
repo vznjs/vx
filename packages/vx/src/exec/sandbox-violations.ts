@@ -729,6 +729,8 @@ export function refusedWrites(
   writable: readonly string[],
   /** Write globs whose writes land in the sandbox's scratch (`scratchWrites`): granted. */
   scratch: readonly string[] = [],
+  /** What the sandbox mounts readable, canonical: a mkdir of what is there is no write. */
+  readable: readonly string[] = [],
 ): SandboxViolation[] {
   const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
   const globs = scratch.map((g) => new Bun.Glob(g))
@@ -749,7 +751,9 @@ export function refusedWrites(
     // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
     // `node_modules/.cache/` met EEXIST on `node_modules`, wrote nothing,
     // and the attempt failed a clean task (2026-10-03).
-    if (syscall.startsWith('mkdir') && [...binds].some((b) => atOrUnder(b, abs))) continue
+    // So does one a read grant shows, or holds: `mkdir -p src` under
+    // `read: ['src']` failed a clean task the same way (X-82).
+    if (syscall.startsWith('mkdir') && inSandbox(abs, binds, readable)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -762,6 +766,29 @@ export function refusedWrites(
     })
   }
   return out
+}
+
+/**
+ * `abs` exists inside the sandbox: a write bind lies at or under it (vx
+ * made each before the spawn), a read grant that exists does, or a read
+ * grant holds it and it exists. A read grant naming nothing is not
+ * mounted, so neither it nor its ancestors are there.
+ */
+function inSandbox(abs: string, binds: Set<string>, readable: readonly string[]): boolean {
+  return (
+    [...binds].some((b) => atOrUnder(b, abs)) ||
+    readable.some((r) => atOrUnder(r, abs) && exists(r)) ||
+    (readable.some((r) => atOrUnder(abs, r)) && exists(abs))
+  )
+}
+
+function exists(p: string): boolean {
+  try {
+    lstatSync(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** `p`, or a directory holding it, matches one of `globs`. */

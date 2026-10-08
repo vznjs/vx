@@ -525,6 +525,36 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-81.** A write grant that needs a directory where a file stands
+  (`out.txt/` over a file, `a.txt/x/*.js`, `a.txt/out`) failed the task
+  as `[vx] internal error … EEXIST` or `ENOTDIR` from the pre-create, and
+  left the placeholders made before it. It is now a refusal naming the
+  grant and the file, the placeholders swept. Row:
+  `sandbox-request.test.ts` › "a file where a grant needs a directory is
+  refused by name, its placeholders swept".
+- **X-82.** `mkdir -p src` under `read: ['src']` failed a clean task
+  with a sandbox violation: SRT's write observer records the attempt,
+  which met EEXIST and wrote nothing. `refusedWrites` now also passes a
+  `mkdir` of a path the sandbox shows through a read grant (one at or
+  under it that exists, or one holding it where it exists); a mkdir of a
+  new directory is still refused and reported. Rows:
+  `sandbox-mkdir-ancestor.unsafe.test.ts` › "refusedWrites › a mkdir of a
+  directory the task can see", "mkdir -p of a directory a read grant
+  shows passes; of a new one, fails".
+- **X-83.** A sandboxed server whose wrap was refused (a `localBinding`
+  port the host holds) left the empty placeholder vx made for its literal
+  write grant in the project: the request had made it, and only the
+  server's exit swept, which never came. The persistent path now sweeps
+  when the wrap throws. Row: `sandbox-port-held.unsafe.test.ts` › "a
+  server refused for the port leaves no placeholder behind".
+- **X-84.** A sandboxed task read Bun's global bunfig (`~/.bunfig.toml`,
+  `~/.config/.bunfig.toml`, where `[install.scopes]` keeps registry
+  tokens), Cargo's and RubyGems' credentials and the like, though the
+  same task was denied `~/.npmrc` (L-41): a dependency it ran could copy
+  the token into an output the cache shares. They join the denied
+  stores, granted by naming one in `allow.read`. Row:
+  `sandbox-credential-stores.unsafe.test.ts` › "reads none unless
+  granted, and the rest of home as before".
 - **X-90.** Under `exec.sandbox` with `write: ['dist/']`,
   `rm -rf dist && tsc` failed on Linux with a bare `Read-only file system`: the grant is
   a bind mount, which the task may empty but not remove. No bind fixes
