@@ -836,7 +836,8 @@ With the rule off, an edge fixes the order, and the dependant is
   file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
-  before a restore (its rows only);
+  before a restore (its rows only, pruning emptied directories only
+  inside its declared trees, so a sibling's fresh directory stays);
 - its "already current" check requires its rows present and current and
   ignores everything else under the glob;
 - it is **never restore-tier**: it restores or runs after its upstream,
