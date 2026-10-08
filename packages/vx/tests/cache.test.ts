@@ -1842,7 +1842,7 @@ describe('Cache storage (v10)', () => {
       outputFiles: [f],
       entry: { ...ctx, durationMs: 0, stdout: '' },
     })
-    cache.dbHandle().prepare('DELETE FROM entries WHERE hash = ?').run(hash)
+    cache.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(hash)
     const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(cache.outputsPath(hash), twoHoursAgo, twoHoursAgo)
 
