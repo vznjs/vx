@@ -738,7 +738,11 @@ other persistent task`), and a non-zero exit makes the run exit 1
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
    its row for its whole life; idle rows hold their place dimmed, so
-   nothing ever jumps; overflow shows as `+k more`.
+   nothing ever jumps; overflow shows as `+k more`. A second in, a row
+   says what waits on it: `critical path` (yellow) on the running task
+   the longest unfinished chain waits on, by the same p50s as the
+   forecast below and only while two or more run, and a dim
+   `blocks N`, its unfinished dependents direct and transitive.
 4. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,

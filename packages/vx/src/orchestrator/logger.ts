@@ -83,7 +83,7 @@ export interface DefaultLogger extends Logger {
    * run start; `load` runs only if the region is still live a second in,
    * so a run that ends sooner never reads history for it.
    */
-  forecast(load: () => Promise<Forecast | undefined>): void
+  forecast(load: () => Promise<Forecast>): void
 }
 
 /**
@@ -292,6 +292,8 @@ export function defaultLogger(
   let forecastFn: Forecast | undefined
   let forecastTimer: ReturnType<typeof setTimeout> | null = null
   let etaMs: number | undefined
+  let critical: string | undefined
+  let blocks: ReadonlyMap<string, number> | undefined
   let etaAtMs = 0
   const signals = writer.enabled
     ? terminalSignals(opts.env ?? process.env)
@@ -396,7 +398,10 @@ export function defaultLogger(
       const running = new Map<string, number>()
       for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
       for (const s of slotQueue) running.set(s.id, s.startedMs)
-      etaMs = forecastFn(finished, running, now)
+      const f = forecastFn(finished, running, now)
+      etaMs = f.etaMs
+      critical = f.critical
+      blocks = f.blocks
     }
     if (signals.progress && total > 0) {
       const elapsed = now - startedAtMs
@@ -445,6 +450,8 @@ export function defaultLogger(
           overflow: slotQueue.length,
           nowMs: Date.now(),
           summaryLines,
+          ...(blocks !== undefined ? { blocks } : {}),
+          ...(critical !== undefined ? { critical } : {}),
         },
         colors,
       ),

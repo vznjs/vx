@@ -12,6 +12,7 @@ const NO_COLOR: ColorSupport = { enabled: false }
 // Same palette as framed-output.ts so glyphs and stats agree.
 const ACCENT = '#06b6d4'
 const ERROR = '#ef4444'
+const WARN = '#eab308' // yellow-500, as the summary's
 
 /** Erase the current line and return the cursor to column 0. */
 const CLEAR = '\x1b[2K\r'
@@ -241,6 +242,10 @@ export interface WorkerSlot {
 }
 
 export interface StatusRegionState {
+  /** A running task's unfinished dependents (`blocks 14` on its row); 0 says nothing. */
+  blocks?: ReadonlyMap<string, number>
+  /** The running task at the head of the longest unfinished chain. */
+  critical?: string
   /**
    * Ready persistent tasks (dev servers …) whose children keep
    * running after their outcome lands. Pinned until runEnd — the
@@ -331,11 +336,19 @@ export function formatStatusRegion(
   // the ticking time IS the motion), then `running`, full id (never
   // truncated — name is the last column). Idle rows hold their slot's
   // place, dim, aligned under the status column.
+  // One task running has no path to compare against.
+  const busy = s.slots.filter((x) => x !== null).length
   for (const slot of s.slots) {
     if (slot === null) {
       lines.push(`${' '.repeat(3 + TIME_COL + 1)}${paint(IDLE, 'idle', colors, { dim: true })}`)
       continue
     }
+    // What waits on it, after the id: the row to watch is the one the
+    // longest chain waits on, and the one the most tasks wait on.
+    const waiting = s.blocks?.get(slot.id) ?? 0
+    const notes: string[] = []
+    if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
+    if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     lines.push(
       formatTaskRow(
         ' ',
@@ -346,7 +359,7 @@ export function formatStatusRegion(
         '',
         paintPinnedId(slot.id, colors),
         colors,
-      ),
+      ) + (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
     )
   }
   if (s.overflow > 0) {

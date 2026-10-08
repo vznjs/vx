@@ -6,7 +6,7 @@ import { describe, expect, it, spyOn } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { createForecast } from '../src/orchestrator/forecast.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
-import type { StatusStream } from '../src/orchestrator/status-line.js'
+import { formatStatusRegion, type StatusStream } from '../src/orchestrator/status-line.js'
 import { formatSummarySection } from '../src/orchestrator/summary.js'
 import {
   notifyEscape,
@@ -39,28 +39,72 @@ describe('createForecast', () => {
 
   it('is the longest unfinished chain when workers are plenty', () => {
     const f = createForecast(nodes, p50s, 8)
-    expect(f(new Set(), new Map(), 0)).toBe(3500)
-    expect(f(new Set(['p#a']), new Map(), 0)).toBe(3000)
-    expect(f(new Set(['p#a', 'p#d']), new Map(), 0)).toBe(2500)
+    expect(f(new Set(), new Map(), 0).etaMs).toBe(3500)
+    expect(f(new Set(['p#a']), new Map(), 0).etaMs).toBe(3000)
+    expect(f(new Set(['p#a', 'p#d']), new Map(), 0).etaMs).toBe(2500)
   })
 
   it('is the unfinished work over the workers when that is longer', () => {
     // 6,500 ms of work on one worker beats the 3,500 ms chain.
-    expect(createForecast(nodes, p50s, 1)(new Set(), new Map(), 0)).toBe(6500)
-    expect(createForecast(nodes, p50s, 2)(new Set(), new Map(), 0)).toBe(3500)
+    expect(createForecast(nodes, p50s, 1)(new Set(), new Map(), 0).etaMs).toBe(6500)
+    expect(createForecast(nodes, p50s, 2)(new Set(), new Map(), 0).etaMs).toBe(3500)
   })
 
   it('takes what a running task has spent off its p50, never below zero', () => {
     const f = createForecast(nodes, p50s, 8)
     // b ran 1,500 of its 2,000: 500 left, then c.
-    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 1500)).toBe(1000)
+    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 1500).etaMs).toBe(1000)
     // b at 2,400 (within the overrun slack): 0 left, then c.
-    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2400)).toBe(500)
+    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2400).etaMs).toBe(500)
   })
 
   it('gives up once a running task is well past its p50', () => {
     const f = createForecast(nodes, p50s, 8)
-    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600)).toBeUndefined()
+    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600).etaMs).toBeUndefined()
+  })
+
+  it('names the running task the longest chain waits on, and what each one blocks', () => {
+    const f = createForecast(nodes, p50s, 8)
+    // a (→ b → c: 3,500) against d (3,000): a heads the critical path.
+    const both = f(
+      new Set(),
+      new Map([
+        ['p#a', 0],
+        ['p#d', 0],
+      ]),
+      0,
+    )
+    expect(both.critical).toBe('p#a')
+    expect([...both.blocks]).toEqual([
+      ['p#a', 2],
+      ['p#d', 0],
+    ])
+    // 900 ms in, a has 100 left (2,600 chain), d 2,100: still a.
+    expect(
+      f(
+        new Set(),
+        new Map([
+          ['p#a', 0],
+          ['p#d', 0],
+        ]),
+        900,
+      ).critical,
+    ).toBe('p#a')
+    // With a done and b running, b's chain (2,500) beats d's 3,000 - 1,000 spent.
+    const later = f(
+      new Set(['p#a']),
+      new Map([
+        ['p#b', 1000],
+        ['p#d', 0],
+      ]),
+      1000,
+    )
+    expect(later.critical).toBe('p#b')
+    expect(later.blocks.get('p#b')).toBe(1)
+    // Past its p50 the time is unknown, and so is the path; what waits is not.
+    const over = f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600)
+    expect(over.critical).toBeUndefined()
+    expect(over.blocks.get('p#b')).toBe(1)
   })
 
   it('costs nothing for a group or a task history never saw', () => {
@@ -73,9 +117,9 @@ describe('createForecast', () => {
       ]),
       8,
     )
-    expect(f(new Set(), new Map(), 0)).toBe(700)
+    expect(f(new Set(), new Map(), 0).etaMs).toBe(700)
     // Only tasks history never saw are left: nothing to say.
-    expect(f(new Set(['p#x']), new Map(), 0)).toBeUndefined()
+    expect(f(new Set(['p#x']), new Map(), 0).etaMs).toBeUndefined()
   })
 })
 
@@ -153,7 +197,7 @@ describe('the logger asks for a forecast only a second in', () => {
     log.runStart?.({ total: 1, concurrency: 1 })
     log.forecast(async () => {
       asked++
-      return () => 4000
+      return () => ({ etaMs: 4000, blocks: new Map() })
     })
     const a = node('p#a')
     log.taskStart?.(a)
@@ -220,5 +264,30 @@ describe('a long run ends with a desktop notification', () => {
     expect(end(9_999, { TERM_PROGRAM: 'WezTerm' }, false)).not.toContain('\x1b]9;vx')
     expect(end(10_000, { WT_SESSION: 'x' }, false)).not.toContain('\x1b]9;vx')
     expect(end(10_000, {}, false)).not.toContain('\x1b]9;vx')
+  })
+})
+
+describe('a worker row says what waits on it', () => {
+  it('critical path, then the count; nothing for a task nothing waits on', () => {
+    const lines = formatStatusRegion(
+      {
+        pinnedPersistent: [],
+        slots: [
+          { id: 'p#a', startedMs: 0 },
+          { id: 'p#d', startedMs: 0 },
+        ],
+        overflow: 0,
+        nowMs: 500,
+        summaryLines: [],
+        blocks: new Map([
+          ['p#a', 2],
+          ['p#d', 0],
+        ]),
+        critical: 'p#a',
+      },
+      { enabled: false },
+    )
+    expect(lines[1]).toEndWith('p#a  critical path · blocks 2')
+    expect(lines[2]).toEndWith('p#d')
   })
 })

@@ -897,7 +897,7 @@ async function runOnBus(
       const ids: string[] = []
       for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
       const p50s = await new LocalHistoryProvider(prepared.localCache.dbHandle()).p50sFor(ids)
-      return p50s.size === 0 ? undefined : createForecast(nodes, p50s, concurrency)
+      return createForecast(nodes, p50s, concurrency)
     })
 
     // Remote-only: kick off background prefetches so remote-GET latency

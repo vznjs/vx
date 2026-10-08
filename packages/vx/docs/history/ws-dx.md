@@ -23,3 +23,8 @@ and log output reads better. Each must cost the warm path nothing.
   (OSC 9;4) and, after 10 s, a desktop notification (OSC 9). A run that
   ends inside the second reads no history, so the warm path is
   unchanged. Rows: `forecast.test.ts`.
+- **DX-4.** The live worker rows mark the critical path: a second in,
+  the running task the longest unfinished chain waits on reads
+  `critical path`, and every row says `blocks N`, its unfinished
+  dependents. Computed in the forecast's pass, twice a second at most,
+  live region only. Rows: `forecast.test.ts` › "names the running task".
