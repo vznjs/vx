@@ -11,6 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests } from '@vzn/vx'
+import { depsOf, record, type Json } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -35,7 +36,6 @@ export interface Entry {
   readonly resolution: string
 }
 
-type Json = Record<string, unknown>
 /** The top-level fields the digest reads per workspace. */
 // Read per workspace: the workspaces and packages themselves, and the fields
 // whose whole effect is the `packages` entry a workspace reaches — how a
@@ -50,13 +50,6 @@ const PER_WORKSPACE = new Set([
   'overrides',
   'patchedDependencies',
 ])
-
-const DEP_FIELDS = [
-  'dependencies',
-  'devDependencies',
-  'optionalDependencies',
-  'peerDependencies',
-] as const
 
 export function parseLockfile(text: string): Lockfile {
   let doc: unknown
@@ -108,20 +101,6 @@ export function parseLockfile(text: string): Lockfile {
     patches,
     global,
   }
-}
-
-function depsOf(m: Json): ReadonlyMap<string, string> {
-  const out = new Map<string, string>()
-  for (const field of DEP_FIELDS) {
-    const deps = record(m[field])
-    if (deps === undefined) continue
-    for (const [name, spec] of Object.entries(deps)) out.set(name, String(spec))
-  }
-  return out
-}
-
-function record(v: unknown): Json | undefined {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
 
 /**

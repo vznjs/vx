@@ -1,4 +1,4 @@
-// `vx last <id>` / `vx why --run <id>` take a run id whole or as a unique
+// `vx last RUNID` / `vx why --run RUNID` take a run id whole or as a unique
 // prefix (E-42); the e2e rows are in last.test.ts.
 
 import { Database } from 'bun:sqlite'

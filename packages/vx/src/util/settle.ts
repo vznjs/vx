@@ -68,3 +68,18 @@ export async function settleWithin(p: Promise<unknown>, ms: number): Promise<boo
     void p.catch(() => {})
   }
 }
+
+// Who ends the process. bin.ts exits once its verb has settled and the
+// streams have ended; a signal's handler exits by itself, with the
+// signal's code, once the run it stopped is done. The verb settles first,
+// with the run's verdict (1), so bin.ts asks before it exits.
+let signalOwnsExit = false
+
+/** A signal's handler will end the process: bin.ts leaves the exit to it. */
+export function claimExitForSignal(): void {
+  signalOwnsExit = true
+}
+
+export function exitClaimedBySignal(): boolean {
+  return signalOwnsExit
+}

@@ -528,6 +528,27 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
     expect(s.chunks.length).toBe(len)
   })
+
+  it('a kept server partial line prints before a later status line', () => {
+    // Held for its newline, `partial` printed below the server's own
+    // `exited with code` notice once settle flushed it.
+    const s = pipe()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
+    log.runStart?.({ total: 1, concurrency: 1 })
+    const dev = mkNode('web#dev', { requested: true, persistent: true })
+    log.taskStart?.(dev)
+    log.taskStdout(dev, 'ready\n')
+    log.taskComplete(dev, mkOutcome(dev, 'success'))
+    log.runEnd?.()
+    log.taskStdout(dev, 'line1\npartial')
+    log.status('vx: web#dev exited with code 2')
+    log.settle()
+    expect(s.chunks.slice(-3)).toEqual([
+      'web#dev │ line1\n',
+      'web#dev │ partial\n',
+      'vx: web#dev exited with code 2\n',
+    ])
+  })
 })
 
 describe('formatStatusRegion', () => {

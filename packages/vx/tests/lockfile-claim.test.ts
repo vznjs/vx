@@ -2,7 +2,7 @@
 // fallback for an unlisted project and the `--affected` diff, with a fake
 // digest so the pins are about the shell and not a lockfile format. The
 // real formats are pinned in @vzn/vx-lockfile, one file per manager.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -158,6 +158,23 @@ describe('key', () => {
     await lock('packages/a=a2\n')
     expect(await claim().key(task('packages/a'), ctx())).toEqual({ deps: 'a2' })
     expect(calls).toHaveLength(2)
+  })
+
+  it('a same-size rewrite with its mtime kept is read again in the same process', async () => {
+    // `cp -p` / `tar -x` of another lockfile: size and mtime match the last
+    // read, and only the ctime and inode say the bytes moved. The waits put
+    // each stamp past the 50 ms racy window, where the identity is trusted.
+    const file = path.join(root, 'bun.lock')
+    const kept = 1_700_000_000.25
+    await lock('packages/a=a1\n')
+    await utimes(file, kept, kept)
+    await Bun.sleep(60)
+    const hooks = claim()
+    expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a1' })
+    await lock('packages/a=a2\n')
+    await utimes(file, kept, kept)
+    await Bun.sleep(60)
+    expect(await hooks.key(task('packages/a'), ctx())).toEqual({ deps: 'a2' })
   })
 
   it('a memo of another digest version is not trusted', async () => {

@@ -72,6 +72,8 @@ export interface ScheduleOptions {
   continueMode?: ContinueMode
   /** A ready server that died: its dependants not yet started skip (through groups too); under 'never' dispatch stops. */
   serverDied?: (id: string) => boolean
+  /** Called once, when 'never' stops dispatch: a task in flight starts no retry. */
+  onFailFast?: () => void
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
@@ -99,6 +101,13 @@ export function deadServerBehind(
   serverDied: (id: string) => boolean,
   id: string,
 ): string | undefined
+
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+export function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string>
 
 // Thrown by `execute` for a restore-tier task with nothing to restore.
 export class RestoreDemoted extends Error {

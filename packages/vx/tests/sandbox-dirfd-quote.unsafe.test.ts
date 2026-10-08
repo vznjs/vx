@@ -28,6 +28,35 @@ describe('deniedCalls › a directory descriptor whose path holds a quote', () =
   })
 })
 
+describe('deniedCalls › a denial through a directory descriptor', () => {
+  it('is placed in the directory -y names, whole or split', () => {
+    const trace = [
+      '10 openat(4</ws/p/sub>, "g", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '10 openat(4</ws/p/q"d>, "h", O_RDONLY <unfinished ...>',
+      '10 <... openat resumed>) = -1 ENOENT (No such file or directory)',
+      '10 openat(AT_FDCWD</ws/p/src>, "i", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
+      ['g', '/ws/p/sub'],
+      ['h', '/ws/p/q"d'],
+      ['i', '/ws/p/src'],
+    ])
+  })
+
+  it('CONTROL: an absolute path, or a descriptor with no -y path, keeps the cwd', () => {
+    const trace = [
+      '10 openat(4</ws/p/sub>, "/ws/p/abs", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '10 openat(4, "g", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace, '/ws/p').map((c) => [c.rawPath, c.dir])).toEqual([
+      ['/ws/p/abs', undefined],
+      ['g', undefined],
+    ])
+  })
+})
+
 const available = await sandboxAvailable('sandbox dirfd-quote test')
 
 describe.skipIf(!available || process.platform !== 'linux')(
