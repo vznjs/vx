@@ -951,8 +951,8 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   replayed them as a green hit. The local executor fails the same child
   as timed out. Any exit after the timeout's abort is now a timeout on a
   plugin executor; the local one keeps its runner's own verdict, since
-  core's request timer starts before the spawn. Rows:
+  core arms no clock on a local request (#3153). Rows:
   `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
   abort is a timeout on a plugin executor too (X-125)",
-  `execute-task.test.ts` › "the local executor's own timedOut decides an
-  exit 0 after the request's abort (X-125)".
+  `execute-task.test.ts` › "core does not abort a local request at the
+  timeout; the runner's timedOut decides (X-125)".
