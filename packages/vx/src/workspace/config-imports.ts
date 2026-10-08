@@ -305,7 +305,7 @@ function selfReference(pkg: string, fromDir: string): boolean {
     const manifest = path.join(dir, 'package.json')
     if (existsSync(manifest)) {
       try {
-        const json = JSON.parse(readFileSync(manifest, 'utf8')) as {
+        const json = JSON.parse(readFileSync(manifest, 'utf8').replace(/^\uFEFF/, '')) as {
           name?: unknown
           exports?: unknown
         }

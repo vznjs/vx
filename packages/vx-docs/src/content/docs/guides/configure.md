@@ -174,7 +174,7 @@ Past a small essential allowlist (below), a task sees only the variables you pas
 The child always gets a small essential allowlist so normal CLI tools
 work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
 `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
-`NO_COLOR`, `CI`, `NODE_OPTIONS`. vx sets
+`NO_COLOR`, `CI`, `NODE_OPTIONS`, `COREPACK_HOME`, `PNPM_HOME`. vx sets
 `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
 `project#task` running) on every task, and `npm_execpath` to the
 workspace's package manager, as `pnpm run` does, so npm-run-all needs

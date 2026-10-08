@@ -126,8 +126,9 @@ picker; tasks here: …)`: `taskNamesHere(cwd)` (`cli/task-verb.ts`) names
 - TTY → `pickTask(cwd)` loads every project's tasks (only the projects
   `--filter` / `--affected` select, through `scopeFilters` and
   `resolveFilters`, the scope a bare task gets), prints a numbered
-  list with `description` next to each id, reads a 1-based index via
-  `readline/promises`, emits one anchored `pkg#task` into `tasks`.
+  list with `description` next to each id on stderr (a redirected stdout
+  hid it), reads a 1-based index via `readline/promises`, emits one
+  anchored `pkg#task` into `tasks`.
 
 ## Planning short-circuit
 

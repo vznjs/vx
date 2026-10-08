@@ -175,6 +175,10 @@ describe('package boundaries', () => {
       'run',
       'splitTaskId',
       'whyDidThisRerunQuery',
+      // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
+      // args after `--` on their own, and lost them where the local
+      // executor kept them (a trailing comment).
+      'withForwardArgs',
     ]
     expect(actual).toEqual(expected)
   })

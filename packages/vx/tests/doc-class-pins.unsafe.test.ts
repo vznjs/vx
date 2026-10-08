@@ -402,7 +402,7 @@ describe('no numbered list item was swallowed by a paragraph', () => {
 // 2026-09-19).
 describe('every page listing the env allowlist lists all of it', () => {
   it('each names every essential', () => {
-    expect(ESSENTIAL_ENV.length).toBe(17)
+    expect(ESSENTIAL_ENV.length).toBe(19)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
     // schema.md (pinned separately), execution.md, modules/env.md, and the
     // configure guide (the environment-variables guide until the short

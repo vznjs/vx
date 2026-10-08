@@ -512,6 +512,11 @@ I-65. The config-eval retention sweep runs once a day on its own
 `created_at`, so every close read every row and its JSON, 1–6 ms at
 8,000 rows (2 MB).
 
+I-66. A clean resolves the project root only once a directory exists
+to compare it with. After a restore's outputs were pruned nothing does,
+and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
+(2,000 calls, min of 5), ~9 ms of a 2,000-task restore.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -525,9 +530,15 @@ I-65. The config-eval retention sweep runs once a day on its own
   for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
   thread. Every `Bun.spawn` option vx passes (env, `detached`, the extra
   fd) costs the same as a bare spawn (0.6–0.7 ms alone). Only spawning
-  off the main thread would move it.
+  off the main thread would move it: 2,000 `sh -c true` at concurrency
+  4, piped and detached, took 867–991 ms from the main thread and
+  684–767 from four Workers (startup included). Tasks that run for
+  tens of ms see a few percent; output, signals and resource usage
+  would cross threads.
 - **Any: the group guard's release line is a pipe write per task**
-  (`guardWrite`, ~80 ms of the same run). Batching the lines would
+  (`guardWrite`, ~80 ms of the same run; 4.6 µs a write in isolation,
+  so most of that is the profiler's; the guard reads ~186k lines/s, so
+  its pipe never fills). Batching the lines would
   widen the window in which a reused pgid could be killed, which
   kill-tree.ts says never happens; not taken.
 - **Owner: the close's WAL checkpoint is ~3 ms of every run.** A warm
@@ -842,3 +853,7 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
   probe's three IN-queries are row-object building, not SQL.
 - Checkpoint on close (5–9 ms at 500): `bun:sqlite` exposes no
   `NO_CKPT_ON_CLOSE`, and process exit closes and checkpoints anyway.
+- Ready-heap priorities cached per slot (no two `Map.get` per compare):
+  2,000-project restore 1,001–1,432 ms against base 1,020–1,401 and
+  A/A 1,034–1,442; up-to-date 377.9 min against 369.8 / 356.2. The
+  profile's 12 ms in `higher` was the profiler's.

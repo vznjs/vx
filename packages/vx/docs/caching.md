@@ -1157,7 +1157,9 @@ two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. A home this user cannot write keeps the store
+when its task next hits. The check, drop, re-create and stamp are one
+write transaction, so another version's open waits rather than landing
+between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace

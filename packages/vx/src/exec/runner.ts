@@ -112,30 +112,49 @@ export function shellQuote(arg: string): string {
 }
 
 /**
- * Where a shell comment still open at the end of `command` starts, or -1.
- * A `#` opens one only unquoted and at the start of a word (`a#b`, `$#` and
- * `${#x}` are words), and a newline closes it.
+ * One pass over `command` as sh reads it. `comment`: where a comment still
+ * open at the end starts, or -1 — a `#` opens one only unquoted and at the
+ * start of a word (`a#b`, `$#` and `${#x}` are words), and a newline closes
+ * it. `body`: per line, is it a heredoc's body or terminator (`<<X` /
+ * `<<-'X'` / `<<\X` … `X`). One scan, because each needs the other: a
+ * `<<X` in a comment or quotes opens no heredoc, and a quote in a body
+ * opens nothing (X-110).
  */
-function trailingCommentStart(command: string): number {
+function shellShape(command: string): { comment: number; body: boolean[] } {
+  const lines = command.split('\n')
+  const body = lines.map(() => false)
+  const pending: Array<{ delim: string; tabs: boolean }> = []
   let quote = ''
   let comment = -1
   let atWordStart = true
+  let line = 0
   for (let i = 0; i < command.length; i++) {
     const c = command[i]!
-    if (comment >= 0) {
-      if (c === '\n') {
-        comment = -1
-        atWordStart = true
+    if (c === '\n') {
+      line++
+      comment = -1
+      if (quote !== '') continue
+      atWordStart = true
+      // A heredoc's body starts on the line after its `<<`.
+      while (pending.length > 0 && line < lines.length) {
+        const text = lines[line]!
+        body[line] = true
+        const open = pending[0]!
+        if ((open.tabs ? text.replace(/^\t+/, '') : text) === open.delim) pending.shift()
+        i += text.length + 1
+        line++
       }
       continue
     }
+    if (comment >= 0) continue
     if (quote === "'") {
       if (c === "'") quote = ''
       continue
     }
     if (c === '\\') {
+      if (command[i + 1] === '\n') line++
+      else atWordStart = false
       i++
-      atWordStart = false
       continue
     }
     if (quote === '"') {
@@ -151,25 +170,18 @@ function trailingCommentStart(command: string): number {
       comment = i
       continue
     }
+    if (c === '<' && command[i - 1] !== '<') {
+      const m = /^<<(-?)[ \t]*\\?(['"]?)([A-Za-z_]\w*)\2/.exec(command.slice(i, i + 256))
+      if (m !== null) {
+        pending.push({ delim: m[3]!, tabs: m[1] === '-' })
+        i += m[0].length - 1
+        atWordStart = false
+        continue
+      }
+    }
     atWordStart = /[\s;&|()<>]/.test(c)
   }
-  return comment
-}
-
-/** Per line: is it a heredoc's body or terminator (`<<X` / `<<-'X'` … `X`)? */
-function heredocLines(lines: readonly string[]): boolean[] {
-  const pending: Array<{ delim: string; tabs: boolean }> = []
-  return lines.map((line) => {
-    const open = pending[0]
-    if (open !== undefined) {
-      if ((open.tabs ? line.replace(/^\t+/, '') : line) === open.delim) pending.shift()
-      return true
-    }
-    for (const m of line.matchAll(/(?<!<)<<(?!<)(-?)\s*(['"]?)([A-Za-z_]\w*)\2/g)) {
-      pending.push({ delim: m[3]!, tabs: m[1] === '-' })
-    }
-    return false
-  })
+  return { comment, body }
 }
 
 /**
@@ -183,27 +195,34 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
   // `X FWD` closed nothing and the args never reached the command (X-12).
   // They go on the last line that is a command, where `cat <<X FWD` is
   // still `cat FWD` reading the heredoc.
-  const lines = command.trimEnd().split('\n')
-  const body = heredocLines(lines)
-  if (body[lines.length - 1] === true) {
-    const last = body.lastIndexOf(false)
+  const trimmed = command.trimEnd()
+  const lines = trimmed.split('\n')
+  const shape = shellShape(trimmed)
+  if (shape.body[lines.length - 1] === true) {
+    const last = shape.body.lastIndexOf(false)
     const tail = lines.slice(last + 1).join('\n')
     return `${withForwardArgs(lines.slice(0, last + 1).join('\n'), args)}\n${tail}`
   }
   const quoted = args.map(shellQuote).join(' ')
-  let comment = trailingCommentStart(command)
+  // Of the trimmed command: the newline closing a template literal's last
+  // line closed its comment too, and `echo args: # c\n` took the args into
+  // the comment (X-110).
+  let comment = shape.comment
   if (comment < 0) {
     // A command that ends in a newline (a template literal's closing line)
     // ran the args as a command of their own: `--watch: not found`. Kept
     // when an odd run of backslashes ends it: that escapes what follows.
-    const body = command.trimEnd()
-    const escaped = (/\\+$/.exec(body)?.[0].length ?? 0) % 2 === 1
-    return `${escaped ? command : body} ${quoted}`
+    const escaped = (/\\+$/.exec(trimmed)?.[0].length ?? 0) % 2 === 1
+    return `${escaped ? command : trimmed} ${quoted}`
   }
   // A comment-only last line after a commented line: the args go before
   // the earliest comment, or they land inside it (`echo one # c\n# two`).
-  for (let c = comment; c >= 0; c = trailingCommentStart(command.slice(0, c).trimEnd())) comment = c
-  return `${command.slice(0, comment).trimEnd()} ${quoted} ${command.slice(comment)}`
+  for (let c = comment; c >= 0; c = shellShape(trimmed.slice(0, c).trimEnd()).comment) comment = c
+  // What precedes the comment may end in a heredoc: the args go where they
+  // would with no comment, never on its terminator.
+  const head = trimmed.slice(0, comment).trimEnd()
+  const gap = trimmed.slice(head.length, comment) || ' '
+  return `${withForwardArgs(head, args)}${gap}${trimmed.slice(comment)}`
 }
 
 // Any shell control/expansion character means the wrapping `sh` has real
@@ -349,6 +368,18 @@ const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 const TIMEOUT_SIGKILL_GRACE_MS = 2000
 
 /**
+ * Run `fn` one loop turn later, once the child exits already pending are
+ * read. A deadline due in the same turn as a child's exit fires BEFORE Bun
+ * reaps it: a task that exited 0 inside its timeout, seen late by a busy vx,
+ * was SIGTERMed as a zombie and failed as timed out, and a server that died
+ * before ready read as a readiness timeout (2026-10-08). A turn later the
+ * exit has settled the caller, which clears the returned timer.
+ */
+function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
+  return setTimeout(fn, 0)
+}
+
+/**
  * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
  * `timedOut()` reports whether the timer fired — so the caller can
  * classify the resulting SIGTERM as a real failure rather than a
@@ -368,7 +399,10 @@ export function armTimeout(
   let firedAt: number | undefined
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  const timer = setTimeout(() => {
+  let timer = setTimeout(() => {
+    timer = afterPendingExits(fire)
+  }, timeoutMs)
+  function fire(): void {
     firedAt = Date.now()
     killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
@@ -379,7 +413,7 @@ export function armTimeout(
     // the CLI alive.
     killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), graceMs)
     killTimer.unref?.()
-  }, timeoutMs)
+  }
   return {
     timedOut: () => firedAt !== undefined,
     settle: async () => {
@@ -680,7 +714,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
-    readyTimer = setTimeout(() => {
+    const giveUp = (): void => {
       if (readyAt === undefined) {
         gaveUpAt = Date.now()
         rejectReady(
@@ -705,6 +739,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
         killTimer.unref?.()
       }
+    }
+    readyTimer = setTimeout(() => {
+      readyTimer = afterPendingExits(giveUp)
     }, opts.timeoutMs)
   }
 
@@ -897,7 +934,10 @@ class BoundedCapture {
   private dropped = 0
 
   push(chunk: string): void {
-    if (this.head.length < CAPTURE_HEAD_CHARS) {
+    // Once the tail has begun the head is closed, even a unit short of its
+    // bound (the surrogate case below): a later short chunk fit there and
+    // was retained ahead of the chunk before it.
+    if (this.tailLen === 0 && this.head.length < CAPTURE_HEAD_CHARS) {
       let room = CAPTURE_HEAD_CHARS - this.head.length
       if (chunk.length <= room) {
         this.head += chunk

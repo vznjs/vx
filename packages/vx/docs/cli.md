@@ -112,7 +112,8 @@ If no task name is given:
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
   across the workspace (only the selected projects' under `--filter` /
   `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
-  for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
+  for a number, runs the chosen one. The menu and prompt go to stderr,
+  so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
   `tasks` in a vx.config, or `vx init`).
@@ -267,7 +268,8 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
-  `<base>` itself, not the merge base. A ref that does
+  `<base>` itself, not the merge base. An exclusion (`^main`) is refused
+  the same way, naming `main`. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
@@ -437,7 +439,8 @@ them as a command of their own), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the
-`cat <<X` line (X-12). A persistent task gets
+`cat <<X` line (X-12). A `<<X` in a comment or in quotes opens no
+heredoc, and a quote in a body opens no string (X-110). A persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce
@@ -1012,7 +1015,8 @@ the kill's, 143 or 137 after the grace, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
-`aborted`, not failed, as any task the stop kills.
+`aborted`, not failed, as any task the stop kills; so is one that
+became ready only after the stop.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
@@ -1341,7 +1345,7 @@ watch events within 2000 ms; polling every 250 ms instead`.
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event, and wait at most
    1 s after the first, so a writer that never pauses holds no edit back.
-4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
+4. **Exit.** `SIGINT` (Ctrl+C) exits 0; once the cycle in flight is down, `vx watch: stopped` is the last line.
 
 ### Path filtering
 
@@ -2558,7 +2562,10 @@ the verb's own Usage line, and for `run` and `watch` the run option
 lines, less the ones `watch` refuses. So a flag cannot be documented
 and not completed, nor completed and then refused: a flag another
 verb's line names in passing (`vx lock --check` beside `--frozen`) is
-not one. A plugin verb completes `--help` only. Task and project
+not one. After a flag with a fixed value set the script offers that
+set: `--format` pretty or json, `--output-logs` full, errors-only,
+hash-only or none, `--download` all, toplevel or none — each value one
+the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
 works both ways zsh loads one: from `$fpath` it completes on the first
@@ -2649,7 +2656,10 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
-Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
+Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`. A sandboxed
+task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
+else `/tmp/claude`), the sandbox runtime's own convention
+(`docs/modules/sandbox-runtime.md`).
 
 ## Output format
 
