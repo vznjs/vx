@@ -85,6 +85,8 @@ function siteSource(urlPath: string): string | undefined {
   // generated page is absent until the site's import runs (darwin CI).
   if (page === 'modules') return path.join(CORE_DOCS, 'modules', 'README.md')
   if (page === 'design') return path.join(CORE_DOCS, 'design')
+  // Imported beside the compare page whose URL it extends (import-docs.ts).
+  if (page === 'compare/turbo-nx-support') return path.join(CORE_DOCS, 'turbo-nx-support.md')
   for (const candidate of [
     path.join(CORE_DOCS, `${core}.md`),
     path.join(CONTENT, `${page}.md`),
