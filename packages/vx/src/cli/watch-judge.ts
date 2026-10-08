@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
-import { gitIgnored } from './watch-filter.js'
+import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
 
 const ABSENT = -1n
@@ -63,6 +63,8 @@ export interface JudgeContext {
   fenced?(ownDir: string, abs: string): boolean
   /** The files git listed at the arm; absent when git could not answer. */
   existedAtArm?: ReadonlySet<string>
+  /** The files git tracked at the arm; absent when git could not answer. */
+  trackedAtArm?: ReadonlySet<string>
 }
 
 export class ChangeJudge {
@@ -77,7 +79,7 @@ export class ChangeJudge {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   readonly pending = new Map<string, string>()
-  /** The last cycle's wall window; a write inside it is the run's own. */
+  /** The last cycle's window, its start on the mtime clock (`fsClockNow`); a write inside it is the run's own. */
   lastCycle: { start: number; end: number } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
   // block declares none and still writes into its project, and the
@@ -124,14 +126,14 @@ export class ChangeJudge {
   // the moment between a judgement and that cycle's keys, and gone by the
   // next judgement, was read and its deletion re-runs nothing. Git lists
   // no ignored path, so one of those is a deletion as before.
-  private sameState(abs: string, ignored = false): boolean {
+  private sameState(abs: string, ignored: boolean, spell: (p: string) => string): boolean {
     const state = settledState(abs)
     const prev = this.lastState.get(abs)
     this.lastState.set(abs, state)
     if (prev !== undefined) return prev === state
     if (state === ABSENT) {
       const listed = this.ctx.existedAtArm
-      return !ignored && listed !== undefined && !listed.has(abs) && !this.inNestedRepo(abs)
+      return !ignored && listed !== undefined && !listed.has(spell(abs)) && !this.inNestedRepo(abs)
     }
     return modifiedBefore(abs, this.ctx.armedAt)
   }
@@ -146,13 +148,17 @@ export class ChangeJudge {
     return false
   }
 
-  private writtenDuringLastCycle(abs: string, openWhileHeld = false): boolean {
+  /** `spell` (git's spelling, see `gitSpeller`) given: a held server's write counts outside a cycle too. */
+  private writtenDuringLastCycle(abs: string, spell?: (p: string) => string): boolean {
     // A server the last cycle left running is still that cycle's: its
     // writes land after the cycle ended, and with a closed window a dev
     // server that rewrites a log in its project restarted itself forever
     // with no word of it, 12 restarts in 8 s (item 948). The initial run's
-    // server is one too, from the arm on.
-    const open = openWhileHeld && this.ctx.held()
+    // server is one too, from the arm on. Not a tracked file: that is the
+    // user's edit, and three saves of one source file were told to
+    // .gitignore it as a server's write (WD-7).
+    const open =
+      spell !== undefined && this.ctx.held() && this.ctx.trackedAtArm?.has(spell(abs)) !== true
     if (this.lastCycle === undefined && !open) return false
     try {
       const m = fs.statSync(abs).mtimeMs
@@ -165,6 +171,7 @@ export class ChangeJudge {
 
   judge(): string | undefined {
     const ignored = gitIgnored(this.ctx.workspaceRoot, [...this.pending.keys()])
+    const spell = gitSpeller(this.ctx.workspaceRoot)
     let first: string | undefined
     let firstAbs: string | undefined
     // `sameState` before the `first` test, never after it: it is what
@@ -190,7 +197,7 @@ export class ChangeJudge {
     let gone: [label: string, abs: string] | undefined
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
-      if (this.sameState(p, ignored.has(p)) || first !== undefined) continue
+      if (this.sameState(p, ignored.has(p), spell) || first !== undefined) continue
       if (!fs.existsSync(p)) {
         gone ??= [l, p]
         continue
@@ -201,7 +208,7 @@ export class ChangeJudge {
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
     const byServer = firstAbs !== undefined && this.ctx.held()
-    if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, true)) {
+    if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, spell)) {
       this.streak.n = 0
       return first
     }

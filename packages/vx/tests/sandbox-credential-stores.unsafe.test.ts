@@ -45,11 +45,22 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     const cmd = ['.ssh/id_ed25519', '.npmrc', '.aws/credentials', '.cache/tool/state']
       .map(read)
       .join('; ')
+    // A write grant names a store too: on Linux a file grant binds its
+    // directory, and the store's deny landed on top of the bind, so the
+    // write went to /dev/null with exit 0.
+    const written = [
+      'echo WROTE >> "$HOME/.npmrc"',
+      'echo CLI > "$HOME/.aws/config"',
+      read('.npmrc'),
+      read('.aws/config'),
+      read('.aws/credentials'),
+    ].join('; ')
     await writeFile(
       path.join(ws, 'packages', 'a', 'vx.config.mjs'),
       `export default { tasks: {
   peek: { exec: { command: ${JSON.stringify(cmd)}, sandbox: { allow: { read: ['.'] } } } },
   granted: { exec: { command: ${JSON.stringify(read('.npmrc'))}, sandbox: { allow: { read: ['.', '~/.npmrc'] } } } },
+  written: { exec: { command: ${JSON.stringify(written)}, sandbox: { allow: { read: ['.'], write: ['~/.npmrc', '~/.aws/config'] } } } },
 } }
 `,
     )
@@ -67,9 +78,12 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       return text
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
-        .filter((l) => /^(no \.|SSHKEY|NPMRC|AWSKEY|CACHE)/.test(l))
+        .filter((l) => /^(no \.|SSHKEY|NPMRC|AWSKEY|CACHE|WROTE|CLI)/.test(l))
     }
     expect(out('peek')).toEqual(['no .ssh/id_ed25519', 'no .npmrc', 'no .aws/credentials', 'CACHE'])
     expect(out('granted')).toEqual(['NPMRC'])
+    expect(out('written')).toEqual(['NPMRC', 'WROTE', 'CLI', 'no .aws/credentials'])
+    expect(await Bun.file(path.join(home, '.npmrc')).text()).toBe('NPMRC\nWROTE\n')
+    expect(await Bun.file(path.join(home, '.aws/config')).text()).toBe('CLI\n')
   })
 })

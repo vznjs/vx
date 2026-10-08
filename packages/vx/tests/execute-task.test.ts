@@ -941,6 +941,37 @@ describe('execute-task — what one attempt may hand the next', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "exec.timeout counts from the executor's call, not from the sandbox's arming",
+    async () => {
+      // The request's signal armed the timeout before `armSandbox` (the
+      // runtime's ~200 ms probe): a 60 ms `echo` reached the executor with
+      // its signal aborted and failed as timed out without running.
+      const b = await bench()
+      const f = { root: '', out: [] as string[], err: [] as string[] }
+      try {
+        const n = node(b, { exec: { command: 'true', timeout: 50, sandbox: {} } }, 'proj#sb')
+        const seen: (boolean | undefined)[] = []
+        const recorder = {
+          name: 'org/recorder',
+          execute: async (req: { signal?: AbortSignal }) => {
+            seen.push(req.signal?.aborted)
+            return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+          },
+        } as never
+        const outcome = await executeTask({
+          ...baseArgs(b, n, capturingLogger(f)),
+          executor: recorder,
+          armSandbox: () => Bun.sleep(150),
+        })
+        expect([seen, outcome.status]).toEqual([[false], 'success'])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('execute-task — cache-hit materialization', () => {

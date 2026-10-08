@@ -5,7 +5,8 @@
 A confirmed cache entry, materialised: decide whether the tree is
 already current (the whole-subtree directory proof, then the per-file
 fingerprint proof) and skip the restore when it is; otherwise clean the
-declared outputs and restore the artifact; mark the exact changed paths
+declared outputs (pruning only inside the declared trees, so a sibling's
+fresh directory stays; inputs.md) and restore the artifact; mark the exact changed paths
 against the git snapshot so a same-project consumer need not re-spawn
 git; replay the stored stdout; build the cache-hit outcome. Moved out
 of `execute-task.ts` on 2026-09-10 as pure code motion — the mirror of
@@ -38,8 +39,11 @@ where it was.
 
 ## Additive tasks (item 588)
 
-An ADDITIVE task (`node.addsToOutputsOf`) is judged current by its
-recorded rows alone and cleans by those rows (`cleanOutputPaths`), never
+Only with `rules.exclusiveOutputs: false` (X-53); by default the graph
+refuses an edge-ordered overlap. An ADDITIVE task
+(`node.addsToOutputsOf`) is judged current by its
+recorded rows alone and cleans by those rows (`cleanOutputPaths`, pruning
+only inside its declared trees as the glob clean does), never
 by its glob, which also selects the upstream's files it adds beside. An
 upstream that dependants add to (`node.outputsAddedToBy`) drops the
 strays their globs could have added before it judges its own tree — on

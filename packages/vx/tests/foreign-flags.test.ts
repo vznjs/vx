@@ -66,6 +66,15 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
     ['--exclude', 'a,b'],
     ['--filter', '!a', '--filter', '!b'],
   ],
+  // Nx's `name:` and `directory:` labels matched nothing.
+  [
+    ['-p', 'directory:apps/*,name:web,!directory:apps/old,tag:x'],
+    ['--filter', './apps/*', '--filter', 'web', '--filter', '!./apps/old', '--filter', 'tag:x'],
+  ],
+  [
+    ['--exclude', 'directory:apps/*,name:web'],
+    ['--filter', '!./apps/*', '--filter', '!web'],
+  ],
   [
     ['--parallel', '3'],
     ['--concurrency', '3'],
@@ -134,7 +143,10 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     "--json (turbo): use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
   ],
   [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
-  [['--preflight'], '--preflight (turbo): `turboCache()` sends no CORS preflight: drop it'],
+  [
+    ['--preflight'],
+    '--preflight (turbo): set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
+  ],
   [
     ['--remote-cache-timeout', 'x'],
     '--remote-cache-timeout (turbo): set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`',
@@ -254,7 +266,7 @@ describe('Turbo and Nx flags on vx run', () => {
     }
     // CONTROL: a camelCase name with no Nx flag behind it stays unknown.
     expect(parseRunArgs(['build', '--dryRun']).error).toBe(
-      'unknown flag: --dryRun (did you mean --dry?) (see `vx run --help`)',
+      'unknown flag: --dryRun (did you mean --dry?)',
     )
   })
 

@@ -11,6 +11,8 @@ plugin's `telemetry()` consultation before the run too (item 921).
 teardownTimeoutMs(): number                       // default 3000
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // VX_KILL_GRACE_MS, else defaultMs
+claimExitForSignal(): void                        // a signal's handler will end the process
+exitClaimedBySignal(): boolean
 ```
 
 - `teardownTimeoutMs` reads `VX_TEARDOWN_TIMEOUT_MS` per call (a test
@@ -35,7 +37,15 @@ killGraceMs(defaultMs: number): number            // VX_KILL_GRACE_MS, else defa
   the tests that prove the escalation: each used to wait the full two
   seconds, a third of the suite's wall time, for a claim 200 ms proves.
 
+- `claimExitForSignal` / `exitClaimedBySignal`: bin.ts exits once its
+  verb has settled and both streams have ended, so a timer a config left
+  cannot hold vx open. A signal's handler (`orchestrator/signals.ts`)
+  exits by itself with the signal's code after the run it stopped is
+  done, and the verb settles first with the run's verdict; the claim
+  keeps bin.ts from exiting 1 ahead of it.
+
 ## Tests
 
 `tests/util-settle.test.ts` (both deadlines and the grace knob);
-`tests/timeout-bounds.test.ts`.
+`tests/timeout-bounds.test.ts`; `tests/exit-held-loop.test.ts` and
+`tests/signal-handling.test.ts` (the exit claim).
