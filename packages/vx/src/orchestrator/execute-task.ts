@@ -51,7 +51,7 @@ import {
   span,
   UserError,
 } from '../util/index.js'
-import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import {
   mayWriteFingerprint,
@@ -133,6 +133,8 @@ export interface ExecuteArgs {
    * terms (item 962).
    */
   stopSignal?: AbortSignal
+  /** `continueMode: 'never'` stopped dispatch: no further attempt starts. */
+  failFast?: AbortSignal
   /**
    * Registry the orchestrator owns. For each persistent task we
    * spawn, we stash the subprocess handle here so the orchestrator
@@ -464,6 +466,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   try {
     await spawn.ready
   } catch (err) {
+    // A shell that exited before ready can leave its group running
+    // (`server & …; exit`): never registered, so no teardown reached it,
+    // and it held its port against the next `vx watch` cycle's server.
+    if (err instanceof PersistentReadyError && err.reason === 'exited')
+      await terminateChildren(() => [spawn.child])
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
@@ -512,6 +519,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // One the readiness timeout is killing reports the signal's, as an
     // ordinary timeout does (X-24).
     const ready = err instanceof PersistentReadyError ? err : undefined
+    // The timer's SIGKILL is a grace away and the shell may die on the
+    // TERM first: a server that ignores it held its port past run() into
+    // the next `vx watch` cycle. Return once the group is gone.
+    if (ready?.reason === 'timeout') await terminateChildren(() => [spawn.child])
     return {
       node,
       status: 'failed',
@@ -523,6 +534,20 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
+  // Ready only once the stop had landed: a trap that prints the marker on
+  // the way down, or a race with the signal. The stop is killing it (it
+  // is in `liveChildren`), and it served nobody, as a one-shot that exits
+  // 0 on the stop is aborted (item 962).
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal!.reason)),
+      durationMs: spawn.readyMs(),
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   args.persistentRegistry?.set(node.id, spawn.child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
   if (mayWriteFingerprint(node, args.workspaceRoot)) args.fingerprintWatch?.wrote()
@@ -903,7 +928,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
       const endClean = span('miss: clean outputs')
-      const cleanedRels = await cleanOutputs({ ...cleanArgs, keepGlobRoots: true })
+      const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
       args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
@@ -1040,8 +1065,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // 258) — and an exit above 128 is a signal's number and nothing
     // about what sent it (259). One frame line names the rule. A spawn that
     // threw ran no shell: its 127 is vx's, and the line would send the
-    // reader after a command that exists (A-41).
-    if (!res.timedOut && res.spawnFailed !== true) {
+    // reader after a command that exists (A-41). A run's stop killed it
+    // itself: the SIGKILL past the grace read as the OOM killer's.
+    if (!res.timedOut && res.spawnFailed !== true && args.stopSignal?.aborted !== true) {
       const verdict = shellVerdict({
         code,
         command: step.command,
@@ -1153,7 +1179,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
     }
 
-    if (effectiveExitCode === 0 || attempt >= maxAttempts) break
+    if (effectiveExitCode === 0 || attempt >= maxAttempts || args.failFast?.aborted === true) break
     failedAttempts.push({
       endedAt: Date.now(),
       exitCode: effectiveExitCode,
@@ -1192,7 +1218,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
             },
           }
         : {}),
-      signal: requestSignal(),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
@@ -1204,7 +1229,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
     }
-    if (!userSandbox) return base
+    // The signal last: it arms `exec.timeout`, and the sandbox's arming
+    // below is vx's work, not the task's. Armed first, a 60 ms timeout
+    // expired before the spawn and failed `echo` as timed out, unrun.
+    if (!userSandbox) return { ...base, signal: requestSignal() }
     await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
@@ -1216,7 +1244,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     placeholders = sb.placeholders
     withheld = sb.withheld
-    return { ...base, sandbox: sb.sandbox }
+    return { ...base, sandbox: sb.sandbox, signal: requestSignal() }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs

@@ -55,7 +55,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn>
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready
-  readyMs: () => number // ms from spawn to ready (or now)
+  readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
 }
 
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
@@ -134,7 +134,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
-  line), so no comment can swallow them. The sandbox wrapper and the
+  line), so no comment can swallow them; one scan reads quotes,
+  comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
   bytes are corrupted.
@@ -234,7 +235,9 @@ Bun's shape into our schema:
   `/proc/self/status` after the child exits (the mark is monotonic, so
   it covers the task's span; elsewhere the current RSS is the bound in
   hand), and `peakRssBytes` is set only more than `RSS_FLOOR_SLACK_BYTES`
-  (4 MiB) above it — unknown, bounded by vx's own footprint, otherwise. The
+  (4 MiB) above it — unknown, bounded by vx's own footprint, otherwise.
+  The read is skipped when the last one already decides: a peak within
+  the slack of an older mark is within it of the current one. The
   slack is there because a light child reads ON the floor by construction
   and the kernel's per-thread RSS counters lag by pages between syncs: an
   exact comparison reported 376 MB for `true` on one CI run in twelve

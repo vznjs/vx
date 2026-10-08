@@ -159,32 +159,32 @@ export class ReapiRemoteCache {
   }
 
   /**
-   * A large artifact takes two passes over `body`, never one in memory: the
-   * digest first (the CAS address must be known before the server is asked),
-   * then the upload from a second read of the stream.
+   * An artifact past `writeBlob`'s whole read takes two passes over `body`,
+   * never one in memory: the digest first (the CAS address must be known
+   * before the server is asked), then the upload from a second read of the
+   * stream.
    */
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
-    let digest: Digest
-    if (body.size <= SMALL_PUT_BYTES) {
+    // Read once, and those bytes hashed and sent, wherever `writeBlob` would
+    // read the Blob whole anyway: a second writer of the key renames its
+    // artifact over the file, and two reads sent its bytes under this one's
+    // digest (F-50).
+    const data = body.size <= this.client.wholeWriteBytes ? await body.bytes() : undefined
+    const digest = data === undefined ? await streamedDigestOf(body) : digestOf(data)
+    if (data !== undefined && data.length <= SMALL_PUT_BYTES) {
       // A small artifact is sent in one batch without asking first: the
       // probe was a round trip of its own to save an upload no larger than
       // it (102 → 71 ms per save at 15 ms one-way, F-26). Content-addressed,
       // so a re-send is harmless.
-      // Read once, and those bytes hashed and sent: a second writer of the
-      // key renames its artifact over the file, and two reads sent its bytes
-      // under this one's digest (F-50).
       // A server whose batch limit is smaller refuses it; stream instead.
-      const data = await body.bytes()
-      digest = digestOf(data)
       await this.client
         .batchUpdateBlobs([{ digest, data }])
         .catch(() => this.client.writeBlob(digest, data))
     } else {
-      digest = await streamedDigestOf(body)
       // Upload only what the server lacks: for a large artifact the probe is
       // cheap next to the bytes it can skip.
       const missing = await this.client.findMissingBlobs([digest])
-      if (missing.length > 0) await this.client.writeBlob(digest, body)
+      if (missing.length > 0) await this.client.writeBlob(digest, data ?? body)
     }
     await this.client.updateActionResult(actionDigestFor(hash), {
       exit_code: 0,

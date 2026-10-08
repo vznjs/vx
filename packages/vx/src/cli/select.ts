@@ -425,7 +425,7 @@ export async function resolveFilters(
   }
 }
 
-export interface PickedTask {
+interface PickedTask {
   project: string
   task: string
   description?: string
@@ -439,6 +439,8 @@ export async function pickTask(
   cwd: string,
   io: { input?: NodeJS.ReadableStream; output?: NodeJS.WritableStream } = {},
   load: CliLoadOptions = {},
+  /** The projects `--filter` / `--affected` selected; every project when absent. */
+  only?: ReadonlySet<string>,
 ): Promise<PickedTask | null | 'interrupted'> {
   const projects = await loadWorkspaceProjects(cwd)
   // The staged load: a task a `project` plugin gave a config-less package
@@ -446,6 +448,7 @@ export async function pickTask(
   const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
   const entries: PickedTask[] = []
   for (const meta of projects) {
+    if (only !== undefined && !only.has(meta.name)) continue
     const config = staged.get(meta.name)?.config
     if (config === undefined) continue
     const taskNames = Object.keys(config.tasks ?? {})
@@ -456,13 +459,21 @@ export async function pickTask(
       entries.push({ project: meta.name, task: t, ...(desc ? { description: desc } : {}) })
     }
   }
+  if (entries.length === 0 && only !== undefined) {
+    process.stderr.write(
+      `vx run: no tasks declared in the selected projects (${[...only].sort().join(', ')})\n`,
+    )
+    return null
+  }
   if (entries.length === 0) {
     process.stderr.write(
       'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
     )
     return null
   }
-  const out = io.output ?? process.stdout
+  // The menu is a conversation with the terminal, not the run's output: on
+  // stdout, `vx run > out.txt` put it in the file and asked a blank screen.
+  const out = io.output ?? process.stderr
   const numW = String(entries.length).length
   const idW = Math.max(...entries.map((e) => `${e.project}#${e.task}`.length))
   out.write('Tasks:\n')
@@ -477,7 +488,7 @@ export async function pickTask(
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({
     input: io.input ?? process.stdin,
-    output: io.output ?? process.stdout,
+    output: out,
   })
   // On a terminal readline takes Ctrl-C and Ctrl-D itself, raw, and
   // rejects the pending question with an AbortError — which reached the

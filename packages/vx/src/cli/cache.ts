@@ -185,19 +185,9 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
-  if (parsed.dryRun === true) {
-    const earlier = await Cache.orphansBeforeReset(dir)
-    if (earlier !== null) {
-      warnToStderr(
-        `[vx] the cache index is schema ${earlier.found} from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
-      )
-      printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true, json)
-      return 0
-    }
-  }
   const cache =
     parsed.dryRun === true
-      ? new Cache(dir, undefined, undefined, undefined, 'inspect', storeRoot)
+      ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
       : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather

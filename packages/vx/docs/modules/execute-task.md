@@ -64,11 +64,16 @@ anything beneath it changes.
 4. Call `runPersistent(opts)`. Stash the returned `child` in
    `persistentRegistry[node.id]`.
 5. `await spawn.ready`. On reject (child exited before ready) →
+   stop what its group left running (SIGTERM, grace, SIGKILL), then
    return `failed` with the captured streams.
-6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
+6. On resolve → return `success` with `durationMs = spawn.readyMs()`,
+   unless the run's stop has landed: a server that matched `readyWhen`
+   only on the way down (a trap that prints the marker) is `aborted`,
+   as a one-shot that exits 0 on the stop is, and is not registered.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
-caches.
+caches. A readiness timeout returns once the server's process group is
+gone (SIGTERM, grace, SIGKILL), not when its shell exits.
 
 ### C. Normal task
 
@@ -96,8 +101,10 @@ caches.
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
-     `dist/` doesn't survive into a fresh exec; the directory each
-     wildcard output glob is rooted at stays (`keepGlobRoots`, B-49).
+     `dist/` doesn't survive into a fresh exec: it prunes only inside
+     the declared trees, so a glob's root stays (B-49) and a directory
+     above it or holding a literal output, which a sibling task may just
+     have made to write into, stays too (inputs.md).
    - Build isolated env (`<projectDir>/node_modules/.bin`, then
      `<workspaceRoot>/node_modules/.bin`, prepended to PATH).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
@@ -106,7 +113,10 @@ caches.
      `args.executor` — the executor this task was PLACED on by `run.ts`
      before scheduling, so every attempt of a task runs in the same
      place. With no executor plugin declared that is the local floor —
-     `runCommand` / `runSandboxed` exactly as before.
+     `runCommand` / `runSandboxed` exactly as before. The request's
+     `signal`, which arms `exec.timeout`, is made last, once the
+     sandbox is armed: armed first, a 60 ms `echo` timed out unrun
+     under the runtime's ~200 ms probe.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one
@@ -154,7 +164,8 @@ Moved out on 2026-09-10 as pure code motion; re-exported from here.
 
 ## The save
 
-An ADDITIVE task (`node.addsToOutputsOf`, item 588) is not cleaned by
+An ADDITIVE task (`node.addsToOutputsOf`, item 588; only with
+`rules.exclusiveOutputs: false`, X-53) is not cleaned by
 glob before an attempt: its outputs are stamped once before the first
 attempt (`stampOutputs`) and, after a 0 exit, its own set is what the
 run added or changed against that stamp (`ownOutputsSince`), handed to
@@ -217,8 +228,8 @@ is a file, and the file says why, under either code: missing (the
 resolved path), a directory, not executable by this user, a `#!` line ending in CRLF
 (the interpreter's name ends in `\r`), a `#!` interpreter that does not
 exist, or no `#!` line at all (the loader refused a binary). For a
-sandboxed task a file the host has but no grant reads (`sandboxReads`)
-is named as hidden by the sandbox: it is not there inside, and the
+sandboxed task a file the host has under a denial no grant reads
+(`sandboxReads`) is named as hidden by the sandbox: it is not there inside, and the
 `#!` line was blamed (B-66). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
 blame the file (bash 3.2 names the interpreter itself; macOS runs
@@ -231,7 +242,9 @@ SIGSEGV/SIGBUS/SIGILL/SIGFPE a crash in native code, SIGABRT an
 assertion or a JS runtime's heap limit, SIGPIPE a reader that left,
 SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox. A
 SIGINT/SIGTERM the runner saw gets no line: the task is aborted when
-the run is stopping, else failed. A timed-out step gets no line either: its
+the run is stopping, else failed; nor does any task that ends while
+the run is stopping, since the stop's own SIGKILL past the grace read
+as the OOM killer's. A timed-out step gets no line either: its
 own line names the timeout, and so does a spawn that threw
 (`RunResult.spawnFailed`, A-41): no shell ran, so its 127 is vx's, and
 `EMFILE` there is named with the `ulimit -n` to raise. Pinned in `tests/shell-verdict.test.ts` on real files and

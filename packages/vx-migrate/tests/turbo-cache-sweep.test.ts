@@ -246,3 +246,21 @@ describe('the signed download', () => {
     ).rejects.toThrow('the artifact signature did not verify — treated as a miss')
   })
 })
+
+describe('a read-only token or server', () => {
+  // turborepo-remote-cache under READ_ONLY (or a JWT without the write
+  // scope) answers an upload 403 and still serves reads.
+  it("an upload's 403 turns off uploads alone, said once; reads go on", async () => {
+    const { fetchImpl, calls } = stub((method) =>
+      method === 'PUT' ? new Response(null, { status: 403 }) : new Response('bytes'),
+    )
+    const c = cacheWith(fetchImpl)
+    await expect(c.put('aa', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+      'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
+    )
+    expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
+    expect(await c.has('aa')).toBe(true)
+    expect(await (await c.get('aa'))!.body.text()).toBe('bytes')
+    expect(calls.map((r) => r.method)).toEqual(['PUT', 'HEAD', 'GET'])
+  })
+})

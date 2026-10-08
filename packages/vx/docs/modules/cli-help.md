@@ -38,6 +38,10 @@ export async function completionsCmd(
   pluginVerbs: readonly string[],
 ): Promise<number>
 
+// the value sets `completions.ts` offers after a flag; the tests hold
+// each to the flag's parser
+export const FLAG_VALUES: Readonly<Record<string, readonly string[]>>
+
 // `core-alias.ts`: registers the `@vzn/vx` virtual module so a
 // `vx.config.ts` can import the façade inside the compiled binary,
 // where no node_modules copy exists. `bin.ts` calls it before dispatch.

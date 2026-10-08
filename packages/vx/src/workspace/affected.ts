@@ -19,7 +19,7 @@ import {
   relPosix,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
-import { configImportOwners } from './config-imports.js'
+import { configImportOwners, realpathOr } from './config-imports.js'
 import { configImports } from './config-cache.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
@@ -174,6 +174,14 @@ export async function affectedChanges(
     throw new UserError(
       `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+    )
+  }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
     )
   }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -432,7 +440,17 @@ async function dependentsAtBase(
     ) {
       continue
     }
-    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    // Today's catalogs, or both graphs would differ on every `catalog:`
+    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
+    // edit, which the fingerprint widening and the root's own change answer.
+    const catalogs = projects[0]?.catalogs
+    byDir.set(dir, {
+      name: pkg.name,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+      ...(catalogs === undefined ? {} : { catalogs }),
+    })
     if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])
@@ -758,6 +776,17 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   const sha = out.trim()
   if (exit === 0 && sha.length > 0) return sha
   await verifyRef(workspaceRoot, ref)
+  // `<rev>:<path>` names the tree (or blob) at <path>: diffed against the
+  // working tree, its paths miss the <path>/ prefix, and `develop:pkgs`
+  // selected projects nothing had changed, green. A root tree
+  // (`develop^{tree}`, the empty tree) diffs right and stays a base.
+  const sub = /^([^:]*):(?!\/)(.+)$/s.exec(ref)
+  if (sub !== null) {
+    throw new UserError(
+      `git ref "${ref}" names what is at ${sub[2]}, not a commit: vx diffs the whole ` +
+        `workspace, so pass the commit alone ("${sub[1] || 'HEAD'}").`,
+    )
+  }
   return ref
 }
 
@@ -800,14 +829,6 @@ function isDirectory(abs: string): boolean {
     return statSync(abs).isDirectory()
   } catch {
     return false
-  }
-}
-
-function realpathOr(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return p
   }
 }
 
