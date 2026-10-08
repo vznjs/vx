@@ -93,8 +93,8 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): SummaryTaskJson {
     // task that could never hit (its `hash` is still set — dependents fold
     // it). Present only when true, so every other row is byte-identical.
     ...(o.node.config.cache === undefined ? { noCache: true } : {}),
-    // Present only when the run proved the task flaky: this exact key has
-    // both passed and failed on record (this run counted), or the task
+    // Present only when the run proved the task flaky: this exact key
+    // failed after it had passed (this run counted), or the task
     // needed a retry. A consumer gating on `failed` can tell a break from a
     // flake without the history; every other row is byte-identical.
     ...(flaky !== undefined

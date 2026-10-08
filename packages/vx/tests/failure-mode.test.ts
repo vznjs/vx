@@ -5,8 +5,8 @@
 // OPPOSITE verdicts on identical rows (five failures on five distinct keys
 // read `stable` on one surface and `flaky-fatal` on the other). So these
 // tests assert the rule itself — flakiness needs a NONDETERMINISM signal, a
-// within-run retry or one cache key that both failed and succeeded — and then
-// assert both consumers still answer it identically.
+// within-run retry or one cache key that failed after it had passed — and
+// then assert both consumers still answer it identically.
 //
 // The consumer-level suites (history.test.ts, metrics.test.ts) exercise the
 // surfaces; this one exercises the primitives they share.
@@ -137,20 +137,20 @@ describe('mixedOutcomeKeyCount', () => {
     })
   })
 
-  it('counts a key that failed and later succeeded', async () => {
+  it('does not count a key that failed and later succeeded', async () => {
+    // A recovery: the environment was broken (a missing tool, a service
+    // down) and the first pass came once it was fixed. Nothing has shown
+    // these inputs going red after green.
     const rows = [
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'success' }),
     ]
     await withRuns(rows, (db) => {
-      expect(mixedOutcomeKeyCount(db, 'pkg', 'test')).toBe(1)
+      expect(mixedOutcomeKeyCount(db, 'pkg', 'test')).toBe(0)
     })
   })
 
-  it('counts a key that succeeded and later failed (order-independent)', async () => {
-    // The signal is "both outcomes exist for these inputs" — a GROUP BY, not a
-    // transition. Order-sensitivity here would make the verdict depend on when
-    // the dashboard happened to look.
+  it('counts a key that succeeded and later failed', async () => {
     const rows = [
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'success' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
@@ -166,8 +166,8 @@ describe('mixedOutcomeKeyCount', () => {
   for (const status of ['cache-hit', 'cache-hit-remote'] as const) {
     it(`counts a '${status}' row as the pass side`, async () => {
       const rows = [
-        mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
         mkRun({ hash: 'K', project: 'pkg', task: 'test', status, cacheHit: false }),
+        mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       ]
       await withRuns(rows, (db) => {
         expect(mixedOutcomeKeyCount(db, 'pkg', 'test')).toBe(1)
@@ -179,8 +179,8 @@ describe('mixedOutcomeKeyCount', () => {
     // Third pass predicate: the `cache_hit` column, independent of `status`.
     // Older rows carry the flag without a `cache-hit*` status.
     const rows = [
-      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'skipped', cacheHit: true }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
     ]
     await withRuns(rows, (db) => {
       expect(mixedOutcomeKeyCount(db, 'pkg', 'test')).toBe(1)
@@ -191,9 +191,9 @@ describe('mixedOutcomeKeyCount', () => {
     // The return value is a COUNT OF KEYS, not of rows: three failures on one
     // mixed key must not read as three separate flakes.
     const rows = [
-      mkRun({ hash: 'M1', project: 'pkg', task: 'test', status: 'failed' }),
-      mkRun({ hash: 'M1', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'M1', project: 'pkg', task: 'test', status: 'success' }),
+      mkRun({ hash: 'M1', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'M1', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'M2', project: 'pkg', task: 'test', status: 'success' }),
       mkRun({ hash: 'M2', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'clean-a', project: 'pkg', task: 'test', status: 'success' }),
@@ -236,8 +236,8 @@ describe('mixedOutcomeKeyCount', () => {
     // A flake in one package must not paint its neighbours — nor a sibling
     // task in the same package — as flaky.
     const rows = [
-      mkRun({ hash: 'K', project: 'pkg-a', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg-a', task: 'test', status: 'success' }),
+      mkRun({ hash: 'K', project: 'pkg-a', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K2', project: 'pkg-b', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K3', project: 'pkg-a', task: 'build', status: 'failed' }),
     ]
@@ -265,8 +265,8 @@ describe('mixedOutcomeKeyCount', () => {
   it('treats project and task as bound data, never as SQL', async () => {
     const nasty = "'; DROP TABLE runs; --"
     const rows = [
-      mkRun({ hash: 'K', project: nasty, task: nasty, status: 'failed' }),
       mkRun({ hash: 'K', project: nasty, task: nasty, status: 'success' }),
+      mkRun({ hash: 'K', project: nasty, task: nasty, status: 'failed' }),
       mkRun({ hash: 'S', project: 'pkg', task: 'test', status: 'success' }),
     ]
     await withRuns(rows, (db) => {
@@ -282,8 +282,8 @@ describe('mixedOutcomeKeyCount', () => {
     // expression was reverted (it defeated the index). This pins that the
     // helper takes the two fields SEPARATELY, so re-concatenating would break.
     const rows = [
-      mkRun({ hash: 'K', project: '@scope/pkg-ü', task: 'test#unit', status: 'failed' }),
       mkRun({ hash: 'K', project: '@scope/pkg-ü', task: 'test#unit', status: 'success' }),
+      mkRun({ hash: 'K', project: '@scope/pkg-ü', task: 'test#unit', status: 'failed' }),
       mkRun({ hash: 'K', project: '@scope/pkg-ü#test', task: 'unit', status: 'failed' }),
     ]
     await withRuns(rows, (db) => {
@@ -345,7 +345,7 @@ describe('classifyFailureMode', () => {
     await withRuns(rows, (db) => {
       // Three failures on ONE key that has never succeeded is a deterministic
       // break, not flake: there is no nondeterminism signal — no within-run
-      // retry, and no key that both failed and passed. Calling this flaky is
+      // retry, and no key that failed after it had passed. Calling this flaky is
       // what the pre-rule `failures < total/5` heuristic did, and it is what
       // sends a developer to bolt `exec.retries` onto a real breakage.
       expect(classifyFailureMode(db, 'pkg', 'lint', { total: 3, failures: 3, retried: 0 })).toBe(
@@ -354,10 +354,10 @@ describe('classifyFailureMode', () => {
     })
   })
 
-  it('is flaky when one key both failed and succeeded', async () => {
+  it('is flaky when one key failed after it had succeeded', async () => {
     const rows = [
-      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'success' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
     ]
     await withRuns(rows, (db) => {
       expect(classifyFailureMode(db, 'pkg', 'test', { total: 2, failures: 1, retried: 0 })).toBe(
@@ -404,8 +404,8 @@ describe('classifyFailureMode', () => {
 
   it('is flaky when the pass side of the mixed key is a cache hit', async () => {
     const rows = [
-      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'cache-hit', cacheHit: true }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
     ]
     await withRuns(rows, (db) => {
       expect(classifyFailureMode(db, 'pkg', 'test', { total: 2, failures: 1, retried: 0 })).toBe(
@@ -432,8 +432,8 @@ describe('classifyFailureMode', () => {
       // A real mixed key supplies the flaky signal for the failing cases; the
       // zero-failure rows lean on `retried` instead (the only other signal).
       const rows = [
-        mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
         mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'success' }),
+        mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       ]
       await withRuns(rows, (db) => {
         expect(
@@ -481,8 +481,8 @@ describe('classifyFailureMode', () => {
     // The control for the two short-circuit tests above: without it, a helper
     // that never queried at all would pass both of them.
     const rows = [
-      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'success' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
     ]
     await withRuns(rows, (real) => {
       const { db, queries } = countingDb(real)
@@ -566,14 +566,44 @@ describe('detectFlaky', () => {
     })
   })
 
-  it('names a pass on a key that failed before', async () => {
+  it('a first pass after only failures is a recovery, not a flake', async () => {
+    // The parity-lane case: a task failed for an environment reason, then
+    // passed on the same key once fixed, and its row read "flaky - failed 1×
+    // before".
     const rows = [
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
     ]
     await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K')])).toEqual([])
+    })
+  })
+
+  it('names a pass on a key that passed, then failed', async () => {
+    const rows = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'test' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+    ]
+    await withRuns(rows, (db) => {
       expect(detectFlaky(db, [cand('K')])).toEqual([
-        { ...cand('K'), taskId: 'pkg#test', passes: 1, failures: 2 },
+        { ...cand('K'), taskId: 'pkg#test', passes: 2, failures: 2 },
+      ])
+    })
+  })
+
+  it('a failure-only history then a pass is not flagged; a failure after that pass is', async () => {
+    const rows = [mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' })]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K')])).toEqual([])
+    })
+    const recovered = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test' }),
+    ]
+    await withRuns(recovered, (db) => {
+      expect(detectFlaky(db, [cand('K', 'failed')])).toEqual([
+        { ...cand('K', 'failed'), taskId: 'pkg#test', passes: 1, failures: 2 },
       ])
     })
   })
@@ -590,7 +620,10 @@ describe('detectFlaky', () => {
   })
 
   it('scopes to the (project, task) pair even when another pair shares the key string', async () => {
-    const rows = [mkRun({ hash: 'K', project: 'other', task: 'test', status: 'failed' })]
+    const rows = [
+      mkRun({ hash: 'K', project: 'other', task: 'test' }),
+      mkRun({ hash: 'K', project: 'other', task: 'test', status: 'failed' }),
+    ]
     await withRuns(rows, (db) => {
       expect(detectFlaky(db, [cand('K')])).toEqual([])
       expect(detectFlaky(db, [cand('K', 'success', 1, 'other')])).toHaveLength(1)
@@ -598,9 +631,10 @@ describe('detectFlaky', () => {
   })
 
   it('judges every candidate past the first chunk of 500, and the last of each chunk', async () => {
-    const rows = ['K499', 'K1100'].map((hash) =>
+    const rows = ['K499', 'K1100'].flatMap((hash) => [
+      mkRun({ hash, project: 'pkg', task: 'test' }),
       mkRun({ hash, project: 'pkg', task: 'test', status: 'failed' }),
-    )
+    ])
     await withRuns(rows, (db) => {
       const many = Array.from({ length: 1200 }, (_, i) => cand(`K${i}`))
       expect(detectFlaky(db, many).map((f) => f.hash)).toEqual(['K499', 'K1100'])
@@ -608,7 +642,10 @@ describe('detectFlaky', () => {
   })
 
   it('does not mix two tasks of one project that share a key string', async () => {
-    const rows = [mkRun({ hash: 'K', project: 'pkg', task: 'lint', status: 'failed' })]
+    const rows = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'lint' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'lint', status: 'failed' }),
+    ]
     await withRuns(rows, (db) => {
       expect(detectFlaky(db, [cand('K')])).toEqual([])
       expect(detectFlaky(db, [cand('K', 'success', 1, 'pkg', 'lint')])).toHaveLength(1)
@@ -635,6 +672,8 @@ describe('flakyTasks', () => {
       mkRun({ hash: 'B', project: 'pkg', task: 'test' }),
       mkRun({ hash: 'C', project: 'pkg', task: 'lint', status: 'failed' }),
       mkRun({ hash: 'C', project: 'pkg', task: 'lint', status: 'failed' }),
+      mkRun({ hash: 'D', project: 'pkg', task: 'e2e', status: 'failed' }),
+      mkRun({ hash: 'D', project: 'pkg', task: 'e2e' }),
     ]
     await withRuns(rows, (db) => expect(flakyTasks(db)).toEqual([]))
   })
@@ -642,17 +681,17 @@ describe('flakyTasks', () => {
   it('lists each task with a mixed key, most failures first, with its keys and counts', async () => {
     const rows = [
       // web#test: two mixed keys, 3 failures / 3 passes.
-      mkRun({ hash: 'A', project: 'web', task: 'test', status: 'failed' }),
       mkRun({ hash: 'A', project: 'web', task: 'test' }),
-      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
-      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'A', project: 'web', task: 'test', status: 'failed' }),
       mkRun({ hash: 'B', project: 'web', task: 'test', cacheHit: true }),
+      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
       mkRun({ hash: 'B', project: 'web', task: 'test' }),
       // A clean key beside them is not counted.
       mkRun({ hash: 'C', project: 'web', task: 'test' }),
       // api#e2e: one mixed key.
-      mkRun({ hash: 'D', project: 'api', task: 'e2e', status: 'failed' }),
       mkRun({ hash: 'D', project: 'api', task: 'e2e' }),
+      mkRun({ hash: 'D', project: 'api', task: 'e2e', status: 'failed' }),
       // A deterministic break stays out.
       mkRun({ hash: 'E', project: 'api', task: 'build', status: 'failed' }),
     ]
@@ -666,8 +705,8 @@ describe('flakyTasks', () => {
 
   it('breaks a failure tie by passes, then project, then task', async () => {
     const mixed = (project: string, task: string, passes: number) => [
-      mkRun({ hash: `${project}-${task}`, project, task, status: 'failed' }),
       ...Array.from({ length: passes }, () => mkRun({ hash: `${project}-${task}`, project, task })),
+      mkRun({ hash: `${project}-${task}`, project, task, status: 'failed' }),
     ]
     const rows = [
       ...mixed('b', 'a', 1),
