@@ -75,6 +75,10 @@ export async function movedInput(
   commandFrom?: number, // the describe's start, just before the command
 ): Promise<string | undefined>
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
+export interface UpfrontGroupKey {
+  key: string
+  upstream: TaskOutcome[]
+}
 ```
 
 - `computeTaskHash` — resolves `cache.inputs.files` (git-backed) and
@@ -110,6 +114,9 @@ export function computeGroupKey(args: ComputeHashArgs): Promise<string>
   hashes only, so downstream keys still cascade through the group. The
   default `build` (projects.ts), the one group with `cache`, is keyed as
   a task is (`computeTaskHash`), so it folds every file of its project.
+- `UpfrontGroupKey` — an unkeyed group's key from the up-front pass and
+  the upstream it folded (stable-keys.md); a live upstream with the same
+  ids and keys in order derives the same bytes, so execute-task reuses it.
 
 ## Invariants
 

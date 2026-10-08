@@ -30,13 +30,9 @@ export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcom
 
 /** A dependency as a key reads it: only `node` and `hash` matter. */
 export function keyedOutcome(node: TaskNode, hash: string | undefined): TaskOutcome {
-  return {
-    node,
-    status: 'success',
-    exitCode: 0,
-    durationMs: 0,
-    ...(hash !== undefined ? { hash } : {}),
-  }
+  const o: TaskOutcome = { node, status: 'success', exitCode: 0, durationMs: 0 }
+  if (hash !== undefined) o.hash = hash
+  return o
 }
 
 /** `node.deps` less its ordering-only edges: the dependencies a key may fold. */

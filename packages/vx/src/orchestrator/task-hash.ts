@@ -433,6 +433,16 @@ export async function computeGroupKey(args: ComputeHashArgs): Promise<string> {
 }
 
 /**
+ * An unkeyed group's key is `computeGroupHash` of its upstream alone, so a
+ * live upstream with the same ids and keys in the same order derives these
+ * bytes (execute-task's `sameUpstream`).
+ */
+export interface UpfrontGroupKey {
+  key: string
+  upstream: TaskOutcome[]
+}
+
+/**
  * Derive a stable hash for a group task (no `exec`) from its upstream
  * outcomes. Lets downstream tasks that filter `inputs.tasks` to
  * include a group still invalidate naturally when anything beneath
