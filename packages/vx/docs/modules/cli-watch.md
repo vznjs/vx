@@ -201,7 +201,10 @@ are refused too: they format one run's result.
      the root filter and the ignore filter are rebuilt on the new set.
      Until 2026-09-10 the set was fixed when the loop armed: the next
      cycle ran the new package and every edit inside it was silence
-     (`tests/watch-loop-members.test.ts`, the added-package pair). The scope
+     (`tests/watch-loop-members.test.ts`, the added-package pair). A
+     cycle that fails re-reads too: a package added with a config that
+     does not load yet was left unwatched, and the fix to that config
+     ran nothing (WD-26). The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
    - The same re-read follows a cycle started by a file that shapes
