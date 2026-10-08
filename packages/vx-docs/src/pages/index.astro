@@ -1,7 +1,8 @@
 ---
 // vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
-// only through migration): the hero, the benchmark chart and why it is
-// faster, how to start, then the one diagram with its six callouts, the four pillars
+// only through migration): the hero with the newest release, what agents
+// get, the benchmark chart and why it is faster, what shipped lately
+// (owner, 2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
 // and a strip of the feature pages.
 // Standalone (its own nav, footer and theme), static, one script for the
 // copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
@@ -16,7 +17,10 @@ import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
 import '../styles/charts.css'
 import '../styles/features.css'
+import '../styles/blog.css'
 import { parseDuration, renderBars } from '../plugins/data-charts.ts'
+import { formatDate, posts } from '../blog/posts.js'
+import Cover from '../components/blog/Cover.astro'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -160,6 +164,24 @@ const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers',
 const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
 
 // Start: four commands, native config from the first one.
+// The live strip: what shipped last, newest first, read from the posts.
+const releases = (await posts('releases')).slice(0, 4)
+const essays = (await posts('blog')).slice(0, 3)
+const latest = releases[0]!
+const MCP_TOOLS = [
+  'listTasks',
+  'getRunHistory',
+  'getFailures',
+  'whyDidThisRerun',
+  'explainCacheKey',
+  'getCacheStats',
+  'getWorkspaceInfo',
+]
+const whyRun = `$ vx why @demo/web#build
+  verdict    cache key changed: upstream @demo/ui#build
+  root cause:
+    @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts`
+
 const startCommands = `npm install -D @vzn/vx
 npx vx init                 # a vx.config.ts per package; add the cache block each TODO shows
 npx vx run build --all      # builds in dependency order; stores what is cached
@@ -205,6 +227,12 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
 
       <section class="hero">
         <div class="container">
+          <a class="announce" href={latest.href}>
+            <span class="announce-tag">New</span>
+            <span class="announce-ver">{latest.version}</span>
+            <span class="announce-title">{latest.title}</span>
+            <span aria-hidden="true">→</span>
+          </a>
           <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
           <p class="lede">Measured against Turborepo, Nx and Vite Task, each in its own native config.</p>
           <ul class="wins">
@@ -244,6 +272,41 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
         </div>
       </section>
 
+      <section class="section" id="agents">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// ai first</p>
+            <h2>The build your agents can run.</h2>
+          </div>
+          <div class="agents-grid">
+            <article class="agent-card">
+              <h3><code>vx mcp</code></h3>
+              <p>Any MCP client reads your tasks, run history, cache and failures, read-only.</p>
+              <ul class="tool-chips">{MCP_TOOLS.map((t) => <li><code>{t}</code></li>)}</ul>
+              <a class="section-link" href={href('guides/agents/')}>AI agents guide →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>vx why</code></h3>
+              <p>A re-run names its cause, down to the file that changed.</p>
+              <pre class="agent-term"><code>{whyRun}</code></pre>
+              <a class="section-link" href={href('features/vx-why/')}>How vx why works →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>--format json</code></h3>
+              <p>Every report verb prints JSON with a published schema, and failures keep their full log.</p>
+              <ul class="tool-chips">
+                <li><code>vx show</code></li>
+                <li><code>vx info</code></li>
+                <li><code>vx last</code></li>
+                <li><code>vx why</code></li>
+                <li><code>--dry=json</code></li>
+              </ul>
+              <a class="section-link" href={href('cli/')}>Every command →</a>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="bench">
         <div class="container">
           <div class="section-head">
@@ -267,6 +330,46 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
             <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
             <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
           </div>
+        </div>
+      </section>
+
+      <section class="section" id="shipping">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// shipping every day</p>
+            <h2>New in vx.</h2>
+          </div>
+          <div class="ship-grid">
+            <div class="ship-releases">
+              <h3>Releases</h3>
+              <ol>
+                {
+                  releases.map((r) => (
+                    <li>
+                      <a href={r.href}>
+                        <span class="ship-ver">{r.version}</span>
+                        <span class="ship-title">{r.title}</span>
+                        <span class="ship-date">{formatDate(r.date)}</span>
+                      </a>
+                    </li>
+                  ))
+                }
+              </ol>
+              <a class="section-link" href={href('releases/')}>Every release →</a>
+            </div>
+            <div class="ship-posts">
+              {
+                essays.map((p) => (
+                  <a class="ship-post" href={p.href}>
+                    <Cover post={p} sizes="(min-width: 1100px) 300px, 100vw" />
+                    <span class="ship-date">{formatDate(p.date)}</span>
+                    <span class="ship-title">{p.title}</span>
+                  </a>
+                ))
+              }
+            </div>
+          </div>
+          <a class="section-link" href={href('blog/')}>The blog →</a>
         </div>
       </section>
 

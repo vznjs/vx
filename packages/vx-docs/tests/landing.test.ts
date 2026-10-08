@@ -19,7 +19,7 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
-const SECTIONS = ['bench', 'edge', 'try', 'one-run', 'pillars', 'features']
+const SECTIONS = ['agents', 'bench', 'shipping', 'edge', 'try', 'one-run', 'pillars', 'features']
 
 // The six lines under the picture, as the design writes them, each at the
 // anchor the old chapters redirect to.
