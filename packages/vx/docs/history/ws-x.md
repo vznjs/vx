@@ -849,3 +849,38 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   task cycle among declared builds is refused, as a run of those builds
   already was. Row: `task-graph.test.ts` › "an edge by name to a default
   build on a cycle goes on past it, as ^build does".
+- **X-126.** A submodule or embedded repository INSIDE a project left
+  tasks out of `--affected`. git reports it as one path (`vendor/lib`),
+  and per-task selection matched that path against each task's globs as
+  if it were a file: `lint` on `**` claimed it, so `build` on
+  `vendor/**/*.txt`, whose key folds the files inside, was not seeded
+  ("Nothing affected"). A project inside such a repository was never
+  selected: the owner walk stopped at the outer project. The diff now
+  reads `--raw` modes, so a gitlink on either side (a removed one took
+  its files) or an untracked `dir/` reaches the holding project whole
+  and every project under it. Row:
+  `affected-submodule.test.ts` › "a nested repository inside a project
+  reaches every task of it, and the projects inside".
+- **X-127.** A `workspaceFiles` glob reaching into a changed submodule
+  or embedded repository (`vendor/sub/**`) selected nothing: git reports
+  the repository as one path, `vendor/sub`, which the glob does not
+  match, while the key folds every file inside. A run under
+  `--affected` said "nothing affected" over a stale key. `affectedChanges`
+  now names the changed nested repositories (`AffectedChanges.nested`),
+  and both the candidate pass (`workspaceGlobOwners`) and the per-task
+  seed ask `workspaceFilesReachInto`: a positive entry whose static prefix
+  is above or inside the repository reaches it. Row:
+  `affected-workspace-files.test.ts` › "a glob reaching into a changed
+  nested repository selects its declarer".
+- **X-128.** A config importing a file of another project was left out
+  of `--affected` when a file THAT file imports changed: the config
+  import walk stopped at the first file of another project, reasoning
+  that containment selects it. Containment selects the owner, not the
+  importer, while the evaluation follows the import and the importer's
+  key moved: `site`'s config imports `core/src/index.ts`, which imports
+  `util.ts`; an edit to `util.ts` ran `core#build` alone and skipped
+  `site#build`. The walk now follows every import (200 configs into a
+  500-file library: 10 → 28 ms for one changed file). Rows:
+  `config-missing-import.test.ts` › "a config reaching into ANOTHER
+  project follows the imports of that file", `affected.test.ts` › "the
+  walk descends past a project boundary (X-128)".

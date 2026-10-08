@@ -291,10 +291,14 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
 change seeds tasks in the projects it touches:
 
 - a cached task when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`);
+  (`files`, `workspaceFiles`), or a changed submodule or embedded
+  repository is one its `workspaceFiles` may reach into (git reports it
+  as one path; a glob whose fixed prefix is above or inside it counts);
 - every task of a project whose `package.json` or `vx.config.*`
   changed, or that holds a changed path no cached task of its declares
-  (vx cannot prove that path re-keys nothing), or that a lockfile
+  (vx cannot prove that path re-keys nothing), or that holds a changed
+  submodule or embedded repository (git reports it as one path, and no
+  task's globs can say whether they reach inside), or that a lockfile
   claim, a manifest edge at the base or a config import names;
 - an uncached task when a changed path lies in its project or the
   project is reached whole; a root file another task of its declares
@@ -337,9 +341,10 @@ as a change (input hashing sees it, so `--affected` must too). A
 project inside a submodule or an embedded repository is selected when
 git reports that repository changed — a dirty or moved submodule
 (`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
-the workspace repository sees the nested one as a single path, so a
-change inside is a change to it, and every project under it is
-selected. A repository's own request to hide submodules from a diff
+the workspace repository sees the nested one as a single path (`git
+diff --raw`'s gitlink mode, 160000, on either side names one), so a change inside is a
+change to it, and every project under it is selected, the project that
+holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
@@ -400,10 +405,10 @@ to no project and no `workspaceFiles` glob names it. The scan is
 STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
 bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
 other bare specifier is a package, and a lockfile change already selects
-everything. It stops at a project boundary (a root project's files excepted): a config importing
-`../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
-imports inside `lib` do not reach further — `lib` is already selected
-by containment. Import your helpers by bare specifier to opt out. See
+everything. It crosses project boundaries as the evaluation does: a
+config importing `../../packages/lib/preset.ts` is selected when
+`preset.ts` or a file it imports inside `lib` changes. Import your
+helpers by bare specifier to opt out. See
 [`docs/modules/config-imports.md`](./modules/config-imports.md).
 
 **Nothing changed exits 0.** When the selection comes only from
