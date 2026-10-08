@@ -1729,6 +1729,7 @@ describe('parseRunArgs', () => {
       '--exclude-dependencies',
       '--filter',
       '--force',
+      '--format',
       '--frozen',
       '--graph',
       '--no-cache',
