@@ -153,6 +153,10 @@ export async function foldKey(
   h = xxh3(`pkg:${input.projectPackageJsonHash}`, h)
   h = xxh3(`config:${input.taskConfigHash}`, h)
   if (cap) {
+    // Recorded so `vx why` can name a key that moved only because vx
+    // keys differently now (an upgrade): unrecorded, every task's miss
+    // read as "inputs differ" with no input changed (X-142).
+    cap.push({ kind: 'format', name: 'cache-version', hash: CACHE_VERSION })
     cap.push({ kind: 'workspace', name: 'fingerprint', hash: input.workspaceFingerprint })
     cap.push({ kind: 'package', name: 'package.json', hash: input.projectPackageJsonHash })
     cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })

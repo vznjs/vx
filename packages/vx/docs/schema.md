@@ -356,7 +356,8 @@ for it to exit. Instead it considers the task "ready":
   (colour, OSC titles), so `^` and `$` anchor to a line as you read
   it and `Local:` matches Vite's bold `Local` under `FORCE_COLOR`.
   The trailing partial line is tested too, so prompt-style banners
-  without a newline (`printf 'Listening on :3000'`) count. A server
+  without a newline (`printf 'Listening on :3000'`) count, and so does
+  output read up to 250 ms after the shell exits. A server
   not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
@@ -1616,7 +1617,9 @@ vx.workspace.ts to let a dependant add to its upstream's outputs.`
   - **`upfrontKeys`** (X-54) — a cached task whose `inputs.files` can
     match a same-project task's `outputs.files`, or whose
     `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
-    or another project's `outputs.files` read from the root, is refused,
+    or another project's `outputs.files` read from the root, or whose
+    `inputs.files` can match another task's `outputs.workspaceFiles`
+    landing in its project (X-135), is refused,
     edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s cache.inputs.<field>, or set rules: { upfrontKeys:

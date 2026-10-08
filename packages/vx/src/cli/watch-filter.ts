@@ -272,6 +272,7 @@ export function makeRootEventFilter(
       (isWorkspaceFingerprintFile(rel) ||
         isWorkspaceConfigFile(rel) ||
         rel === 'package.json' ||
+        rel === '.gitignore' ||
         claimedRootFiles.has(rel))
     ) {
       return true

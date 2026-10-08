@@ -1,4 +1,4 @@
-# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`, `watch-judge.ts`)
+# `src/cli/watch.ts` — `vx watch` subcommand (and `watch-fs.ts`, `watch-filter.ts`, `watch-set.ts`, `watch-judge.ts`, `watch-cycle.ts`)
 
 ## Purpose
 
@@ -59,6 +59,15 @@ export class ChangeJudge {
   constructor(ctx: JudgeContext)
   judge(): string | undefined // the first changed path's label, or none
 }
+
+// watch-cycle.ts — one cycle's run, stoppable while it waits on readiness alone:
+export interface WatchCycle {
+  readonly opts: RunOptions // the cycle's own bus and stop
+  waitsOnReadiness(): boolean // every task in flight is a persistent one not yet ready
+  interrupt(): void // stop the run as a SIGTERM would; watch keeps going
+  readonly interrupted: boolean
+}
+export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () => void): WatchCycle
 
 // watch-filter.ts — which events matter, decided over paths alone:
 export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
@@ -325,6 +334,12 @@ re-spawned by each one. Until 2026-09-24 the server was stopped at the
 END of each cycle and was dead whenever watch sat idle
 (`tests/watch-loop.test.ts` › "the dev server stays up while watch
 idles and is replaced when the next cycle starts").
+
+A cycle whose server never matches `readyWhen` and has no
+`exec.timeout` never ends. An edit judged a change while every task in
+flight is such a server stops the cycle (SIGTERM, grace, SIGKILL, as
+Ctrl-C does) and starts the next; a cycle running any other task is
+never stopped (`tests/watch-ready-interrupt.test.ts`, WD-15).
 
 For dev-server workflows, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`. `vx watch` is

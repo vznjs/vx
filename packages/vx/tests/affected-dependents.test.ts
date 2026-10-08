@@ -191,6 +191,13 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
       expect(r.exitCode).toBe(0)
       expect(r.stdout).not.toContain('#build')
       expect(r.stdout).toContain('Nothing affected: the change reaches no build task.')
+      // `--dry` says the run's line, not that no affected project declares
+      // a task `lib` does declare (X-141).
+      const dry = vx(root, 'run', 'build', '--affected=HEAD~1', '--dry')
+      expect([dry.exitCode, dry.stdout.trim()]).toEqual([
+        0,
+        'Nothing affected: the change reaches no build task.',
+      ])
     },
     TIMEOUT,
   )

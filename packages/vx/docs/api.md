@@ -1901,6 +1901,7 @@ export interface RunPlan {
   predicted?: PlanPrediction
   unresolvedTasks?: readonly string[]
   unresolvedHint?: string
+  noneAffected?: string
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 ```

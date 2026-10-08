@@ -218,7 +218,9 @@ refuses a cached task whose input globs can match another task's
 declared outputs: `inputs.files` against the same project's
 `outputs.files`, and `inputs.workspaceFiles` against every
 `outputs.workspaceFiles` and every other project's `outputs.files` at its
-workspace path. The test is `outputsOverlap`, so only a proven overlap is
+workspace path, and `inputs.files` at its workspace path against every
+other task's `outputs.workspaceFiles`, which may land in any project
+(X-135). The test is `outputsOverlap`, so only a proven overlap is
 refused; the stability gate keeps the "may reach" cases preliminary. An
 output the reader's own `!` entries take back whole (`outputTakenBack`)
 does not count, nor do its own outputs. A group has no outputs and no

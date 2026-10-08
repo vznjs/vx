@@ -404,20 +404,7 @@ async function runOnBus(
     return { ok: false, outcomes: [], refused }
   }
   if (prepared.empty === 'none-affected') {
-    // A changed project declares the task, so `--affected`'s task walk is
-    // what left nothing (affected-tasks.ts), not the scope.
-    const inScope = new Set(options.projects ?? [])
-    const reachedNone =
-      options.affected !== undefined &&
-      [...prepared.projects.values()].some(
-        (p) =>
-          inScope.has(p.name) && options.tasks.some((t) => declaredTask(p.config, t) !== undefined),
-      )
-    log.status(
-      reachedNone
-        ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
-        : `No affected project declares task(s): ${options.tasks.join(', ')}.`,
-    )
+    log.status(noneAffected(prepared, options))
     await teardown()
     prepared.cache.close()
     return { ok: true, outcomes: [] }
@@ -939,6 +926,7 @@ async function runOnBus(
     // dispatch, and the tracker carries it to what is built on it.
     const taintSeeds = new Set(excluded.seeds)
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
+    const taintedRan = new Set<string>()
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
@@ -959,6 +947,7 @@ async function runOnBus(
       )
         taintSeeds.add(node.id)
       const tainted = taint.judge(node, upstream)
+      if (tainted) taintedRan.add(node.id)
       return {
         node,
         upstream,
@@ -1027,7 +1016,7 @@ async function runOnBus(
     const historyDb = prepared.localCache.dbHandle()
     const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
-      const candidates = flakyCandidates([o])
+      const candidates = flakyCandidates([o], taintedRan)
       if (candidates.length === 0) return
       try {
         const found = detectFlaky(historyDb, candidates)[0]
@@ -1212,6 +1201,7 @@ async function runOnBus(
     const recordsOf = (final: TaskOutcome[], runOk: boolean) =>
       assembleRunRecords({
         outcomes: final,
+        tainted: taintedRan,
         runId,
         startedAtMs: endedAtMsAtStart,
         endedAtMs,
@@ -1513,6 +1503,22 @@ async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
   }
 }
 
+/** Why an `--affected` run has nothing to run, said alike by the run and its `--dry` plan. */
+function noneAffected(prepared: PreparedRun, options: RunOptions): string {
+  // A changed project declares the task, so `--affected`'s task walk is
+  // what left nothing (affected-tasks.ts), not the scope.
+  const inScope = new Set(options.projects ?? [])
+  const reachedNone =
+    options.affected !== undefined &&
+    [...prepared.projects.values()].some(
+      (p) =>
+        inScope.has(p.name) && options.tasks.some((t) => declaredTask(p.config, t) !== undefined),
+    )
+  return reachedNone
+    ? `Nothing affected: the change reaches no ${options.tasks.join(', ')} task.`
+    : `No affected project declares task(s): ${options.tasks.join(', ')}.`
+}
+
 /**
  * Planning mode. Same setup as `run()` — workspace discovery, config
  * load, package graph, task graph — but stops short of execution.
@@ -1545,6 +1551,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
         unresolvedHint: elsewhereHint(prepared.declaredElsewhere),
       }
     }
+    if (prepared.empty === 'none-affected')
+      return { tasks: [], noneAffected: noneAffected(prepared, options) }
     if (prepared.empty !== null) return { tasks: [] }
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
@@ -1759,7 +1767,10 @@ export function projectNamed(
 }
 
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
-function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
+function flakyCandidates(
+  outcomes: readonly TaskOutcome[],
+  tainted: ReadonlySet<string>,
+): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
@@ -1768,6 +1779,9 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.
     if (o.hash === undefined || o.node.config.cache === undefined || isGroupTask(o.node)) continue
+    // Behind a failed dependency the failure is the dependency's: the key it
+    // had passed on read as a flake for thirty days.
+    if (o.status === 'failed' && tainted.has(o.node.id)) continue
     out.push({
       project: o.node.projectName,
       task: o.node.taskName,

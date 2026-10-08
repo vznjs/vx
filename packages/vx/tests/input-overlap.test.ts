@@ -108,6 +108,37 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
     ).toMatch(/^b#use reads "gen\/api\.ts" in cache\.inputs\.workspaceFiles, which matches a#gen's/)
   })
 
+  // A root-anchored output lands in any project, edge or no edge: an
+  // up-front key read the project before the writer ran (X-135).
+  it("refuses a files input over another task's workspaceFiles output in its project", () => {
+    expect(
+      refusal({
+        g: { gen: wsTask([], ['app/gen/**']) },
+        app: { build: task(['**'], ['dist/**']) },
+      }),
+    ).toBe(
+      'app#build reads "**" in cache.inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
+        "a task's key must not read another task's outputs (the dependency's key already " +
+        'cascades through dependsOn). Exclude it: add "!gen/**" to app#build\'s ' +
+        'cache.inputs.files, or set rules: { upfrontKeys: false } in vx.workspace.ts to let ' +
+        'it wait for its producer.',
+    )
+    expect(
+      refusal(
+        { g: { gen: wsTask([], ['app/gen/**']) }, app: { build: task(['**'], ['dist/**']) } },
+        { upfrontKeys: false },
+      ),
+    ).toBeNull()
+  })
+
+  it('CONTROL: a workspaceFiles output in another project, or taken back, passes', () => {
+    const build = task(['**', '!gen/**'], ['dist/**'])
+    expect(refusal({ g: { gen: wsTask([], ['app/gen/**']) }, app: { build } })).toBeNull()
+    expect(
+      refusal({ g: { gen: wsTask([], ['lib/gen/**']) }, app: { build: task(['**'], []) } }),
+    ).toBeNull()
+  })
+
   it("refuses a workspaceFiles input over another project's files output, said in its terms", () => {
     expect(refusal({ a: { build }, b: { use: wsTask(['a/dist/index.js'], []) } })).toMatch(
       /^b#use reads "a\/dist\/index\.js" in cache\.inputs\.workspaceFiles, which matches a#build's output "dist\/\*\*" .* add "!a\/dist\/\*\*" to b#use's cache\.inputs\.workspaceFiles/,

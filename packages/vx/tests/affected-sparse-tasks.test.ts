@@ -82,7 +82,7 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const filter = vx(root, 'run', 'test', '--filter', '[HEAD~1]')
     expect({
       run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
-      dry: [dry.exitCode, dry.out.includes('no affected project declares task(s): test.')],
+      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test.')],
       filter: filter.exitCode,
     }).toEqual({ run: [0, true], dry: [0, true], filter: 0 })
   })
@@ -151,7 +151,7 @@ describe('--affected: a changed project with no vx config', () => {
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
       run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
-      dry: [dry.exitCode, dry.out.includes('no affected project declares task(s): test.')],
+      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test.')],
       typo: [typo.exitCode, typo.out.includes('vx run: no projects declare task(s): tset.')],
     }).toEqual({ run: [0, true], dry: [0, true], typo: [1, true] })
   })
