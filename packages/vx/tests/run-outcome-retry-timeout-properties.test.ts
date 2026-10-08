@@ -115,6 +115,12 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
     return out
   }
   const anyFailed = ts.some((t) => status.get(t) === 'failed')
+  // Under 'never' the first failure stops retries: a task in flight then
+  // ends on its current attempt (item X-68). That first failure is a task
+  // that could not pass and spent every attempt; without one, every task
+  // must run its full course.
+  const failFast =
+    mode === 'never' && ts.some((t) => !spec.get(t)!.passes && status.get(t) === 'failed')
   if (res.ok === anyFailed) broken.push(`${label}: ok ${res.ok} with failed=${anyFailed}`)
   for (const t of ts) {
     const s = spec.get(t)!
@@ -129,9 +135,10 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
       if (!s.passes) broken.push(`${label}: ${t} succeeded but cannot pass`)
       if (n !== s.fails + 1) broken.push(`${label}: ${t} success after ${n} attempts`)
     } else if (st === 'failed') {
-      if (s.passes)
+      const cut = failFast && n >= 1 && n <= s.retries + 1
+      if (s.passes && !cut)
         broken.push(`${label}: ${t} failed but should pass (${n} attempts): ${errs.join('|')}`)
-      if (n !== s.retries + 1) broken.push(`${label}: ${t} failed after ${n} attempts`)
+      if (n !== s.retries + 1 && !cut) broken.push(`${label}: ${t} failed after ${n} attempts`)
     } else if (st === 'skipped') {
       if (n !== 0) broken.push(`${label}: ${t} skipped yet started ${n}`)
     } else broken.push(`${label}: ${t} status ${st}`)
