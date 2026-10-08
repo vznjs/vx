@@ -22,7 +22,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 
-export interface ShowArgs {
+interface ShowArgs {
   target?: string
   format: 'pretty' | 'json'
   /** `--filter`, as `vx run` reads it: which projects the list shows. */

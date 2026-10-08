@@ -6,7 +6,7 @@
 // on left a `turbo run --dry-run` user at a dead end. The table renders
 // cli.md's parity section (`renderForeignFlags`), pinned by a test.
 
-export interface ForeignFlag {
+interface ForeignFlag {
   runner: 'turbo' | 'nx'
   /** Every spelling, first the one shown. */
   names: readonly string[]
@@ -407,8 +407,13 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['-p', '--projects'],
     value: true,
     outcome: 'alias',
-    vx: '`--filter <pattern>`, one per project',
-    to: (v) => list(v).flatMap((p) => ['--filter', p]),
+    vx: "`--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)",
+    // Nx reads a leading exclusion as "all projects but": `-p '!b,a'` is
+    // every project except b, where vx's filters alone would select a.
+    to: (v) => {
+      const ps = list(v)
+      return [...(ps[0]?.startsWith('!') ? ['*'] : []), ...ps].flatMap((p) => ['--filter', p])
+    },
   },
   {
     runner: 'nx',

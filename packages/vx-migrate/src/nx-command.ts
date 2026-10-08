@@ -48,7 +48,7 @@ interface NxCommandContext {
 const NX_ENV_READY = '^nx-env: ready$'
 
 /** A run-commands target as vx runs it. */
-export interface RunCommandsLine {
+interface RunCommandsLine {
   readonly command: string
   /** `exec.env.define`: the target's `env`, and `FORCE_COLOR` under `color`. */
   readonly env: Readonly<Record<string, string>>

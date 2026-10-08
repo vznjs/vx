@@ -385,10 +385,21 @@ Determinism notes:
 
 ## Storage layout
 
+By default the entries and artifacts live in the repository's shared
+store (`storeRoot`, `~/.vx/<id>/cache`, `workspace/resolveStoreRoot`)
+and the workspace's `.vx/cache` holds only its own index, which attaches
+`store.db` as `store`. A named `cacheDir` (`storeRoot` null) holds
+everything in `cache.db`.
+
 ```
-<cacheDir>/
-├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-└── <hash>.tar.zst           # per-entry artifact (tar + zstd, vx's own streaming tar code):
+~/.vx/<id>/cache/            # the shared store (unversioned: keys are seeded with CACHE_VERSION)
+├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta
+└── <hash>.tar.zst
+
+<root>/.vx/cache/            # or a named <cacheDir>, which then also holds the store's tables and artifacts
+└── cache.db                 # SQLite (with cache.db-wal, cache.db-shm): runs, memos, output stamps
+
+<hash>.tar.zst               # per-entry artifact (tar + zstd, vx's own streaming tar code):
     ├── stdout               #   captured stdout (always present)
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
@@ -424,6 +435,9 @@ SQLite stores metadata only:
   so the `accessed_at` bump does not rewrite it (v29).
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
+- **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
+  version drops the store's tables, prints nothing, and keeps every
+  artifact, indexed again from its own bytes when its task next hits.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
   tables and recreate (pre-alpha; no migration code). An open that does
   not read the current version re-reads it under `BEGIN IMMEDIATE`
