@@ -192,10 +192,14 @@ let handingTo: number | undefined
  */
 export function guardLine(fd: number): string {
   const add = `printf '+%s\\n' $$ >&${fd} 2>/dev/null`
-  const retry =
-    handingTo === undefined
-      ? ''
-      : ` || until ${add}; do kill -0 ${handingTo} 2>/dev/null || break; done`
+  // `kill -0` counts a zombie, and a guard vx has not reaped (its event
+  // loop busy, or an init that never reaps an orphan after vx's kill -9)
+  // kept the shell spinning. Where /proc is ours, its state says dead;
+  // `##*) ` cuts at the LAST ')', as comm may hold one.
+  const alive = procfsIsOwn()
+    ? `{ read -r vx_g </proc/${handingTo}/stat; } 2>/dev/null && case "\${vx_g##*) }" in [ZX]*) false ;; esac`
+    : `kill -0 ${handingTo} 2>/dev/null`
+  const retry = handingTo === undefined ? '' : ` || until ${add}; do ${alive} || break; done`
   return `trap '' PIPE; ${add}${retry}; trap - PIPE; exec ${fd}>&-; `
 }
 
