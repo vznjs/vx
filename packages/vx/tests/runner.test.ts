@@ -766,6 +766,44 @@ describe('withForwardArgs', () => {
     expect(withForwardArgs(command, ['--fix', 'a b'])).toBe(forwarded)
   })
 
+  // X-110: a `<<word` the shell never reads as a heredoc (in a comment, in
+  // quotes) made every later line a "body", so the args went on that line:
+  // ` --fix … # …` ran `--fix` as a command. A quote in a real body left
+  // the scan inside it, and a template literal's closing newline closed
+  // the comment it was scanned for: either way the comment took the args.
+  it.each([
+    ['a trailing comment before a closing newline', 'echo args: # c\n', 'args: --fix a b\n'],
+    ['a << in a comment line', '# then << check\necho args:', 'args: --fix a b\n'],
+    ['a << in double quotes', 'echo "1<<x" >/dev/null\necho args:', 'args: --fix a b\n'],
+    ['a << in single quotes', "echo '<<EOF' >/dev/null\necho args:", 'args: --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  it('a quote in a heredoc body does not hide a trailing comment', () => {
+    expect(withForwardArgs("cat <<X\nit's\nX\necho done # note", ['--fix'])).toBe(
+      "cat <<X\nit's\nX\necho done --fix # note",
+    )
+  })
+
+  it('a comment line after a heredoc leaves its terminator alone', () => {
+    expect(withForwardArgs('xargs echo <<X\nhi\nX\n# done', ['--fix'])).toBe(
+      'xargs echo <<X --fix\nhi\nX\n# done',
+    )
+  })
+
+  it('a backslash-quoted heredoc', () => {
+    expect(withForwardArgs('xargs echo <<\\X\nhi\nX', ['--fix'])).toBe(
+      'xargs echo <<\\X --fix\nhi\nX',
+    )
+  })
+
+  it('control: a here-string opens no heredoc', () => {
+    expect(withForwardArgs('cat <<<word\necho done', ['--fix'])).toBe(
+      'cat <<<word\necho done --fix',
+    )
+  })
+
   it('a # after a separator opens a comment', () => {
     expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
   })
@@ -853,6 +891,22 @@ describe('streamToString', () => {
     ])
   })
 
+  // The head stops one unit short when its bound falls inside an emoji, and
+  // the chunk went to the tail; a later one-character chunk still fit the
+  // head and was retained BEFORE it: `…a😀bc` read `…ac😀b`.
+  it('keeps chunk order once the head stopped short of an emoji', async () => {
+    const chunks = ['a'.repeat(CAPTURE_HEAD_CHARS - 1), '😀b', 'c']
+    const got = await streamToString(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk))
+          c.close()
+        },
+      }),
+    )
+    expect(got.slice(-4)).toBe('😀bc')
+  })
+
   it('reads nothing from an inherited fd or no stream', async () => {
     expect([await streamToString(1), await streamToString(undefined)]).toEqual(['', ''])
   })
@@ -902,6 +956,23 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       cpuMs: 1500,
       peakRssBytes: floor + RSS_FLOOR_SLACK_BYTES + 1,
     })
+  })
+
+  it('a floor given as a function is asked with the peak, and decides as a number would', () => {
+    const MB = 1024 * 1024
+    const at = (maxRSS: number) =>
+      ({ cpuTime: { total: 1_500_000n }, maxRSS }) as unknown as Parameters<
+        typeof resourceUsageToCpuRss
+      >[0]
+    const asked: number[] = []
+    const floorFor = (peak: number): number => {
+      asked.push(peak)
+      return 480 * MB
+    }
+    expect(resourceUsageToCpuRss(at(480 * MB), floorFor)).toEqual({ cpuMs: 1500 })
+    const over = 480 * MB + RSS_FLOOR_SLACK_BYTES + 1
+    expect(resourceUsageToCpuRss(at(over), floorFor)).toEqual({ cpuMs: 1500, peakRssBytes: over })
+    expect(asked).toEqual([480 * MB, over])
   })
 
   it('the unit is decided by the number, not by the platform', () => {

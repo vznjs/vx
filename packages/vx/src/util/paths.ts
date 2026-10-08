@@ -198,6 +198,12 @@ export function taskGlob(pattern: string): Bun.Glob {
   // A `]` with no `[` before it is already literal to `Bun.Glob`.
   const source = pattern.includes('[') ? pattern.replace(/(?<!\\)[[\]]/g, '\\$&') : pattern
   const glob = new Bun.Glob(source)
+  const alternatives = braceAlternatives(pattern)
+  if (alternatives.length > 1) {
+    const any = anyTaskGlob(alternatives)
+    glob.match = (rel: string): boolean => any(rel)
+    return glob
+  }
   const re = regExpSource(pattern)
   if (re === null) return glob
   const compiled = new RegExp(`^${re}$`, 'u')
@@ -216,8 +222,13 @@ export function taskGlob(pattern: string): Bun.Glob {
  * RegExp for the lot when every pattern has one, else a glob each. An input
  * file was matched against a dozen globs (its positives, the always-ignored
  * list, its negatives) one native call at a time.
+ *
+ * A brace is expanded first, never matched by `Bun.Glob`: its match reads a
+ * `**` that ends an alternative as one name, so `{src/**,lib/**}` took
+ * `src/a.ts` and never `src/deep/a.ts`, and an edit there was a stale hit.
  */
-export function anyTaskGlob(patterns: readonly string[]): (rel: string) => boolean {
+export function anyTaskGlob(rawPatterns: readonly string[]): (rel: string) => boolean {
+  const patterns = rawPatterns.flatMap(braceAlternatives)
   if (patterns.length === 0) return () => false
   const sources = patterns.map(regExpSource)
   const globs = patterns.map(taskGlob)
@@ -339,6 +350,15 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
  * is left to the glob.
  */
 export function slashBraceExpansions(pattern: string): string[] {
+  return expandBraces(pattern, true)
+}
+
+/** `pattern` with every brace group of two or more alternatives expanded. */
+function braceAlternatives(pattern: string): string[] {
+  return expandBraces(pattern, false)
+}
+
+function expandBraces(pattern: string, slashOnly: boolean): string[] {
   if (pattern.includes('\\')) return [pattern]
   for (let open = pattern.indexOf('{'); open !== -1; open = pattern.indexOf('{', open + 1)) {
     let depth = 0
@@ -352,14 +372,14 @@ export function slashBraceExpansions(pattern: string): string[] {
     }
     if (close === -1) return [pattern]
     const body = pattern.slice(open + 1, close)
-    if (cuts.length === 0 || !body.includes('/')) continue
+    if (cuts.length === 0 || (slashOnly && !body.includes('/'))) continue
     const head = pattern.slice(0, open)
     const tail = pattern.slice(close + 1)
     const bounds = [open, ...cuts, close]
     const out: string[] = []
     for (let k = 0; k + 1 < bounds.length; k++) {
       const alt = pattern.slice(bounds[k]! + 1, bounds[k + 1])
-      out.push(...slashBraceExpansions(head + alt + tail))
+      out.push(...expandBraces(head + alt + tail, slashOnly))
     }
     return [...new Set(out)]
   }

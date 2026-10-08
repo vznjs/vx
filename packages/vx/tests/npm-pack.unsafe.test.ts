@@ -70,6 +70,22 @@ function packed(dir: string, env?: NodeJS.ProcessEnv): Packed['files'] {
   return (JSON.parse(r.stdout) as Packed[])[0]!.files
 }
 
+/**
+ * One dry-run per package, shared by its two rows: the emitted directory
+ * does not change between them, and each `npm pack` is a Node start (~0.4 s
+ * of CPU on Linux). A failed pack throws before it is stored, so the second
+ * row packs again.
+ */
+const packs = new Map<string, Packed['files']>()
+function packedOnce(dir: string): Packed['files'] {
+  let files = packs.get(dir)
+  if (files === undefined) {
+    files = packed(dir)
+    packs.set(dir, files)
+  }
+  return files
+}
+
 // `npm pack` is a Node start plus a tree walk: a cold npm on a loaded
 // gate took past bun's 5 s default and the row died mid-spawn (B-39).
 const PACK_TIMEOUT_MS = 30_000
@@ -95,7 +111,7 @@ describe('the npm tarballs', () => {
     it(
       `${name}: its file list agrees with tests/contract/pack/, no strays, none too large`,
       () => {
-        const files = packed(dir)
+        const files = packedOnce(dir)
         const live =
           files
             .map((f) => f.path)
@@ -114,7 +130,7 @@ describe('the npm tarballs', () => {
     it(
       `${name}: every exports and bin target is in the tarball`,
       () => {
-        const list = new Set(packed(dir).map((f) => f.path))
+        const list = new Set(packedOnce(dir).map((f) => f.path))
         const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
           exports?: unknown
           bin?: Record<string, string>

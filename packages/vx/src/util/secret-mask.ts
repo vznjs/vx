@@ -49,6 +49,13 @@ export interface SecretMask {
    * the next chunk or `end`.
    */
   stream(): { push(chunk: string): string; end(): string }
+  /**
+   * `mask` for the two sides of a cut, where the text between them is
+   * gone: a value the cut split leaves a piece at the end of `head` or the
+   * start of `tail` that no whole-value match sees, so each piece is
+   * masked too.
+   */
+  maskCut(head: string, tail: string): [string, string]
 }
 
 /**
@@ -103,8 +110,37 @@ export function secretMask(
     }
     return longest
   }
+  /** The longest head of `text` that is a proper suffix of a value. */
+  const partialHead = (text: string): number => {
+    let longest = 0
+    for (const v of sorted) {
+      for (let k = Math.min(v.length - 1, text.length); k > longest; k--) {
+        if (text.startsWith(v.slice(v.length - k))) {
+          longest = k
+          break
+        }
+      }
+    }
+    return longest
+  }
   return {
     mask,
+    maskCut(head, tail) {
+      let h = head.length - partialTail(head)
+      pattern.lastIndex = 0
+      for (let m = pattern.exec(head); m !== null; m = pattern.exec(head)) {
+        if (m.index < h && m.index + m[0].length > h) h = m.index
+      }
+      let t = partialHead(tail)
+      pattern.lastIndex = 0
+      for (let m = pattern.exec(tail); m !== null; m = pattern.exec(tail)) {
+        if (m.index < t && m.index + m[0].length > t) t = m.index + m[0].length
+      }
+      return [
+        mask(head.slice(0, h)) + (h < head.length ? MASKED : ''),
+        (t > 0 ? MASKED : '') + mask(tail.slice(t)),
+      ]
+    },
     stream() {
       let carry = ''
       return {

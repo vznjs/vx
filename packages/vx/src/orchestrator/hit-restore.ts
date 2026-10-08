@@ -8,7 +8,6 @@
 // which bytes a green run replays. Moved out of execute-task.ts
 // 2026-09-10 as pure code motion, the mirror of miss-save.ts.
 
-import path from 'node:path'
 import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
@@ -22,6 +21,7 @@ import {
 import type { TaskOutcome } from '../graph/index.js'
 import {
   asTrees,
+  relPosix,
   secretMask,
   span,
   splitNegations,
@@ -165,10 +165,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         const expectedRels = new Set(projExpected.map((e) => e.path))
         const expectedWsRels = new Set(wsExpected.map((e) => e.path))
         const actualRels = actualAbs
-          .map((p) => path.relative(node.projectDir, p).split(path.sep).join('/'))
+          .map((p) => relPosix(node.projectDir, p))
           .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
         const actualWsRels = actualWsAbs
-          .map((p) => path.relative(args.workspaceRoot, p).split(path.sep).join('/'))
+          .map((p) => relPosix(args.workspaceRoot, p))
           .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
         const rowsPresent = (
           actual: readonly string[],
@@ -223,11 +223,15 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     let cleanedWsRels: string[] = []
     if (additive) {
       cleanedRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels })
+      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels, outputs })
       cleanedWsRels = hit.outputFiles
         .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
-      await cleanOutputPaths({ projectDir: args.workspaceRoot, rels: cleanedWsRels })
+      await cleanOutputPaths({
+        projectDir: args.workspaceRoot,
+        rels: cleanedWsRels,
+        outputs: wsOutputs,
+      })
     } else {
       if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
       if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)

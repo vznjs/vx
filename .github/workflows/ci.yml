@@ -8,21 +8,78 @@ on:
   # from real regressions when a main run goes red.
   workflow_dispatch:
 
-# A newer push to the same ref supersedes an older run. On a PR the running
-# one is cancelled: its old head is never merged. On main it finishes and
-# only the queued runs between it and the tip are dropped, or a busy main
-# never completes a run, never releases (auto-release.yml) and never says
-# it is red.
 # Checkout is all the token does here: a PR's code runs in these jobs, and
 # a default token may hold write access (L-29).
 permissions:
   contents: read
 
+# A newer push to the same PR supersedes an older run, which is cancelled:
+# its old head is never merged. Any other run (main, a dispatch) finishes
+# and only the queued runs between it and the tip are dropped, or a busy
+# main never completes a run, never releases (auto-release.yml) and never
+# says it is red.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which of the jobs below a pull request's diff can reach. The `ci` job
+  # runs every suite on every diff and is never gated. `plugin packages` is
+  # gated on the paths its live suites can read. The macOS job is gated
+  # narrowly: it guards platform divergence (tar, file system, SQLite),
+  # which lives in core and the plugins, so it skips only a diff confined
+  # to the site, the bench and prose; the `ci` job still runs every law
+  # that reads those files. The gated jobs also run when this job fails
+  # or is skipped (a push or a dispatch runs everything); a job skipped by
+  # `if` reports success to branch protection, where a workflow-level
+  # `paths` filter would leave a required check pending.
+  #
+  # The diff is the merge ref's own: first parent (the base tip) to the
+  # merge, the tree every job here tests. `--no-renames` lists both ends of a
+  # move. A path is safe only if neither live suite, nor the vx run that
+  # hosts it, can read it: vx-migrate's sandbox grants its own directory,
+  # vx-reapi's suites read their own files, both import core and the
+  # workspace's plugins by their source, and every run evaluates every
+  # project's vx.config.ts and installs every package.json. Anything not
+  # listed runs the job.
+  changes:
+    name: changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.diff.outputs.packages }}
+      darwin: ${{ steps.diff.outputs.darwin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: diff
+        shell: bash
+        run: |
+          changed=$(git diff --no-renames --name-only HEAD^1 HEAD)
+          echo "$changed"
+          packages=false
+          darwin=false
+          # An empty diff reads as one empty line, which `*)` runs.
+          while IFS= read -r f; do
+            case "$f" in
+              packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
+              packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
+              packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-mcp/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
+              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/*) ;;
+              *) packages=true ;;
+            esac
+            case "$f" in
+              packages/*/vx.config.ts | packages/*/package.json) darwin=true ;;
+              packages/vx-docs/* | packages/vx-bench/*) ;;
+              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | .claude/*) ;;
+              *) darwin=true ;;
+            esac
+          done <<< "$changed"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "darwin=$darwin" >> "$GITHUB_OUTPUT"
+
   ci:
     name: lint · format · test
     runs-on: ubuntu-latest
@@ -191,6 +248,8 @@ jobs:
   # reports green.
   packages:
     name: plugin packages
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -252,35 +311,56 @@ jobs:
           sleep 5
           docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
 
-      # The suite is `@vzn/vx-reapi#test`, one bun process per file (the
-      # task's own comment says why), run through vx with the endpoints in
-      # its environment; the task passes them through and folds them into
-      # its key, so this live-mode run never hits the plain gate's skip-mode
-      # entry. BOTH require flags are set: a skip is a silent pass, and
-      # these suites are the only proof the cache wire and the execution
-      # wire work.
-      - name: vx run test (@vzn/vx-reapi, live)
+      # `@vzn/vx-reapi#test.live` runs only the files that dial a server
+      # (the `ci` job runs every file, these in skip mode), uncached, with
+      # the endpoints passed through. BOTH require flags are set: a skip is
+      # a silent pass, and these suites are the only proof the cache wire
+      # and the execution wire work.
+      - name: vx run test.live (@vzn/vx-reapi)
         env:
           VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
           VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
           VX_REQUIRE_REAPI_EXEC: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-reapi
+        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-reapi
 
       # `@vzn/vx-migrate`'s `nx-exec` is a Node bin over Nx's own
       # `runExecutor`, and the fake-Nx suite cannot prove Nx's side of that
       # contract. A real install lives INSIDE the package (gitignored
-      # `.nx-live/`), so the sandboxed `test` task reads it under its own
+      # `.nx-live/`), so the sandboxed `test.live` task (only the
+      # `*-live.test.ts` files; `ci` runs every file) reads it under its own
       # grant; the env names it and, like the REAPI flags, makes an absent
-      # install a failure. The task folds both variables into its key, so
-      # this live run never lands on the plain gate's skip-mode entry.
+      # install a failure. Uncached: `nx@22` is unpinned.
       - name: Install Nx for the nx-exec live suite
         run: npm install --no-audit --no-fund --prefix packages/vx-migrate/.nx-live nx@22 @nx/js@22 typescript@5
-      - name: vx run test (@vzn/vx-migrate, live nx-exec)
+      - name: vx run test.live (@vzn/vx-migrate, nx-exec)
         env:
           VX_NX_MODULES: ${{ github.workspace }}/packages/vx-migrate/.nx-live
           VX_REQUIRE_NX: '1'
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-migrate
+        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-migrate
+
+  # The linux-arm64 release binary is cross-compiled and never run
+  # elsewhere: this proves it launches, on main only, so a pull request
+  # waits on no arm64 runner.
+  binary-linux-arm64:
+    name: compiled binary (linux-arm64)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - name: compiled binary (check.binary)
+        run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
 
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
@@ -298,6 +378,8 @@ jobs:
   # stable on these runners over time, the flag can be promoted.
   core-darwin:
     name: core tests (macOS)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
     runs-on: macos-latest
     timeout-minutes: 20
 

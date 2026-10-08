@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { completionScript, completionsCmd, verbFlags } from '../src/cli/completions.js'
+import { completionScript, completionsCmd, FLAG_VALUES, verbFlags } from '../src/cli/completions.js'
 import { documentedFlags, CORE_VERBS, WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { run } from '../src/cli/index.js'
@@ -110,6 +110,28 @@ describe('verbFlags is what each verb accepts', () => {
     expect(missing).toEqual([])
   })
 
+  it('each value a flag completes is one its parser takes, and the set is closed', () => {
+    const wrong: string[] = []
+    let rows = 0
+    for (const [verb, parse] of Object.entries(PARSE)) {
+      for (const flag of verbFlags(verb)) {
+        const values = FLAG_VALUES[flag]
+        if (values === undefined) continue
+        const extra = verb === 'cache' ? ['--max-size', '1G'] : []
+        for (const v of values) {
+          rows++
+          for (const argv of [[flag, v], [`${flag}=${v}`]]) {
+            const error = parse([...argv, ...extra])
+            if (error !== null) wrong.push(`${verb} ${argv.join(' ')}: ${error}`)
+          }
+        }
+        if (parse([flag, 'zz', ...extra]) === null) wrong.push(`${verb} ${flag} zz: accepted`)
+      }
+    }
+    expect(rows).toBeGreaterThan(0)
+    expect(wrong).toEqual([])
+  })
+
   it("watch refuses exactly WATCH_REFUSED_FLAGS among run's flags", () => {
     const refusedByWatch = documentedFlags('run')
       .filter((f) => {
@@ -123,9 +145,7 @@ describe('verbFlags is what each verb accepts', () => {
 
   it('a flag another verb names in passing is never suggested to run', () => {
     // `--frozen`'s help line says "pair with vx lock --check".
-    expect(parseRunArgs(['build', '--chek']).error).toBe(
-      'unknown flag: --chek (see `vx run --help`)',
-    )
+    expect(parseRunArgs(['build', '--chek']).error).toBe('unknown flag: --chek')
   })
 })
 
@@ -224,6 +244,29 @@ describe('the bash script, run', () => {
       '--help',
     ])
     expect(await offers(script, { words: ['vx', 'mcp', ''], cword: 2 })).toEqual(['--help'])
+  })
+
+  it("after a flag with a value set: that set, in the verb's spellings", async () => {
+    const full = completionScript('bash', ['run', 'last', 'lock'])
+    expect(
+      await offers(full, { words: ['vx', 'run', 'build', '--output-logs', ''], cword: 4 }),
+    ).toEqual(['full', 'errors-only', 'hash-only', 'none'])
+    expect(await offers(full, { words: ['vx', 'last', '--format', 'j'], cword: 3 })).toEqual([
+      'json',
+    ])
+    // `--format=` splits at the `=` under bash's default COMP_WORDBREAKS.
+    expect(await offers(full, { words: ['vx', 'last', '--format', '='], cword: 3 })).toEqual([
+      'pretty',
+      'json',
+    ])
+    expect(await offers(full, { words: ['vx', 'last', '--format', '=', 'p'], cword: 4 })).toEqual([
+      'pretty',
+    ])
+    // A verb without the flag falls through to its own words.
+    expect(await offers(full, { words: ['vx', 'lock', '--format', ''], cword: 3 })).toEqual([
+      '--help',
+      '--check',
+    ])
   })
 
   it('an unknown verb offers nothing, even after a call that offered something', async () => {

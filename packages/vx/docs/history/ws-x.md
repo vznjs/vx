@@ -508,6 +508,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-86.** A server whose `readyWhen` matched only after the run's stop
+  (its `trap` printed the marker on the way down, or the line raced the
+  signal) was reported `success` and registered, so a Ctrl-C'd run's
+  footer counted it a success, where a one-shot that exits 0 on the
+  stop is `aborted` (item 962). It is now `aborted`, and left to the
+  teardown already killing it. Row: `abort.test.ts` › "a server that
+  turns ready after the run stops is aborted, not a success".
+- **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
   `'C:/src/**'` an edit to `src/` replayed the old output. A backslash
@@ -517,3 +525,216 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-90.** Under `exec.sandbox` with `write: ['dist/']`,
+  `rm -rf dist && tsc` failed on Linux with a bare `Read-only file system`: the grant is
+  a bind mount, which the task may empty but not remove. No bind fixes
+  it soundly (binding the parent lets the task write beside the grant),
+  so a failed task whose output names a grant root on an `EROFS` /
+  `EBUSY` line now gets a hint naming the grant and `rm -rf dist/*`.
+  Rows: `sandbox-grant-remove.unsafe.test.ts` (three removal spellings,
+  the hinted removal, a near-miss control).
+- **X-91.** A `localBinding` port bridge's task side always dialled
+  127.0.0.1, so a server bound to `::1` alone (Vite's `localhost` on a
+  host that resolves `::1` first) was unreachable from the host. Each
+  connection now runs a dial script that reads the namespace's listen
+  tables and dials `::1` when only `::1` holds the port, else 127.0.0.1;
+  the choice is made before any byte moves, so nothing is retried
+  halfway. Rows: `port-bridge-dial.test.ts` (fixture tables, stub
+  socat), `sandbox-runtime.unsafe.test.ts` › "a server bound to ::1
+  alone is reachable through the bridge" (skips without IPv6; not run
+  on the authoring box, which has none).
+- **X-69.** `--report=markdown` printed to stdout after the run
+  returned, below the footer, which is the run's last word.
+  `RunOptions.beforeFooter` returns text `run()` prints just above the
+  footer, after the `--verbosity` table (X-64); the CLI renders the
+  report there. `--report-file` still writes after the run, re-rendered
+  when a kept server's exit changed the outcomes (C-53). Row:
+  `cli.test.ts` › "--report and the --verbosity table print above the
+  footer".
+- **X-70.** A plugin executor's throw printed twice in the task's
+  frame: `execute-task.ts` wrote the message to the task's stderr and
+  rethrew, and the scheduler's `onError` wrote `[vx] <id>: <message>`
+  into the same stream. The first copy is gone; a second task failing on
+  the same error now reads `as <id> above`, as every other refusal does.
+  Rows: `plugin-capabilities.test.ts` › "an executor's throw reaches the
+  task's own stderr …", "one error an executor rejects two tasks with is
+  named once in each"; `executor-error-secret-mask.test.ts`.
+- **X-71.** `--dry --no-cache` and `--dry --cache=local:` called a
+  cacheable task `no-cache (would exec)`, while the run itself called it
+  `miss` in its frame, report and `--summarize` row and counted `1 miss`
+  and `0 cached (0%)` in the footer. A miss is a lookup that failed, and
+  that run looked nothing up, so `no-cache` is the word: `ranNoCache`
+  (`events.ts`) is the one predicate the plan and every run surface ask,
+  and `run()` marks each outcome of a run whose policy reads and writes
+  nothing `cacheOff`. Rows: `cli.test.ts` › "--no-cache: the plan and the
+  run both call the task no-cache", the same for `--cache=local:`.
+- **X-72.** `vx info` said `flaky tasks: none` after a task passed on a
+  retry: `flakyTasks()` listed only keys holding both a failed and a
+  passing row, and a retry's pass is one `success` row with `attempts`
+  above 1. Its failed attempts now count as failures, so such a key mixes
+  alone. Rows: `failure-mode.test.ts` › "lists a key that passed only on
+  a retry, its failed attempts as failures"; `flaky.test.ts` › "a
+  within-run retry is named as such …".
+- **X-73.** `vx why` blamed a prune ("no entry for this key was in the
+  cache when it ran (pruned or evicted)") on a clean run whose previous
+  run had executed the task past a failed dependency under `--continue`,
+  so never saved it: the taint verdict fired only when both runs ran
+  beside a failure. A previous run that executed, succeeded and ran
+  beside a failure with writes on, with no entry older than this run, is
+  now named as not saved for that reason. Row: `metrics.test.ts` ›
+  "names why an unchanged key re-executed …".
+- **X-85.** A task that ignored the stop's SIGTERM and died to vx's
+  SIGKILL past the grace was reported `aborted`, and its frame still
+  carried `[vx] exit 137 is how the shell reports a death by SIGKILL:
+… the kernel's OOM killer …`, sending the reader after memory for a
+  kill vx sent. The verdict line is now left out while the run is
+  stopping. Row: `signal-handling.test.ts` › "a child that ignores
+  SIGTERM is SIGKILLed after the grace; vx still exits 143".
+- **X-87.** A sandboxed task's `exec.timeout` started before the sandbox
+  was armed (the runtime's ~200 ms probe), so the task got less than it
+  declared, and `echo` under `timeout: 60` reached the executor with its
+  signal already aborted: `failed (timed out, exit 143)` in 0 ms,
+  "killed (SIGTERM)" though nothing ran. The request's signal is now
+  made last. Row: `execute-task.test.ts` › "exec.timeout counts from the
+  executor's call, not from the sandbox's arming".
+- **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
+  from another lane, which refuses it by name.
+- **X-79.** A task's own output reached through the other namespace was
+  an input: `outputs.files: ['out.json']` under its
+  `inputs.workspaceFiles: ['packages/a/*.json']`, or an
+  `outputs.workspaceFiles` entry in its project under `inputs.files`.
+  Each build moved the key, the recheck said the file "changed after its
+  key was taken … declare it in cache.outputs" (it was), and no run was
+  ever saved. Both input halves now drop both output fields. A key that
+  folded such a file moves and misses once; it held no wrong bytes, so
+  no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
+  project outputs from its workspaceFiles", "excludes the task’s own
+  workspace outputs from its project files".
+- **X-80.** `lockfileClaim`'s in-process gate (a `vx watch` cycle, the MCP
+  server) re-read the lockfile and its extra files only when size or
+  mtime moved, so a same-size lockfile copied in with its mtime kept
+  (`cp -p`, `tar -x`) kept the old per-project digests and replayed the
+  old install's outputs. It now gates on size, mtime, ctime and inode,
+  as `Cache.hashFile` does, and stats each extra file before hashing it.
+  Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
+  kept is read again in the same process".
+- **X-68.** `--continue=never` kept retrying a task already in flight:
+  `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
+  four attempts, since the retry loop asked only the run's stop. The
+  scheduler now reports its fail-fast stop (`onFailFast`) and the loop
+  starts no attempt after it; the one in flight finishes. Row:
+  `retries.test.ts` › "continueMode never: a task in flight when another
+  fails is not retried".
+- **X-100.** The default `build` (2026-10-04) made a task cycle out of a
+  package cycle: `a` (`build` on `^build`) and `b` (no `build`)
+  depending on each other refused `vx run build` with
+  `Cycle detected in task graph: a#build -> b#build -> a#build`, where
+  `b` used to be passed through. The `^build` walk now finds package
+  cycles (Tarjan over `directDeps`, on first ask): a default `build`
+  passes through the projects on its cycle, and a walk meeting one on a
+  cycle takes its edge and goes on past it. Rows: `task-graph.test.ts` ›
+  "default builds on a package cycle make no task cycle", "a default
+  build on a cycle keeps the builds behind it for its dependants", and
+  the off-cycle control.
+- **X-101.** `rules.upfrontKeys` paired every reader of a shared input
+  with every other reader: the path index filed them all under one key
+  (`src/**`, a root `tsconfig.base.json`), so 5,000 tasks reading
+  `tsconfig.base.json` built their graph in 15 s, and 20,000 in one
+  project died `RangeError: Out of memory`. `overlapCandidates` takes a
+  side and keeps its index per side, pairing readers with writers only:
+  15 s → 0.2 s. Rows: `input-overlap.test.ts` › "4,000 readers of one
+  shared input pair none of them" and "the reader-writer index finds
+  every pair the rule refuses" (twenty).
+- **X-102.** Every project has a `build` since the default one
+  (2026-10-04), so a bare `vx run build` matched it: at a root that
+  declares none it ran 0 tasks, exit 0, where any other name said
+  "only projects outside the selection declare it — pass --all", and in
+  a workspace with no `build` at all it ran nothing green. A bare name
+  no longer selects a default `build` (`expandRequested` /
+  `unresolvedRequests` take `unselected`; `undeclaredIn` and the
+  did-you-mean list skip it); `lib#build` still plans it and `^build`
+  still reaches it. Rows: `bare-name-default-build.test.ts` (four); the
+  root rows of `task-selection.test.ts` and `configless-fence.test.ts`
+  no longer list a default build as requested.
+- **X-96.** An `admit` policy was asked about group tasks and saw a
+  dispatched group in `ctx.running`, so a packing policy could park real
+  work behind a group that runs nothing. Groups now bypass `admit` and
+  are never listed. Row: `scheduler.test.ts` › "a group is never asked
+  by an admit policy and never listed as running".
+- **X-97.** `deadServerBehind` walked groups by recursion: a
+  50,000-deep chain of groups over a server threw `RangeError`, and a
+  ladder of group diamonds re-walked each group once per path (2^n).
+  It now walks with a stack and a seen set, in the same dep order. Rows:
+  `server-death-properties.test.ts` › "a dead server is found behind a
+  50,000-deep chain of groups", "a ladder of group diamonds asks of each
+  node once".
+- **X-98.** `AdmitContext.running` said "executing on this machine right
+  now", but a persistent task leaves it at ready, with its worker slot.
+  Intended: the server never finishes before its dependants, so a policy
+  that counted it would hold them with no completion left to ask again
+  (with it listed, a solo policy hung the run). The doc now says so. Row:
+  `plugin-pipeline.test.ts` › "a ready server leaves the running set, so
+  a solo policy still admits what depends on it".
+- **X-99.** Under `--exclude-dependencies` + `--continue=always` the
+  taint read the key's upstream, which drops order-only edges: `t` saved
+  what it built after `a` failed (`t → gen → a`, `gen` excluded), where
+  the run without the flag withheld it. `judge` now reads the order-only
+  deps' settled outcomes too. Row: `continue-taint.test.ts` › "a task
+  ordered after a failure by --exclude-dependencies is not saved".
+- **X-92.** `--affected` over a deep `dependsOn` chain ended in
+  `RangeError` and a stack: `affectedRoots` recursed once per edge, and
+  ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
+  closure walk keeps its own stack. Rows: `affected-tasks.test.ts` › "a
+  50,000-deep chain seeded at its bottom reaches its top", plus a
+  diamond control that passes both ways.
+- **X-93.** The `config` stage ran on the workspace file's export
+  itself, which Bun keeps as one object per process, so every load after
+  the first handed the hooks the last load's edits: `ws.concurrency *= 2`
+  over a declared 2 ran `vx run` on 8 workers (the CLI's selection pass,
+  then the run) and doubled again per `vx watch` cycle. The hooks now
+  edit a copy (data cloned, plugins kept). Row: `plugin-pipeline.test.ts`
+  › "every load in one process hands the hooks the declared config, not
+  the last edit".
+- **X-94.** A node a `graph` hook added was read as written: one with no
+  `projectDir` failed at its run as an internal error (a TypeError from
+  `path`), and one with a relative `projectDir` keyed and ran against
+  vx's own cwd. After each graph
+  plugin a node's `projectName` and `taskName` must be names and its
+  `projectDir` absolute, refused by the plugin's name. Row:
+  `plugin-pipeline.test.ts` › "a node a graph hook adds is refused,
+  naming the field, when it lacks a project or a task".
+- **X-95.** The scheduler counts a pooled executor's slots by its pool
+  name, which was the executor's name, and one package declared twice
+  (`@vzn/vx-reapi` against two clusters) names both executors alike: two
+  pools of 2 ran 2 tasks at once between them. `poolOfPlacement` now
+  gives each executor its own pool, a taken name taking `#2`, `#3`.
+  Rows: `plugin-capabilities.test.ts` › "capacity: two pooled executors
+  that share a name each keep their own capacity",
+  `placement.test.ts` › "two executors that share a name get two pools;
+  one executor keeps one".
+- **X-110.** Args after `--` landed on the wrong line or inside a
+  comment: a `<<word` in a comment or quotes (`# then << check`,
+  `node -e "1<<x"`) made every later line a heredoc body, so the args
+  went on that line and ` --fix # …` ran `--fix` as a command; a quote in
+  a real heredoc body, or a template literal's closing newline after a
+  trailing comment (`echo args: # c\n`), let the comment take them; a
+  comment line after a heredoc, or a `<<\X` heredoc, put them on its
+  terminator (`X --fix`), which then closed nothing. One scan now reads
+  quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
+  `withForwardArgs` X-110 rows.
+- **X-111.** A traced sandboxed task whose shell died of a signal
+  (`kill -9 $$`, a SIGSEGV) showed `bash: line 1: 3 Killed { … }`
+  in its frame: the wrapper's bash reported
+  the job on its stderr, the task's, printing vx's whole wrapper with its
+  proxy port and paths. The wrapper's `wait` now prints nothing; the exit
+  code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
+- **X-112.** An executor that runs `ExecuteRequest.command` itself joined
+  the args after `--` on its own: the `vx init --plugin executor` example
+  joined them bare (`'a b'` split, `it's` a syntax error) and
+  `@vzn/vx-reapi` appended them after a trailing comment, so
+  `printf '<%s>' # each arg` ran without them where the local executor
+  kept them. `withForwardArgs` is on `@vzn/vx` (48 names) and both use
+  it. Rows: `vx-plugin-examples` `executor.test.ts` › "puts the args after
+  -- on the command as the local executor does", `vx-reapi`
+  `executor-helpers-sweep.test.ts` › "puts the args before a trailing
+  comment, as the local executor does".

@@ -3,6 +3,7 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   isLiteralPattern,
+  relPosix,
   splitNegations,
   staticPrefix,
   taskGlob,
@@ -108,6 +109,11 @@ export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
 }
 
+/** The default `build` (orchestrator/projects.ts): a config cannot key a group, so it is the one keyed group. */
+function isKeyedGroup(task: TaskConfig): boolean {
+  return task.exec === undefined && task.cache !== undefined
+}
+
 /**
  * Mark, for focused-flow display, the real tasks a requested GROUP
  * stands for. A group has no output of its own, so `vx run build`
@@ -159,7 +165,8 @@ export function markSurfacedDeps(nodes: Map<string, TaskNode>): number {
  *
  *   - Bare task names (`'build'`) → one entry per project in
  *     `candidates` that declares the task. Missing in a given project
- *     is silent (sparse tasks are normal across a workspace).
+ *     is silent (sparse tasks are normal across a workspace). A task
+ *     `unselected` holds (the default `build`) is no match.
  *   - Anchored entries (`'pkg#task'`) → one entry exactly, ignoring
  *     `candidates`. Silently dropped if pkg/task doesn't exist (the
  *     CLI's pre-validation catches malformed strings).
@@ -170,6 +177,7 @@ export function expandRequested(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): Array<{ project: string; task: string }> {
   const seen = new Set<string>()
   const out: Array<{ project: string; task: string }> = []
@@ -188,7 +196,7 @@ export function expandRequested(
       continue
     }
     for (const name of candidates) {
-      if (declaresTask(projects, name, spec)) push(name, spec)
+      if (selectsTask(projects, name, spec, unselected)) push(name, spec)
     }
   }
   return out
@@ -213,6 +221,17 @@ function declaresTask(projects: Map<string, ProjectEntry>, project: string, task
   return declaredTask(projects.get(project)?.config, task) !== undefined
 }
 
+/** What a bare name matches: a declared task `unselected` leaves alone. */
+function selectsTask(
+  projects: Map<string, ProjectEntry>,
+  project: string,
+  task: string,
+  unselected: ((task: TaskConfig) => boolean) | undefined,
+): boolean {
+  const config = declaredTask(projects.get(project)?.config, task)
+  return config !== undefined && unselected?.(config) !== true
+}
+
 /**
  * The requested specs `expandRequested` silently dropped — each one
  * matched NO project, so nothing it asked for will run.
@@ -229,6 +248,7 @@ export function unresolvedRequests(
   tasks: readonly string[],
   candidates: readonly string[],
   projects: Map<string, ProjectEntry>,
+  unselected?: (task: TaskConfig) => boolean,
 ): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -238,7 +258,8 @@ export function unresolvedRequests(
     const resolved =
       idx >= 0
         ? declaresTask(projects, spec.slice(0, idx), spec.slice(idx + 1))
-        : candidates.length === 0 || candidates.some((name) => declaresTask(projects, name, spec))
+        : candidates.length === 0 ||
+          candidates.some((name) => selectsTask(projects, name, spec, unselected))
     if (resolved) continue
     seen.add(spec)
     out.push(spec)
@@ -379,6 +400,55 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     return declared.has(name)
   }
 
+  // Package cycles, for the default `build` (`isKeyedGroup`): each project
+  // on one maps to its strongly connected component, found on the first ask
+  // (iterative Tarjan over `directDeps`, the order the `^name` walk reads).
+  const component = new Map<string, number>()
+  const cyclic = new Set<number>()
+  let components = 0
+  function componentOf(start: string): number {
+    const known = component.get(start)
+    if (known !== undefined) return known
+    const index = new Map<string, number>()
+    const low = new Map<string, number>()
+    const open: string[] = []
+    const work: Array<[name: string, next: number]> = []
+    const enter = (name: string): void => {
+      index.set(name, index.size)
+      low.set(name, index.size - 1)
+      open.push(name)
+      work.push([name, 0])
+    }
+    enter(start)
+    while (work.length > 0) {
+      const top = work[work.length - 1]!
+      const deps = packageGraph.directDeps(top[0])
+      if (top[1] < deps.length) {
+        const dep = deps[top[1]++]!
+        if (component.has(dep)) continue
+        if (!index.has(dep)) enter(dep)
+        else low.set(top[0], Math.min(low.get(top[0])!, index.get(dep)!))
+        continue
+      }
+      work.pop()
+      const name = top[0]
+      const parent = work[work.length - 1]
+      if (parent !== undefined) low.set(parent[0], Math.min(low.get(parent[0])!, low.get(name)!))
+      if (low.get(name) !== index.get(name)) continue
+      const id = components++
+      let size = 0
+      for (let member = ''; member !== name; size++) {
+        member = open.pop()!
+        component.set(member, id)
+      }
+      if (size > 1) cyclic.add(id)
+    }
+    return component.get(start)!
+  }
+  const onCycle = (name: string): boolean => cyclic.has(componentOf(name))
+  const sameCycle = (a: string, b: string): boolean =>
+    onCycle(a) && componentOf(a) === componentOf(b)
+
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
   function resolveEntry(frame: Frame, raw: string): void {
     const { node } = frame
@@ -450,7 +520,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // shape), and a cycle walks the frontier straight back to the
       // origin. Mirrors the self-pattern rule above — a task can never
       // depend on itself.
+      //
+      // The default `build` sits on every project, so on a package cycle it
+      // would make a task cycle no config declares. Its own walk passes
+      // through the projects on its cycle (each of their builds reaches it),
+      // and a walk that meets it on a cycle takes the edge and goes on past
+      // it, so the builds it could not depend on still come first.
       const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
+      const keyed = isKeyedGroup(node.config)
       const visited = new Set<string>([projectName])
       const frontier = [...packageGraph.directDeps(projectName)]
       let held = false
@@ -459,8 +536,15 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         if (visited.has(target)) continue
         visited.add(target)
         if (re === null) {
-          if (visit(frame, target, spec.task, false)) held = true
-          else frontier.push(...packageGraph.directDeps(target))
+          if (keyed && sameCycle(projectName, target)) {
+            frontier.push(...packageGraph.directDeps(target))
+          } else if (visit(frame, target, spec.task, false)) {
+            held = true
+            const task = declaredTask(projects.get(target)!.config, spec.task)!
+            if (isKeyedGroup(task) && onCycle(target)) {
+              frontier.push(...packageGraph.directDeps(target))
+            }
+          } else frontier.push(...packageGraph.directDeps(target))
         } else {
           const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
             re.test(n),
@@ -872,7 +956,7 @@ function detectOutputCollisions(
   const entries: Entry[] = wsDeclarers.map((node) => ({ node, globs: wsFilesOf(node) ?? [] }))
   for (const bucket of byProject.values()) {
     for (const node of bucket) {
-      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const rel = relPosix(workspaceRoot, node.projectDir)
       const globs = (filesOf(node) ?? []).map((g) => (rel === '' ? g : `${rel}/${g}`))
       entries.push({ node, globs, rel })
     }
@@ -974,36 +1058,51 @@ const GLOB_HEAD_END = /[*?{}\\!]/
  * directory its own head names. A whole subtree meets the globs whose
  * literal prefix lies at or under it, found the same way from the glob's
  * side (item 941).
+ *
+ * Given `sideOf`, only the pairs whose members sit on different sides are
+ * wanted (a reader and a writer, `detectInputOverlaps`), and each index is
+ * kept per side, so a member looks up only the other side's: thousands of
+ * readers sharing one input (`src/**`, a root `tsconfig.base.json`) were
+ * paired with each other, millions of pairs no rule judges (X-101).
  */
 function overlapCandidates<T>(
   tasks: readonly T[],
   globsOf: (n: T) => readonly string[] | undefined,
+  sideOf?: (n: T) => boolean,
 ): Array<[number, number]> {
-  const globs = new Map<string, number[]>()
-  const globsUnder = new Map<string, number[]>()
+  const sides = sideOf === undefined ? 1 : 2
+  // The index a member of side `s` looks up: its own side's, or the other's.
+  const across = (s: number): number => (sides === 1 ? s : 1 - s)
+  const perSide = (): Array<Map<string, number[]>> =>
+    Array.from({ length: sides }, () => new Map<string, number[]>())
+  const globs = perSide()
+  const globsUnder = perSide()
   const literals: Array<[task: number, path: string]> = []
   // `covers` (item 941): a whole subtree `P/**` meets every glob whose
   // literal prefix is P or under it, so each glob looks up the subtrees
   // filed at its prefix and at each of that prefix's ancestors.
-  const subtrees = new Map<string, number[]>()
+  const subtrees = perSide()
   const prefixes: Array<[task: number, prefix: string]> = []
   const file = (index: Map<string, number[]>, key: string, i: number): void => {
     const list = index.get(key)
     if (list === undefined) index.set(key, [i])
     else list.push(i)
   }
+  const side: number[] = []
   for (let i = 0; i < tasks.length; i++) {
+    const s = sideOf?.(tasks[i]!) === true ? 1 : 0
+    side.push(s)
     for (const tree of asTrees(globsOf(tasks[i]!) ?? [])) {
       if (isLiteralPattern(tree)) {
         literals.push([i, tree])
         continue
       }
-      file(globs, tree, i)
+      file(globs[s]!, tree, i)
       const dir = wholeSubtreePrefixes([tree])?.[0]
-      if (dir !== undefined) file(subtrees, dir, i)
+      if (dir !== undefined) file(subtrees[s]!, dir, i)
       prefixes.push([i, staticPrefix(tree)])
       const head = tree.slice(0, tree.search(GLOB_HEAD_END))
-      file(globsUnder, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
+      file(globsUnder[s]!, head.slice(0, Math.max(0, head.lastIndexOf('/'))), i)
     }
   }
   const n = tasks.length
@@ -1011,34 +1110,38 @@ function overlapCandidates<T>(
   const pair = (x: number, y: number): void => {
     if (x !== y) pairs.add(x < y ? x * n + y : y * n + x)
   }
-  for (const list of globs.values()) {
+  for (const [tree, list] of globs[0]!) {
+    const other = sides === 1 ? list : (globs[1]!.get(tree) ?? [])
     for (let x = 0; x < list.length; x++) {
-      for (let y = x + 1; y < list.length; y++) pair(list[x]!, list[y]!)
+      for (let y = sides === 1 ? x + 1 : 0; y < other.length; y++) pair(list[x]!, other[y]!)
     }
   }
   // `witnessed`: two globs meet only when one's literal prefix is the
   // other's or under it, so each looks up the globs filed at its prefix
   // and at each ancestor.
-  const byPrefix = new Map<string, number[]>()
-  for (const [i, prefix] of prefixes) file(byPrefix, rootless(prefix), i)
+  const byPrefix = perSide()
+  for (const [i, prefix] of prefixes) file(byPrefix[side[i]!]!, rootless(prefix), i)
   for (const [i, raw] of prefixes) {
+    const index = byPrefix[across(side[i]!)]!
     const prefix = rootless(raw)
-    for (const j of byPrefix.get(prefix) ?? []) pair(i, j)
-    if (prefix !== '') for (const j of byPrefix.get('') ?? []) pair(i, j)
+    for (const j of index.get(prefix) ?? []) pair(i, j)
+    if (prefix !== '') for (const j of index.get('') ?? []) pair(i, j)
     for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of byPrefix.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, prefix] of prefixes) {
-    for (const j of subtrees.get(prefix) ?? []) pair(i, j)
+    const index = subtrees[across(side[i]!)]!
+    for (const j of index.get(prefix) ?? []) pair(i, j)
     for (let sep = prefix.indexOf('/'); sep !== -1; sep = prefix.indexOf('/', sep + 1)) {
-      for (const j of subtrees.get(prefix.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(prefix.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   for (const [i, path] of literals) {
-    for (const j of globsUnder.get('') ?? []) pair(i, j)
+    const index = globsUnder[across(side[i]!)]!
+    for (const j of index.get('') ?? []) pair(i, j)
     for (let sep = path.indexOf('/'); sep !== -1; sep = path.indexOf('/', sep + 1)) {
-      for (const j of globsUnder.get(path.slice(0, sep)) ?? []) pair(i, j)
+      for (const j of index.get(path.slice(0, sep)) ?? []) pair(i, j)
     }
   }
   return [...pairs].sort((x, y) => x - y).map((p) => [Math.floor(p / n), p % n])
@@ -1235,7 +1338,11 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   if (projectReaders) {
     for (const sides of byProject.values()) {
       if (sides.length < 2) continue
-      for (const [i, j] of overlapCandidates(sides, (s) => s.globs)) {
+      for (const [i, j] of overlapCandidates(
+        sides,
+        (s) => s.globs,
+        (s) => s.reads,
+      )) {
         readsOutputs(sides[i]!, sides[j]!, 'files')
       }
     }
@@ -1243,14 +1350,18 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   if (!rootReaders) return
   if (workspaceRoot !== undefined) {
     for (const node of filesWriters) {
-      const rel = path.relative(workspaceRoot, node.projectDir).split(path.sep).join('/')
+      const rel = relPosix(workspaceRoot, node.projectDir)
       const globs = splitNegations(node.config.cache!.outputs.files).positive.map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )
       rooted.push({ node, globs, reads: false, rel })
     }
   }
-  for (const [i, j] of overlapCandidates(rooted, (s) => s.globs)) {
+  for (const [i, j] of overlapCandidates(
+    rooted,
+    (s) => s.globs,
+    (s) => s.reads,
+  )) {
     readsOutputs(rooted[i]!, rooted[j]!, 'workspaceFiles')
   }
 }

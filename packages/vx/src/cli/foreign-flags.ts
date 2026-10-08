@@ -6,7 +6,7 @@
 // on left a `turbo run --dry-run` user at a dead end. The table renders
 // cli.md's parity section (`renderForeignFlags`), pinned by a test.
 
-export interface ForeignFlag {
+interface ForeignFlag {
   runner: 'turbo' | 'nx'
   /** Every spelling, first the one shown. */
   names: readonly string[]
@@ -19,6 +19,13 @@ export interface ForeignFlag {
   outcome: 'same' | 'alias' | 'refuse'
   /** The vx spelling, or what to use instead. */
   vx: string
+  /**
+   * The runner reads `=true` / `=false` on it (Turbo's `--force [FORCE]`,
+   * Nx's yargs booleans): `=false` is the flag left out, `=true` the flag
+   * bare. `--skip-nx-cache=false` forced every task, `--summarize=true`
+   * wrote the summary to a file named `true`.
+   */
+  bool?: true
   /** For an alias: the vx argv. For a refusal: none. */
   to?: (value: string | undefined) => string[]
 }
@@ -28,6 +35,17 @@ const list = (v: string | undefined): string[] =>
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s !== '')
+
+// Nx's `--projects` labels (find-matching-projects, 23.2.1): `name:` and
+// `directory:` say which match to make; vx's filter says it by form. `tag:`
+// is a filter form already.
+const nxPattern = (p: string): string => {
+  const neg = p.startsWith('!') ? '!' : ''
+  const s = neg === '' ? p : p.slice(1)
+  if (s.startsWith('name:')) return `${neg}${s.slice(5)}`
+  if (s.startsWith('directory:')) return `${neg}./${s.slice(10)}`
+  return p
+}
 
 const GRAPH_IMAGE = /\.(svg|png|jpe?g|pdf|json|html|mermaid)$/i
 
@@ -100,6 +118,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--force'],
     value: false,
+    bool: true,
     outcome: 'same',
     vx: '`--force`: skip cache reads, keep writes',
   },
@@ -114,6 +133,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--summarize'],
     value: false,
+    bool: true,
     outcome: 'same',
     vx: '`--summarize[=<path>]`',
   },
@@ -133,7 +153,14 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     outcome: 'same',
     vx: '`--output-logs full|errors-only|hash-only|none`',
   },
-  { runner: 'turbo', names: ['--no-cache'], value: false, outcome: 'same', vx: '`--no-cache`' },
+  {
+    runner: 'turbo',
+    names: ['--no-cache'],
+    value: false,
+    outcome: 'same',
+    // Turbo 2.11's own help: "Equivalent to `--cache=local:r,remote:r`".
+    vx: "`--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`",
+  },
   {
     runner: 'turbo',
     names: ['--cache'],
@@ -268,6 +295,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--remote-only'],
     value: false,
+    bool: true,
     outcome: 'refuse',
     vx: 'use `--cache local:,remote:rw`',
   },
@@ -275,6 +303,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--remote-cache-read-only'],
     value: false,
+    bool: true,
     outcome: 'refuse',
     vx: 'use `--cache local:rw,remote:r`',
   },
@@ -346,7 +375,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--preflight'],
     value: false,
     outcome: 'refuse',
-    vx: '`turboCache()` sends no CORS preflight: drop it',
+    vx: 'set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
   },
   {
     runner: 'turbo',
@@ -396,8 +425,16 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['-p', '--projects'],
     value: true,
     outcome: 'alias',
-    vx: '`--filter <pattern>`, one per project',
-    to: (v) => list(v).flatMap((p) => ['--filter', p]),
+    vx: "`--filter <pattern>`, one per project (`directory:<d>` is `./<d>`, `name:<n>` is `<n>`); a list opening with `!` starts from all (`--filter '*'`)",
+    // Nx reads a leading exclusion as "all projects but": `-p '!b,a'` is
+    // every project except b, where vx's filters alone would select a.
+    to: (v) => {
+      const ps = list(v)
+      return [...(ps[0]?.startsWith('!') ? ['*'] : []), ...ps].flatMap((p) => [
+        '--filter',
+        nxPattern(p),
+      ])
+    },
   },
   {
     runner: 'nx',
@@ -405,7 +442,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: true,
     outcome: 'alias',
     vx: "`--filter '!<pattern>'`, one per project",
-    to: (v) => list(v).flatMap((p) => ['--filter', `!${p}`]),
+    to: (v) => list(v).flatMap((p) => ['--filter', `!${nxPattern(p)}`]),
   },
   {
     runner: 'nx',
@@ -436,6 +473,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--skip-nx-cache'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--force`',
     to: () => ['--force'],
@@ -445,6 +483,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--nx-bail'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--continue=never`',
     to: () => ['--continue=never'],
@@ -482,6 +521,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--exclude-task-dependencies'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--exclude-dependencies`',
     to: () => ['--exclude-dependencies'],
@@ -490,6 +530,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--skip-remote-cache'],
     value: false,
+    bool: true,
     outcome: 'alias',
     vx: '`--cache local:rw,remote:`',
     to: () => ['--cache', 'local:rw,remote:'],
@@ -605,6 +646,13 @@ export function translateForeign(args: readonly string[]): string[] | { error: s
       name = kebab
       a = inline === undefined ? kebab : `${kebab}=${inline}`
     }
+    if (
+      (inline === 'true' || inline === 'false') &&
+      FOREIGN_FLAGS.some((f) => f.bool && f.names.includes(name))
+    ) {
+      if (inline === 'false') continue
+      a = name
+    }
     const entries = FOREIGN_FLAGS.filter((f) => f.names.includes(name) || f.names.includes(a))
     const next = before[i + 1]
     const spaced = inline === undefined && next !== undefined && !next.startsWith('-')
@@ -627,7 +675,9 @@ export function translateForeign(args: readonly string[]): string[] | { error: s
 /** cli.md's parity table, one row per entry. */
 export function renderForeignFlags(): string {
   const rows = FOREIGN_FLAGS.map((f) => {
-    const flag = f.shown ?? f.names.map((n) => `\`${n}${f.value ? ' <v>' : ''}\``).join(', ')
+    const flag =
+      f.shown ??
+      f.names.map((n) => `\`${n}${f.value ? ' <v>' : f.bool ? '[=<bool>]' : ''}\``).join(', ')
     return `| ${f.runner} | ${flag.replaceAll('|', '\\|')} | ${f.outcome} | ${f.vx.replaceAll('|', '\\|')} |`
   })
   return ['| runner | flag | outcome | in vx |', '| --- | --- | --- | --- |', ...rows].join('\n')

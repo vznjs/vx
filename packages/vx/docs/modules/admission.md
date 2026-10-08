@@ -32,7 +32,11 @@ rules stand between them and neither changes what the task is:
   partial tree on its healthy key (C-1). Its dependents are released
   only once its deps have settled (scheduler.ts, item 963), so the
   answer is complete by the time anyone asks. The walk is iterative
-  and memoized once every dep has settled.
+  and memoized once every dep has settled. Every edge counts, order-only
+  ones too: `judge` gets the key's upstream, which drops them, so it
+  reads their settled outcomes itself; otherwise a task ordered after a
+  failure by `--exclude-dependencies` saved what the run without the flag
+  withholds.
 
 Split from `run.ts` on 2026-09-10 (pure motion).
 
@@ -101,7 +105,7 @@ once and leave it empty; the joiner hits; a restore-tier task, a
 write-only and a read-only run do not join),
 `tests/continue-taint.test.ts` (the tainted task runs and does not
 save; taint reaches the grand-dependent; a hit between the failure
-and the dependent carries it),
+and the dependent carries it; so does an order-only edge),
 `tests/taint-tracker.test.ts` (each poisoning status, a seed with no
 failure upstream, a hit judged before its deps settled, a 50,000-deep
 chain of hits).

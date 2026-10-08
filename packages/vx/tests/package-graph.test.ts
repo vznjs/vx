@@ -499,18 +499,39 @@ describe('buildPackageGraph', () => {
     ])
   })
 
-  it('a `catalog:` entry keeps the edge its key names (turborepo#10785)', () => {
-    // The catalog's range lives in pnpm-workspace.yaml or bun's root
-    // manifest, which the graph does not read.
-    const g = buildPackageGraph([
-      pkg('app-a', '1.0.0', {
-        dependencies: { 'pkg-b': 'catalog:', react: 'catalog:' },
-        peerDependencies: { 'react-dom': 'latest' },
-      }),
-      pkg('pkg-b', '1.0.0'),
+  it('a `catalog:` entry is the spec its catalog names; one no catalog names keeps the edge (turborepo#10785)', () => {
+    const catalogs = new Map([
+      ['default', { 'pkg-b': '^1.0.0', nuxt: '4.3.1', 'pkg-c': '^2.0.0', 'pkg-d': 'workspace:*' }],
+      ['next', { 'pkg-b': '^9.0.0' }],
     ])
-    expect(g.directDeps('app-a')).toEqual(['pkg-b'])
-    expect(g.transitiveDeps('app-a')).toEqual(['pkg-b'])
+    const g = buildPackageGraph(
+      [
+        pkg('app-a', '1.0.0', {
+          dependencies: {
+            'pkg-b': 'catalog:',
+            nuxt: 'catalog:default',
+            'pkg-c': 'catalog:',
+            'pkg-d': 'catalog:',
+            'pkg-e': 'catalog:',
+          },
+        }),
+        pkg('app-b', '1.0.0', { dependencies: { 'pkg-b': 'catalog:next', 'pkg-e': 'catalog:x' } }),
+        pkg('nuxt', undefined),
+        pkg('pkg-b', '1.0.0'),
+        pkg('pkg-c', '1.0.0'),
+        pkg('pkg-d', '5.0.0'),
+        pkg('pkg-e', '1.0.0'),
+      ].map((m) => ({ ...m, catalogs })),
+    )
+    expect(g.directDeps('app-a')).toEqual(['pkg-b', 'pkg-d', 'pkg-e'])
+    expect(g.directDeps('app-b')).toEqual(['pkg-e'])
+    // Without the workspace's catalogs (the playground, an embedder's metas)
+    // every `catalog:` entry keeps its edge.
+    const bare = buildPackageGraph([
+      pkg('app-a', '1.0.0', { dependencies: { 'pkg-b': 'catalog:', react: 'catalog:' } }),
+      pkg('pkg-b', '3.0.0'),
+    ])
+    expect(bare.directDeps('app-a')).toEqual(['pkg-b'])
   })
 })
 
@@ -568,6 +589,63 @@ describe('the planner reads the same edges', () => {
         ])
       } finally {
         await rm(root, { recursive: true, force: true })
+      }
+    },
+    PARITY_TIMEOUT,
+  )
+
+  it(
+    'a `catalog:` entry the workspace package does not satisfy is no edge, pnpm and bun (zenstack)',
+    async () => {
+      // zenstack: `@zenstackhq/server` takes `nuxt: "catalog:"` (4.3.1) and
+      // the versionless `samples/nuxt` sample takes the server; read as an
+      // edge, `^build` was "Cycle detected".
+      const shapes = [
+        {
+          yaml: 'packages:\n  - "packages/*"\ncatalog:\n  nuxt: 4.3.1\ncatalogs:\n  ui:\n    ui: ^1.0.0\n',
+          root: {},
+        },
+        {
+          yaml: null,
+          root: {
+            workspaces: { packages: ['packages/*'], catalog: { nuxt: '4.3.1' } },
+            catalogs: { ui: { ui: '^1.0.0' } },
+          },
+        },
+      ]
+      for (const shape of shapes) {
+        const root = await makeWorkspace({ prefix: 'vx-pkg-graph-catalog-' })
+        try {
+          if (shape.yaml === null) await rm(path.join(root, 'pnpm-workspace.yaml'))
+          else await writeFile(path.join(root, 'pnpm-workspace.yaml'), shape.yaml)
+          await writeFile(
+            path.join(root, 'package.json'),
+            JSON.stringify({ name: 'fixture-root', private: true, ...shape.root }),
+          )
+          const add = async (name: string, fields: object): Promise<void> => {
+            const dir = path.join(root, 'packages', name)
+            await mkdir(dir, { recursive: true })
+            await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, ...fields }))
+            await writeFile(
+              path.join(dir, 'vx.config.mjs'),
+              `export default {
+                tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'] } },
+              }
+              `,
+            )
+          }
+          await add('server', { version: '1.0.0', devDependencies: { nuxt: 'catalog:' } })
+          await add('nuxt', { dependencies: { server: 'workspace:*', ui: 'catalog:ui' } })
+          await add('ui', { version: '1.2.0' })
+          const plan = await dry(root, ['build', '--all'])
+          expect(Object.fromEntries(plan.map((t) => [t.id, t.deps]))).toEqual({
+            'nuxt#build': ['server#build', 'ui#build'],
+            'server#build': [],
+            'ui#build': [],
+          })
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
       }
     },
     PARITY_TIMEOUT,

@@ -123,6 +123,15 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].commands\` must be an object`)
   })
 
+  it('a `commands` array is refused, not read as the verbs 0, 1, …', () => {
+    const p = testPlugin('sweep-cmd-list', {
+      commands: [{ description: 'd', run: () => 0 }] as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].commands\` must be an object keyed by verb, not an array`,
+    )
+  })
+
   it('a fingerprint claim over NO files is refused', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
@@ -147,7 +156,7 @@ describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
   it('a NUMBER maxSize is refused by name, not by a TypeError from parseSize', () => {
     // `parseSize` takes a string; the type arm is what keeps a number from it.
     expect(refusal({ cacheRetention: { maxSize: 1048576 } })).toBe(
-      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '64KB'`,
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got 1048576)`,
     )
     expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
   })
@@ -562,6 +571,14 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       ],
     ),
   ]
+  for (const f of ['read', 'write']) {
+    it(`refuses a NUL byte in allow.${f} at the boundary`, () => {
+      expect(sandboxRefusal({ allow: { [f]: ['a\0b'] } })).toBe(
+        `${W}.sandbox.allow.${f}: "a\\u0000b" holds a NUL byte`,
+      )
+      expect(sandboxRefusal({ allow: { [f]: ['a/b'] } })).toBeNull()
+    })
+  }
   for (const [field, sandbox, message] of CASES) {
     it(`refuses a malformed ${field}`, () => {
       expect(sandboxRefusal(sandbox)).toBe(message)
@@ -757,6 +774,24 @@ describe('project tags', () => {
     const msg = `${CFG}: \`tags\` must be an array of non-empty strings`
     for (const bad of ['ui', ['ui', ''], ['  '], [1], [null], { ui: true }])
       expect(refusal(bad)).toBe(msg)
+  })
+  // Each loaded, and `--filter tag:<it>` parsed as something else: the
+  // padding is lost to the shell, `v1...` walked v1's deps, `v[2]` asked
+  // git for ref 2.
+  it.each([
+    [' ui', 'has surrounding whitespace'],
+    ['ui\t', 'has surrounding whitespace'],
+    ['ui*', "holds '*', which makes it a pattern"],
+    ['v1...', "ends in '...', which a filter reads as a dependency walk"],
+    ['v1^...', "ends in '...', which a filter reads as a dependency walk"],
+    ['v[2]', 'ends in "[2]", which a filter reads as a git range'],
+  ])('refuses %j, which a tag filter cannot name', (tag, why) => {
+    expect(refusal(['ok', tag])).toBe(
+      `${CFG}: tag ${JSON.stringify(tag)} ${why} — \`--filter tag:<name>\` could not name it. Rename the tag.`,
+    )
+  })
+  it('keeps the characters a tag filter reads literally', () => {
+    expect(refusal(['scope:web', 'a.b', 'v1..', '[x', 'x]', 'a b', 'a#b', '^x', '!x'])).toBeNull()
   })
 })
 

@@ -30,7 +30,7 @@ import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration, neverStarted } from './summary.js'
-import { outcomeLabel, skippedReason } from './events.js'
+import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -274,8 +274,8 @@ function cacheOf(o: TaskOutcome): { word: string; color: string } {
   switch (o.status) {
     case 'success':
     case 'failed':
-      // A task with no `cache` block never consulted the cache: not a miss.
-      return { word: o.node.config.cache === undefined ? 'no-cache' : 'miss', color: '' } // dim
+      // A task no cache answered for never consulted one: not a miss.
+      return { word: ranNoCache(o) ? 'no-cache' : 'miss', color: '' } // dim
     case 'cache-hit':
       return o.restored === false
         ? { word: 'fresh', color: SUCCESS }

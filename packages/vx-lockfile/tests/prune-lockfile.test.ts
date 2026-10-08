@@ -205,6 +205,14 @@ describe('yarn.lock', () => {
     expect(pruneYarn(YARN_CLASSIC_LOCK, ALL)).toBe(YARN_CLASSIC_LOCK)
   })
 
+  it('a CRLF checkout keeps the blank lines between entries', () => {
+    for (const lock of [YARN_BERRY_LOCK, YARN_CLASSIC_LOCK]) {
+      const crlf = lock.replaceAll('\n', '\r\n')
+      expect(pruneYarn(crlf, ALL)).toBe(crlf)
+      expect(pruneYarn(crlf, AB)).toBe(pruneYarn(lock, AB).replaceAll('\n', '\r\n'))
+    }
+  })
+
   it('berry: a kept workspace depending on one the subset leaves out is refused', () => {
     expect(() => pruneYarn(YARN_BERRY_LOCK, scope(['.', 'packages/a']))).toThrow(
       'yarn.lock: b@workspace:packages/b is a workspace the subset leaves out',
