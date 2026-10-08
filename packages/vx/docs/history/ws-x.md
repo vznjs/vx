@@ -786,3 +786,14 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-118.** A default `build` on a package cycle (X-100) passed
+  through every project on its cycle, a declared `build` that never
+  reaches it included: with `p` (default `build`) and `t` (`build` on
+  no `^build`) depending on each other, `p#build` took no edge to
+  `t#build`, so `p#test` on `build` ran beside `t#build` and its key
+  folded nothing of `t`: a stale hit after `t` changed. A default `build`
+  on a cycle now walks once the rest of the graph is built and passes
+  through only the builds that reach it. Rows: `task-graph.test.ts` › "a
+  default build on a cycle keeps the edge to a build that never reaches
+  it", "a default build on a cycle passes a build that reaches it through
+  another task".

@@ -124,10 +124,15 @@ builder enforces the dependsOn-specific rejections.
 loader gives the default `build` (the one keyed group, `isKeyedGroup`)
 holds `build`, so on a package cycle (`directDeps`' strongly connected
 components, found on the first ask) `^build` closed a task cycle no
-config declares. A default `build`'s own walk passes through the
-projects on its cycle, and a walk that meets one on a cycle adds its
-edge and goes on past it, so the builds it cannot depend on still come
-first. Off a cycle it is a holder like any other.
+config declares. A default `build` on a cycle walks last, once the rest
+of the graph is built: a build on its cycle that reaches it is passed
+through, and one that does not is a holder like any other (X-118: passed
+through unasked, `p#test` on `p#build` ran beside a `t#build` on no
+`^build` and hit after `t` changed). A build only that question brought
+in is pruned again when it reaches back. A walk that meets a default
+`build` on a cycle adds its edge and goes on past it, so the builds it
+cannot depend on still come first. Off a cycle it is a holder like any
+other.
 
 **`requested: true`** marks the user-requested set. A node added via
 dependsOn expansion is `requested: false`. If a node is later named

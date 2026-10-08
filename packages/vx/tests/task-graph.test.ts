@@ -1282,6 +1282,52 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
     })
   })
 
+  it('a default build on a cycle keeps the edge to a build that never reaches it', () => {
+    // p ↔ t → c, t's build on no `^build`: nothing makes t#build wait for
+    // p#build, so p#build (and p#test behind it) waits for t#build and
+    // folds its key, and stops there as at any holder. Passed through,
+    // p#test ran beside t#build and hit after t changed.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('p', { ...defaultBuild, test: { ...cmd('t'), dependsOn: ['build'] } }),
+        project('t', holder([])),
+        project('c', holder()),
+      ),
+      packageGraph: packageGraph({ p: ['t'], t: ['p', 'c'] }),
+      requested: [{ project: 'p', task: 'test' }],
+    })
+    expect(depsOf(nodes)).toEqual({
+      'p#test': ['p#build'],
+      'p#build': ['t#build'],
+      't#build': [],
+    })
+  })
+
+  it('a default build on a cycle passes a build that reaches it through another task', () => {
+    // t#build → t#gen → ^build reaches p#build, so p#build takes no edge
+    // back, and a t#build only that edge would have added is not run.
+    const tasks = {
+      build: { ...cmd('b'), dependsOn: ['gen'] },
+      gen: { ...cmd('g'), dependsOn: ['^build'] },
+    }
+    const only = buildTaskGraph({
+      projects: projects(project('p', defaultBuild), project('t', tasks)),
+      packageGraph: packageGraph({ p: ['t'], t: ['p'] }),
+      requested: [build('p')],
+    })
+    expect(depsOf(only)).toEqual({ 'p#build': [] })
+    const both = buildTaskGraph({
+      projects: projects(project('p', defaultBuild), project('t', tasks)),
+      packageGraph: packageGraph({ p: ['t'], t: ['p'] }),
+      requested: [build('p'), build('t')],
+    })
+    expect(depsOf(both)).toEqual({
+      'p#build': [],
+      't#build': ['t#gen'],
+      't#gen': ['p#build'],
+    })
+  })
+
   it('a default build on no cycle stops the walk as any holder does (control)', () => {
     const nodes = buildTaskGraph({
       projects: projects(
