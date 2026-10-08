@@ -23,8 +23,8 @@ without a terminal it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
 the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
 and `github()` when `.github/workflows` exists, installing each beside vx at
-the same version. Your `package.json` scripts
-stay as they are. The steps below
+the same version (`--no-install` leaves `package.json` alone). Your
+`package.json` scripts stay as they are. The steps below
 are the same adoption one stage at a time.
 
 ## Turborepo
@@ -205,6 +205,11 @@ The command itself comes from your `package.json` script, with its
    `@vzn/vx-migrate` installed while a config still runs an `nx-exec`
    line, and `@vzn/vx-migrate` while one runs an `nx-env` line.
 
+A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
+runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
+from the graph `nx graph` exports. `vx init` adopts by `nx.json` alone and
+maps such a repo's scripts instead.
+
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
@@ -301,6 +306,16 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;
 keep Nx for those.
+
+## Vite Task
+
+`npx @vzn/vx-migrate` in a repo whose root `package.json` lists
+`vite-plus` writes a `vx.config.ts` per package from each `vite.config`
+`run.tasks` and its `package.json` scripts (`--from vite-task` when
+turbo.json or Nx is there too). Vite Task traces the files a task reads
+and writes; vx declares them, so a task without explicit `cache.input`
+and `cache.output` runs uncached until its `TODO(vx-migrate)` is filled.
+The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 ## Common problems
 
