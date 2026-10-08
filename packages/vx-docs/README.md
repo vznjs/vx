@@ -110,6 +110,14 @@ in `astro.config.mjs` and reference the key. `bun packages/vx/src/bin.ts
 run dev --filter @vzn/vx-docs` previews at `/vx/blog/`; a `draft: true`
 post is visible there and skipped by the build.
 
+### Release posts
+
+A release post covers a run of releases (vx ships one per merged PR):
+at most ten changes a user would notice, each a `##` section with one
+example and its PR links, then Breaking changes, How to update and Learn
+more. The slug is `vx-0-0-<last version>`, the tag `release`, and the
+date the last release's day. The design essays stay beside them.
+
 ## Commands
 
 Everything runs through vx from the repo root; this package has no
