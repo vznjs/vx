@@ -80,6 +80,7 @@ src/orchestrator/execute-task.ts
 src/orchestrator/failure-mode.ts
 src/orchestrator/fingerprint-watch.ts
 src/orchestrator/framed-output.ts
+src/orchestrator/graph-stage.ts
 src/orchestrator/history.ts
 src/orchestrator/hit-restore.ts
 src/orchestrator/index.ts
