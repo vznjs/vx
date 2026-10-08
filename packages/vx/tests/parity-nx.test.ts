@@ -4,7 +4,7 @@
 // equivalent; a deliberate divergence says so in the name. The deep pins
 // live in the suites `docs/parity.md` maps.
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn } from './helpers/workspace.js'
@@ -322,10 +322,8 @@ describe('Nx parity — cache control and failure handling', () => {
   )
 
   it(
-    "Nx Cloud's flaky-task flag has a local answer: the same hash failing then passing is named",
+    "Nx Cloud's flaky-task flag has a local answer: the same hash failing after it passed is named",
     async () => {
-      // A key that failed (above) then passes on unchanged inputs is
-      // flaky by both runners' definition; vx reads it from its own history.
       const cfgPath = path.join(root, 'packages', 'lib', 'vx.config.mjs')
       const cfg = await readFile(cfgPath, 'utf8')
       // The command is part of the key, so flip the outcome through a
@@ -333,15 +331,22 @@ describe('Nx parity — cache control and failure handling', () => {
       await writeFile(cfgPath, cfg.replace("command: 'exit 2'", "command: 'test -f ../../green'"))
       const red = await summarized(root, ['lib#fail'])
       expect(red.tasks.get('lib#fail')?.['status']).toBe('failed')
+      // A first pass after only failures is a recovery, not a flake.
       await writeFile(path.join(root, 'green'), '')
       const green = await summarized(root, ['lib#fail'])
       expect(green.code).toBe(0)
-      expect(green.tasks.get('lib#fail')?.['flaky']).toEqual({
+      expect(green.tasks.get('lib#fail')?.['flaky']).toBeUndefined()
+      expect(green.text).not.toContain('flaky -')
+      // `--force`: the pass was cached, and a hit executes nothing.
+      await unlink(path.join(root, 'green'))
+      const relapse = await summarized(root, ['lib#fail', '--force'])
+      expect(relapse.tasks.get('lib#fail')?.['status']).toBe('failed')
+      expect(relapse.tasks.get('lib#fail')?.['flaky']).toEqual({
         passes: 1,
-        failures: 1,
+        failures: 2,
         attempts: 1,
       })
-      expect(green.text).toContain('flaky - failed 1× before')
+      expect(relapse.text).toContain('flaky - passed 1× before')
     },
     TIMEOUT,
   )

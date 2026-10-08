@@ -28,6 +28,17 @@ export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcom
   return node.excludedUpstream === undefined ? keyed : [...keyed, ...node.excludedUpstream]
 }
 
+/** A dependency as a key reads it: only `node` and `hash` matter. */
+export function keyedOutcome(node: TaskNode, hash: string | undefined): TaskOutcome {
+  return {
+    node,
+    status: 'success',
+    exitCode: 0,
+    durationMs: 0,
+    ...(hash !== undefined ? { hash } : {}),
+  }
+}
+
 /** `node.deps` less its ordering-only edges: the dependencies a key may fold. */
 export function keyedDeps(node: TaskNode): readonly string[] {
   const order = node.orderOnly
