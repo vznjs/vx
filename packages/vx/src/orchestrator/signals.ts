@@ -2,8 +2,8 @@
 // — the scheduler dispatches nothing more, and the signal is forwarded to
 // everything live, SIGKILLed after a bounded grace — then waits, bounded,
 // for run() to leave its own end-of-run path (telemetry flush, each
-// plugin's teardown, the cache close), and exits 128+signo (130/143). A
-// second signal exits at once. Without the forward, a
+// plugin's teardown, the cache close), and dies of the signal (130/143 to
+// its parent). A second signal does so at once. Without the forward, a
 // programmatic signal to the vx process alone (CI cancellation,
 // `kill <pid>`) orphans every running child — terminal Ctrl-C only worked
 // via process-group propagation. Without the escalation (added
@@ -111,6 +111,13 @@ export function forwardSignals(args: {
   done: Promise<void>
   /** How long a signal waits for `done` before it exits anyway. */
   boundMs: number
+  /**
+   * A task may be handed the terminal (`exec.interactive` on a TTY) and may
+   * leave it raw or without echo. Bun puts back the terminal it started
+   * with when it exits, not when a signal kills it, so this run exits with
+   * the signal's code rather than dying of the signal.
+   */
+  handsTerminal?: boolean
   /** In-flight children; the runner adds and removes each around its spawn. */
   liveChildren: ReadonlySet<Child>
   /** Ready persistent tasks the orchestrator owns until the graph finishes. */
@@ -123,6 +130,16 @@ export function forwardSignals(args: {
       args.cache.close()
     } catch {
       // double-close race with the normal path; we're exiting anyway
+    }
+    // Die of the signal once the exit hooks have run: a shell running vx
+    // in a script stops it on Ctrl-C only when its child died of SIGINT,
+    // and a 130 exit ran the script's next line. The code stays the
+    // fallback should the signal not land.
+    if (args.handsTerminal !== true) {
+      process.once('exit', () => {
+        process.removeAllListeners(signal)
+        process.kill(process.pid, signal)
+      })
     }
     process.exit(signalExitCode(signal))
   }

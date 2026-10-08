@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test'
-import { failure, frozenArgs, parseArm, roundOrder, summarize } from '../ab.js'
+import { failure, frozenArgs, parseArm, roundOrder, summarize, versusFirst } from '../ab.js'
 
 it('parses an arm, the workspace after the last @', () => {
   expect(parseArm('main=/tmp/vx@next/bin@/tmp/w')).toEqual({
@@ -42,4 +42,8 @@ it('a run is timed frozen, once; another verb as given', () => {
   expect(frozenArgs(['run', 'build', '--all'])).toEqual(['run', 'build', '--all', '--frozen'])
   expect(frozenArgs(['run', 'build', '--frozen'])).toEqual(['run', 'build', '--frozen'])
   expect(frozenArgs(['show', 'build'])).toEqual(['show', 'build'])
+})
+
+it('puts each arm against the first, signed', () => {
+  expect(versusFirst([200, 190, 210, 200])).toEqual(['+0.0%', '-5.0%', '+5.0%', '+0.0%'])
 })

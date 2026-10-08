@@ -10,7 +10,7 @@
 import path from 'node:path'
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
-import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
+import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { ProjectConfig, WorkspaceConfig, WorkspaceRules } from '../config.js'
 import { checkGraph, type TaskNode } from '../graph/index.js'
 import type {
@@ -95,8 +95,13 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
   try {
     return await fn()
   } catch (err) {
+    // Masked here, not by whoever prints it: an embedder of `run()` and
+    // `vx mcp` print it as they get it, and the throw quotes what the
+    // plugin was told (a remote's reply, a header) (L-11).
     throw new UserError(
-      `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
+      maskedLine(
+        `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
+      ),
     )
   }
 }

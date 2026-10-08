@@ -336,13 +336,18 @@ export class OutputIndex {
     if (this.pendingStamps.size > 0) {
       const stamps = [...this.pendingStamps]
       this.pendingStamps.clear()
-      this.db.transaction(() => {
-        for (const [hash, rows] of stamps) {
-          // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
-          if (this.entryExists.get(hash) === null) continue
-          for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
-        }
-      })()
+      // IMMEDIATE: the body reads `entries` before it writes, and a
+      // deferred transaction that did could not wait for the lock
+      // (run-history.ts).
+      this.db
+        .transaction(() => {
+          for (const [hash, rows] of stamps) {
+            // A stamp outlives nothing: an entry pruned since has no rows to vouch for.
+            if (this.entryExists.get(hash) === null) continue
+            for (const [rel, ino, ctime] of rows) this.stampOutputFile.run(hash, rel, ino, ctime)
+          }
+        })
+        .immediate()
     }
     if (this.pendingDirs.size === 0) return
     const pending = [...this.pendingDirs]

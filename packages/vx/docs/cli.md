@@ -124,11 +124,11 @@ If no task name is given:
 
 Exit codes:
 
-| Code                  | When                                                                                                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                        |
-| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                    |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. |
+| Code                  | When                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                                                                                                                                                                                     |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                                                                 |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT.
@@ -771,7 +771,9 @@ command.
 
 Explicit override; always beats the flow and CI defaults. `full`
 (frames for executed work, one-liners for quiet cache hits),
-`errors-only` (only failed tasks print; the CI noise budget),
+`errors-only` (only failed tasks print, a server that died on its
+own after ready included, with what it wrote since; the CI noise
+budget),
 `hash-only` (one line per task — outcome word, task id, cache key — and
 no log output at all; the run's audit trail of which key each task
 resolved to, Turbo parity), `none` (no per-task output). The
@@ -1264,7 +1266,8 @@ run...` precedes it.
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
-   run stale (item 949). The directory
+   run stale (item 949). An import whose file is gone stays on the list
+   by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
    runs is a cycle that runs it, and its directory is watched from then
@@ -1429,7 +1432,9 @@ dev server stays up while watch idles, and what it writes keeps printing; when t
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
-change starts it again. Stopping watch stops the server too. For dev-server workflows where you want the server
+change starts it again. An edit while a cycle waits only on a server
+that has not printed its `readyWhen` line stops that cycle and starts
+the next, so a fix reaches a server stuck before ready. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
@@ -1554,7 +1559,8 @@ policy on its file time (item 1083).
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
-evicts what that run is restoring. A run it cannot see — another
+evicts what that run is restoring. One started by a task of that run
+is refused instead: the run holds the lock until the task ends. A run it cannot see — another
 workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).

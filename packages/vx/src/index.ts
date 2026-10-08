@@ -34,7 +34,9 @@ export { isLiteralPattern, normalizeGlob } from './util/index.js'
 // A task's command as vx prints it: values of its `exec.env.secret` names
 // masked. `vx show` and telemetry show this; a plugin that hands a command
 // to someone else (`@vzn/vx-mcp`'s `listTasks`, an AI agent) does too (L-26).
-export { maskedCommand } from './util/index.js'
+// `maskedLine` is the same for a line no one task owns: the error `vx mcp`
+// hands an agent (L-11).
+export { maskedCommand, maskedLine } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
