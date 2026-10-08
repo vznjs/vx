@@ -738,3 +738,16 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-117.** "a SIGHUP after the summary signals a kept server once" read
+  `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
+  (`terminateChildren` dedups; the keep-alive wait defers to the abort),
+  so the second line came from a second trap holder: the fixture forked
+  `sleep 30 &` after installing its traps, and a child between fork and
+  its trap reset holds the parent's trap. Unproven on bash 3.2 (macOS's
+  sh; no copy reachable here); bash 5.2 and dash ran a hammered group
+  TERM only in the leader (495 and 7 of 3,000, all leader). The sleep now
+  forks before the traps, so the first signal finds only the leader
+  holding one; a real double send still writes two lines (reverting
+  WD-16's guard in `run.ts` reddens all three rows). Row:
+  `keep-alive.test.ts` › "a SIGHUP after the summary signals a kept
+  server once".
