@@ -917,6 +917,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   async function runAttempt(): Promise<{
     result: ExecuteResult
     exitCode: number
+    withdrawn?: true
   }> {
     // A deferred task's outputs are deliberately NOT coming, so wiping the
     // tree would replace a stale build with nothing at all. The eligibility
@@ -954,6 +955,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const endReq = span('miss: build request')
     const req = await buildRequest()
     endReq()
+    // A sibling's failure under --continue=never can land while a retry
+    // cleans or builds its request, after the loop's own check: the retry
+    // is withdrawn and the attempt before it stands.
+    if (attempt > 1 && args.failFast?.aborted === true) {
+      clearTimeout(timeoutTimer)
+      unlistenStop?.()
+      unlistenStop = undefined
+      await sweepPlaceholders(placeholders)
+      return { result, exitCode: effectiveExitCode, withdrawn: true }
+    }
     // An executor that THROWS produces no captured output. Rethrown: the
     // scheduler classifies it and prints its one line into the task's own
     // stream (run()'s onError), where the frame reads it; a copy written
@@ -1167,10 +1178,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   for (;;) {
     attempt++
     const a = await runAttempt()
-    forgetUndeclaredWrites(args, writeReach)
-    if (writesFingerprint) args.fingerprintWatch?.wrote()
     result = a.result
     effectiveExitCode = a.exitCode
+    if (a.withdrawn) {
+      attempt--
+      failedAttempts.pop()
+      break
+    }
+    forgetUndeclaredWrites(args, writeReach)
+    if (writesFingerprint) args.fingerprintWatch?.wrote()
     spentMs += result.durationMs
 
     // An attempt that ended in a shutdown never finished on its own terms —
