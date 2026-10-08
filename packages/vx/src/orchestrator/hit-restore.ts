@@ -224,11 +224,15 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     let cleanedWsRels: string[] = []
     if (additive) {
       cleanedRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels })
+      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels, outputs })
       cleanedWsRels = hit.outputFiles
         .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
-      await cleanOutputPaths({ projectDir: args.workspaceRoot, rels: cleanedWsRels })
+      await cleanOutputPaths({
+        projectDir: args.workspaceRoot,
+        rels: cleanedWsRels,
+        outputs: wsOutputs,
+      })
     } else {
       if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
       if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
