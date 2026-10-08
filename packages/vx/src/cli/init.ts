@@ -1,8 +1,9 @@
-// `vx init [--dry] [--force] [--mjs]` — a workspace from nowhere: one vx.config.ts
-// per package from its package.json scripts, and the workspace file every
-// run needs. In a Turbo or Nx repo it writes only the workspace file,
-// declaring `turbo()` or `nx()` from `@vzn/vx-migrate`, which read the
-// runner's own config live (`adopt`).
+// `vx init [--dry] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere:
+// one vx.config.ts per package from its package.json scripts, and the
+// workspace file every run needs. In a Turbo or Nx repo it hands over to
+// `@vzn/vx-migrate` (`migrate`), which asks a terminal whether to write
+// native config; `--keep` writes only the workspace file, declaring
+// `turbo()` or `nx()`, which read the runner's own config live (`adopt`).
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
@@ -11,6 +12,8 @@ import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
+import { isCompiledBinary } from './upgrade.js'
+import { VERSION } from '../version.js'
 import { isUserError, relPosix, UserError } from '../util/index.js'
 import {
   applyMigration,
@@ -29,6 +32,8 @@ interface InitArgs {
   mjs: boolean
   /** `--plugin <seam>`: scaffold that seam's plugin instead of the workspace. */
   plugin?: string
+  /** `--native` / `--keep` in a Turbo or Nx repo; unset, vx-migrate asks a terminal. */
+  mode?: 'native' | 'keep'
   error?: string
 }
 
@@ -49,9 +54,21 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
     } else if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
     else if (a === '--mjs') out.mjs = true
-    else if (a.startsWith('-'))
+    else if (a === '--native' || a === '--keep') {
+      const mode = a === '--native' ? 'native' : 'keep'
+      if (out.mode !== undefined && out.mode !== mode) {
+        return {
+          ...out,
+          error: `--native and --keep are two answers to one question; pass one${seeHelp('init')}`,
+        }
+      }
+      out.mode = mode
+    } else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('init', a)}${seeHelp('init')}` }
     else return { ...out, error: `unexpected argument: ${a}${seeHelp('init')}` }
+  }
+  if (out.plugin !== undefined && out.mode !== undefined) {
+    return { ...out, error: `--${out.mode} does not combine with --plugin${seeHelp('init')}` }
   }
   if (out.plugin !== undefined && out.mjs) {
     return {
@@ -95,14 +112,24 @@ export async function initCmd(args: readonly string[]): Promise<number> {
       break
     }
   }
-  // A Turbo or Nx repo already says its tasks: the runner's own config is
-  // the source, and `turbo()` / `nx()` read it live. Writing a config per
-  // package from the scripts dropped every edge turbo.json declares (the
-  // first-five-minutes walk, 2026-09-28); the workspace file alone is the
-  // whole adoption, and `bunx @vzn/vx-migrate` stays for freezing it.
-  if (turbo !== undefined) return adopt(root, 'turbo', turbo, parsed)
-  if (await Bun.file(path.join(root, 'nx.json')).exists()) {
-    return adopt(root, 'nx', 'nx.json', parsed)
+  // A Turbo or Nx repo already says its tasks: writing a config per package
+  // from the scripts dropped every edge turbo.json declares (the
+  // first-five-minutes walk, 2026-09-28). vx-migrate maps the runner's own
+  // config, so `vx init` is the one command (M, 2026-10-08); its `--keep`
+  // comes back here for the workspace file alone.
+  const runner: ['turbo' | 'nx', string] | undefined =
+    turbo !== undefined
+      ? ['turbo', turbo]
+      : (await Bun.file(path.join(root, 'nx.json')).exists())
+        ? ['nx', 'nx.json']
+        : undefined
+  if (runner !== undefined) {
+    return parsed.mode === 'keep' ? adopt(root, ...runner, parsed) : migrate(root, parsed)
+  }
+  if (parsed.mode !== undefined) {
+    throw new UserError(
+      `vx init: --${parsed.mode} answers a Turbo or Nx repo's question, and no turbo.json or nx.json is at ${relPosix(process.cwd(), root) || '.'}`,
+    )
   }
   const unmapped = namelessNotes(root, nameless)
   return applyMigration({
@@ -156,7 +183,35 @@ async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
 }
 
 /**
- * `vx init` in a Turbo or Nx repo: `vx.workspace.ts` declaring the plugin
+ * `vx init` in a Turbo or Nx repo runs `@vzn/vx-migrate`: the installed one,
+ * else this version's through `bun x`. It asks a terminal native or keep,
+ * installs what it writes, and runs `vx init --keep` for keep.
+ */
+async function migrate(root: string, args: InitArgs): Promise<number> {
+  const flags = [
+    args.dry && '--dry',
+    args.force && '--force',
+    args.mjs && '--mjs',
+    args.mode === 'native' && '--native',
+  ].filter((f): f is string => typeof f === 'string')
+  return Bun.spawn(migrateCommand(root, flags), {
+    cwd: root,
+    stdio: ['inherit', 'inherit', 'inherit'],
+    // A compiled vx is a Bun runtime only when told so.
+    env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
+  }).exited
+}
+
+export function migrateCommand(root: string, flags: readonly string[]): string[] {
+  const installed = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
+  if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
+  // A source checkout is 0.0.0, which npm never had.
+  const version = VERSION === '0.0.0' ? 'latest' : VERSION
+  return [process.execPath, 'x', `@vzn/vx-migrate@${version}`, ...flags]
+}
+
+/**
+ * `vx init --keep` in a Turbo or Nx repo: `vx.workspace.ts` declaring the plugin
  * that runs the repo as it is, nothing else, and the one command that gets
  * from here to a run.
  */
@@ -206,7 +261,7 @@ async function adopt(
           ? ''
           : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
   process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
       `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,
   )
   return 0

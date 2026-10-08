@@ -439,7 +439,14 @@ async function keep(
     (f): f is string => typeof f === 'string',
   )
   const code = await Bun.spawn(
-    [process.execPath, '--no-install', path.join(path.dirname(core), 'bin.ts'), 'init', ...flags],
+    [
+      process.execPath,
+      '--no-install',
+      path.join(path.dirname(core), 'bin.ts'),
+      'init',
+      '--keep',
+      ...flags,
+    ],
     { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] },
   ).exited
   const written = workspaceFileAt(root)

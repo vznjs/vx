@@ -329,13 +329,13 @@ function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<vo
 const NOT_FOUND = grpc.status.NOT_FOUND
 
 export interface ReapiOptions {
-  /** `host:port` of the REAPI server. */
+  /** `host:port` of the REAPI server; TLS unless `grpc://`, `http://` or a socket. */
   endpoint: string
   /** Multi-tenant servers scope by instance; most single-tenant ones use ''. */
   instanceName?: string
   /** Sent on every call (auth, routing). */
   headers?: Record<string, string>
-  /** TLS. Default: on with any PEM below or an `https://`/`grpcs://` endpoint, else insecure. */
+  /** TLS. Default: on, unless the endpoint is `grpc://`, `http://`, `unix:` or `unix-abstract:` and no PEM below is set. */
   tls?: boolean
   /** PEM of the CA that signed the server's certificate, in place of the system roots. */
   tlsCaPem?: string
@@ -453,11 +453,13 @@ export class ReapiClient {
     assertBunSupportsChunking()
     const pem = (text: string | undefined): Buffer | null =>
       text === undefined ? null : Buffer.from(text)
+    // TLS unless the endpoint says plaintext, as Bazel reads a schemeless
+    // `--remote_cache`; a unix socket stays plaintext.
     const tls =
       opts.tls ??
       (opts.tlsCaPem !== undefined ||
         opts.tlsClientCertPem !== undefined ||
-        /^(https|grpcs):\/\//.test(opts.endpoint))
+        !/^((http|grpc):\/\/|unix:|unix-abstract:)/.test(opts.endpoint))
     const target = opts.endpoint.replace(/^(https?|grpcs?):\/\//, '')
     this.svc = loadServices(
       target,

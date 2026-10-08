@@ -426,7 +426,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * query, so nothing is appended — and the token goes along only when
    * `Access-Control-Allow-Headers` admits `Authorization` (or `*`), so it
    * never reaches a third-party store. The answer's status is not read, as
-   * in Turbo.
+   * in Turbo. A redirect is not followed: its `Location` is the answer, and
+   * the token's verdict stays the API's. Following one let the redirected
+   * host's `Access-Control-Allow-Headers` admit the token to itself.
    */
   private async preflight(
     url: string,
@@ -442,13 +444,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
         'Access-Control-Request-Method': method === 'HEAD' ? 'GET' : method,
         'Access-Control-Request-Headers': ['Authorization', ...Object.keys(headers)].join(', '),
       },
+      redirect: 'manual',
       ...(s === undefined ? {} : { signal: s }),
     })
     await res.body?.cancel()
     const location = res.headers.get('location')
     const allowed = res.headers.get('access-control-allow-headers') ?? ''
     return {
-      url: location === null ? res.url || url : new URL(location, this.config.apiUrl).toString(),
+      url: location === null ? url : new URL(location, this.config.apiUrl).toString(),
       auth:
         allowed.trim() === '*' ||
         allowed.split(',').some((h) => h.trim().toLowerCase() === 'authorization'),

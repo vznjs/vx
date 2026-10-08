@@ -1,5 +1,6 @@
 // auto-release.yml's one step, the `release.auto` task: release a commit
-// whose CI went green on main. It tags it with the next version and creates
+// whose CI went green on main, VX_RELEASE_SHA or, when that is empty, the
+// newest such commit (greenCommit). It tags it with the next version and creates
 // the GitHub release as a draft, both from the Conventional Commits since the last tag
 // (release-notes.ts), then dispatches release.yml and npm.yml: a release
 // created with the workflow token fires no `release` event in other
@@ -11,7 +12,7 @@
 // slow run can never publish an older tree under a higher version; one
 // already tagged is skipped.
 //
-//   VX_RELEASE_SHA=<sha> GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
+//   [VX_RELEASE_SHA=<sha>] GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
 
 import { env } from './env.ts'
 import { commitsBetween, nextVersion, releaseNotes } from './release-notes.ts'
@@ -42,6 +43,31 @@ export function decideRelease(sha: string, git: Git): Decision {
   return { release: true, last }
 }
 
+/** A ci.yml run as the runs API lists it. */
+export interface CiRun {
+  head_sha: string
+  conclusion: string | null
+}
+
+/**
+ * The commit to release from main's ci.yml push runs, newest first: the
+ * one asked for when CI passed on it, else the newest that passed. A
+ * dispatch can name any commit, and only a green one may ship.
+ */
+export function greenCommit(
+  asked: string,
+  runs: readonly CiRun[],
+): { sha: string } | { refuse: string } {
+  const green = runs.filter((r) => r.conclusion === 'success')
+  if (asked === '') {
+    const newest = green[0]
+    return newest ? { sha: newest.head_sha } : { refuse: 'no green CI run on main to release' }
+  }
+  return green.some((r) => r.head_sha === asked)
+    ? { sha: asked }
+    : { refuse: `CI did not pass on ${asked} on main; not releasing it` }
+}
+
 /** The workflows a release dispatches, with the inputs each declares. */
 export function dispatches(
   version: string,
@@ -58,7 +84,27 @@ const git: Git = (args) => {
 }
 
 async function main(): Promise<void> {
-  const sha = env('VX_RELEASE_SHA')
+  const repo = env('GITHUB_REPOSITORY')
+  const token = env('GH_TOKEN')
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: 'application/vnd.github+json',
+    'x-github-api-version': '2022-11-28',
+  }
+  const asked = process.env['VX_RELEASE_SHA'] ?? ''
+  const query = new URLSearchParams({ branch: 'main', event: 'push', per_page: '100' })
+  if (asked !== '') query.set('head_sha', asked)
+  const listed = await fetch(
+    `https://api.github.com/repos/${repo}/actions/workflows/ci.yml/runs?${query.toString()}`,
+    { headers },
+  )
+  if (!listed.ok) throw new Error(`GET ci.yml runs: ${listed.status} ${await listed.text()}`)
+  const picked = greenCommit(
+    asked,
+    ((await listed.json()) as { workflow_runs: CiRun[] }).workflow_runs,
+  )
+  if ('refuse' in picked) throw new Error(picked.refuse)
+  const { sha } = picked
   const decision = decideRelease(sha, git)
   if (!decision.release) {
     console.log(decision.reason)
@@ -67,16 +113,10 @@ async function main(): Promise<void> {
   const { last } = decision
   const commits = commitsBetween(last, sha)
   const version = nextVersion(last, commits)
-  const repo = env('GITHUB_REPOSITORY')
-  const token = env('GH_TOKEN')
   const api = async (route: string, body: unknown): Promise<void> => {
     const res = await fetch(`https://api.github.com/repos/${repo}/${route}`, {
       method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-      },
+      headers,
       body: JSON.stringify(body),
     })
     if (!res.ok) {

@@ -94,6 +94,7 @@ src/orchestrator/miss-reason.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/output-log.ts
+src/orchestrator/path-links.ts
 src/orchestrator/persistent.ts
 src/orchestrator/placement.ts
 src/orchestrator/plain-output.ts

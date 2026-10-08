@@ -9,7 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseInitArgs } from '../src/cli/init.js'
-import { adoptionNext } from '../src/cli/init.js'
+import { adoptionNext, migrateCommand } from '../src/cli/init.js'
+import { VERSION } from '../src/version.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import {
   delegatedScript,
@@ -247,6 +248,19 @@ describe('parseInitArgs', () => {
   })
   it('positionals error', () => {
     expect(parseInitArgs(['turbo']).error).toContain('turbo')
+  })
+  it('--native and --keep: one answer, never with --plugin', () => {
+    expect([
+      parseInitArgs(['--native']).mode,
+      parseInitArgs(['--keep']).mode,
+      parseInitArgs(['--keep', '--native']).error,
+      parseInitArgs(['--keep', '--plugin', 'cache']).error,
+    ]).toEqual([
+      'native',
+      'keep',
+      '--native and --keep are two answers to one question; pass one (see `vx init --help`)',
+      '--keep does not combine with --plugin (see `vx init --help`)',
+    ])
   })
 
   // One argv shape per refusal, each named for the branch it takes. The two
@@ -1295,10 +1309,10 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const root = await makeScriptsWorkspace()
       try {
         await Bun.write(path.join(root, file), '{ "tasks": { "compile": {} } }\n')
-        const r = await vx(root, ['init'])
+        const r = await vx(root, ['init', '--keep'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
-          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.\n` +
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
             'wrote vx.workspace.ts.\n\n' +
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )
@@ -1314,6 +1328,36 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('without --keep it runs vx-migrate: the installed one, else this version through bun x', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-migrate-'))
+    try {
+      const pinned = VERSION === '0.0.0' ? 'latest' : VERSION
+      const before = migrateCommand(root, ['--dry'])
+      const bin = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
+      await mkdir(path.dirname(bin), { recursive: true })
+      await writeFile(bin, '')
+      expect([before, migrateCommand(root, [])]).toEqual([
+        [process.execPath, 'x', `@vzn/vx-migrate@${pinned}`, '--dry'],
+        [process.execPath, '--no-install', bin],
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('--native or --keep outside a Turbo or Nx repo is refused', async () => {
+    const root = await makeScriptsWorkspace()
+    try {
+      const r = await vx(root, ['init', '--native'])
+      expect([r.code, r.err]).toEqual([
+        1,
+        "vx init: --native answers a Turbo or Nx repo's question, and no turbo.json or nx.json is at .\n",
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('an Nx repo gets nx(); turbo.json beside nx.json gets turbo()', async () => {
     for (const [markers, runner] of [
       [['nx.json'], 'nx'],
@@ -1322,7 +1366,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const root = await makeScriptsWorkspace()
       try {
         for (const m of markers) await Bun.write(path.join(root, m), '{}\n')
-        const r = await vx(root, ['init', '--dry'])
+        const r = await vx(root, ['init', '--keep', '--dry'])
         expect(r.code).toBe(0)
         expect(r.out).toContain(`import { ${runner} } from '@vzn/vx-migrate'`)
         expect(r.out).toContain(`export default { plugins: [${runner}()] }`)
@@ -1401,7 +1445,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const root = await makeScriptsWorkspace()
       try {
         for (const [f, text] of Object.entries(files)) await Bun.write(path.join(root, f), text)
-        const r = await vx(root, ['init', '--dry', '--mjs'])
+        const r = await vx(root, ['init', '--keep', '--dry', '--mjs'])
         rows[label] = [r.code, r.out.split('\n').filter((l) => /import|Cache/.test(l))]
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -1471,7 +1515,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const mine =
         "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n"
       await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
-      const r = await vx(root, ['init'])
+      const r = await vx(root, ['init', '--keep'])
       expect(r.out.split('\n').slice(1, 3)).toEqual([
         'vx.workspace.mjs already declares turbo().',
         'turbo.json names a remoteCache: add turboCache() from @vzn/vx-migrate to its plugins and vx shares that remote cache.',
@@ -1488,18 +1532,18 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await Bun.write(path.join(root, 'turbo.json'), '{}\n')
       const mine = 'export default { plugins: [] }\n'
       await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
-      const refused = await vx(root, ['init'])
+      const refused = await vx(root, ['init', '--keep'])
       expect(refused.code).toBe(1)
       expect(refused.err).toBe(
         'vx init: vx.workspace.mjs exists; add turbo() from @vzn/vx-migrate to its plugins, or --force replaces it\n',
       )
       expect(await Bun.file(path.join(root, 'vx.workspace.mjs')).text()).toBe(mine)
-      const forced = await vx(root, ['init', '--force'])
+      const forced = await vx(root, ['init', '--keep', '--force'])
       expect(forced.code).toBe(0)
       expect(existsSync(path.join(root, 'vx.workspace.mjs'))).toBe(false)
       expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toContain('turbo()')
       // Declared already: nothing to write, and the next step still said.
-      const again = await vx(root, ['init'])
+      const again = await vx(root, ['init', '--keep'])
       expect(again.code).toBe(0)
       expect(again.out).toContain('vx.workspace.ts already declares turbo().')
       expect(again.out).toContain('next: npm install -D @vzn/vx-migrate && vx run build --all')
