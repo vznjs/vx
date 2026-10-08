@@ -696,6 +696,25 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with

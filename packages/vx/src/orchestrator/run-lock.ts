@@ -66,7 +66,8 @@ import { rmdirSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, xxh3hex } from '../util/index.js'
+import { VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
+import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 
 /** Runs in this process currently holding the lock, per lock directory. */
 const heldHere = new Map<string, number>()
@@ -329,6 +330,14 @@ export async function acquireRunLock(
   opts: RunLockOptions,
 ): Promise<() => Promise<void>> {
   const lockDir = runLockPath(workspaceRoot, opts.dir)
+  // A task's own process (`vx cache prune` in a task) would wait for the
+  // run that started it, which holds the lock until that task ends.
+  const outer = process.env[VX_RUN_WORKSPACE_ENV]
+  if (outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {
+    throw new UserError(
+      `this vx runs inside task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} of a vx run on this workspace, which holds its run lock until it ends — run it before or after that run, not from one of its tasks`,
+    )
+  }
   const started = Date.now()
   let said = false
   const release = async (): Promise<void> => {

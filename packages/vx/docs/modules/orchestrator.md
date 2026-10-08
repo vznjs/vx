@@ -290,7 +290,10 @@ wears is stale as well. A holder procfs shows as a zombie (`Z`) is
 stale too: a `kill -9`ed vx whose parent does not reap it (a
 container's pid 1 that never waits) still answers signal 0 with its
 start time unchanged, and the next run waited for the reaper, or for
-good. The start time is read once per process for its entry, and
+good. A process inside a task of the run that holds the lock
+(`VX_RUN_WORKSPACE` names the same lock) is refused rather than left
+to wait for its own parent: `vx cache prune` in a task waited for good
+(X-104). The start time is read once per process for its entry, and
 `/proc/<pid>/stat` once per poll while waiting; elsewhere, where it
 would cost a `ps` spawn per run, and under a procfs mounted for another
 pid namespace (`util/procfs.ts`), the lock trusts the pid
