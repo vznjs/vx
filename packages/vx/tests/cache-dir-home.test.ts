@@ -44,3 +44,17 @@ describe('a cacheDir under ~', () => {
     expect(resolveCacheDir('/ws', { cacheDir: '~/.vx' })).toBe('/home/someone/.vx')
   })
 })
+
+describe('VX_CACHE_DIR of whitespace (D-160)', () => {
+  it('is refused, as a whitespace cacheDir is', () => {
+    // The config's `'   '` is refused (X-22); the variable made a directory
+    // named three spaces at the root, hidden by the cache's own .gitignore.
+    process.env['VX_CACHE_DIR'] = '   '
+    expect(refusal(() => resolveCacheDir('/ws', null))).toBe(
+      'VX_CACHE_DIR is only whitespace — name a directory, or unset it',
+    )
+    // Control: empty is unset, as documented.
+    process.env['VX_CACHE_DIR'] = ''
+    expect(resolveCacheDir('/ws', null)).toBe(path.resolve('/ws', '.vx', 'cache'))
+  })
+})

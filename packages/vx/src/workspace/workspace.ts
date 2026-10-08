@@ -459,7 +459,13 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
  * to the workspace root.
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
-  const rel = config?.cacheDir ?? (process.env['VX_CACHE_DIR'] || path.join('.vx', 'cache'))
+  const env = process.env['VX_CACHE_DIR']
+  // `cacheDir: '   '` is refused at load (X-22); the variable made the same
+  // directory named in spaces at the root (D-160).
+  if (config?.cacheDir === undefined && env !== undefined && env !== '' && env.trim() === '') {
+    throw new UserError('VX_CACHE_DIR is only whitespace — name a directory, or unset it')
+  }
+  const rel = config?.cacheDir ?? (env || path.join('.vx', 'cache'))
   const home = process.env['HOME'] || homedir()
   // No shell expands `~` in a config string or a quoted variable, and
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
