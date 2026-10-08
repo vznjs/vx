@@ -75,6 +75,17 @@ const GUARD_SCRIPT = [
   'for p in $g; do kill -s KILL -- "-$p"; done 2>/dev/null',
 ].join('\n')
 
+/** The guard's process, so a guard vx stops writing to is stopped too. */
+let guardProc: Child | undefined
+
+/**
+ * How long a write waits on a guard that is behind. Bun opens the pipe
+ * nonblocking, and the kernel queues ~280 unread writes whatever their
+ * size: a burst of releases, or a guard the scheduler has not yet run,
+ * makes a write EAGAIN while the guard lives.
+ */
+const GUARD_STALL_MS = 1_000
+
 function startGuard(): void {
   if (guardFd !== undefined) return
   guardFd = null
@@ -89,31 +100,49 @@ function startGuard(): void {
     guard.unref()
     const fd = guard.stdio[3] as number
     guardFd = fd
+    guardProc = guard
     // A guard that has died (killed, the OOM killer) is handed to no later
     // spawn: its pipe is broken, and a shell whose printf buffers (bash as
     // macOS's sh) flushed the failed `+<pgid>` line into the task's own
     // stdout, cached replay included (B-10).
     void guard.exited.then(() => {
-      if (guardFd !== fd) return
-      guardFd = null
-      try {
-        closeSync(fd)
-      } catch {
-        // already closed
-      }
+      if (guardFd === fd) stopGuard()
     })
   } catch {
     // The limit as it was: nothing takes the groups down.
   }
 }
 
+/**
+ * Stop guarding for the rest of the process, and stop the guard with it:
+ * a guard that lived on would keep every group whose release it never got
+ * and SIGKILL them at vx's clean exit.
+ */
+function stopGuard(): void {
+  const fd = guardFd
+  guardFd = null
+  guardProc?.kill('SIGKILL')
+  if (typeof fd !== 'number') return
+  try {
+    closeSync(fd)
+  } catch {
+    // already closed
+  }
+}
+
 function guardWrite(line: string): void {
   if (typeof guardFd !== 'number') return
-  try {
-    writeSync(guardFd, line)
-  } catch {
-    guardFd = null
+  const deadline = Date.now() + GUARD_STALL_MS
+  for (;;) {
+    try {
+      writeSync(guardFd, line)
+      return
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EAGAIN' || Date.now() >= deadline) break
+      Bun.sleepSync(1)
+    }
   }
+  stopGuard()
 }
 
 /**

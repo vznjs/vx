@@ -505,10 +505,11 @@ describe('a first load in process: what a config prints', () => {
 describe('evaluateConfigFresh: errors cross the boundary', () => {
   // Each case below rejects from inside the WORKER. A rejection clears its own
   // deadline in the `finally`, so nothing is left armed to drain — these used
-  // to need an afterEach that slept out the orphaned timer. The budget is still
-  // ~25x a real evaluation (~10ms), so it cannot fire first, and if it ever did
-  // the assertions below name it rather than passing for the wrong reason.
-  const BUDGET = 250
+  // to need an afterEach that slept out the orphaned timer. The budget also
+  // covers a fresh worker's spawn: at 250 ms a loaded CI runner fired it first
+  // in the mixed round. If it ever fires, the assertions below name it rather
+  // than passing for the wrong reason.
+  const BUDGET = 4000
 
   beforeEach(() => {
     process.env[BUDGET_ENV] = String(BUDGET)

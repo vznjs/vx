@@ -13,6 +13,7 @@
 //
 //   VX_RELEASE_SHA=<sha> GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
 
+import { env } from './env.ts'
 import { commitsBetween, nextVersion, releaseNotes } from './release-notes.ts'
 
 /** `git <args>`: whether it exited 0, and its stdout. */
@@ -54,12 +55,6 @@ export function dispatches(
 const git: Git = (args) => {
   const r = Bun.spawnSync({ cmd: ['git', ...args], stdout: 'pipe', stderr: 'inherit' })
   return { ok: r.exitCode === 0, out: r.stdout.toString().trim() }
-}
-
-function env(name: string): string {
-  const value = process.env[name]
-  if (value === undefined || value === '') throw new Error(`${name} is not set`)
-  return value
 }
 
 async function main(): Promise<void> {

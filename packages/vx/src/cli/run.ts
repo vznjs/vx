@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, seeHelp } from './help.js'
 import {
@@ -13,7 +14,12 @@ import {
   type RunResult,
 } from '../orchestrator/index.js'
 import type { ContinueMode, TaskOutcome } from '../graph/index.js'
-import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+import {
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  gitRefusal,
+  parseCachePolicy,
+} from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
@@ -486,6 +492,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
+  verb: 'run' | 'watch' = 'run',
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -557,8 +564,7 @@ export async function resolveRunOptions(
       const nx = await nxTargetHint(tasks, cwd)
       if (nx !== null) return { error: nx }
       return {
-        error:
-          'not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.',
+        error: `not inside a project: run from a project directory, or pass --all or --filter <pattern>${seeHelp(verb)}`,
       }
     }
     projects = [cwdProject.name]
@@ -636,6 +642,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(
         `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
       )
+      return 1
+    }
+    // Every run needs git: refused here, not after the user has chosen.
+    const refusal = gitRefusal(await findWorkspaceRoot(cwd))
+    if (refusal !== undefined) {
+      process.stderr.write(`${refusal.message}\n`)
       return 1
     }
     const load = {

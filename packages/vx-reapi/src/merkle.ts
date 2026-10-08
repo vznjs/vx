@@ -389,7 +389,7 @@ function tag(field: number, wire: number): Uint8Array {
   return varint((field << 3) | wire)
 }
 
-function lenField(field: number, payload: Uint8Array): Uint8Array {
+export function lenField(field: number, payload: Uint8Array): Uint8Array {
   return concat([tag(field, 2), varint(payload.length), payload])
 }
 
@@ -398,7 +398,7 @@ function lenField(field: number, payload: Uint8Array): Uint8Array {
 // zero would change the serialised bytes and therefore the DIGEST — most
 // visibly for the empty blob, whose `size_bytes` is 0, so any tree containing
 // an empty file would address differently from the server's view of it.
-function strField(field: number, value: string): Uint8Array {
+export function strField(field: number, value: string): Uint8Array {
   return value === '' ? EMPTY : lenField(field, new TextEncoder().encode(value))
 }
 
@@ -828,7 +828,7 @@ function decodeSymlinkNode(buf: Uint8Array): SymlinkNode {
   return sl
 }
 
-function decodeDigestBytes(buf: Uint8Array): Digest {
+export function decodeDigestBytes(buf: Uint8Array): Digest {
   const d: Digest = { hash: '', size_bytes: 0 }
   let i = 0
   while (i < buf.length) {
@@ -850,7 +850,7 @@ function decodeDigestBytes(buf: Uint8Array): Digest {
   return d
 }
 
-function readVarintAt(buf: Uint8Array, at: number): [number, number] {
+export function readVarintAt(buf: Uint8Array, at: number): [number, number] {
   let result = 0
   let low = 0
   let shift = 0

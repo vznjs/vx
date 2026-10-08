@@ -1645,7 +1645,7 @@ async function initHint(prepared: {
   // Single-project mode with packages the root's missing `workspaces`
   // never reaches: `vx init` would find no scripts either (item 248).
   const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
-  if (unreached.length > 0) return ` ${unreachedHint(unreached)}`
+  if (unreached.length > 0) return ` ${unreachedHint(unreached, prepared.workspaceRoot)}`
   return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 
@@ -1762,7 +1762,7 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
-    // "Same inputs, different outcome" is a claim only a task with declared
+    // "Same inputs, failed after passing" is a claim only a task with declared
     // inputs can make: a task with no `cache` block keys on its config alone
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.

@@ -89,8 +89,7 @@ PIPE` covers a guard that dies after the hand-over, so the task still
 - A teardown holds its groups (`holdGroups`) until its SIGKILL sweep
   has settled: the signal stop (`terminateChildren`), the end-of-run
   persistent shutdown, and a readiness timeout, which holds until its
-  SIGKILL. That SIGKILL waits on an unref'd timer, so a vx that exits
-  inside the grace leaves the held group to the guard. The runner lets a group go when its LEADER
+  group is gone or SIGKILLed. The runner lets a group go when its LEADER
   exits, and a shell that died on the signal while its child ran out
   the grace let the group go mid-grace; a `kill -9` of vx there left
   the child under init (item 865, both reproduced). A release that
@@ -110,6 +109,14 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   path is vx's own teardown (`signals.md`).
 - Best-effort: a guard that cannot start, or a write it is gone for,
   stops the guarding for the process and never fails a task.
+- A guard that is behind is waited for, up to 1 s. Bun opens the pipe
+  nonblocking and the kernel queues ~280 unread writes whatever their
+  size (a burst of 420 releases overran a running guard), so a write
+  EAGAINs while the guard lives. That read as a dead guard: vx stopped
+  guarding while the guard kept every group whose release it never got,
+  and SIGKILLed them at vx's CLEAN exit. A guard vx gives up on is
+  SIGKILLed with its list. A child's own `+` line meets the same queue
+  and is not retried: a group whose line hit a full queue is unlisted.
 - The pipe is not inherited: Bun opens it close-on-exec, and a task's
   `/proc/self/fd` holds 0, 1 and 2 only (probed 2026-09-26).
 - A per-spawn watcher in the task's own shell was the first sketch and
@@ -188,6 +195,10 @@ and "a never-ready server a dead shell left goes with a vx that exits
 inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
 itself in a child that SIGKILLs itself: a deferred release is written when
 the hold ends, and a group two teardowns hold stays listed until both let go.
+`tests/kill-tree-guard-backlog.test.ts`: a task spawned after a burst of
+2,000 releases still dies with a `kill -9` (fails without the wait), and
+a released task's grandchild outlives a clean exit after a stopped guard
+overran the queue (fails without the guard's SIGKILL).
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
