@@ -657,6 +657,17 @@ placeholder is made only where nothing is (an exclusive create after an
 `lstat`), and the sweep takes back only a regular file. A read grant may
 still resolve out through a link: `node_modules` links into the store.
 
+A grant is mounted at its real path and bwrap mounts no link, so
+`read: ['config.json']` over `config.json -> conf/real.json` bound the
+target and left out the name the task opens. The trace judged the ENOENT
+by its real path, which the grant covers, and dropped it: a tool that fell
+back on the missing file went green and cached the fallback. An ENOENT
+whose real path is granted and exists on the host is now a violation when
+a link on the opened path sits in the deny anchor in a directory no grant
+mounts (`hiddenByLink`). A link in a mounted directory, or outside the
+anchor, is there inside; a target missing on the host is missing outside
+too (`sandbox-grant-through-link.unsafe.test.ts`).
+
 A GLOB grant is expanded on Linux to its hits, each bound, and bwrap binds
 a link by its target: `read: ['*']` over `shared -> ../b/src` bound
 project b readable where `read: ['.']` did not, and a cached task

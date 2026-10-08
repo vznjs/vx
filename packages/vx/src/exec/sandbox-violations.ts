@@ -4,7 +4,7 @@
 // task's owner can act on — inside the project, minus the loopback denial
 // no grant can avoid, minus what the task chose to ignore.
 
-import { lstatSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { absolutize, atOrUnder, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import { bindableReads, bindableWrites } from './sandbox-binds.js'
@@ -364,6 +364,10 @@ export async function parseStraceViolations(
   // workspace, never reported.
   const pendingWrites = (args.config.pendingWrites ?? []).map((g) => new Bun.Glob(g))
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
+  const mounted = new Set([
+    ...allowAbs,
+    ...bindableWrites(args.config.allowWrite).map((p) => toRealPath(absolutize(p))),
+  ])
   // A read under a widened write grant's directory is never refused, so it
   // is reported when it succeeds: an entry that was there at the start and
   // no grant covers is an input the key never saw, and so is the
@@ -388,12 +392,14 @@ export async function parseStraceViolations(
     baselines.cwd,
     widened.size > 0,
   )) {
-    const abs = toRealPath(absolutize(rawPath, dir ?? baselines.cwd))
+    const lexical = absolutize(rawPath, dir ?? baselines.cwd)
+    const abs = toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
-    if (isUnderAny(abs, allowAbs) || underGlob(abs, pendingWrites)) continue
+    if (isUnderAny(abs, allowAbs) && !hiddenByLink(lexical, abs, mounted, denyAnchors)) continue
+    if (underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe
     // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
@@ -425,6 +431,39 @@ export async function parseStraceViolations(
     )
   }
   return out
+}
+
+/**
+ * A granted file the task could not open because a link on the path it
+ * opened is not in the sandbox. A grant is mounted at its real path and
+ * bwrap mounts no link, so `read: ['config.json']` over `config.json ->
+ * conf/real.json` bound the target and left the name the task opens out;
+ * judged by its real path, the ENOENT was granted and dropped, and a tool
+ * that fell back on the missing file was cached green. The link is there
+ * when the directory holding it is mounted; a target missing on the host
+ * is missing outside the sandbox too, and outside the deny anchor the
+ * host is mounted, links and all.
+ */
+function hiddenByLink(
+  lexical: string,
+  real: string,
+  mounted: Set<string>,
+  anchors: readonly string[],
+): boolean {
+  if (lexical === real || !existsSync(real)) return false
+  let at = lexical
+  const links: string[] = []
+  for (let up = path.dirname(at); up !== at; at = up, up = path.dirname(at)) {
+    try {
+      if (lstatSync(at).isSymbolicLink()) links.push(at)
+    } catch {
+      // Not on the host by this spelling: no link to judge here.
+    }
+  }
+  return links.some((l) => {
+    const holder = toRealPath(path.dirname(l))
+    return anchors.some((a) => atOrUnder(holder, a)) && !isUnderAny(holder, mounted)
+  })
 }
 
 /**
