@@ -753,3 +753,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   throws it as a `CorruptArtifactError`. Row: `artifact-roundtrip.test.ts`
   › "a local artifact whose name reads unsafe is dropped and run, as
   corrupt bytes are".
+- **X-116.** A persistent task whose readiness timeout fired, and whose
+  server trapped the SIGTERM and exited 0, reported
+  `failed (never ready: timed out, exit 0)`: X-24 took the server's own
+  code, and a one-shot task that does the same reports 143. It now
+  reports 143. Row:
+  `persistent-ready-timeout.test.ts` › "a never-ready server that traps
+  SIGTERM and exits 0 reports the SIGTERM, not 0".

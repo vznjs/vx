@@ -1013,7 +1013,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
 became ready — `timeout` (the readiness deadline fired; `exitCode` is
-the kill's, 143 or 137 after the grace, as an ordinary timeout's),
+the kill's, 143 or 137 after the grace, and 143 for a server that
+traps the TERM and exits 0, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is

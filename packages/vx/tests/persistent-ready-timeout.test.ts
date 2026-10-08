@@ -156,6 +156,38 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
     TIMEOUT,
   )
 
+  it(
+    'a never-ready server that traps SIGTERM and exits 0 reports the SIGTERM, not 0',
+    async () => {
+      // The one-shot timeout's rule (a trap that exits 0 is still 143): the
+      // frame read `failed (never ready: timed out, exit 0)` (X-116).
+      await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "trap 'exit 0' TERM; echo wrong-banner; while :; do sleep 0.05; done",
+                timeout: 500,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+      const { status, notReady, exitCode } = r.outcomes[0]!
+      expect({ status, notReady, exitCode }).toEqual({
+        status: 'failed',
+        notReady: 'timeout',
+        exitCode: 143,
+      })
+    },
+    TIMEOUT,
+  )
+
   // The frame reads `(<duration>) failed (never ready: timed out)`: the
   // duration was taken once the child had exited, so a server that traps
   // TERM reported the readiness timeout plus the whole kill grace.
