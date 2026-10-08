@@ -31,9 +31,10 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   refactors, docs, CI. Verify every command, flag and config key in an
   example against current source; prefer real output from a fixture
   run of `bun packages/vx/src/bin.ts …` in the scratchpad.
-- Title `vx 0.0.<N+1> Release`, nothing else (owner, 2026-10-08:
-  feature-list and headline titles were both rejected). The story goes
-  in the cover headline and the excerpt. Date today,
+- Title = the story headline: the cover's `head` without its
+  `[brackets]` (`Runs that explain themselves`). The version is not in
+  the title; the blog shows it as a `v0.0.<N+1>` chip, read from the
+  slug. Date today,
   tag `release`, an excerpt, an intro, `**In this release**` links,
   one `##` per change with one example and its PR links,
   `## Breaking changes` when any, then How to update and Learn more as
@@ -85,7 +86,7 @@ title and description (the post's title and excerpt):
 
 ```sh
 cd /mnt/project-files/x-posts/_source
-NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "<post title>: <cover headline>" --desc "<excerpt>" --dry
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --dry
 ```
 
 Read the `--dry` record, then run it again without `--dry`. It logs to

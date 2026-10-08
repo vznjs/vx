@@ -56,9 +56,11 @@ export default defineProject({
     // `bun test` and astro's build only transpile, so a type error in the
     // playground, a widget's model or a test failed nothing. The directories
     // are named, not `.`: a type-checker pointed at a directory holding a
-    // symlinked node_modules walks it. `src/content/` is left out, being
-    // Markdown and a `content.config.ts` whose `astro:content` types exist
-    // only after astro generates them. The check follows the playground's
+    // symlinked node_modules walks it. `src/content/`, `src/llms/` and
+    // `src/blog/` are left out: they import `astro:content`, whose types
+    // exist only after astro generates them; src/env.d.ts gives the rest of
+    // astro's types. They are inputs all the same, as the files checked
+    // import them. The check follows the playground's
     // imports across the boundary into core's source (a devDependency, its
     // key through `install`).
     'lint.oxlint': {
@@ -79,7 +81,10 @@ export default defineProject({
           files: [
             'astro.config.mjs',
             'scripts/**',
+            'src/env.d.ts',
+            'src/blog/**',
             'src/components/**',
+            'src/llms/**',
             'src/nav/**',
             'src/pages/**',
             'src/playground/**',

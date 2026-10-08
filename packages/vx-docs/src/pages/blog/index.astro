@@ -1,0 +1,18 @@
+---
+// The blog's index: Starlight's page (header, search, theme) around the
+// listing; components/starlight/PageTitle.astro draws the masthead.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import Listing from '../../components/blog/Listing.astro'
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Blog',
+    description: 'Releases, and the design behind them.',
+    template: 'splash',
+    pagefind: false,
+  }}
+  hasSidebar={false}
+>
+  <Listing />
+</StarlightPage>

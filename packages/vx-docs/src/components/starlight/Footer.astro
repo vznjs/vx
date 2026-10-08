@@ -1,0 +1,35 @@
+---
+// Starlight's footer (the edit link); under a post, first its tags and three
+// posts to read next, as cards.
+import Default from '@astrojs/starlight/components/Footer.astro'
+import Card from '../blog/Card.astro'
+import { blogHref, posts, related } from '../../blog/posts.js'
+
+const route = Astro.locals.starlightRoute
+const post =
+  Astro.locals.vxSection === 'blog' && route.entry.data.date
+    ? (await posts()).find((p) => `blog/${p.slug}` === route.id)
+    : undefined
+const next = post ? await related(post.slug) : []
+---
+
+{
+  post && (
+    <div class="vx-post-end not-content">
+      <nav class="vx-filters vx-post-tags" aria-label="Tags">
+        {post.tags.map((t) => (
+          <a href={blogHref(`tags/${t}/`)}>{t}</a>
+        ))}
+      </nav>
+      <section class="vx-related">
+        <h2>Keep reading</h2>
+        <div class="vx-grid">
+          {next.map((p) => (
+            <Card post={p} />
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+<Default />
