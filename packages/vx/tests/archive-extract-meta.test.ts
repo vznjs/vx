@@ -149,13 +149,14 @@ describe('the sidecar at its edges', () => {
   })
 
   it('packs and restores an mtime past 2242, beyond the header field', async () => {
-    // macOS stores 2300 as its own ceiling (2262), still past the field's
-    // 2242: compare with what the source holds, not with the date set.
+    // macOS stores 2300 as its own ceiling (2262, a fractional ms), still
+    // past the field's 2242: compare with what the source holds, to the ms
+    // the sidecar keeps, not with the date set.
     let held = 0
     const st = await roundTrip((f) => {
       const t = new Date(Date.UTC(2300, 0, 1))
       utimesSync(f, t, t)
-      held = statSync(f).mtimeMs
+      held = Math.floor(statSync(f).mtimeMs)
     })
     expect(held).toBeGreaterThan(0o77777777777 * 1000)
     expect(st.mtimeMs).toBe(held)
