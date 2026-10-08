@@ -131,7 +131,8 @@ grant covers the lock file inside it.
 There is **no inheritance** from `vx.workspace.ts`, and nothing is
 derived from `cache`. The single grant core makes is dependencies:
 `node_modules` for the project and the workspace root, plus the real path
-of every workspace package symlinked into them — a project never names a
+of every workspace package symlinked into them, and into theirs in turn
+(pnpm and Bun link a dependency's own under it) — a project never names a
 sibling to import what its `package.json` depends on. A link back to the
 task's own project, or to a directory holding it, is dropped (compared
 canonically): npm and Yarn link every package at the root, and following
