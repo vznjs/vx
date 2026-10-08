@@ -28,8 +28,10 @@ run removes on its way out (`orchestrator.md`).
   (`success` / `restored-local` / `restored-remote` / `up-to-date` /
   `failed` / `skipped` / `aborted`), `outcomeLabel` (the word with a failure's
   reason or a skip's blocker), `failedLabel`, `skippedLabel` and
-  `skippedReason`. The frame footer, the run report, the terminal
-  summary and `--summarize` all read these.
+  `skippedReason`, and `ranNoCache` (a task no cache answered for: no
+  `cache` block, or `TaskOutcome.cacheOff` — `no-cache`, never a miss;
+  `--dry`'s plan asks it too). The frame footer, the run report, the
+  terminal summary and `--summarize` all read these.
 
 ## Invariants
 

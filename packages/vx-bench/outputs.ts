@@ -14,11 +14,11 @@ export async function deleteDist(dir: string): Promise<void> {
  * The packages whose build output is absent. A warm-restore rep that leaves
  * one missing was timed doing less than the row claims, so it is a failure.
  */
-export async function missingDist(dir: string): Promise<string[]> {
+export async function missingDist(dir: string, file = 'index.js'): Promise<string[]> {
   const missing: string[] = []
   for await (const rel of new Bun.Glob('packages/*/package.json').scan({ cwd: dir })) {
     const pkg = path.dirname(rel)
-    if (!(await Bun.file(path.join(dir, pkg, 'dist', 'index.js')).exists())) missing.push(pkg)
+    if (!(await Bun.file(path.join(dir, pkg, 'dist', file)).exists())) missing.push(pkg)
   }
   return missing.sort()
 }

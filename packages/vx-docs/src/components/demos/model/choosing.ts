@@ -435,7 +435,7 @@ export const CHOICES: readonly Choice[] = [
           'No wire in core: a plugin brings it. @vzn/vx-reapi speaks Bazel’s remote cache protocol; turboCache() speaks Turborepo’s, nxCache() speaks Nx’s. A remote error becomes a miss.',
         buys: 'A cache server you already run for Bazel, Turborepo or Nx serves vx too.',
         costs:
-          'No first-party hosted cache: you run or rent someone else’s server. The plugins are not on npm until 0.1.0 is cut.',
+          'No first-party hosted cache: you run or rent someone else’s server. The plugins are 0.0.x builds, like core.',
         sources: [
           { label: 'Remote caching', href: 'guides/ci/#remote-cache' },
           {
@@ -650,7 +650,7 @@ export const CHOICES: readonly Choice[] = [
           'bunx @vzn/vx-migrate writes vx.config.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
         buys: 'A move to native vx config without retyping the graph.',
         costs:
-          'The plugins are not on npm until 0.1.0 is cut. nx() runs Nx executors through a Node bin, and so does the written config until you rewrite each nx-exec line as the command it wraps. Moving to native configs means writing input lists.',
+          'The plugins are 0.0.x builds, like core. nx() runs Nx executors through a Node bin, and so does the written config until you rewrite each nx-exec line as the command it wraps. Moving to native configs means writing input lists.',
         sources: [
           { label: 'From Turborepo', href: 'guides/migrate/#turborepo' },
           { label: 'From Nx', href: 'guides/migrate/#nx' },
@@ -717,7 +717,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'Pre-alpha. @vzn/vx is on npm as 0.0.x builds, 0.1.0 is not cut, and the plugins are not published yet.',
+          'Pre-alpha. @vzn/vx and its plugins are on npm as 0.0.x builds, and 0.1.0 is not cut.',
         buys: 'Nothing yet, beyond the design: the API can still change where it is wrong.',
         costs:
           'No stable release, no support policy, a small ecosystem (the first-party plugins), and nothing distributed ships in the repository: no cloud, no workers, no dashboard.',

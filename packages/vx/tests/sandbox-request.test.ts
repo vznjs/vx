@@ -10,6 +10,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   stat,
@@ -37,13 +38,8 @@ let dir: string
 
 beforeEach(async () => {
   // CANONICAL, deliberately: macOS's temp dir is `/var/folders/...`, a
-  // symlink to `/private/var/...`. `linkedDeps` realpaths a link's TARGET
-  // and compares it against the granted directories as given, so under a
-  // non-canonical root the "already inside a granted directory" dedup
-  // never fires and every link is granted redundantly. That is harmless
-  // (the parent is granted anyway) but it makes the dedup untestable, and
-  // the row below is about the dedup rather than about macOS path
-  // canonicalisation. Found by CI: the control failed on darwin only.
+  // symlink to `/private/var/...`; the rows about a symlinked root build
+  // their own link.
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-sandbox-request-')))
   dir = path.join(root, 'proj')
   await mkdir(dir, { recursive: true })
@@ -277,6 +273,18 @@ describe('a write grant is pre-created for the bind', () => {
     const r = await requestFor(['dist'])
     expect(await kind(path.join(dir, 'dist'))).toBe('dir')
     expect(r.placeholders).toEqual([])
+  })
+
+  it('a file where a grant needs a directory is refused by name, its placeholders swept', async () => {
+    await writeFile(path.join(dir, 'a.txt'), 'x')
+    for (const grant of ['a.txt/', 'a.txt/x/*.js', 'a.txt/out']) {
+      await expect(requestFor(['gen.txt', grant])).rejects.toThrow(
+        `exec.sandbox.allow.write: "${grant}" needs a directory at ${path.join(dir, 'a.txt')}, ` +
+          `and a file is there — remove the file, or grant a path beside it`,
+      )
+      expect(await kind(path.join(dir, 'gen.txt'))).toBe('none')
+    }
+    expect(await readFile(path.join(dir, 'a.txt'), 'utf8')).toBe('x')
   })
 
   it('the request itself is unchanged by the spelling: `dist/` grants `dist`', async () => {
@@ -820,6 +828,31 @@ describe("a link to the task's own project, or to a directory holding it, is not
       expect(r.sandbox.reportLinked).toEqual([path.join(root, 'packages', 'lib')])
       expect(r.withheld.map((w) => [w.target, w.link])).toEqual([
         ['packages/lib', 'node_modules/@x/lib'],
+      ])
+    } finally {
+      await rm(link, { force: true })
+    }
+  })
+
+  it('a link into node_modules itself (pnpm) is neither granted nor withheld through a symlinked root', async () => {
+    // The target is canonical; the node_modules directories it must be
+    // found under are the link path, so on darwin every pnpm dependency
+    // of a cached task was withheld and reported.
+    const link = `${root}-link`
+    await symlink(root, link, 'dir')
+    try {
+      const store = path.join(link, 'node_modules', '.pnpm', 'dep@1.0.0', 'node_modules', 'dep')
+      await mkdir(store, { recursive: true })
+      await symlink(store, path.join(link, 'node_modules', 'dep'))
+      const r = await sandboxRequestFor(
+        { ...node(), projectDir: path.join(link, 'proj') },
+        {},
+        link,
+        new Set(),
+      )
+      expect([r.sandbox.baseAllowRead, r.sandbox.reportLinked]).toEqual([
+        [path.join(link, 'proj', 'node_modules'), path.join(link, 'node_modules')],
+        [],
       ])
     } finally {
       await rm(link, { force: true })

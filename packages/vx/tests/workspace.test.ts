@@ -12,7 +12,7 @@ import {
   unreachedPackages,
 } from '../src/workspace/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
-import { UserError } from '../src/util/index.js'
+import { relPosix, UserError } from '../src/util/index.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -122,6 +122,29 @@ describe('findWorkspaceRoot', () => {
       await mkdir(deep, { recursive: true })
       await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
       expect(await findWorkspaceRoot(deep)).toBe(dir)
+    })
+
+    it('a package discovery skips (dot-dir, node_modules) is not claimed', async () => {
+      // `packages/*` matched `packages/.tpl` in the claim while discovery
+      // skips dot-dirs and node_modules, so `vx run` there said "not inside
+      // a project" instead of running it as its own root.
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['packages/*', 'apps/**', '.config/*'] }),
+      )
+      const skipped = ['packages/.tpl', 'apps/a/.cache/x', 'apps/a/node_modules/x']
+      const members = ['packages/b', 'apps/a', '.config/c']
+      for (const rel of [...skipped, ...members]) {
+        await mkdir(path.join(dir, rel), { recursive: true })
+        await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name: rel }))
+      }
+      const listed = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      expect(listed.sort()).toEqual([...members].sort())
+      const roots: string[] = []
+      for (const rel of [...skipped, ...members]) {
+        roots.push(relPosix(dir, await findWorkspaceRoot(path.join(dir, rel))))
+      }
+      expect(roots).toEqual([...skipped, '', '', ''])
     })
 
     it('the nearest pnpm-workspace.yaml is the root, from any depth (item 990)', async () => {
@@ -506,7 +529,7 @@ describe('listProjects', () => {
     }
     expect(await unreachedPackages(await loadWorkspace(dir))).toEqual(['tools/gen'])
     // Past three, the hint counts the rest.
-    expect(unreachedHint(['a', 'b', 'c', 'd'])).toContain('not: a, b, c and 1 more.')
+    expect(unreachedHint(['a', 'b', 'c', 'd'], dir)).toContain('not: a, b, c and 1 more.')
   })
 
   it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
@@ -848,6 +871,30 @@ describe('malformed workspace manifests', () => {
     )
     await mkdir(path.join(dir, 'packages/a'), { recursive: true })
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
+    const members = await listProjects(await loadWorkspace(dir))
+    expect(members.map((p) => p.name)).toEqual(['a'])
+  })
+
+  it('an empty `packages:` key defers to package.json, as pnpm reads it (D-149)', async () => {
+    // A list commented out leaves `packages:` null. pnpm 10.28 ran the root
+    // alone; vx refused "`packages` must be an array of glob strings".
+    await writeFile(
+      path.join(dir, 'pnpm-workspace.yaml'),
+      `
+packages:
+  # - 'packages/*'
+`,
+    )
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await mkdir(path.join(dir, 'packages/a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
+    const single = await listProjects(await loadWorkspace(dir))
+    expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
+
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'root', workspaces: ['packages/*'] }),
+    )
     const members = await listProjects(await loadWorkspace(dir))
     expect(members.map((p) => p.name)).toEqual(['a'])
   })

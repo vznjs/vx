@@ -13,6 +13,7 @@ it('names each package without dist/index.js, and none once all are restored', a
       await writeFile(path.join(dir, 'packages', p, 'dist', 'index.js'), '')
     }
     expect(await missingDist(dir)).toEqual([])
+    expect(await missingDist(dir, 'out.js')).toEqual(['packages/a', 'packages/b', 'packages/c'])
     await rm(path.join(dir, 'packages', 'b', 'dist', 'index.js'))
     expect(await missingDist(dir)).toEqual(['packages/b'])
     await deleteDist(dir)

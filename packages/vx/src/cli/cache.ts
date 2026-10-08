@@ -85,10 +85,15 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
     if (a === '--older-than' || a?.startsWith('--older-than=')) {
       const v = a === '--older-than' ? args[++i] : a.slice('--older-than='.length)
       if (v === undefined || v === '') {
-        return { error: `--older-than requires a value (e.g. 30d, 24h, 60m)` }
+        return {
+          error: `--older-than requires a value: a duration like 30d, 24h or 60m${seeHelp('cache')}`,
+        }
       }
       const ms = parseDuration(v)
-      if (ms === null) return { error: `invalid duration: ${v} (e.g. 30d, 24h, 60m)` }
+      if (ms === null)
+        return {
+          error: `--older-than must be a duration like 30d, 24h or 60m (got ${v})${seeHelp('cache')}`,
+        }
       // `0d` evicts everything ever cached. That is far more often a
       // computed-to-zero retention than an intent, and no other flag
       // combination expresses "wipe the cache" — so refuse it and name
@@ -102,10 +107,11 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
     } else if (a === '--max-size' || a?.startsWith('--max-size=')) {
       const v = a === '--max-size' ? args[++i] : a.slice('--max-size='.length)
       if (v === undefined || v === '') {
-        return { error: `--max-size requires a value (e.g. 500M, 1G)` }
+        return { error: `--max-size requires a value: a size like 500M or 1G${seeHelp('cache')}` }
       }
       const bytes = parseSize(v)
-      if (bytes === null) return { error: `invalid size: ${v} (e.g. 500M, 1G)` }
+      if (bytes === null)
+        return { error: `--max-size must be a size like 500M or 1G (got ${v})${seeHelp('cache')}` }
       if (bytes === 0) {
         return {
           error: `--max-size 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
@@ -185,19 +191,9 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0
   }
-  if (parsed.dryRun === true) {
-    const earlier = await Cache.orphansBeforeReset(dir)
-    if (earlier !== null) {
-      warnToStderr(
-        `[vx] the cache index is schema ${earlier.found} from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan`,
-      )
-      printPruned({ evicted: 0, bytesFreed: 0, ...earlier }, true, json)
-      return 0
-    }
-  }
   const cache =
     parsed.dryRun === true
-      ? new Cache(dir, undefined, undefined, undefined, 'inspect', storeRoot)
+      ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
       : new Cache(dir, undefined, root, undefined, 'open', storeRoot)
   // A prune deletes rows and artifacts; a cache this user cannot write is
   // refused up front with the directory named, as a run refuses it, rather

@@ -1,4 +1,4 @@
-// `vx last [runId]` — replay a recorded run's summary from the terminal,
+// `vx last [RUNID]` — replay a recorded run's summary from the terminal,
 // without re-executing anything. Comparison gap #12: with the dashboard's
 // run-detail page gone (the 2026-08-23 cloud removal), the local run
 // history in cache.db is the only replay surface, and this verb reads it.
@@ -60,7 +60,10 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       if (spaced) i++
       const n = Number(lv)
       if (!Number.isInteger(n) || n < 1 || n > 500) {
-        return { ...out, error: `invalid --list: ${lv} (expected 1..500)` }
+        return {
+          ...out,
+          error: `--list must be a whole number from 1 to 500 (got ${lv})${seeHelp('last')}`,
+        }
       }
       out.list = n
       continue
@@ -233,6 +236,47 @@ function hitsLine(
   return `${hits} (${inv.upToDateCount} up-to-date, ${restored} restored${layers})`
 }
 
+/**
+ * `vx last --list`'s rows, in columns: the counts vary with what a run
+ * hit and failed, so unpadded they pushed each run's duration and command
+ * to a different column and the list could not be scanned down.
+ */
+export function formatRunList(
+  runs: readonly {
+    inv: Pick<
+      InvocationDetail,
+      | 'exitOk'
+      | 'startedAt'
+      | 'taskCount'
+      | 'failedCount'
+      | 'totalDurationMs'
+      | 'command'
+      | 'hitCount'
+      | 'upToDateCount'
+      | 'restoredLocalCount'
+      | 'restoredRemoteCount'
+    >
+    id: string
+  }[],
+): string[] {
+  const rows = runs.map(({ inv, id }) => ({
+    head: `${inv.exitOk ? 'ok    ' : 'FAILED'} ${fmtWhen(inv.startedAt)}`,
+    id,
+    counts:
+      `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
+      (inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''),
+    ms: fmtMs(inv.totalDurationMs),
+    command: inv.command,
+  }))
+  const idW = Math.max(...rows.map((r) => r.id.length))
+  const countsW = Math.max(...rows.map((r) => r.counts.length))
+  const msW = Math.max(...rows.map((r) => r.ms.length))
+  return rows.map(
+    (r) =>
+      `${r.head}  ${r.id.padEnd(idW)}  ${r.counts.padEnd(countsW)}  ${r.ms.padStart(msW)}  $ ${r.command}`,
+  )
+}
+
 export async function lastCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLastArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
@@ -261,14 +305,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         )
         return 0
       }
-      for (const inv of invocations) {
-        const verdict = inv.exitOk ? 'ok    ' : 'FAILED'
-        process.stdout.write(
-          `${verdict} ${fmtWhen(inv.startedAt)}  ${shortRunId(db, inv.runId)}  ` +
-            `${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}` +
-            `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''} · ${fmtMs(inv.totalDurationMs)}  $ ${inv.command}\n`,
-        )
-      }
+      const lines = formatRunList(
+        invocations.map((inv) => ({ inv, id: shortRunId(db, inv.runId) })),
+      )
+      process.stdout.write(`${lines.join('\n')}\n`)
       return 0
     }
 

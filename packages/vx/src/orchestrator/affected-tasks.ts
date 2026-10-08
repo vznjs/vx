@@ -105,16 +105,40 @@ export function affectedRoots(
     return (changes.paths.get(n.projectName) ?? []).some((rel) => declaresInput(cache, rel, null))
   }
   const reached = new Map<string, boolean>()
-  const reaches = (id: string): boolean => {
-    const known = reached.get(id)
-    if (known !== undefined) return known
-    // The graph is acyclic (the builder refuses a cycle); the mark only
-    // stops a diamond being walked twice.
-    reached.set(id, false)
-    const n = nodes.get(id)
-    const hit = n !== undefined && (seeded(n) || passesChanged(n) || n.deps.some(reaches))
-    reached.set(id, hit)
-    return hit
+  // Post-order on an explicit stack: a closure is as deep as the graph, and
+  // a recursion per edge threw `RangeError` on a chain the builder takes
+  // (item 737's 50,000; ~15,000 sufficed here). A frame holds the next dep
+  // to ask, -1 before the task itself is.
+  const reaches = (root: string): boolean => {
+    const stack: Array<[id: string, next: number]> = [[root, -1]]
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1]!
+      const id = frame[0]
+      if (frame[1] === -1) {
+        if (reached.has(id)) {
+          stack.pop()
+          continue
+        }
+        const n = nodes.get(id)
+        if (n === undefined || seeded(n) || passesChanged(n)) {
+          reached.set(id, n !== undefined)
+          stack.pop()
+          continue
+        }
+        frame[1] = 0
+      }
+      const deps = nodes.get(id)!.deps
+      let i = frame[1]
+      while (i < deps.length && reached.get(deps[i]!) === false) i++
+      frame[1] = i
+      if (i === deps.length || reached.get(deps[i]!) === true) {
+        reached.set(id, i < deps.length)
+        stack.pop()
+        continue
+      }
+      stack.push([deps[i]!, -1])
+    }
+    return reached.get(root)!
   }
   return ids.filter(reaches)
 }

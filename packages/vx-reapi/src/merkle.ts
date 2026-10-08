@@ -22,7 +22,7 @@ export interface Blob {
   data: Uint8Array
 }
 
-export interface InputTree {
+interface InputTree {
   /** Digest of the root `Directory` — goes in `Action.input_root_digest`. */
   root: Digest
   /** Every blob the server needs: file contents plus the Directory nodes. */
@@ -828,7 +828,7 @@ function decodeSymlinkNode(buf: Uint8Array): SymlinkNode {
   return sl
 }
 
-function decodeDigestBytes(buf: Uint8Array): Digest {
+export function decodeDigestBytes(buf: Uint8Array): Digest {
   const d: Digest = { hash: '', size_bytes: 0 }
   let i = 0
   while (i < buf.length) {
@@ -850,7 +850,7 @@ function decodeDigestBytes(buf: Uint8Array): Digest {
   return d
 }
 
-function readVarintAt(buf: Uint8Array, at: number): [number, number] {
+export function readVarintAt(buf: Uint8Array, at: number): [number, number] {
   let result = 0
   let low = 0
   let shift = 0

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { parseLastArgs } from '../src/cli/last.js'
-import { formatTaskRows } from '../src/cli/last.js'
+import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/orchestrator/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -338,7 +338,9 @@ describe('vx last (e2e)', () => {
       const all = (await vx(root, ['last', '--list', '20'])).out.trim().split('\n')
       const only = (await vx(root, ['last', '--list', '20', '--failed'])).out.trim().split('\n')
       expect(all.some((l) => l.startsWith('ok'))).toBe(true)
-      expect(only).toEqual(all.filter((l) => l.startsWith('FAILED')))
+      // Column widths are the listed rows' own, so compare past the padding.
+      const cells = (l: string): string => l.replace(/ {2,}/g, '  ')
+      expect(only.map(cells)).toEqual(all.filter((l) => l.startsWith('FAILED')).map(cells))
     },
     TIMEOUT,
   )
@@ -413,11 +415,11 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['01a0', '--failed']).error).toBe(
       'a run id and --failed do not combine: replay 01a0',
     )
-    expect(parseLastArgs(['--list=0']).error).toMatch(/1\.\.500/)
+    expect(parseLastArgs(['--list=0']).error).toMatch(/from 1 to 500/)
     // The ceiling: 500 is taken, 501 is refused.
     expect([parseLastArgs(['--list=500']).list, parseLastArgs(['--list=501']).error]).toEqual([
       500,
-      'invalid --list: 501 (expected 1..500)',
+      '--list must be a whole number from 1 to 500 (got 501) (see `vx last --help`)',
     ])
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
@@ -452,7 +454,11 @@ describe('parseLastArgs', () => {
       { list: 1, runId: undefined, error: undefined },
       { list: 1, runId: undefined, error: undefined },
       { list: 10, runId: undefined, error: undefined },
-      { list: undefined, runId: undefined, error: 'invalid --list: 0 (expected 1..500)' },
+      {
+        list: undefined,
+        runId: undefined,
+        error: '--list must be a whole number from 1 to 500 (got 0) (see `vx last --help`)',
+      },
     ])
     expect(pick(['01a0dee9-run', '--list']).error).toBe(
       'a run id and --list do not combine: replay 01a0dee9-run, or list runs',
@@ -472,9 +478,9 @@ describe('parseLastArgs', () => {
       error(['--list', '2', 'extra']),
       error(['extra', '--list']),
     ]).toEqual([
-      'invalid --list: 1.5 (expected 1..500)',
-      'invalid --list: abc (expected 1..500)',
-      'invalid --list: -3 (expected 1..500)',
+      '--list must be a whole number from 1 to 500 (got 1.5) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got abc) (see `vx last --help`)',
+      '--list must be a whole number from 1 to 500 (got -3) (see `vx last --help`)',
       'unexpected argument: extra (see `vx last --help`)',
       'unexpected argument: extra (see `vx last --help`)',
     ])
@@ -598,5 +604,45 @@ describe('formatTaskRows', () => {
 
   it('a run with nothing recorded renders no rows', () => {
     expect(formatTaskRows([])).toEqual([])
+  })
+})
+
+describe('vx last --list rows', () => {
+  const inv = (o: Partial<Parameters<typeof formatRunList>[0][number]['inv']>) => ({
+    exitOk: true,
+    startedAt: Date.UTC(2026, 9, 7, 22, 9, 6, 700),
+    taskCount: 4,
+    failedCount: 0,
+    totalDurationMs: 20,
+    command: 'vx run build --all',
+    hitCount: 0,
+    upToDateCount: 0,
+    restoredLocalCount: 0,
+    restoredRemoteCount: 0,
+    ...o,
+  })
+
+  it('aligns the counts, duration and command across runs whose counts differ', () => {
+    expect(
+      formatRunList([
+        {
+          inv: inv({
+            exitOk: false,
+            taskCount: 6,
+            hitCount: 1,
+            upToDateCount: 1,
+            failedCount: 2,
+            totalDurationMs: 336,
+          }),
+          id: '01a1186a-4231',
+        },
+        { inv: inv({ hitCount: 4, upToDateCount: 4 }), id: '01a11869-c28c' },
+        { inv: inv({ taskCount: 1, totalDurationMs: 1500 }), id: '01a11869-c1e8a' },
+      ]),
+    ).toEqual([
+      'FAILED 2026-10-07T22:09:06.700Z  01a1186a-4231   6 tasks · 1 hit (1 up-to-date, 0 restored) · 2 failed  336ms  $ vx run build --all',
+      'ok     2026-10-07T22:09:06.700Z  01a11869-c28c   4 tasks · 4 hits (4 up-to-date, 0 restored)             20ms  $ vx run build --all',
+      'ok     2026-10-07T22:09:06.700Z  01a11869-c1e8a  1 task · 0 hits                                        1.50s  $ vx run build --all',
+    ])
   })
 })

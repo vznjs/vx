@@ -109,4 +109,39 @@ describe("an attempt's listener on the run's stop signal", () => {
     expect((await run(node('proj#a'), executor, stop.signal)).status).toBe('aborted')
     expect(reached).toBe(true)
   })
+
+  it('a stop during the probe neither cleans the outputs nor asks the executor', async () => {
+    // Dispatched before the stop, which landed during the cache probe: the
+    // miss path wiped the last build and handed the executor a request to
+    // start after the run had stopped.
+    await mkdir(path.join(dir, 'dist'), { recursive: true })
+    await writeFile(path.join(dir, 'dist', 'old.txt'), 'last build')
+    const stop = new AbortController()
+    const probe = cache.get.bind(cache)
+    cache.get = async (...a) => {
+      const hit = await probe(...a)
+      stop.abort('SIGINT')
+      return hit
+    }
+    let asked = 0
+    const executor = {
+      name: 'org/remote',
+      execute: async () => {
+        asked++
+        return { ...ok, exitCode: 130, signal: 'SIGINT' as const }
+      },
+    } as never
+    const n: TaskNode = {
+      ...node('proj#build'),
+      config: {
+        exec: { command: 'true' },
+        cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+      },
+    }
+    const outcome = await run(n, executor, stop.signal)
+    expect(outcome.status).toBe('aborted')
+    expect(outcome.exitCode).toBe(130)
+    expect(asked).toBe(0)
+    expect(await Bun.file(path.join(dir, 'dist', 'old.txt')).text()).toBe('last build')
+  })
 })

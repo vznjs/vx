@@ -71,10 +71,14 @@ describe('a task typed as a verb', () => {
     )
     // A task the project does not declare is no Nx spelling: the plain lines stand.
     expect(run(root, 'app:nope')[2]).toBe(
-      'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
     )
     expect(run(root, 'app:nope', '--all')[2]).toBe(
       'vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n',
+    )
+    // Nor does one the project inherits from Object.prototype.
+    expect(run(root, 'app:toString')[2]).toBe(
+      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
     )
   })
 
@@ -105,7 +109,7 @@ describe('a task typed as a verb', () => {
       const other = await addProject(root, '@t/web', TASKS)
       try {
         expect(run('web:build')[1]).toBe(
-          'vx run: not inside a project. Pass --all for every project, --filter <pattern> to filter, or run from within a project directory.\n',
+          'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
         )
       } finally {
         await rm(other, { recursive: true, force: true })

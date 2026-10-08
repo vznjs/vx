@@ -13,6 +13,7 @@
 import { mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
+import { summarize } from './ab.js'
 
 const [root, ws, repsArg] = process.argv.slice(2)
 if (root === undefined || ws === undefined) {
@@ -44,9 +45,8 @@ for (let r = 0; r < reps; r++) {
   times.push(performance.now() - t)
 }
 rmSync(dest, { recursive: true, force: true })
-times.sort((a, b) => a - b)
-const min = times[0]!
+const { min, median } = summarize(times)
 console.log(
-  `${hashes.length} artifacts × ${reps} reps: min ${min.toFixed(1)} ms, median ${times[Math.floor(reps / 2)]!.toFixed(1)} ms, ${((min / hashes.length) * 1000).toFixed(0)} µs per artifact`,
+  `${hashes.length} artifacts × ${reps} reps: min ${min.toFixed(1)} ms, median ${median.toFixed(1)} ms, ${((min / hashes.length) * 1000).toFixed(0)} µs per artifact`,
 )
 cache.close()

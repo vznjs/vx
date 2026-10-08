@@ -12,16 +12,25 @@
 import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
-import { executorFallback, isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
+import {
+  executorFallback,
+  isLiteralPattern,
+  isUserError,
+  normalizeGlob,
+  UserError,
+  withForwardArgs,
+} from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
+  decodeDigestBytes,
   decodeTreeWithBytes,
   digestWith,
   encodeAction,
   encodeCommand,
   encodeTree,
   mapBounded,
+  readVarintAt,
   sha256,
   type Blob,
   type FileGraft,
@@ -196,12 +205,12 @@ export function decodeExecuteResponseBytes(buf: Uint8Array): DecodedExecuteRespo
   const out: DecodedExecuteResponse = { serverLogs: [] }
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
+      const [len, l] = readVarintAt(buf, i)
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
@@ -212,7 +221,7 @@ export function decodeExecuteResponseBytes(buf: Uint8Array): DecodedExecuteRespo
         if (entry !== undefined) out.serverLogs.push(entry)
       } else if (field === 5) out.message = new TextDecoder().decode(slice)
     } else if (wire === 0) {
-      const [v, n] = readVarint(buf, i)
+      const [v, n] = readVarintAt(buf, i)
       i = n
       if (field === 2) out.cachedResult = v === 1
     } else if (wire === 5) i += 4
@@ -227,16 +236,16 @@ function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
   const st = { code: 0, message: '' }
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 0) {
-      const [v, n] = readVarint(buf, i)
+      const [v, n] = readVarintAt(buf, i)
       i = n
       if (field === 1) st.code = v
     } else if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
+      const [len, l] = readVarintAt(buf, i)
       i = l
       if (field === 2) st.message = new TextDecoder().decode(buf.subarray(i, i + len))
       i += len
@@ -254,10 +263,10 @@ function decodeLogEntry(
   let humanReadable = false
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     if ((key & 7) !== 2) break
-    const [len, l] = readVarint(buf, i)
+    const [len, l] = readVarintAt(buf, i)
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
@@ -265,15 +274,15 @@ function decodeLogEntry(
     else if (key >>> 3 === 2) {
       let j = 0
       while (j < slice.length) {
-        const [k2, j2] = readVarint(slice, j)
+        const [k2, j2] = readVarintAt(slice, j)
         j = j2
         if ((k2 & 7) === 2) {
-          const [len2, j3] = readVarint(slice, j)
+          const [len2, j3] = readVarintAt(slice, j)
           j = j3
-          if (k2 >>> 3 === 1) digest = decodeDigest(slice.subarray(j, j + len2))
+          if (k2 >>> 3 === 1) digest = decodeDigestBytes(slice.subarray(j, j + len2))
           j += len2
         } else if ((k2 & 7) === 0) {
-          const [v, j3] = readVarint(slice, j)
+          const [v, j3] = readVarintAt(slice, j)
           j = j3
           if (k2 >>> 3 === 2) humanReadable = v === 1
         } else break
@@ -288,16 +297,16 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
   const legacyLinks: { path: string; target: string }[] = []
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 0) {
-      const [v, n] = readVarint(buf, i)
+      const [v, n] = readVarintAt(buf, i)
       i = n
       if (field === 4) res.exit_code = v | 0
     } else if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
+      const [len, l] = readVarintAt(buf, i)
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
@@ -308,9 +317,9 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
       if (field === 2) (res.output_files ??= []).push(decodeOutputFile(slice))
       else if (field === 3) (res.output_directories ??= []).push(decodeOutputDirectory(slice))
       else if (field === 5) res.stdout_raw = slice
-      else if (field === 6) res.stdout_digest = decodeDigest(slice)
+      else if (field === 6) res.stdout_digest = decodeDigestBytes(slice)
       else if (field === 7) res.stderr_raw = slice
-      else if (field === 8) res.stderr_digest = decodeDigest(slice)
+      else if (field === 8) res.stderr_digest = decodeDigestBytes(slice)
       else if (field === 9) res.execution_metadata = decodeExecutedActionMetadata(slice)
       else if (field === 12) (res.output_symlinks ??= []).push(decodeOutputSymlink(slice))
       // output_file_symlinks (10) and output_directory_symlinks (11): all a
@@ -340,20 +349,20 @@ function decodeOutputFile(buf: Uint8Array): {
   }
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
+      const [len, l] = readVarintAt(buf, i)
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
       if (field === 1) out.path = PATH_UTF8.decode(slice)
-      else if (field === 2) out.digest = decodeDigest(slice)
+      else if (field === 2) out.digest = decodeDigestBytes(slice)
       else if (field === 5 && len > 0) out.contents = slice
     } else if (wire === 0) {
-      const [v, n] = readVarint(buf, i)
+      const [v, n] = readVarintAt(buf, i)
       i = n
       if (field === 4) out.is_executable = v === 1
     } else break
@@ -366,10 +375,10 @@ function decodeOutputSymlink(buf: Uint8Array): { path: string; target: string } 
   const out = { path: '', target: '' }
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     if ((key & 7) !== 2) break
-    const [len, l] = readVarint(buf, i)
+    const [len, l] = readVarintAt(buf, i)
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
@@ -391,12 +400,12 @@ function decodeExecutedActionMetadata(
   const meta: NonNullable<ActionResult['execution_metadata']> = {}
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
+      const [len, l] = readVarintAt(buf, i)
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
@@ -404,7 +413,7 @@ function decodeExecutedActionMetadata(
       else if (field === 7) meta.execution_start_timestamp = decodeTimestamp(slice)
       else if (field === 8) meta.execution_completed_timestamp = decodeTimestamp(slice)
     } else if (wire === 0) {
-      const [, n] = readVarint(buf, i)
+      const [, n] = readVarintAt(buf, i)
       i = n
     } else break
   }
@@ -416,10 +425,10 @@ function decodeTimestamp(buf: Uint8Array): { seconds?: string; nanos?: number } 
   const ts: { seconds?: string; nanos?: number } = {}
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     if ((key & 7) !== 0) break
-    const [v, n] = readVarint(buf, i)
+    const [v, n] = readVarintAt(buf, i)
     i = n
     if (key >>> 3 === 1) ts.seconds = String(v)
     else if (key >>> 3 === 2) ts.nanos = v
@@ -434,65 +443,24 @@ function decodeOutputDirectory(buf: Uint8Array): { path: string; tree_digest: Di
   const out = { path: '', tree_digest: { hash: '', size_bytes: 0 } }
   let i = 0
   while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
+    const [key, k] = readVarintAt(buf, i)
     i = k
     const field = key >>> 3
     const wire = key & 7
     if (wire === 0) {
-      const [, n] = readVarint(buf, i)
+      const [, n] = readVarintAt(buf, i)
       i = n
       continue
     }
     if (wire !== 2) break
-    const [len, l] = readVarint(buf, i)
+    const [len, l] = readVarintAt(buf, i)
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
     if (field === 1) out.path = PATH_UTF8.decode(slice)
-    else if (field === 3) out.tree_digest = decodeDigest(slice)
+    else if (field === 3) out.tree_digest = decodeDigestBytes(slice)
   }
   return out
-}
-
-function decodeDigest(buf: Uint8Array): Digest {
-  const d: Digest = { hash: '', size_bytes: 0 }
-  let i = 0
-  while (i < buf.length) {
-    const [key, k] = readVarint(buf, i)
-    i = k
-    const field = key >>> 3
-    const wire = key & 7
-    if (wire === 2) {
-      const [len, l] = readVarint(buf, i)
-      i = l
-      if (field === 1) d.hash = new TextDecoder().decode(buf.subarray(i, i + len))
-      i += len
-    } else if (wire === 0) {
-      const [v, n] = readVarint(buf, i)
-      i = n
-      if (field === 2) d.size_bytes = v
-    } else break
-  }
-  return d
-}
-
-function readVarint(buf: Uint8Array, at: number): [number, number] {
-  let result = 0
-  let low = 0
-  let shift = 0
-  let i = at
-  for (;;) {
-    const byte = buf[i++]
-    if (byte === undefined) break
-    // Added, not OR-ed: a size of 4 GiB or more wrapped to 32 bits (F-43).
-    // Past 2^53 the value is a negative int32 sent as ten bytes (an exit
-    // code): its low 32 bits, which `| 0` reads back as the negative.
-    result += (byte & 0x7f) * 2 ** shift
-    if (shift < 32) low |= (byte & 0x7f) << shift
-    if ((byte & 0x80) === 0) break
-    shift += 7
-  }
-  return [result <= Number.MAX_SAFE_INTEGER ? result : low >>> 0, i]
 }
 
 /**
@@ -1252,12 +1220,9 @@ async function this_readStream(
   return ''
 }
 
-/** Forwarded args are appended shell-quoted, exactly as the local executor does. */
+/** Forwarded args are placed by core's own `withForwardArgs`, as the local executor's are. */
 function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): string {
-  const quoted =
-    req.forwardArgs.length === 0
-      ? req.command
-      : `${req.command} ${req.forwardArgs.map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(' ')}`
+  const command = withForwardArgs(req.command, req.forwardArgs)
   // A remote action gets NO PATH from this machine — sending one would put a
   // host path in the action digest and split every laptop from every runner.
   // But a task's command is normally a package binary (`oxlint`, `tsc`), and
@@ -1285,7 +1250,7 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   return (
     `VX_ROOT=${root}; ${cd}` +
     `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
-    quoted
+    command
   )
 }
 
@@ -1345,7 +1310,7 @@ export function commandEnvironment(
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 
-export interface OutputPathSets {
+interface OutputPathSets {
   /** v2.1+ `output_paths` — deduped, sorted. */
   outputPaths: string[]
   /** v2.0 legacy split: wildcard-free globs are files, prefix-derived are directories. */
