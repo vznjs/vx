@@ -57,3 +57,15 @@ and log output reads better. Each must cost the warm path nothing.
   pipe, CI and a terminal not known to open links (tmux, screen
   included) get none. One stat per path, failed frames only. Rows:
   `path-links.test.ts`.
+- **DX-9.** An agent reads why a task failed without the terminal. A
+  failed task's output (both streams, secrets masked, the first 8 KiB
+  and last 56 KiB, ANSI stripped) and the files it names
+  (`{ file, line?, col? }`, `fileLocations` over the link pattern) are
+  written at run end to `<cacheDir>/failures/<runId>.json`, the newest
+  50 kept. Files, not a cache.db table: a table would need a
+  `SCHEMA_VERSION` bump, which resets every shared store (coordinator,
+  2026-10-08). A refused write costs only the output. A task that saves
+  nothing keeps a failure-sized capture; a green run writes nothing.
+  `vx last --format json` adds `output` and `locations` to failed rows;
+  `@vzn/vx-mcp` adds `getFailures`. Rows: `run-output.test.ts`, vx-mcp
+  `tools.test.ts` › getFailures.

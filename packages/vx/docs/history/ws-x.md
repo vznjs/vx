@@ -1245,6 +1245,13 @@ reaches no build task.` The plan now carries the run's own line
   (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
   ^name and an --exclude-dependencies name only that project declares";
   each site's old test reddens its own field.
+
+- **X-194.** A task whose stdout starts with U+FEFF lost it twice: the
+  runner's default `TextDecoder` drops a leading BOM, and bun:sqlite
+  drops one from a bound string (its bytes, cast to TEXT, keep it). The
+  runner, the artifact reader and the `entry_stdout` write now keep it.
+  Row: `replay-fidelity.test.ts` › "U+FEFF at the start of stdout
+  survives the live run and the hit"; each fix alone leaves it red.
 - **X-192.** A warm run dispatched each of its 1,090 unkeyed groups
   (`installDeps`) like a task: a slot, an admission ask, an `execute`
   promise and the completion callbacks, for a node that runs nothing and

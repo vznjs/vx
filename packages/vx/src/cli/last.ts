@@ -17,6 +17,7 @@ import {
   outcomeWord,
   type RunSummaryRow,
   resolveRunId,
+  runFailures,
   shortRunId,
 } from '../orchestrator/index.js'
 import { formatElapsed, UserError } from '../util/index.js'
@@ -285,7 +286,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = Cache.inspect(await cliCacheDir(root, parsed.cacheDir))
+  const cacheDir = await cliCacheDir(root, parsed.cacheDir)
+  const cache = Cache.inspect(cacheDir)
   try {
     const db = cache.dbHandle()
     // Nothing recorded at all is its own answer: `--failed` said "no
@@ -335,7 +337,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     const detail = getRun(db, inv.runId)
 
     if (parsed.format === 'json') {
-      process.stdout.write(`${JSON.stringify({ invocation: inv, tasks: detail?.tasks ?? [] })}\n`)
+      const failures = new Map(
+        (runFailures(cacheDir, db, inv.runId)?.tasks ?? []).map((f) => [f.taskId, f]),
+      )
+      const tasks = (detail?.tasks ?? []).map((t) => {
+        const f = failures.get(`${t.project}#${t.task}`)
+        return f === undefined ? t : { ...t, output: f.output, locations: f.locations }
+      })
+      process.stdout.write(`${JSON.stringify({ invocation: inv, tasks })}\n`)
       return 0
     }
 

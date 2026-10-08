@@ -1718,9 +1718,11 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
             db.close()
           }
         }
+        // A hit renews only a row over an hour old, so age it first.
+        const rw = new Database(dbPath)
+        rw.run('UPDATE entries SET accessed_at = 0')
+        rw.close()
         const before = accessedAt()
-        // The bump has to be distinguishable from the save's own timestamp.
-        await Bun.sleep(25)
 
         // A restoring hit: the output tree is gone, so the hit writes it back.
         await rm(path.join(fixture.root, 'app', 'dist'), { recursive: true, force: true })

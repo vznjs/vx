@@ -500,7 +500,7 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     await saveSample('h-prune', { 'a.txt': 'a' })
     const cacheDir = path.join(dir, '.vx-cache')
     expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(true)
-    await cache.prune({ olderThanMs: Date.now() + 1_000_000 }) // evict everything
+    await cache.prune({ olderThanMs: Date.now() + 2 * 60 * 60 * 1000 }) // evict everything
     expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(false)
   })
 })

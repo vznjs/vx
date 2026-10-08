@@ -67,7 +67,8 @@ const META_ENTRY = '.vx-meta.json'
 const STDOUT_ENTRY = 'stdout'
 
 // One decoder, its defaults (a leading BOM dropped), for both scanners.
-const utf8 = new TextDecoder()
+// `ignoreBOM`: a leading U+FEFF in a task's stdout is the task's.
+const utf8 = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /**
  * The last entry: a CRC-32 over every entry before it, each its name, a

@@ -1253,6 +1253,20 @@ export interface OutcomeView {
 }
 ```
 
+## `OutputLocation`
+
+type · `src/orchestrator/path-links.ts`
+
+A file a task's output names; `file` absolute.
+
+```ts
+export interface OutputLocation {
+  file: string
+  line?: number
+  col?: number
+}
+```
+
 ## `outputsOverlap`
 
 function · `src/graph/task-graph.ts`
@@ -1844,6 +1858,29 @@ export interface RunContextRecord {
 }
 ```
 
+## `runFailures`
+
+function · `src/orchestrator/run-failures.ts`
+
+The failed tasks of `runId`, or of the latest failed run when omitted;
+null when there is no such run. A failed task the file lacks (an older
+run, a write the disk refused) reads `output: ''`, `locations: []`.
+
+```ts
+export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null
+```
+
+## `RunFailures`
+
+type · `src/orchestrator/run-failures.ts`
+
+```ts
+export interface RunFailures {
+  runId: string
+  tasks: TaskFailure[]
+}
+```
+
 ## `RunOptions`
 
 type · `src/orchestrator/options.ts`
@@ -2156,6 +2193,22 @@ export interface TaskExecutor {
 }
 ```
 
+## `TaskFailure`
+
+type · `src/orchestrator/run-failures.ts`
+
+A failed task of a run and what it said.
+
+```ts
+export interface TaskFailure {
+  taskId: string
+  exitCode: number
+  timedOut?: true
+  output: string
+  locations: OutputLocation[]
+}
+```
+
 ## `TaskHistory`
 
 type · `src/orchestrator/history.ts`
@@ -2274,6 +2327,7 @@ export interface TaskOutcome {
   cacheOff?: true
   blockedBy?: string
   timedOut?: true
+  failedOutput?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
   where?: string
   outputs?: 'deferred'

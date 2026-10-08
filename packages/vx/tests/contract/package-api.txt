@@ -322,6 +322,8 @@ export function refuseUnknownOptions<T>(
 export function resolveRunId(db: Database, raw: string, verb: string): string | null
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
+== function runFailures (src/orchestrator/run-failures.ts)
+export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
 == function whyDidThisRerun (src/orchestrator/metrics.ts)
@@ -950,6 +952,12 @@ export interface OutputFileRow {
   ino?: number
   ctimeMs?: number
 }
+== type OutputLocation (src/orchestrator/path-links.ts)
+export interface OutputLocation {
+  file: string
+  line?: number
+  col?: number
+}
 == type OutputView (src/orchestrator/logger.ts)
 export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
@@ -1208,6 +1216,11 @@ export type RunEvent =
   | { kind: 'run:end' }
 == type RunEventSubscriber (src/orchestrator/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void
+== type RunFailures (src/orchestrator/run-failures.ts)
+export interface RunFailures {
+  runId: string
+  tasks: TaskFailure[]
+}
 == type RunOptions (src/orchestrator/options.ts)
 export interface RunOptions {
   cwd: string
@@ -1415,6 +1428,14 @@ export interface TaskExecutor {
   demand?(remaining: ReadonlySet<string>): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
+== type TaskFailure (src/orchestrator/run-failures.ts)
+export interface TaskFailure {
+  taskId: string
+  exitCode: number
+  timedOut?: true
+  output: string
+  locations: OutputLocation[]
+}
 == type TaskHistory (src/orchestrator/history.ts)
 export interface TaskHistory {
   runs: number
@@ -1504,6 +1525,7 @@ export interface TaskOutcome {
   cacheOff?: true
   blockedBy?: string
   timedOut?: true
+  failedOutput?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
   where?: string
   outputs?: 'deferred'

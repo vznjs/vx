@@ -141,6 +141,12 @@ export interface TaskOutcome {
    */
   timedOut?: true
   /**
+   * On a `failed` outcome of a command that ran: the final attempt's
+   * output, both streams, as `encodeOutputLog` stores it, secrets masked,
+   * bounded to its first 8 KiB and last 56 KiB. The run's history keeps it.
+   */
+  failedOutput?: string
+  /**
    * On a failed persistent task: why it never became ready — the readiness
    * deadline fired, the child exited first (`exitCode` is then its own), or
    * the spawn itself failed. Every label reads this instead of the exit.

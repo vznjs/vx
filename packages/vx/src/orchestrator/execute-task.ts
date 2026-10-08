@@ -41,7 +41,12 @@ import {
   maskCaptured,
   BoundedCapture,
 } from '../exec/index.js'
-import { encodeOutputLog } from './output-log.js'
+import {
+  encodeOutputLog,
+  FAILED_OUTPUT_HEAD_CHARS,
+  FAILED_OUTPUT_TAIL_CHARS,
+  failedOutputLog,
+} from './output-log.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
   killGraceMs,
@@ -1282,7 +1287,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
-  // The attempt's output as the logger got it (masked), for the entry.
+  // The attempt's output as the logger got it (masked): the entry's when
+  // the task saves, else only what a failure reports (`failedOutput`).
   let output: BoundedCapture | undefined
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [])
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
@@ -1374,14 +1380,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
-    const kept = willSave ? new BoundedCapture() : undefined
+    const kept = willSave
+      ? new BoundedCapture()
+      : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
     const toOut = (t: string): void => {
-      kept?.push(t)
+      kept.push(t)
       log.taskStdout(node, t)
     }
     const toErr = (t: string): void => {
-      kept?.push(t, true)
+      kept.push(t, true)
       log.taskStderr(node, t)
     }
     const out = secrets && maskedEmitter(secrets, toOut)
@@ -1614,6 +1622,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(effectiveExitCode !== 0 && output !== undefined
+      ? { failedOutput: failedOutputLog(output, willSave) }
+      : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
