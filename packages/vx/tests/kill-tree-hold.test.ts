@@ -6,11 +6,12 @@
 // two rows item 866 left unheld: a deferred release that is never
 // written, and a hold count that lets go at the first of two holds.
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { guardLine } from '../src/exec/kill-tree.js'
+import { isAlive, waitForDead } from './helpers/alive.js'
 
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 
@@ -144,3 +145,71 @@ it('the guard line runs its task when the guard’s pipe is broken', async () =>
   const out = await new Response(task.stdout).text()
   expect([await task.exited, out.endsWith('ran\n')]).toEqual([0, true])
 })
+
+// `guardSession` (the sandbox runtime's session, kill-tree.md): a listed
+// pid dies alone, never its group, and a listed path is removed, when the
+// lister is SIGKILLed; a struck one is left. The lister runs detached, so
+// the group is its own, and a group kill would take the unlisted sibling.
+async function afterSessionLister(strike: boolean): Promise<Record<string, boolean>> {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-session-'))
+  try {
+    const listedDir = path.join(dir, 'srt-obs-x')
+    const listedFile = path.join(dir, 'claude-http-0.sock')
+    const kept = path.join(dir, 'kept')
+    const script = `
+      import { mkdirSync, writeFileSync } from 'node:fs'
+      import { guardSession } from ${JSON.stringify(KILL_TREE)}
+      mkdirSync(${JSON.stringify(listedDir)})
+      writeFileSync(${JSON.stringify(path.join(listedDir, 's.sock'))}, '')
+      writeFileSync(${JSON.stringify(listedFile)}, '')
+      writeFileSync(${JSON.stringify(kept)}, '')
+      const listed = Bun.spawn(['sleep', '30'], { stdio: ['ignore', 'ignore', 'ignore'] })
+      const sibling = Bun.spawn(['sleep', '30'], { stdio: ['ignore', 'ignore', 'ignore'] })
+      writeFileSync(${JSON.stringify(path.join(dir, 'pids'))}, listed.pid + ' ' + sibling.pid)
+      const strike = guardSession([listed.pid], [${JSON.stringify(listedDir)}, ${JSON.stringify(listedFile)}])
+      ${strike ? 'strike()' : ''}
+      process.kill(process.pid, 'SIGKILL')
+    `
+    const proc = Bun.spawn([process.execPath, '-e', script], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+      detached: true,
+    })
+    expect(await proc.exited).toBe(137)
+    const [listed, sibling] = readFileSync(path.join(dir, 'pids'), 'utf8').split(' ').map(Number)
+    await waitForDead(listed!, 2_000)
+    const until = Date.now() + 2_000
+    while (existsSync(listedDir) && Date.now() < until) await Bun.sleep(20)
+    const state = {
+      listedAlive: isAlive(listed!),
+      siblingAlive: isAlive(sibling!),
+      listedDir: existsSync(listedDir),
+      listedFile: existsSync(listedFile),
+      kept: existsSync(kept),
+    }
+    for (const pid of [listed!, sibling!]) if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+    return state
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+it('a listed session’s pid dies alone, and its paths go, with the lister', async () => {
+  expect(await afterSessionLister(false)).toEqual({
+    listedAlive: false,
+    siblingAlive: true,
+    listedDir: false,
+    listedFile: false,
+    kept: true,
+  })
+}, 20_000)
+
+it('a struck session is left to itself', async () => {
+  expect(await afterSessionLister(true)).toEqual({
+    listedAlive: true,
+    siblingAlive: true,
+    listedDir: true,
+    listedFile: true,
+    kept: true,
+  })
+}, 20_000)

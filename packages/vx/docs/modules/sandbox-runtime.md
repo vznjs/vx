@@ -937,7 +937,11 @@ struck from the guard's list once it has exited (`kill-tree.md`): a plain
 child of vx was in no group the guard lists, and a `kill -9` of vx left it
 listening under init, where the next run's bridge could not bind the port
 (item 873, `sandbox-runtime.unsafe.test.ts` › "a kill -9 of vx takes the
-host side of a port bridge with it").
+host side of a port bridge with it"). The runtime's own network bridge, a
+socat SRT spawns in vx's group, is listed by pid with its sockets and
+the observer directory when `initSandbox` brings a session up, and struck
+when the reset finishes (`guardSession`, `kill-tree.md`;
+`sandbox-session-guard.unsafe.test.ts`).
 
 `releaseBridges` also unlinks each port's socket. The task's socat dies
 with the namespace and never removes it, so every bridged run left one
