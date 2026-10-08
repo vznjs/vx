@@ -1307,8 +1307,10 @@ of every task's denies and refuses those domains to every task, checked
 before the allowlist (B-21). A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
-`ignore: { network: ['<host>:<port>'] }` silences one. Until 2026-10-02
-Linux reported none, and the line could not be ignored on macOS.
+`ignore: { network: ['<host>:<port>'] }` silences one, matched as the
+proxy matches: case-blind, a trailing dot dropped (until 2026-10-08 the
+client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until
+2026-10-02 Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
