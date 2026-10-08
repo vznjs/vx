@@ -85,18 +85,20 @@ alone. Write the table; the chart follows.
 
 ## Writing a blog post
 
-The blog (`/blog/`, RSS at `/blog/rss.xml`) is
-[starlight-blog](https://github.com/HiDeoo/starlight-blog) on top of the
-same Starlight site; posts are tracked Markdown files in
-`src/content/docs/blog/`, one per post, newest first on the index. A
-post is:
+The blog (`/blog/`, RSS at `/blog/rss.xml`) is the site's own: posts are
+tracked Markdown files in `src/content/docs/blog/`, one per post, rendered
+by Starlight (search, code frames, diagrams) without its sidebar or table
+of contents; `src/components/blog/` draws the index (the newest post
+large, filter chips, a grid of cover cards), the tag pages
+(`src/pages/blog/tags/`), each post's hero and its related posts, and
+`src/pages/blog/rss.xml.ts` writes the feed. A post is:
 
 ```md
 ---
-title: 'vx 0.1: one binary, no daemon'
+title: 'One binary, no daemon'
 date: 2026-10-01
 authors:
-  - vzn # a key from `authors` in astro.config.mjs, or an inline { name, title, url }
+  - vzn # a key of AUTHORS in src/components/blog/posts.ts
 tags:
   - release
 excerpt: 'One paragraph shown on the index and in the feed.'
@@ -114,9 +116,12 @@ tie-break by title — so a series that should read in order carries a
 time (`2026-09-10T23:59:00Z`, a YAML timestamp), later for the post
 that should be read first; the page still shows only the day. The
 launch series is timed that way: `what-vx-is` at 23:59, one minute
-less per post. `excerpt` is the summary (the first paragraph
-otherwise). Add an author once under `plugins: [starlightBlog({ authors })]`
-in `astro.config.mjs` and reference the key. `bun packages/vx/src/bin.ts
+less per post. `excerpt` is required: the dek under the
+headline, the card's line and the feed's description. Add an author once
+to `AUTHORS` in `src/components/blog/posts.ts` and reference the key. A
+post without a cover gets one drawn in CSS from its title and first tag;
+the chips over the grid are `FILTERS` there (`essays` is every post but
+the releases). `bun packages/vx/src/bin.ts
 run dev --filter @vzn/vx-docs` previews at `/vx/blog/`; a `draft: true`
 post is visible there and skipped by the build.
 
@@ -127,8 +132,9 @@ Each release gets a post, written before it is cut
 releases up to v0.0.625. A post holds at most ten changes a user would
 notice, each a `##` section with one example and its PR links, then
 Breaking changes, How to update and Learn more. The title is the
-version alone (`vx 0.0.625 Release`), as Nx, Vite and Bun title theirs;
-the story is the cover's headline and the excerpt. Every post has a
+story, the cover's headline without its accent brackets (`Runs that
+explain themselves`); the version is metadata, shown as a `v0.0.625`
+chip beside the date, read from the slug. Every post has a
 cover (`src/assets/blog/vx-0-0-<version>.png`, 1200×630) and shows
 rather than tells: a terminal frame per example, a bar chart for every
 before/after number, a mermaid diagram where a change has a shape. The

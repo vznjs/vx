@@ -1,0 +1,48 @@
+---
+// Starlight's page title, and the blog's: a post's hero (byline, headline,
+// excerpt as the dek, then the cover, wider than the column), or a
+// listing's masthead.
+import Default from '@astrojs/starlight/components/PageTitle.astro'
+import Byline from '../blog/Byline.astro'
+import Cover from '../blog/Cover.astro'
+import { blogHref, posts } from '../blog/posts.js'
+
+// Starlight's skip link and "Overview" entry point at its title's id; the
+// constant behind it is not exported.
+const PAGE_TITLE_ID = '_top'
+const route = Astro.locals.starlightRoute
+const blog = Astro.locals.vxSection === 'blog'
+const post = blog && route.entry.data.date ? (await posts()).find((p) => `blog/${p.slug}` === route.id) : undefined
+---
+
+{
+  post ? (
+    <header class="vx-post-hero" data-release={post.version ? "" : undefined}>
+      <a class="vx-back" href={blogHref()}>
+        <span aria-hidden="true">←</span> Blog
+      </a>
+      <Byline post={post} avatars />
+      <h1 id={PAGE_TITLE_ID}>{post.title}</h1>
+      <p class="vx-dek">{post.excerpt}</p>
+      <div class:list={['vx-post-cover', { 'vx-post-band': !post.entry.data.cover }]}>
+        <Cover post={post} sizes="(min-width: 1100px) 1040px, 100vw" eager title={false} />
+      </div>
+    </header>
+  ) : blog ? (
+    <header class="vx-masthead">
+      <div>
+        <p class="vx-kicker">// the vx blog</p>
+        <h1 id={PAGE_TITLE_ID}>{route.entry.data.title}</h1>
+        <p class="vx-masthead-lede">{route.entry.data.description}</p>
+      </div>
+      <a class="vx-rss" href={blogHref('rss.xml')}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M4 4a16 16 0 0116 16h-3A13 13 0 004 7V4zm0 6a10 10 0 0110 10h-3a7 7 0 00-7-7v-3zm2 6a2 2 0 110 4 2 2 0 010-4z" />
+        </svg>
+        RSS
+      </a>
+    </header>
+  ) : (
+    <Default />
+  )
+}

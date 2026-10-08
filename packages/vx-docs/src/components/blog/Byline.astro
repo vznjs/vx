@@ -1,0 +1,30 @@
+---
+// The line over a headline: the version chip (a release) or the topic, the
+// date, and the authors.
+import { formatDate, label, type Post } from './posts.js'
+
+type Props = { post: Post; avatars?: boolean }
+const { post, avatars = false } = Astro.props
+---
+
+<p class="vx-byline">
+  <span class:list={['vx-chip', { 'vx-chip-version': post.version }]}>{label(post)}</span>
+  <time datetime={post.date.toISOString()}>{formatDate(post.date)}</time>
+  {
+    post.authors.map((a) =>
+      avatars ? (
+        <a class="vx-author" href={a.url}>
+          <span class="vx-avatar" aria-hidden="true">
+            {a.name.slice(0, 1)}
+          </span>
+          <span>
+            <span class="vx-author-name">{a.name}</span>
+            <span class="vx-author-title">{a.title}</span>
+          </span>
+        </a>
+      ) : (
+        <span class="vx-author-name">{a.name}</span>
+      ),
+    )
+  }
+</p>

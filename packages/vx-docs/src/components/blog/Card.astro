@@ -1,0 +1,19 @@
+---
+// A post in a grid: its cover, the byline, the headline, one line of excerpt.
+// The headline's link covers the card.
+import Byline from './Byline.astro'
+import Cover from './Cover.astro'
+import type { Post } from './posts.js'
+
+type Props = { post: Post }
+const { post } = Astro.props
+---
+
+<article class="vx-card">
+  <Cover post={post} sizes="(min-width: 1100px) 380px, (min-width: 700px) 50vw, 100vw" />
+  <div class="vx-card-body">
+    <Byline post={post} />
+    <h3><a href={post.href}>{post.title}</a></h3>
+    <p class="vx-card-excerpt">{post.excerpt}</p>
+  </div>
+</article>

@@ -1,7 +1,8 @@
 ---
 // Starlight's header with the site's three places beside the title. The
 // current section is marked from route-data.ts. Below 50rem the links move
-// into the menu (Sidebar.astro), where there is room for them.
+// into the menu (Sidebar.astro), where there is room for them; a page with
+// no sidebar (the blog) has no menu, so they stay in the header.
 import Search from '@astrojs/starlight/components/Search.astro'
 import SiteTitle from '@astrojs/starlight/components/SiteTitle.astro'
 import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro'
@@ -10,12 +11,13 @@ import { SECTIONS } from '../../nav/sections.js'
 
 const base = import.meta.env.BASE_URL
 const current = Astro.locals.vxSection
+const menu = Astro.locals.starlightRoute.hasSidebar
 ---
 
 <div class="vx-header">
   <div class="vx-title">
     <SiteTitle />
-    <nav class="vx-places sl-hidden md:sl-flex" aria-label="Sections">
+    <nav class:list={['vx-places', menu ? 'sl-hidden md:sl-flex' : 'sl-flex']} aria-label="Sections">
       {
         SECTIONS.map((s) => (
           <a href={`${base}${s.href}`} aria-current={s.id === current ? 'true' : undefined}>
