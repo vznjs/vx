@@ -1786,8 +1786,9 @@ describe('parseRunArgs', () => {
 
   it('parses --all (replaces -r / --recursive)', () => {
     expect(parseRunArgs(['build', '--all']).all).toBe(true)
-    expect(parseRunArgs(['build', '-r']).error).toMatch(/unknown flag: -r/)
-    expect(parseRunArgs(['build', '--recursive']).error).toMatch(/unknown flag: --recursive/)
+    // Vite Task's spelling of it (foreign-flags.ts).
+    expect(parseRunArgs(['build', '-r']).all).toBe(true)
+    expect(parseRunArgs(['build', '--recursive']).all).toBe(true)
   })
 
   it('--no-cache disables every cache axis', () => {
@@ -1877,8 +1878,8 @@ describe('parseRunArgs', () => {
 
   it('parses --exclude-dependencies as "all" with no value', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
-    expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)
-    // Turbo's spelling of it (foreign-flags.ts).
+    // Turbo's and Vite Task's spellings of it (foreign-flags.ts).
+    expect(parseRunArgs(['build', '--ignore-depends-on']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--only']).excludeDependencies).toBe('all')
   })
 
