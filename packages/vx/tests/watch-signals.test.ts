@@ -71,6 +71,36 @@ describe('vx watch under a signal (e2e)', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // The handler replaced nohup's SIG_IGN, so the hang-up stopped the loop.
+  // Without the fix vx exits inside the 200 ms grace; the second is slack.
+  it('a watch started with SIGHUP ignored (nohup) keeps its cycle through a hang-up', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: { slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } } },
+        }
+      `,
+    )
+    const proc = Bun.spawn(
+      ['sh', '-c', `trap '' HUP; exec "$0" "$@"`, process.execPath, BIN, 'watch', 'slow', '--all'],
+      {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+      },
+    )
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    proc.kill('SIGHUP')
+    const after = await Promise.race([proc.exited, Bun.sleep(1_000).then(() => 'running')])
+    expect([after, isAlive(pid)]).toEqual(['running', true])
+    proc.kill('SIGTERM')
+    expect(await proc.exited).toBe(0)
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   it('SIGINT while idle prints stopped and exits 0', async () => {
     await addProject(
       root,
@@ -129,6 +159,51 @@ describe('vx watch under a signal (e2e)', () => {
       stopped: lines.filter((l) => l === 'vx watch: stopped').length,
       last: lines.at(-1),
     }).toEqual({ stopped: 1, last: 'vx watch: stopped' })
+  }, 20_000)
+
+  // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
+  // so the SIGINT lands while the cycle is still stopping it.
+  it('SIGINT while a cycle stops the held server runs no cycle after it', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "trap 'echo TERM > got.txt; sleep 0.6; exit 0' TERM; echo READY; while :; do sleep 0.05; done",
+                persistent: { readyWhen: 'READY' },
+              },
+            },
+          },
+        }
+      `,
+    )
+    await Bun.write(path.join(dir, 'src.txt'), 'a')
+    const proc = Bun.spawn([process.execPath, BIN, 'watch', 'dev', '--all'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, VX_KILL_GRACE_MS: '5000', NO_COLOR: '1' },
+    })
+    let out = ''
+    const reader = (async () => {
+      for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+    })()
+    await waitForText(async () => out, 'watching', 10_000)
+    await Bun.write(path.join(dir, 'src.txt'), 'b')
+    const got = path.join(dir, 'got.txt')
+    await waitForText(async () => ((await Bun.file(got).exists()) ? 'yes' : ''), 'yes', 10_000)
+    proc.kill('SIGINT')
+    expect(await proc.exited).toBe(0)
+    await reader
+    const after = out
+      .slice(out.indexOf('re-running...'))
+      .split('\n')
+      .slice(1)
+      .filter((l) => l.trim() !== '' && !l.startsWith('app#dev │'))
+    expect(after).toEqual(['vx watch: stopped'])
   }, 20_000)
 
   // A config that does not parse at start ended watch with exit 1, while

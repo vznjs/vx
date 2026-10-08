@@ -145,7 +145,7 @@ export interface ExecuteRequest {
    * `RunOptions.signal`) or when `timeoutMs` elapses. An executor ends its
    * work and returns: a child an executor spawned is not one core can
    * reach (H-10, H-12). One already aborted is work not to start (B-55).
-   * A non-zero exit after the timeout's abort is recorded `timedOut`. Core
+   * Any exit after the timeout's abort, a 0 included, is a timeout. Core
    * waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) after the abort, then
    * settles the attempt without `execute` and abandons it (H-14).
    */

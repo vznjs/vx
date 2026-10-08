@@ -197,7 +197,7 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
 - For a **normal task**, `timeout` bounds the total run time, counted
-  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
   task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
@@ -208,9 +208,10 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 - On a **plugin executor**, the timeout aborts the request's `signal`
-  instead (core cannot kill a process the executor spawned); a non-zero
-  exit after it is reported timed out, and an executor still running
-  after the kill grace is abandoned (H-12, H-14).
+  instead (core cannot kill a process the executor spawned); any exit
+  after it is reported timed out, a 0 from a child that trapped the stop
+  included (X-125), and an executor still running after the kill grace
+  is abandoned (H-12, H-14).
 
 **Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
 the largest delay a timer can hold. A larger value does _not_ mean "no
@@ -457,6 +458,12 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
   the terminal's resize signal does not reach it. Ctrl-C reaches vx,
   which stops the run; a task that puts the terminal in raw mode
   reads the key itself.
+- **Its terminal modes end with it.** vx reads them (`stty -g`)
+  before the task starts and puts them back when it exits, so a task
+  killed in raw mode, or one that never undid its `stty raw -echo`,
+  leaves no terminal without echo or Ctrl-C behind it
+  (`tests/terminal.unsafe.test.ts` › "a task that leaves the terminal
+  raw"). Without `stty` on PATH the modes stay the task's.
 
 ```ts
 'db:push': {
@@ -578,7 +585,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
-`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), and the run's own invocation line that `vx last` prints (a
+`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error or a plugin's warning (a remote's reply), a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
@@ -1306,8 +1313,10 @@ of every task's denies and refuses those domains to every task, checked
 before the allowlist (B-21). A refused request is a violation on both
 platforms, `deny network-outbound <host>:<port> (<reason>)` from the
 proxy, and fails the task even when it survived the refusal;
-`ignore: { network: ['<host>:<port>'] }` silences one. Until 2026-10-02
-Linux reported none, and the line could not be ignored on macOS.
+`ignore: { network: ['<host>:<port>'] }` silences one, matched as the
+proxy matches: case-blind, a trailing dot dropped (until 2026-10-08 the
+client's spelling, `EXAMPLE.Com` or `example.com.`, escaped it). Until
+2026-10-02 Linux reported none, and the line could not be ignored on macOS.
 
 **Baseline** (`sandbox: {}`): the task reads nothing in the workspace,
 writes nothing but its own `TMPDIR` and reaches no domain no task of the run lists — not even its own project
@@ -2010,6 +2019,7 @@ Workspace-config errors:
 | `plugins must be an array of plugin objects`                                                                                                                 | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `plugins[<i>] must be an object`                                                                                                                             | A non-object entry in `plugins`; a string (Nx's `'@nx/vite/plugin'`) adds that a plugin is what its package's function returns, not a module name (D-49).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                               | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `plugins[<i>] is a Promise — await the factory that returns the plugin`                                                                                      | An async plugin factory called without `await` (`plugins: [later()]`); the refusal said the plugin did not come from `definePlugin` (D-159).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `plugins[<i>].name overrides the package name`                                                                                                               | A `name` set over `definePlugin`'s result; drop the field.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `plugins[<i>].<capability> must be a function`                                                                                                               | A capability key holding something that is not callable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `plugins[<i>] must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown` | A plugin object with no capability.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |

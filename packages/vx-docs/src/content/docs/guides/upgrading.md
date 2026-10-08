@@ -9,13 +9,13 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## cache: drop unread store fields, fix chunking comments
-
-Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
-
 ## cache: bump CACHE_VERSION to vx-cache-v41
 
 every cached task misses once after upgrading to vx-cache-v41.
+
+## cache: drop unread store fields, fix chunking comments
+
+Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
 
 ## workspace: refuse env names sh would drop
 

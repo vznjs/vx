@@ -43,6 +43,13 @@ describe('the plugin-shape refusals, whole', () => {
     )
   })
 
+  it('an async factory called without await (D-159)', () => {
+    const p = Promise.resolve(testPlugin('pin-promise', { teardown() {} }))
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0]\` is a Promise — await the factory that returns the plugin`,
+    )
+  })
+
   it('a hook that is not a function', () => {
     const p = testPlugin('pin-hook', { teardown: 7 as never })
     expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].teardown\` must be a function`)
