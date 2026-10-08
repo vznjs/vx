@@ -111,7 +111,8 @@
         "blockedBy",
         "timedOut",
         "sandboxViolations",
-        "notReady"
+        "notReady",
+        "forwarded"
       ],
       "properties": {
         "runId": { "type": ["string", "null"] },
@@ -139,7 +140,8 @@
         "blockedBy": { "type": ["string", "null"] },
         "timedOut": { "type": ["boolean", "null"] },
         "sandboxViolations": { "type": ["integer", "null"] },
-        "notReady": { "enum": ["timeout", "exited", "spawn", null] }
+        "notReady": { "enum": ["timeout", "exited", "spawn", null] },
+        "forwarded": { "type": "boolean" }
       }
     }
   }

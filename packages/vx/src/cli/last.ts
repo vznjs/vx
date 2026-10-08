@@ -354,13 +354,21 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     )
     lines.push(...formatTaskRows(detail?.tasks ?? []))
     // The next command after reading a failed run, with the arguments the
-    // run forwarded (a failure under `-- --shard 2` is that shard's).
+    // run forwarded to the tasks that got them (a failure under `-- --shard
+    // 2` is that shard's); a dependency never got them, so its line has none.
     const failed = (detail?.tasks ?? []).filter((t) => t.status === 'failed')
     if (failed.length > 0) {
       const at = inv.command.indexOf(' -- ')
-      const forwarded = at === -1 ? '' : inv.command.slice(at)
-      const ids = failed.map((t) => `${t.project}#${t.task}`).join(' ')
-      lines.push('', `  re-run what failed: vx run ${ids}${forwarded}`)
+      const args = at === -1 ? '' : inv.command.slice(at)
+      const rerun: string[] = []
+      for (const withArgs of [false, true]) {
+        const ids = failed
+          .filter((t) => t.forwarded === withArgs)
+          .map((t) => `${t.project}#${t.task}`)
+        if (ids.length > 0)
+          rerun.push(`  re-run what failed: vx run ${ids.join(' ')}${withArgs ? args : ''}`)
+      }
+      lines.push('', ...rerun)
     }
     process.stdout.write(`${lines.join('\n')}\n`)
     return 0

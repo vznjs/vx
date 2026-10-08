@@ -48,6 +48,8 @@ export interface RunSummaryRow {
   timedOut: boolean | null
   sandboxViolations: number | null
   notReady: 'timeout' | 'exited' | 'spawn' | null
+  /** The task ran with the run's forwarded args (`-- …`): a requested one under a run that had some. */
+  forwarded: boolean
 }
 
 export interface ListRunsArgs {
@@ -78,8 +80,15 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
   type RawRow = Omit<
     RunSummaryRow,
-    'cacheHit' | 'restored' | 'cached' | 'wallclockStartNs' | 'wallclockEndNs' | 'timedOut'
+    | 'cacheHit'
+    | 'restored'
+    | 'cached'
+    | 'wallclockStartNs'
+    | 'wallclockEndNs'
+    | 'timedOut'
+    | 'forwarded'
   > & {
+    forwarded: number
     cacheHit: number | null
     restored: number | null
     cached: number | null
@@ -100,7 +109,8 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               cpu_ms AS cpuMs, peak_rss_bytes AS peakRssBytes,
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
-              sandbox_violations AS sandboxViolations, not_ready AS notReady
+              sandbox_violations AS sandboxViolations, not_ready AS notReady,
+              forward_args IS NOT NULL AS forwarded
        FROM runs ${clause} ORDER BY id DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]
@@ -110,6 +120,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
     restored: r.restored === null ? null : Boolean(r.restored),
     cached: r.cached === null ? null : Boolean(r.cached),
     timedOut: r.timedOut === null ? null : Boolean(r.timedOut),
+    forwarded: Boolean(r.forwarded),
     wallclockStartNs: r.wallclockStartNs === null ? null : r.wallclockStartNs.toString(),
     wallclockEndNs: r.wallclockEndNs === null ? null : r.wallclockEndNs.toString(),
   }))
