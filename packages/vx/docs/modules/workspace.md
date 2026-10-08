@@ -101,7 +101,7 @@ export interface ProjectEntry {
 // Workspace members whose package globs match no directory — `vx run`
 // warns with `unreachedHint`, which names them and what to check.
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
-export function unreachedHint(unreached: readonly string[]): string
+export function unreachedHint(unreached: readonly string[], root: string): string
 
 // Whether a member glob reaches any package.json but the root's,
 // addressable or not; `vx init` names globs that reach none (M-46).
@@ -185,7 +185,9 @@ itself IS the project. Throws a `UserError` if no candidate is found.
 one shallow scan (two levels, `node_modules` and dot directories
 skipped) for the `package.json` files the missing globs never reach, and
 `unreachedHint` is the line `vx init` and `vx run` print for them —
-the cause, the packages, the `workspaces` entry to add.
+the cause, the packages, the `workspaces` entry to add (the `packages`
+entry, where a `pnpm-workspace.yaml` holds pnpm's settings and no
+`packages:`).
 
 ### `loadWorkspace(root, reads?)`
 
@@ -198,6 +200,9 @@ Reads the package-glob list (through `reads`, so the manifest
 | npm / yarn / bun (new) | `package.json` `workspaces: string[]`                            |
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
+
+A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
+one (the list commented out), defers to `package.json`, as pnpm does.
 
 From the same parsed manifests it takes the catalogs a `catalog:` spec
 resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,

@@ -413,6 +413,8 @@ export function excludeWorkspaceOutputs(
     readonly dir: string
     readonly tasks: GeneratedTask[]
   }[],
+  /** The globs an opaque entry stands for (`vx-migrate`'s `...globalInputs` spread). */
+  expand: (entry: unknown) => readonly string[] = () => [],
 ): void {
   const positive = (v: unknown): string[] =>
     Array.isArray(v)
@@ -444,7 +446,7 @@ export function excludeWorkspaceOutputs(
         ?.inputs
       if (inputs === undefined || !Array.isArray(inputs.workspaceFiles)) continue
       const files = inputs.workspaceFiles as string[]
-      const reads = positive(files)
+      const reads = positive(files.flatMap((f) => (typeof f === 'string' ? [f] : expand(f))))
       if (reads.length === 0) continue
       for (const i of candidates(reads)) {
         const w = writers[i]!

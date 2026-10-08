@@ -362,12 +362,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    // A wrap that refuses (a port the host holds) leaves the server unspawned
+    // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
       env,
       ...sb.sandbox,
       server: true,
+    }).catch(async (err: unknown) => {
+      await sweepPlaceholders(placeholders)
+      throw err
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -519,11 +524,10 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // exited before ready keeps its own exit code rather than a made-up 1.
     // One the readiness timeout is killing reports the signal's, as an
     // ordinary timeout does (X-24).
+    // A readiness timeout rejects once the group is gone (runner.ts), so a
+    // server that ignored the TERM holds no port into the next `vx watch`
+    // cycle, and a second signal here would cut a one-shot handler short.
     const ready = err instanceof PersistentReadyError ? err : undefined
-    // The timer's SIGKILL is a grace away and the shell may die on the
-    // TERM first: a server that ignores it held its port past run() into
-    // the next `vx watch` cycle. Return once the group is gone.
-    if (ready?.reason === 'timeout') await terminateChildren(() => [spawn.child])
     return {
       node,
       status: 'failed',
@@ -912,6 +916,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   async function runAttempt(): Promise<{
     result: ExecuteResult
     exitCode: number
+    withdrawn?: true
   }> {
     // A deferred task's outputs are deliberately NOT coming, so wiping the
     // tree would replace a stale build with nothing at all. The eligibility
@@ -949,6 +954,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const endReq = span('miss: build request')
     const req = await buildRequest()
     endReq()
+    // A sibling's failure under --continue=never can land while a retry
+    // cleans or builds its request, after the loop's own check: the retry
+    // is withdrawn and the attempt before it stands.
+    if (attempt > 1 && args.failFast?.aborted === true) {
+      clearTimeout(timeoutTimer)
+      unlistenStop?.()
+      unlistenStop = undefined
+      await sweepPlaceholders(placeholders)
+      return { result, exitCode: effectiveExitCode, withdrawn: true }
+    }
     // An executor that THROWS produces no captured output. Rethrown: the
     // scheduler classifies it and prints its one line into the task's own
     // stream (run()'s onError), where the frame reads it; a copy written
@@ -1144,13 +1159,33 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   const writesFingerprint =
     args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
+  // A stop that landed during the awaits above (the key, the probe, the
+  // input description): the first attempt would wipe the last build and
+  // hand the executor a request after the run had stopped. Through a call,
+  // so the loop's own reads of the stop are not narrowed to false.
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal?.reason)),
+      durationMs: 0,
+      hash,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   for (;;) {
     attempt++
     const a = await runAttempt()
-    forgetUndeclaredWrites(args, writeReach)
-    if (writesFingerprint) args.fingerprintWatch?.wrote()
     result = a.result
     effectiveExitCode = a.exitCode
+    if (a.withdrawn) {
+      attempt--
+      failedAttempts.pop()
+      break
+    }
+    forgetUndeclaredWrites(args, writeReach)
+    if (writesFingerprint) args.fingerprintWatch?.wrote()
     spentMs += result.durationMs
 
     // An attempt that ended in a shutdown never finished on its own terms —

@@ -73,7 +73,10 @@ anything beneath it changes.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches. A readiness timeout returns once the server's process group is
-gone (SIGTERM, grace, SIGKILL), not when its shell exits.
+gone (SIGTERM, grace, SIGKILL), not when its shell exits: `ready`
+rejects only then (runner.md), and the group gets one SIGTERM. A second
+one, sent here a turn after the runner's, killed a server with a
+one-shot handler mid-cleanup.
 
 ### C. Normal task
 
@@ -100,6 +103,10 @@ gone (SIGTERM, grace, SIGKILL), not when its shell exits.
      runs it once they are done (scheduler.md; admission drops the
      probe, so that dispatch probes afresh and misses).
 4. Miss-or-no-cache:
+   - If the run's stop landed during the awaits before this (the key,
+     the probe, the input description), return `aborted` with the
+     signal's exit: no clean, no executor call. The first attempt wiped
+     the last build and handed the executor a request after the stop.
    - If caching enabled, `cleanOutputs(cleanArgs)` first so a stale
      `dist/` doesn't survive into a fresh exec: it prunes only inside
      the declared trees, so a glob's root stays (B-49) and a directory

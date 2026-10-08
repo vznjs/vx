@@ -194,15 +194,21 @@ export async function decodedTar(
     }
     return oneChunk(await zstdDecompressBounded(source, hash, cap))
   }
+  // A BunFile reads no further than the size its first stat cached, and a
+  // save or ingest of the same key may rename a longer copy over the path
+  // after that stat: the read came back cut short, the restore called the
+  // new artifact corrupt and dropped it. The size only picks the decode;
+  // each read goes through a handle that has not stat the path yet.
+  const fresh = (): Bun.BunFile => Bun.file(source.name!)
   if (source.size <= STREAM_DECODE_FROM) {
-    const bytes = await source.bytes()
+    const bytes = await fresh().bytes()
     if (assertDeclaredSize(bytes, hash, cap) === null || !isOneFrame(bytes)) {
-      return zstdDecodeStream(source, hash, cap)
+      return zstdDecodeStream(new Blob([bytes]), hash, cap)
     }
     return oneChunk(await zstdDecompressBounded(bytes, hash, cap))
   }
-  assertDeclaredSize(await source.slice(0, 32).bytes(), hash, cap)
-  return zstdDecodeStream(source, hash, cap)
+  assertDeclaredSize(await fresh().slice(0, 32).bytes(), hash, cap)
+  return zstdDecodeStream(fresh(), hash, cap)
 }
 
 /**
