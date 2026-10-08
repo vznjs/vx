@@ -493,6 +493,10 @@ traced) says `check_seccomp_order_tracer: …` and traces on without the
 filter, and inside the sandbox that line was the retry key, so every
 sandboxed task ran twice. Then the plain form is probed and used if it
 is quiet; if it speaks too, tasks run untraced, said once (B-64).
+The memo is the probe's promise, not its answer: a wave of tasks that
+started together each ran their own probe before the first answer
+landed (`sandbox-runtime.unsafe.test.ts` › "tasks that start together
+ask once").
 
 A task that failed with nothing to show gets vx's own notes beside the
 failure, each a `SandboxViolation` marked `hint`: the cwd it cannot read

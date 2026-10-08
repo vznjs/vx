@@ -1059,20 +1059,21 @@ Bun.spawn = (cmd, opts) => {
     expect(await waitForDead(server, 5_000)).toBe(true)
   }, 20_000)
 
-  it('a never-ready server a dead shell left goes with a vx that exits inside the grace', async () => {
+  it('a kill -9 in a readiness timeout’s grace takes the server a dead shell left', async () => {
     // The readiness timeout SIGTERMs the group; the `& wait` shell dies at
     // once and lets the group go, and the server traps the signal. Its
-    // SIGKILL waits on an unref'd timer, so a vx whose run ended first
-    // exited and left the server under init. The timeout holds the group
-    // until its SIGKILL, and vx's exit hands it to the guard (item 865).
-    // The server lives through its SIGTERM, so its death is the SIGKILL's.
-    // A 1 s deadline: at 300 ms a slow shell start lost `started.txt` to
-    // the TERM (M-23).
+    // SIGKILL waited on an unref'd timer, so a vx that ended first left the
+    // server under init. The runner, then the task's own teardown
+    // (`terminateChildren`), hold the group until its SIGKILL, and vx's exit
+    // hands it to the guard (item 865). vx is killed inside the grace: left
+    // alone it waits the grace out and kills the server itself, and the row
+    // proved nothing of the guard. A 1 s deadline: at 300 ms a
+    // slow shell start lost its trap to the TERM (M-23).
     const dir = await addProject(
       root,
       'app',
       `export default { tasks: {
-        dev: { exec: { command: 'sh -c "echo s > started.txt; trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; wait', timeout: 1000, persistent: { readyWhen: 'NEVER' } } },
+        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; echo $$ > shell.pid; wait', timeout: 1000, persistent: { readyWhen: 'NEVER' } } },
       } }`,
     )
     const proc = track(
@@ -1083,13 +1084,18 @@ Bun.spawn = (cmd, opts) => {
         stderr: 'ignore',
       }),
     )
-    expect(await proc.exited).toBe(1)
-    // The server ran. Not its SIGTERM mark: the trap waits for the
-    // loop's sleep, and a vx that exits first hands the group to the
-    // guard, which may kill it before the mark (macOS CI, item 867).
-    expect(existsSync(path.join(dir, 'started.txt'))).toBe(true)
+    const term = path.join(dir, 'term.txt')
+    const until = Date.now() + 10_000
+    while (!existsSync(term) && Date.now() < until) await Bun.sleep(20)
+    expect(existsSync(term)).toBe(true)
+    expect(await waitForDead(await waitForPid(path.join(dir, 'shell.pid'), 1_000), 2_000)).toBe(
+      true,
+    )
     const server = await waitForPid(path.join(dir, 'server.pid'), 1_000)
-    expect(await waitForDead(server, 5_000)).toBe(true)
+    expect(isAlive(server)).toBe(true)
+    process.kill(proc.pid, 'SIGKILL')
+    expect(await proc.exited).toBe(137)
+    expect(await waitForDead(server, 3_000)).toBe(true)
   }, 20_000)
 
   it('CONTROL: a group vx finished with is not the guard’s when vx exits', async () => {
