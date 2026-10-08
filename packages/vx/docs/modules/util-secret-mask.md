@@ -54,5 +54,8 @@ Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
 `orchestrator/telemetry.ts` (the command; `events.ts` also masks every
 status line, where plugin warnings land, L-40), `orchestrator/remote-prefetch.ts`
 (the command a remote hit's entry row stores), `cli/show.ts`, `cli/plugin-commands.ts` and `cli/select.ts` (a
-plugin's warning, `maskedLine`); `maskedCommand`
-is on `@vzn/vx` for `@vzn/vx-mcp`'s `listTasks` (L-26).
+plugin's warning, `maskedLine`), `orchestrator/plugin-host.ts` and
+`orchestrator/plugin.ts` (a plugin's failure, `maskedLine`, so the error
+`run()` rejects with is masked). `maskedCommand` is on `@vzn/vx` for
+`@vzn/vx-mcp`'s `listTasks` (L-26), `maskedLine` for the errors `vx mcp`
+answers with (L-11).

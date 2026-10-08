@@ -286,6 +286,8 @@ export function machineMemoryBytes(probe: CgroupProbe = {}): number
 export function machineParallelism(probe: CgroupProbe = {}): number
 == function maskedCommand (src/util/secret-mask.ts)
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+== function maskedLine (src/util/secret-mask.ts)
+export function maskedLine(line: string): string
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)

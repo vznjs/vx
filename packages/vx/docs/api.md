@@ -1155,6 +1155,16 @@ A task's command as vx shows it: its secret values masked.
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
 ```
 
+## `maskedLine`
+
+function · `src/util/secret-mask.ts`
+
+A line vx prints for no one task (a plugin's warning): this process's secrets masked.
+
+```ts
+export function maskedLine(line: string): string
+```
+
 ## `MigrationFormat`
 
 type · `src/workspace/migration.ts`
