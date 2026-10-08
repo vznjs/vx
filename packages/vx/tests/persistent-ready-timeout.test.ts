@@ -177,13 +177,21 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         }
         `,
       )
-      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
-      const { status, notReady, exitCode } = r.outcomes[0]!
-      expect({ status, notReady, exitCode }).toEqual({
-        status: 'failed',
-        notReady: 'timeout',
-        exitCode: 143,
-      })
+      // The trap runs once the loop's `sleep` returns; a loaded macOS runner
+      // took past the file's 200 ms grace once and the SIGKILL read 137
+      // (CI run 37847982300). The row is about the code, not the grace.
+      process.env['VX_KILL_GRACE_MS'] = '5000'
+      try {
+        const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+        const { status, notReady, exitCode } = r.outcomes[0]!
+        expect({ status, notReady, exitCode }).toEqual({
+          status: 'failed',
+          notReady: 'timeout',
+          exitCode: 143,
+        })
+      } finally {
+        process.env['VX_KILL_GRACE_MS'] = '200'
+      }
     },
     TIMEOUT,
   )
