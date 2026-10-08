@@ -277,8 +277,8 @@ export function absolutize(p: string, cwd?: string): string
 // one copy of the check the sandbox code makes.
 export function atOrUnder(p: string, dir: string): boolean
 export function isUnderAny(abs: string, allow: Set<string>): boolean
-// Whether a sandboxed task may read a file: a read, write or baseline
-// grant at or above its canonical path (the shell verdict asks it).
+// Whether a sandboxed task may read a file: no denial, or a read, write or
+// baseline grant, at or above its canonical path (the shell verdict asks it).
 export function sandboxReads(sandbox: ExecuteSandbox, file: string): boolean
 export function unique(arr: readonly string[]): string[]
 export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean
