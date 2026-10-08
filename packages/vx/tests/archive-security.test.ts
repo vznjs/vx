@@ -345,6 +345,25 @@ describe('archive restore — symlink defense', () => {
     await rm(sensitiveDir, { recursive: true, force: true })
   })
 
+  it('a symlinked parent whose name holds a backslash is refused too', async () => {
+    // Bun's realpath answers ENOENT for any path holding a backslash (1.4.2),
+    // so the ancestor walk took `dist\x` for absent and wrote through it.
+    const sensitiveDir = await mkdtemp(path.join(os.tmpdir(), 'vx-arc-sym-bs-'))
+    onTestFinished(() => rm(sensitiveDir, { recursive: true, force: true }))
+    await symlink(sensitiveDir, path.join(dest, 'dist\\x'))
+
+    const tar = tarWithEntry('outputs/dist\\x/evil.txt', new TextEncoder().encode('x'))
+    await expect(restore(tar, dest)).rejects.toThrow(
+      `${path.join(dest, 'dist\\x')} is a symbolic link to `,
+    )
+    expect(await readdir(sensitiveDir)).toEqual([])
+    // CONTROL: the same name as a real directory restores.
+    await rm(path.join(dest, 'dist\\x'))
+    await mkdir(path.join(dest, 'dist\\x'))
+    await restore(tar, dest)
+    expect(await readFile(path.join(dest, 'dist\\x', 'evil.txt'), 'utf8')).toBe('x')
+  })
+
   it('a DEEP entry under a symlinked parent is refused (ancestor walk)', async () => {
     // The escaping segment is the symlink `dist`, but the entry names a
     // deeper path whose immediate parent does NOT exist yet — so checking
@@ -936,6 +955,32 @@ describe('packArtifact → restore round trip', () => {
     // Millisecond fidelity: the restored stamp equals the packed one, so
     // `isOutputsCurrent` compares equal instead of restoring forever.
     expect(Math.abs(outExe.mtimeMs - Math.floor(srcExe.mtimeMs))).toBeLessThan(1)
+  })
+
+  it('packs a symlinked output whose path holds a backslash as its target', async () => {
+    // Bun's realpath answers ENOENT for any path holding a backslash (1.4.2),
+    // and the save called such a link dangling and refused the task.
+    const target = path.join(src, 'real.txt')
+    await writeFile(target, 'bytes')
+    const dir = path.join(src, 'a\\b')
+    await mkdir(dir)
+    await symlink('../real.txt', path.join(dir, 'l\\nk'))
+    const bytes = await packArtifact({
+      stdout: '',
+      outputs: new Map([['outputs/a\\b/l\\nk', path.join(dir, 'l\\nk')]]),
+      within: src,
+    })
+    await restore(bytes, dest)
+    expect(await readFile(path.join(dest, 'a\\b', 'l\\nk'), 'utf8')).toBe('bytes')
+    // CONTROL: a link there that leads nowhere is still dangling.
+    await symlink('../gone.txt', path.join(dir, 'dead'))
+    await expect(
+      packArtifact({
+        stdout: '',
+        outputs: new Map([['outputs/a\\b/dead', path.join(dir, 'dead')]]),
+        within: src,
+      }),
+    ).rejects.toThrow('output a\\b/dead is a dangling symlink')
   })
 
   it('round-trips a path longer than 100 bytes and a >100-byte component', async () => {
