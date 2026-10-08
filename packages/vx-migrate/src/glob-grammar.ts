@@ -83,3 +83,13 @@ export function withoutTakenBack<T>(list: readonly T[]): T[] {
     return !globs.some((g) => g.match(lit))
   })
 }
+
+/**
+ * A path from the file system as a task glob that names only itself: a dir
+ * named `my{app}` read as a brace matched `myapp` instead. `[` `]` are
+ * literal in a task glob already; `*` and `?` stay, since the schema reads
+ * `\*` as a Windows separator, and they match the name too (a superset).
+ */
+export function literalGlob(p: string): string {
+  return p.replace(/^!|[{}]/g, '\\$&')
+}
