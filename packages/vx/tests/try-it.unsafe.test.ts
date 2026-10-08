@@ -201,12 +201,26 @@ case "$2" in --file=*) f="\${2#--file=}"; mkdir -p "$(dirname "$f")"; cp "$(dirn
   chmodSync(bin, 0o755)
 }
 
+// `vx init` runs vx-migrate, native without a terminal (owner, 2026-10-08):
+// the workspace file declares the npm lockfile's plugin, never turbo() or nx().
+const NATIVE = `import type { WorkspaceConfig } from '@vzn/vx/config'
+import { npm } from '@vzn/vx-lockfile'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+
+export default {
+  plugins: [
+    npm(),
+    scheduleHistoryPlugin(),
+  ],
+} satisfies WorkspaceConfig
+`
+
 describe('vx init in a Turbo or Nx repo: the first run builds, the second hits', () => {
   const cases: Array<[string, () => string, () => string, Record<string, string>]> = [
     [
       'a Turbo repo',
       turboRepo,
-      () => guideFences('Turborepo', 'ts')[0]!,
+      () => NATIVE,
       { 'app#build': '', 'lib#build': '' },
     ],
     [
@@ -216,7 +230,7 @@ describe('vx init in a Turbo or Nx repo: the first run builds, the second hits',
         standInNx(root)
         return root
       },
-      () => guideFences('Nx', 'ts')[0]!,
+      () => NATIVE,
       { 'app#build': '', 'lib#build': '' },
     ],
   ]
@@ -225,7 +239,6 @@ describe('vx init in a Turbo or Nx repo: the first run builds, the second hits',
     it(`${name}: the first run builds, the second hits`, () => {
       const root = make()
       const file = adapt()
-      expect(file).not.toContain(name === 'a Turbo repo' ? 'plugins: [nx()]' : 'plugins: [turbo()]')
       commit(root)
       const [install, init, first, second] = COMMANDS as [string, string, string, string]
       const want = (status: string) =>
@@ -278,14 +291,14 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
-    expect(initCmd).toBe('npx vx init')
+    expect(initCmd).toBe('npx vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
     writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
-    const cached = step(root, 'npx vx init --dry --force')
+    const cached = step(root, 'npx vx init --keep --dry --force')
     expect(cached.out.split('\n')).toContain(cacheLine!.trimEnd())
     rmSync(path.join(root, '.github'), { recursive: true })
 
@@ -306,7 +319,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initFence, migrateFence] = guideFences('Nx', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
-    expect(initCmd).toBe('npx vx init')
+    expect(initCmd).toBe('npx vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
