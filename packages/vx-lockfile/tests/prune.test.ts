@@ -346,12 +346,8 @@ export const later = () => import('tool/plugin.mjs')
     expect((JSON.parse(shown.stdout) as { dir: string }[]).map((p) => p.dir).sort()).toEqual(
       dirs.map((d) => `packages/${d}`).sort(),
     )
-    const bun = Bun.spawnSync({
-      cmd: ['bun', 'install', '--save-text-lockfile'],
-      cwd: out,
-      env: { ...process.env, CI: '1' },
-    })
-    expect(bun.exitCode).toBe(0)
+    const bun = install('bun', out, await scratch('vx-prune-home-'), false)
+    expect(bun.code).toBe(0)
     const lock = Bun.JSONC.parse(await Bun.file(path.join(out, 'bun.lock')).text()) as {
       workspaces: Record<string, unknown>
     }
