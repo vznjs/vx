@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger } from '@vzn/vx'
+import { isUserError, planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
@@ -429,10 +429,15 @@ snapshots:
 })
 
 describe('pnpm()', () => {
-  it('refuses an unknown scope', () => {
-    expect(() => pnpm({ scope: 'file' as never })).toThrow(
-      /pnpm\(\) scope must be 'project' or 'workspace'/,
-    )
+  it('refuses an unknown scope as a user error', () => {
+    let err: unknown
+    try {
+      pnpm({ scope: 'file' as never })
+    } catch (e) {
+      err = e
+    }
+    expect(isUserError(err)).toBe(true)
+    expect((err as Error).message).toBe(`pnpm() scope must be 'project' or 'workspace', not "file"`)
   })
 
   describe('affected', () => {

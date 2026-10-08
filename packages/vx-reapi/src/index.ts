@@ -98,7 +98,10 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
   const endpoint = (options.endpoint ?? process.env['VX_REAPI_ENDPOINT'])?.trim()
   if (endpoint === undefined || endpoint === '') return undefined
   assertEndpoint(endpoint, from)
-  const instanceName = options.instanceName ?? process.env['VX_REAPI_INSTANCE']
+  // A secrets file's trailing newline sent a name no blob is under, and
+  // every lookup missed in silence.
+  const instanceName =
+    (options.instanceName ?? process.env['VX_REAPI_INSTANCE'])?.trim() || undefined
   // A server behind a private CA, or one that asks for a client
   // certificate, was unreachable: TLS used the system roots and no client
   // pair (F-41). Each is a PEM file, read here; one that cannot be read is
@@ -203,9 +206,11 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   let remoteCache: ReapiRemoteCache | undefined
   return definePlugin(import.meta, {
     async executor(ctx): Promise<TaskExecutor | undefined> {
-      const wanted = options.execute === true || process.env['VX_REAPI_EXECUTE'] === '1'
+      // Before the connection: with execute off, an unreadable PEM is the
+      // cache hook's to refuse, never a failure "in executor".
+      if (options.execute !== true && process.env['VX_REAPI_EXECUTE'] !== '1') return undefined
       const conn = connection(options)
-      if (!wanted || conn === undefined) return undefined
+      if (conn === undefined) return undefined
       executorClient = new ReapiClient({ ...conn, onWarn: (m) => ctx.warn(m) })
       // Negotiate once: turns zstd transfer compression on when the server
       // advertises it. The digest function stays SHA256 (see wire.negotiate).

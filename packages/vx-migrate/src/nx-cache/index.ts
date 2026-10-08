@@ -142,18 +142,20 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
-    const res = await this.breaker.send(() =>
-      withRetry(
-        () =>
-          this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
-            method,
-            headers,
-            ...(body === undefined ? {} : { body }),
-            signal: deadline(this.config.timeoutMs),
-          }),
-        this.config.retries,
-        this.wait,
-      ),
+    const res = await this.breaker.send(
+      () =>
+        withRetry(
+          () =>
+            this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
+              method,
+              headers,
+              ...(body === undefined ? {} : { body }),
+              signal: deadline(this.config.timeoutMs),
+            }),
+          this.config.retries,
+          this.wait,
+        ),
+      method === 'GET',
     )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
@@ -184,8 +186,11 @@ export class NxRemoteCache implements RemoteCacheLayer {
     if (this.disabled) return null
     const res = await this.request('GET', hash)
     if (res === undefined) return null
-    if (res.status === 404) return null
-    if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
+    if (res.status !== 200) {
+      await res.body?.cancel()
+      if (res.status === 404) return null
+      throw new Error(`HTTP ${res.status}`)
+    }
     return res
   }
 

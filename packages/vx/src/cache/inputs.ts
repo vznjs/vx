@@ -28,6 +28,7 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  realpathOf,
   relPosix,
   shellArgv,
   slashBraceExpansions,
@@ -1142,7 +1143,7 @@ export async function cleanWorkspaceOutputs(args: {
 
 function realOrNull(p: string): string | null {
   try {
-    return realpathSync(p)
+    return realpathOf(p)
   } catch {
     return null
   }

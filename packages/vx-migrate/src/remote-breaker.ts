@@ -7,6 +7,13 @@
  * task its full deadline. A result that lands after the breaker moved on
  * (a request already in flight when it opened) changes nothing. Shared by
  * `turboCache()` and `nxCache()`.
+ *
+ * A hit's body (`settleOnBody`, a 200 with a body) is judged when the
+ * body ends, not when its headers land: a server that sent headers in
+ * time and then stalled the body was judged a success, reset the count,
+ * and cost every task its full deadline. The body's error is the outage;
+ * its end or a cancel is the success. A body nobody reads or cancels
+ * leaves its verdict open.
  */
 export class OutageBreaker {
   private failures = 0
@@ -15,7 +22,7 @@ export class OutageBreaker {
   private generation = 0
   constructor(private readonly now: () => number = Date.now) {}
 
-  async send(request: () => Promise<Response>): Promise<Response> {
+  async send(request: () => Promise<Response>, settleOnBody = false): Promise<Response> {
     let probe = false
     if (this.openUntil !== undefined) {
       if (this.now() < this.openUntil || this.probing)
@@ -32,8 +39,32 @@ export class OutageBreaker {
       this.finish(generation, probe, true)
       throw err
     }
-    this.finish(generation, probe, res.status >= 500)
-    return res
+    if (!settleOnBody || res.status !== 200 || res.body === null) {
+      this.finish(generation, probe, res.status >= 500)
+      return res
+    }
+    const reader = res.body.getReader()
+    const settle = (outage: boolean) => this.finish(generation, probe, outage)
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          const chunk = await reader.read().catch((err: unknown) => {
+            settle(true)
+            controller.error(err)
+          })
+          if (chunk === undefined) return
+          if (chunk.done) {
+            settle(false)
+            controller.close()
+          } else controller.enqueue(chunk.value)
+        },
+        async cancel(reason) {
+          settle(false)
+          await reader.cancel(reason)
+        },
+      }),
+      { status: res.status, statusText: res.statusText, headers: res.headers },
+    )
   }
 
   private finish(generation: number, probe: boolean, outage: boolean): void {

@@ -39,7 +39,6 @@ import {
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
-  validateProjectConfig,
 } from '../workspace/index.js'
 import {
   buildTaskGraph,
@@ -51,7 +50,6 @@ import {
   unresolvedRequests,
 } from '../graph/index.js'
 import {
-  applyGraphHooks,
   applyKeyHooks,
   applyScheduleHooks,
   fingerprintClaims,
@@ -68,7 +66,8 @@ import {
   loadWorkspacePlugins,
   type LoadedProjects,
 } from './projects.js'
-import { affectedRoots } from './affected-tasks.js'
+import { keptByAffected } from './affected-tasks.js'
+import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
@@ -527,33 +526,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       })
     let nodes = graphOf(requested)
     const hasGraphHook = hasHook(plugins, 'graph')
-    const graphStage = async (): Promise<void> => {
-      // A hook edits each node's config in place, as `project` does, so the
-      // edit is held to what the loader accepts from a user: a misspelled
-      // `exec` field ran as an empty command and failed with no reason.
-      const configPaths = new Map(projectMetas.map((m) => [m.name, m.configPath]))
-      await applyGraphHooks(
-        plugins,
-        nodes,
-        {
-          workspaceRoot,
-          cacheDir,
-          warn: (m) => log.status(m),
-          requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
-        },
-        (plugin) => {
-          for (const n of nodes.values()) {
-            if (isDefaultBuild(n.config)) continue
-            const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
-            validateProjectConfig(
-              { tasks: { [n.taskName]: n.config } },
-              `${where} (after plugin '${plugin.name}')`,
-            )
-          }
-        },
-        workspaceConfig?.rules,
-      )
-    }
+    const graphStage = (): Promise<void> =>
+      applyGraphStage(plugins, nodes, {
+        workspaceRoot,
+        cacheDir,
+        projectMetas,
+        warn: (m) => log.status(m),
+        rules: workspaceConfig?.rules,
+      })
     // `--affected` selects over the FINAL graph: an edge or an input a
     // `graph` hook adds moves a key, so the hooks run first, over every
     // candidate, and the selection prunes what they left.
@@ -563,16 +543,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (options.affected !== undefined) {
       const before = hooksFirst ? new Set(nodes.keys()) : null
       if (hooksFirst) await graphStage()
-      const named = new Set(tasks.filter((t) => t.includes('#')))
-      const outright = new Set(options.selectedOutright)
-      const ids = requested.map((r) => `${r.project}#${r.task}`)
-      const reached = new Set(affectedRoots(nodes, ids, options.affected, projects, packageGraph))
-      const kept = requested.filter(
-        (r, i) => named.has(ids[i]!) || outright.has(r.project) || reached.has(ids[i]!),
-      )
+      const kept = keptByAffected(nodes, requested, options.affected, projects, packageGraph, {
+        named: new Set(tasks.filter((t) => t.includes('#'))),
+        outright: new Set(options.selectedOutright),
+      })
       if (kept.length === 0) return emptyRun('none-affected')
       if (before !== null) {
-        const asked = new Set(ids)
+        const asked = new Set(requested.map((r) => `${r.project}#${r.task}`))
         // What a hook added or asked for is the plugin's choice, kept as it
         // would be on a run without the diff.
         const roots = [

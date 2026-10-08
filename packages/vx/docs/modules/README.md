@@ -72,7 +72,7 @@ here, itself or in a brace group.
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.                                       |
 | [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                                                             |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream a key folds, by `cache.inputs.tasks` (`selectFoldedDeps`, one matcher for both paths).                        |
-| [`affected-tasks.md`](./affected-tasks.md)         | `src/orchestrator/affected-tasks.ts` — which requested tasks `--affected`'s diff reaches along `dependsOn`.                                                   |
+| [`affected-tasks.md`](./affected-tasks.md)         | `src/orchestrator/{affected-tasks,graph-stage}.ts` — which requested tasks `--affected`'s diff reaches along `dependsOn`; the `graph` stage.                  |
 | [`excluded-keys.md`](./excluded-keys.md)           | `src/orchestrator/excluded-keys.ts` — the key of a dependency `--exclude-dependencies` keeps from running, and the taint it seeds.                            |
 | [`logger.md`](./logger.md)                         | `src/orchestrator/logger.ts` — default logger (flow-aware policy, frames, replay).                                                                            |
 | [`status-line.md`](./status-line.md)               | `src/orchestrator/status-line.ts` — serialized writer + dynamic bottom status line.                                                                           |
@@ -185,7 +185,7 @@ here, itself or in a brace group.
 | [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.              |
 | [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                   |
 | [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.             |
-| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path, never an 8.3 short name.                       |
+| [`util-real-path.md`](./util-real-path.md)         | `src/util/real-path.ts` — `realPath`: the OS's final path; `realpathOf`: realpath past a backslash.       |
 | [`util-cgroup.md`](./util-cgroup.md)               | `src/util/cgroup.ts` — the cores and memory this process may use, as its cgroup bounds them.              |
 |                                                    | `src/util/{size,verbs}.ts` — `parseSize`, `parseDuration` (cli-cache.md) and the core verb list (cli.md). |
 |                                                    | `src/util/task-id.ts` — `splitTaskId`, the first-`#` inverse of `taskId` (task-graph.md).                 |

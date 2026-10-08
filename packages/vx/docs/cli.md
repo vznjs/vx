@@ -511,6 +511,8 @@ refused with the `vx run` that runs it: `vx build` names
 `vx build app` names `vx run build --filter app`, and `vx app#build`
 names `vx run app#build`. A typo of a task (`vx biuld`) names the task
 and the same `vx run`, unless a verb is as close (`vx rnu` hints `run`).
+The default `build` is no declared task, so it is no hint: where it is
+the only `build`, `vx build` is an unknown command.
 It stays a refusal: a plugin verb of the same
 name is the verb, and would change what `vx build` means the day one
 was declared.
@@ -2200,15 +2202,21 @@ vx show <project>                # one project's resolved config (`//`: the root
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show [<task>] --filter <p>    # only the projects `vx run --filter <p>` selects
-vx show [<task>] --affected      # only the changed projects and their dependents
+vx show <task> --affected        # only the projects whose <task> `vx run <task> --affected` runs
+vx show --affected               # the run's candidates: the changed projects and their dependents
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
 `--filter` and `--affected[=<ref>]` narrow the list, or a task's
-projects, as `vx run` selects projects: `turbo ls --affected` is
+projects, as `vx run` selects: `turbo ls --affected` is
 `vx show --affected`, and `nx show projects --affected --with-target t`
-is `vx show t --affected`. Beside one project or `<pkg>#<task>` they
-are refused.
+is `vx show t --affected`. Beside a task, `--affected` lists the
+projects whose task the run keeps: a change reaches another project
+only along a task edge, so a dependent whose `test` has no `^test` is
+not listed (X-147). With no task there is no edge to follow, and the
+list is the run's candidates, `--filter "...[<base>]"`'s: the changed
+projects and their package dependents. Beside one project or
+`<pkg>#<task>` they are refused.
 
 Nx's spellings name these: `vx show projects` (when no project or task
 has that name) and `vx show project <name>` say `vx show` and
@@ -2242,7 +2250,9 @@ config }` with the config exactly as resolved. `vx show <pkg>#<task>`
 narrows to one task (`{ name, dir, task, config }` in JSON). A bare
 name that is no project is a task: `vx show build` prints the block
 from every project declaring `build` (an array of the one-task shape
-in JSON).
+in JSON). The default `build` is declared by none: it counts in the
+list and `vx show <project>`, but `vx show build`, like
+`vx run build --all`, does not name it (X-145).
 
 ```
 $ vx show app#build

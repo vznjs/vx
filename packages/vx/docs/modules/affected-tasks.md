@@ -37,7 +37,16 @@ and prunes the graph to the `dependsOn` closure of the kept requests
 plus what a hook added or marked requested; a request only a kept task
 pulls in is demoted, as a rebuild from the kept requests would leave it.
 Without one the graph is rebuilt from the kept requests and the hooks
-run after.
+run after. The hooks are `applyGraphStage` (`graph-stage.ts`), the run's
+`graph` stage with its per-plugin config check.
+
+`keptByAffected` is the rule both callers apply: a request survives when
+the user named it, another include selected its project outright (X-10),
+or `affectedRoots` reaches it. `affectedTaskProjects` is `vx show <task>
+--affected`'s question asked the run's way: the candidates' graph, the
+`graph` stage when a plugin has one, then `keptByAffected`, with no cache
+opened and no key derived, so the list is the projects the run keeps
+(X-147).
 
 ## Public surface
 
@@ -49,4 +58,28 @@ export function affectedRoots(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
 ): string[] // the ids whose closure the change reaches
+
+export function keptByAffected<R extends { project: string; task: string }>(
+  nodes: ReadonlyMap<string, TaskNode>,
+  requested: readonly R[],
+  changes: AffectedChanges,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  packageGraph: PackageGraph,
+  keep?: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> },
+): R[] // the requests `--affected` keeps, in order
+
+export async function affectedTaskProjects(args: {
+  task: string
+  candidates: readonly string[] // the projects the filters selected
+  changes: AffectedChanges
+  outright?: readonly string[] | undefined
+  projects: Map<string, ProjectEntry>
+  packageGraph: PackageGraph
+  projectMetas: readonly ProjectMeta[]
+  plugins: readonly VxPlugin[]
+  workspaceRoot: string
+  cacheDir: string
+  rules?: WorkspaceRules | undefined
+  warn: (message: string) => void
+}): Promise<string[]> // the projects whose `task` the run keeps
 ```

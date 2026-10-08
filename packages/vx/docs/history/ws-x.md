@@ -1133,3 +1133,15 @@ reaches no build task.` The plan now carries the run's own line
   matched nothing; otherwise the exit-0 note names the exclusion or the
   walk. Row: `affected-base-notes.test.ts` › "a diff that matched, then
   lost every project to an exclusion or a walk, says which (X-146)".
+- **X-147.** `vx show <task> --affected` listed the changed projects and
+  their package dependents, so it named projects that
+  `vx run <task> --affected` does not run: since 2026-10-04 a change reaches another
+  project only along a task edge. It now asks the run's own selection
+  (`affectedTaskProjects`: the candidates' graph, the `graph` stage,
+  `keptByAffected`, which `prepareRun` applies too). `vx show --affected`
+  with no task keeps the run's candidates. Rows: `show-affected.test.ts`.
+- **X-145.** The default `build` was named as a declared task where
+  `vx run build --all` refuses it: `vx build` hinted that run, and
+  `vx show build` printed a block per project. Both now skip it as the
+  picker and the run do; `vx show` and `vx info` still count it. Rows:
+  `default-build-not-declared.test.ts`, `show-default-build.test.ts`.

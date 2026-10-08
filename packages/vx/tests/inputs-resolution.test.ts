@@ -787,6 +787,19 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(lstatSync(path.join(projectDir, 'dist')).isSymbolicLink()).toBe(true)
   })
 
+  // Bun's realpath answers ENOENT for any path holding a backslash (1.4.2):
+  // containment read such a directory as unresolvable, and its files were
+  // dropped from the artifact under a green run.
+  it('an output under a directory whose name holds a backslash is kept', async () => {
+    await write(path.join(projectDir, 'dist/a\\b/app.js'), 'built')
+    await write(path.join(projectDir, 'dist/a\\b/c/d.js'), 'built')
+    const out = await resolveOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+    expect(out).toEqual([
+      path.join(projectDir, 'dist/a\\b/app.js'),
+      path.join(projectDir, 'dist/a\\b/c/d.js'),
+    ])
+  })
+
   it('a recorded row is never removed through a link that leaves the project (X-5)', async () => {
     // `cleanOutputPaths` takes an entry's rows, not the resolver's
     // contained set, so the delete keeps its own containment.
