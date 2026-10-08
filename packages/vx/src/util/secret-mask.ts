@@ -33,6 +33,12 @@ export function secretNamed(name: string): boolean {
 }
 
 /**
+ * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
+ * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
+ */
+const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:([^\s/@]+)@/gi
+
+/**
  * Values shorter than this are not masked: `KEY=1` would mask every `1`
  * in every line, and a value that short is no secret worth the noise.
  */
@@ -86,7 +92,13 @@ export function secretMask(
   }
   for (const source of sources) {
     if (source === undefined) continue
-    for (const name in source) if (secretNamed(name)) add(source[name])
+    for (const name in source) {
+      const value = source[name]
+      if (secretNamed(name)) add(value)
+      if (value?.includes('://') === true && value.includes('@')) {
+        for (const m of value.matchAll(URL_PASSWORD)) add(m[1])
+      }
+    }
     for (const name of named) add(source[name])
   }
   if (values.size === 0) return null
