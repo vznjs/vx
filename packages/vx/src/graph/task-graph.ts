@@ -1,4 +1,3 @@
-import path from 'node:path'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,

@@ -1665,6 +1665,22 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  // A pnpm-workspace.yaml with settings and no `packages:` (ngrx's) is
+  // where pnpm reads the globs; the hint said there was no such file.
+  it('beside a pnpm-workspace.yaml with no packages, names that file', async () => {
+    const root = await bareRoot()
+    try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: true\n')
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain(
+        'vx init: pnpm-workspace.yaml lists no `packages`, so the root is the only project and 2 package.json below it are not: packages/app, packages/lib. Add `packages: ["packages/*"]` to pnpm-workspace.yaml and re-run.',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   // CONTROL: with the globs declared, the same tree is a workspace and init writes both configs.
   it('the same tree with `workspaces` declared is a workspace', async () => {
     const root = await bareRoot()
