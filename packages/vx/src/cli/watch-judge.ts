@@ -77,7 +77,7 @@ export class ChangeJudge {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   readonly pending = new Map<string, string>()
-  /** The last cycle's wall window; a write inside it is the run's own. */
+  /** The last cycle's window, its start on the mtime clock (`fsClockNow`); a write inside it is the run's own. */
   lastCycle: { start: number; end: number } | undefined
   // Declared outputs are ignored by PATH above. A task with no `cache`
   // block declares none and still writes into its project, and the

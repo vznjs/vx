@@ -102,15 +102,12 @@ export class Cache implements CacheLayer {
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
@@ -2537,6 +2534,18 @@ function · `src/orchestrator/metrics.ts`
 
 ```ts
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+```
+
+## `withForwardArgs`
+
+function · `src/exec/runner.ts`
+
+The command a task runs with the args after `--` appended, shell-quoted.
+They go before a trailing comment: appended after it, `echo args: # show`
+ran without them and said nothing (item 1060). Trailing blanks go first.
+
+```ts
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 ```
 
 ## `WorkspaceConfig`

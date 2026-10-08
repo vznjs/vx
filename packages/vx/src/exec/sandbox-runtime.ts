@@ -108,9 +108,13 @@ import {
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
+/** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
+let srtLoaded: SrtModule | undefined
 
 async function loadSrt(): Promise<SrtModule> {
-  if (!srtPromise) srtPromise = import('@anthropic-ai/sandbox-runtime')
+  if (!srtPromise) {
+    srtPromise = import('@anthropic-ai/sandbox-runtime').then((m) => (srtLoaded = m))
+  }
   return srtPromise
 }
 
@@ -275,9 +279,16 @@ export function dependencyReason(errors: readonly string[]): string {
  * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
  * on Linux (its retry loop swallows the code), neither naming the
  * directory (2026-09-16). Checked up front, with room for the sequence.
+ * On Linux the longer name is the network bridge's,
+ * `claude-http-<16 hex>.sock`, and it is the one that fails there.
  */
 export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
-  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const sample = path.join(
+    tmpdir,
+    process.platform === 'linux'
+      ? `claude-http-${'0'.repeat(16)}.sock`
+      : `srt-mux-${process.pid}-zzz.sock`,
+  )
   const limit = process.platform === 'darwin' ? 103 : 107
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined
@@ -1379,11 +1390,14 @@ function ownGroupCommand(
     .join(' ')
   const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
   const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
+  // Bash reports a job a signal killed on its stderr, the task's: a task
+  // whose shell died of SIGKILL printed this whole wrapper (X-111).
+  const wait = `wait "$c" 2>/dev/null`
   if (setsid === undefined) {
-    return { command: `${tag0} ${run} wait "$c"`, forwards: false, traced: true }
+    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
-  return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
+  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
 /** What strace stops on: the reads, and what moves or makes a process's cwd. */
@@ -1641,8 +1655,17 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
-  if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
-    void resetSandbox().catch(() => {})
+  if (liveServers.delete(tag)) {
+    // A server's wrap counts as a live sandbox in SRT until this, and SRT
+    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
+    // grant) only at a count of 0: one stopped server kept every later
+    // task's stubs in the workspace until the reset.
+    try {
+      srtLoaded!.SandboxManager.cleanupAfterCommand()
+    } catch {
+      // best-effort, as a one-shot task's
+    }
+    if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return

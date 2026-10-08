@@ -168,9 +168,12 @@ async function claimsMember(
     const normalized = pattern.replace(/\/+$/, '')
     // `.` means the root itself is the project — never a directory below it.
     if (normalized === '' || normalized === '.') continue
-    const glob = new Bun.Glob(normalized)
+    // Matched as discovery scans, on the manifest: `packages/**` lists
+    // `packages/package.json`, while against the directory `**` needs a
+    // segment below `packages`, and a run from there was its own root.
+    const glob = new Bun.Glob(`${normalized}/package.json`)
     for (const rel of rels) {
-      if (!glob.match(rel)) continue
+      if (!glob.match(`${rel}/package.json`)) continue
       // `match` has no `dot: false`: `packages/*` matched `packages/.tpl`,
       // which discovery skips, and a run from inside it found a workspace
       // that does not list it. Such a path asks discovery's own walk.
@@ -720,6 +723,16 @@ export async function discoverProjects(
   for (const entry of loaded) {
     if (entry === null) continue
     const { dir, pkg, configPath } = entry
+    // npm and pnpm take `../ext/*`, but `--affected` asks git from the root
+    // and sees nothing outside it: an edit there moved the task's key and
+    // selected nothing, green.
+    const rel = relPosix(workspace.root, dir)
+    if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+      throw new UserError(
+        `workspace member ${rel} (${dir}) is outside the workspace root ${workspace.root}: ` +
+          'vx keeps every project under the root. Move the workspace root up to a directory that holds every member.',
+      )
+    }
     if (!pkg.name) {
       nameless?.push(dir)
       // A nameless manifest can't be addressed, filtered, or made affected —
@@ -831,6 +844,19 @@ export async function namedProject(
   const where = `plugin '${by}' named project`
   if (typeof named?.name !== 'string' || named.name === '' || typeof named.dir !== 'string') {
     throw new UserError(`${where} ${JSON.stringify(named)}: expected { dir: string, name: string }`)
+  }
+  // The rules `parsePackageJson` holds a manifest's name to: a plugin's name
+  // for a directory with no `name` of its own skipped them, and `a#b` planned
+  // under `--all` while no run spec or dependsOn could reach it.
+  if (named.name.trim() !== named.name) {
+    throw new UserError(
+      `${where} ${JSON.stringify(named.name)}: the name has surrounding whitespace`,
+    )
+  }
+  if (named.name.includes('#')) {
+    throw new UserError(
+      `${where} "${named.name}": the name holds "#" — vx addresses a task as <name>#<task>`,
+    )
   }
   const dir = path.resolve(workspace.root, named.dir)
   const rel = relPosix(workspace.root, dir)

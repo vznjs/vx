@@ -369,7 +369,7 @@ function namelessNotes(root: string, dirs: readonly string[]): string[] {
   const withScripts = dirs
     .filter((dir) => {
       const scripts = (
-        JSON.parse(readText(path.join(dir, 'package.json')) || '{}') as {
+        JSON.parse(readText(path.join(dir, 'package.json')).replace(/^\uFEFF/, '') || '{}') as {
           scripts?: unknown
         }
       ).scripts

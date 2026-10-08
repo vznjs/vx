@@ -440,7 +440,8 @@ function pluginPackageName(dir: string): string {
   for (let d = dir; ;) {
     let text: string | undefined
     try {
-      text = readFileSync(path.join(d, 'package.json'), 'utf8')
+      // A byte-order mark is stripped, as npm, Node and discovery strip it.
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
     } catch {
       /* not here; look one level up */
     }

@@ -222,6 +222,11 @@ writers, and pairs across sides only (X-101): filed together, 5,000
 tasks reading one shared input (`tsconfig.base.json`) paired every
 reader with every other and built the graph in 15 s; 0.2 s now.
 
+Whatever the rules, `refuseSelfClean` refuses a task whose own outputs
+take back one of its input entries whole (`src/**` as both): vx removes
+a task's outputs before it runs, so it would delete its own sources. An
+in-place rewriter (a formatter) declares no outputs.
+
 ## What this does NOT do
 
 - It doesn't check that `cache.inputs.tasks` names resolve to declared

@@ -158,6 +158,22 @@ describe('the run lock', () => {
     expect(lines).toEqual([])
   })
 
+  it('runs in one process that take the lock at once share it: neither reclaims the other', async () => {
+    // The second taking's rename lost to the first's, then read the first's
+    // entry before the first had listed itself held, judged a lock naming
+    // this pid stale, and unlinked it: both runs went on with no lock.
+    const releases = await Promise.all([
+      acquireRunLock('/w/app', { dir, log }),
+      acquireRunLock('/w/app', { dir, log }),
+    ])
+    expect(await held()).toEqual([holderOf(process.pid)])
+    await releases[0]!()
+    expect(await held()).toEqual([holderOf(process.pid)])
+    await releases[1]!()
+    expect(await held()).toEqual([])
+    expect(lines).toEqual([])
+  })
+
   it('a release removes only its own taking: a lock another run took since stays', async () => {
     // A holder judged dead while it still runs (a vx in another pid
     // namespace sharing this temp directory reads as ESRCH) has its lock
