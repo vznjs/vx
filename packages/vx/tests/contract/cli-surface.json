@@ -51,6 +51,7 @@
       "--exclude-dependencies",
       "--filter",
       "--force",
+      "--format",
       "--frozen",
       "--graph",
       "--help",
@@ -198,6 +199,10 @@
     "run --force": [
       "false",
       "true"
+    ],
+    "run --format": [
+      "json",
+      "pretty"
     ],
     "run --graph": [
       "*"
