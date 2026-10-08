@@ -32,29 +32,31 @@ lint: {
 ## One allow-list, no inheritance
 
 `sandbox: {}` is the baseline: reads nothing in the workspace, writes
-nothing, no network of its own (a run's domain lists are one union
+nothing but its own `TMPDIR`, no network of its own (a run's domain lists are one union
 every sandboxed task reaches; schema.md § `exec.sandbox`). Not even the project's own directory, which is why
 `read: ['.']` is the first line of nearly every real block. The read wall
 stands at the workspace root: `~/.cache` and `/etc` stay readable, and
-fold into no key. On top of the baseline
+fold into no key. Credential stores such as `~/.ssh` and `~/.npmrc`
+stay denied unless a grant names them. On top of the baseline
 you grant exactly what the tool needs:
 
 - `read` and `write` paths or globs, project-relative, absolute or
   `~`-expanded. A write grant is readable too, so `tsc --incremental`
   can re-read its own `.tsbuildinfo`.
 - `network`: `true`, or a list of domains with wildcards. Domain lists
-  are enforced by one filtering proxy per run; a task that declares no
-  network is never given the proxy's port and reaches nothing.
+  are enforced by one filtering proxy per run, started with the union
+  of every task's lists, and every sandboxed task is handed it.
 - `localBinding` for a test that boots its own server, `unixSockets`,
   `systemInfo`, `gitConfig` for the rare tool that must write
   `.git/config`, and the macOS-specific `machLookup` and `pty`.
 
-Two lists sit beside `allow`. `deny` takes a capability back — it is
-evaluated first, so a domain in both is denied — and `ignore` keeps a
-denial out of the report without granting it.
+Two lists sit beside `allow`. `deny.network` refuses domains for the
+whole run, checked before the allowlist, so a domain in both is
+denied. `ignore` keeps a denial out of the report without granting it.
 
 There is no workspace-wide default and no inheritance between tasks.
-Those three lists are the whole permission surface of that one task.
+Network aside, those three lists are the whole permission surface of
+that one task.
 
 ## Why it derives nothing from `cache`
 
@@ -101,9 +103,10 @@ The two limits worth knowing: root inside a container usually cannot
 create the nested user namespace the Linux runtime needs (run as an
 unprivileged user, or accept `weakerWhenNested`), and seatbelt cannot
 nest, so a task that itself sandboxes cannot be sandboxed on macOS.
-In vx's own repository exactly two tasks have no sandbox block: the
-part of the core suite a sandbox cannot host, and the one
-plugin suite that dials service containers on the host's loopback.
+In vx's own repository exactly three tasks have no sandbox block: the
+part of the core suite a sandbox cannot host, and the two
+`@vzn/vx-reapi` suites that dial service containers on the host's
+loopback.
 Everything else, lint, format, docs build, every other package's
 tests, runs inside one.
 

@@ -6,7 +6,7 @@ authors:
 tags:
   - design
   - plugins
-excerpt: "Every executor list ends with this machine. Every cache chain ends with .vx/cache. That is the one thing core does without being told, and it is what lets a plugin decline a task and hand it back instead of failing the run."
+excerpt: "Every executor list ends with this machine. Every cache chain ends with the local cache. That is the one thing core does without being told, and it is what lets a plugin decline a task and hand it back instead of failing the run."
 ---
 
 A pipeline that applies no plugin by default has to answer one
@@ -24,7 +24,7 @@ in order. Both lists have the same implicit last element:
 
 ```
 executors: [ reapi, …, local ]
-cache:     [ turboCache, …, .vx/cache ]
+cache:     [ turboCache, …, local cache ]
 ```
 
 You never write the last element and you cannot remove it. A workspace
@@ -59,8 +59,8 @@ turns a lot of would-be failure modes into placement decisions:
   declines the executor with a warning; the cache layer still works.
 
 `vx run --dry` shows the decision per line once the workspace declares
-more than one executor: `@vx/reapi`, `@local`, or `@noop` for a task
-with nothing to execute.
+more than one executor: `@vx/reapi`, `@local`, or `@noop` for an
+`exec.remote: 'only'` task no remote takes, which the run skips.
 
 ## Why it is the floor and not a default plugin
 

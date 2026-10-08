@@ -34,6 +34,16 @@ app#build — run 019f5a02-…
 
 One component moved and it is named. Forty-one did not.
 
+When the component that moved is `upstream`, a dependency's key, that
+row only carries the change. `vx why` follows each dependency that
+moved in the same run down to the task whose own inputs moved, and
+prints the chain:
+
+```
+  root cause:
+    app#build ← lib#build ← file packages/lib/src/index.ts
+```
+
 ## What it reads
 
 `vx why` is read-only over the local `cache.db`. It evaluates no
@@ -60,11 +70,11 @@ the shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
 names a `cacheDir` keeps both there, and that directory is the one to
 copy.
 
-## Nine endings for an unchanged key
+## Eleven endings for an unchanged key
 
 The interesting cases are the ones where the key did *not* change, and
-`vx why` distinguishes them rather than calling all nine a re-run. The
-verdict line is one of these fourteen sentences, quoted from the code:
+`vx why` distinguishes them rather than calling all eleven a re-run. The
+verdict line is one of these fifteen sentences, quoted from the code:
 
 | vx says                                                                                                    | What happened                                                    |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -94,7 +104,7 @@ cross.
 
 ## The same answer for machines
 
-`--format json` emits one object: `{ taskId, runId, why, diff }`. The
+`--format json` emits one object: `{ taskId, runId, why, diff, roots }`. The
 `@vzn/vx-mcp` plugin exposes the same query as a tool a coding agent
 can call (`whyDidThisRerun`), so "why is CI rebuilding everything" is a
 question an agent can answer without reading the source of the runner.
