@@ -1055,7 +1055,10 @@ even when gitignored (they usually are).
 
 A **symlink** the globs match is an output: it is captured as its
 target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). A link to a directory, a dangling one, or
+it (never following it). An output DIRECTORY that is a symlink
+(`dist -> real-out`) is followed: its target is cleaned, saved and
+restored as the output; one that resolves outside the project refuses
+the task, naming the link. A link to a directory, a dangling one, or
 one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
