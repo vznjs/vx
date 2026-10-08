@@ -930,6 +930,30 @@ describe('Cache as a ConfigEvalStore', () => {
     expect(readBack.getConfigEvals(['k']).get('k')).toBe('{}')
     readBack.close()
   })
+  it('an executable config and preset are served by the warm key, not re-keyed each load', async () => {
+    // `hashFile` names a 100755 file `100755:<oid>` and the slow path's
+    // `hashBytes` the bare oid, so the warm key of an executable closure
+    // never met a stored one and every load read, scanned and re-keyed it.
+    const preset = await write('shared/x-preset.mjs', "export const cmd = 'echo x'\n")
+    const cfg = await write(
+      'packages/x/vx.config.mjs',
+      "import { cmd } from '../../shared/x-preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    await chmod(cfg, 0o755)
+    await chmod(preset, 0o755)
+    const cache = new Cache(path.join(root, 'exec-cache'))
+    try {
+      const evalCache = { store: cache, workspaceFingerprint: 'fp' }
+      await loadProjectConfigs([cfg], { evalCache })
+      let single = 0
+      const get = cache.getConfigEval.bind(cache)
+      cache.getConfigEval = (key: string) => (single++, get(key))
+      const [c] = await loadProjectConfigs([cfg], { evalCache })
+      expect([c?.tasks?.build?.exec?.command, single]).toEqual(['echo x', 0])
+    } finally {
+      cache.close()
+    }
+  })
   it('the batched puts honour the write axis and land as the single puts do', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-batch-'))
     try {
