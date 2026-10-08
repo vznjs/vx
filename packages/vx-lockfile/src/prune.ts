@@ -25,6 +25,7 @@ import {
   type ProjectMeta,
 } from '@vzn/vx'
 import * as bunLock from './bun.js'
+import { record } from './json.js'
 import * as npmLock from './npm.js'
 import * as pnpmLock from './pnpm.js'
 import * as yarnLock from './yarn.js'
@@ -317,9 +318,7 @@ async function namedFiles(root: string, manifest: Record<string, unknown>): Prom
     const p = path.join(root, file)
     if (!(await exists(p))) return {}
     const doc: unknown = Bun.YAML.parse(await Bun.file(p).text())
-    return doc !== null && typeof doc === 'object' && !Array.isArray(doc)
-      ? (doc as Record<string, unknown>)
-      : {}
+    return record(doc) ?? {}
   }
   named.push(...values((await yaml('pnpm-workspace.yaml'))['patchedDependencies']))
   const yarnrc = await yaml('.yarnrc.yml')
