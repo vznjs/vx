@@ -147,7 +147,10 @@ export interface CacheEntry {
    * per hit (0.12 ms each across a warm 1000-project run before this).
    */
   outputDirRows?: OutputDirRow[]
-  /** Captured stdout, always present (may be empty). stderr is not cached. */
+  /**
+   * The task's output log, always present (may be empty): both streams in
+   * the order the run printed them (`orchestrator/output-log.ts`).
+   */
   stdout: string
   storedAt: string
   /**

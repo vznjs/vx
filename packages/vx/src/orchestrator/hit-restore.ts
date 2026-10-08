@@ -30,6 +30,7 @@ import {
 } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
+import { decodeOutputLog } from './output-log.js'
 
 export interface RestoreHitArgs {
   args: ExecuteArgs
@@ -45,7 +46,7 @@ export interface RestoreHitArgs {
 /**
  * Materialize a confirmed cache hit: decide skip-restore, clean +
  * restore declared outputs, mark the exact changed paths so downstream
- * same-project tasks needn't re-spawn git, replay stored stdout, and
+ * same-project tasks needn't re-spawn git, replay stored output, and
  * build the cache-hit `TaskOutcome`. Extracted from `executeCachedTask`
  * so the local short-circuit can restore a stable-key hit ahead of the
  * schedule using the IDENTICAL logic — there is one restore path, not
@@ -97,7 +98,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // path pays one SELECT here. Either beats reading the manifest from
   // the tar (decompress + parse) at the same point.
   // A task with no declared outputs has nothing to clean or restore: its
-  // stdout replays from the row (`hit.stdout`), and its artifact holds
+  // output replays from the row (`hit.stdout`), and its artifact holds
   // only logs. Extracting it anyway cost an `exists` + a tar read per hit
   // — 1.7 ms each on a four-task real repo whose `link` and `element`
   // tasks declare `outputs: []` (2026-09-10, VX_TIMING).
@@ -296,7 +297,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       [process.env, node.config.exec?.env?.define],
       node.config.exec?.env?.secret,
     )
-    log.taskStdout(node, secrets === null ? hit.stdout : secrets.mask(hit.stdout))
+    // The stored log holds both streams in the order the run printed them.
+    for (const c of decodeOutputLog(hit.stdout)) {
+      const text = secrets === null ? c.text : secrets.mask(c.text)
+      if (c.err) log.taskStderr(node, text)
+      else log.taskStdout(node, text)
+    }
   }
   const status =
     hit.exitCode !== 0 ? 'failed' : hit.source === 'remote' ? 'cache-hit-remote' : 'cache-hit'

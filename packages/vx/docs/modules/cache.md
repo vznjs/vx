@@ -254,7 +254,7 @@ export interface CacheEntry {
   outputFiles: string[] // project-relative POSIX paths
   outputRows?: OutputFileRow[] // the rows behind outputFiles, when the layer had them
   outputDirRows?: OutputDirRow[] // the directory short-circuit's rows, from getMany
-  stdout: string // stderr is not cached
+  stdout: string // the output log: both streams in order (output-log.ts)
   storedAt: string // ISO timestamp
   source?: 'local' | 'remote' // (LayeredCache) which layer served the hit
   sizeBytes?: number // the artifact's compressed size, from the index
@@ -301,7 +301,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache prune`.
-export const CACHE_VERSION = 'vx-cache-v41' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -453,8 +453,11 @@ SQLite stores metadata only:
 WAL mode is on (`PRAGMA journal_mode = WAL`) for non-blocking readers
 during writes.
 
-stderr is not stored; stdout rides both the artifact and the `entries`
-row, so a hit replays it without opening the artifact.
+The task's output rides both the artifact and the `entries` row, so a
+hit replays it without opening the artifact. It is both streams in the
+order the run printed them, one string (`orchestrator/output-log.ts`:
+RS + `e` / `o` where the stream switches, a literal RS doubled), so a
+layer carries it as it carried stdout (v42).
 
 ## Atomic writes
 
@@ -577,7 +580,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v41'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v42'`; `SCHEMA_VERSION` is
 `'v32'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

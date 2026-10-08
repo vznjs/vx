@@ -111,14 +111,9 @@ export function missingPackages(
   wanted: readonly string[],
   version: string | null = null,
 ): string[] {
-  const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
-    string,
-    Record<string, unknown> | undefined
-  >
-  const listed = (name: string) =>
-    ['dependencies', 'devDependencies'].some((f) => pj[f]?.[name] !== undefined)
+  const listed = new Set(listedPackages(root, wanted))
   return wanted.filter((p) => {
-    if (!listed(p)) return true
+    if (!listed.has(p)) return true
     const installed = readText(path.join(root, 'node_modules', p, 'package.json'))
     if (installed === '') return true
     if (version === null) return false
@@ -126,17 +121,64 @@ export function missingPackages(
   })
 }
 
+/** argv that removes `packages` from the root's dev dependencies. */
+export function removeArgv(
+  root: string,
+  pm: PackageManager,
+  packages: readonly string[],
+): string[] {
+  switch (pm) {
+    case 'pnpm':
+      return ['pnpm', 'remove', '-w', ...packages]
+    case 'yarn':
+      return readText(path.join(root, 'yarn.lock')).includes('__metadata:')
+        ? ['yarn', 'remove', ...packages]
+        : ['yarn', 'remove', '-W', ...packages]
+    case 'bun':
+      return ['bun', 'remove', ...packages]
+    case 'npm':
+      return ['npm', 'uninstall', ...packages]
+  }
+}
+
+/** The `packages` the root package.json lists. */
+export function listedPackages(root: string, packages: readonly string[]): string[] {
+  const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
+    string,
+    Record<string, unknown> | undefined
+  >
+  return packages.filter((p) =>
+    ['dependencies', 'devDependencies'].some((f) => pj[f]?.[p] !== undefined),
+  )
+}
+
 /** Install `packages` (at `version`, given one) with the repo's manager, its output on the terminal. */
-export async function install(
+export function install(
   root: string,
   packages: readonly string[],
   version: string | null = null,
 ): Promise<string> {
-  const argv = installArgv(
+  return runManager(
     root,
-    packageManagerOf(root, process.env['npm_config_user_agent']),
-    version === null ? packages : packages.map((p) => `${p}@${version}`),
+    installArgv(
+      root,
+      packageManagerOf(root, process.env['npm_config_user_agent']),
+      version === null ? packages : packages.map((p) => `${p}@${version}`),
+    ),
+    'installing vx',
   )
+}
+
+/** Remove `packages` with the repo's manager. */
+export function uninstall(root: string, packages: readonly string[]): Promise<string> {
+  return runManager(
+    root,
+    removeArgv(root, packageManagerOf(root, process.env['npm_config_user_agent']), packages),
+    `removing ${packages.join(' ')}`,
+  )
+}
+
+async function runManager(root: string, argv: string[], what: string): Promise<string> {
   const line = argv.join(' ')
   process.stdout.write(`vx-migrate: ${line}\n`)
   let code: number
@@ -146,9 +188,7 @@ export async function install(
     code = -1
   }
   if (code !== 0) {
-    throw new UserError(
-      `installing vx failed (${line} exited ${code}); run it, then vx-migrate again`,
-    )
+    throw new UserError(`${what} failed (${line} exited ${code}); run it, then vx-migrate again`)
   }
   return line
 }

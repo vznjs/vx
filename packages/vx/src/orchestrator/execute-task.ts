@@ -39,7 +39,9 @@ import {
   PersistentReadyError,
   sandboxReads,
   maskCaptured,
+  BoundedCapture,
 } from '../exec/index.js'
+import { encodeOutputLog } from './output-log.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
   killGraceMs,
@@ -644,17 +646,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let unkeyed = unkeyedUpstream !== undefined
   const willSave = willWrite && args.taintedUpstream !== true && !unkeyed
 
-  // Retain only what is read back. `cache.save` below is the single consumer
-  // of `result.stdout`, and it runs only when this task will WRITE an entry;
-  // `result.stderr` has no consumer at all (a failing task's stderr reaches
-  // the user through the live `onStderr` callback, and the cache has never
-  // stored stderr — see the v17 artifact format). Both streams are still
-  // drained and still stream chunk-by-chunk to the logger; only the retained
-  // copy is dropped, which for a chatty task is its full byte size in heap.
+  // The executor retains nothing: the entry's output is the attempt's
+  // `output` log, both streams in the order they reached the logger, kept
+  // only when this task will WRITE an entry. Both streams are still drained
+  // and still stream chunk-by-chunk to the logger.
   // Deferral is decided at plan time and only ever set for a remote-placed,
   // eligibility-cleared task; it suppresses this machine's clean AND save.
   const deferralRequested = args.download === 'deferred'
-  const capture: CaptureConfig = { stdout: willSave, stderr: false }
+  const capture: CaptureConfig = { stdout: false, stderr: false }
 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
@@ -1199,6 +1198,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // and what the cache keeps of it (L-11); null when there are none.
   const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
+  // The attempt's output as the logger got it (masked), for the entry.
+  let output: BoundedCapture | undefined
+  const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [])
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
   let untrack: (() => void) | undefined
@@ -1288,8 +1290,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
-    const out = secrets && maskedEmitter(secrets, (t) => log.taskStdout(node, t))
-    const err = secrets && maskedEmitter(secrets, (t) => log.taskStderr(node, t))
+    const kept = willSave ? new BoundedCapture() : undefined
+    output = kept
+    const toOut = (t: string): void => {
+      kept?.push(t)
+      log.taskStdout(node, t)
+    }
+    const toErr = (t: string): void => {
+      kept?.push(t, true)
+      log.taskStderr(node, t)
+    }
+    const out = secrets && maskedEmitter(secrets, toOut)
+    const err = secrets && maskedEmitter(secrets, toErr)
     flushMasked = () => {
       out?.end()
       err?.end()
@@ -1303,8 +1315,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       env,
       envDefine: step.env?.define ?? {},
       capture,
-      onStdout: out ? (chunk) => out.push(chunk) : (chunk) => log.taskStdout(node, chunk),
-      onStderr: err ? (chunk) => err.push(chunk) : (chunk) => log.taskStderr(node, chunk),
+      onStdout: out ? (chunk) => out.push(chunk) : toOut,
+      onStderr: err ? (chunk) => err.push(chunk) : toErr,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(args.track !== undefined
         ? {
@@ -1364,7 +1376,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           taskId: node.id,
           command: storedCommand,
           durationMs: result.durationMs,
-          stdout: result.stdout,
+          stdout: storedOutput(),
           ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
           ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
         },
@@ -1390,7 +1402,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       captured,
       command: storedCommand,
       durationMs: result.durationMs,
-      stdout: result.stdout,
+      stdout: storedOutput(),
       ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
       ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
       outputDirSnapshots: args.outputDirSnapshots,

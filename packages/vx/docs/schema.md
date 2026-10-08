@@ -261,7 +261,7 @@ test: { exec: { command: 'bun test', retries: 1 } }
   `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
   `after a timeout` when the attempt was killed by `timeout`.
 - The final outcome is the LAST attempt's: the first success wins (and
-  is what gets cached — its stdout only, not a concatenation of failed
+  is what gets cached — its output only, not a concatenation of failed
   attempts); if every attempt fails, the task is `failed` with the last
   exit code and nothing is cached, as today.
 - The task's reported duration sums every attempt; a saved entry keeps
@@ -513,8 +513,8 @@ highest priority:
    **`NODE_OPTIONS`** (`--require` / `--import` / `--loader` /
    `--conditions` inject code or switch package-export resolution),
    **`LC_ALL` / `LANG`** (collation — anything shelling out to `sort`
-   orders differently), and **`CI` / `FORCE_COLOR` / `TERM`** (stdout
-   bytes, and vx caches and replays stdout).
+   orders differently), and **`CI` / `FORCE_COLOR` / `TERM`** (output
+   bytes, and vx caches and replays output).
 
    They are not hashed because hashing them would mean a laptop and a
    CI runner could **never share a remote cache entry** — `PATH`,

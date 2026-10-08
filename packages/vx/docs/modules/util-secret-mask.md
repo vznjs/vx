@@ -49,7 +49,7 @@ cut whose middle is gone: a value the cut split leaves a piece at the
 end of `head` or the start of `tail`, and each piece is masked too.
 
 Callers: `orchestrator/execute-task.ts` (live output, captured stdout),
-`orchestrator/hit-restore.ts` (a replayed hit's stdout),
+`orchestrator/hit-restore.ts` (a replayed hit's output),
 `orchestrator/framed-output.ts`, `orchestrator/events.ts` and
 `orchestrator/telemetry.ts` (the command; `events.ts` also masks every
 status line, where plugin warnings land, L-40), `orchestrator/remote-prefetch.ts`
