@@ -93,7 +93,7 @@ config key or an environment variable is missing here.
 - **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. no post
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. no post
 - **Background remote uploads** — remote writes drain at the end of the run and never fail the build. no post
-- **Bring your own remote cache** (`RemoteCacheLayer`) — plug any cache server in through one interface. no post
+- **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. no post
 
 ## Correctness
 
