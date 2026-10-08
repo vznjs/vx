@@ -318,9 +318,9 @@ jobs:
       # and the execution wire work.
       - name: vx run test.live (@vzn/vx-reapi)
         env:
-          VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
+          VX_REAPI_TEST_ENDPOINT: grpc://127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
-          VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
+          VX_REAPI_EXEC_ENDPOINT: grpc://127.0.0.1:51051
           VX_REQUIRE_REAPI_EXEC: '1'
         run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-reapi
 

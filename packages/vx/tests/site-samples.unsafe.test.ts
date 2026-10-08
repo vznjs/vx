@@ -1811,8 +1811,9 @@ describe('the plugin examples say which seams they cover', () => {
 })
 
 describe("the site's reapi samples on port 443 name a TLS scheme", () => {
-  // A bare `host:443` is plaintext to vx-reapi; the CI and configure guides
-  // showed one (J-96). vx-reapi's tls.test.ts holds the client to it.
+  // A bare `host:443` was plaintext to vx-reapi when the CI and configure
+  // guides showed one (J-96); it is TLS now, as in Bazel, and a sample still
+  // names its scheme. vx-reapi's tls.test.ts holds the client to the rule.
   it('every `endpoint: …:443` on a page starts grpcs:// or https://', () => {
     const samples = handAuthoredSitePages().flatMap((p) =>
       [...readFileSync(p, 'utf8').matchAll(/endpoint: '([^']+:443)'/g)].map(

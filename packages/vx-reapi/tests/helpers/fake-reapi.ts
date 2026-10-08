@@ -532,7 +532,7 @@ export async function startFakeReapi(
       opts.credentials ?? grpc.ServerCredentials.createInsecure(),
       (err, port) => {
         if (err) return reject(err)
-        fake.endpoint = `127.0.0.1:${port}`
+        fake.endpoint = `${opts.credentials ? 'grpcs' : 'grpc'}://127.0.0.1:${port}`
         resolve()
       },
     )

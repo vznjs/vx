@@ -117,7 +117,7 @@ describe('chunkBytes option', () => {
       // A bad chunk size does not error at the wire — it produces a malformed
       // or infinite write loop. Validate at construction where it is nameable.
       for (const bad of [0, -1, 1.5, Number.NaN]) {
-        expect(() => new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: bad })).toThrow(
+        expect(() => new ReapiClient({ endpoint: 'grpc://127.0.0.1:1', chunkBytes: bad })).toThrow(
           /chunkBytes must be a positive integer/,
         )
       }
@@ -128,7 +128,7 @@ describe('chunkBytes option', () => {
     // False-positive control: the validator must not reject the two values
     // the docs tell people to use.
     for (const ok of [SAFE_CHUNK_BYTES, CHUNK_BYTES]) {
-      const client = new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: ok })
+      const client = new ReapiClient({ endpoint: 'grpc://127.0.0.1:1', chunkBytes: ok })
       client.close()
     }
   })
