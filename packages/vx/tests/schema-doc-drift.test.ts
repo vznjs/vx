@@ -549,6 +549,12 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ plugins: [{ name: "p", setup() {} }] }'),
   ],
   [
+    // An async plugin factory called without `await` read as "must come from
+    // definePlugin" — it had (D-159).
+    'plugins[<i>] is a Promise — await the factory that returns the plugin',
+    workspaceConfig(`{ plugins: [Promise.resolve(${plugin('p', '{ setup() {} }')})] }`),
+  ],
+  [
     'plugins[<i>].name overrides the package name',
     workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
   ],

@@ -217,7 +217,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
       const env = own((t.task as Task).cache?.inputs?.env)
       const name = env === null ? undefined : nameOf.get(keyOf(t.name, env))
       if (name === undefined) continue
-      for (const list of lists(t.task as Task)) {
+      for (const list of lists(t.task)) {
         const names = own(list)
         if (names === null || list === undefined) continue
         if (!env!.every((n, i) => names[i] === n)) continue
