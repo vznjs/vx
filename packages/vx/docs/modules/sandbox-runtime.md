@@ -572,6 +572,13 @@ directory is refused on both platforms (B-60, B-65): seatbelt compiled
 vx's own workspace wall as a class too, so it matched nothing. So is one
 under a directory holding `*` or `?`, whose grants matched its siblings.
 
+A `*` or `?` meant as itself, escaped in a grant (`a\*.txt`) or in a
+baseline's name, has no seatbelt spelling either: SRT compiled the
+escape's backslash as a literal one, so `a\*.txt` granted `a\bc.txt`, a
+name the task never declared, and never `a*.txt`. `seatbeltBrackets`
+leaves such a grant out and says so once, naming the directory above it,
+as `bindableReads` does on Linux.
+
 SRT's in-sandbox network bridge is `socat TCP-LISTEN:3128` (and 1080),
 which socat 1.8 opens as an IPv6 socket. On a host without IPv6 it
 failed ("Address family not supported by protocol") into /dev/null, and
