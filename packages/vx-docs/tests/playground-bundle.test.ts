@@ -4,14 +4,15 @@
 // build byte for byte, so a stale `public/`, a `build` that stopped
 // depending on `build.playground`, or an astro step that rewrote the file
 // fails here. It also holds what a browser needs of the file: no import
-// left to resolve and no free `Bun` or `process`, which a page has not
-// got (item 695).
+// left to resolve and no free `Bun`, `process` or `Buffer`, which a page
+// has not got (item 695), and that it loads where none of them is global.
 //
 // It reads `dist/`, which the `build` task writes; the `test` task depends
 // on `build` for that reason.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import vm from 'node:vm'
 import { describe, expect, it } from 'bun:test'
 import { PLANNER_FILE, buildPlayground } from '../scripts/build-playground.js'
 
@@ -25,7 +26,7 @@ describe('the playground bundle', () => {
     expect(Buffer.compare(bytes, fresh.bytes)).toBe(0)
   })
 
-  it('leaves no import to resolve and no free Bun or process for a browser', () => {
+  it('leaves no import to resolve and no free Bun, process or Buffer for a browser', () => {
     // Bun's own import scan, not a pattern: the config rewrite (item 699)
     // compares tokens with "from" and "import", which a pattern over the
     // minified text read as specifiers.
@@ -33,7 +34,7 @@ describe('the playground bundle', () => {
     // A free global as code follows an operator or a bracket; the shim's
     // messages ("… Bun.spawn is not available") are strings, after a space
     // or a quote.
-    const FREE = /(?<=[=(,;!{}?:&|[+-])\s*(?:Bun|process)\.[A-Za-z_$][\w$]*/g
+    const FREE = /(?<=[=(,;!{}?:&|[+-])\s*(?:Bun|process|Buffer)\.[A-Za-z_$][\w$]*/g
     const found = (s: string) => ({
       imports: transpiler.scanImports(s).map((i) => i.path),
       free: [...s.matchAll(FREE)].map((m) => m[0].trim()),
@@ -42,17 +43,47 @@ describe('the playground bundle', () => {
     // specifier-like string is not an import.
     expect(
       found(
-        `import{a}from"x";let b=Bun.file(p);f(process.env,import("y"));t.value==="from"&&t.kind==="string"`,
+        `import{a}from"x";let b=Bun.file(p);f(process.env,import("y"));t.value==="from"&&t.kind==="string";if(Buffer.from(c));`,
       ),
     ).toEqual({
       imports: ['x', 'y'],
-      free: ['Bun.file', 'process.env'],
+      free: ['Bun.file', 'process.env', 'Buffer.from'],
     })
     const text = readFileSync(shipped, 'utf8')
     expect(found(text)).toEqual({ imports: [], free: [] })
     // The define rewrote core's globals to the shim's objects.
     expect(text.split('__vxBun').length - 1).toBeGreaterThan(10)
     expect(text.split('__vxProcess').length - 1).toBeGreaterThan(5)
+  })
+
+  // A page has no global `Bun`: core read one by name through globalThis
+  // at load, which the define does not rewrite, and the page's planner
+  // failed before its first plan while every row run under Bun passed.
+  it('loads in a context with no Bun, process or Buffer global', () => {
+    const text = readFileSync(shipped, 'utf8')
+    const body = text.replace(
+      /export\s*\{([^}]*)\};?\s*$/,
+      (_, list: string) =>
+        `globalThis.planner={${list.replace(/([\w$]+) as ([\w$]+)/g, '$2:$1')}};`,
+    )
+    const page: Record<string, unknown> = {
+      console,
+      performance,
+      TextDecoder,
+      TextEncoder,
+      URL,
+      setTimeout,
+      clearTimeout,
+      queueMicrotask,
+    }
+    vm.runInNewContext(body, page)
+    expect(['Bun', 'Buffer'].filter((g) => g in page)).toEqual([])
+    expect(Object.keys(page.planner as object)).toEqual([
+      'diffKeyComponents',
+      'evaluateConfig',
+      'listPlaygroundProjects',
+      'planPlayground',
+    ])
   })
 
   it('exports diffKeyComponents, evaluateConfig, listPlaygroundProjects and planPlayground', async () => {

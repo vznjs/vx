@@ -110,10 +110,10 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check]',
     '  vx init [--dry] [--force] [--mjs] [--plugin <seam>]',
-    '  vx upgrade [tag]',
+    '  vx upgrade [TAG]',
     '  vx show [PROJECT[#TASK] | TASK] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
-    '  vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
+    '  vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]',
     '  vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]',
     '  vx completions bash|zsh|fish',
     '  vx help [VERB]',
@@ -215,16 +215,18 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       lock status.',
     '      --format <fmt>   pretty (default) | json.',
     "  vx why <task>        Why did this task re-run? Compares the task's latest",
-    '                       run (or --run <id>) against its previous run: names the',
+    '                       run (or --run RUNID) against its previous run: names the',
     '                       exact changed cache-key components (files / env / runtime',
     '                       / upstream) from the persisted input fingerprints.',
     '      --format <fmt>   pretty (default) | json.',
-    "  vx last [runId]      Replay a recorded run's summary from the local history —",
+    "  vx last [RUNID]      Replay a recorded run's summary from the local history —",
     '                       header (command, when, branch, counts) plus the per-task',
     '                       table, failures first. No re-execution, no cache probe.',
     '      --list[=N]       List the N most recent runs (default 10) with run ids.',
     '      --failed         Only failed runs: the latest one, or with --list the list.',
     '      --format <fmt>   pretty (default) | json.',
+    '  info, why and last:',
+    '      --cache-dir <path>  Read the cache a run with the same flag uses.',
     '',
     'Migration:',
     '  vx init              Generate vx.workspace.ts + one vx.config.ts per package',
@@ -233,6 +235,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       only vx.workspace.ts, declaring turbo() or nx().',
     '      --dry            Print the generated files instead of writing them.',
     '      --force          Overwrite existing vx.config.* files.',
+    '      --mjs            Write .mjs files (no type import) instead of .ts.',
     '      --plugin <seam>  Instead: write plugins/<seam>.ts, a runnable plugin, and its',
     '                       test (executor, cache, telemetry, schedule, admit, commands,',
     '                       project, graph, key).',
@@ -265,6 +268,20 @@ export function helpText(pluginCommands: readonly string[] = []): string {
  */
 export function seeHelp(verb: string): string {
   return ` (see \`vx ${verb} --help\`)`
+}
+
+/** `--format`'s value, or the one refusal every verb gives for a bad one. */
+export function formatValue(
+  v: string | undefined,
+  verb: string,
+): 'pretty' | 'json' | { error: string } {
+  if (v === 'pretty' || v === 'json') return v
+  return {
+    error:
+      v === undefined || v === ''
+        ? `--format requires a value: pretty or json${seeHelp(verb)}`
+        : `--format must be pretty or json (got ${v})${seeHelp(verb)}`,
+  }
 }
 
 /** How a verb names a word it refuses: a flag, or a positional it takes no more of. */
@@ -339,7 +356,7 @@ export const WATCH_REFUSED_FLAGS: readonly string[] = [
  * The flags one verb accepts: those on its own Usage line, and for a verb
  * that takes `[OPTIONS]` (run, watch) the documented run flags — less the
  * ones watch refuses. The Usage line is the verb's synopsis; a section's
- * prose names other verbs' flags (`vx lock --check`, `--run <id>` under
+ * prose names other verbs' flags (`vx lock --check`, `--run RUNID` under
  * `vx why`) and is not read.
  */
 export function acceptedFlags(verb: string): string[] {
