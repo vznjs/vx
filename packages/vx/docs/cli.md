@@ -975,7 +975,8 @@ execution used and appear on executed rows only (`peakRssBytes` only
 when the task's peak rose above vx's own footprint — a lighter task's
 figure would be vx's, handed back by the kernel; a Linux sandboxed task
 reports neither, since what bwrap's pid namespace used never reaches vx);
-a hit's `durationMs`
+`restored` appears on a hit only: `true` when its outputs were restored,
+`false` when they were already up to date. A hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
 artifact and appears under its own keys, `storedCpuMs` /
 `storedPeakRssBytes` (the work the hit skipped, the split
@@ -2403,13 +2404,13 @@ only a run with no recorded policy names `--no-cache` / `--force`.
 
 ```
 $ vx why app#build
-app#build — run 019f5a02-…
-  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
-  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
+  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
+  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
-  what changed (1 component, 41 unchanged):
-    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
+  what changed (1 component, 6 unchanged):
+    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
@@ -2585,7 +2586,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
           return 0 // the process exit code
         },
       },
