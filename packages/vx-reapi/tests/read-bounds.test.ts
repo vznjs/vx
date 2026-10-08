@@ -86,7 +86,7 @@ beforeAll(async () => {
   })
   endpoint = await new Promise<string>((resolve, reject) =>
     server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), (e, p) =>
-      e ? reject(e) : resolve(`127.0.0.1:${p}`),
+      e ? reject(e) : resolve(`grpc://127.0.0.1:${p}`),
     ),
   )
 })

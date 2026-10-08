@@ -52,7 +52,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve, reject) => {
     server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), (err, port) => {
       if (err) return reject(err)
-      endpoint = `127.0.0.1:${port}`
+      endpoint = `grpc://127.0.0.1:${port}`
       resolve()
     })
   })
@@ -107,7 +107,7 @@ describe('reapi(): the connection it resolves', () => {
     'the endpoint option wins over VX_REAPI_ENDPOINT; VX_REAPI_INSTANCE names the instance',
     async () => {
       await withEnv(
-        { VX_REAPI_ENDPOINT: '127.0.0.1:1', VX_REAPI_INSTANCE: 'from-env' },
+        { VX_REAPI_ENDPOINT: 'grpc://127.0.0.1:1', VX_REAPI_INSTANCE: 'from-env' },
         async () => {
           execEnabled = false
           const before = instances.length
@@ -180,7 +180,7 @@ describe.if(CHUNKING_SUPPORTED)(
 
     it('an unreachable server’s client is closed before the refusal', async () => {
       await withEnv({}, async () => {
-        const p = reapi({ endpoint: '127.0.0.1:59999', execute: true })
+        const p = reapi({ endpoint: 'grpc://127.0.0.1:59999', execute: true })
         const { closes } = await countingCloses(async () => {
           await Promise.resolve()
             .then(() => p.executor!(ctx([])))
@@ -197,7 +197,10 @@ describe.if(CHUNKING_SUPPORTED)(
 describe('reapi(): execute off', () => {
   it('declines the executor before reading the connection; execute on still reads it', async () => {
     await withEnv({}, async () => {
-      const opts = { endpoint: '127.0.0.1:1', tlsCertificate: '/nonexistent/vx-reapi-ca.pem' }
+      const opts = {
+        endpoint: 'grpc://127.0.0.1:1',
+        tlsCertificate: '/nonexistent/vx-reapi-ca.pem',
+      }
       const off = reapi(opts)
       expect(await off.executor?.(ctx([]))).toBeUndefined()
       await off.teardown?.()

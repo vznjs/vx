@@ -70,6 +70,7 @@ import {
   type ExecUsage,
   extractArtifactStream,
   scanArtifact,
+  scanTarBytes,
   packArtifactBytes,
   packArtifactStream,
   planArtifact,
@@ -100,7 +101,6 @@ import {
   bytesOf,
   decodedTar,
   MAX_DECOMPRESSED_ARTIFACT_BYTES,
-  oneChunk,
   STREAM_DECODE_FROM,
   zstdCompress,
   zstdEncoder,
@@ -1991,17 +1991,20 @@ export class Cache implements CacheLayer {
     }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
-      // ingest() is the UNTRUSTED boundary — its temp holds bytes just
-      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
-      // can expand into memory.
-      const source =
-        compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
-          ? compressed
-          : Bun.file(tmpPath)
       const endScan = span('save: scan')
-      scanned = await scanArtifact(
-        tar !== undefined ? oneChunk(tar) : await decodedTar(source, hash, this.artifactCeiling),
-      )
+      if (tar !== undefined) {
+        // Our own tar, in memory: read in place, on this thread.
+        scanned = scanTarBytes(tar)
+      } else {
+        // ingest() is the UNTRUSTED boundary — its temp holds bytes just
+        // pulled from a remote. Refuse a bomb (declared or sizeless) before it
+        // can expand into memory.
+        const source =
+          compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
+            ? compressed
+            : Bun.file(tmpPath)
+        scanned = await scanArtifact(await decodedTar(source, hash, this.artifactCeiling))
+      }
       endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.
