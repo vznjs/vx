@@ -8,6 +8,12 @@ is what a run would see — the plugin `config` and `project` stages
 included. Before this, `show` read config files raw and printed
 `(no vx config)` for a package `turbo()` gives tasks to.
 
+`loadWorkspacePlugins` runs the `config` stage on a copy of the
+workspace file's export (its plugins kept as they are): the export is one
+object per process, and hooks that edited it in place saw the last load's
+edits on the next (the CLI's selection pass, then the run; each `vx
+watch` cycle).
+
 A project whose config and plugins declare no `build` gets one, after the
 `project` stage: a group with `dependsOn: ['^build']` keyed on `**`
 (owner, 2026-10-04; `computeGroupKey`, task-hash.md).

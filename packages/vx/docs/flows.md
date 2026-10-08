@@ -198,7 +198,7 @@ stateDiagram-v2
     [*] --> InitialRun
     InitialRun --> Idle: run() completes
     Idle --> Debouncing: fs event (filtered)
-    Debouncing --> Debouncing: more events<br/>(150 ms timer resets)
+    Debouncing --> Debouncing: more events<br/>(150 ms timer resets,<br/>up to 1 s after the first)
     Debouncing --> Running: timer fires, a path changed → run()
     Debouncing --> Idle: timer fires, nothing changed
     Running --> Running: fs event → added to changes.pending
