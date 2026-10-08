@@ -74,7 +74,7 @@ touched survives it. A dry run takes no lock.
 
 Returns ms. `s` (× 1000), `m` (× 60_000), `h` (× 3_600_000), `d`
 (× 86_400_000), case-insensitively (`30D` is thirty days). `null` on
-parse fail; the caller surfaces `invalid duration: <value> (e.g. 30d, 24h, 60m)`.
+parse fail; the caller surfaces `--older-than must be a duration like 30d, 24h or 60m (got <value>)`.
 
 ### `parseSize(input): number | null`
 
@@ -85,7 +85,7 @@ parse fail; the caller surfaces `invalid duration: <value> (e.g. 30d, 24h, 60m)`
 Returns bytes. Multipliers are powers of 1024 (`K`, `M`, `G`, `T`).
 Optional trailing `B` is allowed. `null` on parse fail — including
 digits past 2^53, which would parse to a number the user did not type;
-the caller surfaces `invalid size: <value> (e.g. 500M, 1G)`.
+the caller surfaces `--max-size must be a size like 500M or 1G (got <value>)`.
 
 ## Tests
 

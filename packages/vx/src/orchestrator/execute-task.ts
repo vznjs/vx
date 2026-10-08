@@ -1149,6 +1149,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   const writesFingerprint =
     args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
+  // A stop that landed during the awaits above (the key, the probe, the
+  // input description): the first attempt would wipe the last build and
+  // hand the executor a request after the run had stopped. Through a call,
+  // so the loop's own reads of the stop are not narrowed to false.
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal?.reason)),
+      durationMs: 0,
+      hash,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   for (;;) {
     attempt++
     const a = await runAttempt()
