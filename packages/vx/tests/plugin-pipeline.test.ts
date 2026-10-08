@@ -1478,8 +1478,13 @@ describe('plugin-host, called directly', () => {
             } }`,
           ),
         ])
+        // Sorted: a#x and a#build run concurrently, so outcome order is a race.
         return run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false }).then(
-          (s) => s.outcomes.map((o) => `${o.node.id} ${o.status}`).join(', '),
+          (s) =>
+            s.outcomes
+              .map((o) => `${o.node.id} ${o.status}`)
+              .sort()
+              .join(', '),
           (e: Error) => e.message,
         )
       }
