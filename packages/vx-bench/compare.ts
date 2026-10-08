@@ -46,6 +46,7 @@ import os from 'node:os'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
 import { deleteDist, missingDist } from './outputs.js'
+import { regressions } from './regress.js'
 import { listSchedule, type GraphNode } from './ideal.js'
 import path from 'node:path'
 
@@ -702,6 +703,23 @@ async function measureBaseline(dir: string): Promise<Baseline> {
 
 const BASELINE_ONLY = process.env['BASELINE_ONLY'] === '1'
 
+// The committed run, read before this one overwrites it: a row slower than
+// its committed twin on the same workspace shape is a regression to see.
+const committed = JSON.parse(await Bun.file(path.join(import.meta.dir, 'results.json')).text()) as {
+  layers: number
+  perLayer: number
+  depsPerPkg: number
+  concurrency: number
+  buildSleep: string
+  rows: Row[]
+}
+const sameShape =
+  committed.layers === LAYERS &&
+  committed.perLayer === PER_LAYER &&
+  committed.depsPerPkg === DEPS_PER_PKG &&
+  committed.concurrency === CONCURRENCY &&
+  committed.buildSleep === BUILD_SLEEP
+
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
 
 console.error(`scaffolding ${PACKAGES} packages × ${LAYERS} layers in ${ws} …`)
@@ -793,4 +811,16 @@ await writeFile(
 
 console.error('\n' + md)
 console.error('\nwrote bench/RESULTS.md + bench/results.json')
+if (sameShape) {
+  const measured = new Set(runners.map((r) => r.name))
+  const slower = regressions(
+    committed.rows,
+    rows.filter((r) => measured.has(r.runner)),
+  )
+  console.error(
+    slower.length === 0
+      ? 'no timing more than 10% slower than the committed run'
+      : `slower than the committed run by more than 10%:\n  ${slower.join('\n  ')}`,
+  )
+}
 await rm(ws, { recursive: true, force: true })
