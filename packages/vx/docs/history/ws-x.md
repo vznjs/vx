@@ -985,7 +985,7 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   trusted".
 - **X-131.** Under `--continue=always` a task that ran behind its failed
   dependency failed on the key it had passed on: its row said `flaky -
-  passed 1× before` and `vx info` listed it for thirty days, though the
+passed 1× before` and `vx info` listed it for thirty days, though the
   failure was the dependency's. Such a failure is now no flaky candidate
   and is recorded keyless (`''`, which the key readers skip). Row:
   `flaky.test.ts` › "is not a flake on the key it had passed on".
