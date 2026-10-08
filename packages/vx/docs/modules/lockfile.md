@@ -43,11 +43,16 @@ is not the project's, is a `UserError` naming the project and the
 remedy. Each entry is validated as a loaded config is; with a `store`
 the verdict is kept beside the config evaluations, keyed by the lock's
 bytes, the project, and vx's and Bun's versions, so a warm run on an
-unchanged lock does not validate again (1,000 projects: ~30 ms). A
+unchanged lock does not validate again (1,000 projects: ~30 ms). A load
+that accepted every entry also keeps one row for the whole lock, and a
+later load reads that row alone instead of one per project (X-181). A
 refusal is never kept, and a lock not read by `readLockfile` has no
 bytes to key by. The CLI's own selection load (`loadCliProjects`, what a filter
 that walks the graph stages) reads the lock the same way under
-`--frozen`, so the selection and the run see one graph.
+`--frozen`, so the selection and the run see one graph. A run with
+nothing staged starts reading the lock when it finds the workspace root,
+beside discovery; a missing lock still refuses at the config load, after
+any refusal that comes first.
 
 ## Invariants
 

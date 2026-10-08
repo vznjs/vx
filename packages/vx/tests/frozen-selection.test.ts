@@ -133,4 +133,27 @@ describe('--frozen selection reads the lock', () => {
     },
     TIMEOUT,
   )
+
+  // Prepare starts the lock's read before discovery (X-181); a refusal
+  // that comes first is still the one the caller gets, and the lock's own
+  // rejection, never awaited then, is no unhandled error.
+  it(
+    'a workspace config refusal still comes before the missing lock',
+    async () => {
+      await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
+      await Bun.write(path.join(root, 'vx.workspace.mjs'), "throw new Error('ws-boom')\n")
+      const { run } = await import('../src/orchestrator/index.js')
+      const err = await run({
+        cwd: root,
+        tasks: ['build'],
+        frozen: true,
+        handleSignals: false,
+      }).then(
+        () => new Error('resolved'),
+        (e: unknown) => e as Error,
+      )
+      expect(err.message).toContain('ws-boom')
+    },
+    TIMEOUT,
+  )
 })
