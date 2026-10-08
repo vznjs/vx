@@ -1762,7 +1762,7 @@ function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
     if (o.status !== 'success' && o.status !== 'failed') continue
-    // "Same inputs, different outcome" is a claim only a task with declared
+    // "Same inputs, failed after passing" is a claim only a task with declared
     // inputs can make: a task with no `cache` block keys on its config alone
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.
