@@ -83,9 +83,11 @@ function bareNote(bare: number): string {
 
 async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
   const entries = await Promise.all(metas.map((m) => evaluateEntry(root, m)))
-  const projects: Record<string, LockfileEntry> = {}
-  // `listProjects` sorts by name — stable lockfile diffs for free.
-  for (let i = 0; i < metas.length; i++) projects[metas[i]!.name] = entries[i]!
+  // `listProjects` sorts by name — stable lockfile diffs for free. Defined,
+  // not assigned: a project named `__proto__` set the map's prototype (D-152).
+  const projects: Record<string, LockfileEntry> = Object.fromEntries(
+    metas.map((m, i) => [m.name, entries[i]!]),
+  )
   const leaks = secretsIn(projects)
   if (leaks.length > 0) {
     process.stderr.write(
