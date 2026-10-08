@@ -1387,6 +1387,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  affected?: AffectedReason
 }
 ```
 
@@ -1587,7 +1588,7 @@ caller-specific (run logs + returns NOT-ok; planRun returns an
 empty plan).
 
 ```ts
-export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+export async function prepareRun(options: RunOptions, log: Logger, affectedReasons?: Map<string, AffectedReason>): Promise<PreparedRun>
 ```
 
 ## `ProjectConfig`

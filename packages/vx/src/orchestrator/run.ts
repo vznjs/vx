@@ -71,6 +71,7 @@ import { formatPersistentList } from './framed-output.js'
 import { createForecast } from './forecast.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
+import type { AffectedReason } from './affected-tasks.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import {
@@ -1658,7 +1659,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   // The plan is the product and goes to stdout (`--dry=json` is parsed):
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
-  const prepared = await prepareRun(options, log)
+  const reasons = new Map<string, AffectedReason>()
+  const prepared = await prepareRun(options, log, reasons)
   try {
     if (prepared.unresolvedTasks.length > 0) {
       return {
@@ -1706,6 +1708,10 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
+    for (const t of planned.tasks) {
+      const why = reasons.get(t.node.id)
+      if (why !== undefined) t.affected = why
+    }
     return planned
   } finally {
     // The plan called the cache and executor factories; teardown releases

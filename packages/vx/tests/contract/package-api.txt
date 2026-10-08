@@ -296,7 +296,11 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 == function planRun (src/orchestrator/run.ts)
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
-export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+export async function prepareRun(
+  options: RunOptions,
+  log: Logger,
+  affectedReasons?: Map<string, AffectedReason>,
+): Promise<PreparedRun>
 == function pruneOrphanPersistentNotes (src/workspace/migration.ts)
 export function pruneOrphanPersistentNotes(
   projects: readonly {
@@ -342,6 +346,13 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
   nested?: readonly string[]
+}
+== type AffectedReason (src/orchestrator/affected-tasks.ts)
+export interface AffectedReason {
+  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  file?: string
+  project?: string
+  via?: string[]
 }
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
@@ -993,6 +1004,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  affected?: AffectedReason
 }
 == type PlanPrediction (src/orchestrator/plan.ts)
 export interface PlanPrediction {

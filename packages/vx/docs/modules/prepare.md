@@ -58,7 +58,11 @@ export interface PreparedRun {
   empty: null | 'no-tasks-declared' | 'none-affected' | 'empty-graph'
 }
 
-export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+export function prepareRun(
+  options: RunOptions,
+  log: Logger,
+  affectedReasons?: Map<string, AffectedReason>,
+): Promise<PreparedRun>
 ```
 
 ## Steps
