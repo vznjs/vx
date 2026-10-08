@@ -797,3 +797,10 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   default build on a cycle keeps the edge to a build that never reaches
   it", "a default build on a cycle passes a build that reaches it through
   another task".
+- **X-119.** A requested default `build` (the one keyed group) folded
+  the args after `--` into its key though it runs no command: in
+  `vx run lib#build app#e2e -- --x`, `app#build`, which never sees
+  `--x`, folds `lib#build`'s key, so it missed for every new set of args
+  and saved under a key no run without them derives. A group's key now
+  folds no forwarded args. Row: `task-hash-derive.test.ts` › "a
+  requested default build ignores them: it runs no command".
