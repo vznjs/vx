@@ -131,7 +131,8 @@ grant covers the lock file inside it.
 There is **no inheritance** from `vx.workspace.ts`, and nothing is
 derived from `cache`. The single grant core makes is dependencies:
 `node_modules` for the project and the workspace root, plus the real path
-of every workspace package symlinked into them — a project never names a
+of every workspace package symlinked into them, and into theirs in turn
+(pnpm and Bun link a dependency's own under it) — a project never names a
 sibling to import what its `package.json` depends on. A link back to the
 task's own project, or to a directory holding it, is dropped (compared
 canonically): npm and Yarn link every package at the root, and following
@@ -551,7 +552,12 @@ On macOS vx hands seatbelt's SRT the grant as written, and SRT compiles
 a spelling holding `[` as a regex in which a backslash is a literal one,
 so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
 and `\]` as `]` there (`seatbeltBrackets`), and a deny path's `[` as
-`[[]`: a nested project's wall under `[legacy]/` matched nothing. A project under a bracketed
+`[[]`: a nested project's wall under `[legacy]/` matched nothing. A
+baseline read (a `node_modules`, a linked dependency) is a name, so its
+`[` is spelled `[[]` and its subtree granted beside it: raw, a dependency
+under `packages/[legacy]/` was a class that matched `packages/l`, and an
+exact regex grants a directory's entry and none of its files. A baseline
+inside a wall a glob reaches is carved out whatever its name holds. A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
 vx's own workspace wall as a class too, so it matched nothing. So is one
 under a directory holding `*` or `?`, whose grants matched its siblings.
@@ -579,7 +585,10 @@ across runs. A file one task wrote there was the next task's, and the
 next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
 `vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
-tag (SRT keys violations by the first 100 characters), created before the
+tag (SRT keys violations by the first 100 characters), and as `TMP` and
+`TEMP` when the task's env has them: passed through from the host, they
+named a temp directory the sandbox mounts read-only, and a tool reading
+them failed to write (`tests/sandbox-temp-vars.unsafe.test.ts`). Created before the
 spawn and removed with the task's bridges at its end, or at exit; a wrap
 that throws (a held port) removes it at once, as a failed spawn does its
 strace log, or a `vx watch` kept one per refusal until it quit. A

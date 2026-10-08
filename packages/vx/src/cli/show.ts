@@ -41,7 +41,12 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
     else if (a === '--filter') {
       const v = args[++i]
-      if (v === undefined) return { ...out, error: '--filter requires a value (a pattern)' }
+      // `--filter --format json` took `--format` as the pattern; no filter opens with `--`.
+      if (v === undefined || v === '' || v.startsWith('--'))
+        return {
+          ...out,
+          error: `--filter requires a value: a project name, glob or path${seeHelp('show')}`,
+        }
       out.filters.push(v)
     } else if (a.startsWith('--filter=')) out.filters.push(a.slice('--filter='.length))
     else if (a === '--affected') out.affected = ''
@@ -55,7 +60,8 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
       return { ...out, error: `unexpected argument: ${a}${seeHelp('show')}` }
     // An empty name is a part of every name: its "did you mean" listed the
     // whole workspace.
-    else if (a === '') return { ...out, error: 'empty target (omit it to list every project)' }
+    else if (a === '')
+      return { ...out, error: `empty target (omit it to list every project)${seeHelp('show')}` }
     else out.target = a
 
     if (format !== undefined) {

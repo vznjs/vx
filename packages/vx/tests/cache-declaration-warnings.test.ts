@@ -96,9 +96,12 @@ describe('cache declarations that match nothing', () => {
     expect(await runTask('lost')).toEqual([])
   })
 
-  it('an output directory linked out of the project is named as the cause (M-61)', async () => {
-    // Every file under a `dist` that links out is dropped as outside the
-    // project, so the artifact is empty; the warning blamed the glob.
+  it('an output directory linked out of the project refuses the task by name (M-61, X-88)', async () => {
+    // Every file under a `dist` that links out is outside the project. The
+    // save once dropped them and stored an empty entry under a warning; the
+    // task is refused instead, and nothing is saved. Canonical root: the
+    // refusal names real paths.
+    root = realpathSync(root)
     const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-out-'))
     try {
       await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
@@ -107,8 +110,23 @@ describe('cache declarations that match nothing', () => {
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n`,
       )
-      expect(await runTask('linked')).toEqual([
-        `[vx] app#linked: cache.outputs matched no files (dist/**) — an empty artifact is saved; a later hit restores nothing — dist is a symlink to ${realpathSync(outside)}, outside the project, and vx keeps only outputs inside it: make dist a directory`,
+      const lines: string[] = []
+      const summary = await run({
+        cwd: root,
+        tasks: ['linked'],
+        projects: ['app'],
+        log: {
+          ...logger(lines),
+          taskStderr: (_node: unknown, line: string) => {
+            lines.push(line.trimEnd())
+          },
+        },
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(false)
+      const app = path.join(root, 'packages', 'app')
+      expect(lines.filter((l) => l.includes('symbolic link'))).toEqual([
+        `[vx] app#linked: ${path.join(app, 'dist')} is a symbolic link to ${realpathSync(outside)}, outside ${app} — vx never cleans, saves or restores declared outputs through a link that leaves the project. Remove the link and re-run, or stop declaring outputs under it.`,
       ])
     } finally {
       await rm(outside, { recursive: true, force: true })

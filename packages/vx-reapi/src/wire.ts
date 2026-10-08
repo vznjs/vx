@@ -6,19 +6,15 @@
 import * as grpc from '@grpc/grpc-js'
 import * as protoLoader from '@grpc/proto-loader'
 import path from 'node:path'
-import { canDigest, concat, digestWith, hasherFor, type DigestFunctionName } from './merkle.js'
-
-/** Bare varint bytes, for the hand-encoded RequestMetadata header. */
-function varintBytes(n: number): Uint8Array {
-  const out: number[] = []
-  let v = n
-  while (v >= 0x80) {
-    out.push((v & 0x7f) | 0x80)
-    v >>>= 7
-  }
-  out.push(v)
-  return new Uint8Array(out)
-}
+import {
+  canDigest,
+  concat,
+  digestWith,
+  hasherFor,
+  lenField,
+  strField,
+  type DigestFunctionName,
+} from './merkle.js'
 
 /**
  * Default bytes per ByteStream message.
@@ -599,21 +595,12 @@ export class ReapiClient {
    * with `ToolDetails { tool_name = 1, tool_version = 2 }`.
    */
   private requestMetadata(): Uint8Array {
-    const str = (field: number, v: string): Uint8Array => {
-      if (v === '') return new Uint8Array()
-      const bytes = new TextEncoder().encode(v)
-      return concat([varintBytes((field << 3) | 2), varintBytes(bytes.length), bytes])
-    }
-    const tool = concat([str(1, this.toolName), str(2, this.toolVersion)])
-    const toolField =
-      tool.length === 0
-        ? new Uint8Array()
-        : concat([varintBytes((1 << 3) | 2), varintBytes(tool.length), tool])
+    const tool = concat([strField(1, this.toolName), strField(2, this.toolVersion)])
     return concat([
-      toolField,
-      str(2, this.actionId),
-      str(3, this.toolInvocationId),
-      str(4, this.correlatedInvocationsId),
+      tool.length === 0 ? tool : lenField(1, tool),
+      strField(2, this.actionId),
+      strField(3, this.toolInvocationId),
+      strField(4, this.correlatedInvocationsId),
     ])
   }
 

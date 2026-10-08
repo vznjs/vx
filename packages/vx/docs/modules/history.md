@@ -30,14 +30,14 @@ export interface HistoryProvider {
 export class EmptyHistoryProvider implements HistoryProvider {}
 
 // failure-mode.ts, not history.ts:
-/** A task whose SAME cache key both passed and failed — the definition
+/** A task whose SAME cache key failed after it had passed — the definition
  *  of flaky, answered from local history with no service. Named in a
  *  run's footer, typed by `--summarize`, listed by `vx info`. */
 export interface FlakyTask {
   taskId: string
   project: string
   task: string
-  keys: number // distinct keys with both outcomes
+  keys: number // distinct keys that failed after a pass
   passes: number
   failures: number
 }
@@ -103,15 +103,16 @@ The same rule, applied at the end of every run and by the doctor:
   (`{ project, task, hash, status, attempts }`): the run's executed, keyed,
   cache-declaring outcomes (`run.ts` builds the list; a hit, a skip, a
   group or a task with no `cache` block is not one), judged BEFORE the
-  run's own rows land. A pass on a key that failed before, a failure on
-  a key that passed before, or a within-run retry is a `FlakyFinding`
+  run's own rows land. A failure on a key that passed before, a pass on
+  a key that already failed after a pass, or a within-run retry is a
+  `FlakyFinding` (a first pass after only failures is a recovery)
   with the key's outcome counts, this run folded in. `run.ts` judges each
   task as it finishes, so its row carries the note (`flakyNote`), and
   `--summarize` types them (`flaky`).
-- `flakyTasks(db)` — every task with a mixed-outcome key in the whole
+- `flakyTasks(db)` — every task with a key that failed after a pass in the whole
   retained history, most failures first: the `vx info` row. A pass that
   took a retry is one `success` row; its failed attempts count as
-  failures, so it mixes its key alone.
+  failures, so it counts on its own.
 - Cost follows the run's colour. No candidate: no query. A green miss:
   one probe of `runs_failed`, a PARTIAL index over failed rows (the
   rare ones, so a green run's 1,000 inserts only evaluate its
