@@ -197,7 +197,7 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
 - For a **normal task**, `timeout` bounds the total run time, counted
-  from the hand-off to the executor (a sandbox's setup is vx's, not the
+  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
   task's). A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
