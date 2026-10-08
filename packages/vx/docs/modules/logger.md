@@ -46,6 +46,7 @@ export function resolveOutputView(
 // What run() builds when no logger is passed.
 export interface DefaultLogger extends Logger {
   settle(): void // hand over coalesced output; write straight through from now on
+  forecast(load: () => Promise<Forecast | undefined>): void // `load` runs only if the live region is still up 1 s in
 }
 
 export function defaultLogger(
@@ -57,6 +58,7 @@ export function defaultLogger(
     forceFloorMs?: number
     coalesce?: boolean
     tty?: boolean
+    env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4; default process.env
     forwardArgs?: readonly string[]
   },
 ): DefaultLogger

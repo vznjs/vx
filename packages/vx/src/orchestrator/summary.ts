@@ -21,6 +21,7 @@ const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
 const ERROR = '#ef4444'
 const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
+const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
 const BAR_WIDTH = 50
 // Brand gradient for the rule: identity violet → pink (the project /
@@ -120,6 +121,8 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
   /** Tasks an `admit` policy held with a worker free, and the waits summed. Absent with no hold. */
   held?: { count: number; sumMs: number }
+  /** Live section only: the forecast of what is left, from history. */
+  etaMs?: number
   /** The hits' stored exec times summed: the work the cache skipped. */
   savedMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
@@ -269,6 +272,11 @@ export function formatSummarySection(
     const { maxMs, minMs, sumMs, count } = stats.spread
     spread = ` ${dim(`\u00b7 max ${formatElapsed(maxMs)} \u00b7 avg ${formatElapsed(sumMs / count)} \u00b7 min ${formatElapsed(minMs)}`)}`
   }
+  // The live run's forecast leads the spread: the one number on the row
+  // that is about the future.
+  if (stats.etaMs !== undefined) {
+    spread = ` ${dim('\u00b7')} ${paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors)}${spread}`
+  }
   // Run-shape footer (final summary only): worker pool + cache mode,
   // grouped with time under a blank line below the meters.
   if (context !== undefined) {
@@ -294,6 +302,17 @@ export function formatSummarySection(
     lines.push('', row('time', `${formatElapsed(totalMs)}${spread}`))
   }
   return lines
+}
+
+/**
+ * A forecast, said as coarsely as it is known: `~4s`, `~2m 05s`, `<1s`
+ * once the history says the end is due.
+ */
+function formatEta(ms: number): string {
+  if (ms < 1000) return '<1s'
+  const s = Math.ceil(ms / 1000)
+  if (s < 60) return `~${s}s`
+  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }
 
 /**

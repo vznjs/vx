@@ -17,3 +17,14 @@ and log output reads better. Each must cost the warm path nothing.
   `what to do` for those kinds. JSON carries it as `roots`. Read-only
   over history; the run path does not change. Row: `why.test.ts` ›
   "env, package, workspace fingerprint, config and upstream".
+- **DX-3.** The live run predicts its end: a second in, the `time` row
+  adds `~3s left` from each unfinished task's executed p50
+  (`orchestrator/forecast.ts`); a supported terminal shows tab progress
+  (OSC 9;4) and, after 10 s, a desktop notification (OSC 9). A run that
+  ends inside the second reads no history, so the warm path is
+  unchanged. Rows: `forecast.test.ts`.
+- **DX-4.** The live worker rows mark the critical path: a second in,
+  the running task the longest unfinished chain waits on reads
+  `critical path`, and every row says `blocks N`, its unfinished
+  dependents. Computed in the forecast's pass, twice a second at most,
+  live region only. Rows: `forecast.test.ts` › "names the running task".
