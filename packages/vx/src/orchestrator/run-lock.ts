@@ -41,8 +41,8 @@
 // A holder's pid can come back: the temp directory outlives a container
 // restart, and the restarted container's vx got the dead run's pid (1) and
 // waited for itself forever (nx#36473 reproduced on vx, 2026-09-24). So a
-// lock naming OUR pid is stale — a run of this process would be in
-// `heldHere` — and on Linux the entry also carries the holder's start
+// lock naming OUR pid is stale unless this process placed that entry and
+// has not left it (`placed`) — and on Linux the entry also carries the holder's start
 // time, so a pid another process now wears is stale too. Where the lock
 // cannot be made or read for any reason but "held" (a temp directory this
 // user cannot write), the run says so once and proceeds unlocked: the
@@ -71,6 +71,12 @@ import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, xxh3hex } from '../util/inde
 const heldHere = new Map<string, number>()
 /** The entry this process's taking of each held lock wrote. */
 const takers = new Map<string, string>()
+/**
+ * Every entry this process has placed and not yet left, listed before its
+ * rename: a concurrent taking here reads it before `heldHere` names it, and
+ * must wait for it, not reclaim it as a dead run of this pid.
+ */
+const placed = new Set<string>()
 
 /**
  * A signal exit is `process.exit` (signals.ts): no finally runs and nothing
@@ -248,7 +254,7 @@ function nextEntry(): string {
  * procfs once per holder, not once per poll.
  */
 function holderLive(h: Holder, sameAsLast: boolean): boolean {
-  if (h.pid === process.pid) return false
+  if (h.pid === process.pid) return placed.has(h.entry)
   if (!alive(h.pid)) return false
   if (h.start === null || sameAsLast) return true
   const now = startTime(h.pid)
@@ -278,11 +284,13 @@ async function place(lockDir: string): Promise<string | null> {
   // directory a killed pid 1 left, and refuse every run after it.
   const staging = `${lockDir}.${entry}.${Math.random().toString(36).slice(2)}`
   await mkdir(staging)
+  placed.add(entry)
   try {
     await writeFile(path.join(staging, entry), '')
     await rename(staging, lockDir)
     return entry
   } catch (err) {
+    placed.delete(entry)
     await rm(staging, { recursive: true, force: true })
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'ENOTEMPTY' || code === 'EEXIST') return null
@@ -327,6 +335,8 @@ export async function acquireRunLock(
     }
     heldHere.delete(lockDir)
     const taker = takers.get(lockDir)
+    // Leaving: a taking here from now on may reclaim it, as before its unlink.
+    if (taker !== undefined) placed.delete(taker)
     // The unlink of this taking's own entry is the proof no later run
     // reclaimed the lock: had one, the entry is gone and nothing else is
     // touched. A run that joined another's taking in this process leaves
@@ -388,6 +398,6 @@ export async function acquireRunLock(
         opts.log(`[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`)
       }
     }
-    await new Promise((r) => setTimeout(r, POLL_MS))
+    await Bun.sleep(POLL_MS)
   }
 }

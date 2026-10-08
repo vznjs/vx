@@ -9,7 +9,7 @@
 
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { outputsOverlap } from '@vzn/vx'
+import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -216,6 +216,27 @@ export function spareTrackedOutputs(
   tracked: readonly string[],
 ): [string, string][] {
   const todos: [string, string][] = []
+  const trackedSet = new Set(tracked)
+  /** Drop the `!` entries readers carry for a committed file no output names any more. */
+  const unhide = (owner: (typeof projects)[number] | null, rooted: string) => {
+    for (const q of projects) {
+      const qrel = path.relative(root, q.dir).split(path.sep).join('/')
+      for (const r of q.tasks) {
+        const inputs = (r.task?.['cache'] as { inputs?: Outputs } | undefined)?.inputs
+        if (inputs === undefined) continue
+        const own =
+          q === owner &&
+          Array.isArray(inputs.files) &&
+          (qrel === '' || rooted.startsWith(`${qrel}/`))
+            ? rooted.slice(qrel === '' ? 0 : qrel.length + 1)
+            : undefined
+        if (own !== undefined)
+          inputs.files = (inputs.files as unknown[]).filter((g) => g !== `!${own}`)
+        if (Array.isArray(inputs.workspaceFiles))
+          inputs.workspaceFiles = inputs.workspaceFiles.filter((g) => g !== `!${rooted}`)
+      }
+    }
+  }
   for (const p of projects) {
     const rel = path.relative(root, p.dir).split(path.sep).join('/')
     const own = rel === '' ? tracked : filesUnder(tracked, rel).map((f) => f.slice(rel.length + 1))
@@ -229,7 +250,20 @@ export function spareTrackedOutputs(
       ] as const) {
         const globs = outputs[key]
         if (!Array.isArray(globs) || globs.length === 0) continue
-        const strings = globs.filter((g): g is string => typeof g === 'string')
+        let strings = globs.filter((g): g is string => typeof g === 'string')
+        // An output naming one committed file (eslint's
+        // `eslint-suppressions.json`) is a source: its `!` would take the
+        // whole entry back, so the entry goes, and so does the `!` a
+        // reader's inputs got for it, or every reader ran uncached (hono).
+        const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
+        const sources = new Set(
+          strings.filter((g) => isLiteralPattern(g) && trackedSet.has(rootedOf(g))),
+        )
+        if (sources.size > 0) {
+          strings = strings.filter((g) => !sources.has(g.startsWith('!') ? g.slice(1) : g))
+          outputs[key] = strings
+          for (const g of sources) unhide(key === 'files' ? p : null, rootedOf(g))
+        }
         const hit = coveredTracked(strings, base)
         if (hit.length > 0) hits.push([key, strings, hit])
       }

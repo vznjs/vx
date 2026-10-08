@@ -20,7 +20,7 @@ import {
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
-export interface ToolDef {
+interface ToolDef {
   name: string
   description: string
   inputSchema: Record<string, unknown>

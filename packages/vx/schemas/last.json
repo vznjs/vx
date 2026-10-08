@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx last --format json",
-  "description": "`vx last [runId] [--failed]` prints a run; `--list` prints an array of invocations, newest first.",
+  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first.",
   "oneOf": [
     {
       "type": "object",

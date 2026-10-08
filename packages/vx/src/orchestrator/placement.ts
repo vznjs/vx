@@ -281,13 +281,27 @@ export function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean {
   return executors.some((e) => e.capacity !== undefined)
 }
 
+/**
+ * Each pooled executor's pool, under a name no other executor's pool
+ * shares: the scheduler counts a pool by its name, and one package declared
+ * twice (`@vzn/vx-reapi` against two clusters) names both executors alike,
+ * so their two capacities were one. A repeat takes `#2`, `#3` in placement
+ * order.
+ */
 export function poolOfPlacement(
   placements: Placements,
 ): (id: string) => { name: string; capacity: number } | undefined {
+  const pools = new Map<TaskExecutor, { name: string; capacity: number }>()
+  const taken = new Set<string>()
+  for (const executor of placements.executors.values()) {
+    if (executor.capacity === undefined || pools.has(executor)) continue
+    let name = executor.name
+    for (let n = 2; taken.has(name); n++) name = `${executor.name}#${n}`
+    taken.add(name)
+    pools.set(executor, { name, capacity: executor.capacity })
+  }
   return (id) => {
     const executor = placements.executors.get(id)
-    return executor?.capacity === undefined
-      ? undefined
-      : { name: executor.name, capacity: executor.capacity }
+    return executor === undefined ? undefined : pools.get(executor)
   }
 }

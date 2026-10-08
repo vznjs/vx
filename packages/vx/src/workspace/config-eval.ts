@@ -292,7 +292,11 @@ function acquireWorker(): Worker {
     // config reports the same text it would from an in-process import.
     const err = new Error(msg.message) as Error & { position?: WorkerReply['position'] }
     err.name = msg.name
+    // A stackless throw stays stackless: the rebuilt Error's own stack names
+    // this file, and `configLoadError` reads a stack naming no file as Bun's
+    // JSON loader's.
     if (msg.stack !== null) err.stack = msg.stack
+    else delete err.stack
     if (msg.position !== null) err.position = msg.position
     p.reject(err)
   }

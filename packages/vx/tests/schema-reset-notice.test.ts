@@ -168,7 +168,7 @@ describe('an upgrade resets the cache in silence', () => {
   // Item 1083: the dry prune refused an earlier schema, so it could not
   // preview the prune after an upgrade, which resets the index and reaps
   // every aged artifact as row-less. It now names what that prune reaps,
-  // and still writes nothing.
+  // in silence, and still writes nothing.
   it('`vx cache prune --dry-run` on an earlier schema names what the real prune reaps', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
@@ -182,8 +182,7 @@ describe('an upgrade resets the cache in silence', () => {
     const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
     expect({ ...dry, after: index() }).toEqual({
       threw: null,
-      stderr:
-        "[vx] the cache index is schema v0 from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
+      stderr: '',
       stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
       after: before,
     })

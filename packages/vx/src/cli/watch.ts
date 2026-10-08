@@ -55,6 +55,12 @@ function sayCannot(what: string, err: unknown): void {
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
+/**
+ * ...but no longer than this after the first: a writer that never pauses
+ * for a window (a dev server logging into its project every 50 ms) reset
+ * the timer forever, and an edit made meanwhile never ran.
+ */
+const DEBOUNCE_MAX_MS = 1_000
 
 /**
  * The run flags a watch loop cannot honour, as the refusal line it prints; null
@@ -80,7 +86,7 @@ export function watchRefusal(parsed: RunArgs): string | null {
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
   if (parsed.error) {
-    process.stderr.write(`vx watch: ${parsed.error}\n`)
+    process.stderr.write(`vx watch: ${parsed.error}${seeHelp('watch')}\n`)
     return 1
   }
 
@@ -369,11 +375,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  let windowOpened = 0
 
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     if (running) return
-    if (debounceTimer) clearTimeout(debounceTimer)
+    if (debounceTimer) {
+      if (Date.now() - windowOpened >= DEBOUNCE_MAX_MS) return
+      clearTimeout(debounceTimer)
+    } else windowOpened = Date.now()
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return
@@ -495,7 +505,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       const handle = arm(proj.dir, true, (filename) => {
         const abs = path.join(proj.dir, filename)
         if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
-        if (shapesWatchedSet(filename)) reread = true
+        // A module the config imports from inside the project is the config
+        // too: its edit can add an output or a `workspaceFiles` input.
+        if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
         trigger(`${proj.name} ${filename}`, abs)
       })
       perProject.set(proj.dir, handle)
@@ -516,8 +528,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
             if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
-            if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
-            trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+            const abs = path.join(workspaceRoot, filename)
+            if (
+              shapesWatchedSet(filename) ||
+              filename === LOCKFILE_NAME ||
+              configImportFiles.includes(abs)
+            )
+              reread = true
+            trigger(`root ${filename}`, abs)
           })
         : // The root itself, non-recursive, beside the per-project arms, so
           // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
