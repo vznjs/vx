@@ -305,8 +305,9 @@ describe('vx migrate (turbo)', () => {
       expect(seed.exec?.interactive).toBe(true)
       expect(seed.cache).toBeUndefined()
 
-      // No package declares a `deploy` script → task not emitted.
-      expect(tasks.deploy).toBeUndefined()
+      // No package declares a `deploy` script → Turbo's no-op node, a group
+      // with no edge, so `vx run deploy` exits 0 as `turbo run deploy` does.
+      expect(tasks.deploy).toEqual({ dependsOn: [] })
     },
     TIMEOUT,
   )
@@ -400,8 +401,9 @@ describe('vx migrate (turbo)', () => {
     // to inputs.workspaceFiles instead of a TODO); test and seed clean.
     // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
     // persistent and nothing depends on it, so its readiness note is no
-    // TODO: it counts as clean (item 602).
-    expect(result.out).toContain('5 tasks migrated clean')
+    // TODO: it counts as clean (item 602). Each package's `deploy` (no
+    // script anywhere) is an empty group, clean.
+    expect(result.out).toContain('7 tasks migrated clean')
     expect(result.out).toContain('4 TODO')
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual(['app#build', 'lib#build'])
@@ -607,6 +609,153 @@ describe('vx migrate (nx) with no exported graph', () => {
         expect(r.out).toContain('vx-migrate: nx graph → vx.config.ts')
         expect(r.out).toContain('packages/pkg-a/vx.config.ts')
         expect(await nxCalls(root)).toBe(1)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// Lerna 6+ runs `lerna run` on Nx over the graph `nx graph` exports, with
+// or without nx.json; vx-migrate answered "nothing to migrate".
+describe('vx migrate (lerna)', () => {
+  const LERNA_GRAPH = {
+    graph: {
+      nodes: {
+        'pkg-a': {
+          name: 'pkg-a',
+          data: {
+            root: 'packages/pkg-a',
+            targets: { test: { executor: 'nx:run-script', options: { script: 'test' } } },
+          },
+        },
+      },
+      dependencies: { 'pkg-a': [] },
+    },
+  }
+  const installed = (v: string) => JSON.stringify({ name: 'lerna', version: v })
+  const runs = (deps: object = {}) =>
+    JSON.stringify({ scripts: { build: 'lerna run build' }, devDependencies: deps })
+  async function lernaRepo(files: Record<string, string>): Promise<string> {
+    const root = await makeRoot('vx-migrate-lerna-')
+    for (const [rel, text] of Object.entries({ 'package.json': runs(), ...files })) {
+      await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+      await writeFile(path.join(root, rel), text)
+    }
+    await writeFile(path.join(root, 'graph.json'), JSON.stringify(LERNA_GRAPH))
+    await addPackage(root, 'pkg-a', { test: 'jest' })
+    await fakeNxCli(root)
+    return root
+  }
+
+  const lerna9 = { 'node_modules/lerna/package.json': installed('9.0.7') }
+  for (const [label, files, mapped] of [
+    ['Lerna installed', { 'lerna.json': '{}', ...lerna9 }, true],
+    ['Lerna 9 declared', { 'lerna.json': '{}', 'package.json': runs({ lerna: '^9.0.7' }) }, true],
+    [
+      'Lerna 5 that opts in',
+      { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },
+      true,
+    ],
+    ['useNx: false', { 'lerna.json': '{ "useNx": false }', ...lerna9 }, false],
+    [
+      'Lerna 5 installed',
+      { 'lerna.json': '{}', 'node_modules/lerna/package.json': installed('5.6.2') },
+      false,
+    ],
+    [
+      'Lerna 5 declared, none installed',
+      { 'lerna.json': '{}', 'package.json': runs({ lerna: '^5.5.2' }) },
+      false,
+    ],
+    [
+      'lerna.json with no Lerna (lerna-lite reads it too)',
+      { 'lerna.json': '{ "useNx": true }' },
+      false,
+    ],
+    [
+      'root scripts that never `lerna run` (Lerna publishes)',
+      {
+        'lerna.json': '{}',
+        ...lerna9,
+        'package.json': '{ "scripts": { "build": "pnpm -r build" } }',
+      },
+      false,
+    ],
+  ] as const) {
+    it(
+      `${label}: ${mapped ? 'the exported graph is the source' : 'Lerna’s own runner, nothing to read'}`,
+      async () => {
+        const root = await lernaRepo(files)
+        try {
+          const r = await vx(root, ['--dry'])
+          expect(
+            mapped
+              ? [
+                  r.code,
+                  r.err,
+                  r.out.includes('vx-migrate: nx graph → vx.config.ts'),
+                  await nxCalls(root),
+                ]
+              : [r.code, r.err, false, 0],
+          ).toEqual(
+            mapped
+              ? [0, '', true, 1]
+              : [
+                  1,
+                  'vx-migrate: nothing to migrate: no turbo.json and no Nx workspace — for package.json scripts, run `vx init`\n',
+                  false,
+                  0,
+                ],
+          )
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+
+  it(
+    'beside turbo.json, Turbo runs the tasks: no --from asked',
+    async () => {
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+        'turbo.json': '{ "tasks": {} }',
+      })
+      try {
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.config.ts')]).toEqual([
+          0,
+          '',
+          true,
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--keep writes the workspace file declaring nx(), as vx init does for nx.json',
+    async () => {
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+      })
+      try {
+        const r = await vx(root, ['--keep'])
+        const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+        expect([
+          r.code,
+          r.err,
+          ws.includes("import { nx } from '@vzn/vx-migrate'"),
+          [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
+          await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).exists(),
+        ]).toEqual([0, '', true, ['nx', 'scheduleHistoryPlugin'], false])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

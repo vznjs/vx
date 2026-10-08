@@ -12,7 +12,14 @@
 import { mkdir, writeFile, chmod, readlink, realpath, rm, symlink, unlink } from 'node:fs/promises'
 import { constants, existsSync } from 'node:fs'
 import path from 'node:path'
-import { executorFallback, isLiteralPattern, isUserError, normalizeGlob, UserError } from '@vzn/vx'
+import {
+  executorFallback,
+  isLiteralPattern,
+  isUserError,
+  normalizeGlob,
+  UserError,
+  withForwardArgs,
+} from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -1252,12 +1259,9 @@ async function this_readStream(
   return ''
 }
 
-/** Forwarded args are appended shell-quoted, exactly as the local executor does. */
+/** Forwarded args are placed by core's own `withForwardArgs`, as the local executor's are. */
 function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): string {
-  const quoted =
-    req.forwardArgs.length === 0
-      ? req.command
-      : `${req.command} ${req.forwardArgs.map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(' ')}`
+  const command = withForwardArgs(req.command, req.forwardArgs)
   // A remote action gets NO PATH from this machine — sending one would put a
   // host path in the action digest and split every laptop from every runner.
   // But a task's command is normally a package binary (`oxlint`, `tsc`), and
@@ -1285,7 +1289,7 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
   return (
     `VX_ROOT=${root}; ${cd}` +
     `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
-    quoted
+    command
   )
 }
 
@@ -1345,7 +1349,7 @@ export function commandEnvironment(
   return [...merged].map(([name, value]) => ({ name, value }))
 }
 
-export interface OutputPathSets {
+interface OutputPathSets {
   /** v2.1+ `output_paths` — deduped, sorted. */
   outputPaths: string[]
   /** v2.0 legacy split: wildcard-free globs are files, prefix-derived are directories. */

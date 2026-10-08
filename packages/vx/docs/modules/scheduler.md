@@ -46,6 +46,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
+  cacheOff?: true // the run's policy read and wrote nothing: a run of it is no-cache, not a miss
   blockedBy?: string // skipped: the failed or aborted task at the root of the block
   timedOut?: true // failed: vx's own `timeout` killed the final attempt
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
@@ -101,6 +102,13 @@ export function deadServerBehind(
   serverDied: (id: string) => boolean,
   id: string,
 ): string | undefined
+
+// Persistent tasks nobody asked for whose every dependant is a restore-tier hit.
+export function idleServers(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dependents: ReadonlyMap<string, string[]>,
+  restoreTier: ReadonlySet<string> | undefined,
+): Set<string>
 
 // Thrown by `execute` for a restore-tier task with nothing to restore.
 export class RestoreDemoted extends Error {

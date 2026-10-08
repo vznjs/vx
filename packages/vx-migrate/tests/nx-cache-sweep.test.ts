@@ -88,4 +88,16 @@ describe('the requests', () => {
       new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).get('aa'),
     ).rejects.toThrow('HTTP 500')
   })
+  it('a GET answering 403 says a read was refused, not a write', async () => {
+    const { fetchImpl } = stub(() => new Response(null, { status: 403 }))
+    const err = await new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl)
+      .get('aa')
+      .then(
+        () => null,
+        (e: unknown) => (e as Error).message,
+      )
+    expect(err).toBe(
+      'HTTP 403: access forbidden (the token may not read); remote cache off for this run',
+    )
+  })
 })

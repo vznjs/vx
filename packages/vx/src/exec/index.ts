@@ -18,6 +18,7 @@ export {
   exitSignal,
   type CaptureConfig,
   execWord,
+  maskCaptured,
 } from './runner.js'
 export {
   initSandbox,

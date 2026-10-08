@@ -125,6 +125,13 @@ describe.if(CHUNKING_SUPPORTED)('the command line a worker runs', () => {
     expect(args).toEqual(["it's", 'a b'])
   })
 
+  // X-112: appended after it, a trailing comment took the args and the
+  // worker ran the command without them, where the local executor kept them.
+  it('puts the args before a trailing comment, as the local executor does', async () => {
+    await runOne(request({ command: `printf '<%s>' # each arg`, forwardArgs: ["it's", 'a b'] }))
+    expect(sh(lastScript(), path.join(root, 'pkg')).out).toBe("<it's><a b>")
+  })
+
   it('from the input root: the root is $PWD, and a project dir that is not there stops it', async () => {
     await runOne(
       request({ command: PRINT, outputs: { files: [], workspaceFiles: ['node_modules/.m'] } }),

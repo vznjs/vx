@@ -77,10 +77,10 @@ export function pollWatcher(
    */
   skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
 ): WatchHandle {
-  let previous = new Map<string, number>()
+  let previous = new Map<string, string>()
   let first = true
   const scan = (): void => {
-    const current = new Map<string, number>()
+    const current = new Map<string, string>()
     const walk = (abs: string, rel: string): void => {
       let entries: fs.Dirent[]
       try {
@@ -95,15 +95,23 @@ export function pollWatcher(
           if (recursive && !skipDir(childRel)) walk(path.join(abs, e.name), childRel)
           continue
         }
-        if (!e.isFile()) continue
+        // A link is an input as its target string (watch-judge.ts), so that
+        // string is sampled, never the target's times: a retarget inside
+        // one clock tick carries the same times.
+        const link = e.isSymbolicLink()
+        if (!e.isFile() && !link) continue
         try {
           // The later of the two clocks, as `modifiedBefore` reads them: a
           // replacement that carries the old file's mtime (`cp -p`, `rsync
           // -a`, `mv` of a file stamped the same) moved nothing under mtime
           // alone, and the poller never ran it where the native watcher did.
           // A rename or a write moves ctime, and no process can set it.
-          const st = fs.statSync(path.join(abs, e.name))
-          current.set(childRel, Math.max(st.mtimeMs, st.ctimeMs))
+          const p = path.join(abs, e.name)
+          if (link) current.set(childRel, `link:${fs.readlinkSync(p)}`)
+          else {
+            const st = fs.statSync(p)
+            current.set(childRel, String(Math.max(st.mtimeMs, st.ctimeMs)))
+          }
         } catch {
           // raced with a delete; the next scan settles it
         }
@@ -111,8 +119,8 @@ export function pollWatcher(
     }
     walk(dir, '')
     if (!first) {
-      for (const [rel, mtime] of current) {
-        if (previous.get(rel) !== mtime) onEvent(rel)
+      for (const [rel, stamp] of current) {
+        if (previous.get(rel) !== stamp) onEvent(rel)
       }
       for (const rel of previous.keys()) {
         if (!current.has(rel)) onEvent(rel)
@@ -237,6 +245,12 @@ export function armWatcher(
  */
 function treeWatcher(root: string, listener: (filename: string) => void): WatchHandle {
   const watchers = new Map<string, fs.FSWatcher>()
+  // Which directory each watch holds: inotify follows the inode, so a name
+  // removed and made again before its event is handled stats as a
+  // directory still, and the watch on the deleted one heard nothing more.
+  // The birth time too: a freed inode number goes to the next directory.
+  const held = new Map<string, string>()
+  const idOf = (st: fs.Stats): string => `${st.dev}:${st.ino}:${st.birthtimeMs}`
   let closed = false
   let armed = false
   let warned = false
@@ -249,6 +263,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
       if (key !== rel && !key.startsWith(rel + '/')) continue
       w.close()
       watchers.delete(key)
+      held.delete(key)
     }
   }
   const watchDir = (rel: string, report: boolean): void => {
@@ -269,7 +284,10 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
           return
         }
         if (!st.isDirectory()) return
-        if (watchers.has(child)) return
+        if (watchers.has(child)) {
+          if (held.get(child) === idOf(st)) return
+          drop(child)
+        }
         watchDir(child, true)
       })
     } catch (err) {
@@ -289,6 +307,11 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
     }
     w.on('error', () => drop(rel))
     watchers.set(rel, w)
+    try {
+      held.set(rel, idOf(fs.statSync(abs)))
+    } catch {
+      held.set(rel, '')
+    }
     let entries: fs.Dirent[]
     try {
       entries = fs.readdirSync(abs, { withFileTypes: true })
@@ -314,6 +337,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
       closed = true
       for (const w of watchers.values()) w.close()
       watchers.clear()
+      held.clear()
     },
   }
 }

@@ -64,6 +64,8 @@
       "--verbosity"
     ],
     "show": [
+      "--affected",
+      "--filter",
       "--format",
       "--help"
     ],
@@ -191,6 +193,10 @@
     "run --filter": [
       "*"
     ],
+    "run --force": [
+      "false",
+      "true"
+    ],
     "run --graph": [
       "*"
     ],
@@ -232,6 +238,12 @@
       "10",
       "2"
     ],
+    "show --affected": [
+      "*"
+    ],
+    "show --filter": [
+      "*"
+    ],
     "show --format": [
       "json",
       "pretty"
@@ -271,6 +283,10 @@
     ],
     "watch --filter": [
       "*"
+    ],
+    "watch --force": [
+      "false",
+      "true"
     ],
     "watch --output-logs": [
       "errors-only",

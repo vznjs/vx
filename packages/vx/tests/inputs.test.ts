@@ -98,7 +98,7 @@ describe('cleanOutputs — strict output-ownership contract', () => {
   // Up to 128 paths a clean removes synchronously, past it in parallel
   // (`SYNC_CLEAN_MAX`); both sides of the boundary hold the same contract.
   for (const n of [128, 129]) {
-    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the top`, async () => {
+    it(`${n} outputs, one directory each: every one removed, emptied directories pruned to the glob's root`, async () => {
       for (let i = 0; i < n; i++) await write(path.join(projectDir, 'dist', `d${i}`, 'f.js'))
       await write(path.join(projectDir, 'src', 'x.js'), 'source')
 
@@ -109,7 +109,8 @@ describe('cleanOutputs — strict output-ownership contract', () => {
       })
 
       expect(cleaned.length).toBe(n)
-      expect(await readdir(projectDir)).toEqual(['src'])
+      expect((await readdir(projectDir)).sort()).toEqual(['dist', 'src'])
+      expect(await readdir(path.join(projectDir, 'dist'))).toEqual([])
       expect(await readFile(path.join(projectDir, 'src', 'x.js'), 'utf8')).toBe('source')
     })
 
@@ -1185,6 +1186,23 @@ describe('resolveInputs — runtime values', () => {
     expect(r.runtimeValues[0]![1]).toContain('err')
   })
 
+  it('keeps the stdout/stderr split: moving bytes between the streams moves the output', async () => {
+    const outputs = new Set<string>()
+    for (const cmd of [
+      'printf ab',
+      'printf a; printf b 1>&2',
+      'printf b 1>&2',
+      'printf "\\0" ; printf 1 1>&2',
+    ]) {
+      const r = await resolveInputs(args({ runtime: [cmd] }))
+      outputs.add(r.runtimeValues[0]![1])
+    }
+    // A stdout that itself spells the framing stays apart from the framed pair.
+    const r = await resolveInputs(args({ runtime: [`printf '\\0001\\0001'`] }))
+    outputs.add(r.runtimeValues[0]![1])
+    expect(outputs.size).toBe(5)
+  })
+
   it('sorts runtime pairs by command for deterministic folding', async () => {
     const r = await resolveInputs(args({ runtime: ['echo b', 'echo a'] }))
     expect(r.runtimeValues.map(([c]) => c)).toEqual(['echo a', 'echo b'])
@@ -1385,17 +1403,40 @@ describe('inputs.ts edges', () => {
   it('an additive clean prunes a parent whose recorded directory is already gone', async () => {
     // The row's own directory left before the clean (ENOENT); its emptied
     // parent is still pruned, as it would be had the clean removed both.
-    await mkdir(path.join(root, 'dist'))
-    await cleanOutputPaths({ projectDir: root, rels: ['dist/sub/x'] })
-    expect(existsSync(path.join(root, 'dist'))).toBe(false)
-    expect(existsSync(root)).toBe(true) // CONTROL: never the root
+    await mkdir(path.join(root, 'out', 'dist'), { recursive: true })
+    await cleanOutputPaths({ projectDir: root, rels: ['out/dist/sub/x'], outputs: ['out/**'] })
+    expect(existsSync(path.join(root, 'out', 'dist'))).toBe(false)
+    expect(await readdir(path.join(root, 'out'))).toEqual([]) // CONTROL: the glob's root stays
   })
 
-  it('a workspace-output clean prunes the directories it emptied', async () => {
+  it('an additive clean keeps a directory a sibling just made, as the glob clean does', async () => {
+    // The restore's clean takes the task's rows, then extracts. A sibling
+    // that had made `dist` (or `gen`, a literal's directory) and not yet
+    // written into it lost it to the prune, and its write failed "Directory
+    // nonexistent". Order, not time: the sibling's mkdir lands first, its
+    // write after the clean.
+    await write(path.join(root, 'dist', 'a.txt'))
+    await write(path.join(root, 'dist', 'sub', 'b.txt'))
+    await write(path.join(root, 'gen', 'z.txt'))
+    await write(path.join(root, 'lit', 'x', 'y.txt'))
+    await cleanOutputPaths({
+      projectDir: root,
+      rels: ['dist/a.txt', 'dist/sub/b.txt', 'gen/z.txt', 'lit/x/y.txt'],
+      outputs: ['dist/**', 'gen/z.txt', 'lit'],
+    })
+    await writeFile(path.join(root, 'dist', 'sibling.txt'), 's')
+    await writeFile(path.join(root, 'gen', 'sibling.txt'), 's')
+    // CONTROL: below the glob's root and the literal tree itself still go.
+    expect(existsSync(path.join(root, 'dist', 'sub'))).toBe(false)
+    expect(existsSync(path.join(root, 'lit'))).toBe(false)
+    expect((await readdir(root)).sort()).toEqual(['dist', 'gen'])
+  })
+
+  it('a workspace-output clean prunes the directories it emptied below the glob’s root', async () => {
     await write(path.join(root, 'gen', 'deep', 'x.txt'))
     await write(path.join(root, 'keep', 'y.txt'))
     await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['gen/**'] })
-    expect(existsSync(path.join(root, 'gen'))).toBe(false)
+    expect(await readdir(path.join(root, 'gen'))).toEqual([])
     expect(existsSync(path.join(root, 'keep', 'y.txt'))).toBe(true) // CONTROL
   })
 })

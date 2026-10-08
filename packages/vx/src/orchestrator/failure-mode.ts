@@ -29,6 +29,8 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 function keyOutcomesSql(source: string, where = ''): string {
   return `SELECT project, task, hash,
        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+       SUM(CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END)
+         AS retried_failures,
        SUM(CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
            THEN 1 ELSE 0 END) AS passes
        FROM ${source}
@@ -186,13 +188,17 @@ export interface FlakyTask {
 /**
  * Every task with a mixed-outcome key anywhere in the retained history
  * (30 days, `RunHistory.pruneOlderThan`), most failures first: the
- * doctor's list. A full scan of `runs`, which an inspection verb affords.
+ * doctor's list. A pass that took a retry mixes its key on its own: it is
+ * one `success` row whose failed attempts count as failures (`vx info`
+ * said `none` over one). A full scan of `runs`, which an inspection verb
+ * affords.
  */
 export function flakyTasks(db: Database): FlakyTask[] {
   const rows = db
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures
-       FROM (${keyOutcomesSql('runs')})
+       FROM (SELECT project, task, passes, failures + retried_failures AS failures
+             FROM (${keyOutcomesSql('runs')}))
        WHERE failures > 0 AND passes > 0
        GROUP BY project, task
        ORDER BY failures DESC, passes DESC, project, task`,
