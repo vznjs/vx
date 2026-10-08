@@ -6,7 +6,7 @@ authors:
 tags:
   - dx
   - caching
-excerpt: "vx names a task flaky only when its exact cache key has both passed and failed on record, or it needed a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
+excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it needed a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
 ---
 
 Flaky-test detection is one of the features that usually lives behind
@@ -21,14 +21,15 @@ vx defines it narrowly, and the narrow definition is the feature.
 
 A task is **flaky** when one of two things is on record:
 
-- its exact cache key has **both passed and failed**, this run
+- its exact cache key **failed after it had passed**, this run
   included (a cache hit counts as a pass; it replayed one), or
 - it needed a **retry** this run (`exec.retries` or `--retry`) and then
   passed.
 
 A failure on a key that never passed is a **break**. The inputs
 changed and the result is red, which is what a red run usually means,
-and it is not listed. Only tasks with a `cache` block are judged at
+and it is not listed. Nor is the first pass after only failures: that
+is a recovery (a missing tool installed), not a flake. Only tasks with a `cache` block are judged at
 all: "same inputs, different outcome" is a claim only declared inputs
 can back. A task without them is keyed on its config alone, and two
 runs of it are not the same inputs in any meaningful sense.

@@ -529,7 +529,7 @@ describe('listProjects', () => {
     }
     expect(await unreachedPackages(await loadWorkspace(dir))).toEqual(['tools/gen'])
     // Past three, the hint counts the rest.
-    expect(unreachedHint(['a', 'b', 'c', 'd'])).toContain('not: a, b, c and 1 more.')
+    expect(unreachedHint(['a', 'b', 'c', 'd'], dir)).toContain('not: a, b, c and 1 more.')
   })
 
   it('a member glob keeps npm/pnpm semantics: a bracket is a class there (item 667)', async () => {
@@ -849,6 +849,26 @@ describe('malformed workspace manifests', () => {
     await expect(listProjects(ws)).rejects.toThrow(
       /failed to parse .*packages\/broken\/package\.json/,
     )
+  })
+
+  it('a `workspaces` object with no `packages` is the root alone, as bun and yarn read it (D-151)', async () => {
+    // bun 1.4 installs `workspaces: { catalog }` as one package and resolves
+    // its catalog; yarn 1.22 and 4.5 run `{ nohoist }` as the root alone.
+    // vx refused both: "`workspaces` must be an array of glob strings".
+    await mkdir(path.join(dir, 'packages/a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
+    for (const workspaces of [{ catalog: { 'is-number': '7.0.0' } }, { nohoist: ['**/x'] }, {}]) {
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app', workspaces }))
+      const ws = await loadWorkspace(dir)
+      const projects = await listProjects(ws)
+      expect({ workspaces, projects: projects.map((p) => [p.name, p.dir]) }).toEqual({
+        workspaces,
+        projects: [['app', dir]],
+      })
+      if ('catalog' in workspaces) {
+        expect(ws.catalogs?.get('default')).toEqual({ 'is-number': '7.0.0' })
+      }
+    }
   })
 
   it('rejects a pnpm `packages:` string instead of a list', async () => {

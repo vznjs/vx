@@ -452,7 +452,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v40`, core `SCHEMA_VERSION` `v32`,
+- `CACHE_VERSION` `vx-cache-v41`, core `SCHEMA_VERSION` `v32`,
   `TELEMETRY_SCHEMA_VERSION` 3. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.
