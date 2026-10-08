@@ -1132,3 +1132,8 @@ reaches no build task.` The plan now carries the run's own line
   (`affectedTaskProjects`: the candidates' graph, the `graph` stage,
   `keptByAffected`, which `prepareRun` applies too). `vx show --affected`
   with no task keeps the run's candidates. Rows: `show-affected.test.ts`.
+- **X-145.** The default `build` was named as a declared task where
+  `vx run build --all` refuses it: `vx build` hinted that run, and
+  `vx show build` printed a block per project. Both now skip it as the
+  picker and the run do; `vx show` and `vx info` still count it. Rows:
+  `default-build-not-declared.test.ts`, `show-default-build.test.ts`.
