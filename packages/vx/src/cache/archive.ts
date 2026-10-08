@@ -209,6 +209,9 @@ interface PackArgs {
   within?: string
 }
 
+/** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
+const USTAR_MTIME_MAX = 8 ** 11 - 1
+
 /** At or below this many outputs, `planArtifact` stats them on the calling thread. */
 const ON_THREAD_STATS = 32
 
@@ -309,10 +312,10 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
         size: st.size,
         mode,
         mtimeMs: Math.floor(st.mtimeMs),
-        // ustar's octal field holds no sign: an mtime before 1970 made the
-        // header unreadable and every save of it a "corrupt artifact". The
-        // sidecar above carries the real value.
-        mtime: Math.max(0, Math.floor(st.mtimeMs / 1000)),
+        // ustar's octal field holds no sign and 11 digits: an mtime before
+        // 1970 made the header unreadable, and one past March 2242 failed
+        // every save of the task. The sidecar above carries the real value.
+        mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(st.mtimeMs / 1000))),
       }
     }),
   )

@@ -1020,7 +1020,8 @@ unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
 became ready — `timeout` (the readiness deadline fired; `exitCode` is
-the kill's, 143 or 137 after the grace, as an ordinary timeout's),
+the kill's, 143 or 137 after the grace, and 143 for a server that
+traps the TERM and exits 0, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
@@ -1250,7 +1251,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour. The line `vx watch: initial
 run...` precedes it.
-2. **Watch loop.** After the initial run finishes, the directory of
+2. **Watch loop.** After the initial run finishes (or once it waits only
+   on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
    anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
@@ -1260,7 +1262,9 @@ run...` precedes it.
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A file a
+   task's input; the cycle after it re-evaluates the file. A `.gitignore`
+   there or in a package glob's directory is a cycle too: inputs are
+   gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
    the configs; so is one inside a project, which re-reads the set as the
@@ -1270,8 +1274,8 @@ run...` precedes it.
    by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
-   runs is a cycle that runs it, and its directory is watched from then
-   on; a removed one is dropped. An edit to the glob list itself (the
+   runs is a cycle that runs it, and its directory is watched from before
+   that cycle runs, so an edit made during it queues (X-138); a removed one is dropped. An edit to the glob list itself (the
    root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
    the set, so a glob added there is watched from the cycle it triggers
    (item 1018). A base, or a directory a config imports from, removed and made
@@ -1434,7 +1438,8 @@ launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
 change starts it again. An edit while a cycle waits only on a server
 that has not printed its `readyWhen` line stops that cycle and starts
-the next, so a fix reaches a server stuck before ready. Stopping watch stops the server too. For dev-server workflows where you want the server
+the next, so a fix reaches a server stuck before ready, in the initial
+run too. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
@@ -1605,7 +1610,8 @@ Plain runs ALWAYS evaluate live — the lock's existence changes
 nothing. Only `vx run --frozen` consumes it: configs come from the
 lock with no evaluation and no staleness checks of its own (frozen-env
 semantics: env reads in a config keep their lock-time values; a
-project absent from the lock or a missing lock is a hard error).
+project absent from the lock, a locked project whose config file is
+gone (X-144) or a missing lock is a hard error).
 
 `--check` is the audit: it reports changed config files via the
 stored hashes AND re-evaluates every config in the current
@@ -2349,7 +2355,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one), and a pass that took a retry counts too, its failed
-  attempts counted as failures. `none` when no key did.
+  attempts counted as failures. A task with no cache block keys on its
+  config alone, so its key says nothing about its inputs: it is never
+  listed. A failure behind a failed dependency, in a run that continues
+  past failures, is that dependency's and counts on no key. `none` when
+  no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2474,7 +2484,9 @@ id), `env` (a declared variable, by digest), `runtime` and
 fingerprint: the lockfile and the other root manifests), `config` (the
 evaluated task config), `upstream` (a dependency's input key — a
 lockfile change moves it too, so that row rides with the
-fingerprint's) and `plugin` (a `key` plugin's material, by name).
+fingerprint's), `plugin` (a `key` plugin's material, by name) and
+`format` (the key format vx itself folds: it moves only with an
+upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
@@ -2563,7 +2575,9 @@ prints `no recorded runs`, exit 0), and past green runs only,
 `--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded). The
+vx run app#test -- …`, with the arguments the run forwarded to the
+tasks that got them; a failed dependency, which never got them, gets a
+line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 

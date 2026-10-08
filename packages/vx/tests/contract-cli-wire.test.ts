@@ -87,6 +87,7 @@ function fixturePlan(): Required<RunPlan> {
     predicted,
     unresolvedTasks: [],
     unresolvedHint: '',
+    noneAffected: '',
     downloadDowngrades: [{ taskId: 'a#build', reason: 'r' }],
   }
   return plan

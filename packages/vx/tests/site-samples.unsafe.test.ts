@@ -510,8 +510,8 @@ describe('the why pages name every component kind the key records', () => {
     'utf8',
   )
   const kinds = [...new Set([...src.matchAll(/kind: '([\w-]+)'/g)].map((m) => m[1]!))]
-  it('key-fold.ts records ten kinds', () => {
-    expect(kinds.length).toBe(10)
+  it('key-fold.ts records eleven kinds', () => {
+    expect(kinds.length).toBe(11)
   })
   for (const [label, file] of [
     ['the why-did-this-rerun post', path.join(DOCS, 'blog', 'why-did-this-rerun.md')],

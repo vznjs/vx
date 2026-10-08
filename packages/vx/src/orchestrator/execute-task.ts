@@ -531,7 +531,12 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     return {
       node,
       status: 'failed',
-      exitCode: ready?.reason === 'timeout' ? await spawn.child.exited : (ready?.exitCode ?? 1),
+      // A server that traps the TERM and exits 0 still timed out, as a
+      // one-shot task that does so reports 143 (X-116).
+      exitCode:
+        ready?.reason === 'timeout'
+          ? (await spawn.child.exited) || signalExitCode('SIGTERM')
+          : (ready?.exitCode ?? 1),
       durationMs: spawn.readyMs(),
       ...(ready !== undefined ? { notReady: ready.reason } : {}),
       wallclockStartNs,
