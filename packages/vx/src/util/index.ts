@@ -73,7 +73,7 @@ export { CORE_VERBS, MOVED_VERBS } from './verbs.js'
 export { isUnsupportedBun, MIN_BUN, unsupportedBunMessage } from './bun-version.js'
 export { executablePath, shellArgv, taskShell } from './which.js'
 export { procfsIsOwn } from './procfs.js'
-export { realPath } from './real-path.js'
+export { realPath, realpathOf } from './real-path.js'
 export {
   maskedCommand,
   maskedEmitter,

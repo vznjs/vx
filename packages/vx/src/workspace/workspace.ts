@@ -12,6 +12,7 @@ import {
   slashBraceExpansions,
   UserError,
   normalizeBunGlob,
+  realpathOf,
 } from '../util/index.js'
 import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 import { repoIdOf } from './repo-id.js'
@@ -883,7 +884,7 @@ async function oneEntryPerPackage<T extends { dir: string }>(
 ): Promise<T[]> {
   const byReal = new Map<string, T[]>()
   for (const entry of group) {
-    const real = await realpath(entry.dir)
+    const real = realpathOf(entry.dir)
     const same = byReal.get(real)
     if (same === undefined) byReal.set(real, [entry])
     else same.push(entry)
