@@ -65,6 +65,8 @@ interface TurboJson {
   envMode?: unknown
 }
 
+const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
 /** A name core takes in `cache.inputs.env` and `exec.env.passThrough`. */
 const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
@@ -1488,7 +1490,14 @@ export async function mapTurboWorkspace(
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
-  excludeWorkspaceOutputs(root, projects)
+  // A written config spreads the preset (`...globalInputs`), which the
+  // take-back pass must read as its globs: unread, opencode's configs
+  // read `packages/plugin/**` with no `!packages/plugin/dist/**` and
+  // core refused to load them.
+  const opaque = new Map<string, readonly string[]>()
+  for (const e of opts.splice('inputs', globals.inputs))
+    if (typeof e !== 'string') opaque.set(JSON.stringify(e), globals.inputs)
+  excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
@@ -1882,10 +1891,12 @@ function buildTask(
     spelled,
   )
 
+  // A name that is no shell identifier never reached a task (`sh` drops it)
+  // and core refuses it in passThrough.
   const passThrough = uniq(
     [...global('env'), ...global('pass'), ...envNames, ...passNames],
     hidden('env', 'pass'),
-  )
+  ).filter((n) => typeof n !== 'string' || SHELL_NAME.test(n))
 
   const exec: Record<string, unknown> = { command }
   if (passThrough.length > 0) exec.env = { passThrough }

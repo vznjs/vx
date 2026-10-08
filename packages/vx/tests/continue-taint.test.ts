@@ -193,3 +193,59 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
     }
   })
 })
+
+// `--exclude-dependencies` turns `t → gen → a` into an order-only edge
+// `t → a`, and the key's upstream drops order-only edges. The taint read
+// that same upstream, so under `--continue=always` `t` saved what it built
+// after `a` failed, where the run without the flag (`t` behind `gen`
+// behind `a`) withheld it.
+describe('--continue=always taints through an order-only edge', () => {
+  it('a task ordered after a failure by --exclude-dependencies is not saved', async () => {
+    const dir = path.join(root, 'packages', 'p')
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default {
+  tasks: {
+    a: {
+      exec: { command: 'mkdir -p out && echo partial > out/a.txt && test ! -f flag.txt' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+    },
+    gen: {
+      dependsOn: ['a'],
+      exec: { command: 'cp out/a.txt gen.txt' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] } },
+    },
+    t: {
+      dependsOn: ['gen'],
+      exec: { command: 'cat out/a.txt > t.txt' },
+      cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['t.txt'] } },
+    },
+  },
+}
+`,
+    )
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'order-only fixture')
+    const runT = (continueMode?: 'always') =>
+      run({
+        cwd: root,
+        tasks: ['a', 't'],
+        projects: ['p'],
+        excludeDependencies: ['gen'],
+        ...(continueMode !== undefined ? { continueMode } : {}),
+        log: silent,
+        handleSignals: false,
+      })
+    await writeFile(path.join(dir, 'flag.txt'), '')
+    const failing = await runT('always')
+    expect(['p#a', 'p#t'].map((id) => statusOf(failing, id))).toEqual(['failed', 'success'])
+
+    await unlink(path.join(dir, 'flag.txt'))
+    // Same key for `t` (the flag is no input, `tasks: []` folds no
+    // upstream): a saved entry would read `cache-hit` here.
+    expect(statusOf(await runT(), 'p#t')).toBe('success')
+    // CONTROL: the key is stable, so the healthy run's save is a hit now.
+    expect(statusOf(await runT(), 'p#t')).toBe('cache-hit')
+  })
+})

@@ -452,6 +452,12 @@ export function defaultLogger(
       // A kept server's held partial line is older than this line: held
       // past it, a server's last words printed below its own exit notice.
       flushKept()
+      // A live-streamed server keeps writing after its frame closes, so a
+      // summary row or "exited with code" can follow its partial line.
+      if (streamMidLine) {
+        writer.write('\n')
+        streamMidLine = false
+      }
       writer.write(`${line}\n`)
     },
     runStart(info) {

@@ -56,7 +56,10 @@ describe('pinnedLocalSet', () => {
       const n = node(id, {}, deps)
       return {
         ...n,
-        config: { ...n.config, cache: { inputs: { files: ['src/**'], ...inputs } } },
+        config: {
+          ...n.config,
+          cache: { inputs: { files: ['src/**'], ...inputs }, outputs: { files: [] } },
+        },
       } as TaskNode
     }
     const set = pinnedLocalSet(

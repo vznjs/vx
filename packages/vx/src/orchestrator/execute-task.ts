@@ -362,12 +362,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    // A wrap that refuses (a port the host holds) leaves the server unspawned
+    // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
       env,
       ...sb.sandbox,
       server: true,
+    }).catch(async (err: unknown) => {
+      await sweepPlaceholders(placeholders)
+      throw err
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -954,7 +959,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // stream (run()'s onError), where the frame reads it; a copy written
     // here too printed the reason twice.
     const endExec = span('miss: execute')
-    let res = await boundAfterAbort(args.executor.execute(req), req.signal)
+    // A plugin's execute may throw before returning or return a bare result:
+    // the throw is its rejection, the value its resolution, so both reach
+    // the naming catch and the cleanup in finally below.
+    let running: Promise<unknown>
+    try {
+      running = Promise.resolve(args.executor.execute(req))
+    } catch (thrown) {
+      running = Promise.reject(thrown)
+    }
+    let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
@@ -1135,6 +1149,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   const writesFingerprint =
     args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
+  // A stop that landed during the awaits above (the key, the probe, the
+  // input description): the first attempt would wipe the last build and
+  // hand the executor a request after the run had stopped. Through a call,
+  // so the loop's own reads of the stop are not narrowed to false.
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal?.reason)),
+      durationMs: 0,
+      hash,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   for (;;) {
     attempt++
     const a = await runAttempt()

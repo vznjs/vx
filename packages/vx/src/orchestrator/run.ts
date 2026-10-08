@@ -50,6 +50,7 @@ import {
   secretMask,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
+import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -1440,7 +1441,9 @@ async function runOnBus(
       await summarize(ok && first.code === 0, final)
       if (historyAfterWait) {
         recordHistory(() => {
-          const local = Cache.inspect(prepared.cacheDir)
+          // A writer's open: another vx version may have reset the index
+          // to its schema during the session, and a mismatch resets silently.
+          const local = new Cache(prepared.cacheDir, undefined, prepared.workspaceRoot)
           try {
             local.recordRunBundle(recordsOf(final, ok && first.code === 0))
           } finally {
@@ -1642,7 +1645,7 @@ async function initHint(prepared: {
   // Single-project mode with packages the root's missing `workspaces`
   // never reaches: `vx init` would find no scripts either (item 248).
   const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
-  if (unreached.length > 0) return ` ${unreachedHint(unreached)}`
+  if (unreached.length > 0) return ` ${unreachedHint(unreached, prepared.workspaceRoot)}`
   return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 
@@ -1659,8 +1662,11 @@ function didYouMean(
   elsewhere: readonly string[] = [],
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
+  // What a bare name can select: a default `build` is no match (X-102).
   const allTasks = new Set<string>()
-  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  for (const p of projects.values()) {
+    for (const t of tasksOf(p)) if (!isDefaultBuild(p.config.tasks![t])) allTasks.add(t)
+  }
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from (M-56): with no near

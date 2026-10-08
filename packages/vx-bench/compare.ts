@@ -30,7 +30,7 @@
  * For each runner we measure three cache states over the whole repo
  * (`build` + `test`), median of `reps`, every runner pinned to the SAME
  * concurrency and measured strictly one-at-a-time (no resource fight):
- *   fresh        — cache cleared, cold run (key derivation + exec + save)
+ *   fresh        — cache and outputs cleared, cold run (key derivation + exec + save)
  *   warm-no-restore — second run, cache hit, outputs intact (skip path)
  *   warm-restore — outputs deleted, cache hit, outputs restored
  *
@@ -445,8 +445,12 @@ async function measure(r: Runner, dir: string): Promise<Row> {
   const freshCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     await r.clear()
+    await deleteDist(dir)
     const res = await sh(r.run, dir)
     if (!res.ok) throw new Error(`${r.name} failed:\n${res.out.slice(-2000)}`)
+    const missing = await missingDist(dir)
+    if (missing.length > 0)
+      throw new Error(`${r.name} built ${missing.length} dist/ short, e.g. ${missing[0]}`)
     fresh.push(res.ms)
     freshCpu.push(res.cpuMs)
   }
@@ -523,7 +527,7 @@ function markdown(rows: Row[], baseline: Baseline): string {
     .join('\n')
   return `${head}${body}
 
-**Cache states.** *Fresh* clears the runner's cache and runs cold (key
+**Cache states.** *Fresh* clears the runner's cache and every \`dist/\`, then runs cold (key
 derivation + execution + save). *Warm, no restore* re-runs with the cache
 warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every \`dist/\` first, so the runner restores outputs from cache.

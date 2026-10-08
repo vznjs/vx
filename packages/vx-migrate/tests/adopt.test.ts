@@ -59,10 +59,15 @@ describe('the package manager', () => {
       const locked = packageManagerOf(root)
       await rm(path.join(root, 'yarn.lock'))
       const agent = packageManagerOf(root, 'bun/1.4.2 npm/? node/v24')
-      expect([declared, locked, agent, packageManagerOf(root)]).toEqual([
+      // A Windows editor saves the manifest with a BOM; npm and Bun accept it.
+      await writeFile(path.join(root, 'package.json'), '\uFEFF{"packageManager":"pnpm@9.15.0"}')
+      const bom = packageManagerOf(root)
+      await at({})
+      expect([declared, locked, agent, bom, packageManagerOf(root)]).toEqual([
         'pnpm',
         'yarn',
         'bun',
+        'pnpm',
         'npm',
       ])
     } finally {
@@ -109,9 +114,20 @@ describe('the package manager', () => {
       const installedOnly = missingPackages(root, wanted)
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'), '{}')
-      expect([listedOnly, installedOnly, missingPackages(root, wanted)]).toEqual([
+      const listedAndInstalled = missingPackages(root, wanted)
+      await writeFile(
+        path.join(root, 'package.json'),
+        '\uFEFF' + JSON.stringify({ devDependencies: { '@vzn/vx': '*' } }),
+      )
+      expect([
+        listedOnly,
+        installedOnly,
+        listedAndInstalled,
+        missingPackages(root, wanted),
+      ]).toEqual([
         ['@vzn/vx', '@vzn/vx-migrate'],
         ['@vzn/vx', '@vzn/vx-migrate'],
+        ['@vzn/vx-migrate'],
         ['@vzn/vx-migrate'],
       ])
     } finally {
@@ -290,6 +306,58 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {
         await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// nartc/mapper, 2026-10-07: every executor target is an `nx-exec` line,
+// and a native migration installed vx alone, so `bunx @vzn/vx-migrate`
+// left lint failing with `nx-exec: not found` (exit 127).
+describe('vx-migrate on a pnpm Nx repo', () => {
+  async function nxShaped(target: Record<string, unknown>) {
+    const root = await tmp('vx-adopt-nx-')
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "libs/*"\n')
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+    await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}\n')
+    await writeFile(path.join(root, 'nx.json'), '{}\n')
+    await mkdir(path.join(root, 'libs', 'a'), { recursive: true })
+    await writeFile(path.join(root, 'libs', 'a', 'package.json'), '{"name":"a"}\n')
+    await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+      JSON.stringify({
+        nodes: { a: { name: 'a', data: { root: 'libs/a', targets: { lint: target } } } },
+        dependencies: {},
+      }),
+    )
+    const bin = path.join(root, '.fake-bin')
+    await mkdir(bin)
+    await writeFile(path.join(bin, 'pnpm'), `#!/bin/sh\necho "$@" >> "${root}/.pnpm-calls"\n`)
+    await chmod(path.join(bin, 'pnpm'), 0o755)
+    const env = { ...process.env, PATH: `${bin}:${process.env['PATH']}` } as Record<string, string>
+    return { root, env }
+  }
+
+  it(
+    'installs @vzn/vx-migrate when a written task runs nx-exec, not when none does',
+    async () => {
+      const exec = await nxShaped({ executor: '@nx/eslint:lint', options: {} })
+      // CONTROL: a run-commands target is its own shell line.
+      const shell = await nxShaped({ command: 'eslint .' })
+      try {
+        const r = await migrate(exec.root, exec.env, [])
+        const c = await migrate(shell.root, shell.env, [])
+        expect([r.code, await calls(exec.root), c.code, await calls(shell.root)]).toEqual([
+          0,
+          'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history\n',
+          0,
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n',
+        ])
+      } finally {
+        await rm(exec.root, { recursive: true, force: true })
+        await rm(shell.root, { recursive: true, force: true })
       }
     },
     TIMEOUT,

@@ -406,7 +406,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       : []
   if (empty && unreached.length > 0) {
     report.push(
-      `${verb}: ${unreachedHint(unreached)}`,
+      `${verb}: ${unreachedHint(unreached, root)}`,
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
