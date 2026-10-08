@@ -271,7 +271,7 @@ export async function sandboxRequestFor(
     // could copy a key into an output the cache shares (L-41).
     baseDenyRead: [
       ...(process.platform === 'darwin' ? [workspaceRoot, ...walls] : [workspaceRoot]),
-      ...credentialStores(workspaceRoot),
+      ...(await credentialStores(workspaceRoot, config.allowWrite)),
     ],
     // …but only denials INSIDE the project are worth reporting. A task
     // bumping into the wall is the sandbox working, not a finding: the
@@ -594,8 +594,18 @@ const CREDENTIAL_STORES = [
 /** The stores present on this host, learned once per home. */
 let presentStores: { home: string; paths: string[] } | undefined
 
-/** The credential stores to deny, less any that holds the workspace. */
-function credentialStores(workspaceRoot: string): string[] {
+/**
+ * The credential stores to deny, less any that holds the workspace, and
+ * punched around the task's write grants: a grant names a store as a read
+ * does. Denied whole, the store's mask landed on the grant's bind (a file
+ * grant binds its directory on Linux), so `write: ['~/.npmrc']` wrote to
+ * /dev/null with exit 0, and `~/.aws/config` left `~/.aws/credentials`
+ * readable. A grant above a store does not name it, so it stays denied.
+ */
+async function credentialStores(
+  workspaceRoot: string,
+  writes: readonly string[],
+): Promise<string[]> {
   const home = homedir()
   if (presentStores?.home !== home) {
     presentStores = {
@@ -603,9 +613,19 @@ function credentialStores(workspaceRoot: string): string[] {
       paths: CREDENTIAL_STORES.map((rel) => path.join(home, rel)).filter((p) => existsSync(p)),
     }
   }
-  return presentStores.paths.filter(
+  const stores = presentStores.paths.filter(
     (p) => workspaceRoot !== p && !workspaceRoot.startsWith(p + path.sep),
   )
+  return (await Promise.all(stores.map((p) => denyAround(toRealPath(p), writes)))).flat()
+}
+
+/** `dir` denied, or its entries no write grant lies under or at when one is inside it. */
+async function denyAround(dir: string, writes: readonly string[]): Promise<string[]> {
+  const inside = writes.filter((w) => atOrUnder(w, dir))
+  if (inside.length === 0) return [dir]
+  if (inside.includes(dir)) return []
+  const entries = await readdir(dir).catch(() => [])
+  return (await Promise.all(entries.map((e) => denyAround(path.join(dir, e), inside)))).flat()
 }
 
 /** `~/x` against the user's home; anything else unchanged. */
