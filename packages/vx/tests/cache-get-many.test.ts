@@ -11,7 +11,9 @@ import { existsSync } from 'node:fs'
 import { rm, mkdir, mkdtemp, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { CacheGetContext } from '../src/cache/cache.js'
 import { Cache } from '../src/cache/index.js'
 
 describe('Cache.getMany agrees with Cache.get', () => {
@@ -73,6 +75,34 @@ describe('Cache.getMany agrees with Cache.get', () => {
     try {
       expect(await open.get('aa')).not.toBeNull()
       expect((await open.getMany(['aa'])).size).toBe(1)
+    } finally {
+      open.close()
+    }
+  })
+
+  it('honours the read gate with a task context, whose miss may adopt an artifact', async () => {
+    const writer = new Cache(cacheDir)
+    await seed(writer, ['aa', 'bb'])
+    writer.close()
+    // A row-less artifact: what `adopt` indexes on a hit.
+    const db = new Database(path.join(cacheDir, 'cache.db'))
+    db.query("DELETE FROM entries WHERE hash = 'bb'").run()
+    db.close()
+    const ctx = (hash: string): CacheGetContext => ({
+      taskId: `p#${hash}`,
+      command: `echo ${hash}`,
+    })
+    const gated = new Cache(cacheDir, { read: false, write: true })
+    try {
+      for (const hash of ['aa', 'bb']) expect(await gated.get(hash, ctx(hash))).toBeNull()
+      expect([...(await gated.getMany(['aa', 'bb'], ctx)).keys()]).toEqual([])
+    } finally {
+      gated.close()
+    }
+    // CONTROL: gate open, both are hits, the row-less one adopted.
+    const open = new Cache(cacheDir)
+    try {
+      expect([...(await open.getMany(['aa', 'bb'], ctx)).keys()].sort()).toEqual(['aa', 'bb'])
     } finally {
       open.close()
     }
