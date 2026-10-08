@@ -2055,7 +2055,7 @@ copy to the source.
 | turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                        |
 | turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
 | turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
-| turbo  | `--no-cache`                                      | same    | `--no-cache`                                                                                                                  |
+| turbo  | `--no-cache`                                      | same    | `--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`                                   |
 | turbo  | `--cache <v>`                                     | same    | `--cache local:rw,remote:r`                                                                                                   |
 | turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
 | turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
