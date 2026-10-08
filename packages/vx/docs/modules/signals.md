@@ -8,8 +8,22 @@ SIGTERM — to every live child's process group and every ready
 persistent task's,
 waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for those GROUPS to go,
 SIGKILLs every group with a member left, lets `run()` leave through its
-own end-of-run path (which records no history for a stopped run), and exits 128 + signo
-(130 / 143 / 129); a second signal SIGKILLs and exits at once.
+own end-of-run path (which records no history for a stopped run), and dies
+of the signal it received, so its parent sees 130 / 143 / 129; a second
+signal SIGKILLs and does the same at once.
+
+Dies of it, not `process.exit(128 + signo)`: a shell running vx in a
+script stops the script on Ctrl-C only when its child died of SIGINT,
+and takes a child that exits 130 to have handled it, so Ctrl-C of
+`vx run a; vx run b` ran `b` and a `for` loop over `vx run` could not
+be stopped. The exit hooks (the run lock's entry, the sandbox's temp
+files) run first: the handler calls `process.exit` and re-raises the
+signal, its listeners removed, from the last `exit` listener. The one
+exception is a run that handed the terminal to a task
+(`exec.interactive` on a TTY, `handsTerminal`): that task may have left
+it raw or without echo, and Bun puts back the terminal it started with
+when it exits, not when a signal kills it, so that run exits 128 +
+signo.
 
 The signal stops the run the way `RunOptions.signal` does (item 849):
 `run()` holds one `AbortController`, which the embedder's signal and the
@@ -83,6 +97,7 @@ export function forwardSignals(args: {
   stop: (signal: StopSignal) => void // aborts run()'s own controller
   done: Promise<void> // settles once run() has left its finally
   boundMs: number // how long a signal waits for `done`
+  handsTerminal?: boolean // a task holds the terminal: exit 128 + signo, never die of the signal
 }): SignalForwarding // { remove(): void }
 ```
 

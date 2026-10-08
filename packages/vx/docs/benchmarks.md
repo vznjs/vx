@@ -156,7 +156,8 @@ repairs it, which the release workflow now does on a macOS runner.
 `packages/vx-bench/ab.ts` is the method the numbers here use: one
 workspace copy per arm, warmed by that arm, rounds that run every arm
 once in a rotated order, min and median per arm, and an A/A arm (the
-same vx twice) as the noise floor. An arm is a compiled binary or a
+same vx twice) as the noise floor. Every arm after the first prints its
+min against the first arm's as a signed percent. An arm is a compiled binary or a
 checkout; the runs see git's defaults and no `BUN_OPTIONS`. A `run` is
 timed `--frozen`: each arm runs `vx lock` in its own copy with its own
 vx once, before the warm-up.

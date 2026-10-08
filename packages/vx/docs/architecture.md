@@ -30,7 +30,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (48 runtime symbols, a deliberate
+through two seams: the public API (49 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map

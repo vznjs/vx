@@ -3,8 +3,6 @@ export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
   readonly storeDir: string | undefined
-  readonly storeFallback: string | null
-  readonly storeMoved: { from: string; to: string } | null
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
@@ -66,6 +64,7 @@ export class Cache implements CacheLayer {
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
+  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void
@@ -288,6 +287,8 @@ export function machineMemoryBytes(probe: CgroupProbe = {}): number
 export function machineParallelism(probe: CgroupProbe = {}): number
 == function maskedCommand (src/util/secret-mask.ts)
 export function maskedCommand(command: string, env?: TaskEnvSecrets): string
+== function maskedLine (src/util/secret-mask.ts)
+export function maskedLine(line: string): string
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)

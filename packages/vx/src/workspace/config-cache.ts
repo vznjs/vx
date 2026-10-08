@@ -606,8 +606,12 @@ export function configEvalKeyFromIdentities(a: {
  * `node_modules`, the config itself excluded. `vx watch` watches these: a
  * shared preset outside the project (`../../shared/preset.mjs`, the way
  * configs compose) changed what a run evaluates and no watcher saw it
- * (item 949). A file that cannot be read or resolved ends its branch.
+ * (item 949). A file that cannot be read or resolved ends its branch; one
+ * that cannot be resolved is still listed, by the name it would have.
  */
+// The names an extensionless relative import may resolve to, as Bun tries them.
+const IMPORT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.json']
+
 export async function configImports(configPath: string): Promise<string[]> {
   const seen = new Set<string>([configPath])
   const out: string[] = []
@@ -635,6 +639,16 @@ export async function configImports(configPath: string): Promise<string[]> {
         dir ??= realDirOf(file)
         resolved = realPath(Bun.resolveSync(spec, dir))
       } catch {
+        // Missing for now, still imported: the config that names it fails
+        // to load until it is back, and a list without it left `vx watch`
+        // deaf to its return. Named as written, and not walked.
+        if (dir === undefined) continue
+        for (const ext of path.extname(spec) === '' ? IMPORT_EXTENSIONS : ['']) {
+          const missing = path.resolve(dir, spec + ext)
+          if (seen.has(missing)) continue
+          seen.add(missing)
+          out.push(missing)
+        }
         continue
       }
       if (seen.has(resolved) || resolved.split(path.sep).includes('node_modules')) continue

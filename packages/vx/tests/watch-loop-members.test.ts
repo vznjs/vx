@@ -417,4 +417,38 @@ describe('vx watch loop (e2e): the watched set', () => {
       writeFile(manifest, JSON.stringify({ ...root, workspaces: ['packages/*', 'apps/*'] })),
     )
   }, 40_000)
+
+  it('a package added with a broken config is watched, so the fix to its config is a cycle', async () => {
+    // The cycle the new package starts fails to load its config; the re-read
+    // that arms the package ran only after a cycle that loaded, so the fix,
+    // written inside a package nothing watched, was silence.
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    const bDir = await addProject(f.root, 'b', 'export default {\n')
+    await until(
+      () => w.err().includes('vx watch: cycle failed'),
+      'the cycle over the broken config',
+    )
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'b joins the set')
+
+    await mkdir(path.join(bDir, 'src'), { recursive: true })
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
+    await writeFile(
+      path.join(bDir, 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }\n`,
+    )
+    await until(async () => (await executions(f.log)) === 2, 'the cycle after the fix')
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
+  }, 40_000)
 })
