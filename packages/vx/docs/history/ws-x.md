@@ -1226,3 +1226,13 @@ reaches no build task.` The plan now carries the run's own line
   (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
   ^name and an --exclude-dependencies name only that project declares";
   each site's old test reddens its own field.
+- **X-192.** A task whose output opened with U+FEFF lost it three
+  times: the runner's capture decoder dropped it from the live print
+  and the stored log, the artifact scan dropped it again, and
+  `bun:sqlite` binds a string as UTF-16, where SQLite reads a leading
+  U+FEFF as the byte-order mark (probed: `'﻿hi'` stored `6869`).
+  The capture and the scan now decode with `ignoreBOM`, and the
+  `entry_stdout` row binds UTF-8 bytes cast to TEXT. No cache bump: only
+  entries whose output began with U+FEFF differ, by that one character.
+  Row: `replay-fidelity.test.ts` › "a leading byte-order mark", which
+  fails with any one of the three fixes undone.

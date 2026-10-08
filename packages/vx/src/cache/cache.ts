@@ -966,7 +966,9 @@ export class Cache implements CacheLayer {
     )
     this.upsertStdout = lazyStatement(
       this.db,
-      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+      // UTF-8 bytes cast to TEXT: a string bound as is loses a leading
+      // U+FEFF, which SQLite reads as the UTF-16 byte-order mark.
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
@@ -2118,7 +2120,7 @@ export class Cache implements CacheLayer {
         scanned.exec?.peakRssBytes ?? null,
       )
       if (stdoutText === '') deleteStdout.run(hash)
-      else upsertStdout.run(hash, stdoutText)
+      else upsertStdout.run(hash, Buffer.from(stdoutText))
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's rows are identical — keep the first set, skip the rest.

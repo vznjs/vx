@@ -59,6 +59,9 @@ const META_ENTRY = '.vx-meta.json'
 /** Archive entry name of the always-present stdout record. */
 const STDOUT_ENTRY = 'stdout'
 
+/** The output log's decoder: a leading U+FEFF is the task's, kept (the default drops it). */
+const OUTPUT_UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
+
 /**
  * The last entry: a CRC-32 over every entry before it, each its name, a
  * NUL, then its body, as 8 lowercase hex digits (v36, L-19). Nothing else
@@ -446,7 +449,7 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<{
       continue
     }
     assertSafeName(e.name)
-    if (e.name === STDOUT_ENTRY) stdout = await textOf(body)
+    if (e.name === STDOUT_ENTRY) stdout = OUTPUT_UTF8.decode(await bytesOf(body))
     else await drain(body)
     seen.push({ name: e.name, size: e.size, mtimeMs: e.mtimeMs })
   }

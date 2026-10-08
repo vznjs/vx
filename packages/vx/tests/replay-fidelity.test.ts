@@ -10,6 +10,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
+import { packArtifact, scanArtifact } from '../src/cache/archive.js'
+import { streamOf } from './helpers/stream.js'
 
 const EXPECTED = 'a\u0000b\rprogress 50%\r\u001b[31mred\u001b[0m\n'
 
@@ -133,5 +135,66 @@ describe('cache-hit replay keeps both streams in order', () => {
     const r2 = await run({ cwd: root, ...opts, log: replay.log })
     expect(r2.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
     expect(replay.seen).toEqual(expected)
+  })
+})
+
+// A leading U+FEFF is output too. A default `TextDecoder` drops one at a
+// stream's start, so the live run printed `out` without it, the entry
+// stored that, and the artifact's scan dropped it again on ingest.
+describe('a leading byte-order mark', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-replay-bom-' })
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            emit: {
+              exec: { command: 'sh emit.sh' },
+              cache: { inputs: { files: ['emit.sh'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+    )
+    await writeFile(
+      path.join(dir, 'emit.sh'),
+      "printf '\\357\\273\\277out\\n'\nprintf '\\357\\273\\277err\\n' >&2\n",
+    )
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const both = () => {
+    const out: string[] = []
+    const err: string[] = []
+    const log: Logger = {
+      status() {},
+      taskStdout: (_n, c) => void out.push(c),
+      taskStderr: (_n, c) => void err.push(c),
+      taskComplete() {},
+    }
+    return { log, text: () => [out.join(''), err.join('')] }
+  }
+
+  it('is printed by the run and replayed by the hit, on both streams', async () => {
+    const live = both()
+    const opts = { cwd: root, tasks: ['emit'], projects: ['app'], handleSignals: false }
+    const r1 = await run({ ...opts, log: live.log })
+    expect(r1.ok).toBe(true)
+    expect(live.text()).toEqual(['﻿out\n', '﻿err\n'])
+
+    const replay = both()
+    const r2 = await run({ ...opts, log: replay.log })
+    expect(r2.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(replay.text()).toEqual(['﻿out\n', '﻿err\n'])
+  })
+
+  it("is read back out of an artifact's stdout entry, as an ingest reads it", async () => {
+    const tar = await packArtifact({ key: 'k', stdout: '﻿out\n', outputs: new Map() })
+    expect((await scanArtifact(streamOf(tar))).stdout).toBe('﻿out\n')
   })
 })
