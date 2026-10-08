@@ -1694,7 +1694,14 @@ describe('parseRunArgs', () => {
     // --help`. The exact set is the assertion; a `not.toContain` would pass
     // on any single flag leaking.
     expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--frozen'])
-    expect(flagsIn(verbHelpText('init'))).toEqual(['--dry', '--force', '--mjs', '--plugin'])
+    expect(flagsIn(verbHelpText('init'))).toEqual([
+      '--dry',
+      '--force',
+      '--keep',
+      '--mjs',
+      '--native',
+      '--plugin',
+    ])
     expect(flagsIn(verbHelpText('cache'))).toEqual([
       '--cache-dir',
       '--dry-run',

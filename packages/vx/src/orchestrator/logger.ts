@@ -37,6 +37,7 @@ import {
   notifyEscape,
   PROGRESS_CLEAR,
   progressEscape,
+  terminalLinks,
   terminalSignals,
 } from './terminal-signals.js'
 
@@ -298,6 +299,7 @@ export function defaultLogger(
   const signals = writer.enabled
     ? terminalSignals(opts.env ?? process.env)
     : { progress: false, notify: false }
+  const links = writer.enabled && terminalLinks(opts.env ?? process.env)
   let progressShown = -1
   let progressRed = false
 
@@ -753,7 +755,15 @@ export function defaultLogger(
         }
         if (framed && output.some((c) => c.text.length > 0)) {
           emitBlock(
-            formatTaskBlock(node, outcome, { output, ...dropped }, colors, true, forwardArgs),
+            formatTaskBlock(
+              node,
+              outcome,
+              { output, ...dropped },
+              colors,
+              true,
+              forwardArgs,
+              links,
+            ),
           )
           return
         }
@@ -846,7 +856,15 @@ export function defaultLogger(
           if (outcome.status !== 'failed') return
           emitLine(failureRow(node, outcome))
           deferredFailures.push(
-            formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
+            formatTaskBlock(
+              node,
+              outcome,
+              { output, ...dropped },
+              colors,
+              false,
+              forwardArgs,
+              links,
+            ),
           )
           return
         case 'broad':
@@ -858,7 +876,15 @@ export function defaultLogger(
             // ◼ row now; the full frame replays at runEnd.
             emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                false,
+                forwardArgs,
+                links,
+              ),
             )
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
@@ -895,14 +921,30 @@ export function defaultLogger(
             if (outcome.status === 'failed') {
               emitLine(failureRow(node, outcome))
               deferredFailures.push(
-                formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
+                formatTaskBlock(
+                  node,
+                  outcome,
+                  { output, ...dropped },
+                  colors,
+                  false,
+                  forwardArgs,
+                  links,
+                ),
               )
               return
             }
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
             emitBlock(
-              formatTaskBlock(node, outcome, { output, ...dropped }, colors, true, forwardArgs),
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                true,
+                forwardArgs,
+                links,
+              ),
             )
             return
           }
@@ -913,7 +955,15 @@ export function defaultLogger(
           } else if (outcome.status === 'failed') {
             emitLine(failureRow(node, outcome))
             deferredFailures.push(
-              formatTaskBlock(node, outcome, { output, ...dropped }, colors, false, forwardArgs),
+              formatTaskBlock(
+                node,
+                outcome,
+                { output, ...dropped },
+                colors,
+                false,
+                forwardArgs,
+                links,
+              ),
             )
           }
           return
@@ -939,6 +989,7 @@ export function defaultLogger(
             colors,
             false,
             forwardArgs,
+            links,
           )
           if (block.length === 0) return
           if (view.gha) {

@@ -3,7 +3,7 @@
 // 2026-10-04: configs were written and nothing installed vx. The repo's
 // own scripts are never edited (owner, 2026-10-06).
 
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -498,6 +498,54 @@ describe('vx-migrate on a pnpm Nx repo', () => {
       } finally {
         await rm(exec.root, { recursive: true, force: true })
         await rm(shell.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// owner, 2026-10-08: "can we make vx init the only command to run?"
+describe('vx init in a Turbo repo', () => {
+  const CORE_BIN = path.join(path.dirname(Bun.resolveSync('@vzn/vx', import.meta.dir)), 'bin.ts')
+  const init = async (root: string, env: Record<string, string>, args: string[]) => {
+    const proc = Bun.spawn([process.execPath, '--no-install', CORE_BIN, 'init', ...args], {
+      cwd: root,
+      env,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    return { out, err, code }
+  }
+
+  it(
+    'runs the installed vx-migrate: no terminal is native; --keep writes turbo() alone',
+    async () => {
+      for (const keep of [false, true]) {
+        const { root, env } = await solidShaped()
+        try {
+          await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+          await symlink(
+            path.resolve(import.meta.dir, '..'),
+            path.join(root, 'node_modules', '@vzn', 'vx-migrate'),
+          )
+          const r = await init(root, env, keep ? ['--keep'] : [])
+          const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+          expect([
+            r.code,
+            r.err,
+            r.out.includes('vx-migrate: turbo.json → vx.config.ts'),
+            await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
+            ws.includes('turbo()'),
+          ]).toEqual([0, '', !keep, !keep, keep])
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
       }
     },
     TIMEOUT,

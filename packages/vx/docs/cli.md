@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
-vx init [--dry] [--force] [--mjs] [--plugin <seam>]
+vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -763,6 +763,14 @@ iTerm2, WezTerm), `vx: 12 tasks done` or `vx: 1 of 12 tasks failed`.
 The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
 `ConEmuPID`); any other, tmux included, gets neither, since there
 OSC 9 may itself be a notification.
+
+In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
+VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
+tmux or screen), a failed task's frame links each path that names a
+file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, to
+that file, so a click from the workspace root opens the right one. The
+text is the task's output unchanged; a successful task's frame is never
+linked.
 
 The region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the final summary prints. In the
@@ -1832,10 +1840,18 @@ a binary that does not start.
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
-the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
+the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
+(owner, 2026-10-08): the installed one, else this vx's version through
+`bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
+terminal native (a `vx.config.ts` per package, the default) or keep;
+`--native` or `--keep` answer it, and without a terminal it is native.
+`--dry`, `--force` and `--mjs` pass through.
+
+`vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
 config live, so no task is copied — a temporary start until
-`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
+`vx init --native` writes native config. `--native` or `--keep` in any
+other repo is refused. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).

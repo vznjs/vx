@@ -31,15 +31,11 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'bun:test'
-import {
-  ArchiveSecurityError,
-  extractArtifactStream,
-  packArtifact,
-  scanArtifact,
-} from '../src/cache/archive.js'
+import { ArchiveSecurityError, extractArtifactStream, packArtifact } from '../src/cache/archive.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 import { withSum } from './helpers/artifact-sum.js'
+import { scanBoth, scanBothOrThrow } from './helpers/scan-parity.js'
 
 // ─── tar fixture helpers (same pattern as cache-baseline.test.ts) ────
 
@@ -101,12 +97,18 @@ function tarWithEntry(name: string, body: Uint8Array, typeFlag = '0'): Uint8Arra
   ])
 }
 
-/** The composition the cache uses, over odd-sized chunks so entry boundaries never line up. */
+/**
+ * The composition the cache uses, over odd-sized chunks so entry boundaries
+ * never line up. Every fixture is first read by both scanners, which must
+ * agree on it: a save's in-memory scan refuses what a restore refuses.
+ */
 async function restore(bytes: Uint8Array, dest: string, wsDest?: string): Promise<Set<string>> {
-  return await extractArtifactStream(streamOf(await withSum(bytes)), dest, wsDest)
+  const tar = await withSum(bytes)
+  await scanBoth(tar)
+  return await extractArtifactStream(streamOf(tar), dest, wsDest)
 }
 
-const scan = async (bytes: Uint8Array) => scanArtifact(streamOf(await withSum(bytes)))
+const scan = async (bytes: Uint8Array) => scanBothOrThrow(await withSum(bytes))
 
 // ─── Tests ──────────────────────────────────────────────────────────
 
@@ -1012,7 +1014,7 @@ describe("the sidecar carries the producing execution's usage", () => {
   // so a machine that never ran the task (a fresh runner on a remote hit)
   // still learns it — and every wire ships the bytes verbatim, so no seam
   // moves. Additive: an artifact without it reads exactly as before.
-  const scan = async (bytes: Uint8Array) => scanArtifact(streamOf(await withSum(bytes)))
+  const scan = async (bytes: Uint8Array) => scanBothOrThrow(await withSum(bytes))
   const usage = { cpuMs: 12_345, peakRssBytes: 640 * 1024 * 1024 }
 
   it('round-trips cpuMs and peakRssBytes through pack and scan', async () => {

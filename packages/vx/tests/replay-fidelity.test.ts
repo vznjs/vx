@@ -79,6 +79,42 @@ describe('cache-hit stdout replay fidelity', () => {
   })
 })
 
+describe('cache-hit replay keeps a leading byte-order mark', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-replay-bom-' })
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            emit: {
+              exec: { command: 'sh emit.sh' },
+              cache: { inputs: { files: ['emit.sh'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+    )
+    await writeFile(path.join(dir, 'emit.sh'), "printf '\\357\\273\\277bom\\n'\n")
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('U+FEFF at the start of stdout survives the live run and the hit', async () => {
+    const opts = { cwd: root, tasks: ['emit'], projects: ['app'], handleSignals: false }
+    const live = capturing()
+    expect((await run({ ...opts, log: live.log })).ok).toBe(true)
+    expect(live.out.join('')).toBe('\uFEFFbom\n')
+    const replay = capturing()
+    const r2 = await run({ ...opts, log: replay.log })
+    expect(r2.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(replay.out.join('')).toBe('\uFEFFbom\n')
+  })
+})
+
 describe('cache-hit replay keeps both streams in order', () => {
   let root: string
   beforeEach(async () => {

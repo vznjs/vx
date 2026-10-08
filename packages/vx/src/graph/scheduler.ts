@@ -256,6 +256,15 @@ export interface ScheduleOptions {
    */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /**
+   * The outcome of a task the caller settles in place, or undefined to
+   * dispatch it through `execute`. Asked of an exec-tier task the lane has
+   * room for, after the skip check; its outcome lands in the same tick, it
+   * holds no slot, and `onStart` / `onFinish` hear it as any other. An
+   * unkeyed group runs nothing, and the dispatch, the slot and the promise
+   * around it were ~10 µs of each of a warm run's 1,090 groups (X-192).
+   */
+  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
+  /**
    * Optional priority override: callers pass their own per-node weight
    * (e.g. `computePredictedPriorities` from the orchestrator's history
    * data). The scheduler picks the highest-weight ready task next.
@@ -749,6 +758,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       })
     }
 
+    // A throw falls back to the dispatch, whose `execute` reports it.
+    const settleInPlace = (node: TaskNode, upstream: TaskOutcome[]): TaskOutcome | undefined => {
+      if (options.settleNow === undefined) return undefined
+      try {
+        return options.settleNow(node, upstream)
+      } catch {
+        return undefined
+      }
+    }
+
     const tick = (): void => {
       if (resolved) return
       // Exec-tier tasks parked THIS tick on a refused admission. Within
@@ -844,6 +863,17 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
         const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
         readyAt.delete(id)
+        const now = inRestoreTier(id) ? undefined : settleInPlace(node, upstream)
+        if (now !== undefined) {
+          try {
+            onStart?.(node)
+          } catch (err) {
+            const m = err instanceof Error ? err.message : String(err)
+            process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+          }
+          finishOne(id, queuedMs === 0 ? now : { ...now, queuedMs })
+          continue
+        }
         const leave = admit(id)
         // Listed as running on dispatch, so the policy's next ask in this
         // tick sees it; the completion callbacks unlist it.
