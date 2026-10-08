@@ -1,6 +1,5 @@
 ---
-// One page per tag, and `essays` (every post but the releases): the
-// listing narrowed to it.
+// One page per tag: the blog's listing narrowed to it.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Listing from '../../../components/blog/Listing.astro'
 import { filters } from '../../../blog/posts.js'
@@ -16,7 +15,7 @@ const { label } = Astro.props
 <StarlightPage
   frontmatter={{
     title: label,
-    description: tag === 'essays' ? 'Every post but the releases.' : `Posts tagged ${tag}.`,
+    description: `Posts tagged ${tag}.`,
     template: 'splash',
     pagefind: false,
   }}

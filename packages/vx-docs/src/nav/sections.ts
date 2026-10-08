@@ -1,6 +1,6 @@
 // The site's places (design/site-short-2026-09.md § The shape, plus the
 // feature pages): the Docs and the Reference each have a sidebar of their
-// own, the Blog has the one starlight-blog gives it, and Features is a set of
+// own, the Blog and Releases have none, and Features is a set of
 // standalone pages (src/pages/features/) outside Starlight. The landing is
 // the story; the Guide it replaced redirects there.
 //
@@ -12,7 +12,7 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'features' | 'docs' | 'reference' | 'blog'
+export type SectionId = 'features' | 'docs' | 'reference' | 'blog' | 'releases'
 
 declare global {
   namespace App {
@@ -29,6 +29,7 @@ export const SECTIONS: readonly { id: SectionId; label: string; href: string }[]
   { id: 'docs', label: 'Docs', href: 'quickstart/' },
   { id: 'reference', label: 'Reference', href: 'cli/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
+  { id: 'releases', label: 'Releases', href: 'releases/' },
 ]
 
 type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]

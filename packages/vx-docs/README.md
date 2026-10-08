@@ -117,22 +117,26 @@ alone. Write the table; the chart follows.
 
 ## Writing a blog post
 
-The blog (`/blog/`, RSS at `/blog/rss.xml`) is the site's own: posts are
-tracked Markdown files in `src/content/docs/blog/`, one per post, rendered
+The blog (`/blog/`, RSS at `/blog/rss.xml`) holds stories and essays;
+release notes have their own section (`/releases/`, RSS at
+`/releases/rss.xml`). Both are the site's own: posts are tracked
+Markdown files in `src/content/docs/blog/` and
+`src/content/docs/releases/`, one per post, rendered
 by Starlight (search, code frames, diagrams) without its sidebar or table
 of contents; `src/components/blog/` draws the index (the newest post
 large, filter chips, a grid of cover cards), the tag pages
-(`src/pages/blog/tags/`), each post's hero and its related posts, and
-`src/pages/blog/rss.xml.ts` writes the feed. A post is:
+(`src/pages/blog/tags/`), the Releases index (`src/pages/releases/`),
+each post's hero and its related posts, and `src/blog/feed.ts` writes
+both feeds. A post is:
 
 ```md
 ---
 title: 'One binary, no daemon'
 date: 2026-10-01
 authors:
-  - vzn # a key of AUTHORS in src/components/blog/posts.ts
+  - vzn # a key of AUTHORS in src/blog/posts.ts
 tags:
-  - release
+  - dx
 excerpt: 'One paragraph shown on the index and in the feed.'
 # cover: { image: ../../../assets/post.png, alt: '…' }   # optional
 # draft: true                                              # optional: built only in dev
@@ -150,16 +154,15 @@ that should be read first; the page still shows only the day. The
 launch series is timed that way: `what-vx-is` at 23:59, one minute
 less per post. `excerpt` is required: the dek under the
 headline, the card's line and the feed's description. Add an author once
-to `AUTHORS` in `src/components/blog/posts.ts` and reference the key. A
+to `AUTHORS` in `src/blog/posts.ts` and reference the key. A
 post without a cover gets one drawn in CSS from its title and first tag;
-the chips over the grid are `FILTERS` there (`essays` is every post but
-the releases). `bun packages/vx/src/bin.ts
+the chips over the grid are `FILTERS` there. `bun packages/vx/src/bin.ts
 run dev --filter @vzn/vx-docs` previews at `/vx/blog/`; a `draft: true`
 post is visible there and skipped by the build.
 
 ### Release posts
 
-Each release gets a post, written before it is cut
+Each release gets a note in `src/content/docs/releases/`, written before it is cut
 (`.claude/skills/release/SKILL.md`); the first ten batch the per-merge
 releases up to v0.0.625. A post holds at most ten changes a user would
 notice, each a `##` section with one example and its PR links, then
@@ -171,7 +174,9 @@ cover (`src/assets/blog/vx-0-0-<version>.png`, 1200×630) and shows
 rather than tells: a terminal frame per example, a bar chart for every
 before/after number, a mermaid diagram where a change has a shape. The
 slug is `vx-0-0-<version>`, the tag `release`, and the date the
-release's day. The design essays stay beside them.
+release's day. A feature big enough to show gets its own blog post
+first; the note summarizes it and links there. Old `/blog/vx-0-0-*/`
+URLs redirect (`astro.config.mjs`).
 
 ## Commands
 
