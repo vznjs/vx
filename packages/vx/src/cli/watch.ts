@@ -184,30 +184,49 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // config loaded — so the initial run's own loads become REPEATs and pay a
   // worker round-trip each (see config-eval.ts). Trading a hot-path regression
   // on every `vx watch` for a window a user rarely edits into is a bad deal;
-  // closing it properly needs the workspaceWide decision made without loading
   // configs.
+  // The exception: once the run waits on a server's readiness alone, every
+  // config is loaded, and the loop arms with the run as its cycle in
+  // flight. Unarmed, a server that never got ready held the initial run
+  // for good, and the fix to it was never heard (X-139).
   process.stdout.write('vx watch: initial run...\n\n')
+  let loop: Promise<void> | undefined
+  const initial: InitialCycle = {
+    cycle: watchCycle(opts, stop.signal, () => {
+      if (initial.onWaiting !== undefined) initial.onWaiting()
+      else if (loop === undefined && scope.length > 0 && !stop.signal.aborted)
+        loop = armLoop(initial)
+    }),
+    held: Promise.resolve(undefined),
+  }
   // A run that throws (a config that does not parse) is a failed cycle, as
   // it is once the loop runs: watch keeps watching, so the fix re-runs.
   // Uncaught, it ended watch at start while the same break mid-watch did
   // not (item 1017).
-  let held: HeldPersistent | undefined
   let refusedToStart = false
-  try {
-    const initial = await runOrchestrator(opts)
-    held = initial.persistent
-    if (initial.refused !== undefined) process.stderr.write(`vx watch: ${initial.refused}\n`)
-    // A run that failed having run nothing refused to start: a requested
-    // name no project declares (run() says which, with a "did you mean").
-    // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
-    // same refusal on every change, since no edit to an input can declare
-    // a task. A name only the diff left out (`--affected`) is `ok` and
-    // keeps watching.
-    refusedToStart = !initial.ok && initial.outcomes.length === 0
-  } catch (err) {
-    process.stderr.write(
-      `vx watch: cycle failed: ${err instanceof Error ? err.message : String(err)}\n`,
-    )
+  initial.held = runOrchestrator(initial.cycle.opts).then(
+    (run) => {
+      if (run.refused !== undefined) process.stderr.write(`vx watch: ${run.refused}\n`)
+      // A run that failed having run nothing refused to start: a requested
+      // name no project declares (run() says which, with a "did you mean").
+      // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
+      // same refusal on every change, since no edit to an input can declare
+      // a task. A name only the diff left out (`--affected`) is `ok` and
+      // keeps watching.
+      refusedToStart = !run.ok && run.outcomes.length === 0
+      return run.persistent
+    },
+    (err: unknown) => {
+      process.stderr.write(
+        `vx watch: cycle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      )
+      return undefined
+    },
+  )
+  const held = await initial.held
+  if (loop !== undefined) {
+    await loop
+    return stopped()
   }
   if (stop.signal.aborted) {
     await held?.stop(forwardedSignal(stop.signal.reason))
@@ -221,82 +240,98 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx watch: no projects in scope\n`)
     return 1
   }
-  // `--affected`'s diff is the tree at start; judged again, it held every
-  // later edit out of the scope it picked. A cycle is an edit, and the
-  // cache keys decide what in the scope it re-runs.
-  delete opts.affected
-  delete opts.selectedOutright
-
-  const load: CliLoadOptions = {
-    ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
-    ...(opts.frozen === true ? { frozen: true } : {}),
-  }
-  const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
-  const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
-  const ws = await loadCliWorkspace(workspaceRoot)
-  const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
-    new Set([
-      ...fingerprintClaims(plugins).keys(),
-      ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
-    ])
-  await runWatchLoop({
-    opts,
-    held,
-    stop: stop.signal,
-    workspaceRoot,
-    projects: watched,
-    workspaceWide: swept.workspaceWide,
-    projectDirs: watched.map((p) => p.dir),
-    workspaceInputs: swept.workspaceInputs,
-    outputs: swept.outputs,
-    inputs: swept.inputs,
-    uncached: swept.uncached,
-    configImports: swept.configImports,
-    workspaceConfigImports: swept.workspaceConfigImports,
-    memberBases: memberBaseDirs(workspace),
-    packageDirs: new Set(allProjects.map((p) => p.dir)),
-    fenceDirs: fenceDirs(allProjects),
-    // The workspace as the cycle that just ran saw it: a package added or
-    // removed since the loop armed joins or leaves the watched set. The
-    // scope is the one resolved at start; a new package joins it only as a
-    // dependency of it.
-    rediscover: async () => {
-      const workspace = await loadWorkspace(workspaceRoot)
-      const all = await discoverCliProjects(workspace)
-      const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
-      const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
-      return {
-        projects: now,
-        // A plugin the workspace config gained since claims its file from
-        // the cycle that loaded it; read once, its edits started nothing
-        // until a restart.
-        claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
-        memberBases: memberBaseDirs(workspace),
-        workspaceWide: sweep.workspaceWide,
-        workspaceInputs: sweep.workspaceInputs,
-        outputs: sweep.outputs,
-        inputs: sweep.inputs,
-        uncached: sweep.uncached,
-        configImports: sweep.configImports,
-        workspaceConfigImports: sweep.workspaceConfigImports,
-        packageDirs: new Set(all.map((p) => p.dir)),
-        fenceDirs: fenceDirs(all),
-      }
-    },
-    // Under --frozen every cycle's configs are the lock's, so a re-lock is
-    // the one edit that changes what a cycle runs; unheard, the loop ran
-    // the old lock until a restart (item 971).
-    claimedRootFiles: claimsOf(ws.plugins),
-    // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
-    cacheDir: opts.cacheDir ?? ws.cacheDir,
-  })
+  await armLoop(undefined, held)
   return stopped()
+
+  async function armLoop(initial?: InitialCycle, held?: HeldPersistent): Promise<void> {
+    // `--affected`'s diff is the tree at start; judged again, it held every
+    // later edit out of the scope it picked. A cycle is an edit, and the
+    // cache keys decide what in the scope it re-runs.
+    delete opts.affected
+    delete opts.selectedOutright
+
+    const load: CliLoadOptions = {
+      ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
+      ...(opts.frozen === true ? { frozen: true } : {}),
+    }
+    const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
+    const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
+    const ws = await loadCliWorkspace(workspaceRoot)
+    const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
+      new Set([
+        ...fingerprintClaims(plugins).keys(),
+        ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
+      ])
+    await runWatchLoop({
+      opts,
+      held,
+      initial,
+      stop: stop.signal,
+      workspaceRoot,
+      projects: watched,
+      workspaceWide: swept.workspaceWide,
+      projectDirs: watched.map((p) => p.dir),
+      workspaceInputs: swept.workspaceInputs,
+      outputs: swept.outputs,
+      inputs: swept.inputs,
+      uncached: swept.uncached,
+      configImports: swept.configImports,
+      workspaceConfigImports: swept.workspaceConfigImports,
+      memberBases: memberBaseDirs(workspace),
+      packageDirs: new Set(allProjects.map((p) => p.dir)),
+      fenceDirs: fenceDirs(allProjects),
+      // The workspace as the cycle that just ran saw it: a package added or
+      // removed since the loop armed joins or leaves the watched set. The
+      // scope is the one resolved at start; a new package joins it only as a
+      // dependency of it.
+      rediscover: async () => {
+        const workspace = await loadWorkspace(workspaceRoot)
+        const all = await discoverCliProjects(workspace)
+        const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
+        const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
+        return {
+          projects: now,
+          // A plugin the workspace config gained since claims its file from
+          // the cycle that loaded it; read once, its edits started nothing
+          // until a restart.
+          claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
+          memberBases: memberBaseDirs(workspace),
+          workspaceWide: sweep.workspaceWide,
+          workspaceInputs: sweep.workspaceInputs,
+          outputs: sweep.outputs,
+          inputs: sweep.inputs,
+          uncached: sweep.uncached,
+          configImports: sweep.configImports,
+          workspaceConfigImports: sweep.workspaceConfigImports,
+          packageDirs: new Set(all.map((p) => p.dir)),
+          fenceDirs: fenceDirs(all),
+        }
+      },
+      // Under --frozen every cycle's configs are the lock's, so a re-lock is
+      // the one edit that changes what a cycle runs; unheard, the loop ran
+      // the old lock until a restart (item 971).
+      claimedRootFiles: claimsOf(ws.plugins),
+      // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
+      cacheDir: opts.cacheDir ?? ws.cacheDir,
+    })
+  }
+}
+
+/** The initial run, when the loop arms while it is still in flight. */
+interface InitialCycle {
+  readonly cycle: WatchCycle
+  /** What the run leaves running once it returns. */
+  held: Promise<HeldPersistent | undefined>
+  /** The loop's readiness hook, once the loop has armed. */
+  onWaiting?: () => void
 }
 
 interface WatchLoopArgs {
   opts: RunOptions
   /** The persistent tasks the initial run left running; the next cycle stops them before it starts. */
   held: HeldPersistent | undefined
+  /** The initial run, still in flight: the loop's first cycle. */
+  initial: InitialCycle | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
   workspaceRoot: string
@@ -373,7 +408,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // Reentrancy guard — never two orchestrator runs in flight. Events that
   // land while one is running wait in `changes.pending` and are judged, on
   // settled bytes, one debounce window after it ends.
-  let running = false
+  let running = args.initial !== undefined
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -420,40 +455,46 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     const done = (inFlight = runCycle(label))
     await done
   }
-  const runCycle = async (first: string): Promise<void> => {
+  const runCycle = async (first: string | undefined, initial?: InitialCycle): Promise<void> => {
     try {
       let label: string | undefined = first
-      while (label !== undefined && !stop.aborted) {
-        process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
-        try {
-          await held?.stop()
-          held = undefined
-          // A Ctrl-C while the old server shut down ran a cycle anyway: a
-          // `not run` row and a footer printed above `stopped` (WD-22).
-          if (stop.aborted) break
-          restartTimings()
-          // On the mtime clock, as the arm is: from `Date.now()` a write the
-          // run made within a tick of it carried an earlier mtime and read as
-          // an edit (WD-20). The end needs no stamp: an mtime never leads it.
-          const start = fsClockNow(cacheDir)
-          current = watchCycle(opts, stop, interruptIfWaiting)
-          const cycle = await runOrchestrator(current.opts)
-          current = undefined
-          held = cycle.persistent
-          if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
-          changes.lastCycle = { start, end: Date.now() }
-        } catch (err) {
-          // A re-run can fail catastrophically when the workspace
-          // itself moved out from under us — e.g. the user deleted
-          // the project dir, or git lost its repo (the watch loop
-          // outlives its own cwd in test teardown). Surface the
-          // message but DON'T let it crash the watch loop; the next
-          // FS event (if any) will retry. The dispose() on SIGINT
-          // is the canonical exit; we don't unilaterally abort here.
-          // A config's own throw or a plugin's failure may quote a secret (L-11).
-          const message = maskedLine(err instanceof Error ? err.message : String(err))
-          process.stderr.write(`vx watch: cycle failed: ${message}\n`)
-        }
+      // The initial run is collected even after a stop: its server is the
+      // loop's to stop.
+      while (initial !== undefined || (label !== undefined && !stop.aborted)) {
+        if (initial !== undefined) {
+          held = await initial.held
+          initial = undefined
+        } else
+          try {
+            process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
+            await held?.stop()
+            held = undefined
+            // A Ctrl-C while the old server shut down ran a cycle anyway: a
+            // `not run` row and a footer printed above `stopped` (WD-22).
+            if (stop.aborted) break
+            restartTimings()
+            // On the mtime clock, as the arm is: from `Date.now()` a write the
+            // run made within a tick of it carried an earlier mtime and read as
+            // an edit (WD-20). The end needs no stamp: an mtime never leads it.
+            const start = fsClockNow(cacheDir)
+            current = watchCycle(opts, stop, interruptIfWaiting)
+            const cycle = await runOrchestrator(current.opts)
+            current = undefined
+            held = cycle.persistent
+            if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
+            changes.lastCycle = { start, end: Date.now() }
+          } catch (err) {
+            // A re-run can fail catastrophically when the workspace
+            // itself moved out from under us — e.g. the user deleted
+            // the project dir, or git lost its repo (the watch loop
+            // outlives its own cwd in test teardown). Surface the
+            // message but DON'T let it crash the watch loop; the next
+            // FS event (if any) will retry. The dispose() on SIGINT
+            // is the canonical exit; we don't unilaterally abort here.
+            // A config's own throw or a plugin's failure may quote a secret (L-11).
+            const message = maskedLine(err instanceof Error ? err.message : String(err))
+            process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+          }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
@@ -880,6 +921,12 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // "watching" is a promise that an edit from now on is seen; every
   // watcher has proved (or been given 2 s to prove) delivery first.
   await pool.proved()
+  if (args.initial !== undefined) {
+    current = args.initial.cycle
+    args.initial.onWaiting = interruptIfWaiting
+    inFlight = runCycle(undefined, args.initial)
+    interruptIfWaiting()
+  }
 
   process.stdout.write(`\n${watchingLine(projects.length)}; press Ctrl+C to stop\n`)
 
