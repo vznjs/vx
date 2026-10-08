@@ -111,7 +111,9 @@ export async function completionsCmd(
       return 1
     }
     const one = shell !== undefined && args.length === 1
-    const best = one ? nearest(shell, SHELLS) : undefined
+    // One edit: shell names are three or four letters, so two edits took
+    // `tcsh` to `bash`, a different shell.
+    const best = one ? nearest(shell, SHELLS, 1) : undefined
     process.stderr.write(
       `vx completions: expected one shell — bash, zsh or fish${one ? ` (got ${shell})` : ''}${best === undefined ? '' : `. Did you mean ${best}?`}${seeHelp('completions')}\n`,
     )

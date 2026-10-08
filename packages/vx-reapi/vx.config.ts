@@ -73,6 +73,32 @@ export default defineProject({
       },
     },
 
+    // Only the files that dial a real server (`*-e2e.test.ts`), for CI's
+    // job with the service containers; `test` runs every file, these in
+    // skip mode. No cache: the servers are images (`bazel-remote:latest`)
+    // the key cannot see. No sandbox, for `test`'s reason.
+    'test.live': {
+      description: 'bun test, the live REAPI files (VX_REAPI_*_ENDPOINT name the servers)',
+      dependsOn: ['install'],
+      exec: {
+        command:
+          'for f in tests/*-e2e.test.ts; do echo "== $f"; bun test --only-failures "$f" --timeout 90000 || exit 1; done',
+        env: {
+          passThrough: [
+            'VX_REAPI_TEST_ENDPOINT',
+            'VX_REQUIRE_REAPI',
+            'VX_REAPI_EXEC_ENDPOINT',
+            'VX_REQUIRE_REAPI_EXEC',
+          ],
+          define: {
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+            VX_CACHE_DIR: '.vx/cache',
+          },
+        },
+      },
+    },
+
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },

@@ -720,6 +720,16 @@ export async function discoverProjects(
   for (const entry of loaded) {
     if (entry === null) continue
     const { dir, pkg, configPath } = entry
+    // npm and pnpm take `../ext/*`, but `--affected` asks git from the root
+    // and sees nothing outside it: an edit there moved the task's key and
+    // selected nothing, green.
+    const rel = relPosix(workspace.root, dir)
+    if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+      throw new UserError(
+        `workspace member ${rel} (${dir}) is outside the workspace root ${workspace.root}: ` +
+          'vx keeps every project under the root. Move the workspace root up to a directory that holds every member.',
+      )
+    }
     if (!pkg.name) {
       nameless?.push(dir)
       // A nameless manifest can't be addressed, filtered, or made affected —
