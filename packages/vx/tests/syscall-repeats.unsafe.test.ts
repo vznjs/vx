@@ -10,7 +10,10 @@
 //     before creating it;
 //   - releasing the run lock removed its directory with `rm -r`, an unlink
 //     that fails EISDIR, an open and a listing before the rmdir;
-//   - the workspace fingerprint stat'ed each file before reading it.
+//   - the workspace fingerprint stat'ed each file before reading it;
+//   - a hit restored into a tree without its outputs walked the output
+//     globs twice (the check, then the clean) and asked realpath about the
+//     missing output directory (X-161, X-163).
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -20,7 +23,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { gitIn } from './helpers/workspace.js'
+import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 const TIMEOUT = 30_000
@@ -262,6 +265,51 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       const four = lookups(await trace(dir, tasks(4)), 'sh')
       expect(one).toBeGreaterThan(0)
       expect(four).toBe(one)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a hit restored into a tree without its outputs: one walk, no realpath of the missing directory',
+    async () => {
+      const root = await makeWorkspace({ dir, git: false })
+      const proj = await addProject(root, 'p', {
+        config: `export default { tasks: { build: {
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        } } }\n`,
+        files: { 'src/a.txt': 'a' },
+      })
+      gitInitCommit(root)
+      const vx = ['run', 'build', '--all']
+      const prime = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), ...vx],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(`${prime.exitCode}\n${prime.stderr.toString()}`).toStartWith('0\n')
+      await rm(path.join(proj, 'dist'), { recursive: true })
+      const calls = await trace(
+        dir,
+        `
+        process.chdir(${JSON.stringify(root)})
+        process.argv.splice(2, Infinity, ...${JSON.stringify(vx)})
+        await import('$SRC/bin.ts')
+        `,
+      )
+      // The link check and the walk's absent-prefix probe, once each (the
+      // clean takes the walk's answer), then the extractor's containment
+      // probe, which an lstat answers; the directory made for the entry;
+      // the run-end snapshot of the restored directory.
+      expect(on(calls, path.join(proj, 'dist'))).toEqual([
+        'lstat',
+        'lstat',
+        'lstat',
+        'mkdir',
+        'lstat',
+        'openat',
+      ])
     },
     TIMEOUT,
   )

@@ -797,8 +797,15 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  /**
+   * What `resolveOutputs` returned for these same arguments, when the
+   * caller walked the tree with no await since: a hit that found its tree
+   * stale walked it to say so, and a second walk here was half the
+   * restore's tree work (X-161).
+   */
+  resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const files = await resolveOutputs(args)
+  const files = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
@@ -1131,8 +1138,10 @@ export async function resolveWorkspaceOutputs(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
+  resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const files = await resolveWorkspaceOutputs(args)
+  const files = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(files, args.workspaceRoot),

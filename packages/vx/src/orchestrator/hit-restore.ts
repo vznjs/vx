@@ -102,6 +102,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // — 1.7 ms each on a four-task real repo whose `link` and `element`
   // tasks declare `outputs: []` (2026-09-10, VX_TIMING).
   let skipRestore = !anyOutputs
+  // The walk that found the tree stale, handed to the clean when nothing
+  // was awaited between them: the clean's own walk would only repeat it
+  // (X-161).
+  let walked: { proj: string[]; ws: string[] } | undefined
   if (anyOutputs) {
     const endRows = span('output rows')
     const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
@@ -180,6 +184,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         treeMatches = additive
           ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
           : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
+        if (!treeMatches) walked = { proj: actualAbs, ws: actualWsAbs }
       }
       if (treeMatches) {
         const endStat = span('output stat')
@@ -216,6 +221,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       })
       endGlob()
       skipRestore = actual.length === 0 && actualWs.length === 0
+      walked = { proj: actual, ws: actualWs }
     }
   }
   if (!skipRestore) {
@@ -233,8 +239,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         outputs: wsOutputs,
       })
     } else {
-      if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
-      if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
+      if (outputs.length > 0) {
+        cleanedRels = await cleanOutputs({ ...cleanArgs, resolved: walked?.proj })
+      }
+      if (wsOutputs.length > 0) {
+        cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, resolved: walked?.ws })
+      }
     }
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
     // The tree now holds this entry's bytes: stamp them for the next hit
