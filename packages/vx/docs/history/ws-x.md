@@ -1229,6 +1229,7 @@ reaches no build task.` The plan now carries the run's own line
   beside) did not resolve it: CPU paired median new/old 0.999 and 1.046
   against A/A 1.105 and 0.917, so the expected 0.3–0.4 s sits under
   the copies' noise. Rows: `scan-tar-bytes.test.ts` (seeded name
-  shapes, every flipped byte, every truncation, skipped entries, the
-  checksum's absence, hostile names, save rows against ingest rows);
+  shapes and v42 output logs, every flipped byte, every truncation,
+  skipped entries, the checksum's absence, hostile names, save rows
+  against ingest rows);
   `archive-security.test.ts` reads every fixture with both scanners.

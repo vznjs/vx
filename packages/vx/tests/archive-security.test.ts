@@ -31,11 +31,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'bun:test'
-import {
-  ArchiveSecurityError,
-  extractArtifactStream,
-  packArtifact,
-} from '../src/cache/archive.js'
+import { ArchiveSecurityError, extractArtifactStream, packArtifact } from '../src/cache/archive.js'
 import { tarPack } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 import { withSum } from './helpers/artifact-sum.js'

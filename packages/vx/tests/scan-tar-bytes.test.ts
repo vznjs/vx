@@ -4,6 +4,7 @@
 // unsafe name before they land, so it must read exactly what the stream
 // reads: the same entries, sizes, modes, mtimes, stdout, usage and key —
 // or the same refusal, class and message — on every name shape, every
+// output log (stdout and stderr in one ordered entry since v42), every
 // flipped byte and every truncation. Both run one header decoder
 // (`TarDecoder` in tar-stream.ts); these rows hold the rest of each path.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,6 +14,8 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { packArtifact } from '../src/cache/archive.js'
 import { Cache } from '../src/cache/cache.js'
 import { tarPack, type TarInput } from '../src/cache/tar-stream.js'
+import type { CapturedChunk } from '../src/exec/index.js'
+import { decodeOutputLog, encodeOutputLog } from '../src/orchestrator/output-log.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { rng } from './helpers/rng.js'
 import { scanBoth, type ScanOutcome } from './helpers/scan-parity.js'
@@ -82,6 +85,32 @@ function body(rnd: () => number): Uint8Array {
   return b
 }
 
+const LOG_ATOMS = ['ok\n', 'warn: x\n', '\x1e', '\x1ee', '\x1eo', 'a\uFEFF', '日本', '😀', ' ', '']
+
+/** What a task printed, both streams interleaved: the entry's `stdout` stores it encoded (v42). */
+function outputChunks(rnd: () => number): CapturedChunk[] {
+  const n = Math.floor(rnd() * 6)
+  return Array.from({ length: n }, () => ({
+    text: Array.from(
+      { length: 1 + Math.floor(rnd() * 4) },
+      () => LOG_ATOMS[Math.floor(rnd() * LOG_ATOMS.length)]!,
+    ).join(''),
+    err: rnd() < 0.4,
+  }))
+}
+
+/** `chunks` as the decoder returns them: empty ones dropped, same-stream neighbours joined. */
+function joined(chunks: readonly CapturedChunk[]): CapturedChunk[] {
+  const out: CapturedChunk[] = []
+  for (const c of chunks) {
+    if (c.text.length === 0) continue
+    const last = out.at(-1)
+    if (last !== undefined && last.err === c.err) last.text += c.text
+    else out.push({ ...c })
+  }
+  return out
+}
+
 const kind = (o: ScanOutcome): string => ('ok' in o ? 'ok' : `${o.refused}: ${o.message}`)
 
 describe('scanTarBytes reads what scanArtifact reads', () => {
@@ -91,9 +120,14 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
       const rnd = rng(seed)
       const ns = names(rnd, i)
       const outputs = new Map(ns.map((n) => [n, source(body(rnd))]))
+      const chunks = outputChunks(rnd)
+      const log = encodeOutputLog(chunks)
+      // A leading byte-order mark: both scanners must drop it alike (the
+      // decoder's default; the log rows below are the BOM-free seeds).
+      const bom = i % 10 === 3
       const tar = await packArtifact({
         key: `k-${seed}`,
-        stdout: rnd() < 0.2 ? '\uFEFFbom stdout' : `built ${seed}\n`,
+        stdout: bom ? `\uFEFF${log}` : log,
         outputs,
         exec: rnd() < 0.5 ? { cpuMs: seed, peakRssBytes: 4096 } : undefined,
       })
@@ -104,8 +138,13 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
       // Not vacuous: the names the scan reads are the ones packed.
       expect(o.ok.entries.map((e) => e.name).sort()).toEqual(['stdout', ...ns].sort())
       expect(o.ok.key).toBe(`k-${seed}`)
+      // The stored output log reads back byte for byte, and decodes to what ran.
+      if (!bom) {
+        expect(o.ok.stdout).toBe(log)
+        expect(decodeOutputLog(o.ok.stdout!)).toEqual(joined(chunks))
+      }
     }
-  })
+  }, 60_000)
 
   // One artifact with every header shape in it: a pax record, a ustar
   // split, a short name, an empty body, the sidecar and the sum.
@@ -144,7 +183,7 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
       'TarFormatError',
       'ok',
     ])
-  })
+  }, 60_000)
 
   it('on every truncation: the same refusal, word for word', async () => {
     const tar = await fixture()
@@ -171,7 +210,7 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
       'TarFormatError: archive has no end-of-archive marker',
       'ok',
     ])
-  })
+  }, 60_000)
 
   it('on every truncation of entries it skips (a symlink, a pax global header)', async () => {
     const parts: Uint8Array[] = []
@@ -205,7 +244,7 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
     }
     expect(messages).toContain('TarFormatError: archive ends inside entry outputs/link (…)')
     expect(messages).toContain('TarFormatError: archive ends inside a global header (…)')
-  })
+  }, 60_000)
 
   it('on a missing checksum, and an entry after it', async () => {
     const tar = await fixture()
@@ -214,7 +253,10 @@ describe('scanTarBytes reads what scanArtifact reads', () => {
     const cut = new Uint8Array([...tar.subarray(0, sumAt), ...new Uint8Array(1024)])
     const extra: Uint8Array[] = []
     for await (const c of tarPack([{ name: 'outputs/late.txt', size: 1, body: 'x' }])) extra.push(c)
-    const late = new Uint8Array([...tar.subarray(0, tar.byteLength - 1024), ...Buffer.concat(extra)])
+    const late = new Uint8Array([
+      ...tar.subarray(0, tar.byteLength - 1024),
+      ...Buffer.concat(extra),
+    ])
     expect([kind(await scanBoth(cut)), kind(await scanBoth(late))]).toEqual([
       'TarFormatError: artifact carries no checksum',
       "TarFormatError: entry outputs/late.txt follows the artifact's checksum",

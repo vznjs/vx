@@ -18,19 +18,20 @@ In-run numbers are the owner's measurements. Micro numbers come from
 of thread-pool wakeups and cache pressure. Read the micro column as
 ratios.
 
-| Part | Site | In-run (1,090 saves) | Micro |
-|---|---|---|---|
-| temp `writeFile` (pool) + rename | `cache.ts:1977-1986`, `2093-2098` | ~1.0 s | 187 µs (sync write + rename: 56) |
-| move-aside rename + tmp→final rename inside tx | `cache.ts:2088-2099` | part of 0.65 s | — |
-| index tx: BEGIN IMMEDIATE / COMMIT | `cache.ts:2091-2141` | ~0.33 s | 28 µs, row only |
-| index tx: inserts | `cache.ts:2100-2129` | ~0.33 s incl. renames | — |
-| scan of own tar (async generators, CRC, drain) | `cache.ts:2000-2004` → `archive.ts:423-466` → `tar-stream.ts:194-276` | ≤0.45 s | 159 µs (sync prototype: 22 µs) |
-| pack (async gens `summed`/`tarPack`, `for await`) | `archive.ts:375-396` | not split out | 84 µs |
-| plan (lstat, meta JSON) | `archive.ts:232-338` | not split out | 39 µs |
-| zstd | `zstd.ts:137` | 0.19 s | 43 µs |
-| lane + promise hops, `span`s, GC | `save-lane.ts`, `miss-save.ts:165-199` | rest (~1.3 s unaccounted) | — |
+| Part                                              | Site                                                                  | In-run (1,090 saves)      | Micro                            |
+| ------------------------------------------------- | --------------------------------------------------------------------- | ------------------------- | -------------------------------- |
+| temp `writeFile` (pool) + rename                  | `cache.ts:1977-1986`, `2093-2098`                                     | ~1.0 s                    | 187 µs (sync write + rename: 56) |
+| move-aside rename + tmp→final rename inside tx    | `cache.ts:2088-2099`                                                  | part of 0.65 s            | —                                |
+| index tx: BEGIN IMMEDIATE / COMMIT                | `cache.ts:2091-2141`                                                  | ~0.33 s                   | 28 µs, row only                  |
+| index tx: inserts                                 | `cache.ts:2100-2129`                                                  | ~0.33 s incl. renames     | —                                |
+| scan of own tar (async generators, CRC, drain)    | `cache.ts:2000-2004` → `archive.ts:423-466` → `tar-stream.ts:194-276` | ≤0.45 s                   | 159 µs (sync prototype: 22 µs)   |
+| pack (async gens `summed`/`tarPack`, `for await`) | `archive.ts:375-396`                                                  | not split out             | 84 µs                            |
+| plan (lstat, meta JSON)                           | `archive.ts:232-338`                                                  | not split out             | 39 µs                            |
+| zstd                                              | `zstd.ts:137`                                                         | 0.19 s                    | 43 µs                            |
+| lane + promise hops, `span`s, GC                  | `save-lane.ts`, `miss-save.ts:165-199`                                | rest (~1.3 s unaccounted) | —                                |
 
 Other micro facts used below:
+
 - A 278 B blob in the same tx as the row costs +17 µs (45 against 28 µs).
 - Batching 8 saves into one tx costs 16 µs per save, against 45 µs one tx each.
 - A blob SELECT costs 7–9 µs. `Bun.file(...).bytes()` of the artifact file costs 141 µs.
@@ -52,13 +53,14 @@ Treat that as an assumption. Step 2 measures it.
 
 ## Options (ranked by CPU saved vs. risk)
 
-| # | Option | Est. CPU saved | Risk |
-|---|---|---|---|
-| **A** | **Inline small artifacts in `store.db`, scan in memory synchronously, pack synchronously, group-commit per event-loop turn** | **~1.8–2.3 s** | medium: new location, prune and adopt paths |
-| B | Per-process append-only pack files (`<pid>-<n>.pack`), with an index of offset and length | ~1.8–2.2 s | high: a second container format, compaction for prune, adopt needs a pack scan, crash leaves a torn tail |
-| C | Keep one file per artifact. Only sync scan, sync pack, group commit, no aside rename | ~0.6–0.9 s | low |
+| #     | Option                                                                                                                       | Est. CPU saved | Risk                                                                                                     |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------- |
+| **A** | **Inline small artifacts in `store.db`, scan in memory synchronously, pack synchronously, group-commit per event-loop turn** | **~1.8–2.3 s** | medium: new location, prune and adopt paths                                                              |
+| B     | Per-process append-only pack files (`<pid>-<n>.pack`), with an index of offset and length                                    | ~1.8–2.2 s     | high: a second container format, compaction for prune, adopt needs a pack scan, crash leaves a torn tail |
+| C     | Keep one file per artifact. Only sync scan, sync pack, group commit, no aside rename                                         | ~0.6–0.9 s     | low                                                                                                      |
 
 Rejected:
+
 - **Writer worker(s).** Process CPU counts the worker, so this moves cost and doesn't remove it. It also adds structured-clone copies.
 - **Skipping the scan.** That drops the name-safety and round-trip guarantee.
 - **Temp writes on the main thread.** Measured worse (+0.3–1.0 s).
@@ -74,6 +76,7 @@ C is a strict subset of A, and A ships it as its first steps.
 An artifact whose compressed size is at most `INLINE_MAX` lives as a
 BLOB in the store's `artifacts` table. The INSERT is in the same
 transaction as its `entries` / `output_files` / `entry_inputs` rows.
+
 - Start `INLINE_MAX` at 32 KiB. Step 3 decides it from 8, 32 and 128 KiB arms. SQLite's own internal-vs-external BLOB study puts the break-even near 100 KB, and WAL writes a blob twice.
 - Larger artifacts keep today's file path.
 - The bytes are the same `tar.zst`, with the same sidecar key and `.vx-sum`. Only where the bytes live changes.
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS store.artifacts_meta (key TEXT PRIMARY KEY, value TEX
 - `artifacts_meta.layout` is the table's own version sentinel. A different value drops `artifacts`, silently.
 
 **Save.**
+
 - The plan, read, pack, zstd and scan steps run synchronously when the plan size is at most `ON_THREAD_MAX`.
 - If `compressed.byteLength ≤ INLINE_MAX`:
   - No temp, no rename.
@@ -115,12 +119,14 @@ stays for large artifacts and for ingest of files.
 **Pack.** `packArtifactBytes` gets a synchronous body for `size ≤ ON_THREAD_MAX`, with no async generators. The streaming pack is unchanged.
 
 **Group commit.** Saves that are ready queue their index work. One `setImmediate` flush runs them all in one `BEGIN IMMEDIATE`, each in its own `SAVEPOINT`.
+
 - A save that throws rolls back only its savepoint. It reports through the lane, which degrades it to a miss.
 - A failed COMMIT (`SQLITE_BUSY` past the timeout, `SQLITE_FULL`) fails every save in the batch. For the file path, renamed files are unlinked as today.
 - `landed` resolves after COMMIT. That adds at most one event-loop turn of latency.
 - The lock is held for k × ~16 µs.
 
 **Read side.**
+
 - `SELECT_ENTRY` gains `a.hash IS NOT NULL AS inline` through a LEFT JOIN on `artifacts`. An inline hit needs no `statSync`, which saves one stat per hit on the warm path. Pin that with a measurement.
 - `restoreOutputsOnce` reads the rows and the blob **in one read transaction**, so a concurrent re-save can't pair one save's rows with another's bytes. Today the rows and the file are two reads. A file hit decodes as today.
 - `pinArtifact` returns `new Blob([bytes])` for inline, read once, so the bytes are stable by construction.
@@ -142,12 +148,14 @@ the `OutputChunk` shape from `framed-output.ts`. This design builds on
 that shape and adds no separate stderr field.
 
 **Where it lives.**
+
 1. In the artifact, as the log entry that replaces `stdout`, so it rides every remote wire verbatim.
 2. In the index, as the encoded log in the row that replaces `entry_stdout`, so a hit replays it without decoding the artifact. Decoding per hit would put ~30 µs on the warm path, 30 ms per 1,000 hits.
 
 Encode the index copy compactly, not as JSON: per chunk, a stream byte, a varint length, then the UTF-8 bytes.
 
 **Cost per save.** It is linear in the log's bytes, and nothing for a quiet task.
+
 - The bytes are added to the tar, the CRC and the zstd input, and written raw to the index.
 - A few hundred bytes cost < 2 µs.
 - 100 KB of warnings cost ~0.2 ms of zstd plus ~25 WAL pages for the index copy.
@@ -155,13 +163,14 @@ Encode the index copy compactly, not as JSON: per chunk, a stream byte, a varint
 - Inline entries hold the log twice (raw in the index, compressed in the blob). That is the price of a decode-free hit.
 
 **Versions.**
+
 - The log changes the stored bytes, so it carries the `CACHE_VERSION` bump (v41 → v42).
 - This design changes no artifact byte, so it needs **no** `CACHE_VERSION` bump of its own. If both land in one release window, they share v42.
 - It needs one `SCHEMA_VERSION` bump for the new tables and the `inline` read. If the log's PR has already bumped the schema, this one bumps it again; if the two are coordinated, one bump covers both.
 
 ### Correctness argument
 
-- **Crash or interrupt (kill, Ctrl-C, OOM).** An inline artifact and its rows are one transaction in one database file. WAL commit is atomic, so either both are there or neither is. No temp files, no rename window, no orphans. A tx across attached DBs is *not* atomic under WAL, which is why the blob must not live in a separate `artifacts.db`.
+- **Crash or interrupt (kill, Ctrl-C, OOM).** An inline artifact and its rows are one transaction in one database file. WAL commit is atomic, so either both are there or neither is. No temp files, no rename window, no orphans. A tx across attached DBs is _not_ atomic under WAL, which is why the blob must not live in a separate `artifacts.db`.
 - **Power loss** (`synchronous=NORMAL`). The last commits may roll back, but always rows and bytes together. Today the file and the WAL are lost independently, and only the CRC catches it. The CRC stays as the backstop.
 - **Concurrent processes.**
   - Writers serialize on the store's write lock. Two saves of one key are an upsert of bytes and rows in one tx each: last writer wins, never mixed. The A-3 mixed pairing can't happen.
@@ -176,6 +185,7 @@ Encode the index copy compactly, not as JSON: per chunk, a stream byte, a varint
 ## Tests that must prove it
 
 Each test must fail without its fix (differential).
+
 1. **Atomic inline save.** A throw injected after the blob insert, inside the tx, leaves no row and no blob. The control (blob insert moved outside the tx) fails.
 2. **Two-writer pairing.** Two processes re-save one key with different bytes in a loop while a third restores. Every restore's files match the `output_files` rows it read (adapt the A-3 row). Must fail with rows and blob read in two read txs.
 3. **Location switch.** File → inline → file for one key. Each read gets the latest bytes. The stale file is reaped, and no phantom row is counted by `--max-size`.
@@ -202,6 +212,7 @@ Each test must fail without its fix (differential).
 ## Implementation plan (PR-sized, in order)
 
 Each step is A/B'd on the 1,090-package cold row (interleaved arms, min-of-N, before-arm from a worktree) once the host is free.
+
 1. `perf(cache): scan a save's own tar in memory, synchronously`. Extract the shared header decode, add `scanTarBytes`, parity tests (5). Expected −0.3 to −0.4 s. Low risk, no format change.
 2. `perf(cache): pack a small artifact synchronously`. Sync body under `ON_THREAD_MAX`, and an A/B that splits out plan, pack and the unaccounted ~1.3 s. Expected −0.1 to −0.3 s.
 3. `perf(cache): store small artifacts inline in the store index`. Add the table and sentinel, save, read, restore, has/get/getMany, adopt, ingest, pin, prune and sweep, `artifactSize?`, docs (`modules/cache.md` § Storage layout and § Atomic writes, `caching.md`), tests 1–4, 6, 8–10, 12, and a `SCHEMA_VERSION` bump. The `INLINE_MAX` arms decide the threshold. Expected −1.0 to −1.2 s. The largest PR: about 2–3 days with tests. Rebase it on the output-log PR, and the log's tests (11) must pass here.

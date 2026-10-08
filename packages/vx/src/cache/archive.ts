@@ -537,7 +537,6 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   return fold.result()
 }
 
-
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined

@@ -354,7 +354,8 @@ export function* tarEntriesSync(tar: Uint8Array): Generator<TarBytesEntry> {
         if (step.type === 'g') continue
         throw new TarFormatError('archive ends inside an extended header')
       }
-      if (step.type !== 'g') dec.extended(step.type, tar.subarray(off, off + step.padded), step.size)
+      if (step.type !== 'g')
+        dec.extended(step.type, tar.subarray(off, off + step.padded), step.size)
       off += step.padded
       continue
     }
