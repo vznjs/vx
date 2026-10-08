@@ -1270,3 +1270,9 @@ reaches no build task.` The plan now carries the run's own line
   runners of six beside it (`shards`); a `gate` job keeps the required
   name "lint · format · test" and passes only when all three do. The
   `ci` job was CPU bound: 1,150 s of tasks on 4 cores, 5 of its 6 min.
+
+- **X-197.** CI, macOS: the same split as X-196. Core's shards run on
+  two macOS runners (`darwin-shards`) beside `core-darwin`, which keeps
+  the unsafe suite, the canary and the cross-compile; `darwin-gate`
+  keeps the required name "core tests (macOS)" and passes when both
+  passed or `changes` skipped both. Linux after X-196: 3m46, was 6m06.

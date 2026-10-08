@@ -242,6 +242,12 @@ describe('the gating', () => {
         'changes',
         "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}",
       ],
+      [
+        'darwin-shards',
+        'changes',
+        "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}",
+      ],
+      ['darwin-gate', ['core-darwin', 'darwin-shards'], 'always()'],
     ])
   })
 
