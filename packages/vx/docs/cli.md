@@ -2197,15 +2197,21 @@ vx show <project>                # one project's resolved config (`//`: the root
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
 vx show [<task>] --filter <p>    # only the projects `vx run --filter <p>` selects
-vx show [<task>] --affected      # only the changed projects and their dependents
+vx show <task> --affected        # only the projects whose <task> `vx run <task> --affected` runs
+vx show --affected               # the run's candidates: the changed projects and their dependents
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
 `--filter` and `--affected[=<ref>]` narrow the list, or a task's
-projects, as `vx run` selects projects: `turbo ls --affected` is
+projects, as `vx run` selects: `turbo ls --affected` is
 `vx show --affected`, and `nx show projects --affected --with-target t`
-is `vx show t --affected`. Beside one project or `<pkg>#<task>` they
-are refused.
+is `vx show t --affected`. Beside a task, `--affected` lists the
+projects whose task the run keeps: a change reaches another project
+only along a task edge, so a dependent whose `test` has no `^test` is
+not listed (X-147). With no task there is no edge to follow, and the
+list is the run's candidates, `--filter "...[<base>]"`'s: the changed
+projects and their package dependents. Beside one project or
+`<pkg>#<task>` they are refused.
 
 Nx's spellings name these: `vx show projects` (when no project or task
 has that name) and `vx show project <name>` say `vx show` and

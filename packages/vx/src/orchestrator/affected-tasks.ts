@@ -4,9 +4,12 @@
 // behind `^build` runs when `ui#build` (or what it depends on) is reached,
 // and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
 
+import type { WorkspaceRules } from '../config.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
 import {
+  buildTaskGraph,
   compileTaskPattern,
+  expandRequested,
   isGroupTask,
   isTaskPattern,
   parseDependencySpec,
@@ -17,7 +20,12 @@ import {
   type PackageGraph,
   PROJECT_CONFIG_FILENAMES,
   type ProjectEntry,
+  type ProjectMeta,
 } from '../workspace/index.js'
+import { applyGraphStage } from './graph-stage.js'
+import { hasHook } from './plugin-host.js'
+import type { VxPlugin } from './plugin.js'
+import { isDefaultBuild } from './projects.js'
 
 /** Every file in this set re-keys each of its project's tasks, whatever their inputs. */
 const KEYED_BY_EVERY_TASK = new Set(['package.json', ...PROJECT_CONFIG_FILENAMES])
@@ -145,4 +153,61 @@ export function affectedRoots(
     return reached.get(root)!
   }
   return ids.filter(reaches)
+}
+
+/**
+ * The requested tasks `--affected` keeps, in their order: one the user
+ * named (`pkg#task`), one in a project another include selected outright
+ * (X-10), and one whose closure the change reaches.
+ */
+export function keptByAffected<R extends { project: string; task: string }>(
+  nodes: ReadonlyMap<string, TaskNode>,
+  requested: readonly R[],
+  changes: AffectedChanges,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  packageGraph: PackageGraph,
+  keep: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> } = {},
+): R[] {
+  const ids = requested.map((r) => `${r.project}#${r.task}`)
+  const reached = new Set(affectedRoots(nodes, ids, changes, projects, packageGraph))
+  return requested.filter(
+    (r, i) =>
+      keep.named?.has(ids[i]!) === true ||
+      keep.outright?.has(r.project) === true ||
+      reached.has(ids[i]!),
+  )
+}
+
+/**
+ * The projects whose `task` a `vx run <task> --affected` over `candidates`
+ * keeps (`vx show <task> --affected`): the run's graph, `graph` stage and
+ * selection, without opening a cache or keying a task.
+ */
+export async function affectedTaskProjects(args: {
+  task: string
+  candidates: readonly string[]
+  changes: AffectedChanges
+  outright?: readonly string[] | undefined
+  projects: Map<string, ProjectEntry>
+  packageGraph: PackageGraph
+  projectMetas: readonly ProjectMeta[]
+  plugins: readonly VxPlugin[]
+  workspaceRoot: string
+  cacheDir: string
+  rules?: WorkspaceRules | undefined
+  warn: (message: string) => void
+}): Promise<string[]> {
+  const requested = expandRequested([args.task], args.candidates, args.projects, isDefaultBuild)
+  const nodes = buildTaskGraph({
+    projects: args.projects,
+    packageGraph: args.packageGraph,
+    requested,
+    workspaceRoot: args.workspaceRoot,
+    rules: args.rules,
+  })
+  if (hasHook(args.plugins, 'graph')) await applyGraphStage(args.plugins, nodes, args)
+  const kept = keptByAffected(nodes, requested, args.changes, args.projects, args.packageGraph, {
+    outright: new Set(args.outright),
+  })
+  return kept.map((r) => r.project)
 }

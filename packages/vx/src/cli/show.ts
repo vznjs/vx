@@ -9,12 +9,19 @@
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
-import { isDefaultBuild } from '../orchestrator/index.js'
+import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { affectedFilterFor, resolveFilters } from './select.js'
-import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
 import {
+  discoverCliProjects,
+  loadCliProjects,
+  loadCliWorkspace,
+  warnToStderr,
+} from './workspace-config.js'
+import {
+  type AffectedChanges,
+  buildPackageGraph,
   findWorkspaceRoot,
   type LoadReads,
   loadWorkspace,
@@ -124,6 +131,9 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   // `turbo ls --filter` / `nx show projects --affected`: the list, and a
   // task's projects, narrowed by the selection `vx run` would make.
   let selected: Set<string> | undefined
+  // A task's projects under `--affected` are the ones whose task the run
+  // keeps: the change reaches another project only along a task edge.
+  let byDiff: { changes: AffectedChanges; outright?: readonly string[] | undefined } | undefined
   if (parsed.filters.length > 0 || parsed.affected !== undefined) {
     if (scope !== 'all') {
       throw new UserError(
@@ -142,6 +152,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     if ('error' in r) throw new UserError(`vx show: ${r.error}`)
     if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
     selected = new Set('empty' in r ? [] : r.names)
+    if ('names' in r && r.affected !== undefined)
+      byDiff = { changes: r.affected, outright: r.outright }
   }
   const inSelection = (name: string): boolean => selected === undefined || selected.has(name)
 
@@ -167,7 +179,27 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`,
       )
     }
-    const shown = declaring.filter((p) => inSelection(p.name))
+    let shown = declaring.filter((p) => inSelection(p.name))
+    if (byDiff !== undefined) {
+      const ws = await loadCliWorkspace(root)
+      const kept = new Set(
+        await affectedTaskProjects({
+          task: projectName!,
+          candidates: shown.map((p) => p.name),
+          changes: byDiff.changes,
+          outright: byDiff.outright,
+          projects,
+          packageGraph: buildPackageGraph(metas),
+          projectMetas: metas,
+          plugins: ws.plugins,
+          workspaceRoot: root,
+          cacheDir: ws.cacheDir,
+          rules: ws.workspaceConfig?.rules,
+          warn: warnToStderr,
+        }),
+      )
+      shown = shown.filter((p) => kept.has(p.name))
+    }
     process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format))
     return 0
   }

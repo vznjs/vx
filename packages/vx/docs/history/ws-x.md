@@ -1125,3 +1125,10 @@ reaches no build task.` The plan now carries the run's own line
   vanished and the run exited 0 having run the others. The lock now
   refuses it as it does a moved config (D-88). Row:
   `frozen-deleted-config.test.ts`.
+- **X-147.** `vx show <task> --affected` listed the changed projects and
+  their package dependents, so it named projects that
+  `vx run <task> --affected` does not run: since 2026-10-04 a change reaches another
+  project only along a task edge. It now asks the run's own selection
+  (`affectedTaskProjects`: the candidates' graph, the `graph` stage,
+  `keptByAffected`, which `prepareRun` applies too). `vx show --affected`
+  with no task keeps the run's candidates. Rows: `show-affected.test.ts`.
