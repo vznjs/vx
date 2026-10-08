@@ -2037,7 +2037,7 @@ package's README.
 
 ## Turbo and Nx flags
 
-What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
+What a Turbo, Nx or Vite Task (`vp run`) user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
@@ -2129,6 +2129,13 @@ copy to the source.
 | nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                                            |
 | nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
 | nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                                          |
+| vp     | `-r`, `--recursive`                               | alias   | `--all`                                                                                                                                           |
+| vp     | `-w`, `--workspace-root`                          | alias   | `--filter //` (the root project)                                                                                                                  |
+| vp     | `--concurrency-limit <v>`                         | alias   | `--concurrency <n>`                                                                                                                               |
+| vp     | `--ignore-depends-on`                             | alias   | `--exclude-dependencies`                                                                                                                          |
+| vp     | `--fail-if-no-match`                              | alias   | nothing: a filter that matches nothing already fails the run                                                                                      |
+| vp     | `--log <v>`                                       | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| vp     | `--last-details`                                  | refuse  | `vx last` prints the last run                                                                                                                     |
 
 ## Machine-readable output
 

@@ -483,9 +483,11 @@ function matchesIgnore(
   ignore: NonNullable<ResolvedSandboxConfig['ignore']>,
 ): boolean {
   if (v.target === undefined || v.ignorable === undefined) return false
+  const proxy = PROXY_DENY_RE.test(v.line)
   for (const which of v.ignorable) {
-    const patterns = ignore[which]
-    if (patterns === undefined) continue
+    const listed = ignore[which]
+    if (listed === undefined) continue
+    const patterns = proxy ? listed.map(hostKey) : listed
     const subject = which === 'read' || which === 'write' ? (v.path ?? v.target) : v.target
     if (patterns.some((pat) => pat === subject || new Bun.Glob(pat).match(subject))) return true
   }
@@ -499,7 +501,7 @@ function matchesIgnore(
  */
 function describeMacViolation(line: string): Partial<SandboxViolation> {
   const proxy = PROXY_DENY_RE.exec(line)
-  if (proxy !== null) return { target: proxy[1]!, ignorable: ['network'] }
+  if (proxy !== null) return { target: hostKey(proxy[1]!), ignorable: ['network'] }
   const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
   if (m === null) return {}
   const [op, target] = [m[1]!, m[2]!]
@@ -715,6 +717,18 @@ function filterIgnored(
  * silences it by host; the seatbelt pattern above wants `deny(<n>)`.
  */
 const PROXY_DENY_RE = /^deny network-outbound (\S+) \([^)]*\)$/
+
+/**
+ * `<host>[:<port>]` as the proxy matches it: case-blind, no trailing dot.
+ * The record keeps the client's spelling (curl sends `EXAMPLE.Com`, curl
+ * and Bun keep `example.com.`), so an exact match against the ignore list
+ * left a refusal the task named in its report.
+ */
+function hostKey(target: string): string {
+  const colon = target.lastIndexOf(':')
+  const host = colon === -1 ? target : target.slice(0, colon)
+  return host.toLowerCase().replace(/\.$/, '') + (colon === -1 ? '' : target.slice(colon))
+}
 
 /**
  * Linux: the connections the proxy refused, from the store records. Only

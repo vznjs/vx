@@ -13,7 +13,8 @@
 // default size. Numbers: docs/design/playground-spike-2026-09.md § Glob.
 
 import picomatch from 'picomatch'
-import { compiledByTaskGlob, globCases, mulberry32 } from '../../vx-docs/tests/glob-fuzz.js'
+import { compiledByTaskGlob, globCases } from '../../vx-docs/tests/glob-fuzz.js'
+import { mulberry32 } from '../../vx-docs/tests/helpers/rng.js'
 import { Glob as ShimGlob } from '../../vx-docs/src/playground/shim/glob.js'
 
 const rand = mulberry32(667)
