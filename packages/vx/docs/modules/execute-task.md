@@ -73,7 +73,10 @@ anything beneath it changes.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
 caches. A readiness timeout returns once the server's process group is
-gone (SIGTERM, grace, SIGKILL), not when its shell exits.
+gone (SIGTERM, grace, SIGKILL), not when its shell exits: `ready`
+rejects only then (runner.md), and the group gets one SIGTERM. A second
+one, sent here a turn after the runner's, killed a server with a
+one-shot handler mid-cleanup.
 
 ### C. Normal task
 
