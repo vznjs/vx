@@ -1246,6 +1246,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  json?: boolean
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
@@ -1334,6 +1335,19 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
   refused?: string
+  json?: RunSummaryJson
+}
+== type RunSummaryJson (src/orchestrator/run-artifacts.ts)
+export interface RunSummaryJson {
+  runId: string
+  ok: boolean
+  exitCode: number
+  startedAt: string
+  endedAt: string
+  totalMs: number
+  tasks: SummaryTaskJson[]
+  aborted: SummaryTaskJson[]
+  summary: Tally
 }
 == type RunSummaryRecord (src/orchestrator/telemetry.ts)
 export interface RunSummaryRecord {
@@ -1406,6 +1420,43 @@ export interface ScheduleHookContext extends BaseContext {
 export interface SchemaReset {
   from: string
   to: string
+}
+== type SummaryTaskJson (src/orchestrator/run-artifacts.ts)
+export interface SummaryTaskJson {
+  id: string
+  project: string
+  task: string
+  status: TaskOutcome['status']
+  exitCode: number
+  durationMs: number
+  hash: string | null
+  restored?: boolean
+  noCache?: true
+  flaky?: { passes: number; failures: number; attempts: number }
+  cpuMs?: number
+  peakRssBytes?: number
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number
+  blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
+  wallclockStartNs?: string
+  wallclockEndNs?: string
+}
+== type Tally (src/orchestrator/tally.ts)
+export interface Tally {
+  successful: number
+  failed: number
+  skipped: number
+  cachedLocal: number
+  restoredLocal: number
+  restoredRemote: number
+  upToDate: number
+  cachedRemote: number
+  aborted: number
+  total: number
 }
 == type TaskConfig (src/config.ts)
 export interface TaskConfig {

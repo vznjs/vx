@@ -1910,6 +1910,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  json?: boolean
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
@@ -2017,6 +2018,7 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
   refused?: string
+  json?: RunSummaryJson
 }
 ```
 

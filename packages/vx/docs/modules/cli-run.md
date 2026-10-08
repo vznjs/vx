@@ -36,6 +36,7 @@ export interface RunArgs {
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined
+  format: 'pretty' | 'json' // --format json: the result document on stdout, the rest on stderr
   graph: string | undefined // '' = stdout; else path
   summarize: string | undefined // '' = default path; else path
   profile: string | undefined // 'profile.json' default

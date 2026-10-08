@@ -78,8 +78,13 @@ export function watchRefusal(parsed: RunArgs): string | null {
   // All three format ONE run's result and are consumed by `runCmd` alone, so
   // a watch loop silently ignored them. `--verbosity 0` is not rejected: it
   // asks for the output watch already gives.
-  if (parsed.report !== undefined || parsed.reportFile !== undefined || parsed.verbosity > 0) {
-    return 'vx watch: --report / --report-file / --verbosity are not supported in watch mode (they report a single run)'
+  if (
+    parsed.report !== undefined ||
+    parsed.reportFile !== undefined ||
+    parsed.verbosity > 0 ||
+    parsed.format !== 'pretty'
+  ) {
+    return 'vx watch: --report / --report-file / --verbosity / --format are not supported in watch mode (they report a single run)'
   }
   return null
 }

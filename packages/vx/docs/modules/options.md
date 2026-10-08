@@ -34,6 +34,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  json?: boolean // --format json: the terminal renderer writes stderr; RunSummary.json carries the document
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string // text printed just above the footer
   profile?: string
   handleSignals?: boolean
@@ -56,6 +57,7 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop(), servers }: what holdPersistent handed back
   refused?: string // why the run refused to start (ok false, nothing ran); the caller prints it, vx run on stderr
+  json?: RunSummaryJson // the --summarize document, when RunOptions.json asked for it
 }
 ```
 

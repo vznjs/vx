@@ -155,7 +155,7 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [
     ['--json'],
-    "--json (turbo): use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
+    "--json (turbo): use `--format json` for the run's result on stdout, `--dry=json` for the plan",
   ],
   [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
   [

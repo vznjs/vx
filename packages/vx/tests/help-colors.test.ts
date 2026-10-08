@@ -42,6 +42,7 @@ describe('paintHelp', () => {
       .split('\n\n')
       .find((b) => b.startsWith('Artifacts'))!
     expect(painted(paintHelp(artifacts, ON, paint), '#22d3ee')).toEqual([
+      '--format <fmt>',
       '--summarize[=<path>]',
       '--profile[=<path>]',
       '--report[=markdown]',

@@ -361,7 +361,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--json'],
     value: false,
     outcome: 'refuse',
-    vx: "use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record",
+    vx: "use `--format json` for the run's result on stdout, `--dry=json` for the plan",
   },
   {
     runner: 'turbo',

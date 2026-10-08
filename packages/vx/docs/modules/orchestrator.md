@@ -58,6 +58,7 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop(), servers }, set only under holdPersistent
   refused?: string // why the run refused to start; the caller prints it
+  json?: RunSummaryJson // the --summarize document, when RunOptions.json asked for it
 }
 ```
 
