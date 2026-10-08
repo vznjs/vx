@@ -252,6 +252,60 @@ describe('affectedProjects', () => {
     )
   })
 
+  // `HEAD:packages` is the tree at packages/: its paths lack the prefix,
+  // and an unchanged workspace selected both projects, green.
+  it('refuses a base naming a path inside a commit; a root tree stays a base', async () => {
+    const err = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD:packages',
+      projects,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err).toBeInstanceOf(UserError)
+    expect(err?.message).toBe(
+      'git ref "HEAD:packages" names what is at packages, not a commit: vx diffs the whole ' +
+        'workspace, so pass the commit alone ("HEAD").',
+    )
+    const sel = async (since: string) =>
+      [...(await affectedProjects({ workspaceRoot: root, since, projects }))].sort()
+    expect(await sel('HEAD^{tree}')).toEqual([])
+    expect(await sel('HEAD:')).toEqual([])
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+    expect(await sel('HEAD^{tree}')).toEqual(['a'])
+    // A commit found by its message (`:/<text>`) is a commit.
+    expect(await sel(':/initial')).toEqual(['a'])
+  })
+
+  // `^main` is rev-list's exclusion: `git diff ^main` diffed from main itself,
+  // so a change only main made selected its project too, green.
+  it('refuses a base written as an exclusion (`^<ref>`)', async () => {
+    await git(root, 'branch', '-m', 'main')
+    await git(root, 'checkout', '-q', '-b', 'feature')
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'feature: a')
+    await git(root, 'checkout', '-q', 'main')
+    await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'main: b')
+    await git(root, 'checkout', '-q', 'feature')
+    const sel = (since: string) =>
+      affectedProjects({ workspaceRoot: root, since, projects }).then(
+        (s) => [...s].sort(),
+        (e: unknown) => e as Error,
+      )
+    const err = await sel('^main')
+    expect(err).toBeInstanceOf(UserError)
+    expect((err as Error).message).toBe(
+      'git ref "^main" is an exclusion, not a ref: pass the base alone ("main").',
+    )
+    // CONTROL: the base it names, and a caret after a ref (its parent).
+    expect(await sel('main')).toEqual(['a'])
+    expect(await sel('main^')).toEqual(['a'])
+  })
+
   it('CONTROL: the base a range refusal names works on its own', async () => {
     await writeFile(path.join(root, 'packages/a/file.txt'), 'a-rev2')
     await git(root, 'add', '.')
@@ -1794,6 +1848,24 @@ describe('affectedProjects: config import closures', () => {
         `import './internal.mjs'\nexport const P=2\n`,
       ),
     ).toEqual(['lib', 'x'])
+  })
+
+  it("PIN: through the config's own helper file to an orphan", async () => {
+    // lib's config imports its own `tasks.mjs`, which imports a shared
+    // file. The walk stopped at `tasks.mjs` as owned, and an edit to the
+    // shared file left lib out while its resolved config moved.
+    await writeFile(
+      path.join(root, 'packages/lib/vx.config.mjs'),
+      `import { T } from './tasks.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + T } } } }\n`,
+    )
+    await writeFile(
+      path.join(root, 'packages/lib/tasks.mjs'),
+      `import { O } from '../../shared/own.mjs'\nexport const T = O\n`,
+    )
+    await writeFile(path.join(root, 'shared/own.mjs'), `export const O = 1\n`)
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'own helper')
+    expect(await editThenSelect('shared/own.mjs', `export const O = 2\n`)).toEqual(['lib'])
   })
 
   it('CONTROL: an orphan module NO config imports selects the exact empty set', async () => {

@@ -168,22 +168,21 @@ describe('an upgrade resets the cache in silence', () => {
   // Item 1083: the dry prune refused an earlier schema, so it could not
   // preview the prune after an upgrade, which resets the index and reaps
   // every aged artifact as row-less. It now names what that prune reaps,
-  // and still writes nothing.
+  // in silence, and still writes nothing.
   it('`vx cache prune --dry-run` on an earlier schema names what the real prune reaps', async () => {
     expect(await runOnce()).toEqual([])
     pokeVersion('v0')
     const cacheDir = path.join(root, '.vx', 'cache')
     const artifacts = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
     expect(artifacts).toHaveLength(1)
-    const aged = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    const aged = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000)
     await utimes(path.join(cacheDir, artifacts[0]!), aged, aged)
     const bytes = Bun.file(path.join(cacheDir, artifacts[0]!)).size
     const before = index()
     const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
     expect({ ...dry, after: index() }).toEqual({
       threw: null,
-      stderr:
-        "[vx] the cache index is schema v0 from another vx version: the prune resets it first, and every artifact past the hour's grace is then an orphan\n",
+      stderr: '',
       stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
       after: before,
     })
@@ -191,6 +190,29 @@ describe('an upgrade resets the cache in silence', () => {
     expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
       threw: null,
       stdout: `Pruned 0 entries (0 B freed), reaped 1 orphaned artifact (${formatBytes(bytes)})\n`,
+    })
+  })
+
+  // The preview reads the reset's row-less artifacts through the same
+  // policy the real prune applies: one younger than `--older-than` stays.
+  it('`vx cache prune --dry-run` on an earlier schema keeps an artifact the policy keeps', async () => {
+    expect(await runOnce()).toEqual([])
+    pokeVersion('v0')
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const artifacts = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+    expect(artifacts).toHaveLength(1)
+    const recent = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    await utimes(path.join(cacheDir, artifacts[0]!), recent, recent)
+    const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
+    expect(dry).toEqual({
+      threw: null,
+      stderr: '',
+      stdout: 'Would prune 0 entries (0 B)\n',
+    })
+    const wet = await verb(['cache', 'prune', '--older-than', '30d'])
+    expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
+      threw: null,
+      stdout: 'Pruned 0 entries (0 B freed)\n',
     })
   })
 

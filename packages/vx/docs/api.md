@@ -102,15 +102,12 @@ export class Cache implements CacheLayer {
   readonly formatChange: SchemaReset | null
   readonly storeReset: SchemaReset | null
   static inspect(cacheDir: string): Cache
-  static async orphansBeforeReset(
-    cacheDir: string,
-  ): Promise<{ found: string; orphans: number; orphanBytes: number } | null>
   constructor(
     private readonly cacheDir: string,
     localPolicy: { read: boolean; write: boolean } = { read: true, write: true },
     repoDir?: string,
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
-    mode: 'open' | 'inspect' = 'open',
+    mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
   getConfigEval(key: string): string | null
@@ -206,12 +203,12 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheInputs {
-  files: string[]
-  workspaceFiles?: string[]
-  env?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  env?: readonly string[]
   tasks?: readonly string[]
-  runtime?: string[]
-  workspaceRuntime?: string[]
+  runtime?: readonly string[]
+  workspaceRuntime?: readonly string[]
 }
 ```
 
@@ -277,8 +274,8 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheOutputs {
-  files: string[]
-  workspaceFiles?: string[]
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
 }
 ```
 
@@ -491,9 +488,9 @@ type · `src/config.ts`
 
 ```ts
 export interface ExecEnv {
-  passThrough?: string[]
+  passThrough?: readonly string[]
   define?: Record<string, string>
-  secret?: string[]
+  secret?: readonly string[]
 }
 ```
 
@@ -1436,6 +1433,37 @@ type · `src/config.ts`
 export type PluginHook = (typeof PLUGIN_HOOKS)[number]
 ```
 
+## `PluginHookHandlers`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface PluginHookHandlers {
+  onRunStart: (info: RunStartInfo) => void | Promise<void>
+  onTaskStart: (node: TaskNode) => void | Promise<void>
+  onTaskStdout: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskStderr: (node: TaskNode, chunk: string) => void | Promise<void>
+  onTaskComplete: (node: TaskNode, outcome: TaskOutcome) => void | Promise<void>
+  onRunStatus: (line: string) => void | Promise<void>
+  onRunEnd: () => void | Promise<void>
+}
+```
+
+## `PluginHookName`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export type PluginHookName =
+  | 'onRunStart'
+  | 'onTaskStart'
+  | 'onTaskStdout'
+  | 'onTaskStderr'
+  | 'onTaskComplete'
+  | 'onRunStatus'
+  | 'onRunEnd'
+```
+
 ## `PluginHooks`
 
 type · `src/orchestrator/plugin.ts`
@@ -1479,8 +1507,12 @@ export interface PluginOrigin {
 
 type · `src/orchestrator/plugin.ts`
 
+What `setup` receives: the run's lifecycle, observe-only.
+
 ```ts
-export interface PluginSetupContext extends BaseContext {}
+export interface PluginSetupContext extends BaseContext {
+  on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
+}
 ```
 
 ## `PreparedRun`
@@ -1580,6 +1612,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 ```
 
@@ -1828,6 +1861,7 @@ export interface RunOptions {
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
+  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal
@@ -1903,6 +1937,22 @@ seam is gone (a run always executes in-process — see
 export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
+}
+```
+
+## `RunStartInfo`
+
+type · `src/orchestrator/events.ts`
+
+Payload of the `run:start` event — mirrors the Logger.runStart hook.
+
+```ts
+export interface RunStartInfo {
+  total: number
+  concurrency?: number
+  requestedCount?: number
+  context?: RunContext
+  startedAtMs?: number
 }
 ```
 
@@ -2008,7 +2058,7 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxDenials {
-  network?: string[]
+  network?: readonly string[]
 }
 ```
 
@@ -2018,13 +2068,13 @@ type · `src/config.ts`
 
 ```ts
 export interface SandboxGrants {
-  read?: string[]
-  write?: string[]
-  network?: true | string[]
-  systemInfo?: string[]
-  unixSockets?: true | string[]
-  localBinding?: boolean | number[]
-  machLookup?: string[]
+  read?: readonly string[]
+  write?: readonly string[]
+  network?: true | readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean | readonly number[]
+  machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
 }
@@ -2207,6 +2257,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  cacheOff?: true
   blockedBy?: string
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -2486,6 +2537,18 @@ function · `src/orchestrator/metrics.ts`
 
 ```ts
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
+```
+
+## `withForwardArgs`
+
+function · `src/exec/runner.ts`
+
+The command a task runs with the args after `--` appended, shell-quoted.
+They go before a trailing comment: appended after it, `echo args: # show`
+ran without them and said nothing (item 1060). Trailing blanks go first.
+
+```ts
+export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 ```
 
 ## `WorkspaceConfig`

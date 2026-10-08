@@ -5,6 +5,8 @@
 //   {<dir>}          same as ./<dir>
 //   //               the workspace-root project only (Turbo's name for the root)
 //   tag:<pattern>    the projects whose config `tags` hold a match (Nx's `tag:`)
+//   <dir>/<glob>     a name with a `/` outside a scope that names no project:
+//                    ./<dir>/<glob> (Nx's `--projects 'apps/*'`)
 //   <pattern>...     pattern + its transitive workspace dependencies
 //   ...<pattern>     pattern + its transitive workspace dependents
 //   <pattern>^...    only the transitive deps of pattern (excluding the matched package)
@@ -20,7 +22,7 @@
 // given, the base set is "all projects" and excluded packages are removed.
 
 import path from 'node:path'
-import { BUN_GLOB_WILDCARDS, UserError } from '../util/index.js'
+import { BUN_GLOB_WILDCARDS, relPosix, UserError } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -58,6 +60,11 @@ export interface ParsedFilter {
   exactDir?: true
   /** `tag:<pattern>`: `matcher` is a glob over the projects' tags, not their names. */
   tag?: true
+  /**
+   * `apps/*`: a name pattern holding a `/` outside a scope, read as
+   * `./apps/*` when it names no project, as Nx's `--projects` reads it.
+   */
+  dirFallback?: ParsedFilter
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
@@ -180,12 +187,21 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     // against the workspace root like the literal form.
     // A member glob, not a task glob: `Bun.Glob`'s alphabet, the class included.
     if (BUN_GLOB_WILDCARDS.test(pathForm)) {
-      const rel = path.relative(workspaceRoot, matcher).split(path.sep).join('/')
+      const rel = relPosix(workspaceRoot, matcher)
       const glob = rel.replace(/\/+$/, '')
       pathGlob = new Bun.Glob(glob)
       if (glob.endsWith('/**')) pathGlobBase = new Bun.Glob(glob.slice(0, -3))
     }
   }
+
+  // A package name holds a `/` only after its `@scope`, so `apps/*` is a
+  // directory for every project named after its package.json; Nx matches
+  // a `--projects` entry by name, then by root (find-matching-projects,
+  // 23.2.1), and `-p 'apps/*'` matched nothing here.
+  const dirFallback =
+    !isPath && s.includes('/') && !s.startsWith('@')
+      ? parseFilter(`./${s}`, workspaceRoot)
+      : undefined
 
   return {
     raw,
@@ -196,6 +212,7 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     onlyDependents,
     isPath,
     matcher,
+    ...(dirFallback !== undefined ? { dirFallback } : {}),
     ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
     ...(pathGlobBase !== undefined ? { pathGlobBase } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
@@ -278,6 +295,8 @@ function matchSelector(
   for (const p of projects) {
     if (re.test(p.name)) out.push(p.name)
   }
+  if (out.length === 0 && filter.dirFallback !== undefined)
+    return matchSelector(filter.dirFallback, projects, tags)
   if (out.length > 0 || filter.matcher.includes('/')) return out
   // pnpm's rule: the scope may be left out (`--filter core` is
   // `@babel/core`), an exact name only when one package carries it. Nx
@@ -293,9 +312,10 @@ function matchSelector(
  * Compile a name pattern where `*` is the sole metacharacter and means "any
  * characters" — pnpm's rule. A path glob would treat `/` as a separator, so
  * `*` could never cross the `@scope/` boundary: `--filter '*'` would select
- * only UNSCOPED packages, and `*core*` would match nothing at all.
+ * only UNSCOPED packages, and `*core*` would match nothing at all. Task
+ * patterns share it: it mirrors the graph's `compileTaskPattern`.
  */
-function compileNameGlob(pattern: string): RegExp {
+export function compileNameGlob(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
   return new RegExp(`^${escaped}$`)
 }

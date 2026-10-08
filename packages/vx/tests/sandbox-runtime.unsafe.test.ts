@@ -3212,9 +3212,33 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
 
   it('dedups per syscall AND path, so two calls on one path stay two lines', async () => {
     const ws = path.join(dir, 'ws')
+    // A probe's ENOENT counts only where the host has the path.
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'x'), '')
     expect(
       await targets([at(`${ws}/x`), `1 access("${ws}/x", 4) = -1 ENOENT (x)`].join('\n')),
     ).toEqual([`${ws}/x`, `${ws}/x`])
+  })
+
+  it("drops a probe's ENOENT where the host has no file, never an openat's", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'gen.sh'), '')
+    const exec = (p: string): string =>
+      `1 execve("${p}", ["${p}", "f()"], 0x7ffd /* 9 vars */) = -1 ENOENT (x)`
+    expect(
+      (
+        await produce(
+          [
+            exec(`${ws}/gen.sh`),
+            exec(`${ws}/gone.sh`),
+            `1 faccessat2(AT_FDCWD, "${ws}/gone", X_OK, AT_EACCESS) = -1 ENOENT (x)`,
+            `1 access("${ws}/gone", R_OK) = -1 EACCES (x)`,
+            at(`${ws}/gone`),
+          ].join('\n'),
+        )
+      ).map((v) => `${v.line.split('(')[0]} ${v.target}`),
+    ).toEqual([`execve ${ws}/gen.sh`, `access ${ws}/gone`, `openat ${ws}/gone`])
   })
 
   // Item 652: the row above holds the KEY; nothing held the dedup itself —
@@ -4423,10 +4447,11 @@ describe('localBinding port list — the pure halves', () => {
     const sock = portBridgeSocket('t1', 3000)
     expect(sock.endsWith('/vx-port-t1-3000.sock')).toBe(true)
     const inner = portBridgeInner([3000, 3001], 't1')
+    const dial = path.join(path.dirname(sock), 'vx-port-dial-t1.sh')
     expect(inner).toContain(
-      `socat UNIX-LISTEN:${sock},fork,unlink-early TCP:127.0.0.1:3000 >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${sock},fork,unlink-early 'SYSTEM:sh ${dial} 3000' >/dev/null 2>&1 &`,
     )
-    expect(inner).toContain('TCP:127.0.0.1:3001')
+    expect(inner).toContain(`'SYSTEM:sh ${dial} 3001'`)
     // Backgrounded socats are reaped with the shell, as SRT reaps its own.
     expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
     expect(portBridgeHostArgv('t1', 3000)).toEqual([
@@ -4456,9 +4481,18 @@ describe.skipIf(!available || process.platform !== 'linux')(
       return port
     }
 
-    const files = (port: number) => ({
+    function ipv6Loopback(): boolean {
+      try {
+        Bun.listen({ hostname: '::1', port: 0, socket: { data() {} } }).stop(true)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const files = (port: number, hostname = '127.0.0.1') => ({
       'serve.ts':
-        `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('hi') })\n` +
+        `Bun.serve({ port: ${port}, hostname: '${hostname}', fetch: () => new Response('hi') })\n` +
         `console.log('serving')\n`,
       'client.ts':
         `const r = await fetch('http://127.0.0.1:${port}/')\n` +
@@ -4570,6 +4604,31 @@ describe.skipIf(!available || process.platform !== 'linux')(
         // The bridge lives exactly as long as the server: the run tore the
         // server down, so the host's side is gone and the port is closed.
         await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow()
+      },
+      TIMEOUT,
+    )
+
+    // A box with no IPv6 has no ::1 to bind; the dial choice is then held
+    // by port-bridge-dial.test.ts alone (X-91).
+    it.skipIf(!ipv6Loopback())(
+      'a server bound to ::1 alone is reachable through the bridge',
+      async () => {
+        // The task's side dialled 127.0.0.1 only, so Vite's `localhost` on
+        // a host that resolves ::1 first was refused.
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port, '::1'),
+          config: serverConfig(`[${port}]`),
+        })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(fixture.root, 'packages', 'srv', 'out.txt'), 'utf8')).toBe(
+          'hi',
+        )
       },
       TIMEOUT,
     )
@@ -4826,6 +4885,40 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     await initSandbox()
     expect([up, existsSync(sock)]).toEqual([true, true])
   })
+
+  // bwrap stubs each absent mandatory deny under a write grant on the host
+  // (`.bashrc`, `.vscode`, … at the runtime's cwd), and SRT removes them
+  // once every wrap is cleaned up. A server's never was, so after one
+  // stopped every later task left its stubs in the workspace. A child
+  // process: the stubs land in its cwd, not the suite's.
+  it("a stopped server's release lets a later task's bwrap stubs go", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws)
+    const script = [
+      `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig, wrapSandboxedCommand, releaseBridges } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+      `import { readdirSync } from 'node:fs'`,
+      `const dir = process.cwd()`,
+      `const args = (command) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir) })`,
+      `await initSandbox()`,
+      `const w = await wrapSandboxedCommand({ ...args('true'), server: true })`,
+      `await Bun.spawn(['sh', '-c', w.wrapped], { cwd: dir }).exited`,
+      `const stubbed = readdirSync(dir).includes('.bashrc')`,
+      `releaseBridges(w.tag)`,
+      `await runSandboxed(args('true'))`,
+      `console.log(JSON.stringify([stubbed, readdirSync(dir)]))`,
+      `await resetSandbox()`,
+    ].join('\n')
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, '-e', script],
+      cwd: ws,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([p.stdout.toString().trim(), p.stderr.toString()]).toEqual([
+      JSON.stringify([true, []]),
+      '',
+    ])
+  }, 20_000)
 
   // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
   // lands on the link's target, which is what the record names, so the
@@ -5129,12 +5222,84 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect(r.violations.map((v) => v.target)).toEqual([path.join(proj, 'src', 'secret.txt')])
   })
 
+  // An exec or an access probe of a hidden file was untraced, so
+  // `./gen.sh || fallback` passed with no report. A hidden path answers
+  // ENOENT, as a missing one does: only the host's file is a refusal.
+  it('reports a refused exec or access probe, not a probe of a missing file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'gen.sh'), '#!/bin/sh\necho gen\n', { mode: 0o755 })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args(
+        './src/gen.sh || test -r src/x.txt || ./src/gone.sh || test -x src/gone || echo fell back',
+        {
+          cwd: proj,
+          baseAllowRead: [],
+          baseDenyRead: [dir],
+          reportWithin: proj,
+          config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+        },
+      ),
+    )
+    // `test -r` is `faccessat2`, `faccessat` or `access` by libc and kernel.
+    const call = (line: string): string =>
+      line.split('(')[0]!.replace(/^f?access(at2?)?$/, 'access')
+    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
+      0,
+      'fell back\n',
+      [`execve ${path.join(proj, 'src', 'gen.sh')}`, `access ${path.join(proj, 'src', 'x.txt')}`],
+    ])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
     expect([r.exitCode, r.violations, r.spawnFailed]).toEqual([127, [], true])
     expect(r.stderr).toContain('[vx] failed to spawn sandboxed task')
   })
+
+  // bwrap stubs each absent mandatory deny under a write grant on the host
+  // (`.bashrc`, `.vscode`, … at the runtime's cwd), and the runtime removes
+  // them only once every wrap has been cleaned up. A wrap with no spawn
+  // after it kept every later task's stubs on the host until the reset.
+  it.each(['spawn', 'abort', 'held'])(
+    'a wrap that never ran (%s) leaves no later task its bwrap stubs',
+    async (mode) => {
+      const ws = path.join(dir, 'ws')
+      await mkdir(ws)
+      const script = [
+        `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+        `import { readdirSync } from 'node:fs'`,
+        `const dir = process.cwd()`,
+        `const args = (command, extra = {}) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir), ...extra })`,
+        `await initSandbox()`,
+        `const mode = ${JSON.stringify(mode)}`,
+        `if (mode === 'spawn') await runSandboxed(args('true', { cwd: dir + '/gone' }))`,
+        `if (mode === 'abort') await runSandboxed(args('true', { signal: AbortSignal.abort() }))`,
+        `if (mode === 'held') {`,
+        `  const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })`,
+        `  await runSandboxed(args('true', { config: { ...args('').config, localBinding: [l.port] } })).catch(() => {})`,
+        `  l.stop(true)`,
+        `}`,
+        `const r = await runSandboxed(args('ls -A'))`,
+        `console.log(JSON.stringify([r.stdout.split('\\n').includes('.bashrc'), readdirSync(dir)]))`,
+        `await resetSandbox()`,
+      ].join('\n')
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, '-e', script],
+        cwd: ws,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect([p.stdout.toString().trim(), p.stderr.toString()]).toEqual([
+        JSON.stringify([true, []]),
+        '',
+      ])
+    },
+    20_000,
+  )
 
   it('the child leads its own process group, and is a live child only while it runs', async () => {
     const live = new Set<ReturnType<typeof Bun.spawn>>()
@@ -5201,8 +5366,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([exited.exitCode, killed.exitCode]).toEqual([3, 137])
   })
 
-  it('traces openat only, through the seccomp filter', async () => {
-    // The flag is the difference between tracing one syscall and stopping
+  it('traces the reads, execs and access probes, through the seccomp filter', async () => {
+    // The flag is the difference between tracing a few syscalls and stopping
     // on every one: without it the cache perf baselines ran 2.5-7x over.
     const spy = spyOn(SandboxManager, 'wrapWithSandbox')
     try {
@@ -5217,7 +5382,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',
@@ -5254,6 +5419,24 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     }
   })
 
+  // Listed for the exit hook alone, a `vx watch` kept one log per failed
+  // spawn until it quit.
+  it('a spawn that throws leaves neither its trace log nor its task directory', async () => {
+    const spy = spyOn(SandboxManager, 'wrapWithSandbox')
+    try {
+      const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
+      const { argv, tag } = traced(spy.mock.calls)
+      expect([
+        r.spawnFailed,
+        argv !== undefined,
+        existsSync(path.join(taskRoot(), `vx-strace-${tag}.log`)),
+        existsSync(path.join(taskRoot(), `vx-task-${process.pid}-${tag}`)),
+      ]).toEqual([true, true, false, false])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('hands the runtime back its per-command cleanup', async () => {
     const spy = spyOn(SandboxManager, 'cleanupAfterCommand')
     try {
@@ -5261,6 +5444,40 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect(spy).toHaveBeenCalledTimes(1)
     } finally {
       spy.mockRestore()
+    }
+  })
+
+  // macOS adds rules to the wrapped profile and refuses one of an
+  // unexpected shape, after the wrap counted. Stubbed to darwin from the
+  // wrap on: what precedes it is Linux's, the refusal is darwin's.
+  it('hands the cleanup back, and drops the task dir, when the profile is refused', async () => {
+    const real = Object.getOwnPropertyDescriptor(process, 'platform')!
+    let tmp = ''
+    let during = false
+    const wrap = spyOn(SandboxManager, 'wrapWithSandbox').mockImplementation(async (c) => {
+      tmp = path.join(taskRoot(), /vx-task-\d+-[0-9a-f]{16}/.exec(c)?.[0] ?? '-')
+      during = existsSync(tmp)
+      Object.defineProperty(process, 'platform', { value: 'darwin' })
+      return `sh -c ${c}`
+    })
+    const cleanup = spyOn(SandboxManager, 'cleanupAfterCommand')
+    try {
+      const config = { ...resolveSandboxConfig({}, dir), systemInfo: ['hw.ncpu'] }
+      const err = await runSandboxed(args('true', { config })).then(
+        () => undefined,
+        (e: Error) => e.message,
+      )
+      Object.defineProperty(process, 'platform', real)
+      expect([
+        err?.includes('did not have the expected shape'),
+        during,
+        existsSync(tmp),
+        cleanup.mock.calls.length,
+      ]).toEqual([true, true, false, 1])
+    } finally {
+      Object.defineProperty(process, 'platform', real)
+      wrap.mockRestore()
+      cleanup.mockRestore()
     }
   })
 

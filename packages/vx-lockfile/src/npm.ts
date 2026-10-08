@@ -8,6 +8,7 @@
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
 import { reachDigests } from '@vzn/vx'
+import { depsOf, record, type Json } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -26,14 +27,6 @@ export interface Entry {
   readonly link: string | undefined
   readonly isWorkspace: boolean
 }
-
-type Json = Record<string, unknown>
-const DEP_FIELDS = [
-  'dependencies',
-  'devDependencies',
-  'optionalDependencies',
-  'peerDependencies',
-] as const
 
 export function parseLockfile(text: string): Lockfile {
   let doc: unknown
@@ -72,20 +65,6 @@ export function parseLockfile(text: string): Lockfile {
   // workspace reaches, and npm 10 does not write them here at all (D-142).
   const global = JSON.stringify({ lockfileVersion: version })
   return { version, packages, global }
-}
-
-function depsOf(e: Json): ReadonlyMap<string, string> {
-  const out = new Map<string, string>()
-  for (const field of DEP_FIELDS) {
-    const deps = record(e[field])
-    if (deps === undefined) continue
-    for (const [name, spec] of Object.entries(deps)) out.set(name, String(spec))
-  }
-  return out
-}
-
-function record(v: unknown): Json | undefined {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
 
 /**

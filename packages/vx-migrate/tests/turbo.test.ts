@@ -298,11 +298,10 @@ describe('turbo()', () => {
   )
 
   it(
-    'a ^task no package has a script for is no edge, as under turbo',
+    'a ^task no package has a script for is an empty group, as under turbo',
     async () => {
       // turbo.json may name a task no package runs (`prepack` here): Turbo
-      // gives `^prepack` no edges. Passed through, core refuses a `^name`
-      // no project declares (nx#32779), so the mapper drops it.
+      // runs a no-op `lib#prepack` before `app#test` (dry run, 2026-10-07).
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
@@ -310,10 +309,14 @@ describe('turbo()', () => {
         }),
       )
       const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
-      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#test', 'lib#build'])
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual([
+        'app#test',
+        'lib#build',
+        'lib#prepack',
+      ])
       const test = plan.tasks.find((t) => t.node.id === 'app#test')!.node
-      expect(test.deps).toEqual(['lib#build'])
-      expect(test.config.dependsOn).toEqual(['^build'])
+      expect(test.deps.toSorted()).toEqual(['lib#build', 'lib#prepack'])
+      expect(test.config.dependsOn).toEqual(['^build', '^prepack'])
     },
     TIMEOUT,
   )
@@ -892,8 +895,9 @@ describe('per-package turbo.json', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const ids = plan.tasks.map((t) => t.node.id).sort()
       expect(ids, log.lines.join('\n')).toEqual(['app#build', 'lib#build'])
+      // No package has a `lint` script: Turbo's no-op node, in lib alone.
       const lint = await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(lint.tasks.map((t) => t.node.id)).toEqual([])
+      expect(lint.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual([])
       expect(app.config.cache!.inputs.files).toEqual(['**/*', '!src/gen/**'])
@@ -934,6 +938,33 @@ describe('per-package turbo.json', () => {
       expect(log.lines.join('\n')).toContain(
         'output "../../../elsewhere/**": leaves the workspace — map manually',
       )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a climbed glob escapes the package dir it keeps, so a brace in its name stays literal',
+    async () => {
+      await writeFile(
+        path.join(root, 'pnpm-workspace.yaml'),
+        'packages:\n  - "packages/*"\n  - "nested/*/*"\n',
+      )
+      const web = path.join(root, 'nested', 'g{1}', 'web')
+      await mkdir(web, { recursive: true })
+      await writeFile(
+        path.join(web, 'package.json'),
+        JSON.stringify({ name: 'web', version: '1.0.0', scripts: { build: 'echo web' } }),
+      )
+      await writeFile(
+        path.join(web, 'turbo.json'),
+        JSON.stringify({ extends: ['//'], tasks: { build: { inputs: ['../shared/**'] } } }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['web#build'], log: silent() })
+      const node = plan.tasks.find((t) => t.node.id === 'web#build')!.node
+      expect(node.config.cache!.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'nested/g\\{1\\}/shared/**',
+      ])
     },
     TIMEOUT,
   )
@@ -1194,7 +1225,7 @@ describe('turbo() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
+        out: 'vx lock: locked 0 project configs → vx-lock.json (2 projects have no vx.config; their tasks are never frozen)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')
@@ -1297,6 +1328,30 @@ describe("the root's workspace dependencies", () => {
       const reached = await key()
       await edit(2)
       expect(await key()).not.toBe(reached)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'key every task on a dependency whose dir name holds a brace',
+    async () => {
+      const dir = path.join(root, 'packages', 'r{x,y}')
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'rules' }))
+      await writeFile(path.join(dir, 'src', 'index.js'), '// 0\n')
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, devDependencies: { rules: 'workspace:*' } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const key = async () => {
+        const plan = await planRun({ cwd: root, tasks: ['app#test'], log: silent() })
+        return plan.tasks.find((t) => t.node.id === 'app#test')!.hash
+      }
+      const before = await key()
+      expect(before).not.toBe('')
+      await writeFile(path.join(dir, 'src', 'index.js'), '// 1\n')
+      expect(await key()).not.toBe(before)
     },
     TIMEOUT,
   )

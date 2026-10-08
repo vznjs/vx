@@ -2,7 +2,7 @@
 // shell of its own, and stops the shell's whole process group when core
 // aborts the request (a stop, or `exec.timeout`): core cannot reach a
 // process an executor spawned.
-import { definePlugin, type TaskExecutor, type VxPlugin } from '@vzn/vx'
+import { definePlugin, withForwardArgs, type TaskExecutor, type VxPlugin } from '@vzn/vx'
 
 export function shellExecutor(): VxPlugin {
   const executor: TaskExecutor = {
@@ -13,7 +13,10 @@ export function shellExecutor(): VxPlugin {
       // leads with the project's node_modules/.bin, where a dependency's
       // `sh` would run every command.
       const sh = Bun.which('sh') ?? '/bin/sh'
-      const child = Bun.spawn([sh, '-c', [req.command, ...req.forwardArgs].join(' ')], {
+      // The args after `--`, quoted and placed as the local executor places
+      // them (before a trailing comment, never on a heredoc's terminator).
+      const command = withForwardArgs(req.command, req.forwardArgs)
+      const child = Bun.spawn([sh, '-c', command], {
         cwd: req.cwd,
         env: req.env,
         stdout: 'pipe',

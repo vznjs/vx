@@ -27,7 +27,12 @@ export function apiBreaks(before: string, after: string): string[] {
       breaks.push(`removed ${id}`)
       continue
     }
-    for (const line of lines) if (!kept.has(line)) breaks.push(`${id}: - ${line.trim()}`)
+    for (const line of lines) {
+      if (kept.has(line)) continue
+      // An empty body's first member: `X extends B {}` now reads `X extends B {`.
+      if (line.endsWith(' {}') && kept.has(line.slice(0, -1)) && kept.has('}')) continue
+      breaks.push(`${id}: - ${line.trim()}`)
+    }
   }
   return breaks
 }

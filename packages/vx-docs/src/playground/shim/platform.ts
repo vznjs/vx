@@ -1,5 +1,6 @@
 // The whole platform the playground bundle sees. The build rewrites every
-// `Bun` and `process` global in core to `__vxBun` / `__vxProcess`
+// `Bun`, `process` and `Buffer` global in core to `__vxBun` / `__vxProcess`
+// / `__vxBuffer`
 // (scripts/build-playground.ts, `define`), so core's source is bundled
 // unchanged and cannot reach the host's Bun or process even when the host
 // has them. `install.ts`, the entry's first import, publishes both before
@@ -13,7 +14,8 @@
 //   nanoseconds   — `util/timing.ts` takes a start mark at module load;
 //   process.env   — `cache.inputs.env` values, and `VX_TIMING` at load;
 //   process.platform — `listProjects` picks its readdir strategy by it;
-//   process.stderr — the scheduler's and discovery's warnings.
+//   process.stderr — the scheduler's and discovery's warnings;
+//   Buffer.from(…).indexOf — the `bun.lock` patch-key probe (fingerprint.ts).
 // Every call is counted in `platformCalls`.
 
 import { Glob } from './glob.js'
@@ -106,6 +108,26 @@ export const proc = {
       console.log(s.trimEnd())
       return true
     },
+  },
+}
+
+export const buffer = {
+  from(
+    b: ArrayBufferLike,
+    offset: number,
+    length: number,
+  ): { indexOf(needle: Uint8Array): number } {
+    count('Buffer.from')
+    const hay = new Uint8Array(b, offset, length)
+    return {
+      indexOf(needle: Uint8Array): number {
+        outer: for (let i = 0; i + needle.length <= hay.length; i++) {
+          for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer
+          return i
+        }
+        return -1
+      },
+    }
   },
 }
 

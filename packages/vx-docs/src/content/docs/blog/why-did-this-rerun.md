@@ -23,10 +23,10 @@ $ vx why app#build
 app#build — run 019f5a02-…
   this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
   previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
-  verdict    cache key changed between the previous run and this one (inputs differ)
+  verdict    cache key changed: file packages/app/src/input.txt
 
   what changed (1 component, 41 unchanged):
-    changed file  src/input.txt  3fe2a1b0… → 91c47d22…
+    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
@@ -54,19 +54,26 @@ Because it only reads the database, it works after the fact and on
 another machine: a CI job that copied `.vx/cache` out can be asked why
 it rebuilt, tomorrow, from a laptop.
 
+Update (2026-10-07): by default the entries `vx why` compares live in
+the shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
+names a `cacheDir` keeps both there, and that directory is the one to
+copy.
+
 ## Nine endings for an unchanged key
 
 The interesting cases are the ones where the key did *not* change, and
 `vx why` distinguishes them rather than calling all nine a re-run. The
-verdict line is one of these thirteen sentences, quoted from the code:
+verdict line is one of these fourteen sentences, quoted from the code:
 
 | vx says                                                                                                    | What happened                                                    |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| cache key changed between the previous run and this one (inputs differ)                                    | the components are listed                                        |
+| cache key changed: file packages/app/src/input.txt | the key moved; up to three components are named, then a count, and listed below |
+| cache key changed between the previous run and this one (inputs differ) | the key moved but neither entry kept its components (pruned, or a failed run saved none) |
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
 | cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read) | the run's policy read no cache |
 | cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached | both runs went past a failure under `--continue` |
+| cache key unchanged — the previous run on this key ran beside a failed task (…) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit | the previous run went past a failure under `--continue` |
 | cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one | the entry was gone |
 | cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit | the previous run's save failed, or a prune took the entry |
 | cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit | the previous run's policy wrote no cache |

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+/** termios `c_lflag` ECHO: the same bit on Linux and macOS. */
+const ECHO = 0o10
 
 // turborepo#12502: a task that touched the terminal hung the run when the
 // runner itself sat on one (stopped by SIGTTIN/SIGTTOU, or blocked reading
@@ -84,6 +86,10 @@ describe('an interactive task under a vx on a terminal', () => {
           },
         },
       })
+      // No echo: the kernel echoes the typed line into vx's output wherever
+      // its write has reached: the control row's `got:[]` read `gothello:[]`
+      // (2026-10-08). A reader still gets the line.
+      proc.terminal!.localFlags &= ~ECHO
       // A vx that never hands the line over waits on it for good: stopped,
       // so a failing row fails in seconds and leaves no server behind.
       const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
@@ -120,6 +126,92 @@ describe('an interactive task under a vx on a terminal', () => {
   it('without the field the task reads no terminal', async () => {
     const config = `export default { tasks: { ask: { exec: { command: ${JSON.stringify(PROBE)} } } } }`
     expect(await onTerminal(config, 'app#ask')).toEqual({ code: 0, answers: ['got:[]'] })
+  }, 20_000)
+})
+
+// `vx run > out.txt` on a terminal: the menu and prompt went to stdout, so
+// they landed in the file and the terminal sat blank, waiting on a number.
+describe('the picker with stdout redirected', () => {
+  it('asks on the terminal, and only the run reaches the file', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-redirect-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'echo BUILT' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn(['sh', '-c', `"${process.execPath}" "${BIN}" run > out.txt`], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const file = await Bun.file(path.join(root, 'out.txt')).text()
+      expect({
+        code,
+        asked: screen.includes('1. app#build'),
+        built: file.includes('BUILT'),
+        menuInFile: file.includes('Pick a task'),
+      }).toEqual({ code: 0, asked: true, built: true, menuInFile: false })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
+// `--filter` scopes the menu as it scopes a bare task: the picker listed
+// every project, and an anchored pick ran outside the filter.
+describe('the picker under --filter', () => {
+  it('lists only the selected projects and runs the pick', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-filter-' })
+    try {
+      for (const name of ['alpha', 'beta']) {
+        await addProject(root, name, {
+          config: `export default { tasks: { build: { exec: { command: 'echo BUILT-${name}' } } } }`,
+        })
+      }
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', '--filter', 'beta', '--output-logs=full'],
+        {
+          cwd: root,
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+          terminal: {
+            data: (term, data) => {
+              screen += new TextDecoder().decode(data)
+              if (!typed && screen.includes('Pick a task [')) {
+                typed = true
+                term.write('1\r')
+              }
+            },
+          },
+        },
+      )
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const lines = screen.split(/\r?\n/)
+      expect({
+        code,
+        menu: lines.filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim()),
+        ran: lines.filter((l) => l.startsWith('BUILT-')),
+      }).toEqual({ code: 0, menu: ['1. beta#build'], ran: ['BUILT-beta'] })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   }, 20_000)
 })
 

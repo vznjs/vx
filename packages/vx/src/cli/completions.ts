@@ -8,6 +8,13 @@
 import { acceptedFlags, CORE_VERBS, flagHint, seeHelp } from './help.js'
 import { nearest } from '../util/index.js'
 
+/** A flag whose value is one of a fixed set; the tests hold each to its parser. */
+export const FLAG_VALUES: Readonly<Record<string, readonly string[]>> = {
+  '--format': ['pretty', 'json'],
+  '--output-logs': ['full', 'errors-only', 'hash-only', 'none'],
+  '--download': ['all', 'toplevel', 'none'],
+}
+
 export type CompletionShell = 'bash' | 'zsh' | 'fish'
 const SHELLS: readonly CompletionShell[] = ['bash', 'zsh', 'fish']
 
@@ -36,6 +43,14 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
       ...((CORE_VERBS as readonly string[]).includes(v) ? verbFlags(v) : ['--help']),
     ],
   }))
+  // `vx run --output-logs <Tab>` offered the flags again; a flag with a
+  // fixed value set offers that set.
+  const values = table.flatMap((t) =>
+    t.words.flatMap((w) => {
+      const vs = FLAG_VALUES[w]
+      return vs === undefined ? [] : [{ verb: t.verb, flag: w, values: vs.join(' ') }]
+    }),
+  )
   switch (shell) {
     case 'bash':
       return [
@@ -43,10 +58,23 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
         '_vx() {',
         '  local cur="${COMP_WORDS[COMP_CWORD]}"',
         '  local verb="${COMP_WORDS[1]}"',
+        '  local prev="${COMP_WORDS[COMP_CWORD-1]}"',
         '  if [ "$COMP_CWORD" -eq 1 ]; then',
         `    COMPREPLY=($(compgen -W "${verbs.join(' ')}" -- "$cur"))`,
         '    return',
         '  fi',
+        // bash splits `--format=js` at the `=` (COMP_WORDBREAKS).
+        '  if [ "$cur" = "=" ]; then',
+        '    cur=""',
+        '  elif [ "$prev" = "=" ]; then',
+        '    prev="${COMP_WORDS[COMP_CWORD-2]}"',
+        '  fi',
+        '  case "$verb $prev" in',
+        ...values.map(
+          (v) =>
+            `    "${v.verb} ${v.flag}") COMPREPLY=($(compgen -W "${v.values}" -- "$cur")); return ;;`,
+        ),
+        '  esac',
         '  case "$verb" in',
         ...table.map(
           (t) => `    ${t.verb}) COMPREPLY=($(compgen -W "${t.words.join(' ')}" -- "$cur")) ;;`,
@@ -66,6 +94,9 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
         `    compadd -- ${verbs.join(' ')}`,
         '    return',
         '  fi',
+        '  case "${words[2]} ${words[CURRENT-1]}" in',
+        ...values.map((v) => `    "${v.verb} ${v.flag}") compadd -- ${v.values}; return ;;`),
+        '  esac',
         '  case "${words[2]}" in',
         ...table.map((t) => `    ${t.verb}) compadd -- ${t.words.join(' ')} ;;`),
         '  esac',
@@ -86,11 +117,14 @@ export function completionScript(shell: CompletionShell, verbs: readonly string[
         'complete -c vx -f',
         ...verbs.map((v) => `complete -c vx -n __fish_use_subcommand -a ${v}`),
         ...table.flatMap((t) =>
-          t.words.map((w) =>
-            w.startsWith('--')
-              ? `complete -c vx -n "__fish_seen_subcommand_from ${t.verb}" -l ${w.slice(2)}`
-              : `complete -c vx -n "__fish_seen_subcommand_from ${t.verb}" -a ${w}`,
-          ),
+          t.words.map((w) => {
+            const on = `complete -c vx -n "__fish_seen_subcommand_from ${t.verb}"`
+            if (!w.startsWith('--')) return `${on} -a ${w}`
+            const vs = FLAG_VALUES[w]
+            return vs === undefined
+              ? `${on} -l ${w.slice(2)}`
+              : `${on} -l ${w.slice(2)} -x -a "${vs.join(' ')}"`
+          }),
         ),
         '',
       ].join('\n')
@@ -111,7 +145,9 @@ export async function completionsCmd(
       return 1
     }
     const one = shell !== undefined && args.length === 1
-    const best = one ? nearest(shell, SHELLS) : undefined
+    // One edit: shell names are three or four letters, so two edits took
+    // `tcsh` to `bash`, a different shell.
+    const best = one ? nearest(shell, SHELLS, 1) : undefined
     process.stderr.write(
       `vx completions: expected one shell — bash, zsh or fish${one ? ` (got ${shell})` : ''}${best === undefined ? '' : `. Did you mean ${best}?`}${seeHelp('completions')}\n`,
     )

@@ -1,8 +1,9 @@
 // `nx()` applies nx.json's `parallel`, `defaultBase` and `maxCacheSize`
-// live; a migration writes a `vx.workspace.ts` that cannot hold them (core
-// writes it), so it names each field to add. Silent, nx-examples'
-// `parallel: 1` ran on every core once migrated.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+// live; a migration writes them into the `vx.workspace.ts` it writes, and
+// names each field to add to one already there. Silent, nx-examples'
+// `parallel: 1` ran on every core once migrated; nartc/mapper's migration
+// wrote the file and still told the user to add `affectedBase` to it.
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -49,4 +50,45 @@ it('names each nx.json run setting the written workspace file needs', async () =
   } finally {
     delete process.env['NX_PARALLEL']
   }
+})
+
+it('writes them into the vx.workspace.ts it writes; one it cannot read stays a note', async () => {
+  await writeFile(
+    path.join(root, 'nx.json'),
+    JSON.stringify({ parallel: 2, defaultBase: 'main', maxCacheSize: '10GB' }),
+  )
+  await writeFile(
+    path.join(root, 'package.json'),
+    '{"name":"r","private":true,"workspaces":["libs/*"]}\n',
+  )
+  await mkdir(path.join(root, 'libs', 'a'), { recursive: true })
+  await writeFile(path.join(root, 'libs', 'a', 'package.json'), '{"name":"a"}\n')
+  await writeFile(
+    path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+    JSON.stringify({
+      nodes: { a: { name: 'a', data: { root: 'libs/a', targets: { build: { command: 'tsc' } } } } },
+      dependencies: {},
+    }),
+  )
+  const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const proc = Bun.spawn([process.execPath, '--no-install', bin, '--no-install'], {
+    cwd: root,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const out = await new Response(proc.stdout).text()
+  expect(await proc.exited).toBe(0)
+  const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+  expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to vx.workspace.ts')]).toEqual([
+    ['  concurrency: 2,', "  affectedBase: 'main',", "  cacheRetention: { maxSize: '10GB' },"],
+    false,
+  ])
+  // A size vx cannot read is not written: the note keeps it.
+  await writeFile(path.join(root, 'nx.json'), JSON.stringify({ maxCacheSize: '1.5 TB' }))
+  expect(
+    (await migrateNx(root, [], 'ts', undefined, true)).notes.filter((n) => n.startsWith('nx.json')),
+  ).toEqual([
+    'nx.json `maxCacheSize`: add `cacheRetention: { maxSize: "1.5 TB" }` to vx.workspace.ts',
+  ])
 })
