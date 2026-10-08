@@ -54,6 +54,7 @@ import {
   spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
+  TaskPipes,
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
@@ -1828,6 +1829,7 @@ async function runSandboxedOnce(
   if (straceLog) unlinkOnExit(straceLog)
   let proc: ReturnType<typeof Bun.spawn>
   let traceFd: number | undefined
+  const pipes = new TaskPipes()
   try {
     // Resolved on vx's own PATH (util/which.ts), not the task's, where a
     // project's node_modules/.bin comes first.
@@ -1842,8 +1844,7 @@ async function runSandboxedOnce(
         env: args.env as Record<string, string>,
         stdio: [
           'ignore',
-          'pipe',
-          'pipe',
+          ...pipes.stdio,
           forwardsSignals ? 'pipe' : 'ignore',
           guard ?? 'ignore',
           ...(traceFd === undefined ? [] : [traceFd]),
@@ -1854,6 +1855,7 @@ async function runSandboxedOnce(
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
+    pipes.close()
     if (straceLog) {
       rmSync(straceLog, { force: true })
       liveTempFiles.delete(straceLog)
@@ -1875,6 +1877,7 @@ async function runSandboxedOnce(
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
     if (traceFd !== undefined) closeSync(traceFd)
+    pipes.spawned()
   }
 
   args.liveChildren?.add(proc)
@@ -1884,10 +1887,11 @@ async function runSandboxedOnce(
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
   let straceSpoke = false
+  const [out, err] = pipes.streams(proc)
   const streams = Promise.all([
-    streamToString(proc.stdout, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(out, args.onStdout, ac.signal, args.capture?.stdout ?? true),
     streamToString(
-      proc.stderr,
+      err,
       (chunk) => {
         // Read whatever the capture setting: a line of strace's own says
         // the trace stopped short.
@@ -1899,7 +1903,7 @@ async function runSandboxedOnce(
       ac.signal,
       args.capture?.stderr ?? true,
     ),
-  ])
+  ]).finally(() => pipes.close())
   // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.

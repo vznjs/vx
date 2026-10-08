@@ -556,3 +556,15 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-113.** On Linux `echo x > /dev/stdout` and `cmd | tee /dev/stderr`
+  failed in every task with "No such device or address": Bun's `'pipe'`
+  is a socketpair (on macOS too, where `/dev/fd/N` dups it and works),
+  and Linux opens `/dev/stdout` through `/proc/self/fd/1`, which a
+  socket refuses. `TaskPipes` (runner.ts) makes real pipes with
+  `pipe2` through `bun:ffi` for the one-shot, persistent and sandboxed
+  spawns. Cost within the A/A spread: 300 uncached tasks at
+  `--concurrency 1`, min of 31 interleaved, 628.8 ms before, 631.7
+  after, 616.5 A/A. Rows: `runner.test.ts` › "a task's stdout and
+  stderr are pipes it can open by path", `sandbox-runtime.unsafe.test.ts`
+  › "a sandboxed task and server open /dev/stdout and /dev/stderr by
+  path" and its plain twin.
