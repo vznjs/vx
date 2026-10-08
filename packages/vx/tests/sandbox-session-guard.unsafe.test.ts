@@ -109,8 +109,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         let sleeperPid: number | undefined
         let socats: { pid: number; socket: string }[] = []
         let held: string[] = []
-        let paths: string[] = []
-        let existed: string[] = []
+        let existed = false
         try {
           const deadline = Date.now() + 20_000
           // The task runs once the session is up and listed.
@@ -118,16 +117,9 @@ describe.skipIf(!available || process.platform !== 'linux')(
           sleeperPid = sleeper(nonce)
           socats = bridges(proc.pid)
           held = runtimeSockets(proc.pid)
-          // Checked before the kill: the guard starts removing them as soon as vx dies.
-          const obsDir = held.filter((p) => path.basename(path.dirname(p)).startsWith('srt-obs-'))
-          paths = [
-            ...new Set([
-              ...socats.map((s) => s.socket),
-              ...obsDir.map((p) => path.dirname(p)),
-              ...held.filter((p) => path.basename(p).startsWith('srt-mux-')),
-            ]),
-          ]
-          existed = paths.filter((p) => existsSync(p))
+          // Checked while vx lives: once it dies the guard may remove them
+          // before this test looks.
+          existed = [...socats.map((s) => s.socket), ...held].every((p) => existsSync(p))
         } finally {
           process.kill(proc.pid, 'SIGKILL')
         }
@@ -139,7 +131,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const mux = held.filter((p) => path.basename(p).startsWith('srt-mux-'))
         expect(obs).toHaveLength(1)
         expect(mux).toHaveLength(1)
-        expect(existed).toEqual(paths)
+        const paths = [...new Set([...socats.map((s) => s.socket), path.dirname(obs[0]!), ...mux])]
+        expect(existed).toBe(true)
 
         await Promise.all(socats.map((s) => waitForDead(s.pid, 3_000)))
         const until = Date.now() + 3_000

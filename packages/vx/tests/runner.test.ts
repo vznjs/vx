@@ -1493,17 +1493,16 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     expect(JSON.parse(out)).toEqual({ stdout: 'hi\n', stderr: '' })
   })
 
-  // Counted by fstat, not /proc/self/fd: under vx's sandbox /proc is
-  // another pid namespace's. Only pipes and sockets, each named by its
-  // inode: a task's stdio is one (Bun's pipe is a socketpair on macOS),
-  // and a bare count moved both ways on macOS CI as the runtime opened
-  // and closed files of its own (10 vs 12, 11 vs 10).
-  const openPipes = (): Set<string> => {
-    const open = new Set<string>()
+  // Found by fstat, not /proc/self/fd: under vx's sandbox /proc is
+  // another pid namespace's. A set, not a count: a descriptor an earlier
+  // row left closing closed inside the window and hid nothing but read as
+  // two fewer (macOS CI).
+  const openFds = (): Set<number> => {
+    const open = new Set<number>()
     for (let fd = 0; fd < 1024; fd++) {
       try {
-        const st = fstatSync(fd)
-        if (st.isFIFO() || st.isSocket()) open.add(`${fd}:${st.dev}:${st.ino}`)
+        fstatSync(fd)
+        open.add(fd)
       } catch {
         // not open
       }
@@ -1513,7 +1512,7 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
 
   it('every descriptor a task took is closed after it: plain, cut, spawn-failed, persistent', async () => {
     await runCommand({ command: 'true', cwd, env })
-    const before = openPipes()
+    const before = openFds()
     for (let i = 0; i < 20; i++) await runCommand({ command: 'echo a; echo b >&2', cwd, env })
     // The drain bound cancels the readers while a backgrounded child holds the pipe.
     const cut = await runCommand({ command: 'sleep 2 & echo up', cwd, env })
@@ -1525,6 +1524,6 @@ describe("a task's stdout and stderr are pipes it can open by path", () => {
     spawn.child.kill('SIGKILL')
     await spawn.child.exited
     await Bun.sleep(50)
-    expect([...openPipes()].filter((p) => !before.has(p))).toEqual([])
+    expect([...openFds()].filter((fd) => !before.has(fd))).toEqual([])
   }, 10_000)
 })

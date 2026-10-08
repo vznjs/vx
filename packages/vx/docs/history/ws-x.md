@@ -863,6 +863,28 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-114.** An output with an mtime past March 2242 (8^11 seconds, the
+  most ustar's 11 octal digits hold) failed every save of its task with
+  `value … does not fit a 12-byte field`, so the task never cached. The
+  header now carries the field's maximum, as one before 1970 carries 0;
+  the sidecar keeps the real mtime. Row: `archive-extract-meta.test.ts` ›
+  "packs and restores an mtime past what ustar holds (2242)".
+- **X-115.** A local artifact holding a name that read unsafe failed its
+  task on every run with the entry kept, where every other bad local
+  artifact is dropped and the task run (A-52). The save and the ingest
+  proved each name safe, so the bytes had changed: a long name's pax
+  record has no header checksum and is judged before the CRC at the end
+  is read, so one flipped bit (`.` → `/`) was enough. The restore now
+  throws it as a `CorruptArtifactError`. Row: `artifact-roundtrip.test.ts`
+  › "a local artifact whose name reads unsafe is dropped and run, as
+  corrupt bytes are".
+- **X-116.** A persistent task whose readiness timeout fired, and whose
+  server trapped the SIGTERM and exited 0, reported
+  `failed (never ready: timed out, exit 0)`: X-24 took the server's own
+  code, and a one-shot task that does the same reports 143. It now
+  reports 143. Row:
+  `persistent-ready-timeout.test.ts` › "a never-ready server that traps
+  SIGTERM and exits 0 reports the SIGTERM, not 0".
 - **X-122.** Under `--exclude-dependencies` the sandbox's keyed set
   stood a group in by its `deps`, which hold order-only edges and lack
   the dropped members its hash folds (`keyUpstream`). Two groups over
@@ -1004,3 +1026,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   without bumping `version` is the documented contract's breach, not this
   path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
   trusted".
+
+- **X-133.** `vx watch` lost a config import whose file was deleted:
+  since #3207 a failed cycle re-reads the watch set, and the import list
+  skipped what it could not resolve, so the preset's return was no event
+  and every edit after it ran nothing until a restart. `configImports`
+  now lists an unresolvable relative import by the path it would have
+  (each extension Bun tries, when it has none). The watch row waited on
+  the failed cycle's own re-arm line; it now counts re-arms. Rows:
+  `config-cache.test.ts` › "the watch list keeps an import whose file is
+  gone", `watch-recreated-dirs.test.ts` › "an edit to a restored preset".
