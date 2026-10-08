@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+/** termios `c_lflag` ECHO: the same bit on Linux and macOS. */
+const ECHO = 0o10
 
 // turborepo#12502: a task that touched the terminal hung the run when the
 // runner itself sat on one (stopped by SIGTTIN/SIGTTOU, or blocked reading
@@ -84,6 +86,10 @@ describe('an interactive task under a vx on a terminal', () => {
           },
         },
       })
+      // No echo: the kernel echoes the typed line into vx's output wherever
+      // its write has reached: the control row's `got:[]` read `gothello:[]`
+      // (2026-10-08). A reader still gets the line.
+      proc.terminal!.localFlags &= ~ECHO
       // A vx that never hands the line over waits on it for good: stopped,
       // so a failing row fails in seconds and leaves no server behind.
       const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)

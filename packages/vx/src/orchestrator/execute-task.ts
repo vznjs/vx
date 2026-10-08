@@ -362,12 +362,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.cacheDir,
     )
     placeholders = sb.placeholders
+    // A wrap that refuses (a port the host holds) leaves the server unspawned
+    // and the placeholders vx made for it in the project for every later run.
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
       env,
       ...sb.sandbox,
       server: true,
+    }).catch(async (err: unknown) => {
+      await sweepPlaceholders(placeholders)
+      throw err
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -949,15 +954,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const endReq = span('miss: build request')
     const req = await buildRequest()
     endReq()
-    // An executor that THROWS produces no captured output, so the task's
-    // frame would print the command and nothing else while the reason went
-    // straight to stderr and scrolled away in a broad run. Put it in the
-    // task's own stream first: the frame is where a reader looks for why a
-    // task failed, and a remote executor's failures are exactly the ones with
-    // no other trace. Rethrown unchanged — the scheduler still classifies it,
-    // and still prints it plainly for a UserError.
+    // An executor that THROWS produces no captured output. Rethrown: the
+    // scheduler classifies it and prints its one line into the task's own
+    // stream (run()'s onError), where the frame reads it; a copy written
+    // here too printed the reason twice.
     const endExec = span('miss: execute')
-    let res = await boundAfterAbort(args.executor.execute(req), req.signal)
+    // A plugin's execute may throw before returning or return a bare result:
+    // the throw is its rejection, the value its resolution, so both reach
+    // the naming catch and the cleanup in finally below.
+    let running: Promise<unknown>
+    try {
+      running = Promise.resolve(args.executor.execute(req))
+    } catch (thrown) {
+      running = Promise.reject(thrown)
+    }
+    let res = await boundAfterAbort(running, req.signal)
       .then((r: unknown) => {
         assertExecuteResult(args.executor.name, node.id, r)
         return r
@@ -981,15 +992,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
         const err = nameExecutorFailure(args.executor, raw)
         // A remote executor's message carries the server's own text, which
-        // may echo the env it was sent: masked here, where it is printed,
-        // and on the error the scheduler prints with its cause (L-39).
+        // may echo the env it was sent: masked on the error the scheduler
+        // prints with its cause (L-39).
         if (secrets !== null) {
           for (const e of [err, err instanceof Error ? err.cause : undefined])
             if (e instanceof Error) e.message = secrets.mask(e.message)
         }
-        const message =
-          err instanceof Error ? err.message : (secrets?.mask(String(err)) ?? String(err))
-        log.taskStderr(node, `${message}\n`)
         await sweepPlaceholders(placeholders)
         throw err
       })
@@ -1141,6 +1149,21 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   const writesFingerprint =
     args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
+  // A stop that landed during the awaits above (the key, the probe, the
+  // input description): the first attempt would wipe the last build and
+  // hand the executor a request after the run had stopped. Through a call,
+  // so the loop's own reads of the stop are not narrowed to false.
+  if (isAborted(args.stopSignal)) {
+    return {
+      node,
+      status: 'aborted',
+      exitCode: signalExitCode(forwardedSignal(args.stopSignal?.reason)),
+      durationMs: 0,
+      hash,
+      wallclockStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
   for (;;) {
     attempt++
     const a = await runAttempt()

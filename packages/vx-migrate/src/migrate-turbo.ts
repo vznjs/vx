@@ -22,6 +22,7 @@ import { relPosix } from './paths.js'
 import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 import { adoptedToolNotes } from './workspace-notes.js'
+import { spelledNames } from './spelled-env.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -110,36 +111,6 @@ export async function migrateTurbo(
     extraFiles,
     notes: mapping.notes,
   }
-}
-
-/** Source and env-example files a framework build reads its variables from. */
-const SPELLS_ENV =
-  /\.(c|m)?(j|t)sx?$|\.(vue|svelte|astro|html)$|(^|\/)\.env\.(example|sample|template)$/
-
-/**
- * The upper-case names the tracked source under `dirs` spells (`NEXT_PUBLIC_API`
- * in `process.env.NEXT_PUBLIC_API` or an `.env.example`), sorted. Without
- * git, none: the note still names the framework's prefix.
- */
-async function spelledNames(
-  root: string,
-  dirs: readonly string[],
-  tracked: readonly string[] | null,
-): Promise<string[]> {
-  if (tracked === null) return []
-  const prefixes = dirs.map((dir) => {
-    const rel = relPosix(root, dir)
-    return rel === '' || rel === '.' ? '' : `${rel}/`
-  })
-  const names = new Set<string>()
-  for (const f of tracked) {
-    if (!SPELLS_ENV.test(f) || !prefixes.some((p) => f.startsWith(p))) continue
-    const text = await Bun.file(path.join(root, f))
-      .text()
-      .catch(() => '')
-    for (const m of text.matchAll(/\b[A-Z][A-Z0-9_]*_[A-Z0-9_]+\b/g)) names.add(m[0])
-  }
-  return [...names].sort()
 }
 
 /**

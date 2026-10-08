@@ -548,7 +548,9 @@ describe('executor capability — end-to-end via run()', () => {
         tasks: ['hello'],
         log: {
           ...makeSilentLogger(),
-          taskStderr: (n, c) => void (c.startsWith('[vx]') && seen.push(`${n.id}: ${c}`)),
+          // Every chunk: execute-task wrote the bare message and the
+          // scheduler's line followed it, two copies in one frame.
+          taskStderr: (n, c) => void seen.push(`${n.id}: ${c}`),
           taskComplete: (n) => void seen.push(`done ${n.id}`),
         },
         handleSignals: false,
@@ -598,14 +600,15 @@ describe('executor capability — end-to-end via run()', () => {
         concurrency: 1,
         log: {
           ...makeSilentLogger(),
-          // Each task's own frame line, where a name added twice showed.
-          taskStderr: (n, c) => void (c.startsWith('plugin ') && seen.push(`${n.id}: ${c}`)),
+          // Each task's own frame line, where a name added twice showed:
+          // the second task's text then differed from the first's.
+          taskStderr: (n, c) => void seen.push(`${n.id}: ${c}`),
         },
         handleSignals: false,
       })
       expect(seen.sort()).toEqual([
-        "pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
-        "pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        "pkg-a#a: [vx] pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
+        'pkg-a#b: [vx] pkg-a#b: as pkg-a#a above\n',
       ])
     } finally {
       cleanup()

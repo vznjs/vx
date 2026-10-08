@@ -21,6 +21,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadlineNamed } from '../remote-deadline.js'
+import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
@@ -102,6 +103,7 @@ export function resolveNxCacheConfig(
  */
 export class NxRemoteCache implements RemoteCacheLayer {
   private disabled = false
+  private readonly breaker = new OutageBreaker()
   /**
    * A `403` on a write is the spec's read-only token (a CI's pull-request
    * token): uploads stop, reads go on. Read as a refused token, it turned
@@ -140,19 +142,23 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
-    const res = await withRetry(
-      () =>
-        this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
-          method,
-          headers,
-          ...(body === undefined ? {} : { body }),
-          signal: AbortSignal.timeout(this.config.timeoutMs),
-        }),
-      this.config.retries,
-      this.wait,
-    ).catch((err: unknown) => {
-      throw deadlineNamed(err, this.config.timeoutMs)
-    })
+    const res = await this.breaker
+      .send(() =>
+        withRetry(
+          () =>
+            this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
+              method,
+              headers,
+              ...(body === undefined ? {} : { body }),
+              signal: AbortSignal.timeout(this.config.timeoutMs),
+            }),
+          this.config.retries,
+          this.wait,
+        ),
+      )
+      .catch((err: unknown) => {
+        throw deadlineNamed(err, this.config.timeoutMs)
+      })
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
@@ -166,7 +172,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
       this.disabled = true
       if (!first) return undefined
       throw new Error(
-        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (a read-only token cannot write)'}; remote cache off for this run`,
+        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (the token may not read)'}; remote cache off for this run`,
       )
     }
     return res
