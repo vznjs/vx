@@ -142,9 +142,9 @@ export interface VxPlugin {
    * many times per run, so it must be cheap and synchronous; a throw, or
    * an answer that is a Promise, is reported once and the plugin admits
    * from then on — a policy never
-   * breaks a run. Restore-tier hits and tasks on an executor pool hold no
-   * local resources and are never asked. When several plugins answer, all
-   * must admit. Core keeps no notion of what a task needs: a plugin that
+   * breaks a run. Restore-tier hits, tasks on an executor pool and groups
+   * hold no local resources: never asked, never in `ctx.running`. When
+   * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
    * packs memory or CPU learns or declares the numbers itself
    * (`@vzn/vx-schedule-history` packs what past executions used).
    */
@@ -341,7 +341,12 @@ export interface FingerprintContext extends BaseContext {
 }
 
 export interface AdmitContext {
-  /** The tasks executing on this machine right now, in dispatch order. */
+  /**
+   * The tasks holding a worker on this machine right now, in dispatch
+   * order. A persistent task leaves at ready, when it gives its worker
+   * back: it runs until the graph ends, so a policy that counted it would
+   * hold its dependants with no completion left to ask again.
+   */
   readonly running: readonly TaskNode[]
   /** The run's worker count — the ceiling the count gate already applies. */
   readonly concurrency: number
@@ -440,7 +445,8 @@ function pluginPackageName(dir: string): string {
   for (let d = dir; ;) {
     let text: string | undefined
     try {
-      text = readFileSync(path.join(d, 'package.json'), 'utf8')
+      // A byte-order mark is stripped, as npm, Node and discovery strip it.
+      text = readFileSync(path.join(d, 'package.json'), 'utf8').replace(/^\uFEFF/, '')
     } catch {
       /* not here; look one level up */
     }
@@ -600,7 +606,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   const { plugins, bus, workspaceRoot, cacheDir } = args
   const warn = args.warn ?? ((m) => console.error(m))
   const disposers: Array<() => void> = []
-  const disabled = new Set<string>()
+  // By object, not name: one package can export two plugins.
+  const disabled = new Set<Plugin>()
 
   for (const plugin of plugins) {
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
@@ -614,6 +621,13 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       throw new UserError(`plugin '${plugin.name}' setup is not a function`)
     }
 
+    const fail = (where: string, err: unknown): void => {
+      if (disabled.has(plugin)) return
+      disabled.add(plugin)
+      warn(
+        `[vx] plugin '${plugin.name}' threw in ${where}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
     const ctx: PluginContext = {
       workspaceRoot,
       cacheDir,
@@ -624,7 +638,18 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       bus: {
         emit: (event) => bus.emit(event),
         subscribe(subscriber) {
-          const dispose = bus.subscribe(subscriber)
+          // Isolated like an `on` handler: the bus itself swallows a throw.
+          const dispose = bus.subscribe((event) => {
+            if (disabled.has(plugin)) return
+            let ret: unknown
+            try {
+              ret = subscriber(event)
+            } catch (err) {
+              fail('a bus subscriber', err)
+              return
+            }
+            if (ret instanceof Promise) ret.catch((err: unknown) => fail('a bus subscriber', err))
+          })
           disposers.push(dispose)
           return dispose
         },
@@ -637,15 +662,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
             `ctx.on: unknown hook '${String(hook)}' (one of ${Object.keys(HOOK_NAMES).join(', ')})`,
           )
         }
-        const fail = (err: unknown): void => {
-          if (disabled.has(plugin.name)) return
-          disabled.add(plugin.name)
-          warn(
-            `[vx] plugin '${plugin.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
-          )
-        }
+        const onFail = (err: unknown): void => fail(hook, err)
         const dispose = bus.subscribe((event) => {
-          if (disabled.has(plugin.name)) return
+          if (disabled.has(plugin)) return
           // Not awaited: the bus is synchronous and plugin work runs off the
           // critical path. A handler's rejection is caught like its throw.
           let ret: unknown
@@ -680,10 +699,10 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
                 break
             }
           } catch (err) {
-            fail(err)
+            onFail(err)
             return
           }
-          if (ret instanceof Promise) ret.catch(fail)
+          if (ret instanceof Promise) ret.catch(onFail)
         })
         disposers.push(dispose)
       },
@@ -692,6 +711,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     try {
       await plugin.setup(ctx)
     } catch (err) {
+      // Earlier plugins' subscriptions too: the caller never gets the
+      // disposer, and a bus that outlives the run would keep them.
+      for (const d of disposers) d()
       throw new PluginSetupError(
         plugin,
         `plugin '${plugin.name}' failed in setup: ${err instanceof Error ? err.message : String(err)}`,

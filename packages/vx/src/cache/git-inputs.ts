@@ -1304,8 +1304,11 @@ export async function startGitEnumeration(
   const facts = repoFacts(workspaceRoot)
   // The blob-size check's verdict is a function of the index's entries, so
   // the index file's bytes key it: one read, where `ls-files --debug` and a
-  // lookup per entry cost 550 ms at 100,000 files (A-60).
-  const pathspecKey = xxh3hex(pathspecs.join('\0'))
+  // lookup per entry cost 550 ms at 100,000 files (A-60). The verdict's
+  // paths are workspace-relative, so the repo→workspace prefix keys it too:
+  // a nested workspace sharing the cache read the outer one's verdict and
+  // trusted a resized blob.
+  const pathspecKey = xxh3hex([facts?.prefix ?? '', ...pathspecs].join('\0'))
   const indexFile =
     facts === null || facts.indexFile === ''
       ? undefined
@@ -1521,9 +1524,10 @@ export async function applyGitEnumeration(
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×
-  // ~9k files; ~5 ms this way). '/' sorts below most filename chars,
-  // so the range [prefix, prefix+'\xff…') is contiguous in the sorted
-  // array; lowerBound on `prefix` and on `prefix + '￿'` bracket it.
+  // ~9k files; ~5 ms this way). Every path under `dir/` sorts in
+  // [`dir/`, `dir0`): '0' is the code unit after '/'. An upper bound of
+  // `dir/` + U+FFFF left out a file whose name starts with U+FFFF, and
+  // it never entered the key.
   // Git lists in order; a list that already is skips the sort.
   let inOrder = true
   for (let i = 1; i < all.length; i++) {
@@ -1557,10 +1561,15 @@ export async function applyGitEnumeration(
     return lo
   }
   for (const projectDir of projectDirs) {
-    const relPrefix =
+    const spelled =
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
         ? projectDir.slice(base.length).replace(/\/$/, '')
         : relPosix(workspaceRoot, projectDir)
+    // macOS git reports paths NFC (core.precomposeunicode) while a dir
+    // discovered by readdir keeps the spelling it was created with: match
+    // NFC, and key the OIDs by the project's spelling, which is how
+    // `resolveFiles` looks them up.
+    const relPrefix = spelled.normalize('NFC')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
       const rootOids = new Map<string, string>()
@@ -1570,14 +1579,16 @@ export async function applyGitEnumeration(
     }
     const prefix = `${relPrefix}/`
     const start = lowerBound(prefix)
-    const end = lowerBound(`${prefix}￿`)
+    const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
     const projOids = new Map<string, string>()
+    const projAbs =
+      relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
       matches.push(rel.slice(prefix.length))
       const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(abs(rel), oid)
+      if (oid !== undefined) projOids.set(projAbs(rel), oid)
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A

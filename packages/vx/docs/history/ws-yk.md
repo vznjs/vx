@@ -1,0 +1,3 @@
+# Workstream YK — Nx/Turbo parity (2026-10-07)
+
+- **YK-1.** A task turbo.json defines and no package has a script for (documenso's `lint`, shadcn-ui's `check`): `turbo run lint` runs a no-op node per package and exits 0; under `turbo()`, and in configs `vx-migrate` wrote, `vx run lint` refused with "no projects declare task(s): lint" unless the task had an edge of its own. It is now a group task in each package that defines it, edges kept. Nx (21) runs nothing for a `targetDefaults` name no project has and exits 0 ("No tasks were run"); `nx()` still refuses it, left as is (vx would need nodes Nx's graph lacks). Rows: `turbo-scriptless-task.test.ts` › "is Turbo's no-op node in each package, edges kept"; `migrate.test.ts` › "generated app config round-trips …" (`deploy`).

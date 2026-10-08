@@ -22,7 +22,7 @@ import {
   loadWorkspaceConfig,
   validateProjectConfig,
 } from '../src/workspace/project-loader.js'
-import { loadWorkspace } from '../src/workspace/workspace.js'
+import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const CONFIG_PATH = '/ws/pkg/vx.config.ts'
@@ -373,6 +373,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   ['description must be a string', () => validated({ tasks: { b: { ...ok, description: 42 } } })],
+  [
+    'tag "<tag>" <why> — --filter tag:<name> could not name it',
+    () => validated({ tags: ['v1...'], tasks: {} }),
+  ],
 ]
 
 /**
@@ -449,6 +453,17 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`,
     () => failure({ 'package.json': '{"name":"r","workspaces":["packages/!(x)"]}' }, loadWorkspace),
+  ],
+  [
+    'workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root',
+    () =>
+      failure(
+        {
+          'w/package.json': '{"name":"r","workspaces":["../ext/*"]}',
+          'ext/e/package.json': '{"name":"e"}',
+        },
+        async (root) => listProjects(await loadWorkspace(path.join(root, 'w'))),
+      ),
   ],
 ]
 

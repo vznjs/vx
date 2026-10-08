@@ -34,7 +34,8 @@ Layers, lowest to highest priority:
 
    `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
    `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`,
-   `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`.
+   `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, `COREPACK_HOME`,
+   `PNPM_HOME`.
 
 2. **`passThrough` names** — for each name, copy its value from
    `source` if present. Missing names are skipped (not assigned to

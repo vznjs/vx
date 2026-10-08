@@ -7,6 +7,7 @@
 //
 // See docs/design/pipeline-2026-09.md.
 
+import path from 'node:path'
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
@@ -106,6 +107,25 @@ export function hasHook(
   return false
 }
 
+/**
+ * An in-place stage reads nothing a hook returns: Vite's `config` hook
+ * returns a partial config, and one written that way here loaded, changed
+ * nothing and said nothing. Returning the object it was handed is harmless.
+ */
+function assertEditedInPlace(
+  plugin: VxPlugin,
+  hook: 'config' | 'project' | 'graph',
+  returned: unknown,
+  edited: unknown,
+  what: string,
+): void {
+  if (returned === undefined || returned === edited) return
+  throw new UserError(
+    `plugin '${plugin.name}' failed in ${hook}: returned ${describeValue(returned)}, which core ` +
+      `ignores — edit ${what} in place`,
+  )
+}
+
 /** `config` stage: every plugin edits the workspace config in place. */
 export async function applyConfigHooks(
   plugins: readonly VxPlugin[],
@@ -116,7 +136,8 @@ export async function applyConfigHooks(
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.config === undefined) continue
-    await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+    const returned = await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+    assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config')
     afterEach?.(plugin)
   }
 }
@@ -157,7 +178,8 @@ export async function applyProjectHooks(
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.project === undefined) continue
-    await safe(plugin, 'project', () => plugin.project!(config, ctx))
+    const returned = await safe(plugin, 'project', () => plugin.project!(config, ctx))
+    assertEditedInPlace(plugin, 'project', returned, config, "the project's config")
     afterEach?.(plugin)
   }
 }
@@ -183,7 +205,8 @@ export async function applyGraphHooks(
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
-    await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    const returned = await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph')
     await safe(plugin, 'graph', () => checkNodeShapes(nodes))
     afterEach?.(plugin)
     last = plugin
@@ -206,6 +229,21 @@ function checkNodeShapes(nodes: Map<string, TaskNode>): void {
     const deps = (node as { deps?: unknown }).deps
     if (!Array.isArray(deps)) {
       throw new Error(`${key}'s deps is ${what(deps)}, not an array of task ids`)
+    }
+    // A node a hook adds is read as it wrote it: one with no `projectDir`
+    // ran as `internal error in a#x: TypeError: The "path" property must
+    // be of type string`, and a relative one keyed and ran against
+    // whatever directory vx was started in.
+    const fields = node as { projectName?: unknown; taskName?: unknown; projectDir?: unknown }
+    const shown = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(v) : what(v))
+    for (const field of ['projectName', 'taskName'] as const) {
+      if (typeof fields[field] !== 'string' || fields[field] === '') {
+        throw new Error(`${key}'s ${field} is ${shown(fields[field])}, not a name`)
+      }
+    }
+    const dir = fields.projectDir
+    if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
+      throw new Error(`${key}'s projectDir is ${shown(dir)}, not an absolute path`)
     }
   }
 }

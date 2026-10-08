@@ -4,7 +4,8 @@
 // live instead, as `vx init` writes it), and vx installed with the repo's
 // manager.
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
-// .nx/workspace-data/project-graph.json or nx.json → Nx (the resolved graph, exported by nx if absent);
+// .nx/workspace-data/project-graph.json, nx.json or a Lerna-on-Nx lerna.json → Nx (the resolved
+// graph, exported by nx if absent);
 // The mappers return a plan; core's migration seam
 // (`applyMigration`) renders, guards, writes and reports, so what this
 // package writes reads exactly like what `vx init` writes.
@@ -23,14 +24,16 @@ import {
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
-import { migrateNx, NX_GRAPH_REL } from './migrate-nx.js'
+import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
 import { exportGraph } from './nx/export-graph.js'
+import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   install,
   missingPackages,
   MODE_QUESTION,
   ownVersion,
+  packageManagerOf,
   parseModeAnswer,
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
@@ -41,6 +44,7 @@ import {
   renderWorkspaceFile,
   workspaceFileAt,
   workspacePlugins,
+  type WorkspacePlugin,
 } from './workspace-plugins.js'
 
 export interface MigrateArgs {
@@ -124,13 +128,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const hasTurbo = turboFile !== null
   const hasGraph = await Bun.file(path.join(root, NX_GRAPH_REL)).exists()
   const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
+  // A Turbo repo's lerna.json publishes; Turbo runs its tasks.
+  const lerna = !hasTurbo && !hasGraph && !hasNxJson && lernaOnNx(root)
 
   // Evaluating teams routinely have two runners checked in — never
   // ask anyone to delete anything; --from disambiguates.
   const found = (
     [
       ['turbo', hasTurbo, 'turbo.json'],
-      ['nx', hasGraph || hasNxJson, 'an nx workspace'],
+      ['nx', hasGraph || hasNxJson || lerna, 'an nx workspace'],
     ] as const
   ).filter(([, present]) => present)
   if (parsed.from === undefined && found.length > 1) {
@@ -148,27 +154,38 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
 
   const runner: 'turbo' | 'nx' | undefined =
-    parsed.from ?? (hasTurbo ? 'turbo' : hasGraph || hasNxJson ? 'nx' : undefined)
+    parsed.from ?? (hasTurbo ? 'turbo' : hasGraph || hasNxJson || lerna ? 'nx' : undefined)
   if (runner === undefined) {
     throw new UserError(
       'nothing to migrate: no turbo.json and no Nx workspace — ' +
         'for package.json scripts, run `vx init`',
     )
   }
-  const mode = parsed.mode ?? (await askMode(runner, parsed.dry))
-  if (mode === 'keep') return keep(root, runner, hasTurbo, parsed)
+  const mode = parsed.mode ?? (await askMode(runner, lerna ? 'lerna.json' : undefined, parsed.dry))
+  if (mode === 'keep') return keep(root, runner, hasTurbo, lerna, parsed)
 
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
+  // No workspace file yet: this run writes one, declaring the plugins the
+  // repo calls for and the run settings nx.json holds.
+  const writesWorkspace = workspaceFileAt(root) === undefined
   let source: string
   let plan: MigrationPlan
   if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas, format)
+      plan = await migrateNx(root, metas, format, undefined, writesWorkspace)
     } else {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
       // a temp file; the user ran that step by hand until 2026-10-01.
+      // A fresh clone: the export's own reason names the plugin's `graph`
+      // option, which the CLI does not take.
+      if (!existsSync(path.join(root, 'node_modules', '.bin', 'nx'))) {
+        throw new UserError(
+          `nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — ` +
+            `run \`${packageManagerOf(root, process.env['npm_config_user_agent'])} install\`, then vx-migrate again`,
+        )
+      }
       const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-nx-'))
       try {
         const snapshot = path.join(tmp, 'project-graph.json')
@@ -180,7 +197,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, format, snapshot)
+        plan = await migrateNx(root, metas, format, snapshot, writesWorkspace)
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -201,16 +218,24 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           existsSync(path.join(p.dir, configName))),
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
-  // No workspace file yet: write one declaring the plugins the repo calls
-  // for, and drop the note that told the user to declare the lockfile one.
-  const plugins = workspaceFileAt(root) === undefined ? workspacePlugins(root) : []
-  if (plugins.length > 0) {
+  // Drop the note that told the user to declare the lockfile plugin.
+  const plugins = writesWorkspace ? workspacePlugins(root) : []
+  if (writesWorkspace) {
+    const fields =
+      runner === 'nx'
+        ? nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json).flatMap((f) =>
+            f.source === undefined ? [] : [{ field: f.field, source: f.source }],
+          )
+        : []
     plan = {
       ...plan,
       headerNotes: plan.headerNotes.filter((n) => !n.includes('from @vzn/vx-lockfile')),
       extraFiles: [
         ...plan.extraFiles,
-        { relPath: `vx.workspace.${format}`, contents: renderWorkspaceFile(plugins, format) },
+        {
+          relPath: `vx.workspace.${format}`,
+          contents: renderWorkspaceFile(plugins, format, fields),
+        },
       ],
     }
   }
@@ -231,9 +256,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 }
 
 /** A terminal is asked which adoption it wants; anything else gets native. */
-async function askMode(runner: 'turbo' | 'nx', dry: boolean): Promise<AdoptionMode> {
+async function askMode(
+  runner: 'turbo' | 'nx',
+  file: string | undefined,
+  dry: boolean,
+): Promise<AdoptionMode> {
   if (dry || !process.stdin.isTTY || !process.stdout.isTTY) return 'native'
-  const source = runner === 'turbo' ? 'turbo.json' : 'nx.json'
+  const source = file ?? (runner === 'turbo' ? 'turbo.json' : 'nx.json')
   for (;;) {
     const mode = parseModeAnswer(prompt(MODE_QUESTION(runner, source)))
     if (mode !== undefined) return mode
@@ -268,6 +297,7 @@ async function keep(
   root: string,
   runner: 'turbo' | 'nx',
   hasTurbo: boolean,
+  lerna: boolean,
   args: MigrateArgs,
 ): Promise<number> {
   // `vx init` reads turbo.json first.
@@ -291,6 +321,9 @@ async function keep(
   )) {
     process.stdout.write(`vx-migrate: ${note}\n`)
   }
+  // `vx init` adopts nx() by nx.json, and a Lerna repo may have none: it
+  // would map the scripts instead, so the file is written here.
+  if (lerna) return keepLerna(root, plugins, args)
   // A resolve that misses from a directory with no node_modules is an
   // auto-install under Bun: ask the root only where it has the package.
   const installed = path.join(root, 'node_modules', '@vzn', 'vx')
@@ -315,4 +348,83 @@ async function keep(
     process.stdout.write(`vx-migrate: declared ${names.join(', ')} in ${written}\n`)
   }
   return code
+}
+
+/** `--keep` in a Lerna repo with no nx.json: the workspace file declaring `nx()`. */
+async function keepLerna(
+  root: string,
+  plugins: readonly WorkspacePlugin[],
+  args: MigrateArgs,
+): Promise<number> {
+  const format = args.mjs ? 'mjs' : 'ts'
+  const name = `vx.workspace.${format}`
+  const existing = workspaceFileAt(root)
+  const all = [{ pkg: '@vzn/vx-migrate', factory: 'nx' }, ...plugins]
+  if (existing !== undefined && !args.force) {
+    const text = readFileSync(path.join(root, existing), 'utf8')
+    const extended = extendWorkspaceFile(text, all)
+    if (extended === null) {
+      throw new UserError(
+        `${existing} exists; add nx() from @vzn/vx-migrate to its plugins, or --force replaces it`,
+      )
+    }
+    if (!args.dry && extended !== text) await Bun.write(path.join(root, existing), extended)
+    const names = undeclared(text, all).map((p) => `${p.factory}()`)
+    if (names.length > 0)
+      process.stdout.write(
+        `vx-migrate: ${args.dry ? 'would declare' : 'declared'} ${names.join(', ')} in ${existing}\n`,
+      )
+    return 0
+  }
+  const text = renderWorkspaceFile(all, format)
+  if (args.dry) {
+    process.stdout.write(`── ${name} ──\n${text}\nvx-migrate: would write ${name} (dry run)\n`)
+    return 0
+  }
+  if (existing !== undefined && existing !== name) await rm(path.join(root, existing))
+  await Bun.write(path.join(root, name), text)
+  process.stdout.write(`vx-migrate: lerna.json found — wrote ${name} declaring nx()\n`)
+  return 0
+}
+
+/**
+ * Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph`
+ * exports, nx.json or not, unless lerna.json says `useNx: false`; Lerna 5
+ * ran its own unless it said `useNx: true`. Lerna is the installed one,
+ * else the root manifest's range; with neither, the lerna.json is another
+ * tool's (lerna-lite reads it too, and runs no Nx). A repo whose root
+ * scripts never `lerna run` runs its tasks some other way and publishes
+ * with Lerna (webdriverio: `run-s`, `pnpm -r`): its scripts are the source.
+ */
+const LERNA_RUN = /(?:^|[\s;&|(])lerna\s+run\s/
+
+function lernaOnNx(root: string): boolean {
+  const json = (file: string): Record<string, unknown> | undefined => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) as Record<
+        string,
+        unknown
+      >
+    } catch {
+      return undefined
+    }
+  }
+  const config = json(path.join(root, 'lerna.json'))
+  if (config === undefined) return false
+  const installed = json(path.join(root, 'node_modules', 'lerna', 'package.json'))?.['version']
+  const manifest = json(path.join(root, 'package.json'))
+  const declared = ['devDependencies', 'dependencies']
+    .map((k) => (manifest?.[k] as Record<string, unknown> | undefined)?.['lerna'])
+    .find((v): v is string => typeof v === 'string')
+  const version = typeof installed === 'string' ? installed : declared
+  if (version === undefined) return false
+  const scripts = manifest?.['scripts']
+  const runs =
+    scripts !== null &&
+    typeof scripts === 'object' &&
+    Object.values(scripts).some((v) => typeof v === 'string' && LERNA_RUN.test(v))
+  if (!runs) return false
+  if (typeof config['useNx'] === 'boolean') return config['useNx']
+  const major = /\d+/.exec(version)?.[0]
+  return major === undefined || Number(major) >= 6
 }

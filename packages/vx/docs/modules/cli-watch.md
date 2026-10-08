@@ -51,10 +51,11 @@ export interface JudgeContext {
   uncached(): ReadonlySet<string>
   fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
+  trackedAtArm?: ReadonlySet<string> // what git tracked at the arm: a held server is never blamed for one
 }
 export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
-  lastCycle: { start: number; end: number } | undefined
+  lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
   constructor(ctx: JudgeContext)
   judge(): string | undefined // the first changed path's label, or none
 }
@@ -67,7 +68,10 @@ export function makeWatchIgnore(
   inputs?,
 ): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
-export function gitFiles(workspaceRoot: string): Set<string> | undefined // one `git ls-files` at the arm
+export function gitFiles(
+  workspaceRoot: string,
+): { listed: Set<string>; tracked: Set<string> } | undefined // one `git ls-files -t` at the arm
+export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
@@ -280,8 +284,8 @@ are refused too: they format one run's result.
    in-flight cycle tears its children down (the received signal, a
    SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
-   it holds with the same signal, and resolves 0. SIGINT also
-   prints `vx watch: stopped`. Until 2026-09-10 the handlers went in
+   it holds with the same signal, and resolves; watch exits 0. SIGINT then
+   prints `vx watch: stopped`, the last line. Until 2026-09-10 the handlers went in
    with the loop, so a SIGTERM during the initial run took Bun's
    default (exit 143) and orphaned the cycle's child
    (`tests/watch-signals.test.ts`).
@@ -329,11 +333,16 @@ non-persistent tasks where each cycle should re-run cleanly.
   (item 237). A tracked file matching a pattern is not ignored, by git's
   rule; outside a repository nothing is. A path inside a submodule makes
   git refuse the batch; that path is skipped and the rest asked again
-  (`watch-ignore-submodule.test.ts`).
+  (`watch-ignore-submodule.test.ts`). A project reached through a symlink
+  (`packages/x -> ../shared/x`) is watched at the link, which git refuses
+  ("beyond a symbolic link"), so each path is asked, and looked up in
+  `gitFiles`, at its real place (`gitSpeller`).
 - Settle a file the task rewrites with DIFFERENT bytes every run when
   it is neither ignored nor declared: the loop re-runs on it, and after
   three cycles in a row started by the same path after a run, watch
-  names it and the remedy once (`watch-loop-selfwrite.test.ts`).
+  names it and the remedy once (`watch-loop-selfwrite.test.ts`). A
+  held server is blamed only for a file git did not track at the arm
+  (`gitFiles`' `tracked`; `watch-server-blame.test.ts`).
 - Start a cycle on a file born and gone since the arm (vim's `4913`
   write probe): `gitFiles` lists what existed at the arm, and a gone path
   it did not list was never read by a key (`watch-transient-file.test.ts`).
