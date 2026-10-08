@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { affectedProjects } from '../src/workspace/affected.js'
+import { affectedChanges, affectedProjects } from '../src/workspace/affected.js'
 import { gitIn, gitInitCommit } from './helpers/workspace.js'
 
 let tmp: string
@@ -86,4 +86,41 @@ it('`.gitmodules` asking git to ignore the submodule hides none of it', async ()
   await writeFile(path.join(root, 'packages', 'sub', 'f.txt'), '2\n')
   sub('commit', '-q', '-a', '-m', 'bump')
   expect(await owners('HEAD')).toEqual(['sub'])
+})
+
+// A nested repository INSIDE a project is one path to the parent's git
+// (`vendor/lib`, `emb/`), while the project's key folds every file in it.
+// Per-task selection matched that path as a file against each task's
+// globs: `**` claimed it, `vendor/**/*.txt` did not, and the task whose key
+// moved was left out ("Nothing affected"). A project inside such a
+// repository was never reached: the walk stopped at the outer project.
+it('a nested repository inside a project reaches every task of it, and the projects inside', async () => {
+  const lib = path.join(tmp, 'lib')
+  await mkdir(path.join(lib, 'c'), { recursive: true })
+  await writeFile(path.join(lib, 'c', 'f.txt'), '1\n')
+  gitInitCommit(lib)
+  git('-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', lib, 'packages/a/vendor/lib')
+  git('commit', '-q', '-m', 'add nested submodule')
+  const changes = async (
+    dirs: Record<string, string> = { a: 'packages/a', c: 'packages/a/vendor/lib/c' },
+  ) => {
+    const c = await affectedChanges({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects: projects(dirs),
+    })
+    return { projects: [...c.projects].sort(), whole: [...c.whole].sort() }
+  }
+  expect(await changes()).toEqual({ projects: [], whole: [] })
+  const emb = path.join(root, 'packages', 'a', 'emb')
+  await mkdir(emb)
+  await writeFile(path.join(emb, 'e.txt'), 'e\n')
+  gitInitCommit(emb)
+  expect(await changes()).toEqual({ projects: ['a'], whole: ['a'] })
+  await rm(emb, { recursive: true })
+  await writeFile(path.join(root, 'packages', 'a', 'vendor', 'lib', 'c', 'f.txt'), '2\n')
+  expect(await changes()).toEqual({ projects: ['a', 'c'], whole: ['a', 'c'] })
+  // Gone: the base's gitlink is the one side that says so.
+  git('rm', '-q', '-f', 'packages/a/vendor/lib')
+  expect(await changes({ a: 'packages/a' })).toEqual({ projects: ['a'], whole: ['a'] })
 })

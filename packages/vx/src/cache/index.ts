@@ -36,6 +36,7 @@ export {
   cleanOutputs,
   cleanWorkspaceOutputs,
   declaresInput,
+  workspaceFilesReachInto,
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,

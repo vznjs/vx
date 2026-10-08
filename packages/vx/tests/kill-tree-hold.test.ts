@@ -182,7 +182,9 @@ async function afterSessionLister(strike: boolean): Promise<Record<string, boole
     const [listed, sibling] = readFileSync(path.join(dir, 'pids'), 'utf8').split(' ').map(Number)
     await waitForDead(listed!, 2_000)
     const until = Date.now() + 2_000
-    while (existsSync(listedDir) && Date.now() < until) await Bun.sleep(20)
+    // The guard removes the listed paths one `rm` at a time: wait on the last.
+    while ((existsSync(listedDir) || existsSync(listedFile)) && Date.now() < until)
+      await Bun.sleep(20)
     const state = {
       listedAlive: isAlive(listed!),
       siblingAlive: isAlive(sibling!),

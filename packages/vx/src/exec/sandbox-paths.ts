@@ -28,6 +28,17 @@ export function isMountableLiteral(grant: string): boolean {
 }
 
 /**
+ * The one path a grant names, or undefined for a pattern. A grant whose
+ * only brackets are escaped (`out/\[id\]`) names `out/[id]` as surely as a
+ * literal does, though it is still scanned and matched as a glob.
+ */
+export function namedPath(grant: string): string | undefined {
+  if (isMountableLiteral(grant)) return grant
+  const escaped = /\\([[\]])/g
+  return isMountableLiteral(grant.replace(escaped, '')) ? grant.replace(escaped, '$1') : undefined
+}
+
+/**
  * Canonicalize a path with realpath, tolerating paths that don't exist
  * yet: resolve the longest existing ancestor and re-append the rest.
  *
