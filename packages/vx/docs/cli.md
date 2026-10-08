@@ -2488,9 +2488,21 @@ only by an environment variable says so in one line; when neither
 entry kept its components it reads `(inputs differ)`.
 
 Under the rows, `what to do` gives one line per changed kind: what
-moves it and how to stop a move the task does not need. An `upstream`
-line names the `vx why` to run next for each dependency that moved; a
-`config` line names the `vx show` that prints the task's config now.
+moves it and how to stop a move the task does not need. An upstream
+row is only the carrier, so `vx why` follows each dependency that moved
+in the same run down to the tasks whose OWN inputs moved and prints
+them under `root cause`, one chain per root (five at most, then a
+count), and `what to do` speaks to those kinds instead:
+
+```
+  root cause:
+    app#build ← lib#build ← file packages/lib/src/index.ts
+```
+
+A dependency the walk cannot find in the run keeps the `upstream` line,
+which names the `vx why` to run next; a `config` line names the
+`vx show` that prints the task's config now. `--format json` carries
+the walk as `roots` (`chain`, `entries`).
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
@@ -2514,7 +2526,7 @@ task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff }`); when the task's recorded runs predate run ids, `{ taskId,
+why, diff, roots }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key.
 

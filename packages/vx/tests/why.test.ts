@@ -254,7 +254,9 @@ describe('vx why (e2e) — every component kind names its row', () => {
           .trimEnd()
           .split('\n')
           .map((l) => l.trim().split(/\s+/)[0]),
-      ).toEqual(['what', 'upstream', 'workspace'])
+      ).toEqual(['what', 'workspace'])
+      // The upstream row is only the carrier: the walk names lib's own move.
+      expect(lock).toContain('  root cause:\n    app#build ← lib#build ← workspace fingerprint\n')
 
       const appConfig = path.join(root, 'packages', 'app', 'vx.config.mjs')
       await writeFile(appConfig, APP.replace('echo hi', 'echo hey'))
@@ -266,9 +268,10 @@ describe('vx why (e2e) — every component kind names its row', () => {
       const up = await why({ APP_MODE: 'prod' })
       expect(up).toMatch(/what changed \(1 component, \d+ unchanged\)/)
       expect(up).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
-      // What to do names the task to ask next, not a placeholder.
+      // One `vx why` walks to the file, and what to do is the file's.
       expect(up).toContain(
-        "  what to do:\n    upstream  a dependency's key moved; `vx why lib#build` says why\n",
+        '  root cause:\n    app#build ← lib#build ← file packages/lib/src/index.js\n\n' +
+          '  what to do:\n    file      an edit re-runs by design;',
       )
 
       // CONTROL: a hit carries no row.
