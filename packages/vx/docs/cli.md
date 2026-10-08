@@ -1266,7 +1266,8 @@ run...` precedes it.
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
-   run stale (item 949). The directory
+   run stale (item 949). An import whose file is gone stays on the list
+   by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
    runs is a cycle that runs it, and its directory is watched from then
@@ -1431,7 +1432,9 @@ dev server stays up while watch idles, and what it writes keeps printing; when t
 old server is stopped first (the kill grace, then SIGKILL) and the cycle
 launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
-change starts it again. Stopping watch stops the server too. For dev-server workflows where you want the server
+change starts it again. An edit while a cycle waits only on a server
+that has not printed its `readyWhen` line stops that cycle and starts
+the next, so a fix reaches a server stuck before ready. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 

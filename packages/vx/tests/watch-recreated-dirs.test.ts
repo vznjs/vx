@@ -196,9 +196,15 @@ describe('vx watch over a config import directory made again', () => {
       await cp(path.join(root, 'shared'), path.join(copy, 'shared'), { recursive: true })
       await rm(path.join(root, 'shared'), { recursive: true, force: true })
       await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the preset')
+      // Each re-arm prints this line (the startup one carries a suffix).
+      // The failed cycle re-arms too, so the restore's re-arm is the
+      // second: on macOS an edit before it landed in an unwatched gap.
+      const rearms = (): number =>
+        w.out().match(/^vx watch: watching 1 project\(s\)$/gm)?.length ?? 0
+      await until(() => rearms() >= 1, 'the re-arm after the failure')
       await cp(path.join(copy, 'shared'), path.join(root, 'shared'), { recursive: true })
       await rm(copy, { recursive: true, force: true })
-      await until(() => w.out().includes('vx watch: watching 1 project(s)\n'), 'the re-arm')
+      await until(() => rearms() >= 2, 'the re-arm after the restore')
       await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v2'\n")
       await until(async () => (await readFile(log, 'utf8')).includes('v2'), 'the run under v2')
     } finally {

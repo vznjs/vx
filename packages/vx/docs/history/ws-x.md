@@ -696,6 +696,27 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-107.** A background upload read its body through the artifact's
+  live name, and a re-save of the key (another run on a shared cache
+  dir, `--force`) renames other bytes over it: a plugin that reads the
+  body twice (`@vzn/vx-reapi`'s digest then upload, a retry) sent one
+  artifact's digest over another's bytes. The job now hands `put` a
+  `Bun.file` over a private hard link (`Cache.pinArtifact`), unlinked
+  when the PUT ends. Row: `layered-cache.test.ts` › "a re-save of the
+  key during an upload leaves every read of its body the same".
+- **X-108.** Adopting a row-less artifact hard-linked it to a temp that
+  kept the artifact's old mtime, so a concurrent `vx cache prune` took
+  the temp and the artifact as hour-old orphans mid-adopt and the hit
+  became a miss. `adopt` now touches the artifact before linking. Row:
+  `cache.test.ts` › "a prune during an adopt leaves the artifact it is
+  indexing".
+- **X-109.** A reading verb (`vx info`, `why`, `last`) over a shared
+  `store.db` with no tables yet switched its journal and created its
+  tables statement by statement under no write lock, racing a writing
+  opener making that store. `Cache.inspect` now reads such a store
+  as an empty one in memory and writes nothing to it. Row:
+  `shared-store.test.ts` › "a reading verb's handle on an empty store
+  writes nothing to it".
 - **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
   file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
   stay as they were.
@@ -1004,3 +1025,13 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   now waits for the readers, bounded by the task drain's 250 ms, before
   judging. Row: `runner.test.ts` › "a marker read after the shell exited,
   inside the drain bound, is ready" (10 of 10 without the fix).
+
+- **X-133.** `vx watch` lost a config import whose file was deleted:
+  since #3207 a failed cycle re-reads the watch set, and the import list
+  skipped what it could not resolve, so the preset's return was no event
+  and every edit after it ran nothing until a restart. `configImports`
+  now lists an unresolvable relative import by the path it would have
+  (each extension Bun tries, when it has none). The watch row waited on
+  the failed cycle's own re-arm line; it now counts re-arms. Rows:
+  `config-cache.test.ts` › "the watch list keeps an import whose file is
+  gone", `watch-recreated-dirs.test.ts` › "an edit to a restored preset".
