@@ -38,6 +38,7 @@ import {
   type TaskInputs,
   PersistentReadyError,
   sandboxReads,
+  maskCaptured,
 } from '../exec/index.js'
 import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import {
@@ -1002,7 +1003,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     endExec()
     if (secrets !== null)
-      res = { ...res, stdout: secrets.mask(res.stdout), stderr: secrets.mask(res.stderr) }
+      res = {
+        ...res,
+        stdout: maskCaptured(res.stdout, secrets),
+        stderr: maskCaptured(res.stderr, secrets),
+      }
     // An executor that stopped on the timeout's abort exits non-zero; say
     // why, so the frame, the retry line and `timedOut` read as a timeout.
     if (timeoutFired && res.exitCode !== 0 && res.timedOut !== true) {
