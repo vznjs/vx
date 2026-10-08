@@ -1,3 +1,4 @@
 # Workstream YC — Nx/Turbo parity (2026-10-07)
 
 - **YC-3.** vx-migrate (nx): nx.json's `parallel`, `defaultBase` and `maxCacheSize` were notes to add to the `vx.workspace.ts` vx-migrate itself writes. Now written into it as `concurrency`, `affectedBase`, `cacheRetention.maxSize`; a note only where a workspace file exists. Rows: tests/migrate-nx-workspace.test.ts › "writes them into the vx.workspace.ts it writes, and says nothing of them", "names them where the workspace file is already there".
+- **YC-2.** nx(): a serial run-commands line that opens with `nx <target> <project>` ran Nx inside the task (ngrx: 12 `build` targets run `nx build-package <project>`), a todo each in the migration. Now a `dependsOn` edge to that target, the call out of the line. Rows: tests/nx-call-edge.test.ts › "is a dependency edge; one Nx runs beside, after, or with options stays".

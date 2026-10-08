@@ -8,7 +8,7 @@
 // what must keep working: vx driving a DIFFERENT workspace from a task
 // (a fixture suite, a benchmark).
 
-import { rm } from 'node:fs/promises'
+import { rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -16,9 +16,14 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const VX = `${process.execPath} ${BIN}`
 
-async function runVx(root: string, args: string[]): Promise<{ code: number; text: string }> {
+async function runVx(
+  root: string,
+  args: string[],
+  env: Record<string, string> = {},
+): Promise<{ code: number; text: string }> {
   const proc = Bun.spawn([process.execPath, BIN, 'run', ...args], {
     cwd: root,
+    env: { ...process.env, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -83,6 +88,36 @@ describe('vx run inside a task', () => {
     const r = await runVx(root, ['ci', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('task app#ci runs `vx run` inside its own workspace')
+  }, 30_000)
+
+  // An outer run started at a root reached through a symlink (`run({ cwd })`,
+  // macOS's /var/folders) marks its tasks with that spelling, and the inner
+  // vx resolves its root from the canonical cwd: compared as strings, the
+  // two missed and the nested run went ahead.
+  it('is refused when the outer run named its root through a symlink', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { lint: { exec: { command: 'echo lint' } } } }`,
+    )
+    const link = `${root}-link`
+    await symlink(root, link)
+    try {
+      const r = await runVx(root, ['lint', '--all'], {
+        VX_RUN_WORKSPACE: link,
+        VX_RUN_TASK: 'app#ci',
+      })
+      expect(r.text).toContain('task app#ci runs `vx run` inside its own workspace')
+      expect(r.code).toBe(1)
+      const away = await runVx(root, ['lint', '--all'], {
+        VX_RUN_WORKSPACE: other,
+        VX_RUN_TASK: 'app#ci',
+      })
+      expect(away.text).not.toContain('inside its own workspace')
+      expect(away.code).toBe(0)
+    } finally {
+      await rm(link, { force: true })
+    }
   }, 30_000)
 
   it('a task that runs another vx verb in its own workspace is untouched (control)', async () => {

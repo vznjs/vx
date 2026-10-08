@@ -8,6 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { summarize } from './ab.js'
 const [root, nArg, repsArg] = process.argv.slice(2)
 const n = Number(nArg ?? 1000)
 const reps = Number(repsArg ?? 5)
@@ -45,7 +46,7 @@ for (let r = 0; r < reps; r++) {
   rmSync(dir, { recursive: true, force: true })
 }
 rmSync(base, { recursive: true, force: true })
-times.sort((a, b) => a - b)
+const { min, median } = summarize(times)
 console.log(
-  `${n} saves × ${reps} reps: min ${times[0]!.toFixed(1)} ms, median ${times[Math.floor(reps / 2)]!.toFixed(1)} ms, ${((times[0]! / n) * 1000).toFixed(0)} µs per save`,
+  `${n} saves × ${reps} reps: min ${min.toFixed(1)} ms, median ${median.toFixed(1)} ms, ${((min / n) * 1000).toFixed(0)} µs per save`,
 )

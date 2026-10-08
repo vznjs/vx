@@ -23,6 +23,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
 
 const projects = Number(process.argv[2] ?? 100)
@@ -33,11 +34,6 @@ const vxCmd: string[] =
   vxBin !== undefined && vxBin !== ''
     ? [path.resolve(vxBin)]
     : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
-
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b)
-  return s[Math.floor(s.length / 2)]!
-}
 
 async function vx(cwd: string, args: readonly string[]): Promise<number> {
   const t0 = Bun.nanoseconds()
@@ -98,7 +94,7 @@ for (let i = 0; i < reps; i++) {
 await rm(ws, { recursive: true, force: true })
 
 const fmt = (xs: number[]) =>
-  `${median(xs).toFixed(0)} ms  (all: ${xs.map((x) => x.toFixed(0)).join(' / ')})`
+  `${summarize(xs).median.toFixed(0)} ms  (all: ${xs.map((x) => x.toFixed(0)).join(' / ')})`
 console.log(`\nvx benchmark — ${projects} projects × build, median of ${reps}`)
 console.log(`  no-cache        : ${fmt(noCache)}`)
 console.log(`  warm, no restore: ${fmt(warmNoRestore)}`)
