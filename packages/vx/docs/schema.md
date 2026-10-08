@@ -558,7 +558,7 @@ the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to 
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
-proxy, CA and `TMPDIR` values over these names:
+proxy, CA and temp-directory (`TMPDIR`, `TMP`, `TEMP`) values over these names:
 `modules/sandbox-runtime.md` § The environment SRT sets). This
 matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 
