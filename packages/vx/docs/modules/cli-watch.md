@@ -213,7 +213,9 @@ are refused too: they format one run's result.
      (`tests/watch-loop-members.test.ts`, the added-package pair). A
      cycle that fails re-reads too: a package added with a config that
      does not load yet was left unwatched, and the fix to that config
-     ran nothing (WD-26). The scope
+     ran nothing (WD-26). That read keeps the config imports it held:
+     a preset deleted with its directory does not resolve, and dropped,
+     its return was heard by nothing. The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
    - The same re-read follows a cycle started by a file that shapes

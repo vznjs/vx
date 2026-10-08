@@ -425,6 +425,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       let label: string | undefined = first
       while (label !== undefined && !stop.aborted) {
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
+        let failed = false
         try {
           await held?.stop()
           held = undefined
@@ -453,13 +454,14 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           // A config's own throw or a plugin's failure may quote a secret (L-11).
           const message = maskedLine(err instanceof Error ? err.message : String(err))
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+          failed = true
         }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
         // was never an event.
         if (reread && !stop.aborted) {
           reread = false
-          await rearm()
+          await rearm(failed)
         }
         // What landed mid-run is judged on settled state, one window
         // after the run, under the label of what actually arrived.
@@ -720,7 +722,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       ? 'vx watch: watching the workspace root (workspaceFiles inputs in use)'
       : `vx watch: watching ${count} project(s)`
 
-  const rearm = async (): Promise<void> => {
+  const rearm = async (failed = false): Promise<void> => {
     let next: Rediscovered
     try {
       next = await args.rediscover()
@@ -734,8 +736,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     inputs = next.inputs
     uncached = next.uncached
     claimedRootFiles = next.claimedRootFiles
-    configImportFiles = next.configImports
-    wsConfigImportFiles = next.workspaceConfigImports
+    // After a failed cycle the read may have missed an import that did not
+    // resolve (a preset deleted with its directory): dropped, its return was
+    // heard by nothing and the config's fix ran nothing until a restart.
+    configImportFiles = failed
+      ? [...new Set([...configImportFiles, ...next.configImports])]
+      : next.configImports
+    wsConfigImportFiles = failed
+      ? [...new Set([...wsConfigImportFiles, ...next.workspaceConfigImports])]
+      : next.workspaceConfigImports
     packageDirs = next.packageDirs
     memberBases = next.memberBases
     armBases()

@@ -198,8 +198,51 @@ describe('vx watch over a config import directory made again', () => {
       await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the preset')
       await cp(path.join(copy, 'shared'), path.join(root, 'shared'), { recursive: true })
       await rm(copy, { recursive: true, force: true })
-      await until(() => w.out().includes('vx watch: watching 1 project(s)\n'), 'the re-arm')
+      // Two re-arms: the failed cycle's read cannot resolve the missing
+      // preset, so the cycle that loads it again must read once more.
+      await until(
+        () => w.out().split('vx watch: watching 1 project(s)\n').length >= 3,
+        'the re-arm after the restore',
+      )
+      console.error(
+        'OUT<<' +
+          w.out().replace(/^[ ─]*(projects|tasks|cache|info|time|result|⏺|▰|1 ).*$/gm, '') +
+          '>>',
+      )
       await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v2'\n")
+      await until(async () => (await readFile(log, 'utf8')).includes('v2'), 'the run under v2')
+    } finally {
+      w.proc.kill('SIGTERM')
+      await w.proc.exited
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  }, 40_000)
+
+  // The failed cycle's re-read cannot resolve the deleted preset; kept,
+  // its directory's return below the root's own files is still heard.
+  it('a preset directory made again below the root is heard after the failed cycle', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-import-deep-' })
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-import-count-'))
+    const log = path.join(outside, 'runs.log')
+    const deep = path.join(root, 'shared', 'deep')
+    await mkdir(deep, { recursive: true })
+    await writeFile(path.join(deep, 'preset.mjs'), "export const word = 'v1'\n")
+    const dir = path.join(root, 'packages', 'app')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `import { word } from '../../shared/deep/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + word + ' >> ${log}' } } } }\n`,
+    )
+    const w = startWatch(root)
+    try {
+      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await rm(deep, { recursive: true, force: true })
+      await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the preset')
+      await until(() => w.out().includes('vx watch: watching 1 project(s)\n'), 'the failed re-arm')
+      await mkdir(deep)
+      await writeFile(path.join(deep, 'preset.mjs'), "export const word = 'v2'\n")
       await until(async () => (await readFile(log, 'utf8')).includes('v2'), 'the run under v2')
     } finally {
       w.proc.kill('SIGTERM')
