@@ -2235,7 +2235,7 @@ describe('vx init --plugin <seam>', () => {
         const bad = await vx(root, ['init', '--plugin', 'nope'])
         expect([bad.code, bad.err]).toEqual([
           1,
-          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope')\n`,
+          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
         ])
         // --dry writes nothing.
         const dry = await vx(root, ['init', '--plugin=graph', '--dry'])
@@ -2260,7 +2260,7 @@ describe('vx init --plugin <seam>', () => {
         expect([mjs.code, mjs.out, mjs.err]).toEqual([
           1,
           '',
-          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript\n',
+          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript (see `vx init --help`)\n',
         ])
         const ok = await vx(root, ['init', '--plugin', 'cache', '--dry'])
         expect([ok.code, ok.err]).toEqual([0, ''])

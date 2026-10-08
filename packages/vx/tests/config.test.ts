@@ -113,6 +113,113 @@ describe('defineProject', () => {
     })
   })
 
+  it('rejects a typo in exec.env, exec.persistent and exec.sandbox (D-156)', () => {
+    // A typo beside a real key in these objects type-checked and was refused
+    // only at load: D-69 typed `exec` itself, not the objects inside it.
+    defineProject({
+      tasks: {
+        a: {
+          exec: {
+            command: 'x',
+            env: {
+              passThrough: ['A'],
+              // @ts-expect-error `defin` is a typo of `define`.
+              defin: {},
+            },
+          },
+        },
+      },
+    })
+    defineProject({
+      tasks: {
+        a: {
+          exec: {
+            command: 'x',
+            persistent: {
+              readyWhen: 'up',
+              // @ts-expect-error `readWhen` is a typo of `readyWhen`.
+              readWhen: 'up',
+            },
+          },
+        },
+      },
+    })
+    defineProject({
+      tasks: {
+        a: {
+          exec: {
+            command: 'x',
+            sandbox: {
+              weakerWhenNested: true,
+              // @ts-expect-error `alow` is a typo of `allow`.
+              alow: {},
+            },
+          },
+        },
+      },
+    })
+    defineProject({
+      tasks: {
+        a: {
+          exec: {
+            command: 'x',
+            sandbox: {
+              allow: {
+                read: [],
+                // @ts-expect-error `reads` is not a grant.
+                reads: [],
+              },
+              deny: {
+                network: [],
+                // @ts-expect-error `read` is not a denial.
+                read: [],
+              },
+              ignore: {
+                write: [],
+                // @ts-expect-error `machLookup` cannot be ignored.
+                machLookup: [],
+              },
+            },
+          },
+        },
+      },
+    })
+    // CONTROL: every declared key at each of these levels type-checks.
+    defineProject({
+      tasks: {
+        a: {
+          exec: {
+            command: 'x',
+            env: { passThrough: ['A'], define: { B: '1' }, secret: ['C'] },
+            persistent: { readyWhen: 'up' },
+          },
+        },
+        b: {
+          exec: {
+            command: 'x',
+            sandbox: {
+              allow: {
+                read: [],
+                write: [],
+                network: true,
+                systemInfo: [],
+                unixSockets: true,
+                localBinding: [3000],
+                machLookup: [],
+                pty: false,
+                gitConfig: false,
+              },
+              deny: { network: [] },
+              ignore: { read: [], write: [], systemInfo: [], network: [] },
+              weakerWhenNested: true,
+              weakerNetworkIsolation: false,
+            },
+          },
+        },
+      },
+    })
+  })
+
   it('requires cache.inputs.files — the one declaration vx will not infer', () => {
     // Architecture principle #2: caching is opt-in and `cache.inputs.files`
     // is REQUIRED; there is no inferred-input path. The requirement lives
@@ -165,12 +272,15 @@ describe('defineWorkspace', () => {
     defineWorkspace({ cacheDir: '.vx', pipeline: {} })
     // @ts-expect-error `maxAge` is not a cacheRetention key.
     defineWorkspace({ cacheRetention: { olderThan: '7d', maxAge: '1d' } })
+    // @ts-expect-error `upfrontKey` is a typo of `upfrontKeys` (D-155).
+    defineWorkspace({ rules: { exclusiveOutputs: false, upfrontKey: false } })
     // CONTROL: every declared key type-checks.
     defineWorkspace({
       concurrency: 4,
       cacheDir: '.vx',
       timeout: 1,
       cacheRetention: { olderThan: '7d', maxSize: '1g' },
+      rules: { exclusiveOutputs: false, upfrontKeys: false },
       plugins: [],
     })
   })

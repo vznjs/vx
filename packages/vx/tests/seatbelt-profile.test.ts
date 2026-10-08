@@ -246,6 +246,17 @@ describe('the walls a darwin config reaches', () => {
       ),
     ]).toEqual([{ read: [], write: walls }, undefined])
   })
+
+  it('a grant inside a wall spelled with escaped brackets keeps its path', () => {
+    const wall = path.join(dir, 'packages/[legacy]')
+    const grant = 'packages/\\[legacy\\]/src'
+    const r = asDarwin(() =>
+      resolveSandboxConfig({ allow: { read: [grant], write: [grant] } }, dir, [wall]),
+    )
+    expect(darwinWallRules(r, [])).toEqual([
+      `(deny file-write* (require-all (subpath "${wall}") (require-not (subpath "${wall}/src"))))`,
+    ])
+  })
 })
 
 // SRT compiles any deny path holding `[` as a regex, where the bracket
@@ -426,4 +437,66 @@ describe('an escaped directory read grant', () => {
       expected,
     ])
   })
+})
+
+// A grant whose only wildcards are escaped names one path, as a plain
+// literal does: `packages/\[legacy\]/src` is the directory `[legacy]/src`.
+// Counted as a glob, it reached every wall under `packages/` and its own
+// wall was denied with no carve-out, so macOS refused the path it named;
+// Linux's scan dropped the one hit as a wall. `packages/legacy/src` binds.
+describe('an escaped literal grant and the walls', () => {
+  const escaped = '/w/packages/\\[legacy\\]/src'
+  const plain = '/w/packages/legacy/src'
+  const wallOf = (g: string): string =>
+    g === plain ? '/w/packages/legacy' : '/w/packages/[legacy]'
+
+  it('reaches no wall, as the plain literal does', () => {
+    expect([escaped, plain].map((g) => wallsGlobsReach([g], [wallOf(g), '/w/packages/b']))).toEqual(
+      [[], []],
+    )
+  })
+
+  it('is carved out of the wall a glob reaches, as the plain literal is', () => {
+    expect(
+      [escaped, plain].map((g) =>
+        darwinWallRules(
+          {
+            allowRead: ['/w/**/*.ts', g],
+            allowWrite: [g],
+            wallsReached: { read: [wallOf(g)], write: [wallOf(g)] },
+          },
+          [],
+        ),
+      ),
+    ).toEqual(
+      ['/w/packages/[legacy]', '/w/packages/legacy'].map((w) => [
+        `(deny file-read-data (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+        `(deny file-write* (require-all (subpath "${w}") (require-not (subpath "${w}/src"))))`,
+      ]),
+    )
+  })
+
+  it.skipIf(process.platform !== 'linux')(
+    'binds on Linux inside a wall, as the plain literal does',
+    async () => {
+      const dir = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-esc-')))
+      try {
+        const out: (readonly string[])[] = []
+        for (const [name, grant] of [
+          ['[legacy]', 'packages/\\[legacy\\]/src'],
+          ['legacy', 'packages/legacy/src'],
+        ] as const) {
+          await mkdir(path.join(dir, 'packages', name, 'src'), { recursive: true })
+          const walls = [path.join(dir, 'packages', name)]
+          out.push(resolveSandboxConfig({ allow: { read: [grant] } }, dir, walls).allowRead)
+        }
+        expect(out).toEqual([
+          [path.join(dir, 'packages/[legacy]/src')],
+          [path.join(dir, 'packages/legacy/src')],
+        ])
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })

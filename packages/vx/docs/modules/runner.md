@@ -265,7 +265,7 @@ descriptor. The `ready` promise:
 The pattern matcher buffers across chunk boundaries and tests each
 line of the pending fragment on its own — complete lines without
 their break (`\n` or `\r`), then the trailing partial line — with
-terminal escapes (CSI, OSC, two-byte) removed from the tested text
+terminal escapes (CSI, OSC, charset picks, two-byte) removed from the tested text
 only; the streamed bytes keep them. So `^`/`$` anchor per line, a
 colourised banner matches its plain text, and neither a match split
 across two reads nor a prompt-style marker without a trailing newline

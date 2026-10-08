@@ -107,6 +107,51 @@ it("exec.timeout aborts a plugin executor's request, and the task fails as timed
   expect(Date.now() - started).toBeLessThan(10_000)
 }, 20_000)
 
+// A child that traps the TERM and exits 0 is the shape the local executor
+// fails as timed out (its partial outputs are never cached). On a plugin
+// executor the 0 read as a pass, and the partial outputs were saved and
+// replayed as a green hit (X-125).
+it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (X-125)", async () => {
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/spawner',
+        `{ executor() { return { name: 'spawner', async execute(req) {
+            const child = Bun.spawn(['sh', '-c', req.command], { cwd: req.cwd, env: req.env })
+            req.signal?.addEventListener('abort', () => child.kill(), { once: true })
+            const exitCode = await child.exited
+            return { exitCode, durationMs: 0, stdout: '', stderr: '', violations: [] }
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { slow: {
+      exec: {
+        command: "trap 'exit 0' TERM; mkdir -p dist; echo partial > dist/out.txt; while :; do sleep 0.05; done",
+        timeout: 300,
+      },
+      cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+    } } }`,
+  )
+  const once = async () => {
+    const r = await run({
+      cwd: root,
+      tasks: ['slow'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+    })
+    return r.outcomes.map((o) => [o.node.id, o.status, o.exitCode, o.timedOut === true])
+  }
+  expect(await once()).toEqual([['app#slow', 'failed', 143, true]])
+  // Nothing was saved: the second run executes again rather than hit.
+  expect(await once()).toEqual([['app#slow', 'failed', 143, true]])
+}, 20_000)
+
 // An executor that never looks at `signal` held the task, and the run, past
 // both the timeout and the stop (H-14). Core now waits the kill grace after
 // the abort and settles the attempt without it.
