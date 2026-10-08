@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { ProjectMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
-import { mapNxOutputs, nxDefaultOutputs } from '../src/nx/nx-outputs.js'
+import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from '../src/nx/nx-outputs.js'
 import { mapNxDeps, matchNxProjects } from '../src/nx/nx-deps.js'
 
 function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
@@ -490,6 +490,69 @@ describe('a token anywhere in a path interpolates as Nx does', () => {
     expect([got.files, got.wsFiles, got.todos]).toEqual([
       ['src/a.ts'],
       ['coverage/packages/a/**', '!cfg/a.json'],
+      [],
+    ])
+  })
+})
+
+// A project dir is a path, not a glob: `packages/a{b}` read as a token
+// dropped every `{projectRoot}` path with a todo, and `packages/[x]` read
+// as a class became `packages/{[x],x}`, another project's tree too.
+describe('a project dir holding glob characters stays literal', () => {
+  const dirInputs = (rel: string, entries: unknown[], outputs: string[]) => {
+    const into = emptyNxInputs()
+    const todos: string[] = []
+    expandNxInputs(entries, {}, { rel, name: 'a', outputs }, into, todos)
+    return [into.files, into.wsFiles, into.runtimeCmds, todos]
+  }
+
+  it('outputs: in the project, at the root, and Nx’s defaults', () => {
+    const outputs = ['{projectRoot}/dist', '{workspaceRoot}/coverage/{projectRoot}']
+    const todos: string[] = []
+    expect(mapNxOutputs(outputs, {}, 'packages/a{b}', 'a', todos)).toEqual({
+      outFiles: ['dist'],
+      wsOutFiles: ['coverage/packages/a\\{b\\}', 'coverage/packages/a\\{b\\}/**'],
+    })
+    expect(mapNxOutputs(outputs, {}, 'packages/[x]', 'a', todos)).toEqual({
+      outFiles: ['dist'],
+      wsOutFiles: ['coverage/packages/[x]'],
+    })
+    const defaults = nxDefaultOutputs('build', {}, 'packages/a{b}', todos, new Set())
+    expect(mapNxOutputs(defaults, {}, 'packages/a{b}', 'a', todos)).toEqual({
+      outFiles: ['dist', 'build', 'public'],
+      wsOutFiles: ['dist/packages/a\\{b\\}', 'dist/packages/a\\{b\\}/**'],
+    })
+    expect(todos).toEqual([])
+  })
+
+  it('the literal outputs inputs are checked against', () => {
+    const targets = {
+      build: { outputs: ['{projectRoot}/dist', '{workspaceRoot}/cov/{projectRoot}'] },
+    }
+    expect(nxProjectOutputs(targets, 'packages/a{b}', 'a')).toEqual([
+      'packages/a{b}/dist',
+      'cov/packages/a{b}',
+    ])
+  })
+
+  it('inputs: own, negated, at the root, an output skipped, a probed literal', () => {
+    const entries = [
+      '{projectRoot}/src/**',
+      '!{projectRoot}/**/*.md',
+      '{workspaceRoot}/cfg/{projectRoot}.json',
+      '{projectRoot}/dist/**',
+      { fileset: '{projectRoot}/.env', includeIgnored: true },
+    ]
+    expect(dirInputs('packages/a{b}', entries, ['packages/a{b}/dist'])).toEqual([
+      ['src/**', '!**/*.md'],
+      ['cfg/packages/a\\{b\\}.json'],
+      ['cat -- \'packages/a{b}/.env\' 2>/dev/null; echo "$?"'],
+      [],
+    ])
+    expect(dirInputs('packages/[x]', entries, ['packages/[x]/dist'])).toEqual([
+      ['src/**', '!**/*.md'],
+      ['cfg/packages/[x].json'],
+      ['cat -- \'packages/[x]/.env\' 2>/dev/null; echo "$?"'],
       [],
     ])
   })

@@ -112,6 +112,7 @@ describe('resolveTurboCacheConfig', () => {
       teamSlug: 'acme',
       timeoutMs: 30_000,
       retries: 1,
+      preflight: false,
       uploadTimeoutMs: 60_000,
     })
     expect(

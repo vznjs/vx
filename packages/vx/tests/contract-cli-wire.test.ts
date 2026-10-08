@@ -118,6 +118,7 @@ async function summarizeJson(): Promise<unknown> {
     peakRssBytes: 4,
     groupUpstream: [],
     unkeyed: true,
+    cacheOff: true,
     blockedBy: 'a#gen',
     timedOut: true,
     notReady: 'timeout',

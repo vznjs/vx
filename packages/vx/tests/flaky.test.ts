@@ -131,6 +131,12 @@ describe('flaky-task detection (e2e)', () => {
       expect(lastLine(r.text)).toMatch(/^ {2}result {4}1 task · /)
       const summary = JSON.parse(await readFile(path.join(root, 'retry.json'), 'utf8'))
       expect(summary.tasks[0].flaky).toEqual({ passes: 1, failures: 0, attempts: 2 })
+      // The doctor's list said `none` over it: a retry's pass is one
+      // success row with attempts 2, and no key held a failed row.
+      const info = await vx(root, ['info'])
+      expect(info.text).toMatch(
+        /^flaky tasks: .*\bretry#build \(1 of 2 runs failed( on unchanged inputs)?\)/m,
+      )
     },
     TIMEOUT,
   )

@@ -21,22 +21,22 @@ export interface SaveLane {
 
 export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane {
   const queue: Array<{ save: () => Promise<void>; settle: () => void }> = []
-  const running = new Set<Promise<void>>()
+  let running = 0
   const start = (save: () => Promise<void>, settle: () => void): void => {
-    const p = save()
+    void save()
       .catch(onError)
       .then(() => {
-        running.delete(p)
+        running--
         settle()
         const next = queue.shift()
         if (next !== undefined) start(next.save, next.settle)
       })
-    running.add(p)
+    running++
   }
   return {
     defer(save) {
       return new Promise<void>((settle) => {
-        if (running.size < cap) start(save, settle)
+        if (running < cap) start(save, settle)
         else queue.push({ save, settle })
       })
     },
