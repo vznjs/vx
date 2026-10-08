@@ -859,6 +859,80 @@ describe("a link to the task's own project, or to a directory holding it, is not
     }
   })
 
+  // pnpm and Bun link a package's workspace dependencies under ITS own
+  // `node_modules`: app -> ui -> core put core only in ui's, which the
+  // scan never read, so app importing ui failed on core with ENOENT and
+  // no violation, cached or not.
+  /** app -> {ui, lib}; ui -> {core, app, ./src, the store}; core -> ui; lib -> secret. */
+  const projectLayout = async (): Promise<string> => {
+    const pkg = (name: string) => path.join(root, 'packages', name)
+    for (const name of ['app', 'ui', 'core', 'lib', 'secret']) {
+      await mkdir(path.join(pkg(name), 'node_modules', '@x'), { recursive: true })
+    }
+    await mkdir(path.join(pkg('ui'), 'src'))
+    const store = path.join(root, 'node_modules', '.bun', 'dep@1', 'node_modules', 'dep')
+    await mkdir(store, { recursive: true })
+    const link = (to: string, from: string, name: string) =>
+      symlink(to, path.join(pkg(from), 'node_modules', name))
+    await link(pkg('ui'), 'app', '@x/ui')
+    await link(pkg('lib'), 'app', '@x/lib')
+    await link(pkg('core'), 'ui', '@x/core')
+    await link(pkg('app'), 'ui', '@x/app')
+    await link(path.join(pkg('ui'), 'src'), 'ui', 'local')
+    await link(store, 'ui', 'dep')
+    await link(pkg('ui'), 'core', '@x/ui')
+    await link(pkg('secret'), 'lib', '@x/secret')
+    return pkg('app')
+  }
+
+  it("an uncached task: a granted dependency's own workspace links are granted too", async () => {
+    const app = await projectLayout()
+    const r = await sandboxRequestFor(appNode(app), {}, root, undefined)
+    expect([r.sandbox.baseAllowRead.slice().sort(), r.sandbox.reportLinked]).toEqual([
+      [
+        path.join(app, 'node_modules'),
+        path.join(root, 'node_modules'),
+        ...['ui', 'lib', 'core', 'secret'].map((p) => path.join(root, 'packages', p)),
+      ].sort(),
+      [],
+    ])
+  })
+
+  it('a cached task: a keyed transitive dependency granted, none reached through a withheld one', async () => {
+    const app = await projectLayout()
+    const pkgs = (...names: string[]) => names.map((p) => path.join(root, 'packages', p))
+    const r = await sandboxRequestFor(appNode(app), {}, root, new Set(pkgs('ui', 'core', 'secret')))
+    expect([r.sandbox.baseAllowRead.slice().sort(), r.sandbox.reportLinked]).toEqual([
+      [
+        path.join(app, 'node_modules'),
+        path.join(root, 'node_modules'),
+        ...pkgs('ui', 'core'),
+      ].sort(),
+      pkgs('lib'),
+    ])
+  })
+
+  it('a cached task: an unkeyed transitive dependency withheld, named by the link it sits behind', async () => {
+    const app = await projectLayout()
+    const r = await sandboxRequestFor(
+      appNode(app),
+      {},
+      root,
+      new Set([path.join(root, 'packages', 'ui')]),
+    )
+    expect(r.sandbox.baseAllowRead.slice().sort()).toEqual(
+      [
+        path.join(app, 'node_modules'),
+        path.join(root, 'node_modules'),
+        path.join(root, 'packages', 'ui'),
+      ].sort(),
+    )
+    expect(r.withheld.map((w) => [w.name, w.target, w.link])).toEqual([
+      ['@x/lib', 'packages/lib', 'packages/app/node_modules/@x/lib'],
+      ['@x/core', 'packages/core', 'packages/ui/node_modules/@x/core'],
+    ])
+  })
+
   it('the hint names the package, the link it went through, and both ways to key it', () => {
     const line = withheldLinkLine('@x/app#test', {
       dir: '/ws/packages/ui',

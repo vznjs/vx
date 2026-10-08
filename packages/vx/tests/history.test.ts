@@ -506,7 +506,7 @@ describe('LocalHistoryProvider', () => {
   it('takes the flakiness signal from the same window as the rates', async () => {
     const cache = makeCache()
     try {
-      // Key K failed and then passed — the definitional flake — but both rows
+      // Key K passed and then failed — the definitional flake — but both rows
       // sit outside a 2-invocation window; inside it, one failure on its own
       // key is a legitimate break.
       recordAsInvocations(cache, [
@@ -514,7 +514,7 @@ describe('LocalHistoryProvider', () => {
           hash: 'K',
           project: 'pkg',
           task: 'test',
-          status: 'failed',
+          status: 'success',
           durationMs: 10,
           startedAt: 1000,
         }),
@@ -522,7 +522,7 @@ describe('LocalHistoryProvider', () => {
           hash: 'K',
           project: 'pkg',
           task: 'test',
-          status: 'success',
+          status: 'failed',
           durationMs: 10,
           startedAt: 2000,
         }),
@@ -547,7 +547,7 @@ describe('LocalHistoryProvider', () => {
       expect(
         (await new LocalHistoryProvider(db, 2).loadFor(['pkg#test'])).get('pkg#test')!.failureMode,
       ).toBe('stable')
-      // Control: the whole history sees K's mixed outcome.
+      // Control: the whole history sees K fail after it passed.
       expect(
         (await new LocalHistoryProvider(db, 4).loadFor(['pkg#test'])).get('pkg#test')!.failureMode,
       ).not.toBe('stable')

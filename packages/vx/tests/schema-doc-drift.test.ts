@@ -587,6 +587,14 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
         `${plugin('b', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
     ),
   ],
+  [
+    // `plugins: [bun(), bun()]` read "plugins 'x' and 'x' both claim" (D-158).
+    "plugin '<name>' claims fingerprint file '<file>' twice (plugins[<i>] and plugins[<j>]) — a file has one claimant; declare the plugin once",
+    workspaceConfig(
+      `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
+        `${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
+    ),
+  ],
 ]
 
 /**

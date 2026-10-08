@@ -33,6 +33,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -81,6 +82,7 @@ import {
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
+  namedPath,
   toRealPath,
   unique,
 } from './sandbox-paths.js'
@@ -103,6 +105,7 @@ import {
   releaseGroup,
   signalThrough,
   guardLine,
+  guardSession,
   spawnGuarded,
 } from './kill-tree.js'
 
@@ -708,7 +711,8 @@ export async function initSandbox(opts?: {
     ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
-  if (!srtUp) await unlinkStaleMuxSockets()
+  const wasUp = srtUp
+  if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
   await SandboxManager.initialize(
     config,
@@ -718,6 +722,10 @@ export async function initSandbox(opts?: {
   )
   if (listening !== undefined) adoptSrtCleanup(listening)
   srtUp = true
+  if (!wasUp && process.platform === 'linux' && procfsIsOwn()) {
+    const { pids, paths } = sessionLeftovers(SandboxManager)
+    sessionRelease = guardSession(pids, paths)
+  }
   perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
@@ -766,12 +774,81 @@ function srtDown(): void {
   straceAvailableCache = undefined
 }
 
+/** Strikes the live session from the group guard's lists; set by `initSandbox`. */
+let sessionRelease: (() => void) | undefined
+
+/**
+ * The runtime's session as the group guard must take it if vx dies
+ * (kill-tree.md): the bridge socats, vx's children named by the socket
+ * they listen on, and what a `kill -9` leaves in the temp directory — the
+ * bridge sockets and the `srt-*` sockets vx itself holds (the violation
+ * observer's directory, the mux). The runtime exposes none of the pids and
+ * not the observer's path, so procfs answers: vx's children, and its own
+ * socket inodes against `/proc/net/unix`. ~3 ms, once per session.
+ */
+function sessionLeftovers(SandboxManager: SrtModule['SandboxManager']): {
+  pids: number[]
+  paths: string[]
+} {
+  const sockets = new Set(
+    [SandboxManager.getLinuxHttpSocketPath(), SandboxManager.getLinuxSocksSocketPath()].filter(
+      (p): p is string => p !== undefined,
+    ),
+  )
+  const pids: number[] = []
+  const paths = [...sockets]
+  try {
+    for (const entry of readdirSync('/proc')) {
+      const first = entry.charCodeAt(0)
+      if (first < 48 || first > 57) continue
+      try {
+        const stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
+        if (Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ', 2)[1]) !== process.pid) continue
+        const argv = readFileSync(`/proc/${entry}/cmdline`, 'utf8').split('\0')
+        if (argv.some((a) => [...sockets].some((s) => a.startsWith(`UNIX-LISTEN:${s},`)))) {
+          pids.push(Number(entry))
+        }
+      } catch {
+        // exited
+      }
+    }
+    const inodes = new Set<string>()
+    for (const fd of readdirSync('/proc/self/fd')) {
+      try {
+        const link = readlinkSync(`/proc/self/fd/${fd}`)
+        if (link.startsWith('socket:[')) inodes.add(link.slice(8, -1))
+      } catch {
+        // closed
+      }
+    }
+    const tmp = os.tmpdir()
+    for (const line of readFileSync('/proc/net/unix', 'utf8').split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f.length < 8 || !inodes.has(f[6]!)) continue
+      const p = f.slice(7).join(' ')
+      const dir = path.dirname(p)
+      if (dir === tmp && path.basename(p).startsWith('srt-mux-')) paths.push(p)
+      else if (path.dirname(dir) === tmp && path.basename(dir).startsWith('srt-obs-')) {
+        paths.push(dir)
+      }
+    }
+  } catch {
+    // Best-effort, as the guard is: what was found is listed.
+  }
+  return { pids, paths }
+}
+
 /** `reset` is the one `initSandbox` waits out before it starts SRT again. */
 function trackReset(reset: Promise<unknown>): void {
   const settled = reset.then(
     () => {},
     () => {},
   )
+  // Struck once the runtime has killed its bridges and removed its files;
+  // a reset `exit` starts never settles, and the guard takes the rest.
+  const release = sessionRelease
+  sessionRelease = undefined
+  if (release !== undefined) void settled.then(release)
   resetting = settled
   void settled.then(() => {
     if (resetting === settled) resetting = undefined
@@ -1180,7 +1257,12 @@ async function wrapIn(
   tmp: string,
 ): ReturnType<typeof wrapSandboxedCommand> {
   // After the tag: SRT keys violations by the command's first 100 chars.
-  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
+  // TMP and TEMP pass through from the host, whose temp directory the
+  // sandbox mounts read-only: a tool reading them failed to write there.
+  const alsoTmp = ['TMP', 'TEMP'].filter((name) => args.env[name] !== undefined)
+  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${alsoTmp
+    .map((name) => `export ${name}="$TMPDIR"; `)
+    .join('')}${javaToolOptionsFix(
     process.env['JAVA_TOOL_OPTIONS'],
     args.env['JAVA_TOOL_OPTIONS'],
   )}${userCommand}`
@@ -1226,7 +1308,10 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
-  if (ports.length > 0) writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  if (ports.length > 0) {
+    hostBridges.set(tag, { ports, procs: [] })
+    writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  }
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1244,7 +1329,7 @@ async function wrapIn(
     process.platform === 'linux'
       ? literalReadPaths(customConfig)
       : process.platform === 'darwin'
-        ? seatbeltBrackets(customConfig)
+        ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
@@ -1456,22 +1541,32 @@ function literalReadPaths(
  * file and the route could not be granted. `[[]` is a class of one `[`; a
  * lone `]` is plain text (B-65). A deny path is a real directory, never a
  * pattern: a nested project's wall under `[legacy]/` compiled as a class,
- * matched nothing, and the root task read it.
+ * matched nothing, and the root task read it. So is each of `names`, the
+ * baseline reads: a linked dependency under `packages/[legacy]/` was a
+ * class too, and as an exact regex even `[[]` grants the directory's entry
+ * and none of its files, so its subtree is granted beside it (a trailing
+ * `/**` is stripped before the compile).
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  names: readonly string[] = [],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
   if (fs === undefined) return config
-  const literal = (paths: readonly string[]): string[] =>
-    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
+  const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
+  const read = (p: string): string[] => {
+    if (!bracketed.has(p)) return [literal(p)]
+    const at = p.replaceAll('[', '[[]')
+    return [at, `${at}/**/*`]
+  }
   return {
     ...config,
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: literal(fs.allowWrite),
-      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
+      allowWrite: fs.allowWrite.map(literal),
+      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
     },
   }
 }
@@ -1588,7 +1683,14 @@ const hostBridges = new Map<
  * (2026-10-03). Linux, own procfs only, as the wait.
  */
 function portsHeld(ports: readonly number[]): number[] {
-  if (ports.length === 0 || !procfsIsOwn()) return []
+  if (ports.length === 0) return []
+  // This run's own bridges first: a wrap claims its ports before it awaits,
+  // and two tasks granted one port both read the table before either
+  // bridge bound, so the second's bind failed unseen and its clients
+  // reached the first task.
+  const claimed = new Set([...hostBridges.values()].flatMap((b) => b.ports))
+  const ours = ports.filter((p) => claimed.has(p))
+  if (ours.length > 0 || !procfsIsOwn()) return ours
   const held = new Set<string>()
   for (const [file, any, loop] of [
     ['/proc/net/tcp', '00000000', '0100007F'],
@@ -1644,7 +1746,7 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
 }
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
-  const procs: Array<ReturnType<typeof Bun.spawn>> = []
+  const procs = hostBridges.get(tag)!.procs
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
@@ -1674,10 +1776,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) {
-    hostBridges.set(tag, { ports, procs })
-    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
-  }
+  if (procs.length > 0) for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
 }
 
 /**
@@ -1736,12 +1835,22 @@ const TRACER_RETRY_LINE =
  * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
-  const { tracerFailed, ...first } = await runSandboxedOnce(args)
+  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce(args)
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
   if (!tracerFailed || args.signal?.aborted === true) return first
   args.onStderr?.(TRACER_RETRY_LINE)
-  const { tracerFailed: _again, ...second } = await runSandboxedOnce(args)
+  // `timeout` bounds the task's whole run (schema.md), so the retry gets
+  // what the first attempt left of it, not a fresh window.
+  const {
+    tracerFailed: _again,
+    ranMs: _ran,
+    ...second
+  } = await runSandboxedOnce(
+    args.timeoutMs === undefined
+      ? args
+      : { ...args, timeoutMs: Math.max(0, args.timeoutMs - ranMs) },
+  )
   return {
     ...second,
     durationMs: first.durationMs + second.durationMs,
@@ -1808,7 +1917,7 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
  */
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
-): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
+): Promise<SandboxedRunResult & { tracerFailed: boolean; ranMs: number }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
@@ -1858,6 +1967,7 @@ async function runSandboxedOnce(
       signal,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   }
   // Beside the task directories, which every sandbox replaces with its own:
@@ -1910,6 +2020,7 @@ async function runSandboxedOnce(
       spawnFailed: true,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
@@ -1919,6 +2030,7 @@ async function runSandboxedOnce(
   args.liveChildren?.add(proc)
   args.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, args.timeoutMs)
+  const armedAt = Date.now()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -1943,6 +2055,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
+  const ranMs = Date.now() - armedAt
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
@@ -2120,6 +2233,7 @@ async function runSandboxedOnce(
     // that is someone else's. macOS's `sandbox-exec` execs the command, so
     // its usage is the task's.
     ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
+    ranMs,
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
@@ -2405,7 +2519,7 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
  */
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
-    .filter((g) => !isMountableLiteral(g))
+    .filter((g) => namedPath(g) === undefined)
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
@@ -2429,7 +2543,7 @@ export function darwinWallRules(
     for (const w of walls) {
       const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
       const kept = literals
-        .filter((l) => isMountableLiteral(l) && atOrUnder(l, w))
+        .filter((l) => atOrUnder(l, w))
         .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
       rules.push(
         kept.length === 0
@@ -2438,8 +2552,11 @@ export function darwinWallRules(
       )
     }
   }
-  deny('file-read-data', c.wallsReached?.read ?? [], [...c.allowRead, ...baseAllowRead])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite)
+  // A baseline is a name the filesystem handed back, never a pattern: a
+  // bracket in it does not make it a glob.
+  const named = (grants: readonly string[]): string[] => grants.flatMap((g) => namedPath(g) ?? [])
+  deny('file-read-data', c.wallsReached?.read ?? [], [...named(c.allowRead), ...baseAllowRead])
+  deny('file-write*', c.wallsReached?.write ?? [], named(c.allowWrite))
   return rules
 }
 
@@ -2527,8 +2644,9 @@ function expandGrants(
       // A hit that IS a wall, or lies inside one, was matched, not named:
       // `read: ['*']` in a root project bound `.git` and `.vx`, and
       // `packages/*` a nested project its key excludes (B-1). A grant that
-      // names a wall literally never reaches this loop and stays.
-      if (walls.some((w) => atOrUnder(real, w))) continue
+      // names a wall literally never reaches this loop and stays, and one
+      // spelled with escaped brackets names it as surely.
+      if (namedPath(p) === undefined && walls.some((w) => atOrUnder(real, w))) continue
       out.push(abs)
       hits++
     }

@@ -27,9 +27,9 @@
 
 import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { maskedCommand } from '../util/index.js'
+import { formatElapsed, maskedCommand } from '../util/index.js'
 import { paint, type ColorSupport } from './colors.js'
-import { formatDuration, neverStarted } from './summary.js'
+import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -220,7 +220,7 @@ const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
-  const raw = ms === null ? '' : formatDuration(ms)
+  const raw = ms === null ? '' : formatElapsed(ms)
   return ' '.repeat(Math.max(0, TIME_COL - raw.length)) + paint('', raw, colors, { dim: true })
 }
 
@@ -487,7 +487,7 @@ export function formatFrameClose(
   // both ends of the frame as a long-lived task.
   const tail =
     persistent && outcome.status === 'success'
-      ? ` ${paint('', `(${formatDuration(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
+      ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
       : formatBlockFooter(outcome, colors)
   const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('──')}${tail}`
   const violations = violationSection(outcome, colors)
@@ -594,7 +594,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // saved" on the strength of it. The stored time lives on
   // `TaskOutcome.storedDurationMs`.) Status differs by outcome — see
   // formatStatusTag.
-  const dur = paint('', `(${formatDuration(o.durationMs)})`, colors, { dim: true })
+  const dur = paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}${flakyNote(o, colors)}`
 }

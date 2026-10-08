@@ -20,7 +20,7 @@ import {
   refuseUnknownOptions,
   type PluginOptionKinds,
 } from '@vzn/vx'
-import { deadlineNamed } from '../remote-deadline.js'
+import { deadline } from '../remote-deadline.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
@@ -142,23 +142,19 @@ export class NxRemoteCache implements RemoteCacheLayer {
       // every hit read as a corrupt artifact (nx#33092).
       headers['Accept'] = 'application/octet-stream'
     }
-    const res = await this.breaker
-      .send(() =>
-        withRetry(
-          () =>
-            this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
-              method,
-              headers,
-              ...(body === undefined ? {} : { body }),
-              signal: AbortSignal.timeout(this.config.timeoutMs),
-            }),
-          this.config.retries,
-          this.wait,
-        ),
-      )
-      .catch((err: unknown) => {
-        throw deadlineNamed(err, this.config.timeoutMs)
-      })
+    const res = await this.breaker.send(() =>
+      withRetry(
+        () =>
+          this.fetchImpl(`${this.config.server}/v1/cache/${hash}`, {
+            method,
+            headers,
+            ...(body === undefined ? {} : { body }),
+            signal: deadline(this.config.timeoutMs),
+          }),
+        this.config.retries,
+        this.wait,
+      ),
+    )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
