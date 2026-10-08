@@ -17,7 +17,7 @@
 // be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
-import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
 import type { CacheConfig, CacheInputs } from '../config.js'
 import {
@@ -33,6 +33,7 @@ import {
   slashBraceExpansions,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   taskGlob,
   UserError,
 } from '../util/index.js'
@@ -109,10 +110,10 @@ export interface ResolveInputsArgs {
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
-  ownOutputs: string[]
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
    *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
-  ownWorkspaceOutputs?: string[]
+  ownWorkspaceOutputs?: readonly string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
   /**
@@ -182,11 +183,14 @@ export type ProjectFilesCache = Map<
 >
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
+  const projectRel = path.relative(args.workspaceRoot, args.projectDir).split(path.sep).join('/')
   const { files: projectFiles, listing } = await resolveFiles({
     projectDir: args.projectDir,
     workspaceRoot: args.workspaceRoot,
     files: args.inputs?.files,
     ownOutputs: args.ownOutputs,
+    ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
+    projectRel,
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
     ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
@@ -199,6 +203,8 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: wsDecl,
       ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
+      ownOutputs: args.ownOutputs,
+      projectRel,
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
       ...(args.workspaceFilesCache !== undefined ? { memo: args.workspaceFilesCache } : {}),
     })
@@ -258,6 +264,9 @@ function resolveWorkspaceFiles(args: {
   workspaceRoot: string
   workspaceFiles: readonly string[]
   ownWorkspaceOutputs: readonly string[]
+  /** The task's project-relative `outputs.files`, and its project's root-relative directory. */
+  ownOutputs: readonly string[]
+  projectRel: string
   gitFilesCache?: GitFilesCache
   memo?: WorkspaceFilesCache
 }): { files: Promise<string[]>; listing: InputListing } | undefined {
@@ -274,6 +283,11 @@ function resolveWorkspaceFiles(args: {
   // A path the task's own outputs take back with `!` is no output, so it
   // stays an input (A-44).
   const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
+  // Its project outputs too, which a root-anchored glob can reach as well:
+  // left in, the task's own build moved its key, and no run was ever saved.
+  let ownProjectOutput: ((rel: string) => boolean) | undefined
+  const ownProject = (rel: string): boolean =>
+    (ownProjectOutput ??= underProject(args.projectRel, outputMatcher(args.ownOutputs)))(rel)
   const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
@@ -293,9 +307,15 @@ function resolveWorkspaceFiles(args: {
   const memoKey =
     args.memo === undefined
       ? undefined
-      : JSON.stringify([positive, negative, args.ownWorkspaceOutputs])
+      : JSON.stringify([
+          positive,
+          negative,
+          args.ownWorkspaceOutputs,
+          args.ownOutputs,
+          args.projectRel,
+        ])
   let isPositive: ((rel: string) => boolean) | undefined
-  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel)
+  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel) || ownProject(rel)
   const listing: InputListing = {
     root: args.workspaceRoot,
     listed: gitFiles,
@@ -350,6 +370,24 @@ async function resolveWorkspaceFilesOver(
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+}
+
+/** A project-relative matcher asked of root-relative paths: false outside the project. */
+function underProject(
+  projectRel: string,
+  matches: (rel: string) => boolean,
+): (rel: string) => boolean {
+  if (projectRel === '') return matches
+  const prefix = `${projectRel}/`
+  return (rel) => rel.startsWith(prefix) && matches(rel.slice(prefix.length))
+}
+
+/** A root-relative matcher asked of project-relative paths. */
+function inProject(
+  projectRel: string,
+  matches: (rel: string) => boolean,
+): (rel: string) => boolean {
+  return projectRel === '' ? matches : (rel) => matches(`${projectRel}/${rel}`)
 }
 
 /** Anything at the path — file, directory, symlink to anything or to nothing. */
@@ -606,18 +644,24 @@ function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
   return (namesNodeModules ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(globFor)
 }
 
-/** Resolve declared output globs (project-relative) to actual produced files. */
+/**
+ * Resolve declared output globs (project-relative) to actual produced files.
+ * An output directory linked out of the project is refused by name (X-88):
+ * dropping its files silently saved an empty entry under a green run.
+ */
 export async function resolveOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
+  const trees = asTrees(positive)
+  refuseDirLinkedOut(args.projectDir, trees)
   const scanned = [
     ...(await scanUnion(
-      asTrees(positive),
+      trees,
       excludeGlobs,
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
@@ -631,6 +675,53 @@ export async function resolveOutputs(args: {
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
   return containedIn(args.projectDir, scanned).sort()
+}
+
+/**
+ * The literal head of each output glob, walked: the scan follows a link
+ * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link to a
+ * FILE is the archive's to judge (L-23); a dangling one the restore's.
+ */
+function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void {
+  let realRoot: string | undefined
+  for (const tree of trees) {
+    let at = projectDir
+    for (const part of staticPrefix(tree).split('/')) {
+      if (part === '' || part === '.') continue
+      at = path.join(at, part)
+      if (!isInside(projectDir, at)) break
+      let st
+      try {
+        st = lstatSync(at)
+      } catch {
+        break
+      }
+      if (!st.isSymbolicLink()) continue
+      let real: string
+      try {
+        real = realpathSync(at)
+        if (!statSync(real).isDirectory()) break
+      } catch {
+        break
+      }
+      realRoot ??= realOr(projectDir)
+      if (!isInside(realRoot, real)) {
+        throw new UserError(
+          `${at} is a symbolic link to ${real}, outside ${projectDir} — vx never cleans, saves ` +
+            'or restores declared outputs through a link that leaves the project. Remove the ' +
+            'link and re-run, or stop declaring outputs under it.',
+        )
+      }
+    }
+  }
+}
+
+function realOr(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
 }
 
 /**
@@ -671,16 +762,9 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
   // promise round trip per call was most of this function's cost on every
   // miss (B, 2026-09-30).
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+  const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
-  const resolved = uniqueDirs.map(real)
+  const resolved = uniqueDirs.map(realOrNull)
   const contained = new Set<string>()
   for (const [i, dir] of uniqueDirs.entries()) {
     const real = resolved[i]
@@ -710,27 +794,15 @@ function isInside(dir: string, abs: string): boolean {
  */
 export async function cleanOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
-  /**
-   * Before a miss: keep the directory each wildcard glob is rooted at
-   * (`dist` for `dist/**`). The task writes its matches under it, so a
-   * remove there bought only an rmdir and the task's mkdir: 0.4 ms of a
-   * 4.9 ms one-file miss (B-49). A restore prunes it, since the entry's
-   * shape decides there.
-   */
-  keepGlobRoots?: boolean
 }): Promise<string[]> {
   const files = await resolveOutputs(args)
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
   const removed = await removeAll(files, args.projectDir)
-  await pruneEmptiedDirs(
-    args.projectDir,
-    removed,
-    args.keepGlobRoots === true ? globRoots(args.projectDir, args.outputs) : undefined,
-  )
+  await pruneEmptiedDirs(args.projectDir, removed, pruneScope(args.projectDir, args.outputs))
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
   return files.map((f) => relPosix(args.projectDir, f))
@@ -740,15 +812,20 @@ export async function cleanOutputs(args: {
  * Remove exactly these project-relative paths — the recorded rows of an
  * ADDITIVE task's own artifact (item 588), never a glob: the glob would
  * take the upstream's files the task adds beside. Emptied directories are
- * pruned as `cleanOutputs` prunes them, and stop at one the upstream still
- * fills.
+ * pruned as `cleanOutputs` prunes them, only inside the declared `outputs`
+ * (`pruneScope`), and stop at one the upstream still fills.
  */
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
+  outputs: readonly string[]
 }): Promise<void> {
   const files = args.rels.map((r) => path.resolve(args.projectDir, r))
-  await pruneEmptiedDirs(args.projectDir, await removeAll(files, args.projectDir))
+  await pruneEmptiedDirs(
+    args.projectDir,
+    await removeAll(files, args.projectDir),
+    pruneScope(args.projectDir, args.outputs),
+  )
 }
 
 /**
@@ -771,7 +848,7 @@ export interface OutputStamp {
  */
 export async function stampOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
@@ -780,7 +857,7 @@ export async function stampOutputs(args: {
 /** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -811,7 +888,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -819,7 +896,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: string[] },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -869,7 +946,7 @@ const SYNC_CLEAN_MAX = 128
  * sends the reader to file a bug against a permission bit.
  */
 async function removeAll(all: readonly string[], root: string): Promise<string[]> {
-  const files = notThroughLink(all, root)
+  const files = insideRoot(all, root)
   const refused = (f: string, err: NodeJS.ErrnoException): UserError => {
     const rel = relPosix(root, f)
     return new UserError(
@@ -899,22 +976,18 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
 }
 
 /**
- * The paths whose directory is really where it sits, not reached through a
- * symlinked directory. A save follows `dist -> real-out` on purpose
- * (turborepo#13042), but a clean through a link deletes the target's
- * files: `public -> static` in the same project took the tracked
- * `static/logo.svg` before every run (X-5). The link is a declared
- * output's own entry; what it leads to is not.
+ * The paths whose directory resolves inside `root`. A link inside the
+ * project is followed, as the save follows it (turborepo#13042): a clean
+ * that skipped `dist -> real-out` left the last run's files for the next
+ * entry to save (X-88). One that leaves the project is never deleted
+ * through (X-5); `cleanOutputPaths` takes recorded rows, not the resolver's
+ * contained set, so the check is here too.
  */
-function notThroughLink(files: readonly string[], root: string): string[] {
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+function insideRoot(files: readonly string[], root: string): string[] {
+  // Resolved only once a directory exists to compare: after a clean pruned
+  // the outputs (the common restore) nothing does, and the call was most
+  // of an empty clean.
+  let realRoot: string | undefined
   const own = new Map<string, boolean>()
   return files.filter((f) => {
     const dir = path.dirname(f)
@@ -922,8 +995,8 @@ function notThroughLink(files: readonly string[], root: string): string[] {
     if (ok === undefined) {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
-      const r = real(dir)
-      ok = r === null || r === path.join(realRoot, path.relative(root, dir))
+      const r = realOrNull(dir)
+      ok = r === null || isInside((realRoot ??= realOrNull(root) ?? root), r)
       own.set(dir, ok)
     }
     return ok
@@ -937,12 +1010,13 @@ function notThroughLink(files: readonly string[], root: string): string[] {
  * wrote `dist/out/…` and now writes `dist/out`) blocks the rename, and an
  * empty directory is not an output anyone declared. A directory that still
  * holds something — a stray the globs do not cover — stays, and the restore
- * says so if it is in the way.
+ * says so if it is in the way. With a `scope`, only a directory inside it
+ * goes (`pruneScope`).
  */
 async function pruneEmptiedDirs(
   root: string,
   removed: readonly string[],
-  keep?: ReadonlySet<string>,
+  scope?: PruneScope,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -960,7 +1034,9 @@ async function pruneEmptiedDirs(
     const parents = new Set<string>()
     const dirs = [...level].filter(
       (dir) =>
-        dir !== rootResolved && dir.startsWith(rootResolved + path.sep) && keep?.has(dir) !== true,
+        dir !== rootResolved &&
+        dir.startsWith(rootResolved + path.sep) &&
+        (scope === undefined || inScope(dir, scope)),
     )
     const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
     if (dirs.length <= SYNC_CLEAN_MAX) {
@@ -983,19 +1059,42 @@ async function pruneEmptiedDirs(
   }
 }
 
+interface PruneScope {
+  /** Wildcard globs' roots (`dist` for `dist/**`): prune strictly below. */
+  below: string[]
+  /** Literal outputs (`out` as a tree): prune the path itself and below. */
+  atOrBelow: string[]
+}
+
 /**
- * The directories the wildcard output globs are rooted at, absolute. A
- * literal names a file or a tree whose shape the task decides, so it has
- * none; nor has a glob rooted at the project itself.
+ * Where a clean, before a miss or a restore, may prune: only the trees the
+ * task declared. A directory above a glob's root or holding a literal
+ * output (`out` for `out/a.txt`) stays: a sibling task running beside this
+ * one may have just made it and not yet written into it, and pruning it
+ * failed that task "Directory nonexistent". A glob's root stays: the task
+ * writes under it, and a remove there bought only an rmdir and the task's
+ * mkdir (B-49). A literal's own path goes: the entry or the task may need
+ * a file there. A glob rooted at the project prunes nothing.
  */
-function globRoots(projectDir: string, outputs: readonly string[]): Set<string> {
-  const roots = new Set<string>()
+function pruneScope(base: string, outputs: readonly string[]): PruneScope {
+  const scope: PruneScope = { below: [], atOrBelow: [] }
   for (const g of outputs) {
-    if (g.startsWith('!') || isLiteralPattern(g)) continue
+    if (g.startsWith('!')) continue
+    if (isLiteralPattern(g)) {
+      scope.atOrBelow.push(path.resolve(base, stripTrailingSlash(normalizeGlob(g))))
+      continue
+    }
     const prefix = staticPrefix(g)
-    if (prefix !== '.') roots.add(path.resolve(projectDir, prefix))
+    if (prefix !== '.') scope.below.push(path.resolve(base, prefix))
   }
-  return roots
+  return scope
+}
+
+function inScope(dir: string, scope: PruneScope): boolean {
+  return (
+    scope.below.some((r) => dir.startsWith(r + path.sep)) ||
+    scope.atOrBelow.some((r) => dir === r || dir.startsWith(r + path.sep))
+  )
 }
 
 /**
@@ -1007,7 +1106,7 @@ function globRoots(projectDir: string, outputs: readonly string[]): Set<string> 
  */
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1030,15 +1129,23 @@ export async function resolveWorkspaceOutputs(args: {
  */
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await pruneEmptiedDirs(args.workspaceRoot, await removeAll(files, args.workspaceRoot))
+  await pruneEmptiedDirs(
+    args.workspaceRoot,
+    await removeAll(files, args.workspaceRoot),
+    pruneScope(args.workspaceRoot, args.outputs),
+  )
   return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
-function stripTrailingSlash(p: string): string {
-  return p.replace(/\/+$/, '')
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
 }
 
 // The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it
@@ -1131,8 +1238,11 @@ async function assertNoInvisibleLiteralInputs(
 interface ResolveFilesArgs {
   projectDir: string
   workspaceRoot: string
-  files: string[] | undefined
-  ownOutputs: string[]
+  files: readonly string[] | undefined
+  ownOutputs: readonly string[]
+  /** Root-relative `outputs.workspaceFiles`, and the project's root-relative directory. */
+  ownWorkspaceOutputs: readonly string[]
+  projectRel: string
   nestedProjectDirs: string[]
   gitFilesCache?: GitFilesCache
   projectFilesCache?: ProjectFilesCache
@@ -1289,6 +1399,18 @@ export function declaresInput(
   return matcher(workspaceRel)
 }
 
+/**
+ * Whether a cached task's `workspaceFiles` may name a file under `dir`
+ * (workspace-relative): a nested repository git reports as that one path,
+ * whose files the key folds and a match against the path alone misses.
+ * By the entries' static prefixes, so a glob that may descend counts.
+ */
+export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean {
+  const ws = cache.inputs.workspaceFiles
+  if (ws === undefined || ws.length === 0) return false
+  return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
+}
+
 function inPlan(plan: FilesPlan, rel: string): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {
@@ -1324,6 +1446,8 @@ async function resolveFiles(
   const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
+  // Its root-anchored outputs that land in the project, as `files` sees them.
+  const ownWsOutput = inProject(args.projectRel, outputMatcher(args.ownWorkspaceOutputs))
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -1335,7 +1459,7 @@ async function resolveFiles(
   // duration of one orchestrator run.
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
-  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
+  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.ownWorkspaceOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {
@@ -1346,7 +1470,7 @@ async function resolveFiles(
     if (memo !== undefined && memo.snapshot === gitFiles) {
       return {
         files: [...memo.result],
-        listing: listingFor(args.projectDir, gitFiles, plan, nested),
+        listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
       }
     }
   }
@@ -1397,7 +1521,7 @@ async function resolveFiles(
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
-    if (!input || nested(rel)) continue
+    if (!input || nested(rel) || ownWsOutput(rel)) continue
     candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
   }
   const unmatchedLiterals = unanswered(plan.literals, gitFiles)
@@ -1424,7 +1548,10 @@ async function resolveFiles(
   // Stored only on the way out: a declaration whose literal named an
   // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
-  return { files: [...resolved], listing: listingFor(args.projectDir, gitFiles, plan, nested) }
+  return {
+    files: [...resolved],
+    listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
+  }
 }
 
 function listingFor(
@@ -1432,11 +1559,12 @@ function listingFor(
   listed: readonly string[],
   plan: FilesPlan,
   nested: (rel: string) => boolean,
+  ownWsOutput: (rel: string) => boolean,
 ): InputListing {
   return {
     root,
     listed,
-    isInput: (rel) => inPlan(plan, rel),
+    isInput: (rel) => inPlan(plan, rel) && !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,

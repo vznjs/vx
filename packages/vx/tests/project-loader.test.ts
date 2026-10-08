@@ -95,6 +95,41 @@ describe('loadProjectConfig', () => {
     expect(own?.name).toBe('SyntaxError')
   })
 
+  it('a throw that is not an Error names the config, first load and repeat', async () => {
+    // `throw 'no'` printed `vx: no`, naming no file; a null-prototype
+    // object crashed vx's own error printer with a stack.
+    const rows: Array<[string, string]> = [
+      ["'no'", '"no"'],
+      ['undefined', 'undefined'],
+      ['Object.create(null)', '[Object: null prototype] {}'],
+      ['{ code: 1 }', '{ code: 1 }'],
+    ]
+    for (const [i, [thrown, shown]] of rows.entries()) {
+      const file = path.join(dir, `t${i}`, 'vx.config.mjs')
+      await mkdir(path.dirname(file))
+      await writeFile(file, `throw ${thrown}\nexport default {}\n`)
+      const got: unknown[] = []
+      for (let load = 0; load < 2; load++) {
+        const err = await loadProjectConfig(file).then(
+          () => null,
+          (e: unknown) => e as Error,
+        )
+        got.push([err?.name, err?.message])
+      }
+      const want = ['UserError', `Project config ${file} threw ${shown}, which is not an Error`]
+      expect(got).toEqual([want, want])
+    }
+    // An Error keeps its own stack: not reworded.
+    const own = path.join(dir, 'own', 'vx.config.mjs')
+    await mkdir(path.dirname(own))
+    await writeFile(own, "throw new Error('boom')\nexport default {}\n")
+    const err = await loadProjectConfig(own).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect([err?.name, err?.message]).toEqual(['Error', 'boom'])
+  })
+
   it('two syntax errors name the first one, not a stack', async () => {
     // Bun throws an AggregateError of BuildMessages when a file has more
     // than one, and it reached the user as a stack with no position (X-6).

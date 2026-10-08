@@ -54,7 +54,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 
 export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn>
-  ready: Promise<void> // resolves once "ready"; rejects if exit before ready
+  ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
 }
 
@@ -98,6 +98,7 @@ export function spawnFailureText(err: unknown, cwd: string, what?: string): stri
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number): string
+export function maskCaptured(text: string, secrets: SecretMask): string // the pieces a cut left masked too
 export function ownRssHighWater(): number
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the runtime reported
@@ -161,7 +162,8 @@ export class TaskPipes {
   `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
-  line), so no comment can swallow them. The sandbox wrapper and the
+  line), so no comment can swallow them; one scan reads quotes,
+  comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
   bytes are corrupted.
@@ -228,7 +230,9 @@ full byte size in heap for the task's whole life:
   replays. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on
   the miss and on every hit, and its stdout sat whole in `cache.db`
   (2026-09-16). `tests/capture-cap.test.ts` pins the head, the tail,
-  the line, the live stream, and the replay. A bound never falls
+  the line, the live stream, and the replay. A secret the cut split
+  left a piece on each side that the whole-value mask missed, stored
+  and replayed: `maskCaptured` masks the pieces too. A bound never falls
   between a surrogate pair's halves (the bounds count UTF-16 units, and
   a halved emoji read U+FFFD in the replay, B-58).
 
@@ -288,7 +292,7 @@ descriptor. The `ready` promise:
 The pattern matcher buffers across chunk boundaries and tests each
 line of the pending fragment on its own — complete lines without
 their break (`\n` or `\r`), then the trailing partial line — with
-terminal escapes (CSI, OSC, two-byte) removed from the tested text
+terminal escapes (CSI, OSC, charset picks, two-byte) removed from the tested text
 only; the streamed bytes keep them. So `^`/`$` anchor per line, a
 colourised banner matches its plain text, and neither a match split
 across two reads nor a prompt-style marker without a trailing newline

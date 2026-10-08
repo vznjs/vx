@@ -464,6 +464,12 @@ describe('runPersistent', () => {
     ['^ after a progress frame', '50%%\\rready', '^ready', 'ready'],
     ['an SGR-bolded word', '\\033[1mLocal\\033[22m: http://localhost:5173\\n', 'Local:', 'ready'],
     ['^ past an OSC title', '\\033]0;vite\\007Local: http://x\\n', '^Local:', 'ready'],
+    [
+      "past tput sgr0's charset reset",
+      '\\033[1mListening\\033(B\\033[m on :3000\\n',
+      '^Listening on',
+      'ready',
+    ],
     ['control: ^ mid-line', 'not ready\\n', '^ready', 'timed out'],
     ['control: $ mid-line', 'ready now\\n', 'ready$', 'timed out'],
   ])(
@@ -767,6 +773,44 @@ describe('withForwardArgs', () => {
     expect(withForwardArgs(command, ['--fix', 'a b'])).toBe(forwarded)
   })
 
+  // X-110: a `<<word` the shell never reads as a heredoc (in a comment, in
+  // quotes) made every later line a "body", so the args went on that line:
+  // ` --fix … # …` ran `--fix` as a command. A quote in a real body left
+  // the scan inside it, and a template literal's closing newline closed
+  // the comment it was scanned for: either way the comment took the args.
+  it.each([
+    ['a trailing comment before a closing newline', 'echo args: # c\n', 'args: --fix a b\n'],
+    ['a << in a comment line', '# then << check\necho args:', 'args: --fix a b\n'],
+    ['a << in double quotes', 'echo "1<<x" >/dev/null\necho args:', 'args: --fix a b\n'],
+    ['a << in single quotes', "echo '<<EOF' >/dev/null\necho args:", 'args: --fix a b\n'],
+  ])('%s', (_name, command, printed) => {
+    expect(shOut(withForwardArgs(command, ['--fix', 'a b']))).toBe(printed)
+  })
+
+  it('a quote in a heredoc body does not hide a trailing comment', () => {
+    expect(withForwardArgs("cat <<X\nit's\nX\necho done # note", ['--fix'])).toBe(
+      "cat <<X\nit's\nX\necho done --fix # note",
+    )
+  })
+
+  it('a comment line after a heredoc leaves its terminator alone', () => {
+    expect(withForwardArgs('xargs echo <<X\nhi\nX\n# done', ['--fix'])).toBe(
+      'xargs echo <<X --fix\nhi\nX\n# done',
+    )
+  })
+
+  it('a backslash-quoted heredoc', () => {
+    expect(withForwardArgs('xargs echo <<\\X\nhi\nX', ['--fix'])).toBe(
+      'xargs echo <<\\X --fix\nhi\nX',
+    )
+  })
+
+  it('control: a here-string opens no heredoc', () => {
+    expect(withForwardArgs('cat <<<word\necho done', ['--fix'])).toBe(
+      'cat <<<word\necho done --fix',
+    )
+  })
+
   it('a # after a separator opens a comment', () => {
     expect(withForwardArgs('echo a;# c', ['x'])).toBe('echo a; x # c')
   })
@@ -852,6 +896,22 @@ describe('streamToString', () => {
       [false, true],
       [false, true],
     ])
+  })
+
+  // The head stops one unit short when its bound falls inside an emoji, and
+  // the chunk went to the tail; a later one-character chunk still fit the
+  // head and was retained BEFORE it: `…a😀bc` read `…ac😀b`.
+  it('keeps chunk order once the head stopped short of an emoji', async () => {
+    const chunks = ['a'.repeat(CAPTURE_HEAD_CHARS - 1), '😀b', 'c']
+    const got = await streamToString(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk))
+          c.close()
+        },
+      }),
+    )
+    expect(got.slice(-4)).toBe('😀bc')
   })
 
   it('reads nothing from an inherited fd or no stream', async () => {

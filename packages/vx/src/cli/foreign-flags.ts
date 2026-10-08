@@ -1,4 +1,4 @@
-// What a Turbo or Nx user's hands type, and what `vx run` does with it.
+// What a Turbo, Nx or Vite Task (`vp run`) user's hands type, and what `vx run` does with it.
 // Every flag here has one outcome: vx takes it as it is (`same`), takes it
 // as another spelling (`alias`, rewritten before the parse), or refuses it
 // with the vx way to say it (`refuse`). Nothing is dropped in silence: a
@@ -7,7 +7,7 @@
 // cli.md's parity section (`renderForeignFlags`), pinned by a test.
 
 interface ForeignFlag {
-  runner: 'turbo' | 'nx'
+  runner: 'turbo' | 'nx' | 'vp'
   /** Every spelling, first the one shown. */
   names: readonly string[]
   /** It takes a value: `--flag <v>` or `--flag=<v>`. */
@@ -35,6 +35,17 @@ const list = (v: string | undefined): string[] =>
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s !== '')
+
+// Nx's `--projects` labels (find-matching-projects, 23.2.1): `name:` and
+// `directory:` say which match to make; vx's filter says it by form. `tag:`
+// is a filter form already.
+const nxPattern = (p: string): string => {
+  const neg = p.startsWith('!') ? '!' : ''
+  const s = neg === '' ? p : p.slice(1)
+  if (s.startsWith('name:')) return `${neg}${s.slice(5)}`
+  if (s.startsWith('directory:')) return `${neg}./${s.slice(10)}`
+  return p
+}
 
 const GRAPH_IMAGE = /\.(svg|png|jpe?g|pdf|json|html|mermaid)$/i
 
@@ -364,7 +375,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--preflight'],
     value: false,
     outcome: 'refuse',
-    vx: '`turboCache()` sends no CORS preflight: drop it',
+    vx: 'set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
   },
   {
     runner: 'turbo',
@@ -414,12 +425,15 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['-p', '--projects'],
     value: true,
     outcome: 'alias',
-    vx: "`--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)",
+    vx: "`--filter <pattern>`, one per project (`directory:<d>` is `./<d>`, `name:<n>` is `<n>`); a list opening with `!` starts from all (`--filter '*'`)",
     // Nx reads a leading exclusion as "all projects but": `-p '!b,a'` is
     // every project except b, where vx's filters alone would select a.
     to: (v) => {
       const ps = list(v)
-      return [...(ps[0]?.startsWith('!') ? ['*'] : []), ...ps].flatMap((p) => ['--filter', p])
+      return [...(ps[0]?.startsWith('!') ? ['*'] : []), ...ps].flatMap((p) => [
+        '--filter',
+        nxPattern(p),
+      ])
     },
   },
   {
@@ -428,7 +442,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: true,
     outcome: 'alias',
     vx: "`--filter '!<pattern>'`, one per project",
-    to: (v) => list(v).flatMap((p) => ['--filter', `!${p}`]),
+    to: (v) => list(v).flatMap((p) => ['--filter', `!${nxPattern(p)}`]),
   },
   {
     runner: 'nx',
@@ -583,6 +597,60 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: false,
     outcome: 'refuse',
     vx: 'vx has no cloud: drop it',
+  },
+  {
+    runner: 'vp',
+    names: ['-r', '--recursive'],
+    value: false,
+    outcome: 'alias',
+    vx: '`--all`',
+    to: () => ['--all'],
+  },
+  {
+    runner: 'vp',
+    names: ['-w', '--workspace-root'],
+    value: false,
+    outcome: 'alias',
+    vx: '`--filter //` (the root project)',
+    to: () => ['--filter', '//'],
+  },
+  {
+    runner: 'vp',
+    names: ['--concurrency-limit'],
+    value: true,
+    outcome: 'alias',
+    vx: '`--concurrency <n>`',
+    to: (v) => (v === undefined ? ['--concurrency'] : ['--concurrency', v]),
+  },
+  {
+    runner: 'vp',
+    names: ['--ignore-depends-on'],
+    value: false,
+    outcome: 'alias',
+    vx: '`--exclude-dependencies`',
+    to: () => ['--exclude-dependencies'],
+  },
+  {
+    runner: 'vp',
+    names: ['--fail-if-no-match'],
+    value: false,
+    outcome: 'alias',
+    vx: 'nothing: a filter that matches nothing already fails the run',
+    to: () => [],
+  },
+  {
+    runner: 'vp',
+    names: ['--log'],
+    value: true,
+    outcome: 'refuse',
+    vx: 'vx frames each task’s output: `--output-logs <mode>` sets how much',
+  },
+  {
+    runner: 'vp',
+    names: ['--last-details'],
+    value: false,
+    outcome: 'refuse',
+    vx: '`vx last` prints the last run',
   },
 ]
 

@@ -4,7 +4,8 @@
 // red instead of silently desyncing the site's plan from the CLI's (item
 // 692; design: packages/vx/docs/design/playground-spike-2026-09.md § Glob).
 import { describe, expect, it } from 'bun:test'
-import { globCases, mulberry32 } from './glob-fuzz.js'
+import { globCases } from './glob-fuzz.js'
+import { mulberry32 } from './helpers/rng.js'
 import { Glob } from '../src/playground/shim/glob.js'
 
 // Bun's match count per domain pins that the fuzz is still the table's.

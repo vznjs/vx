@@ -90,7 +90,8 @@ A task with `exec.sandbox` runs where only what it declares exists:
   grant that would bind it is refused (L-24);
 - a symlinked output must resolve inside its project: vx packs outputs
   outside the sandbox, and a link to another project's file would have
-  carried that file into the cache (L-23).
+  carried that file into the cache (L-23). An output directory linked out
+  of the project refuses the task by name (X-88).
 
 An undeclared touch of the task's own files fails the task, and a failed
 task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/sandboxing/).

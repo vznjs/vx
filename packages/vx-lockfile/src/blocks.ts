@@ -19,8 +19,7 @@ export function pruneEntries(
   keep: (keyLine: string) => boolean,
 ): string[] {
   const pad = ' '.repeat(indent)
-  const isKey = (l: string): boolean =>
-    l.startsWith(pad) && l.length > indent && l[indent] !== ' ' && l[indent] !== '#'
+  const isKey = (l: string): boolean => l.startsWith(pad) && /^[^\s#]/.test(l.slice(indent))
   const head: string[] = []
   let i = from
   while (i < to && !isKey(lines[i]!)) head.push(lines[i++]!)

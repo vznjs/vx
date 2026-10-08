@@ -32,7 +32,7 @@ vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
 vx init [--dry] [--force] [--mjs] [--plugin <seam>]
-vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
+vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
@@ -112,7 +112,8 @@ If no task name is given:
 - **In a TTY** — an interactive picker lists every `pkg#task` entry
   across the workspace (only the selected projects' under `--filter` /
   `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
-  for a number, runs the chosen one. Ctrl-C at the prompt exits `130`
+  for a number, runs the chosen one. The menu and prompt go to stderr,
+  so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
   `tasks` in a vx.config, or `vx init`).
@@ -181,24 +182,24 @@ lists the tags. When every pattern matched and an exclusion took back
 all of it, the refusal names the exclusion instead (`no projects
 selected: !app excluded every project the other filters matched`).
 
-| Form              | Meaning                                                                                                                                                                                                                                                                                                                |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it).                                                                                                                  |
-| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                                                                                                                                      |
-| `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                     |
-| `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory. |
-| `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                 |
-| `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                       |
-| `tag:<pattern>`   | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                  |
-| `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                       |
-| `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                                                                                                                                     |
-| `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                |
-| `...^<pattern>`   | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                  |
-| `...<pattern>...` | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                              |
-| `<sel>[<ref>]`    | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                 |
-| `<sel>...[<ref>]` | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                       |
-| `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                              |
-| `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                  |
+| Form              | Meaning                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<pattern>`       | Match by package name. `*` matches any characters, including `/`. A pattern matching no package may leave out the scope, as pnpm reads it (`cart` is `@nx-example/cart` when one package carries it). One holding a `/` outside a scope that matches no package is a directory, as Nx's `--projects` reads it (`apps/*` is `./apps/*`). |
+| `./<dir>`         | The package at `<dir>` alone, as Turbo and pnpm read it (`.` is the root project); a `<dir>` that is no package matches the packages under it (relative to workspace root; D-43).                                                                                                                                                       |
+| `{<dir>}`         | Same as `./<dir>`.                                                                                                                                                                                                                                                                                                                      |
+| `./<glob>`        | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too; a trailing `**` matches zero dirs, so `./packages/kit/**` holds kit itself, as pnpm and Turbo read it). A path that names a project dir literally is read literally first, so `./packages/[abc]` is that directory.                  |
+| `.`               | The root project alone, when the root is a project (D-39); otherwise the packages under the root, i.e. every package, not the one you are standing in.                                                                                                                                                                                  |
+| `//`              | The root project alone, Turbo's name for it; matches nothing when the root is no project (D-46).                                                                                                                                                                                                                                        |
+| `tag:<pattern>`   | The projects whose config `tags` hold a match, as Nx's `tag:` reads them (`*` as in a name). Takes every operator a name takes: `!tag:x`, `...tag:x`, `tag:x^...`, `tag:x[main]`. Nx's `--projects tag:x` aliases it.                                                                                                                   |
+| `<pattern>...`    | Match + all transitive dependencies (see below what an edge is).                                                                                                                                                                                                                                                                        |
+| `...<pattern>`    | Match + all transitive dependents.                                                                                                                                                                                                                                                                                                      |
+| `<pattern>^...`   | Only the transitive dependencies, excluding the matched package itself.                                                                                                                                                                                                                                                                 |
+| `...^<pattern>`   | Only the transitive dependents, excluding the matched package itself.                                                                                                                                                                                                                                                                   |
+| `...<pattern>...` | Match + its dependents + the dependencies of all of them, as Turbo selects (`...db...` takes the packages the apps that use db build on).                                                                                                                                                                                               |
+| `<sel>[<ref>]`    | The packages `<sel>` (a name pattern or `{<dir>}`) selects that changed since `<ref>`, as Turbo and pnpm read `@scope/*[main]` (D-44).                                                                                                                                                                                                  |
+| `<sel>...[<ref>]` | The packages `<sel>` selects that changed since `<ref>` or depend on one that did; no dependency is added (Turbo: `@acme/api...[HEAD]` is api when only its dependency changed).                                                                                                                                                        |
+| `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                               |
+| `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                   |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
@@ -267,7 +268,8 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
-  `<base>` itself, not the merge base. A ref that does
+  `<base>` itself, not the merge base. An exclusion (`^main`) is refused
+  the same way, naming `main`. A ref that does
   not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
   one-commit checkout) it adds that the clone is shallow and how to fetch
   the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
@@ -289,10 +291,14 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
 change seeds tasks in the projects it touches:
 
 - a cached task when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`);
+  (`files`, `workspaceFiles`), or a changed submodule or embedded
+  repository is one its `workspaceFiles` may reach into (git reports it
+  as one path; a glob whose fixed prefix is above or inside it counts);
 - every task of a project whose `package.json` or `vx.config.*`
   changed, or that holds a changed path no cached task of its declares
-  (vx cannot prove that path re-keys nothing), or that a lockfile
+  (vx cannot prove that path re-keys nothing), or that holds a changed
+  submodule or embedded repository (git reports it as one path, and no
+  task's globs can say whether they reach inside), or that a lockfile
   claim, a manifest edge at the base or a config import names;
 - an uncached task when a changed path lies in its project or the
   project is reached whole; a root file another task of its declares
@@ -335,9 +341,10 @@ as a change (input hashing sees it, so `--affected` must too). A
 project inside a submodule or an embedded repository is selected when
 git reports that repository changed — a dirty or moved submodule
 (`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
-the workspace repository sees the nested one as a single path, so a
-change inside is a change to it, and every project under it is
-selected. A repository's own request to hide submodules from a diff
+the workspace repository sees the nested one as a single path (`git
+diff --raw`'s gitlink mode, 160000, on either side names one), so a change inside is a
+change to it, and every project under it is selected, the project that
+holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
@@ -398,10 +405,10 @@ to no project and no `workspaceFiles` glob names it. The scan is
 STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
 bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
 other bare specifier is a package, and a lockfile change already selects
-everything. It stops at a project boundary (a root project's files excepted): a config importing
-`../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
-imports inside `lib` do not reach further — `lib` is already selected
-by containment. Import your helpers by bare specifier to opt out. See
+everything. It crosses project boundaries as the evaluation does: a
+config importing `../../packages/lib/preset.ts` is selected when
+`preset.ts` or a file it imports inside `lib` changes. Import your
+helpers by bare specifier to opt out. See
 [`docs/modules/config-imports.md`](./modules/config-imports.md).
 
 **Nothing changed exits 0.** When the selection comes only from
@@ -437,7 +444,8 @@ them as a command of their own), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the
-`cat <<X` line (X-12). A persistent task gets
+`cat <<X` line (X-12). A `<<X` in a comment or in quotes opens no
+heredoc, and a quote in a body opens no string (X-110). A persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce
@@ -452,31 +460,31 @@ than run with the args unheard.
 
 ### Flags
 
-| Flag                               | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------------------- | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--filter <pattern>`               | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `--all`                            | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--affected[=<base>]`              | optional value | off                                | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `--exclude-dependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10).          |
-| `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota  | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--no-cache`                       | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--force`                          | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `--cache <spec>`                   | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--cache-dir <path>`               | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field, `VX_CACHE_DIR` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there. |
-| `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--output-logs <mode>`             | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `--download <mode>`                | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `--verbosity <n>`                  | int (0+)       | `0`                                | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--dry[=text\|json]`               | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--graph[=<path>]`                 | optional value | off                                | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `--summarize[=<path>]`             | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--profile[=<path>]`               | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `--tag <k=v>`                      | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `--report[=markdown]`              | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--report-file <path>`             | value          | off                                | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Flag                               | Type           | Default                                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------- | -------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <pattern>`               | repeatable     | (none)                                    | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--all`                            | boolean        | off                                       | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--affected[=<base>]`              | optional value | off                                       | Select the tasks a change since `<base>` reaches: the ones it touches and those whose `dependsOn` closure holds one (default `affectedBase`, else `origin/HEAD`, else `main` or `master`, else `HEAD~1`); candidates are `--filter "...[<base>]"`'s.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--exclude-dependencies[=<names>]` | optional value | off                                       | Drop `dependsOn` edges. No value = all (just the requested task runs; a group's members run as the group); comma-list = drop only those names, each of which some project must declare (a typo is refused with the nearest name, item 1026). An edge to a task the run schedules anyway (`--all` requests it) stays, so the two still run in order, and so does the order through a dropped task: with `gen` dropped from `test → gen → build` and `build` requested, `test` still waits for `build`. An empty `=` value is a parse error (ambiguous — see below). A dropped dependency does not run but is still keyed, so every key is the one a full run derives; a task keyed on one may hit but does not save (`caching.md` step 10).          |
+| `--concurrency <n>`                | int or `<n>%`  | cores, capped by the cgroup quota         | Maximum parallel tasks that EXECUTE; confirmed cache-hit restores are disk work and run on their own lane, up to twice this. `1` serializes both; `50%` is half the CPUs (rounded, never below 1; over 100% is allowed for I/O-bound work). `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `--no-cache`                       | boolean        | off                                       | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--force`                          | boolean        | off                                       | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--cache <spec>`                   | value          | all axes on                               | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--cache-dir <path>`               | value          | workspace `cacheDir` / `~/.vx/<id>/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field, `VX_CACHE_DIR` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there. |
+| `--retry <n>`                      | value          | `0`                                       | Re-run a failed task up to `n` more times; never a persistent one. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--continue[=<mode>]`              | value          | `deps-ok`                                 | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `--timeout <ms>`                   | positive int   | none                                      | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--frozen`                         | boolean        | off                                       | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--output-logs <mode>`             | value          | flow-derived                              | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--download <mode>`                | value          | `all`                                     | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--verbosity <n>`                  | int (0+)       | `0`                                       | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--dry[=text\|json]`               | optional value | off                                       | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--graph[=<path>]`                 | optional value | off                                       | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--summarize[=<path>]`             | optional value | off                                       | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--profile[=<path>]`               | optional value | off (`profile.json` when set)             | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--tag <k=v>`                      | repeatable     | (none)                                    | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `--report[=markdown]`              | optional value | off                                       | At the end of the run, print a markdown run report to stdout, above the footer. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `--report-file <path>`             | value          | off                                       | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Mutual exclusion:
 
@@ -973,7 +981,8 @@ execution used and appear on executed rows only (`peakRssBytes` only
 when the task's peak rose above vx's own footprint — a lighter task's
 figure would be vx's, handed back by the kernel; a Linux sandboxed task
 reports neither, since what bwrap's pid namespace used never reaches vx);
-a hit's `durationMs`
+`restored` appears on a hit only: `true` when its outputs were restored,
+`false` when they were already up to date. A hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
 artifact and appears under its own keys, `storedCpuMs` /
 `storedPeakRssBytes` (the work the hit skipped, the split
@@ -1001,9 +1010,10 @@ exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
 outcome bucket or `total`, but they make the run red, so they are
 listed separately and counted as `summary.aborted`.
 
-**`noCache: true`** marks a task that declares no `cache` block — it
-executes every run by design, so a hit rate should leave it out of the
-denominator. The key is present only when true; every other row is
+**`noCache: true`** marks a task no cache answered for: it declares no
+`cache` block (it executes every run by design), or the run's `--cache`
+read and wrote nothing (`--no-cache`), so a hit rate should leave it out
+of the denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
@@ -1012,7 +1022,8 @@ the kill's, 143 or 137 after the grace, as an ordinary timeout's),
 `exited` (the child exited first; `exitCode` is then its own) or `spawn`
 (the spawn itself failed). Every label reads it, `failed (never ready:
 timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
-`aborted`, not failed, as any task the stop kills.
+`aborted`, not failed, as any task the stop kills; so is one that
+became ready only after the stop.
 
 **`sandboxViolations`** is present only on a sandboxed task with a
 SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
@@ -1079,8 +1090,9 @@ Default path: `profile.json` (cwd-relative).
 
 ### `--report[=markdown]`
 
-After a real run completes, prints a markdown run report to **stdout**
-(not the status logger — it stays machine-clean). One header line of
+At the end of a real run, prints a markdown run report to **stdout**,
+just above the footer: nothing prints below the footer. The report
+itself is machine-clean. One header line of
 totals plus a table, one row per task:
 
 ```markdown
@@ -1100,8 +1112,9 @@ signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
 task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
-`Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
-block, which never consulted it / `local` / `remote` / `up-to-date` /
+`Cache` is its provenance (`miss` / `no-cache` for a task no cache
+answered for — no `cache` block, or a `--no-cache` / `--cache=local:` run —
+which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
@@ -1307,7 +1320,8 @@ run...` precedes it.
    server the last cycle left running counts as that cycle for as long
    as it runs, so a log it rewrites in its project is named too, with
    `.gitignore` as the remedy (a persistent task declares no outputs;
-   item 948). When any project's config declares
+   item 948). A file git tracks is never blamed on the server: three
+   saves of a source file are the user's (WD-7). When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
@@ -1341,7 +1355,7 @@ watch events within 2000 ms; polling every 250 ms instead`.
    while a run is in flight queue and drain after the current cycle.
    Re-runs are debounced ~150ms after the last event, and wait at most
    1 s after the first, so a writer that never pauses holds no edit back.
-4. **Exit.** `SIGINT` (Ctrl+C) prints `vx watch: stopped` and exits 0.
+4. **Exit.** `SIGINT` (Ctrl+C) exits 0; once the cycle in flight is down, `vx watch: stopped` is the last line.
 
 ### Path filtering
 
@@ -1476,9 +1490,11 @@ After eviction, prune sweeps the cache directory for **orphans**: a
 drops every table and leaves the artifacts behind, as a deleted
 `cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
 renamed. A run that asks for an orphan's key indexes it again from its
-bytes and hits; one no task asks for again is only reclaimed here. Files younger than one hour are left alone: a save
-renames its artifact into place before the row commits, so a fresh
-row-less file is a save in flight. Only the names vx writes are taken:
+bytes and hits; one no task asks for again is only reclaimed here. The
+policy judges a row-less artifact as it judges an entry, by its file
+time plus an hour (a hit renews a file time over an hour old): another
+vx version sharing the store may still use it. A temp goes once it is an
+hour old; nothing younger than an hour is taken. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
 the one a save makes, so a `release.tar.zst` beside the index in a
 `cacheDir` you share is never touched (item 968). The converse, an
@@ -1531,8 +1547,8 @@ or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
-artifact past the hour's grace in the workspace's own directory is an
-orphan (item 1083).
+artifact in the workspace's own directory is row-less, judged by the
+policy on its file time (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
@@ -2011,7 +2027,7 @@ Moved out of core on 2026-09-10: the Turbo and Nx mappers are
 `@vzn/vx-migrate`, their own package, run without a workspace file —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json or an Nx graph → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph or vite-plus run.tasks → vx.config.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
@@ -2026,7 +2042,7 @@ package's README.
 
 ## Turbo and Nx flags
 
-What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
+What a Turbo, Nx or Vite Task (`vp run`) user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
@@ -2045,79 +2061,86 @@ means that package there and in `vx build cart`. The table is `cli/foreign-flags
 rendered; `tests/foreign-flags.test.ts` drives every row and holds this
 copy to the source.
 
-| runner | flag                                              | outcome | in vx                                                                                                                         |
-| ------ | ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| turbo  | `--filter <v>`                                    | same    | `--filter`, the same grammar (`...[ref]`, `{dir}`, `^`, `!`)                                                                  |
-| turbo  | `-F <v>`                                          | alias   | `--filter <v>`                                                                                                                |
-| turbo  | `--concurrency <v>`                               | same    | `--concurrency <n\|n%>`                                                                                                       |
-| turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                          |
-| turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                         |
-| turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                          |
-| turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                           |
-| turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                        |
-| turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                      |
-| turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                         |
-| turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                        |
-| turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                             |
-| turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                            |
-| turbo  | `--no-cache`                                      | same    | `--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`                                   |
-| turbo  | `--cache <v>`                                     | same    | `--cache local:rw,remote:r`                                                                                                   |
-| turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                          |
-| turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                           |
-| turbo  | `--only`                                          | alias   | `--exclude-dependencies`                                                                                                      |
-| turbo  | `--color`                                         | refuse  | set `FORCE_COLOR=1`                                                                                                           |
-| turbo  | `--no-color`                                      | refuse  | set `NO_COLOR=1`                                                                                                              |
-| turbo  | `--heap <v>`, `--trace <v>`                       | refuse  | use `--profile[=<path>]` for vx's own trace                                                                                   |
-| turbo  | `--login <v>`                                     | refuse  | vx has no login: a remote cache is a plugin (`turboCache()` from @vzn/vx-migrate)                                             |
-| turbo  | `--no-update-notifier`                            | refuse  | vx prints no update notice: drop it                                                                                           |
-| turbo  | `--skip-infer`                                    | refuse  | vx runs the binary it is: drop it                                                                                             |
-| turbo  | `--root-turbo-json <v>`                           | refuse  | `turbo()` reads the `turbo.json` at the workspace root: move it there                                                         |
-| turbo  | `--experimental-otel-*`                           | refuse  | telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts                                                          |
-| nx     | `--parallel <n>`                                  | alias   | `--concurrency <n>` (`--parallel=false` is 1)                                                                                 |
-| turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                  |
-| turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                          |
-| turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                |
-| turbo  | `--remote-only[=<bool>]`                          | refuse  | use `--cache local:,remote:rw`                                                                                                |
-| turbo  | `--remote-cache-read-only[=<bool>]`               | refuse  | use `--cache local:rw,remote:r`                                                                                               |
-| turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                           |
-| turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                           |
-| turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                            |
-| turbo  | `--dangerously-disable-package-manager-check`     | refuse  | vx reads no `packageManager` field: drop it                                                                                   |
-| turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                |
-| turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                   |
-| turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                            |
-| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                               |
-| turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                          |
-| turbo  | `--preflight`                                     | refuse  | `turboCache()` sends no CORS preflight: drop it                                                                               |
-| turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                               |
-| turbo  | `--single-package`                                | refuse  | a repo with no workspaces is one project already: drop it                                                                     |
-| turbo  | `--token <v>`, `--team <v>`, `--api <v>`          | refuse  | a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API |
-| turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                     |
-| turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
-| nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                               |
-| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project; a list opening with `!` starts from all (`--filter '*'`)                               |
-| nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                      |
-| nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                            |
-| nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                |
-| nx     | `--head <v>`                                      | refuse  | vx compares `--affected=<base>` with the working tree: check out the head first                                               |
-| nx     | `--skip-nx-cache[=<bool>]`                        | alias   | `--force`                                                                                                                     |
-| nx     | `--all`                                           | same    | `--all`                                                                                                                       |
-| nx     | `--nx-bail[=<bool>]`                              | alias   | `--continue=never`                                                                                                            |
-| nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                            |
-| nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                    |
-| nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                              |
-| nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                           |
-| nx     | `--exclude-task-dependencies[=<bool>]`            | alias   | `--exclude-dependencies`                                                                                                      |
-| nx     | `--skip-remote-cache[=<bool>]`                    | alias   | `--cache local:rw,remote:`                                                                                                    |
-| nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                              |
-| nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                 |
-| nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                         |
-| nx     | `--dte`, `--use-agents`                           | refuse  | vx distributes nothing: drop it                                                                                               |
-| nx     | `--nx-ignore-cycles`                              | refuse  | vx refuses a task cycle by name: break it                                                                                     |
-| nx     | `--runner <v>`                                    | refuse  | a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts                                               |
-| nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                        |
-| nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                            |
-| nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                      |
+| runner | flag                                              | outcome | in vx                                                                                                                                             |
+| ------ | ------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| turbo  | `--filter <v>`                                    | same    | `--filter`, the same grammar (`...[ref]`, `{dir}`, `^`, `!`)                                                                                      |
+| turbo  | `-F <v>`                                          | alias   | `--filter <v>`                                                                                                                                    |
+| turbo  | `--concurrency <v>`                               | same    | `--concurrency <n\|n%>`                                                                                                                           |
+| turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                                              |
+| turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                                             |
+| turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                                              |
+| turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                                               |
+| turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                                            |
+| turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                                          |
+| turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                                             |
+| turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                                            |
+| turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                                                 |
+| turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                                                |
+| turbo  | `--no-cache`                                      | same    | `--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`                                                       |
+| turbo  | `--cache <v>`                                     | same    | `--cache local:rw,remote:r`                                                                                                                       |
+| turbo  | `--cache-dir <v>`                                 | same    | `--cache-dir <path>`                                                                                                                              |
+| turbo  | `--profile`                                       | same    | `--profile[=<path>]` (Chrome trace)                                                                                                               |
+| turbo  | `--only`                                          | alias   | `--exclude-dependencies`                                                                                                                          |
+| turbo  | `--color`                                         | refuse  | set `FORCE_COLOR=1`                                                                                                                               |
+| turbo  | `--no-color`                                      | refuse  | set `NO_COLOR=1`                                                                                                                                  |
+| turbo  | `--heap <v>`, `--trace <v>`                       | refuse  | use `--profile[=<path>]` for vx's own trace                                                                                                       |
+| turbo  | `--login <v>`                                     | refuse  | vx has no login: a remote cache is a plugin (`turboCache()` from @vzn/vx-migrate)                                                                 |
+| turbo  | `--no-update-notifier`                            | refuse  | vx prints no update notice: drop it                                                                                                               |
+| turbo  | `--skip-infer`                                    | refuse  | vx runs the binary it is: drop it                                                                                                                 |
+| turbo  | `--root-turbo-json <v>`                           | refuse  | `turbo()` reads the `turbo.json` at the workspace root: move it there                                                                             |
+| turbo  | `--experimental-otel-*`                           | refuse  | telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts                                                                              |
+| nx     | `--parallel <n>`                                  | alias   | `--concurrency <n>` (`--parallel=false` is 1)                                                                                                     |
+| turbo  | `--parallel`                                      | refuse  | vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once                                                                      |
+| turbo  | `--scope <v>`                                     | refuse  | use `--filter <pkg>`                                                                                                                              |
+| turbo  | `--since <v>`                                     | refuse  | use `--filter '[<ref>]'` or `--affected=<ref>`                                                                                                    |
+| turbo  | `--remote-only[=<bool>]`                          | refuse  | use `--cache local:,remote:rw`                                                                                                                    |
+| turbo  | `--remote-cache-read-only[=<bool>]`               | refuse  | use `--cache local:rw,remote:r`                                                                                                                   |
+| turbo  | `--anon-profile`                                  | refuse  | use `--profile[=<path>]`; vx has no redacting variant, so read it before sharing it                                                               |
+| turbo  | `--cache-workers <v>`                             | refuse  | vx sizes its own cache I/O: drop it                                                                                                               |
+| turbo  | `--cwd <v>`                                       | refuse  | run vx from that directory: `cd <dir> && vx run …`                                                                                                |
+| turbo  | `--dangerously-disable-package-manager-check`     | refuse  | vx reads no `packageManager` field: drop it                                                                                                       |
+| turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                                    |
+| turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                                       |
+| turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                |
+| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                                                   |
+| turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                                              |
+| turbo  | `--preflight`                                     | refuse  | set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`                                                                                      |
+| turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                                                   |
+| turbo  | `--single-package`                                | refuse  | a repo with no workspaces is one project already: drop it                                                                                         |
+| turbo  | `--token <v>`, `--team <v>`, `--api <v>`          | refuse  | a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API                     |
+| turbo  | `--no-daemon`, `--daemon`                         | refuse  | vx has no daemon: drop it                                                                                                                         |
+| turbo  | `--ui <v>`, `--log-order <v>`, `--log-prefix <v>` | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| nx     | `-t <v>`, `--targets <v>`, `--target <v>`         | alias   | the task names, positional: `vx run build test`                                                                                                   |
+| nx     | `-p <v>`, `--projects <v>`                        | alias   | `--filter <pattern>`, one per project (`directory:<d>` is `./<d>`, `name:<n>` is `<n>`); a list opening with `!` starts from all (`--filter '*'`) |
+| nx     | `--exclude <v>`                                   | alias   | `--filter '!<pattern>'`, one per project                                                                                                          |
+| nx     | `--base <v>`                                      | alias   | `--affected=<ref>`                                                                                                                                |
+| nx     | `--head HEAD`                                     | alias   | nothing: vx compares `--affected=<base>` with the working tree                                                                                    |
+| nx     | `--head <v>`                                      | refuse  | vx compares `--affected=<base>` with the working tree: check out the head first                                                                   |
+| nx     | `--skip-nx-cache[=<bool>]`                        | alias   | `--force`                                                                                                                                         |
+| nx     | `--all`                                           | same    | `--all`                                                                                                                                           |
+| nx     | `--nx-bail[=<bool>]`                              | alias   | `--continue=never`                                                                                                                                |
+| nx     | `-c <v>`, `--configuration <v>`                   | refuse  | a configuration is its own task: `vx run <target>:<configuration>`                                                                                |
+| nx     | `--output-style <v>`                              | refuse  | use `--output-logs <mode>`                                                                                                                        |
+| nx     | `--uncommitted`, `--untracked`                    | refuse  | use `--affected=HEAD` (the working tree against the last commit)                                                                                  |
+| nx     | `--max-parallel <v>`                              | alias   | `--concurrency <n>`                                                                                                                               |
+| nx     | `--exclude-task-dependencies[=<bool>]`            | alias   | `--exclude-dependencies`                                                                                                                          |
+| nx     | `--skip-remote-cache[=<bool>]`                    | alias   | `--cache local:rw,remote:`                                                                                                                        |
+| nx     | `--verbose`                                       | refuse  | use `--verbosity <n>` (1 adds the summary table)                                                                                                  |
+| nx     | `--files <v>`                                     | refuse  | vx asks git what changed: `--affected=<base>`                                                                                                     |
+| nx     | `--batch`                                         | refuse  | vx runs one command per task: drop it                                                                                                             |
+| nx     | `--dte`, `--use-agents`                           | refuse  | vx distributes nothing: drop it                                                                                                                   |
+| nx     | `--nx-ignore-cycles`                              | refuse  | vx refuses a task cycle by name: break it                                                                                                         |
+| nx     | `--runner <v>`                                    | refuse  | a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts                                                                   |
+| nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                                            |
+| nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                                          |
+| vp     | `-r`, `--recursive`                               | alias   | `--all`                                                                                                                                           |
+| vp     | `-w`, `--workspace-root`                          | alias   | `--filter //` (the root project)                                                                                                                  |
+| vp     | `--concurrency-limit <v>`                         | alias   | `--concurrency <n>`                                                                                                                               |
+| vp     | `--ignore-depends-on`                             | alias   | `--exclude-dependencies`                                                                                                                          |
+| vp     | `--fail-if-no-match`                              | alias   | nothing: a filter that matches nothing already fails the run                                                                                      |
+| vp     | `--log <v>`                                       | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| vp     | `--last-details`                                  | refuse  | `vx last` prints the last run                                                                                                                     |
 
 ## Machine-readable output
 
@@ -2159,8 +2182,16 @@ vx show                          # list every project
 vx show <project>                # one project's resolved config (`//`: the root project's)
 vx show <pkg>#<task>             # a single task (`//#<task>`: the root project's)
 vx show <task>                   # that task in every project declaring it
+vx show [<task>] --filter <p>    # only the projects `vx run --filter <p>` selects
+vx show [<task>] --affected      # only the changed projects and their dependents
 vx show ... --format json        # machine-readable (default: pretty)
 ```
+
+`--filter` and `--affected[=<ref>]` narrow the list, or a task's
+projects, as `vx run` selects projects: `turbo ls --affected` is
+`vx show --affected`, and `nx show projects --affected --with-target t`
+is `vx show t --affected`. Beside one project or `<pkg>#<task>` they
+are refused.
 
 Nx's spellings name these: `vx show projects` (when no project or task
 has that name) and `vx show project <name>` say `vx show` and
@@ -2261,7 +2292,7 @@ workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
-cache versions:   keys vx-cache-v40 · index schema v32
+cache versions:   keys vx-cache-v41 · index schema v32
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2308,9 +2339,10 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's flaky notes add to:
   every task whose history (30 days, what the cache keeps) holds a
-  cache key that both passed and failed, most failures first, with
+  cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one). `none` when the history never mixed.
+  replayed one), and a pass that took a retry counts too, its failed
+  attempts counted as failures. `none` when no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2391,9 +2423,10 @@ no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
 (`--force`, or a `--cache` without read), no entry for the key was
-there when it ran (pruned or evicted), neither run saved it while
-each ran beside a failed task (a task run past a failed dependency under
-`--continue` is never cached), or the previous run executed and no entry
+there when it ran (pruned or evicted), the previous run was not saved
+because it ran beside a failed task (a task run past a failed dependency
+under `--continue` is never cached; said ahead of a prune, and as
+"neither run saved it" when this run ran beside one too), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
 policy wrote no cache says that instead). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
@@ -2401,13 +2434,13 @@ only a run with no recorded policy names `--no-cache` / `--force`.
 
 ```
 $ vx why app#build
-app#build — run 019f5a02-…
-  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
-  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
+  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
+  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
-  what changed (1 component, 41 unchanged):
-    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
+  what changed (1 component, 6 unchanged):
+    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
@@ -2558,7 +2591,10 @@ the verb's own Usage line, and for `run` and `watch` the run option
 lines, less the ones `watch` refuses. So a flag cannot be documented
 and not completed, nor completed and then refused: a flag another
 verb's line names in passing (`vx lock --check` beside `--frozen`) is
-not one. A plugin verb completes `--help` only. Task and project
+not one. After a flag with a fixed value set the script offers that
+set: `--format` pretty or json, `--output-logs` full, errors-only,
+hash-only or none, `--download` all, toplevel or none — each value one
+the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
 works both ways zsh loads one: from `$fpath` it completes on the first
@@ -2583,7 +2619,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
           return 0 // the process exit code
         },
       },
@@ -2649,7 +2685,10 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `invocations` row records the provider, the first truthy of
 `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
 prints to stdout, and `--report-file=<path>` appends to a file, so on
-Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`.
+Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`. A sandboxed
+task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
+else `/tmp/claude`), the sandbox runtime's own convention
+(`docs/modules/sandbox-runtime.md`).
 
 ## Output format
 
@@ -2697,7 +2736,8 @@ copy/paste yields the verbatim output. Every block (and every live
 frame close in focused flow) is followed by a blank line so frames
 never collide with the next one-liner. A persistent task's frame is
 marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
-(the child is still alive).
+(the child is still alive), or `failed (exit <n>)` for a server that
+died on its own before the run stopped it.
 
 There is **no top-of-run banner** — the run context lives in the
 footer. A broad run looks like:
@@ -2728,8 +2768,10 @@ task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
-red run. A task with no `cache` block could never hit, so it is
-counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and
+red run. A task with no `cache` block, or any task of a run whose
+`--cache` reads and writes nothing (`--no-cache`), could never hit, so it
+is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
+`--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);
@@ -2782,12 +2824,14 @@ run history alone, no service:
  ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
-A task is flaky when its exact cache key has BOTH passed and failed on
-record (this run counted; a cache hit is a pass, it replayed one), or
-when it needed a retry (`exec.retries` / `--retry`) this run. A failure
-on a key that never passed is a break and carries no note — a changed
-input that fails is what a red run usually means. Only tasks with a
-`cache` block are judged: "same inputs, different outcome" is a claim
+A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
+(this run counted; a cache hit is a pass, it replayed one), or when it
+needed a retry (`exec.retries` / `--retry`) this run. A failure on a
+key that never passed is a break and carries no note — a changed input
+that fails is what a red run usually means — and the first pass after
+only failures is a recovery (a missing tool installed), not a flake.
+Only tasks with a `cache` block are judged: "same inputs, red after
+green" is a claim
 only declared inputs can back, and a task without them keys on its
 config alone. It is judged as the task finishes, so the row carries
 it: zero cost for a hit or a skip, one probe of the failed-row index

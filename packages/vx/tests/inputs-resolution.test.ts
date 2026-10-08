@@ -23,12 +23,22 @@
 // rediscovering it. Each is marked and states what the correct behaviour would
 // be.
 
-import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { existsSync, lstatSync, readFileSync } from 'node:fs'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import {
+  cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
   GitFilesCache,
@@ -720,7 +730,7 @@ describe('output resolution contains itself — the loader guard is now the SECO
     })()
   })
 
-  it('a symlinked output dir resolves to NOTHING — vx resolves the real path', async () => {
+  it('a symlinked output dir that leaves the project is refused by name — vx resolves the real path', async () => {
     // `dist -> ../victim` is the escape the loader cannot see: the glob is a
     // blameless `dist/**` with no `..` and no leading `/`, and the traversal
     // happens on disk.
@@ -736,41 +746,53 @@ describe('output resolution contains itself — the loader guard is now the SECO
     //
     // So the guard is vx's own now: containment resolves the directory chain,
     // which is true on every Bun. These assertions hold on both versions.
-    await symlink(victim, path.join(projectDir, 'dist'))
+    // Dropping the files saved an empty entry under a green run; the task
+    // is refused, naming the link (X-88).
+    const dist = path.join(projectDir, 'dist')
+    await symlink(victim, dist)
+    const refusal =
+      `${dist} is a symbolic link to ${await realpath(victim)}, outside ${projectDir} — vx never ` +
+      'cleans, saves or restores declared outputs through a link that leaves the project. ' +
+      'Remove the link and re-run, or stop declaring outputs under it.'
+    const refused = async (outputs: string[]): Promise<string> =>
+      resolveOutputs({ projectDir, outputs, nestedProjectDirs: [] }).then(
+        () => 'resolved',
+        (err: Error) => err.message,
+      )
 
-    expect(
-      await resolveOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),
-    ).toEqual([])
+    expect(await refused(['dist/**'])).toBe(refusal)
     // Also true for a literal path through the link, not just a wildcard.
-    expect(
-      await resolveOutputs({
-        projectDir,
-        outputs: ['dist/precious.txt'],
-        nestedProjectDirs: [],
-      }),
-    ).toEqual([])
+    expect(await refused(['dist/precious.txt'])).toBe(refusal)
+    // And for a link out whose target is empty: no file reveals it.
+    await rm(path.join(victim, 'precious.txt'))
+    expect(await refused(['dist/**'])).toBe(refusal)
+    await write(path.join(victim, 'precious.txt'), 'precious')
 
-    const removed = await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
-    expect(removed).toEqual([])
+    await expect(
+      cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),
+    ).rejects.toThrow(refusal)
     expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
-    // The link itself survives too: `onlyFiles: true` never yields it, so
-    // there is nothing for `rm` to target.
-    expect(existsSync(path.join(projectDir, 'dist'))).toBe(true)
+    expect(lstatSync(dist).isSymbolicLink()).toBe(true)
   })
 
-  it('a clean never deletes through a symlinked output dir that points INSIDE the project', async () => {
-    // `public -> static` stays in the project, so containment passed it,
-    // and the clean before every run deleted the tracked `static/logo.svg`
-    // through `public/**` (X-5). The save still follows the link
-    // (output-shape.test.ts, turborepo#13042); the delete does not.
-    await write(path.join(projectDir, 'static/logo.svg'), 'LOGO')
-    await write(path.join(projectDir, 'out/own.js'), 'own')
-    await symlink('static', path.join(projectDir, 'public'))
-    await cleanOutputs({ projectDir, outputs: ['public/**', 'out/**'], nestedProjectDirs: [] })
-    // Control: the real output dir in the same clean is still cleared.
-    expect(existsSync(path.join(projectDir, 'out/own.js'))).toBe(false)
-    await cleanOutputs({ projectDir, outputs: ['public/**'], nestedProjectDirs: [] })
-    expect(await readFile(path.join(projectDir, 'static/logo.svg'), 'utf8')).toBe('LOGO')
+  it('a clean follows a symlinked output dir that points INSIDE the project', async () => {
+    // `dist -> real-out`: the save follows the link (output-shape.test.ts,
+    // turborepo#13042), so the clean must too, or the next entry saves the
+    // last run's files beside its own (X-88; X-5 had made it skip them).
+    // The link is kept.
+    await write(path.join(projectDir, 'real-out/old.js'), 'old')
+    await symlink('real-out', path.join(projectDir, 'dist'))
+    await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+    expect(existsSync(path.join(projectDir, 'real-out/old.js'))).toBe(false)
+    expect(lstatSync(path.join(projectDir, 'dist')).isSymbolicLink()).toBe(true)
+  })
+
+  it('a recorded row is never removed through a link that leaves the project (X-5)', async () => {
+    // `cleanOutputPaths` takes an entry's rows, not the resolver's
+    // contained set, so the delete keeps its own containment.
+    await symlink(victim, path.join(projectDir, 'dist'))
+    await cleanOutputPaths({ projectDir, rels: ['dist/precious.txt'], outputs: ['dist/**'] })
+    expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
   })
 
   it('a path reached from OUTSIDE the project resolves to nothing even when it really lives inside', async () => {
@@ -974,6 +996,40 @@ describe('workspaceFiles deliberately ignores project boundaries', () => {
     const seen = got.files.map((f) => relPosix(root, f))
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('packages', 'b', 'src', 'b.ts'))
+  })
+
+  it('excludes the task’s own project outputs from its workspaceFiles', async () => {
+    // A task's `outputs.files` reached by its own root-anchored input glob
+    // moved its key with every build: no run of it was ever saved.
+    await write(path.join(projA, 'out.json'), '{}')
+    const got = await resolveInputs({
+      projectDir: projA,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['packages/a/**', 'packages/b/**'] },
+      ownOutputs: ['out.json'],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual([
+      'packages/a/src/a.ts',
+      'packages/b/src/b.ts',
+    ])
+  })
+
+  it('excludes the task’s own workspace outputs from its project files', async () => {
+    // The other direction: an `outputs.workspaceFiles` entry inside the
+    // task's own project, under its `files` glob.
+    await write(path.join(projA, 'out.json'), '{}')
+    const got = await resolveInputs({
+      projectDir: projA,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: [],
+      ownWorkspaceOutputs: ['packages/a/out.json', 'packages/b/src/b.ts'],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual(['packages/a/src/a.ts'])
   })
 
   it('a path reachable from BOTH lists contributes exactly once', async () => {
@@ -1502,26 +1558,24 @@ describe('the clean empties a tree without reaching past it', () => {
     expect(await tree(projectDir)).toEqual(['dist/', 'dist/keep/', 'dist/keep/stray.txt'])
   })
 
-  it('before a miss, the clean keeps each glob’s root and prunes below it (B-49)', async () => {
+  it('the clean prunes only the declared trees: below a glob’s root, at a literal (B-49)', async () => {
     const w = async (rel: string) => {
       await mkdir(path.dirname(path.join(projectDir, rel)), { recursive: true })
       await writeFile(path.join(projectDir, rel), 'x')
     }
-    const seed = async () => {
-      await rm(projectDir, { recursive: true, force: true })
-      await w('dist/a/x.js')
-      await w('build/out/y.js')
-      await w('gen/z.txt')
-    }
-    // A literal (`gen/z.txt`) and a glob rooted at the project (`*.map`) keep nothing.
-    const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', '*.map']
-    await seed()
-    await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [], keepGlobRoots: true })
-    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/'])
-    // CONTROL: without the flag (a restore) every emptied directory goes.
-    await seed()
+    await rm(projectDir, { recursive: true, force: true })
+    await w('dist/a/x.js')
+    await w('build/out/y.js')
+    await w('gen/z.txt')
+    await w('lit/x/y.txt')
+    // A literal's directory (`gen`), a glob root's parent (`build`) and a
+    // glob rooted at the project (`*.map`) keep everything: a sibling task
+    // may have just made the directory to write into. Below a glob's root
+    // (`dist/a`) and a literal tree itself (`lit`) go: the entry or the
+    // task may need a file there.
+    const outputs = ['dist/**', 'build/out/*.js', 'gen/z.txt', 'lit/', '*.map']
     await cleanOutputs({ projectDir, outputs, nestedProjectDirs: [] })
-    expect(await tree(projectDir)).toEqual([])
+    expect(await tree(projectDir)).toEqual(['build/', 'build/out/', 'dist/', 'gen/'])
   })
 
   it('a sibling whose name EXTENDS the project’s is outside it', async () => {

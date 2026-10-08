@@ -34,8 +34,10 @@ time (bugs, correctness, simplification, the plugin seams).
   `static/*` through it: containment only asked that the real directory
   be inside the project. The clean now removes nothing whose directory
   is reached through a link; the save still follows one
-  (turborepo#13042). Row: `inputs-resolution.test.ts` › "a clean never
-  deletes through a symlinked output dir".
+  (turborepo#13042). Superseded by X-88: a link inside the project is
+  cleaned through; one out of it is still never deleted through. Row:
+  `inputs-resolution.test.ts` › "a recorded row is never removed through
+  a link that leaves the project (X-5)".
 - **X-6.** A config with two syntax errors (`export default {{`)
   reached the user as an `AggregateError` stack with no position, and
   `vx watch` leaked the internal `?vx-held=` query. The first error is
@@ -508,6 +510,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   plugin, min of 30: 156 → 161 ms, tenth best 202 → 194 (noise). Rows:
   `affected-dependents.test.ts` › "--affected follows the graph a
   `graph` plugin leaves" (four).
+- **X-86.** A server whose `readyWhen` matched only after the run's stop
+  (its `trap` printed the marker on the way down, or the line raced the
+  signal) was reported `success` and registered, so a Ctrl-C'd run's
+  footer counted it a success, where a one-shot that exits 0 on the
+  stop is `aborted` (item 962). It is now `aborted`, and left to the
+  teardown already killing it. Row: `abort.test.ts` › "a server that
+  turns ready after the run stops is aborted, not a success".
 - **X-9x.** A Windows task glob loaded with only a "matched no files"
 - **X-67.** A Windows task glob loaded with only a "matched no files"
   warning: under `inputs.files: ['src\\**']`, `'C:\\src\\**'` or
@@ -518,6 +527,168 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   bracket, a brace, a `!` or a backslash stays an escape. Rows:
   `config-schema-refusals.test.ts` › "a backslash separator or a drive
   letter in a task glob".
+- **X-88.** An output directory linked inside its project
+  (`dist -> real-out`, `outputs.files: ['dist/**']`) was skipped by the
+  clean (X-5) but followed by the save, so the entry for one key held
+  the files another key's run left, and a hit for `one` left `two.js`
+  beside `one.js`. The clean now follows a link whose target is inside
+  the project, so the target is the output and each entry holds only its
+  own run's files; one resolving outside the project refuses the task,
+  naming the link (it used to save an empty entry under a warning, M-61),
+  and nothing is deleted through it. No `CACHE_VERSION` bump: no key or
+  stored layout moved; an entry saved for this shape since X-5 may still
+  hold another run's files until evicted. Rows: `output-shape.test.ts` ›
+  "each entry holds only its own run's files, and a hit leaves no other
+  entry's (X-88)", `inputs-resolution.test.ts` › "a clean follows a
+  symlinked output dir that points INSIDE the project", "a symlinked
+  output dir that leaves the project is refused by name …",
+  `cache-declaration-warnings.test.ts` › "an output directory linked out
+  of the project refuses the task by name (M-61, X-88)".
+- **X-89.** `CACHE_VERSION` `vx-cache-v41`. X-88 fixed a run that stored
+  another key's files in an entry whose output directory is a link
+  inside its project; entries saved before it could replay them, so
+  every cached task misses once and re-saves.
+- **X-74.** Unused: its empty `packages:` fix landed first from another
+  lane (D-149).
+- **X-75.** Unused: its `<name>...[ref]` task-edge fix landed first
+  from another lane (#2869).
+- **X-76.** A config split into its own helper (`vx.config.mjs` imports
+  `./tasks.mjs`, which imports `../../shared/preset.mjs`) was not
+  selected by `--affected` when the preset changed: the import walk
+  stopped at `tasks.mjs` as a file some project owns. It now also
+  descends through the importing file's own project; a hop into another
+  project still stops. Row: `affected.test.ts` › "PIN: through the
+  config's own helper file to an orphan".
+- **X-77.** A `vx.config.cts` (or `.ts`) written with TypeScript's
+  CommonJS export, `export = { tasks: … }`, was refused as "did not
+  export a default object", though Bun loads it: it spells no CommonJS
+  name, so vx served its bytes as a module, where the assignment has no
+  default. `export =` now sends the config down Bun's own path. Row:
+  `config-commonjs-hint.test.ts` › "each name that makes Bun run a
+  config as CommonJS keeps it CommonJS" (`assign.cts`, `assignts.ts`).
+- **X-81.** A write grant that needs a directory where a file stands
+  (`out.txt/` over a file, `a.txt/x/*.js`, `a.txt/out`) failed the task
+  as `[vx] internal error … EEXIST` or `ENOTDIR` from the pre-create, and
+  left the placeholders made before it. It is now a refusal naming the
+  grant and the file, the placeholders swept. Row:
+  `sandbox-request.test.ts` › "a file where a grant needs a directory is
+  refused by name, its placeholders swept".
+- **X-82.** `mkdir -p src` under `read: ['src']` failed a clean task
+  with a sandbox violation: SRT's write observer records the attempt,
+  which met EEXIST and wrote nothing. `refusedWrites` now also passes a
+  `mkdir` of a path the sandbox shows through a read grant (one at or
+  under it that exists, or one holding it where it exists); a mkdir of a
+  new directory is still refused and reported. Rows:
+  `sandbox-mkdir-ancestor.unsafe.test.ts` › "refusedWrites › a mkdir of a
+  directory the task can see", "mkdir -p of a directory a read grant
+  shows passes; of a new one, fails".
+- **X-83.** A sandboxed server whose wrap was refused (a `localBinding`
+  port the host holds) left the empty placeholder vx made for its literal
+  write grant in the project: the request had made it, and only the
+  server's exit swept, which never came. The persistent path now sweeps
+  when the wrap throws. Row: `sandbox-port-held.unsafe.test.ts` › "a
+  server refused for the port leaves no placeholder behind".
+- **X-84.** A sandboxed task read Bun's global bunfig (`~/.bunfig.toml`,
+  `~/.config/.bunfig.toml`, where `[install.scopes]` keeps registry
+  tokens), Cargo's and RubyGems' credentials and the like, though the
+  same task was denied `~/.npmrc` (L-41): a dependency it ran could copy
+  the token into an output the cache shares. They join the denied
+  stores, granted by naming one in `allow.read`. Row:
+  `sandbox-credential-stores.unsafe.test.ts` › "reads none unless
+  granted, and the rest of home as before".
+- **X-90.** Under `exec.sandbox` with `write: ['dist/']`,
+  `rm -rf dist && tsc` failed on Linux with a bare `Read-only file system`: the grant is
+  a bind mount, which the task may empty but not remove. No bind fixes
+  it soundly (binding the parent lets the task write beside the grant),
+  so a failed task whose output names a grant root on an `EROFS` /
+  `EBUSY` line now gets a hint naming the grant and `rm -rf dist/*`.
+  Rows: `sandbox-grant-remove.unsafe.test.ts` (three removal spellings,
+  the hinted removal, a near-miss control).
+- **X-91.** A `localBinding` port bridge's task side always dialled
+  127.0.0.1, so a server bound to `::1` alone (Vite's `localhost` on a
+  host that resolves `::1` first) was unreachable from the host. Each
+  connection now runs a dial script that reads the namespace's listen
+  tables and dials `::1` when only `::1` holds the port, else 127.0.0.1;
+  the choice is made before any byte moves, so nothing is retried
+  halfway. Rows: `port-bridge-dial.test.ts` (fixture tables, stub
+  socat), `sandbox-runtime.unsafe.test.ts` › "a server bound to ::1
+  alone is reachable through the bridge" (skips without IPv6; not run
+  on the authoring box, which has none).
+- **X-69.** `--report=markdown` printed to stdout after the run
+  returned, below the footer, which is the run's last word.
+  `RunOptions.beforeFooter` returns text `run()` prints just above the
+  footer, after the `--verbosity` table (X-64); the CLI renders the
+  report there. `--report-file` still writes after the run, re-rendered
+  when a kept server's exit changed the outcomes (C-53). Row:
+  `cli.test.ts` › "--report and the --verbosity table print above the
+  footer".
+- **X-70.** A plugin executor's throw printed twice in the task's
+  frame: `execute-task.ts` wrote the message to the task's stderr and
+  rethrew, and the scheduler's `onError` wrote `[vx] <id>: <message>`
+  into the same stream. The first copy is gone; a second task failing on
+  the same error now reads `as <id> above`, as every other refusal does.
+  Rows: `plugin-capabilities.test.ts` › "an executor's throw reaches the
+  task's own stderr …", "one error an executor rejects two tasks with is
+  named once in each"; `executor-error-secret-mask.test.ts`.
+- **X-71.** `--dry --no-cache` and `--dry --cache=local:` called a
+  cacheable task `no-cache (would exec)`, while the run itself called it
+  `miss` in its frame, report and `--summarize` row and counted `1 miss`
+  and `0 cached (0%)` in the footer. A miss is a lookup that failed, and
+  that run looked nothing up, so `no-cache` is the word: `ranNoCache`
+  (`events.ts`) is the one predicate the plan and every run surface ask,
+  and `run()` marks each outcome of a run whose policy reads and writes
+  nothing `cacheOff`. Rows: `cli.test.ts` › "--no-cache: the plan and the
+  run both call the task no-cache", the same for `--cache=local:`.
+- **X-72.** `vx info` said `flaky tasks: none` after a task passed on a
+  retry: `flakyTasks()` listed only keys holding both a failed and a
+  passing row, and a retry's pass is one `success` row with `attempts`
+  above 1. Its failed attempts now count as failures, so such a key mixes
+  alone. Rows: `failure-mode.test.ts` › "lists a key that passed only on
+  a retry, its failed attempts as failures"; `flaky.test.ts` › "a
+  within-run retry is named as such …".
+- **X-73.** `vx why` blamed a prune ("no entry for this key was in the
+  cache when it ran (pruned or evicted)") on a clean run whose previous
+  run had executed the task past a failed dependency under `--continue`,
+  so never saved it: the taint verdict fired only when both runs ran
+  beside a failure. A previous run that executed, succeeded and ran
+  beside a failure with writes on, with no entry older than this run, is
+  now named as not saved for that reason. Row: `metrics.test.ts` ›
+  "names why an unchanged key re-executed …".
+- **X-85.** A task that ignored the stop's SIGTERM and died to vx's
+  SIGKILL past the grace was reported `aborted`, and its frame still
+  carried `[vx] exit 137 is how the shell reports a death by SIGKILL:
+… the kernel's OOM killer …`, sending the reader after memory for a
+  kill vx sent. The verdict line is now left out while the run is
+  stopping. Row: `signal-handling.test.ts` › "a child that ignores
+  SIGTERM is SIGKILLed after the grace; vx still exits 143".
+- **X-87.** A sandboxed task's `exec.timeout` started before the sandbox
+  was armed (the runtime's ~200 ms probe), so the task got less than it
+  declared, and `echo` under `timeout: 60` reached the executor with its
+  signal already aborted: `failed (timed out, exit 143)` in 0 ms,
+  "killed (SIGTERM)" though nothing ran. The request's signal is now
+  made last. Row: `execute-task.test.ts` › "exec.timeout counts from the
+  executor's call, not from the sandbox's arming".
+- **X-78.** Unused: a runtime probe's non-UTF-8 answer was fixed first
+  from another lane, which refuses it by name.
+- **X-79.** A task's own output reached through the other namespace was
+  an input: `outputs.files: ['out.json']` under its
+  `inputs.workspaceFiles: ['packages/a/*.json']`, or an
+  `outputs.workspaceFiles` entry in its project under `inputs.files`.
+  Each build moved the key, the recheck said the file "changed after its
+  key was taken … declare it in cache.outputs" (it was), and no run was
+  ever saved. Both input halves now drop both output fields. A key that
+  folded such a file moves and misses once; it held no wrong bytes, so
+  no `CACHE_VERSION` bump. Rows: `inputs-resolution.test.ts` › "excludes the task’s own
+  project outputs from its workspaceFiles", "excludes the task’s own
+  workspace outputs from its project files".
+- **X-80.** `lockfileClaim`'s in-process gate (a `vx watch` cycle, the MCP
+  server) re-read the lockfile and its extra files only when size or
+  mtime moved, so a same-size lockfile copied in with its mtime kept
+  (`cp -p`, `tar -x`) kept the old per-project digests and replayed the
+  old install's outputs. It now gates on size, mtime, ctime and inode,
+  as `Cache.hashFile` does, and stats each extra file before hashing it.
+  Row: `lockfile-claim.test.ts` › "a same-size rewrite with its mtime
+  kept is read again in the same process".
 - **X-68.** `--continue=never` kept retrying a task already in flight:
   `r` (`sleep 0.4; exit 1`, `retries: 3`) beside a failing `f` ran all
   four attempts, since the retry loop asked only the run's stop. The
@@ -525,6 +696,62 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-100.** The default `build` (2026-10-04) made a task cycle out of a
+  package cycle: `a` (`build` on `^build`) and `b` (no `build`)
+  depending on each other refused `vx run build` with
+  `Cycle detected in task graph: a#build -> b#build -> a#build`, where
+  `b` used to be passed through. The `^build` walk now finds package
+  cycles (Tarjan over `directDeps`, on first ask): a default `build`
+  passes through the projects on its cycle, and a walk meeting one on a
+  cycle takes its edge and goes on past it. Rows: `task-graph.test.ts` ›
+  "default builds on a package cycle make no task cycle", "a default
+  build on a cycle keeps the builds behind it for its dependants", and
+  the off-cycle control.
+- **X-101.** `rules.upfrontKeys` paired every reader of a shared input
+  with every other reader: the path index filed them all under one key
+  (`src/**`, a root `tsconfig.base.json`), so 5,000 tasks reading
+  `tsconfig.base.json` built their graph in 15 s, and 20,000 in one
+  project died `RangeError: Out of memory`. `overlapCandidates` takes a
+  side and keeps its index per side, pairing readers with writers only:
+  15 s → 0.2 s. Rows: `input-overlap.test.ts` › "4,000 readers of one
+  shared input pair none of them" and "the reader-writer index finds
+  every pair the rule refuses" (twenty).
+- **X-102.** Every project has a `build` since the default one
+  (2026-10-04), so a bare `vx run build` matched it: at a root that
+  declares none it ran 0 tasks, exit 0, where any other name said
+  "only projects outside the selection declare it — pass --all", and in
+  a workspace with no `build` at all it ran nothing green. A bare name
+  no longer selects a default `build` (`expandRequested` /
+  `unresolvedRequests` take `unselected`; `undeclaredIn` and the
+  did-you-mean list skip it); `lib#build` still plans it and `^build`
+  still reaches it. Rows: `bare-name-default-build.test.ts` (four); the
+  root rows of `task-selection.test.ts` and `configless-fence.test.ts`
+  no longer list a default build as requested.
+- **X-96.** An `admit` policy was asked about group tasks and saw a
+  dispatched group in `ctx.running`, so a packing policy could park real
+  work behind a group that runs nothing. Groups now bypass `admit` and
+  are never listed. Row: `scheduler.test.ts` › "a group is never asked
+  by an admit policy and never listed as running".
+- **X-97.** `deadServerBehind` walked groups by recursion: a
+  50,000-deep chain of groups over a server threw `RangeError`, and a
+  ladder of group diamonds re-walked each group once per path (2^n).
+  It now walks with a stack and a seen set, in the same dep order. Rows:
+  `server-death-properties.test.ts` › "a dead server is found behind a
+  50,000-deep chain of groups", "a ladder of group diamonds asks of each
+  node once".
+- **X-98.** `AdmitContext.running` said "executing on this machine right
+  now", but a persistent task leaves it at ready, with its worker slot.
+  Intended: the server never finishes before its dependants, so a policy
+  that counted it would hold them with no completion left to ask again
+  (with it listed, a solo policy hung the run). The doc now says so. Row:
+  `plugin-pipeline.test.ts` › "a ready server leaves the running set, so
+  a solo policy still admits what depends on it".
+- **X-99.** Under `--exclude-dependencies` + `--continue=always` the
+  taint read the key's upstream, which drops order-only edges: `t` saved
+  what it built after `a` failed (`t → gen → a`, `gen` excluded), where
+  the run without the flag withheld it. `judge` now reads the order-only
+  deps' settled outcomes too. Row: `continue-taint.test.ts` › "a task
+  ordered after a failure by --exclude-dependencies is not saved".
 - **X-92.** `--affected` over a deep `dependsOn` chain ended in
   `RangeError` and a stack: `affectedRoots` recursed once per edge, and
   ~15,000 tasks sufficed where the builder takes 50,000 (item 737). The
@@ -570,3 +797,149 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   path" and its plain twin. On macOS a sandboxed task failed the same
   writes EPERM: seatbelt judges the resolved `/dev/fd/1`, which SRT's
   `/dev/stdout` grant does not name, so vx grants `/dev/fd` there.
+- **X-110.** Args after `--` landed on the wrong line or inside a
+  comment: a `<<word` in a comment or quotes (`# then << check`,
+  `node -e "1<<x"`) made every later line a heredoc body, so the args
+  went on that line and ` --fix # …` ran `--fix` as a command; a quote in
+  a real heredoc body, or a template literal's closing newline after a
+  trailing comment (`echo args: # c\n`), let the comment take them; a
+  comment line after a heredoc, or a `<<\X` heredoc, put them on its
+  terminator (`X --fix`), which then closed nothing. One scan now reads
+  quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
+  `withForwardArgs` X-110 rows.
+- **X-111.** A traced sandboxed task whose shell died of a signal
+  (`kill -9 $$`, a SIGSEGV) showed `bash: line 1: 3 Killed { … }`
+  in its frame: the wrapper's bash reported
+  the job on its stderr, the task's, printing vx's whole wrapper with its
+  proxy port and paths. The wrapper's `wait` now prints nothing; the exit
+  code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
+- **X-112.** An executor that runs `ExecuteRequest.command` itself joined
+  the args after `--` on its own: the `vx init --plugin executor` example
+  joined them bare (`'a b'` split, `it's` a syntax error) and
+  `@vzn/vx-reapi` appended them after a trailing comment, so
+  `printf '<%s>' # each arg` ran without them where the local executor
+  kept them. `withForwardArgs` is on `@vzn/vx` (48 names) and both use
+  it. Rows: `vx-plugin-examples` `executor.test.ts` › "puts the args after
+  -- on the command as the local executor does", `vx-reapi`
+  `executor-helpers-sweep.test.ts` › "puts the args before a trailing
+  comment, as the local executor does".
+- **X-122.** Under `--exclude-dependencies` the sandbox's keyed set
+  stood a group in by its `deps`, which hold order-only edges and lack
+  the dropped members its hash folds (`keyUpstream`). Two groups over
+  different dropped tasks got one stand-in, the selection kept one, and
+  a sandboxed task was denied a linked sibling its key answers for. The
+  stand-in now lists the keyed members. A denial, never a stale hit:
+  units matched only where the hashes did not. Row:
+  `keyed-projects.test.ts` › "a group under --exclude-dependencies
+  stands in for the dependencies its hash folds".
+- **X-121.** Refuted: `cache.inputs.tasks: ['compile']` on a task that
+  reaches `compile` only through a group does not fold nothing at hash
+  time; the loader refuses it in all three forms ("names no task in …
+  dependsOn"), since schema.md has a selection name the group, whose
+  hash rolls its members up. Pinned so the refusal stays. Row:
+  `config-schema-refusals.test.ts` › "an inputs.tasks name reached only
+  through a group is refused, in each form".
+- **X-117.** "a SIGHUP after the summary signals a kept server once" read
+  `T\nT\n` on macOS CI, twice. vx sends the group one SIGTERM there
+  (`terminateChildren` dedups; the keep-alive wait defers to the abort),
+  so the second line came from a second trap holder: the fixture forked
+  `sleep 30 &` after installing its traps, and a child between fork and
+  its trap reset holds the parent's trap. Unproven on bash 3.2 (macOS's
+  sh; no copy reachable here); bash 5.2 and dash ran a hammered group
+  TERM only in the leader (495 and 7 of 3,000, all leader). The sleep now
+  forks before the traps, so the first signal finds only the leader
+  holding one; a real double send still writes two lines (reverting
+  WD-16's guard in `run.ts` reddens all three rows). Row:
+  `keep-alive.test.ts` › "a SIGHUP after the summary signals a kept
+  server once".
+- **X-118.** A default `build` on a package cycle (X-100) passed
+  through every project on its cycle, a declared `build` that never
+  reaches it included: with `p` (default `build`) and `t` (`build` on
+  no `^build`) depending on each other, `p#build` took no edge to
+  `t#build`, so `p#test` on `build` ran beside `t#build` and its key
+  folded nothing of `t`: a stale hit after `t` changed. A default `build`
+  on a cycle now walks once the rest of the graph is built and passes
+  through only the builds that reach it. Rows: `task-graph.test.ts` › "a
+  default build on a cycle keeps the edge to a build that never reaches
+  it", "a default build on a cycle passes a build that reaches it through
+  another task".
+- **X-119.** A requested default `build` (the one keyed group) folded
+  the args after `--` into its key though it runs no command: in
+  `vx run lib#build app#e2e -- --x`, `app#build`, which never sees
+  `--x`, folds `lib#build`'s key, so it missed for every new set of args
+  and saved under a key no run without them derives. A group's key now
+  folds no forwarded args. Row: `task-hash-derive.test.ts` › "a
+  requested default build ignores them: it runs no command".
+- **X-120.** An edge by name (`build`, `pkg#build`) to a default
+  `build` on a package cycle stopped there, where a `^build` walk goes on
+  past it (X-100): with `a` and `b` on the default build depending on
+  each other, neither build folds the other, so `a#test` on `build`
+  folded nothing of `b` and hit after `b` changed. Such an edge now goes
+  on past it as `^build` does. A request whose closure then reaches a
+  task cycle among declared builds is refused, as a run of those builds
+  already was. Row: `task-graph.test.ts` › "an edge by name to a default
+  build on a cycle goes on past it, as ^build does".
+- **X-126.** A submodule or embedded repository INSIDE a project left
+  tasks out of `--affected`. git reports it as one path (`vendor/lib`),
+  and per-task selection matched that path against each task's globs as
+  if it were a file: `lint` on `**` claimed it, so `build` on
+  `vendor/**/*.txt`, whose key folds the files inside, was not seeded
+  ("Nothing affected"). A project inside such a repository was never
+  selected: the owner walk stopped at the outer project. The diff now
+  reads `--raw` modes, so a gitlink on either side (a removed one took
+  its files) or an untracked `dir/` reaches the holding project whole
+  and every project under it. Row:
+  `affected-submodule.test.ts` › "a nested repository inside a project
+  reaches every task of it, and the projects inside".
+- **X-127.** A `workspaceFiles` glob reaching into a changed submodule
+  or embedded repository (`vendor/sub/**`) selected nothing: git reports
+  the repository as one path, `vendor/sub`, which the glob does not
+  match, while the key folds every file inside. A run under
+  `--affected` said "nothing affected" over a stale key. `affectedChanges`
+  now names the changed nested repositories (`AffectedChanges.nested`),
+  and both the candidate pass (`workspaceGlobOwners`) and the per-task
+  seed ask `workspaceFilesReachInto`: a positive entry whose static prefix
+  is above or inside the repository reaches it. Row:
+  `affected-workspace-files.test.ts` › "a glob reaching into a changed
+  nested repository selects its declarer".
+- **X-128.** A config importing a file of another project was left out
+  of `--affected` when a file THAT file imports changed: the config
+  import walk stopped at the first file of another project, reasoning
+  that containment selects it. Containment selects the owner, not the
+  importer, while the evaluation follows the import and the importer's
+  key moved: `site`'s config imports `core/src/index.ts`, which imports
+  `util.ts`; an edit to `util.ts` ran `core#build` alone and skipped
+  `site#build`. The walk now follows every import (200 configs into a
+  500-file library: 10 → 28 ms for one changed file). Rows:
+  `config-missing-import.test.ts` › "a config reaching into ANOTHER
+  project follows the imports of that file", `affected.test.ts` › "the
+  walk descends past a project boundary (X-128)".
+- **X-123.** A task left remote (`--download=none`) whose inputs moved
+  between its key and the describe before the command was saved under
+  the old key once a local consumer fetched it: the remote built over the
+  edit, and once the edit was reverted the next run hit those bytes. The
+  eager save withheld it (item 743); the deferred one asked nothing. It
+  now takes the same check, and a moved key registers the fetch with no
+  key, so the consumer still gets the bytes and nothing is saved. Rows:
+  `execute-task.test.ts` › "the DEFERRED save site refuses a key the
+  inputs no longer match (X-123)", `download-policy.test.ts` › "an entry
+  with no key is fetched for its consumer but saves nothing (X-123)".
+- **X-124.** A hit the up-front probe found was restored after a task
+  had rewritten the lockfile the workspace fingerprint folds: its key named
+  the install the run started on, so a task with no edge to `install`
+  that restored after it put back bytes built against the old install,
+  while the lazy path refuses to probe past that move (item 750). Such a
+  hit now goes back to the scheduler as a vanished one does and runs
+  once its deps are done. Row: `execute-task.test.ts` › "a preProbed HIT
+  is not restored once a task rewrote the lockfile (X-124)".
+- **X-125.** On a plugin executor, a task whose child trapped the
+  timeout's stop and exited 0 passed: core recorded `timedOut` only for a
+  non-zero exit, so the partial outputs were saved and the next run
+  replayed them as a green hit. The local executor fails the same child
+  as timed out. Any exit after the timeout's abort is now a timeout on a
+  plugin executor; the local one keeps its runner's own verdict, since
+  core's request timer starts before the spawn. Rows:
+  `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
+  abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".

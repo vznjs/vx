@@ -12,17 +12,12 @@
 // side-effect-free pure probes.
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
-import { FULL_CACHE_POLICY } from '../cache/index.js'
-import {
-  idleServers,
-  isGroupTask,
-  runGraph,
-  type TaskNode,
-  type TaskOutcome,
-} from '../graph/index.js'
+import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
+import { ranNoCache } from './events.js'
+import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
 import type { HistoryProvider } from './history.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
-import { keyUpstream } from './upstream.js'
+import { keyedOutcome, keyUpstream } from './upstream.js'
 
 export type CacheStatus =
   | 'hit-local' // entry exists in local cache
@@ -156,7 +151,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       }
       if (isGroupTask(node)) {
         cacheStatusById.set(node.id, 'group')
-        return planOutcome(node, await computeGroupKey(hashArgs))
+        return keyedOutcome(node, await computeGroupKey(hashArgs))
       }
 
       const hash = await computeTaskHash(hashArgs)
@@ -169,9 +164,8 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       // policy-aware cache layer, which itself respects read gating.
       const policy = args.cachePolicy ?? FULL_CACHE_POLICY
       const reads = policy.localRead || policy.remoteRead
-      const writes = policy.localWrite || policy.remoteWrite
       let status: CacheStatus
-      if (node.config.cache === undefined || (!reads && !writes)) {
+      if (ranNoCache({ node, cacheOff: cachesNothing(policy) })) {
         status = 'no-cache'
       } else if (!reads) {
         status = 'miss'
@@ -180,7 +174,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         status = where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local'
       }
       cacheStatusById.set(node.id, status)
-      return planOutcome(node, hash)
+      return keyedOutcome(node, hash)
     },
   })
 
@@ -302,14 +296,4 @@ function predictPlan(tasks: PlannedTask[]): PlanPrediction {
     else workMs += t.p50Ms
   }
   return { wallMs, workMs, unknownCount }
-}
-
-function planOutcome(node: TaskNode, hash: string | undefined): TaskOutcome {
-  return {
-    node,
-    status: 'success',
-    exitCode: 0,
-    durationMs: 0,
-    ...(hash !== undefined ? { hash } : {}),
-  }
 }

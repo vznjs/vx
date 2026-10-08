@@ -125,10 +125,8 @@ describe('vx init source detection', () => {
         expect(lint.code).toBe(0)
         expect(await Bun.file(path.join(root, 'lint.out')).text()).toBe('linted\n')
         const build = await vx(root, ['run', 'build', '--all', '--dry=json'])
-        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual([
-          'a#build',
-          'fixture-root#build',
-        ])
+        // The root's default build is no match for a bare name (X-102).
+        expect(JSON.parse(build.out).tasks.map((t: { id: string }) => t.id)).toEqual(['a#build'])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1077,6 +1075,31 @@ describe('migrateScripts', () => {
     ])
   })
 
+  it('a cd into a member whose dir holds a backslash-escaped space runs the members', () => {
+    const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
+      name,
+      dir,
+      packageJson: { name, scripts } as never,
+      configPath: null,
+    })
+    const root = meta('root', '/w', {
+      escaped: 'cd packages/my\\ app && vitest run',
+      escapedParen: 'cd packages/my\\ app\\ \\(v2\\)/src && tsc',
+      quoted: 'cd "packages/my app" && vitest run',
+      // CONTROL: an escaped space into no member stays a root task.
+      other: 'cd docs/my\\ notes && make',
+    })
+    const a = meta('a', '/w/packages/my app', { build: 'tsc' })
+    const b = meta('b', '/w/packages/my app (v2)', { build: 'tsc' })
+    expect(
+      migrateScripts([root, a, b]).projects.map((p) => [p.name, p.tasks.map((t) => t.name)]),
+    ).toEqual([
+      ['a', ['build']],
+      ['b', ['build']],
+      ['root', ['other']],
+    ])
+  })
+
   it('a root script reaching a member-running one through a script runner is left out (D-95)', () => {
     // lexical's `ci-check` (`npm-run-all --parallel … tsc-website …`) ran
     // `pnpm --filter @lexical/website run tsc` again as a root task.
@@ -1642,6 +1665,22 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  // A pnpm-workspace.yaml with settings and no `packages:` (ngrx's) is
+  // where pnpm reads the globs; the hint said there was no such file.
+  it('beside a pnpm-workspace.yaml with no packages, names that file', async () => {
+    const root = await bareRoot()
+    try {
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: true\n')
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain(
+        'vx init: pnpm-workspace.yaml lists no `packages`, so the root is the only project and 2 package.json below it are not: packages/app, packages/lib. Add `packages: ["packages/*"]` to pnpm-workspace.yaml and re-run.',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   // CONTROL: with the globs declared, the same tree is a workspace and init writes both configs.
   it('the same tree with `workspaces` declared is a workspace', async () => {
     const root = await bareRoot()
@@ -2196,7 +2235,7 @@ describe('vx init --plugin <seam>', () => {
         const bad = await vx(root, ['init', '--plugin', 'nope'])
         expect([bad.code, bad.err]).toEqual([
           1,
-          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope')\n`,
+          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
         ])
         // --dry writes nothing.
         const dry = await vx(root, ['init', '--plugin=graph', '--dry'])
@@ -2221,7 +2260,7 @@ describe('vx init --plugin <seam>', () => {
         expect([mjs.code, mjs.out, mjs.err]).toEqual([
           1,
           '',
-          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript\n',
+          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript (see `vx init --help`)\n',
         ])
         const ok = await vx(root, ['init', '--plugin', 'cache', '--dry'])
         expect([ok.code, ok.err]).toEqual([0, ''])

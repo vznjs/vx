@@ -626,3 +626,82 @@ describe('ChainedCache — each method over recording layers', () => {
     )
   })
 })
+
+// A drain, a batch row load or a has-many walk that throws in one plugin
+// layer is reported and passed, like every other lookup: unisolated, it
+// rejected the chain unnamed and the run skipped its summary and flush.
+describe('ChainedCache — a layer that throws outside the lookup walk', () => {
+  const report = () => {
+    const told: Array<[number, string, string]> = []
+    const on = (i: number, method: string, err: unknown) =>
+      told.push([i, method, (err as Error).message])
+    return { told, on }
+  }
+
+  it('drainUploads: one layer rejecting still drains the rest and resolves', async () => {
+    const a = fake('a')
+    const b = fake('b')
+    const broken = {
+      ...a.layer,
+      drainUploads: async () => {
+        throw new Error('drain boom')
+      },
+    } as CacheLayer
+    const { told, on } = report()
+    const chained = new ChainedCache([broken, b.layer], on)
+    expect(
+      await chained.drainUploads().then(
+        () => 'drained',
+        (e: Error) => e.message,
+      ),
+    ).toBe('drained')
+    expect({ b: b.calls, told }).toEqual({
+      b: ['drain'],
+      told: [[0, 'drainUploads', 'drain boom']],
+    })
+  })
+
+  it('loadOutputFilesBatch: a throwing layer is a miss there; the next layer fills', () => {
+    const a = fake('a', { rows: { h: 'from-a' } })
+    const b = fake('b', { rows: { h: 'from-b' } })
+    const broken = {
+      ...a.layer,
+      loadOutputFilesBatch: () => {
+        throw new Error('rows boom')
+      },
+    } as CacheLayer
+    const { told, on } = report()
+    const got = new ChainedCache([broken, b.layer], on).loadOutputFilesBatch(['h'])
+    expect({
+      rows: Object.fromEntries([...got].map(([h, rows]) => [h, rows.map((r) => r.path)])),
+      told,
+    }).toEqual({ rows: { h: ['from-b'] }, told: [[0, 'loadOutputFilesBatch', 'rows boom']] })
+  })
+
+  it('remoteHasMany: a non-Set answer or a throwing mark is that layer unanswered', async () => {
+    const r1 = fake('r1', { remote: true, remoteHas: ['x'] })
+    const r2 = fake('r2', { remote: true, remoteHas: ['y'] })
+    const nonSet = {
+      ...r1.layer,
+      remoteHasMany: async () => ['x'] as unknown as Set<string>,
+    } as CacheLayer
+    const badMark = {
+      ...r2.layer,
+      markRemoteAbsent: () => {
+        throw new Error('mark boom')
+      },
+    } as CacheLayer
+    const { told, on } = report()
+    const chained = new ChainedCache([nonSet, badMark], on)
+    expect(
+      await chained.remoteHasMany(['x', 'y']).then(
+        (s) => s,
+        (e: Error) => e.message,
+      ),
+    ).toBe(null)
+    expect(told).toEqual([
+      [0, 'remoteHasMany', 'remoteHasMany answered a non-Set'],
+      [1, 'remoteHasMany', 'mark boom'],
+    ])
+  })
+})

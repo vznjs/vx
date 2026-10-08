@@ -305,8 +305,9 @@ describe('vx migrate (turbo)', () => {
       expect(seed.exec?.interactive).toBe(true)
       expect(seed.cache).toBeUndefined()
 
-      // No package declares a `deploy` script → task not emitted.
-      expect(tasks.deploy).toBeUndefined()
+      // No package declares a `deploy` script → Turbo's no-op node, a group
+      // with no edge, so `vx run deploy` exits 0 as `turbo run deploy` does.
+      expect(tasks.deploy).toEqual({ dependsOn: [] })
     },
     TIMEOUT,
   )
@@ -400,8 +401,9 @@ describe('vx migrate (turbo)', () => {
     // to inputs.workspaceFiles instead of a TODO); test and seed clean.
     // lib#build 2 (inherited $TURBO_ROOT$ dep, env wildcard). app#dev is
     // persistent and nothing depends on it, so its readiness note is no
-    // TODO: it counts as clean (item 602).
-    expect(result.out).toContain('5 tasks migrated clean')
+    // TODO: it counts as clean (item 602). Each package's `deploy` (no
+    // script anywhere) is an empty group, clean.
+    expect(result.out).toContain('7 tasks migrated clean')
     expect(result.out).toContain('4 TODO')
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual(['app#build', 'lib#build'])
@@ -607,6 +609,158 @@ describe('vx migrate (nx) with no exported graph', () => {
         expect(r.out).toContain('vx-migrate: nx graph → vx.config.ts')
         expect(r.out).toContain('packages/pkg-a/vx.config.ts')
         expect(await nxCalls(root)).toBe(1)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// Lerna 6+ runs `lerna run` on Nx over the graph `nx graph` exports, with
+// or without nx.json; vx-migrate answered "nothing to migrate".
+describe('vx migrate (lerna)', () => {
+  const LERNA_GRAPH = {
+    graph: {
+      nodes: {
+        'pkg-a': {
+          name: 'pkg-a',
+          data: {
+            root: 'packages/pkg-a',
+            targets: { test: { executor: 'nx:run-script', options: { script: 'test' } } },
+          },
+        },
+      },
+      dependencies: { 'pkg-a': [] },
+    },
+  }
+  const installed = (v: string) => JSON.stringify({ name: 'lerna', version: v })
+  const runs = (deps: object = {}) =>
+    JSON.stringify({ scripts: { build: 'lerna run build' }, devDependencies: deps })
+  async function lernaRepo(files: Record<string, string>): Promise<string> {
+    const root = await makeRoot('vx-migrate-lerna-')
+    for (const [rel, text] of Object.entries({ 'package.json': runs(), ...files })) {
+      await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+      await writeFile(path.join(root, rel), text)
+    }
+    await writeFile(path.join(root, 'graph.json'), JSON.stringify(LERNA_GRAPH))
+    await addPackage(root, 'pkg-a', { test: 'jest' })
+    await fakeNxCli(root)
+    return root
+  }
+
+  const lerna9 = { 'node_modules/lerna/package.json': installed('9.0.7') }
+  for (const [label, files, mapped] of [
+    ['Lerna installed', { 'lerna.json': '{}', ...lerna9 }, true],
+    ['Lerna 9 declared', { 'lerna.json': '{}', 'package.json': runs({ lerna: '^9.0.7' }) }, true],
+    [
+      'Lerna 9 declared, both files saved with a BOM',
+      { 'lerna.json': '\uFEFF{}', 'package.json': '\uFEFF' + runs({ lerna: '^9.0.7' }) },
+      true,
+    ],
+    [
+      'Lerna 5 that opts in',
+      { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },
+      true,
+    ],
+    ['useNx: false', { 'lerna.json': '{ "useNx": false }', ...lerna9 }, false],
+    [
+      'Lerna 5 installed',
+      { 'lerna.json': '{}', 'node_modules/lerna/package.json': installed('5.6.2') },
+      false,
+    ],
+    [
+      'Lerna 5 declared, none installed',
+      { 'lerna.json': '{}', 'package.json': runs({ lerna: '^5.5.2' }) },
+      false,
+    ],
+    [
+      'lerna.json with no Lerna (lerna-lite reads it too)',
+      { 'lerna.json': '{ "useNx": true }' },
+      false,
+    ],
+    [
+      'root scripts that never `lerna run` (Lerna publishes)',
+      {
+        'lerna.json': '{}',
+        ...lerna9,
+        'package.json': '{ "scripts": { "build": "pnpm -r build" } }',
+      },
+      false,
+    ],
+  ] as const) {
+    it(
+      `${label}: ${mapped ? 'the exported graph is the source' : 'Lerna’s own runner, nothing to read'}`,
+      async () => {
+        const root = await lernaRepo(files)
+        try {
+          const r = await vx(root, ['--dry'])
+          expect(
+            mapped
+              ? [
+                  r.code,
+                  r.err,
+                  r.out.includes('vx-migrate: nx graph → vx.config.ts'),
+                  await nxCalls(root),
+                ]
+              : [r.code, r.err, false, 0],
+          ).toEqual(
+            mapped
+              ? [0, '', true, 1]
+              : [
+                  1,
+                  'vx-migrate: nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — for package.json scripts, run `vx init`\n',
+                  false,
+                  0,
+                ],
+          )
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+
+  it(
+    'beside turbo.json, Turbo runs the tasks: no --from asked',
+    async () => {
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+        'turbo.json': '{ "tasks": {} }',
+      })
+      try {
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.config.ts')]).toEqual([
+          0,
+          '',
+          true,
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--keep writes the workspace file declaring nx(), as vx init does for nx.json',
+    async () => {
+      const root = await lernaRepo({
+        'lerna.json': '{}',
+        'node_modules/lerna/package.json': installed('9.0.7'),
+      })
+      try {
+        const r = await vx(root, ['--keep'])
+        const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+        expect([
+          r.code,
+          r.err,
+          ws.includes("import { nx } from '@vzn/vx-migrate'"),
+          [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
+          await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).exists(),
+        ]).toEqual([0, '', true, ['nx', 'scheduleHistoryPlugin'], false])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1094,14 +1248,14 @@ describe('vx migrate source detection', () => {
   )
 
   it(
-    'nx.json without the graph file tells the user how to generate it',
+    'nx.json without the graph file or nx tells the user to install',
     async () => {
       const root = await makeRoot('vx-migrate-det1-')
       try {
         await writeFile(path.join(root, 'nx.json'), '{}')
         const r = await vx(root, [])
         expect(r.code).toBe(1)
-        expect(r.err).toContain('nx graph --file=.nx/workspace-data/project-graph.json')
+        expect(r.err).toContain('run `npm install`, then vx-migrate again')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1161,11 +1315,11 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  // Turbo and Nx only (owner, 2026-10-01): lage, wireit and scripts are refused.
-  it('--from takes turbo or nx; any other name, scripts included, names `vx init`', () => {
+  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1): lage, wireit and scripts are refused.
+  it('--from takes turbo, nx or vite-task; any other name, scripts included, names `vx init`', () => {
     for (const v of ['scripts', 'lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo or nx (package.json scripts: `vx init`)',
+        '--from must be turbo, nx or vite-task (package.json scripts: `vx init`)',
       )
   })
 })
@@ -1347,7 +1501,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
@@ -1416,8 +1570,14 @@ describe('the writer: what the sweep found unheld', () => {
       const nx = await detect({}, ['--from', 'nx'])
       expect(nx.code).toBe(1)
       expect(nx.err).toBe(
-        "vx-migrate: no resolved Nx graph found, and exporting one failed (no node_modules/.bin/nx — install nx, or export a graph with `nx graph --file=<path>` and pass it as graph: '<path>') — export it with `nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx-migrate\n",
+        'vx-migrate: nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — run `npm install`, then vx-migrate again\n',
       )
+      // A fresh pnpm clone of an Nx repo: the repo's own manager is named.
+      const fresh = await detect({ 'nx.json': '{}', 'pnpm-lock.yaml': '' }, [])
+      expect([fresh.code, fresh.err]).toEqual([
+        1,
+        'vx-migrate: nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — run `pnpm install`, then vx-migrate again\n',
+      ])
     },
     TIMEOUT,
   )
@@ -1472,50 +1632,24 @@ describe('the preset, exactly', () => {
     }
   }
 
-  it('a preset of globalEnv alone is written with its one section, ending in a newline', async () => {
-    const plan = await preset({ globalEnv: ['MODE'], tasks: { build: {} } })
+  // Generated files carry no explanatory comments (owner, 2026-10-07).
+  it('a preset is its exports alone, one per line, ending in a newline', async () => {
+    const plan = await preset({
+      globalDependencies: ['x.json'],
+      globalEnv: ['MODE'],
+      globalPassThroughEnv: ['AWS'],
+      tasks: { build: {} },
+    })
     expect(plan.extraFiles).toEqual([
       {
         relPath: 'vx-preset.ts',
         contents: [
-          "// TypeScript composition replaces turbo's global fields: each vx.config.ts imports these",
-          '// arrays and spreads them into the matching task fields.',
-          '',
-          '// From globalEnv: cache inputs AND passed through to every task',
-          '// (vx child environments are isolated; see docs/schema.md).',
+          "export const globalInputs = ['x.json']",
           "export const globalEnvInputs = ['MODE']",
+          "export const globalPassThroughEnv = ['AWS']",
           '',
         ].join('\n'),
       },
-    ])
-  })
-
-  it('a preset of globalPassThroughEnv alone is written with its one section', async () => {
-    const plan = await preset({ globalPassThroughEnv: ['AWS'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
-      [
-        '',
-        '// From globalPassThroughEnv: forwarded to every task, never hashed.',
-        "export const globalPassThroughEnv = ['AWS']",
-        '',
-      ],
-    ])
-  })
-
-  // G-131/G-133 put the root's workspace dependencies and microfrontends
-  // configs in the same list; the section said they came from
-  // globalDependencies, which named neither.
-  it('a preset of global inputs says where they come from', async () => {
-    const plan = await preset({ globalDependencies: ['x.json'], tasks: { build: {} } })
-    expect(plan.extraFiles.map((f) => f.contents.split('\n').slice(2))).toEqual([
-      [
-        '',
-        '// From globalDependencies and what Turbo adds to them (the packages the',
-        '// root depends on, microfrontends configs) — workspace-root-relative,',
-        '// spread into each task’s cache.inputs.workspaceFiles.',
-        "export const globalInputs = ['x.json']",
-        '',
-      ],
     ])
   })
 

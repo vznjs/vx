@@ -954,6 +954,35 @@ describe('Cache as a ConfigEvalStore', () => {
       cache.close()
     }
   })
+
+  it('a symlinked config is served from its slow key, with no single lookup or index write per load', async () => {
+    // `hashFiles` names a link by its target string, never the bytes the
+    // evaluation read, so a warm key from it can match no stored entry:
+    // every load fell to a single lookup and re-wrote the closure index.
+    await write(
+      'shared/linked.mjs',
+      "export default { tasks: { build: { exec: { command: 'l' } } } }\n",
+    )
+    const cfg = path.join(root, 'packages/l/vx.config.mjs')
+    await mkdir(path.dirname(cfg), { recursive: true })
+    await symlink('../../shared/linked.mjs', cfg)
+    const cache = new Cache(path.join(root, 'link-cache'))
+    try {
+      const evalCache = { store: cache, workspaceFingerprint: 'fp' }
+      await loadProjectConfigs([cfg], { evalCache })
+      let single = 0
+      let closureWrites = 0
+      const get = cache.getConfigEval.bind(cache)
+      cache.getConfigEval = (key: string) => (single++, get(key))
+      const put = cache.putConfigClosures.bind(cache)
+      cache.putConfigClosures = (entries) => (closureWrites++, put(entries))
+      const [c] = await loadProjectConfigs([cfg], { evalCache })
+      expect([c?.tasks?.build?.exec?.command, single, closureWrites]).toEqual(['l', 0, 0])
+    } finally {
+      cache.close()
+    }
+  })
+
   it('the batched puts honour the write axis and land as the single puts do', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-batch-'))
     try {

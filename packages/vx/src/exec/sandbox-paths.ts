@@ -78,14 +78,16 @@ export function localBindingOn(c: { localBinding?: boolean | readonly number[] }
 }
 
 /**
- * Whether a sandboxed task may read `file`: it lies under a read grant,
- * a write grant or a baseline read, by its canonical path. A path no
- * grant holds is not there inside the sandbox, which the shell reports
- * as "not found" with no denial a trace can see (an `execve`).
+ * Whether a sandboxed task may read `file`: it lies under no denial (the
+ * rest of the host is mounted read-only), or under a read grant, a write
+ * grant or a baseline read, by its canonical path. A path no grant holds
+ * under a denial is not there inside the sandbox, which the shell reports
+ * as "not found": a PATH search is a stat, which the trace does not stop on.
  */
 export function sandboxReads(
   sandbox: {
     readonly baseAllowRead: readonly string[]
+    readonly baseDenyRead: readonly string[]
     readonly config: {
       readonly allowRead: readonly string[]
       readonly allowWrite: readonly string[]
@@ -94,7 +96,11 @@ export function sandboxReads(
   file: string,
 ): boolean {
   const real = toRealPath(file)
-  return [...sandbox.baseAllowRead, ...sandbox.config.allowRead, ...sandbox.config.allowWrite].some(
-    (g) => atOrUnder(real, toRealPath(g)),
+  const under = (g: string): boolean => atOrUnder(real, toRealPath(g))
+  return (
+    !sandbox.baseDenyRead.some(under) ||
+    [...sandbox.baseAllowRead, ...sandbox.config.allowRead, ...sandbox.config.allowWrite].some(
+      under,
+    )
   )
 }

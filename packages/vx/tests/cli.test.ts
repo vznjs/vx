@@ -100,7 +100,7 @@ describe('cli run()', () => {
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
       [
         1,
-        'vx watch: invalid concurrency: abc (a positive integer, or a share of the cores such as 50%) (see `vx watch --help`)\n',
+        'vx watch: --concurrency must be a positive integer, or a share of the cores such as 50% (got abc) (see `vx watch --help`)\n',
       ],
       [
         1,
@@ -421,7 +421,7 @@ describe('cli run()', () => {
 
   it('rejects run with bad flag value (parser error surfaced)', async () => {
     expect(await run(['run', 'build', '--concurrency', 'oops'])).toBe(1)
-    expect(stderr).toContain('invalid concurrency')
+    expect(stderr).toContain('--concurrency must be')
   })
 
   it('--version is the only version form (no -V short alias)', async () => {
@@ -527,6 +527,32 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).not.toContain('hello-cli')
   })
 
+  // `--dry` called a cacheable task under a policy that reads and writes
+  // nothing `no-cache`, the real run `miss` and its footer "1 miss": a
+  // miss is a lookup that failed, and this run looked nothing up.
+  for (const flag of ['--no-cache', '--cache=local:']) {
+    it(`${flag}: the plan and the run both call the task no-cache`, async () => {
+      const { readFile } = await import('node:fs/promises')
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
+      expect(stdout).toContain('no-cache (would exec)')
+      stdout = ''
+      const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
+      expect(await run(args)).toBe(0)
+      expect(stdout).toContain('| one#hello | success | no-cache |')
+      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).not.toContain('miss')
+      const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
+      expect([row.id, row.noCache]).toEqual(['one#hello', true])
+    })
+  }
+
   it('--dry-run --json emits parseable JSON', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -586,7 +612,14 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', 'hello'])
     expect(code).toBe(1)
-    expect(stderr).toContain('not inside a project')
+    expect(stderr).toBe(
+      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+    )
+    stderr = ''
+    expect(await run(['watch', 'hello'])).toBe(1)
+    expect(stderr).toBe(
+      'vx watch: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx watch --help`)\n',
+    )
   })
 
   it('cwd inside a project package resolves to that project', async () => {
@@ -964,6 +997,26 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
   })
 
+  // Nothing prints below the footer (owner): the report came after its
+  // `result` row. The table (X-64) prints first, then the report.
+  it('--report and the --verbosity table print above the footer', async () => {
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const code = await run(['run', '--all', 'hello', '--report=markdown', '--verbosity=1'])
+    expect(code).toBe(0)
+    const report = stdout.indexOf('| Task | Status | Cache | Duration |')
+    const table = stdout.indexOf('TASK')
+    const footer = stdout.indexOf('  result')
+    expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
+    expect([table < report, report < footer]).toEqual([true, true])
+    expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
+  })
+
   it('bare --report defaults to markdown', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -1121,7 +1174,7 @@ describe('vx watch command (parser-side validation)', () => {
   it('surfaces parser errors with the watch prefix', async () => {
     expect(await run(['watch', 'build', '--concurrency', 'oops'])).toBe(1)
     expect(stderr).toContain('vx watch:')
-    expect(stderr).toContain('invalid concurrency')
+    expect(stderr).toContain('--concurrency must be')
   })
 })
 
@@ -1707,14 +1760,14 @@ describe('parseRunArgs', () => {
     // --cache still parses its own policy spec, undisturbed.
     expect(parseRunArgs(['build', '--cache=local:r']).cacheDir).toBeUndefined()
     expect(parseRunArgs(['build']).cacheDir).toBeUndefined()
-    expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
+    expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
 
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.
     expect(parseRunArgs(['build', '--cache-dir', '--force']).error).toMatch(
-      /--cache-dir requires a path, got flag: --force/,
+      /--cache-dir requires a path \(got flag --force; a path that starts with - needs --cache-dir=--force\)/,
     )
     // The `=` form still takes a literal leading dash if someone means it.
     expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
@@ -1733,8 +1786,9 @@ describe('parseRunArgs', () => {
 
   it('parses --all (replaces -r / --recursive)', () => {
     expect(parseRunArgs(['build', '--all']).all).toBe(true)
-    expect(parseRunArgs(['build', '-r']).error).toMatch(/unknown flag: -r/)
-    expect(parseRunArgs(['build', '--recursive']).error).toMatch(/unknown flag: --recursive/)
+    // Vite Task's spelling of it (foreign-flags.ts).
+    expect(parseRunArgs(['build', '-r']).all).toBe(true)
+    expect(parseRunArgs(['build', '--recursive']).all).toBe(true)
   })
 
   it('--no-cache disables every cache axis', () => {
@@ -1824,8 +1878,8 @@ describe('parseRunArgs', () => {
 
   it('parses --exclude-dependencies as "all" with no value', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
-    expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)
-    // Turbo's spelling of it (foreign-flags.ts).
+    // Turbo's and Vite Task's spellings of it (foreign-flags.ts).
+    expect(parseRunArgs(['build', '--ignore-depends-on']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--only']).excludeDependencies).toBe('all')
   })
 
@@ -1861,8 +1915,8 @@ describe('parseRunArgs', () => {
   })
 
   it('--verbosity rejects non-integer and negative values', () => {
-    expect(parseRunArgs(['build', '--verbosity', 'high']).error).toMatch(/invalid verbosity/)
-    expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/invalid verbosity/)
+    expect(parseRunArgs(['build', '--verbosity', 'high']).error).toMatch(/--verbosity must be/)
+    expect(parseRunArgs(['build', '--verbosity', '-1']).error).toMatch(/--verbosity must be/)
   })
 
   it('parses --dry and --dry=json / --dry=text', () => {
@@ -1874,7 +1928,9 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects invalid --dry=<format>', () => {
-    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(/invalid --dry value: yaml/)
+    expect(parseRunArgs(['build', '--dry=yaml']).error).toMatch(
+      /--dry must be text or json \(got yaml\)/,
+    )
   })
 
   it('parses --graph (stdout) and --graph=<path>', () => {
@@ -2014,7 +2070,7 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects bad concurrency', () => {
-    expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/invalid concurrency/)
+    expect(parseRunArgs(['build', '--concurrency', 'abc']).error).toMatch(/--concurrency must be/)
   })
 
   it('multiple positionals are collected as tasks (Turbo-style `vx run a b`)', () => {
@@ -2050,9 +2106,9 @@ describe('parseRunArgs', () => {
   })
 
   it('rejects --tag with an empty key', () => {
-    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/invalid --tag/)
-    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/invalid --tag/)
-    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/invalid --tag/)
+    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/--tag must be k=v/)
+    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/--tag must be k=v/)
+    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/--tag must be k=v/)
   })
 
   it('parses --report and --report=markdown', () => {
@@ -2077,12 +2133,14 @@ describe('parseRunArgs', () => {
   it('rejects an empty or flag-shaped --report-file value', () => {
     expect(parseRunArgs(['build', '--report-file=']).error).toMatch(/--report-file requires a path/)
     expect(parseRunArgs(['build', '--report-file']).error).toMatch(/--report-file requires a path/)
-    expect(parseRunArgs(['build', '--report-file', '--all']).error).toMatch(/got flag: --all/)
+    expect(parseRunArgs(['build', '--report-file', '--all']).error).toBe(
+      '--report-file requires a path (got flag --all; a path that starts with - needs --report-file=--all)',
+    )
   })
 
   it('rejects a non-markdown --report value (json reserved)', () => {
-    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/invalid --report value/)
-    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/invalid --report value/)
+    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/--report must be markdown/)
+    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/--report must be markdown/)
   })
 })
 
@@ -2184,16 +2242,18 @@ describe('parsePruneArgs', () => {
   // sweep deleted each with the suite green).
   it('refuses a value it cannot parse instead of pruning by it', () => {
     expect(parsePruneArgs(['--older-than', 'abc'])).toEqual({
-      error: 'invalid duration: abc (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--older-than', '1.5d'])).toEqual({
-      error: 'invalid duration: 1.5d (e.g. 30d, 24h, 60m)',
+      error:
+        '--older-than must be a duration like 30d, 24h or 60m (got 1.5d) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', 'abc'])).toEqual({
-      error: 'invalid size: abc (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got abc) (see `vx cache --help`)',
     })
     expect(parsePruneArgs(['--max-size', '1.5G'])).toEqual({
-      error: 'invalid size: 1.5G (e.g. 500M, 1G)',
+      error: '--max-size must be a size like 500M or 1G (got 1.5G) (see `vx cache --help`)',
     })
   })
 

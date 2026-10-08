@@ -11,6 +11,7 @@ export {
   type CacheKeyInput,
   type CacheLayer,
   type CachePolicy,
+  cachesNothing,
   EXECUTED_RUNS_SQL,
   FULL_CACHE_POLICY,
   type InvocationRecord,
@@ -35,6 +36,7 @@ export {
   cleanOutputs,
   cleanWorkspaceOutputs,
   declaresInput,
+  workspaceFilesReachInto,
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
@@ -51,6 +53,7 @@ export {
 } from './inputs.js'
 export {
   GitFilesCache,
+  gitRefusal,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,

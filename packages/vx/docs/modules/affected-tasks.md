@@ -11,7 +11,8 @@
   another task of it declares a changed root file (`workspaceFiles`
   owners join `changes.projects` alone);
 - a cached task seeds when a changed path is one of its declared inputs
-  (`declaresInput`, inputs.md), or when its project is reached whole: the
+  (`declaresInput`, inputs.md), or its `workspaceFiles` may reach into a
+  changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
   diff named it whole, a changed path is `package.json` or a `vx.config.*`,
   or no cached task of the project declares a changed path.
 
