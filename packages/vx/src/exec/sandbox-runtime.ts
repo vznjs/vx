@@ -1551,7 +1551,9 @@ function literalReadPaths(
  * baseline reads: a linked dependency under `packages/[legacy]/` was a
  * class too, and as an exact regex even `[[]` grants the directory's entry
  * and none of its files, so its subtree is granted beside it (a trailing
- * `/**` is stripped before the compile).
+ * `/**` is stripped before the compile). A task's read grant whose only
+ * brackets are escaped names one path too, and Linux binds it whole, so
+ * it gets the same subtree: `out/\[id\]` read `out/[id]` and none of it.
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
@@ -1562,8 +1564,9 @@ export function seatbeltBrackets(
   const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
   const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
   const read = (p: string): string[] => {
-    if (!bracketed.has(p)) return [literal(p)]
-    const at = p.replaceAll('[', '[[]')
+    const name = bracketed.has(p) ? p : /\\[[\]]/.test(p) ? namedPath(p) : undefined
+    if (name === undefined) return [literal(p)]
+    const at = name.replaceAll('[', '[[]')
     return [at, `${at}/**/*`]
   }
   return {
@@ -1572,7 +1575,9 @@ export function seatbeltBrackets(
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
       allowWrite: fs.allowWrite.map(literal),
-      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
+      ...(fs.allowRead !== undefined
+        ? { allowRead: [...new Set(fs.allowRead.flatMap(read))] }
+        : {}),
     },
   }
 }

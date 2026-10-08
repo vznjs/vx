@@ -166,8 +166,10 @@ terminal and a task succeeding or failing. Read it alongside
  │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
- │                exit 128+signo (SIGINT → 130, SIGTERM → 143,
- │                SIGHUP → 129). SIGHUP is registered because a task
+ │                die of the signal (SIGINT → 130, SIGTERM → 143,
+ │                SIGHUP → 129), so a shell script running vx stops
+ │                too; a run that handed a task the terminal exits
+ │                with that code instead, so Bun restores it. SIGHUP is registered because a task
  │                runs in its own session, so a closing terminal
  │                reaches vx and nothing else. A second signal
  │                SIGKILLs and exits at once.

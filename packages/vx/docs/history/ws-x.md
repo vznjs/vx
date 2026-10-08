@@ -696,6 +696,25 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   starts no attempt after it; the one in flight finishes. Row:
   `retries.test.ts` › "continueMode never: a task in flight when another
   fails is not retried".
+- **X-103.** Withdrawn: creating a new shared store as a linked temp WAL
+  file failed on macOS (`SQLITE_IOERR_VNODE`); concurrent first opens
+  stay as they were.
+- **X-104.** `vx cache prune` run by a task hung that run for good: the
+  prune waited for the workspace's run lock, held by the run that
+  started the task until the task ended. A lock taker whose
+  `VX_RUN_WORKSPACE` names the same lock is now refused with the task
+  named. Row: `run-lock-e2e.test.ts` › "`vx cache prune` from a task of
+  a run on the workspace is refused, not left waiting".
+- **X-105.** Runs sharing one cache dir lost their history: 13 of 48 said
+  `run history not recorded: database is locked` 2–60 ms into the write,
+  far inside the 5 s busy timeout. The history transaction read before
+  it wrote (the forward-args salt, loaded on first use; every CLI run
+  passes `[]`), and SQLite answers a deferred transaction's later write
+  at once instead of waiting. `recordRunBundle`, `recordRuns` and the
+  output-stamp flush (which reads `entries` first) now begin IMMEDIATE:
+  0 of 48. Rows: `index-write-wait.test.ts` (two).
+- **X-106.** Unused: the replaced-artifact restore fix landed first
+  from another lane (#3015).
 - **X-100.** The default `build` (2026-10-04) made a task cycle out of a
   package cycle: `a` (`build` on `^build`) and `b` (no `build`)
   depending on each other refused `vx run build` with
@@ -943,3 +962,24 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   abort is a timeout on a plugin executor too (X-125)",
   `execute-task.test.ts` › "core does not abort a local request at the
   timeout; the runner's timedOut decides (X-125)".
+  `execute-task.test.ts` › "the local executor's own timedOut decides an
+  exit 0 after the request's abort (X-125)".
+
+- **X-129.** `vx run test --affected` where the changed project has no
+  vx config and another declares `test` exited 1, "no projects declare
+  task(s): test", against item 1024. The guard loaded the rest of the
+  workspace only when fewer projects were loaded than have configs; a
+  config-less project counts as loaded, so one changed member made the
+  counts equal and the declarer was never asked. It now asks by name.
+  Row: `affected-sparse-tasks.test.ts` › "exits 0 and says no affected
+  project declares the task".
+- **X-130.** The lockfile-claim memo was trusted on `version` and the
+  lockfile's hash, not on who wrote it. Two claimants of one file at the
+  same `version` (a plugin swapped in one cache dir) read each other's
+  memo; one with no `extraFiles` left an empty extras list, so the other's
+  patch edits never moved its key while the lockfile stayed put: a stale
+  hit. The memo now records the claimant (`part` and the source of
+  `digest` / `extraFiles`). A plugin release that changes its parse
+  without bumping `version` is the documented contract's breach, not this
+  path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
+  trusted".
