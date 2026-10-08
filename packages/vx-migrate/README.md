@@ -47,7 +47,7 @@ Until `bunx @vzn/vx-migrate` writes native config, `vx run build --all` maps eve
 
 ### The mapper (`mapTurboWorkspace`)
 
-The plugin and the CLI read a repo the same way: the mapper the plugin runs live is what `bunx @vzn/vx-migrate` writes `vx.config.ts` per package from, splicing Turbo's global fields in as imports of a generated `vx-preset.ts`, where the plugin inlines the values. `splice` is the seam between the two consumers; `uses` names which globals a task drew on. Before 2026-09-10 the mapper lived in `@vzn/vx` itself; until 2026-09-11 the plugin was its own package, `@vzn/vx-turbo`.
+The plugin and the CLI read a repo the same way: the mapper the plugin runs live is what `bunx @vzn/vx-migrate` writes `vx.config.ts` per package from, splicing Turbo's global fields in as imports of a generated `vx-preset.ts`, where the plugin inlines the values; a global input another task writes to is taken back after the spread (`[...globalInputs, '!packages/plugin/dist/**']`), as the plugin takes it back from the inlined values. `splice` is the seam between the two consumers; `uses` names which globals a task drew on. Before 2026-09-10 the mapper lived in `@vzn/vx` itself; until 2026-09-11 the plugin was its own package, `@vzn/vx-turbo`.
 
 Rules:
 
