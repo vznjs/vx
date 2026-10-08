@@ -439,7 +439,8 @@ them as a command of their own), or before a `#` comment still
 open there (`echo args: # show` gets them; with comment-only lines
 below a commented line, before the earliest). A heredoc's body and
 terminator are not command lines: `cat <<X … X` gets them on the
-`cat <<X` line (X-12). A persistent task gets
+`cat <<X` line (X-12). A `<<X` in a comment or in quotes opens no
+heredoc, and a quote in a body opens no string (X-110). A persistent task gets
 them too, with or without a `readyWhen`.
 
 Forwarded args are folded into the cache key — different args produce

@@ -577,3 +577,29 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-110.** Args after `--` landed on the wrong line or inside a
+  comment: a `<<word` in a comment or quotes (`# then << check`,
+  `node -e "1<<x"`) made every later line a heredoc body, so the args
+  went on that line and ` --fix # …` ran `--fix` as a command; a quote in
+  a real heredoc body, or a template literal's closing newline after a
+  trailing comment (`echo args: # c\n`), let the comment take them; a
+  comment line after a heredoc, or a `<<\X` heredoc, put them on its
+  terminator (`X --fix`), which then closed nothing. One scan now reads
+  quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
+  `withForwardArgs` X-110 rows.
+- **X-111.** A traced sandboxed task whose shell died of a signal
+  (`kill -9 $$`, a SIGSEGV) showed `bash: line 1: 3 Killed { … }`
+  in its frame: the wrapper's bash reported
+  the job on its stderr, the task's, printing vx's whole wrapper with its
+  proxy port and paths. The wrapper's `wait` now prints nothing; the exit
+  code is unchanged. Row: `sandbox-signal-notice.unsafe.test.ts`.
+- **X-112.** An executor that runs `ExecuteRequest.command` itself joined
+  the args after `--` on its own: the `vx init --plugin executor` example
+  joined them bare (`'a b'` split, `it's` a syntax error) and
+  `@vzn/vx-reapi` appended them after a trailing comment, so
+  `printf '<%s>' # each arg` ran without them where the local executor
+  kept them. `withForwardArgs` is on `@vzn/vx` (48 names) and both use
+  it. Rows: `vx-plugin-examples` `executor.test.ts` › "puts the args after
+  -- on the command as the local executor does", `vx-reapi`
+  `executor-helpers-sweep.test.ts` › "puts the args before a trailing
+  comment, as the local executor does".
