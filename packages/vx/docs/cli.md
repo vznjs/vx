@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
-vx init [--dry] [--force] [--mjs] [--plugin <seam>]
+vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -1832,10 +1832,18 @@ a binary that does not start.
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
-the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
+the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
+(owner, 2026-10-08): the installed one, else this vx's version through
+`bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
+terminal native (a `vx.config.ts` per package, the default) or keep;
+`--native` or `--keep` answer it, and without a terminal it is native.
+`--dry`, `--force` and `--mjs` pass through.
+
+`vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
 config live, so no task is copied — a temporary start until
-`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
+`vx init --native` writes native config. `--native` or `--keep` in any
+other repo is refused. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).

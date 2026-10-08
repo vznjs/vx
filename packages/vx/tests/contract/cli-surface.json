@@ -23,7 +23,9 @@
       "--dry",
       "--force",
       "--help",
+      "--keep",
       "--mjs",
+      "--native",
       "--plugin"
     ],
     "last": [

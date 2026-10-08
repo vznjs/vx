@@ -165,8 +165,8 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
           await rm(path.join(root, '.vx'), { recursive: true, force: true })
         }
 
-        // 1. vx init: the temporary start.
-        expect(await run(['bun', VX, 'init'])).toEqual({ code: 0, tail: '' })
+        // 1. vx init --keep: the temporary start.
+        expect(await run(['bun', VX, 'init', '--keep'])).toEqual({ code: 0, tail: '' })
         expect(await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')).toContain('nx()')
 
         // 2. The build through nx(), executors as nx-exec.

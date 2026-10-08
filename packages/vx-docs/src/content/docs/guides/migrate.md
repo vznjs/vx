@@ -1,11 +1,11 @@
 ---
 title: Migrate
-description: Move a Turborepo, Nx or Vite Task repo to native vx config. `vx init` gives a temporary start; `bunx @vzn/vx-migrate` writes the vx.config.ts files that are the goal.
+description: Move a Turborepo, Nx or Vite Task repo to native vx config. `vx init` writes the vx.config.ts files that are the goal; `vx init --keep` gives a temporary start.
 ---
 
 Move a Turborepo, Nx or Vite Task repo to native vx config. The `vx.workspace.ts`
-that `vx init` writes is a temporary start, not a way to run the repo;
-`bunx @vzn/vx-migrate` writes the `vx.config.ts` files you keep, and
+that `vx init --keep` writes is a temporary start, not a way to run the repo;
+`vx init` writes the `vx.config.ts` files you keep, and
 vx's benchmarks measure only that native config. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
@@ -15,8 +15,10 @@ your `package.json` scripts.
 
 ## One command
 
-`npx @vzn/vx-migrate` (`pnpx`, `bunx`, `yarn dlx`) is the whole adoption in a
-Turbo, Nx or [Vite Task](#vite-task) repo. It asks whether to migrate natively (a `vx.config.ts` per
+`npx vx init` is the whole adoption in a Turbo or Nx repo: beside
+`turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the installed one, else
+vx's own version), which `npx @vzn/vx-migrate` (`pnpx`, `bunx`, `yarn dlx`)
+also runs directly, and a [Vite Task](#vite-task) repo needs. It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
 without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package
@@ -30,7 +32,7 @@ are the same adoption one stage at a time.
 ## Turborepo
 
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
-2. Run `npx vx init`. Beside `turbo.json` or `turbo.jsonc` it writes this
+2. Run `npx vx init --keep`. Beside `turbo.json` or `turbo.jsonc` it writes this
    `vx.workspace.ts` and nothing else, then prints a `next:` line.
 3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
    manager, then builds once through `turbo()`: a check that the mapping
@@ -53,8 +55,8 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
 
 ```text
-$ npx vx init
-vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.
+$ npx vx init --keep
+vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
 next: npm install -D @vzn/vx-migrate && npx vx run build --all
@@ -62,7 +64,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
 `pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and names only what is not installed yet.
-`vx init --dry` prints the file instead of writing it; `--mjs` writes
+`vx init --keep --dry` prints the file instead of writing it; `--mjs` writes
 `vx.workspace.mjs` without the type import. An existing
 `vx.workspace.ts` that does not declare `turbo()` is left alone: add it
 to the plugins, or `--force` replaces the file.
@@ -182,7 +184,7 @@ The command itself comes from your `package.json` script, with its
 ## Nx
 
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
-2. Run `npx vx init`. Beside `nx.json` it writes this `vx.workspace.ts`
+2. Run `npx vx init --keep`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
    A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
    an Nx Cloud workspace is named instead, since vx cannot share its cache.
@@ -206,7 +208,7 @@ The command itself comes from your `package.json` script, with its
 
 A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
 runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
-from the graph `nx graph` exports. `vx init` adopts by `nx.json` alone and
+from the graph `nx graph` exports. `vx init --keep` adopts by `nx.json` alone and
 maps such a repo's scripts instead.
 
 ```ts
@@ -217,8 +219,8 @@ export default { plugins: [nx()] } satisfies WorkspaceConfig
 ```
 
 ```text
-$ npx vx init
-vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until bunx @vzn/vx-migrate writes native config; nothing else written.
+$ npx vx init --keep
+vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
 next: npm install -D @vzn/vx-migrate && npx vx run build --all
