@@ -2,9 +2,12 @@
 // only, and its prev/next links stay inside that section. The section is the
 // top-level group that lists the page; a page no group lists goes by its
 // path: the blog's to the Blog, and every other one, internals included, to
-// the Reference, which is where the internals index is linked from.
+// the Reference, which is where the internals index is linked from. The
+// blog has no sidebar, no table of contents and no prev/next: its pages are
+// a listing and posts read one column wide (components/blog/).
 
 import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data'
+import { ogCover } from '../blog/og-cover.js'
 import { GROUP_SECTION, type SectionId } from './sections.js'
 
 type Entry = StarlightRouteData['sidebar'][number]
@@ -19,14 +22,19 @@ function sectionByPath(id: string): SectionId {
   return id.split('/')[0] === 'blog' ? 'blog' : 'reference'
 }
 
-export const onRequest = defineRouteMiddleware((context) => {
+export const onRequest = defineRouteMiddleware(async (context) => {
   const route = context.locals.starlightRoute
   const groups = route.sidebar.filter((e) => e.type === 'group')
   const listed = groups.find((g) => links(g.entries).some((l) => l.isCurrent))
   const section = listed === undefined ? sectionByPath(route.id) : GROUP_SECTION[listed.label]!
   context.locals.vxSection = section
-  // starlight-blog replaces the blog's sidebar after this runs.
-  if (section === 'blog') return
+  if (section === 'blog') {
+    route.hasSidebar = false
+    route.toc = undefined
+    route.pagination = { prev: undefined, next: undefined }
+    await ogCover(route, context.site)
+    return
+  }
 
   const own = groups.find((g) => GROUP_SECTION[g.label] === section)!
   route.sidebar = own.entries

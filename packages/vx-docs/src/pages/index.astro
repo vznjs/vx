@@ -1,15 +1,21 @@
 ---
 // vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
 // only through migration): the hero, the benchmark chart and why it is
-// faster, how to start, then the one diagram with its six callouts and the four pillars.
+// faster, how to start, then the one diagram with its six callouts, the four pillars
+// and a strip of the feature pages.
 // Standalone (its own nav, footer and theme), static, one script for the
 // copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
 // kicker are written by packages/vx-bench/update-site.ts from results.json
 // (check.site guards them). tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
+import FeatureCard from '../components/features/FeatureCard.astro'
+import Footer from '../components/landing/Footer.astro'
+import Nav from '../components/landing/Nav.astro'
+import { FEATURES } from '../features/features.js'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
 import '../styles/charts.css'
+import '../styles/features.css'
 import { parseDuration, renderBars } from '../plugins/data-charts.ts'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
@@ -149,35 +155,16 @@ const reasons = [
   { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
 ]
 
+// The feature strip: eight of the feature pages, the rest one click away.
+const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers', 'watch', 'remote-execution', 'mcp']
+const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
+
 // Start: four commands, native config from the first one.
 const startCommands = `npm install -D @vzn/vx
 npx vx init                 # a vx.config.ts per package; add the cache block each TODO shows
 npx vx run build --all      # builds in dependency order; stores what is cached
 npx vx run build --all      # again: the cached tasks are up-to-date`
 
-const footCols = {
-  docs: [
-    { t: 'Quickstart', h: href('quickstart/') },
-    { t: 'Configure', h: href('guides/configure/') },
-    { t: 'Sandboxing', h: href('guides/sandboxing/') },
-    { t: 'CI and remote', h: href('guides/ci/') },
-    { t: 'Migrate', h: href('guides/migrate/') },
-    { t: 'Plugins', h: href('guides/plugins/') },
-    { t: 'Try it', h: href('playground/') },
-  ],
-  reference: [
-    { t: 'CLI', h: href('cli/') },
-    { t: 'Config', h: href('schema/') },
-    { t: 'Benchmarks', h: href('benchmarks/') },
-    { t: 'vx, Turborepo, Nx, Bazel', h: href('compare/') },
-    { t: 'Turbo / Nx parity map', h: href('parity/') },
-    { t: 'Glossary', h: href('glossary/') },
-  ],
-  community: [
-    { t: 'GitHub', h: GH },
-    { t: 'Blog', h: href('blog/') },
-  ],
-}
 ---
 
 <!doctype html>
@@ -214,29 +201,7 @@ const footCols = {
   </head>
   <body>
     <div class="vx-landing">
-      <header class="nav">
-        <div class="nav-left">
-          <a class="brand" href={base}>
-            <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
-            <span class="word">vx</span>
-          </a>
-          <nav class="nav-links">
-            <a href={href('quickstart/')}>docs</a>
-            <a href={href('cli/')}>reference</a>
-            <a href={href('blog/')}>blog</a>
-          </nav>
-        </div>
-        <div class="nav-right">
-          <a class="btn-github" href={GH}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"
-              ><path
-                d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.49-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.05-.49.05-.49.81.06 1.24.83 1.24.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"
-              ></path></svg
-            >
-            GitHub
-          </a>
-        </div>
-      </header>
+      <Nav />
 
       <section class="hero">
         <div class="container">
@@ -412,33 +377,22 @@ const footCols = {
         </div>
       </section>
 
-      <footer class="footer">
-        <div class="foot-grid container">
-          <div class="foot-brand">
-            <div class="row">
-              <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
-              <span class="word">vx</span>
-            </div>
-            <p>One binary · MIT licensed · no account.</p>
+      <section class="section" id="features">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// {FEATURES.length} features, a page each</p>
+            <h2>And everything else.</h2>
           </div>
-          {
-            Object.entries(footCols).map(([title, links]) => (
-              <div class="foot-col">
-                <p class="title">{title}</p>
-                <div class="links">
-                  {links.map((l) => (
-                    <a href={l.h}>{l.t}</a>
-                  ))}
-                </div>
-              </div>
-            ))
-          }
+          <div class="fgrid">
+            {strip.map((f) => <FeatureCard feature={f} />)}
+          </div>
+          <div class="section-links">
+            <a class="section-link" href={href('features/')}>All features <span class="arr">→</span></a>
+          </div>
         </div>
-        <div class="foot-bottom container">
-          <span>© 2026 vx contributors</span>
-          <span>MIT licensed · @vzn/vx</span>
-        </div>
-      </footer>
+      </section>
+
+      <Footer />
     </div>
 
     <script>

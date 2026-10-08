@@ -1276,3 +1276,8 @@ reaches no build task.` The plan now carries the run's own line
   Against main without X-192 it did not clear A/A (0.953, A/A 0.956).
   Rows: `execute-task.test.ts` › "a preProbed HIT restores only for a
   task that reads the cache", with the X-124 and vanished-artifact rows.
+
+- **X-196.** CI: core's twelve test shards leave the `ci` job for two
+  runners of six beside it (`shards`); a `gate` job keeps the required
+  name "lint · format · test" and passes only when all three do. The
+  `ci` job was CPU bound: 1,150 s of tasks on 4 cores, 5 of its 6 min.
