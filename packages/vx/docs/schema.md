@@ -248,7 +248,8 @@ test: { exec: { command: 'bun test', retries: 1 } }
 - A retry fires after ANY failure, `timeout` kills included. A Ctrl-C
   teardown (`aborted`) is never retried — the run is tearing down.
   Nor is a task in flight when `--continue=never` stops the run: its
-  attempt finishes, and its failure is the last.
+  attempt finishes, and its failure is the last, even when its retry
+  was already announced and preparing.
 - Declared outputs are re-cleaned before each retry, exactly like the
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
