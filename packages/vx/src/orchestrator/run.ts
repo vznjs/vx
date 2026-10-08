@@ -54,7 +54,7 @@ import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import type { ExecuteArgs } from './execute-task.js'
+import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
@@ -1130,6 +1130,21 @@ async function runOnBus(
           ? Promise.resolve(kept)
           : executeWithDedup(node, keyUpstream(node, upstream))
       },
+      // An unkeyed group runs nothing: settled in place, unless a taint
+      // may ride it, which `buildExecuteArgs` records on dispatch.
+      ...(options.continueMode !== 'always' && taintSeeds.size === 0
+        ? {
+            settleNow: (node: TaskNode, upstream: TaskOutcome[]) =>
+              isGroupTask(node) && node.config.cache === undefined
+                ? unkeyedGroupOutcome(
+                    node,
+                    keyUpstream(node, upstream),
+                    shortCircuit.groupKeys.get(node.id),
+                    runStartHrTimeNs,
+                  )
+                : undefined,
+          }
+        : {}),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),

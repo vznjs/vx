@@ -82,6 +82,8 @@ export interface ScheduleOptions {
   onError?: (node: TaskNode, line: string) => void
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
+  /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */
+  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
@@ -125,6 +127,13 @@ finishes, with the failed-dep skip applied like any other. It may have
 been running ahead of those deps, so running its command in the
 restore slot would build from outputs they have not written.
 `onStart` fires once; its dependents wait for the second dispatch.
+
+`settleNow` is asked of an exec-tier task once it is due, after the
+skip check. An outcome lands in the same tick: no slot, no admission
+ask, no `execute` promise; `onStart` and `onFinish` hear it as any
+other, and a throw dispatches it instead. The run passes it for unkeyed
+groups (they run nothing), unless a taint or `--continue=always` needs
+the full path (X-192).
 
 A persistent task neither requested nor surfaced whose every dependant
 is in the restore tier is idle (X-59): due, it goes dormant instead of
