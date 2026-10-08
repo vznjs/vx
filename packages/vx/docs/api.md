@@ -1588,7 +1588,11 @@ caller-specific (run logs + returns NOT-ok; planRun returns an
 empty plan).
 
 ```ts
-export async function prepareRun(options: RunOptions, log: Logger, affectedReasons?: Map<string, AffectedReason>): Promise<PreparedRun>
+export async function prepareRun(
+  options: RunOptions,
+  log: Logger,
+  affectedReasons?: Map<string, AffectedReason>,
+): Promise<PreparedRun>
 ```
 
 ## `ProjectConfig`
