@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: record the dry prune's API in the contract
+
+Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.
+
 ## cache: bump CACHE_VERSION to vx-cache-v40
 
 every cached task misses once after the upgrade.

@@ -48,7 +48,9 @@ export default defineProject({
 
 A task-name pattern is allowed: `dependsOn: ['build.*']` here, `'^build.*'`
 in dependencies. Bare wildcards and negation (`*`, `!task`) are not.
-`^build` reaches through a package that has no `build`. A cycle or a
+A package that declares no `build` gets a default one: a group behind
+`^build`, keyed on all its files, so editing a package consumed as source
+re-runs its dependents (`vx show` marks it `default build`). A cycle or a
 missing `'pkg#task'` is an error.
 
 | When a task fails            | vx                                                        |

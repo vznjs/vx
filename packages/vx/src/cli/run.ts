@@ -113,7 +113,7 @@ export function parseConcurrency(v: string, cpus = machineParallelism()): number
 }
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
- * its refusals pointed at `vx run --help` (M-58). */
+ * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
 export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
@@ -185,7 +185,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
       return {
         ...out,
-        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp(verb)}`,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)`,
       }
     } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
@@ -215,7 +215,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--retry requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null) {
-        return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
+        return { ...out, error: `--retry must be a non-negative integer (got ${v})` }
       }
       out.retries = n
     } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
@@ -234,19 +234,31 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         }
       }
       if (n === null || n <= 0) {
-        return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
+        return { ...out, error: `--timeout must be a positive integer in ms (got ${v})` }
       }
       out.timeout = n
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
+      if (v === undefined || v === '') {
+        return {
+          ...out,
+          error: `--output-logs requires a value (full, errors-only, hash-only, or none)`,
+        }
+      }
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
-        return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
+        return {
+          ...out,
+          error: `--output-logs must be full, errors-only, hash-only, or none (got ${v})`,
+        }
       }
       out.outputLogs = v
     } else if (a === '--download' || a?.startsWith('--download=')) {
       const v = a === '--download' ? before[++i] : a.slice('--download='.length)
+      if (v === undefined || v === '') {
+        return { ...out, error: `--download requires a value (all, toplevel, or none)` }
+      }
       if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
-        return { ...out, error: `--download must be all, toplevel, or none` }
+        return { ...out, error: `--download must be all, toplevel, or none (got ${v})` }
       }
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
@@ -301,8 +313,11 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.continueMode = 'always'
     } else if (a?.startsWith('--continue=')) {
       const v = a.slice('--continue='.length)
+      if (v === '') {
+        return { ...out, error: `--continue= requires a mode (never, deps-ok, or always)` }
+      }
       if (v !== 'never' && v !== 'deps-ok' && v !== 'always') {
-        return { ...out, error: `--continue must be never, deps-ok, or always` }
+        return { ...out, error: `--continue must be never, deps-ok, or always (got ${v})` }
       }
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
@@ -366,7 +381,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}${seeHelp(verb)}` }
+      return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }
@@ -612,7 +627,7 @@ const TASKS_SHOWN = 12
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    process.stderr.write(`vx run: ${parsed.error}\n`)
+    process.stderr.write(`vx run: ${parsed.error}${seeHelp('run')}\n`)
     return 1
   }
 

@@ -87,8 +87,12 @@ import {
   detectCi,
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
-import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
-import { probesAfterWrites } from './stable-keys.js'
+import {
+  restoreTierExclusions,
+  startLocalShortCircuit,
+  type ShortCircuit,
+} from './local-shortcircuit.js'
+import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
 import { assembleRunRecords } from './run-records.js'
 import { hasEnded, selectKeepAlive, shutdownPersistent } from './persistent.js'
@@ -1396,7 +1400,9 @@ async function runOnBus(
         })
       })
       const node = keepAlive.nodes[first.i]!
-      const others = keepAlive.nodes.length - 1
+      // Only the ones still up are stopped: a kept server already dead was
+      // counted as one (WD-11).
+      const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
       // Not when the run was stopped: the server ended because the user
       // stopped it, and "exited with code 130" read as a crash after every
       // Ctrl-C once a stop let run() finish its own path (item 852).
@@ -1526,12 +1532,13 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
+    const policy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     const planned = await plan({
       nodes: prepared.nodes,
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       cache: prepared.cache,
-      cachePolicy: effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer),
+      cachePolicy: policy,
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
@@ -1548,6 +1555,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
       ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
     return planned
@@ -1561,6 +1569,39 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     // real repo that has no install and no cache to run against.
     mark('close')
     printTimings()
+  }
+}
+
+/**
+ * What the run's short-circuit would restore ahead of its deps, so the plan
+ * can tell a server nobody needs from one that starts: `--dry` called a
+ * server every dependant of which was a local hit `would exec`, and the run
+ * never spawned it. The run's own gates (`shouldShortCircuit`, stable keys,
+ * workspace-output reach), asked only when a server could idle.
+ */
+async function planRestorable(
+  prepared: PreparedRun,
+  policy: CachePolicy,
+  forwardArgs: readonly string[] | undefined,
+): Promise<{ restorable?: Set<string> }> {
+  const { nodes } = prepared
+  const serves = [...nodes.values()].some(
+    (n) => n.config.exec?.persistent !== undefined && !n.requested && n.surfaced !== true,
+  )
+  if (!serves || !shouldShortCircuit(nodes, policy, prepared.cache)) return {}
+  const keptOut = restoreTierExclusions(nodes, prepared.workspaceRoot)
+  const stable = await deriveStableKeys({
+    nodes,
+    cache: prepared.cache,
+    workspaceRoot: prepared.workspaceRoot,
+    workspaceFingerprint: prepared.workspaceFingerprint,
+    forwardArgs,
+    nestedDirsByProject: prepared.nestedDirsByProject,
+    gitFilesCache: prepared.gitFilesCache,
+    hashCache: prepared.hashCache,
+  })
+  return {
+    restorable: new Set(stable.map((k) => k.node.id).filter((id) => !keptOut.has(id))),
   }
 }
 
