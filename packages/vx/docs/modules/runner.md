@@ -99,6 +99,16 @@ export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 export function droppedOutputLine(dropped: number): string
 export function maskCaptured(text: string, secrets: SecretMask): string // the pieces a cut left masked too
+export interface CapturedChunk {
+  text: string
+  err: boolean // stderr
+}
+// The head-and-tail bound over chunks of either stream, in arrival order.
+export class BoundedCapture {
+  push(text: string, err?: boolean): void
+  chunks(): CapturedChunk[] // the dropped middle named on stdout
+  text(): string
+}
 export function ownRssHighWater(): number
 export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
 export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the runtime reported
@@ -220,11 +230,10 @@ every chunk still reaches `onStdout` / `onStderr`.
 The orchestrator opts down hard, because retaining a stream costs its
 full byte size in heap for the task's whole life:
 
-- `stderr` is **never** retained. Nothing reads `RunResult.stderr` — a
-  failing task's stderr reaches the user through the live callback, and
-  the cache has never stored stderr (v17 artifact format).
-- `stdout` is retained only when the task **will write a cache entry**,
-  since `cache.save`'s `entry.stdout` is its one consumer.
+- Neither stream is retained by the runner. The entry's output is kept
+  by `execute-task.ts` from the live callbacks, both streams in arrival
+  order in one `BoundedCapture`, and only when the task **will write a
+  cache entry**.
 - What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
   the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
   counted and named where it was (`droppedOutputLine`). The live

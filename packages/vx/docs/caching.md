@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v41'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v42'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1800,6 +1800,9 @@ breaking footer).
 
 ### History
 
+- **v41 → v42**: the stored output became both streams in the order
+  the run printed them (`orchestrator/output-log.ts`), so a hit replays
+  stderr too. A v41 entry holds stdout alone.
 - **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
   output directory linked inside its project was never cleaned, so an
   entry could hold files a run of another key left there. The fix

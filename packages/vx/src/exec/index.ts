@@ -19,6 +19,8 @@ export {
   type CaptureConfig,
   execWord,
   maskCaptured,
+  BoundedCapture,
+  type CapturedChunk,
 } from './runner.js'
 export {
   initSandbox,
