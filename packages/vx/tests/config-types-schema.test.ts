@@ -22,6 +22,7 @@ import type {
   TaskConfig,
   WorkspaceConfig,
 } from '../src/config.js'
+import { defineProject } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/index.js'
 
 type Keys<T> = Extract<keyof T, string>
@@ -206,5 +207,58 @@ describe('the config types and the validator agree on every level (D-71)', () =>
     ],
   ] as const)('%s', (_, keys, validate) => {
     expect(allowed(validate)).toEqual([...keys].sort())
+  })
+})
+
+// Shared lists are how configs compose (no named inputs, by design), and a
+// shared list is usually `as const`: every array field takes a readonly one.
+// The type-checker holds this row; `bun test` alone cannot fail it.
+describe('a config built from readonly lists type-checks and loads', () => {
+  const SRC = ['src/**', 'package.json'] as const
+  const NAMES = ['CI'] as const
+  const PATHS = ['/opt/tool'] as const
+  const config = defineProject({
+    tags: ['web'] as const,
+    tasks: {
+      build: {
+        dependsOn: ['^build'] as const,
+        exec: {
+          command: 'tsc',
+          env: { passThrough: NAMES, secret: NAMES },
+          sandbox: {
+            allow: {
+              read: PATHS,
+              write: PATHS,
+              network: ['example.com'] as const,
+              unixSockets: PATHS,
+              localBinding: [3000] as const,
+              systemInfo: ['hw.ncpu'] as const,
+              machLookup: ['com.apple.x'] as const,
+            },
+            deny: { network: ['example.org'] as const },
+            ignore: {
+              read: PATHS,
+              write: PATHS,
+              systemInfo: ['x'] as const,
+              network: ['y'] as const,
+            },
+          },
+        },
+        cache: {
+          inputs: {
+            files: SRC,
+            workspaceFiles: ['tsconfig.base.json'] as const,
+            env: NAMES,
+            tasks: ['^build'] as const,
+            runtime: ['node -v'] as const,
+            workspaceRuntime: ['git -v'] as const,
+          },
+          outputs: { files: ['dist/**'] as const, workspaceFiles: ['out/x'] as const },
+        },
+      },
+    },
+  })
+  it('loads', () => {
+    expect(() => validateProjectConfig(config, '/ws/a/vx.config.ts')).not.toThrow()
   })
 })

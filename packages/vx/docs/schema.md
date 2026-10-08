@@ -467,9 +467,9 @@ REPL, a watch mode that reads keys. Turbo's `interactive`.
 
 ```ts
 interface ExecEnv {
-  passThrough?: string[] // names taken from host process.env; exact names, a wildcard is refused
+  passThrough?: readonly string[] // names taken from host process.env; exact names, a wildcard is refused
   define?: Record<string, string> // explicit name=value pairs
-  secret?: string[] // names whose values are masked (`***`) whatever the name; see Masking
+  secret?: readonly string[] // names whose values are masked (`***`) whatever the name; see Masking
 }
 ```
 
@@ -700,11 +700,11 @@ to revisit the config. The cost of a single forgotten cache miss
 
 ```ts
 interface CacheInputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
-  env?: string[] // optional
-  runtime?: string[] // optional; project-dir shell commands
-  workspaceRuntime?: string[] // optional; workspace-root shell commands
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
+  env?: readonly string[] // optional
+  runtime?: readonly string[] // optional; project-dir shell commands
+  workspaceRuntime?: readonly string[] // optional; workspace-root shell commands
   tasks?: readonly string[] // optional; same micro-syntax as dependsOn
 }
 ```
@@ -1018,8 +1018,8 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 
 ```ts
 interface CacheOutputs {
-  files: string[] // required
-  workspaceFiles?: string[] // optional; workspace-root-relative
+  files: readonly string[] // required
+  workspaceFiles?: readonly string[] // optional; workspace-root-relative
 }
 ```
 
@@ -1157,22 +1157,22 @@ interface SandboxConfig {
 }
 
 interface SandboxGrants {
-  read?: string[] // paths or globs, project-relative or absolute
-  write?: string[] // paths or globs; a write grant is readable too
-  network?: true | string[] // an allowlist of domains; `true` adds none (below)
-  systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
-  unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
-  localBinding?: boolean | number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
-  machLookup?: string[] // mach global-names (macOS)
+  read?: readonly string[] // paths or globs, project-relative or absolute
+  write?: readonly string[] // paths or globs; a write grant is readable too
+  network?: true | readonly string[] // an allowlist of domains; `true` adds none (below)
+  systemInfo?: readonly string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
+  unixSockets?: true | readonly string[] // AF_UNIX bind/connect, all or by path (Linux: any path)
+  localBinding?: boolean | readonly number[] // bind and reach localhost ports (macOS; Linux needs no grant); a list also exposes them to the host (a port the host already holds fails the task)
+  machLookup?: readonly string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write the repository's .git/config (this task only)
 }
 
 interface SandboxIgnore {
-  read?: string[] // denied reads to leave out of the report
-  write?: string[]
-  systemInfo?: string[]
-  network?: string[] // '<host>:<port>'
+  read?: readonly string[] // denied reads to leave out of the report
+  write?: readonly string[]
+  systemInfo?: readonly string[]
+  network?: readonly string[] // '<host>:<port>'
 }
 ```
 
