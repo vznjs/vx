@@ -15,6 +15,7 @@ export type CacheStatus =
   | 'miss' // caching enabled but no entry
   | 'no-cache' // task opts out (no `cache` block) or --no-cache
   | 'group' // no `exec`; aggregator only
+  | 'not-started' // a server every dependant of which restores early: never spawned
 
 export interface PlannedTask {
   node: TaskNode
@@ -54,6 +55,7 @@ export interface PlanArgs {
   hashCache?: HashCache // the run's memo — the same keys the run would derive
   history?: HistoryProvider // p50s and the prediction; absent, no footer
   executorOf?: (id: string) => string | undefined // placement labels (`placement.md`)
+  restorable?: ReadonlySet<string> // what the run would restore ahead of its deps on a local hit
 }
 
 export async function plan(args: PlanArgs): Promise<RunPlan>
@@ -80,6 +82,11 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    nothing (`--no-cache`, `--cache=local:`) → `'no-cache'`:
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.
+   A server the run would leave idle (`idleServers`: not requested, and
+   every dependant a `restorable` local hit) → `'not-started'`; `planRun`
+   fills `restorable` by the run's own gates (`shouldShortCircuit`,
+   stable keys, `restoreTierExclusions`) only when a server could idle
+   (WD-17).
 5. With a `history`, attach each would-run task's p50 and predict the
    run (a task labelled `noop` does not run: the run skips a remote-only
    task no remote executor takes) (`predicted`: the critical path's wall time, the work sum, the

@@ -1802,7 +1802,8 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       }
       expect(plan.tasks.map((t) => [t.id, t.cacheStatus])).toEqual([
         ['app#build', 'hit-local'],
-        ['lib#build', 'no-cache'],
+        // Its one dependant restores, so the run never spawns it (WD-17).
+        ['lib#build', 'not-started'],
       ])
     },
     TIMEOUT,

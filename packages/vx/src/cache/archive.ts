@@ -563,6 +563,8 @@ interface Staged {
   target: string
   /** The topmost directory `mkdir -p` created for it, pruned on abort. */
   created: string | undefined
+  /** Written by Bun's file writer, which creates with 0664 where `writeFile` uses 0666 (before the umask). */
+  streamed: boolean
 }
 
 /**
@@ -761,7 +763,8 @@ class Extractor {
       path.dirname(target),
       `.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`,
     )
-    this.staged.push({ name, tmp, target, created })
+    const streamed = !(body instanceof Uint8Array)
+    this.staged.push({ name, tmp, target, created, streamed })
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
       // `writeFile`, not `Bun.write`: for a buffer this size `Bun.write`
@@ -803,17 +806,23 @@ class Extractor {
    * (measured 2026-09-11 on payload's ui, 4,069 files: 892 ms → see the
    * archive bench). A yield every `COMMIT_BATCH` files keeps the other
    * restores' round trips flowing. The chmod is skipped when the mode is
-   * the one the temp file was created with — the common case.
+   * the one the temp file was created with — the common case. The two
+   * writers create with different modes (under umask 000: 0666 and 0664),
+   * so each is stat'ed once.
    */
   async commit(
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
   ): Promise<void> {
     await this.drain()
-    const first = this.staged[0]
-    const createdMode = first === undefined ? -1 : statSync(first.tmp).mode & 0o777
+    const createdModes = new Map<boolean, number>()
     let n = 0
     for (const s of this.staged) {
       const [mode, mtimeMs] = metaFor(s.name)
+      let createdMode = createdModes.get(s.streamed)
+      if (createdMode === undefined) {
+        createdMode = statSync(s.tmp).mode & 0o777
+        createdModes.set(s.streamed, createdMode)
+      }
       if ((mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
       if (mtimeMs !== undefined) {
         // A Date, not seconds: Bun reads a negative number of seconds as

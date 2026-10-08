@@ -349,6 +349,18 @@ const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 const TIMEOUT_SIGKILL_GRACE_MS = 2000
 
 /**
+ * Run `fn` one loop turn later, once the child exits already pending are
+ * read. A deadline due in the same turn as a child's exit fires BEFORE Bun
+ * reaps it: a task that exited 0 inside its timeout, seen late by a busy vx,
+ * was SIGTERMed as a zombie and failed as timed out, and a server that died
+ * before ready read as a readiness timeout (2026-10-08). A turn later the
+ * exit has settled the caller, which clears the returned timer.
+ */
+function afterPendingExits(fn: () => void): ReturnType<typeof setTimeout> {
+  return setTimeout(fn, 0)
+}
+
+/**
  * Arm a SIGTERM timeout on a spawned child. Returns a handle whose
  * `timedOut()` reports whether the timer fired — so the caller can
  * classify the resulting SIGTERM as a real failure rather than a
@@ -368,7 +380,10 @@ export function armTimeout(
   let firedAt: number | undefined
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  const timer = setTimeout(() => {
+  let timer = setTimeout(() => {
+    timer = afterPendingExits(fire)
+  }, timeoutMs)
+  function fire(): void {
     firedAt = Date.now()
     killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
@@ -379,7 +394,7 @@ export function armTimeout(
     // the CLI alive.
     killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), graceMs)
     killTimer.unref?.()
-  }, timeoutMs)
+  }
   return {
     timedOut: () => firedAt !== undefined,
     settle: async () => {
@@ -483,7 +498,7 @@ export interface PersistentSpawn {
    * Rejects with the spawn error if the child fails to start.
    */
   ready: Promise<void>
-  /** ms elapsed from spawn to ready (or to current time if not yet ready). */
+  /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
 }
 
@@ -522,6 +537,9 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = Date.now()
   let readyAt: number | undefined
+  // When the readiness wait gave up: the wait's length, not the kill grace
+  // a TERM-trapping server runs out after it.
+  let gaveUpAt: number | undefined
 
   // Pattern compiled once; thrown errors surface synchronously so the
   // caller can wrap with a user-facing message.
@@ -677,8 +695,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // a healthy server is never killed by a stale timer.
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
-    readyTimer = setTimeout(() => {
+    const giveUp = (): void => {
       if (readyAt === undefined) {
+        gaveUpAt = Date.now()
         rejectReady(
           new PersistentReadyError(
             `persistent task not ready within ${opts.timeoutMs}ms — ` +
@@ -701,6 +720,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         }, killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
         killTimer.unref?.()
       }
+    }
+    readyTimer = setTimeout(() => {
+      readyTimer = afterPendingExits(giveUp)
     }, opts.timeoutMs)
   }
 
@@ -730,7 +752,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    readyMs: () => (readyAt ?? Date.now()) - start,
+    readyMs: () => (readyAt ?? gaveUpAt ?? Date.now()) - start,
   }
 }
 
@@ -807,7 +829,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...resourceUsageToCpuRss(proc.resourceUsage(), ownRssHighWater()),
+    ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
   }
 }
 
@@ -832,12 +854,28 @@ export function ownRssHighWater(): number {
   if (process.platform === 'linux') {
     try {
       const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
-      if (m !== null) return Number(m[1]) * 1024
+      if (m !== null) return (highWaterSeen = Number(m[1]) * 1024)
     } catch {
       // /proc unreadable: fall through to the current RSS.
     }
   }
   return process.memoryUsage.rss()
+}
+
+/** The last `VmHWM` read, in bytes; 0 until one is. */
+let highWaterSeen = 0
+
+/**
+ * The floor for a child's `peak`, read only when the last `VmHWM` cannot
+ * decide it: the mark never falls, so a peak within the slack of an older
+ * reading is within the slack of the current one, and goes unreported
+ * either way. A light task reads vx's own mark as its peak, so after the
+ * first such task the rest skip the read, which cost ~35 µs of the
+ * scheduler's thread per task (500 cold tasks, 2026-10-07). A current-RSS
+ * fallback is not monotonic and is never reused.
+ */
+function rssFloorFor(peak: number): number {
+  return peak <= highWaterSeen + RSS_FLOOR_SLACK_BYTES ? highWaterSeen : ownRssHighWater()
 }
 
 /**
@@ -1014,8 +1052,8 @@ export function peakRssBytes(maxRSS: number): number {
  */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
-  /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */
-  floorBytes = 0,
+  /** The parent's own high-water mark (`ownRssHighWater`), or a function of the peak that answers it; a peak at or under it is inherited, not the child's, and is not reported. */
+  floorBytes: number | ((peak: number) => number) = 0,
 ): { cpuMs?: number; peakRssBytes?: number } {
   if (!usage) return {}
   // cpuTime.total is microseconds as a bigint → ms.
@@ -1028,5 +1066,6 @@ export function resourceUsageToCpuRss(
   // parent's (see `ownRssHighWater`, `RSS_FLOOR_SLACK_BYTES`): the child's
   // peak is unknown, bounded by it.
   const peak = peakRssBytes(usage.maxRSS)
-  return peak > floorBytes + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
+  const floor = typeof floorBytes === 'number' ? floorBytes : floorBytes(peak)
+  return peak > floor + RSS_FLOOR_SLACK_BYTES ? { cpuMs, peakRssBytes: peak } : { cpuMs }
 }

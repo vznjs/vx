@@ -38,7 +38,9 @@ where it was.
 
 ## Additive tasks (item 588)
 
-An ADDITIVE task (`node.addsToOutputsOf`) is judged current by its
+Only with `rules.exclusiveOutputs: false` (X-53); by default the graph
+refuses an edge-ordered overlap. An ADDITIVE task
+(`node.addsToOutputsOf`) is judged current by its
 recorded rows alone and cleans by those rows (`cleanOutputPaths`), never
 by its glob, which also selects the upstream's files it adds beside. An
 upstream that dependants add to (`node.outputsAddedToBy`) drops the

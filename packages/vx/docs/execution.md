@@ -382,7 +382,8 @@ The child process gets, in priority order (lowest first):
 
 1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
    `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
-   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS` — the list is
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   `COREPACK_HOME`, `PNPM_HOME` — the list is
    `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
@@ -431,7 +432,7 @@ broader access has cache-stability implications).
 | Child killed by Ctrl-C teardown (SIGINT/SIGTERM/SIGHUP), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not recorded. An attempt that ends while the run is stopping is `aborted` whatever its exit: a trap that exits 0 is not cached, and a failure is not retried (item 962). What it printed still shows in its frame. A child killed by a signal while the run is NOT stopping (a supervisor's SIGTERM, a `kill` from another shell) is `failed (exit 143, 128 + SIGTERM)`: retried, shown, and fail-fast trips (item 1100) |
 | `execute()` throws (internal error)                                                                                                                              | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly); a plugin executor's throw reports plainly as `plugin '<p>' (executor '<e>') failed in execute: <reason>` (C-63, C-85)                                                                                                                                                                                                                                 |
 | Persistent task exits before ready                                                                                                                               | Task marked `failed` with `exited before becoming ready (exit N)`; its output already streamed live; `aborted` when the run's stop killed it (C-62)                                                                                                                                                                                                                                                                                                       |
-| Upstream task fails                                                                                                                                              | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent)                                                                                                                                                                                                                                                                                   |
+| Upstream task fails                                                                                                                                              | Under the default `--continue=deps-ok`, dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent). `--continue=never` stops dispatch; `--continue=always` runs dependents, never saved                                                                                                                                                      |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                          |
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                                                                                                                                                                                                                             |
 | No pnpm-workspace.yaml or package.json in cwd or any parent                                                                                                      | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -441,8 +442,11 @@ broader access has cache-stability implications).
 | Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `cache.inputs.runtime` command exits non-zero                                                                                                                    | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                          |
 
-Failures don't kill the scheduler — independent tasks already in
-flight finish, and unrelated tasks not yet started still run. The
+By default (`--continue=deps-ok`) failures don't kill the scheduler —
+independent tasks already in flight finish, and unrelated tasks not yet
+started still run. `--continue=never` stops dispatch at the first
+failure; `--continue=always` runs dependents too
+([`cli.md` § Failure propagation](./cli.md#failure-propagation----continue)). The
 overall exit code is 1 if any task ended in `failed`, `skipped` or
 `aborted` status, or a persistent child exited before the run stopped
 it.
@@ -572,7 +576,7 @@ The colors / framing modules:
   restore-tier tasks run on their own lane, `2 × concurrency` wide,
   and never take an exec slot.
 - Failure of a task doesn't pause the scheduler — independent
-  siblings continue running and starting.
+  siblings continue running and starting (unless `--continue=never`).
 
 ### Executor pools
 
@@ -655,6 +659,8 @@ were accepted and wrote nothing until item 992).
   Open with `chrome://tracing` or https://ui.perfetto.dev.
 - **`--report[=markdown]`** — a markdown table to stdout
   above the footer (CI step summaries), through `RunOptions.beforeFooter`.
+- **`--report-file <path>`** — the same report APPENDED to `<path>`
+  (`$GITHUB_STEP_SUMMARY`).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
 `writeRunProfile` and `orchestrator/run-report.ts`. A `--summarize` or
@@ -673,9 +679,10 @@ run already happened.
 - **Project scope defaults to cwd.** Most invocations are "build/
   test the thing I'm working on". `--all` / `--filter` exist for
   the workspace-wide case.
-- **The scheduler doesn't bail on first failure.** A flaky test
-  failing shouldn't stop an unrelated build. Independent siblings
-  continue; only dependents are skipped.
+- **The scheduler doesn't bail on first failure by default.** A flaky
+  test failing shouldn't stop an unrelated build. Independent siblings
+  continue; only dependents are skipped. `--continue=never` opts into
+  fail-fast.
 - **Misses own the worker pool.** A miss is the critical path, so
   the exec lane is `concurrency` wide and only executions take it.
   Restores run on their own lane, so warm work never queues behind

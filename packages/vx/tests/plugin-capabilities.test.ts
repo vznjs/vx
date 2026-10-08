@@ -916,6 +916,62 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it('capacity: two pooled executors that share a name each keep their own capacity', async () => {
+    // The scheduler counted a pool by its executor's NAME, and a package
+    // declared twice (`@vzn/vx-reapi` against two clusters) names both
+    // executors alike: the two pools of 2 ran 2 tasks at once between them.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      const tasks = Array.from(
+        { length: 8 },
+        (_, i) => `t${i}: { exec: { command: 'echo ${i}' } }`,
+      ).join(',')
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { ${tasks} } }`,
+      )
+      const pool = (low: boolean): string => `{ executor() {
+               return {
+                 name: 'pool',
+                 remote: true,
+                 capacity: 2,
+                 accepts: (p) => (Number(p.taskId.slice(-1)) < 4) === ${low},
+                 async execute(req) {
+                   globalThis.__vxInflight = (globalThis.__vxInflight ?? 0) + 1
+                   globalThis.__vxPeak = Math.max(globalThis.__vxPeak ?? 0, globalThis.__vxInflight)
+                   await new Promise((r) => setTimeout(r, 150))
+                   globalThis.__vxInflight--
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource('org/pool-low', pool(true)),
+          pluginSource('org/pool-high', pool(false)),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as { __vxPeak: number; __vxInflight: number }
+      g.__vxPeak = 0
+      g.__vxInflight = 0
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: Array.from({ length: 8 }, (_, i) => `t${i}`),
+        concurrency: 1,
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(g.__vxPeak).toBe(4)
+    } finally {
+      cleanup()
+    }
+  })
+
   it('demand: core narrows what is still placed here, ending at empty', async () => {
     // An executor that provisions per task — a container, an allocation — has
     // no other way to know when to stop paying for capacity. `capacity` says

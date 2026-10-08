@@ -1,4 +1,4 @@
-// `vx upgrade [tag]` — self-update the compiled binary in place.
+// `vx upgrade [TAG]` — self-update the compiled binary in place.
 // Asks the GitHub release API for the asset of this os/arch and the
 // SHA-256 digest it publishes, downloads the asset, verifies the digest,
 // writes next to the current executable, atomic rename over it. The

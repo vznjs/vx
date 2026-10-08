@@ -12,7 +12,7 @@ import {
   unreachedPackages,
 } from '../src/workspace/workspace.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
-import { UserError } from '../src/util/index.js'
+import { relPosix, UserError } from '../src/util/index.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -122,6 +122,29 @@ describe('findWorkspaceRoot', () => {
       await mkdir(deep, { recursive: true })
       await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
       expect(await findWorkspaceRoot(deep)).toBe(dir)
+    })
+
+    it('a package discovery skips (dot-dir, node_modules) is not claimed', async () => {
+      // `packages/*` matched `packages/.tpl` in the claim while discovery
+      // skips dot-dirs and node_modules, so `vx run` there said "not inside
+      // a project" instead of running it as its own root.
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['packages/*', 'apps/**', '.config/*'] }),
+      )
+      const skipped = ['packages/.tpl', 'apps/a/.cache/x', 'apps/a/node_modules/x']
+      const members = ['packages/b', 'apps/a', '.config/c']
+      for (const rel of [...skipped, ...members]) {
+        await mkdir(path.join(dir, rel), { recursive: true })
+        await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name: rel }))
+      }
+      const listed = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      expect(listed.sort()).toEqual([...members].sort())
+      const roots: string[] = []
+      for (const rel of [...skipped, ...members]) {
+        roots.push(relPosix(dir, await findWorkspaceRoot(path.join(dir, rel))))
+      }
+      expect(roots).toEqual([...skipped, '', '', ''])
     })
 
     it('the nearest pnpm-workspace.yaml is the root, from any depth (item 990)', async () => {

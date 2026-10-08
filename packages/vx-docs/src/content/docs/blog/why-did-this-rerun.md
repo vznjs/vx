@@ -54,6 +54,11 @@ Because it only reads the database, it works after the fact and on
 another machine: a CI job that copied `.vx/cache` out can be asked why
 it rebuilt, tomorrow, from a laptop.
 
+Update (2026-10-07): by default the entries `vx why` compares live in
+the shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
+names a `cacheDir` keeps both there, and that directory is the one to
+copy.
+
 ## Nine endings for an unchanged key
 
 The interesting cases are the ones where the key did *not* change, and
