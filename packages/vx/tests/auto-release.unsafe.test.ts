@@ -1,5 +1,5 @@
-// auto-release.yml releases every green commit on main: its `release.auto`
-// task (scripts/auto-release.ts) tags it, creates the GitHub release as a
+// auto-release.yml releases on demand a commit whose CI went green on main:
+// its `release.auto` task (scripts/auto-release.ts) picks it, tags it, creates the GitHub release as a
 // draft (release.yml's last upload publishes it), and
 // dispatches release.yml and npm.yml — a release made with the workflow token
 // fires no `release` event, so without those dispatches the tag would exist
@@ -46,36 +46,35 @@ const job = auto.jobs?.['release']
 const runs = (job?.steps ?? []).filter((s) => s.run !== undefined)
 
 describe('auto-release.yml', () => {
-  it('fires when the workflow named by ci.yml completes on main', () => {
-    const ciName = parse('ci.yml').name
-    expect(ciName).toBeString()
+  it('runs on a dispatch alone, with an optional commit', () => {
     expect(triggers(auto)).toEqual({
-      workflow_run: { workflows: [ciName], types: ['completed'], branches: ['main'] },
+      workflow_dispatch: {
+        inputs: {
+          sha: {
+            description:
+              'Commit on main to release; empty releases the newest one whose CI went green.',
+            required: false,
+            default: '',
+          },
+        },
+      },
     })
+    expect(job?.if).toBeUndefined()
   })
 
-  it('releases only a green push, never a pull request or a failed run', () => {
-    expect(job?.if).toBe(
-      "github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'",
-    )
-  })
-
-  it('runs release.auto on the commit whose CI went green, with every tag checked out', () => {
+  it('runs release.auto on main with every tag checked out, for the dispatched commit', () => {
     expect(runs.map((s) => [s.run, s.env])).toEqual([
       ['bun install --frozen-lockfile', undefined],
       [
         'bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx',
         {
-          VX_RELEASE_SHA: '${{ github.event.workflow_run.head_sha }}',
+          VX_RELEASE_SHA: '${{ inputs.sha }}',
           GH_TOKEN: '${{ github.token }}',
         },
       ],
     ])
     const checkout = job?.steps?.find((s) => s.uses?.startsWith('actions/checkout@'))
-    expect(checkout?.with).toEqual({
-      ref: '${{ github.event.workflow_run.head_sha }}',
-      'fetch-depth': 0,
-    })
+    expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0 })
   })
 
   it('holds only the two grants it uses, and none at the top', () => {

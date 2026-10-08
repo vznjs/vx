@@ -112,11 +112,12 @@ post is visible there and skipped by the build.
 
 ### Release posts
 
-A release post covers a run of releases (vx ships one per merged PR):
-at most ten changes a user would notice, each a `##` section with one
-example and its PR links, then Breaking changes, How to update and Learn
-more. The slug is `vx-0-0-<last version>`, the tag `release`, and the
-date the last release's day. The design essays stay beside them.
+Each release gets a post, written before it is cut
+(`.claude/skills/release/SKILL.md`); the first ten batch the per-merge
+releases up to v0.0.625. A post holds at most ten changes a user would
+notice, each a `##` section with one example and its PR links, then
+Breaking changes, How to update and Learn more. The slug is `vx-0-0-<version>`, the tag `release`, and the date
+the release's day. The design essays stay beside them.
 
 ## Commands
 

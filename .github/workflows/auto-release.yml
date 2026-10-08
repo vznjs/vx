@@ -1,24 +1,26 @@
 name: Auto release
 
-# Every commit on main whose CI went green is released: this tags it with
-# the next version and creates the GitHub release, both from the
-# Conventional Commits since the last tag (packages/vx/scripts/
-# release-notes.ts: from 0.1.0, which the owner cuts by hand, a feat or a
-# breaking change is a minor before 1.0, the rest a patch), then dispatches
-# the two release workflows.
+# Releases on demand: a maintainer or Claude dispatches this (daily when
+# main has changes; .claude/skills/release/SKILL.md). It releases the
+# given commit, or by default the newest main commit whose CI went green,
+# and refuses one CI did not pass. It tags it with the next version and
+# creates the GitHub release, both from the Conventional Commits since the
+# last tag (packages/vx/scripts/release-notes.ts: from 0.1.0, which the
+# owner cuts by hand, a feat or a breaking change is a minor before 1.0,
+# the rest a patch), then dispatches the two release workflows.
 #
-# A green commit is released when the last release is its ancestor, so a
-# slow run can never publish an older tree under a higher version. It need
-# not be main's tip: main's CI runs one at a time (ci.yml), and under a
-# steady stream of merges the tip has always moved on by the time a run
-# ends, so a tip-only rule released nothing. `concurrency` keeps two
-# releases from racing for the same number.
+# A commit is released only when the last release is its ancestor, so an
+# older tree can never get a higher version, and an already tagged one is
+# a no-op. `concurrency` keeps two releases from racing for the same
+# number.
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit on main to release; empty releases the newest one whose CI went green.'
+        required: false
+        default: ''
 
 permissions: {}
 
@@ -28,7 +30,6 @@ concurrency:
 
 jobs:
   release:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -37,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -45,12 +46,13 @@ jobs:
       # `release.auto` declares `exec.sandbox`; see ci.yml.
       - uses: ./.github/actions/vx-runner
 
-      # Decide the version, write the notes, tag, release and dispatch the
-      # two workflows that build and publish it (scripts/auto-release.ts).
+      # Pick the commit, decide the version, write the notes, tag, release
+      # and dispatch the two workflows that build and publish it
+      # (scripts/auto-release.ts).
       # The checkout's full history carries every tag, and `concurrency`
       # keeps another release from landing while this one decides.
       - name: Release
         env:
-          VX_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          VX_RELEASE_SHA: ${{ inputs.sha }}
           GH_TOKEN: ${{ github.token }}
         run: bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx
