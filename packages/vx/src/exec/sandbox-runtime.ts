@@ -1226,7 +1226,10 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
-  if (ports.length > 0) writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  if (ports.length > 0) {
+    hostBridges.set(tag, { ports, procs: [] })
+    writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  }
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1582,7 +1585,14 @@ const hostBridges = new Map<
  * (2026-10-03). Linux, own procfs only, as the wait.
  */
 function portsHeld(ports: readonly number[]): number[] {
-  if (ports.length === 0 || !procfsIsOwn()) return []
+  if (ports.length === 0) return []
+  // This run's own bridges first: a wrap claims its ports before it awaits,
+  // and two tasks granted one port both read the table before either
+  // bridge bound, so the second's bind failed unseen and its clients
+  // reached the first task.
+  const claimed = new Set([...hostBridges.values()].flatMap((b) => b.ports))
+  const ours = ports.filter((p) => claimed.has(p))
+  if (ours.length > 0 || !procfsIsOwn()) return ours
   const held = new Set<string>()
   for (const [file, any, loop] of [
     ['/proc/net/tcp', '00000000', '0100007F'],
@@ -1638,7 +1648,7 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
 }
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
-  const procs: Array<ReturnType<typeof Bun.spawn>> = []
+  const procs = hostBridges.get(tag)!.procs
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
@@ -1668,10 +1678,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) {
-    hostBridges.set(tag, { ports, procs })
-    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
-  }
+  if (procs.length > 0) for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
 }
 
 /**
