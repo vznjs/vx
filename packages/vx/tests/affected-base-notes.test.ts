@@ -298,6 +298,53 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     ])
   })
 
+  it('a diff that matched, then lost every project to an exclusion or a walk, says which (X-146)', async () => {
+    // The HEAD note fired whenever every include was a diff, so a change
+    // an exclusion took back read as "nothing changed — HEAD is HEAD".
+    await mkdir(path.join(root, 'pkgs/lib/src'), { recursive: true })
+    await writeFile(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
+    await writeFile(
+      path.join(root, 'pkgs/lib/vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+    )
+    await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
+    await writeFile(
+      path.join(root, 'pkgs/app/package.json'),
+      JSON.stringify({ name: 'app', dependencies: { lib: 'workspace:*' } }),
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'two')
+    const note = (...args: string[]) => {
+      const r = vx(root, 'run', 'build', ...args)
+      return { exitCode: r.exitCode, out: r.out.trim() }
+    }
+    const head =
+      'vx run: nothing affected since HEAD — HEAD is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
+    const cases = [
+      ['--filter', '[HEAD]', '--filter', '!lib'],
+      ['--filter', '[HEAD]^...'],
+      ['--affected=HEAD', '--filter', '!lib', '--filter', '!app'],
+    ]
+    // CONTROL: an empty diff keeps the HEAD note, whatever else is asked.
+    expect(cases.map((c) => note(...c))).toEqual(cases.map(() => ({ exitCode: 0, out: head })))
+    await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
+    // Still exit 0: an exclusion that leaves nothing is no CI failure.
+    expect(cases.map((c) => note(...c))).toEqual([
+      {
+        exitCode: 0,
+        out: 'vx run: no projects selected: !lib excluded every project the other filters matched',
+      },
+      {
+        exitCode: 0,
+        out: 'vx run: no projects selected: filter "[HEAD]^..." matched lib, which depends on no project',
+      },
+      {
+        exitCode: 0,
+        out: 'vx run: no projects selected: !lib, !app excluded every project the other filters matched',
+      },
+    ])
+  })
+
   it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)
