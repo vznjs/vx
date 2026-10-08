@@ -71,7 +71,9 @@ export function parseCacheDirFlag(
   const v = a === '--cache-dir' ? args[i + 1] : a.slice('--cache-dir='.length)
   if (v === undefined || v === '') return { error: '--cache-dir requires a path' }
   if (a === '--cache-dir' && v.startsWith('-')) {
-    return { error: `--cache-dir requires a path, got flag: ${v}` }
+    return {
+      error: `--cache-dir requires a path (got flag ${v}; a path that starts with - needs --cache-dir=${v})`,
+    }
   }
   return { cacheDir: v, next: a === '--cache-dir' ? i + 1 : i }
 }

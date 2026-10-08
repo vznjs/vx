@@ -152,6 +152,37 @@ describe('the walk (R3)', () => {
     expect(keyedOf(nodes, 'app#test')).toEqual([])
   })
 
+  // `--exclude-dependencies` leaves a group's `deps` without its dropped
+  // members (keyed via `excludedUpstream`) and with order-only edges (keyed
+  // by nothing); `computeGroupHash` reads `keyUpstream`, so the stand-in
+  // must too, or two groups the key tells apart collapse into one.
+  it('a group under --exclude-dependencies stands in for the dependencies its hash folds', () => {
+    const dropped = (n: Map<string, TaskNode>, id: string, gen: string) => {
+      n.get(id)!.excludedUpstream = [
+        { node: n.get(gen)!, status: 'success', exitCode: 0, durationMs: 0, hash: gen },
+      ]
+    }
+    const viaDropped = graph({
+      'app#test': [withTasks(CACHED, ['^*']), ['ui#pack', 'lib#pack']],
+      'ui#pack': [GROUP, []],
+      'lib#pack': [GROUP, []],
+      'ui#gen': [CACHED, []],
+      'lib#gen': [CACHED, []],
+    })
+    dropped(viaDropped, 'ui#pack', 'ui#gen')
+    dropped(viaDropped, 'lib#pack', 'lib#gen')
+    expect(keyedOf(viaDropped, 'app#test')).toEqual(['/ws/lib', '/ws/ui'])
+
+    const orderOnly = graph({
+      'app#test': [withTasks(CACHED, ['^*', '!ui#pack']), ['ui#pack', 'ui#pack2']],
+      'ui#pack': [GROUP, ['ui#source']],
+      'ui#pack2': [GROUP, ['ui#source']],
+      'ui#source': [CACHED, []],
+    })
+    orderOnly.get('ui#pack')!.orderOnly = ['ui#source']
+    expect(keyedOf(orderOnly, 'app#test')).toEqual(['/ws/ui'])
+  })
+
   // A group with `cache` is keyed as a task is (`computeGroupKey`, the
   // default `build`'s path): its project counts and `cache.inputs.tasks`
   // selects what it folds. Only core's default or a `graph` plugin leaves

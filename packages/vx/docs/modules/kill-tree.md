@@ -25,6 +25,7 @@ export function guardLine(fd: number): string // the shell line that lists `$$`'
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
 export function releaseServerGroup(child: Child): void
+export function guardSession(pids: readonly number[], paths: readonly string[]): () => void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -108,6 +109,20 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is
   never killed on an old task's account.
+- The sandbox runtime's session is listed too (`guardSession`). On Linux
+  the runtime spawns its network bridge, a socat on
+  `<tmp>/claude-http-<hex>.sock`, as a plain child in vx's OWN group,
+  which the guard must never kill, and vx itself listens on
+  `<tmp>/srt-obs-*/` and `<tmp>/srt-mux-<pid>-<n>.sock`. A `kill -9` of
+  vx left the socat under init and the three paths behind; dozens piled
+  up on a dev box. `initSandbox` reads them from procfs once per session
+  (vx's children whose argv listens on the runtime's socket path, and vx's
+  own socket inodes against `/proc/net/unix`; ~3 ms, sandboxed runs only)
+  and lists the pids (`=<pid>`, killed alone) and the paths (`@<path>`,
+  removed) — each a name only that session carries, never a sweep that
+  could reach another live vx's. A finished reset strikes them (`_`,
+  `!`), so a reused pid is never killed. A path holding whitespace is not
+  listed. A socat that dies mid-session stays listed until the reset.
 - The guard is detached, so a terminal's Ctrl-C does not reach it; that
   path is vx's own teardown (`signals.md`).
 - Best-effort: a guard that cannot start, or a write it is gone for,
@@ -198,6 +213,11 @@ and "a never-ready server a dead shell left goes with a vx that exits
 inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
 itself in a child that SIGKILLs itself: a deferred release is written when
 the hold ends, and a group two teardowns hold stays listed until both let go.
+There too, "a listed session’s pid dies alone…" (its unlisted sibling in
+the same group lives) and "a struck session is left to itself".
+`tests/sandbox-session-guard.unsafe.test.ts` SIGKILLs vx under a
+sandboxed server and finds no bridge socat alive and no socket or
+observer directory left; red without the listing.
 `tests/kill-tree-guard-backlog.test.ts`: a task spawned after a burst of
 2,000 releases still dies with a `kill -9` (fails without the wait), and
 a released task's grandchild outlives a clean exit after a stopped guard
