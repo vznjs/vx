@@ -281,6 +281,29 @@ describe.if(CHUNKING_SUPPORTED)('the REAPI cache layer streams against a fake se
     }
   })
 
+  // Past the batch-without-probe size but under the whole-message write,
+  // `writeBlob` read the Blob whole a second time: the same race as F-50.
+  it('a mid-size artifact is hashed and sent from one read', async () => {
+    const a = random(1024 * 1024)
+    const b = random(1024 * 1024)
+    let reads = 0
+    const swapped = Object.assign(new Blob([a]), {
+      stream: () => new Blob([reads++ === 0 ? a : b]).stream(),
+      bytes: async () => (reads++ === 0 ? a : b),
+    })
+    const cache = new ReapiRemoteCache({ endpoint })
+    try {
+      await cache.put('k-swapped-mid', swapped, { durationMs: 1 })
+      const sent = [digestOf(a).hash, digestOf(b).hash].map((h) => blobs.get(h))
+      expect([reads, sent.map((v) => v !== undefined && digestOf(v).hash)]).toEqual([
+        1,
+        [digestOf(a).hash, false],
+      ])
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a Blob that fails mid-upload rejects the put and cancels the half-sent write', async () => {
     const body = random(5 * 1024 * 1024)
     // The digest pass reads the stream first and must see it whole; the

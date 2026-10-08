@@ -44,8 +44,8 @@ const SYSCALLS = 'openat|access|statx|newfstatat'
 const QUOTED = '"((?:[^"\\\\]|\\\\.)+)"'
 // The directory descriptor a call names, `-y`'s path included: taken up to
 // the `, "` that opens the path argument, since a directory's name may hold
-// a quote (`4</ws/q"d>`).
-const DIRFD = '(?:AT_FDCWD|\\d+)(?:<.*?>)?, '
+// a quote (`4</ws/q"d>`). Captured: a relative path is in that directory.
+const DIRFD = '(?:AT_FDCWD|\\d+)(?:<(.*?)>)?, '
 const STRACE_DONE_RE = new RegExp(
   `^(\\d+)\\s+(${SYSCALLS})\\((?:${DIRFD})?${QUOTED}[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
 )
@@ -163,7 +163,7 @@ type Op = { chdir: string } | { lost: true } | { call: number }
 export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCall[] {
   const pending = new Map<
     string,
-    { syscall: string; rawPath: string; read?: true; dirfd?: string }
+    { syscall: string; rawPath: string; read?: true; dirfd?: string; dir?: string }
   >()
   const out: DeniedCall[] = []
   const ops = new Map<string, Op[]>()
@@ -210,19 +210,22 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       continue
     }
     const done = STRACE_DONE_RE.exec(line)
-    if (done?.[2] !== undefined && done[3] !== undefined && done[4] !== undefined) {
-      denied(done[1]!, { syscall: done[2], rawPath: cStringPath(done[3]), errno: done[4] })
+    if (done?.[2] !== undefined && done[4] !== undefined && done[5] !== undefined) {
+      const rawPath = cStringPath(done[4])
+      denied(done[1]!, { syscall: done[2], rawPath, errno: done[5], ...within(done[3], rawPath) })
       continue
     }
     const unfinished = STRACE_UNFINISHED_RE.exec(line)
     if (
       unfinished?.[1] !== undefined &&
       unfinished[2] !== undefined &&
-      unfinished[3] !== undefined
+      unfinished[4] !== undefined
     ) {
+      const rawPath = cStringPath(unfinished[4])
       pending.set(unfinished[1], {
         syscall: unfinished[2],
-        rawPath: cStringPath(unfinished[3]),
+        rawPath,
+        ...within(unfinished[3], rawPath),
         ...(reads && OPEN_READ_UNFINISHED_RE.test(line) ? { read: true as const } : {}),
         ...(reads ? { dirfd: OPEN_READ_UNFINISHED_RE.exec(line)?.[2] ?? 'AT_FDCWD' } : {}),
       })
@@ -237,7 +240,12 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
       // resume just retires the pending entry.
       const fd = held?.read === true ? RESUMED_FD_RE.exec(line) : null
       if (held !== undefined && resumed?.[3] !== undefined) {
-        denied(resumedOk[1], { syscall: held.syscall, rawPath: held.rawPath, errno: resumed[3] })
+        denied(resumedOk[1], {
+          syscall: held.syscall,
+          rawPath: held.rawPath,
+          errno: resumed[3],
+          ...(held.dir !== undefined ? { dir: held.dir } : {}),
+        })
       } else if (held !== undefined && fd !== null) {
         const at = readPath(held.dirfd ?? 'AT_FDCWD', held.rawPath, fd[1])
         if (at !== undefined) {
@@ -249,6 +257,12 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
     // A refused or split `chdir` arrives here: its denial counts with or
     // without the cwd tracking.
     follow(line)
+  }
+  // `-y` names the directory a relative path was opened in: a denial
+  // through a descriptor (`openat(4</ws/p/sub>, "g")`) was placed in the
+  // cwd, naming a file the task never asked for.
+  function within(dir: string | undefined, rawPath: string): { dir?: string } {
+    return dir !== undefined && !rawPath.startsWith('/') ? { dir: cStringPath(dir) } : {}
   }
   function follow(line: string): void {
     let m: RegExpExecArray | null
@@ -303,7 +317,7 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
   }
   for (const [pid, list] of ops) {
     list.forEach((op, i) => {
-      if (!('call' in op)) return
+      if (!('call' in op) || out[op.call]!.dir !== undefined) return
       const dir = dirsOf(pid)[i]
       if (dir !== undefined && dir !== cwd) out[op.call]!.dir = dir
     })
@@ -338,6 +352,11 @@ export async function parseStraceViolations(
       ...args.config.allowWrite.filter((w) => bindableWrites([w]).length > 0),
     ].map((p) => toRealPath(absolutize(p))),
   )
+  // A write glob no mount holds is a write grant too (`refusedWrites`
+  // counts its scratch): cp's probe of its destination there failed a task
+  // on its own output. One a read bind holds is readable; one outside the
+  // workspace, never reported.
+  const pendingWrites = (args.config.pendingWrites ?? []).map((g) => new Bun.Glob(g))
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
   // A read under a widened write grant's directory is never refused, so it
   // is reported when it succeeds: an entry that was there at the start and
@@ -368,7 +387,7 @@ export async function parseStraceViolations(
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
-    if (isUnderAny(abs, allowAbs)) continue
+    if (isUnderAny(abs, allowAbs) || underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue

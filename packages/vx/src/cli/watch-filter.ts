@@ -8,6 +8,7 @@ import {
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
+  realPath,
   staticPrefix,
   taskGlob,
 } from '../util/index.js'
@@ -54,7 +55,9 @@ export function makeWatchIgnore(
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
 ): (base: string, filename: string) => boolean {
-  const cacheAbs = path.resolve(cacheDir)
+  // Watchers report under the real root; a cache dir named through a link
+  // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
+  const cacheAbs = realThrough(path.resolve(cacheDir))
   // A task's own outputs are not edits: without this every cycle that
   // writes `dist/` (or `out.txt`) re-runs once more, reporting
   // "up-to-date" for the trouble. Matched under the directory the globs
@@ -132,6 +135,16 @@ export function makeWatchIgnore(
   }
 }
 
+/** `p` with its longest existing prefix realpath'd: the cache dir may not exist yet. */
+function realThrough(p: string): string {
+  try {
+    return realPath(p)
+  } catch {
+    const up = path.dirname(p)
+    return up === p ? p : path.join(realThrough(up), path.basename(p))
+  }
+}
+
 /**
  * The literal directory a glob's matches live under (`''` when the glob
  * starts with a pattern, or negates). A literal entry is a file or its
@@ -166,9 +179,14 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
   // ignored let a pid file in the same window start cycles again. The
   // refused path is skipped and the rest asked again; a refusal before
   // any record outside a work tree is git refusing them all.
-  let rest = paths
+  // Git refuses a path beyond a symbolic link: its ignored pid file read
+  // as an edit and an uncached task re-ran forever. Asked at its real
+  // place, answered as given.
+  const real = paths.map(gitSpeller(workspaceRoot))
+  let from = 0
   let inWorkTree: boolean | undefined
-  while (rest.length > 0) {
+  while (from < paths.length) {
+    const rest = real.slice(from)
     let proc: ReturnType<typeof Bun.spawnSync>
     try {
       proc = Bun.spawnSync({
@@ -188,8 +206,8 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
     const fields = new TextDecoder('utf-8', { ignoreBOM: true }).decode(proc.stdout).split('\0')
     const records = Math.floor(fields.length / 4)
     for (let i = 0; i < records; i++) {
-      const [source, , pattern, p] = fields.slice(i * 4, i * 4 + 4)
-      if (source !== '' && !pattern!.startsWith('!')) ignored.add(p!)
+      const [source, , pattern] = fields.slice(i * 4, i * 4 + 4)
+      if (source !== '' && !pattern!.startsWith('!')) ignored.add(paths[from + i]!)
     }
     // 0: some ignored; 1: none. Anything else is git refusing.
     if (proc.exitCode === 0 || proc.exitCode === 1) return ignored
@@ -203,7 +221,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
         }).exitCode === 0
       if (!inWorkTree) return ignored
     }
-    rest = rest.slice(records + 1)
+    from += records + 1
   }
   return ignored
 }
@@ -337,6 +355,35 @@ export function isWorkspaceConfigFile(name: string): boolean {
  * workspace is the one it ignores.
  */
 const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
+
+/**
+ * Paths as git spells them under `root`: a project reached through a
+ * symlink below the root (`packages/x -> ../shared/x`) is watched at the
+ * link, and git names and answers for its files only at the real place.
+ * The root keeps its own spelling (macOS's `/var` is `/private/var`), the
+ * name its own (the file may be gone); a directory outside the root is
+ * kept as given. Directories are resolved once per speller.
+ */
+export function gitSpeller(root: string): (p: string) => string {
+  const dirs = new Map<string, string>()
+  let realRoot: string | undefined
+  return (p) => {
+    const dir = path.dirname(p)
+    let at = dirs.get(dir)
+    if (at === undefined) {
+      at = dir
+      try {
+        realRoot ??= realPath(root)
+        const rel = path.relative(realRoot, realPath(dir))
+        if (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)) {
+          at = path.join(root, rel)
+        }
+      } catch {}
+      dirs.set(dir, at)
+    }
+    return path.join(at, path.basename(p))
+  }
+}
 
 /**
  * The files under the workspace git lists, tracked and untracked, ignored

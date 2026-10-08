@@ -240,25 +240,37 @@ describe('signal handling during vx run (e2e)', () => {
           export default {
             tasks: {
               stubborn: {
-                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+                exec: { command: "trap '' TERM; echo $$ > pid.txt; echo started; exec sleep 30" },
               },
             },
           }
         `,
       )
-      const proc = Bun.spawn([process.execPath, BIN, 'run', 'stubborn', '--all'], {
-        cwd: fixture.root,
-        env: { ...process.env },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', 'stubborn', '--all', '--output-logs=full'],
+        {
+          cwd: fixture.root,
+          env: { ...process.env },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGTERM')
-      const code = await proc.exited
+      const [code, out, err] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ])
       expect(code).toBe(143)
       expect(await waitForDead(pid, 3_000)).toBe(true)
+      // vx's own SIGKILL at the end of the grace: the task is aborted, and
+      // its frame named the OOM killer as the likely sender of the 137.
+      expect(out + err).toContain('started')
+      expect(out + err).toContain('aborted')
+      expect((out + err).split('\n').filter((l) => l.startsWith('[vx] exit '))).toEqual([])
     },
     TIMEOUT,
   )

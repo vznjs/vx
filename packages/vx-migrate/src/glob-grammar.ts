@@ -63,17 +63,21 @@ function classMembers(body: string): string[] | null {
 }
 
 /**
- * `list` without a literal that one of its `!` entries takes back. Turbo,
- * Nx and vx all subtract an exclusion wherever it sits, so such a file was
- * never an input there either; vx refuses it at load, which would stop an
- * unchanged repo's run, so the adapters drop it.
+ * `list` without a literal that one of its `!` entries takes back, and
+ * without a repeat. Turbo, Nx and vx all subtract an exclusion wherever it
+ * sits, so such a file was never an input there either; vx refuses it at
+ * load, which would stop an unchanged repo's run, so the adapters drop it.
+ * A repeat adds nothing in any order: TanStack Query's `test:eslint` named
+ * `eslint.config.js` twice (`sharedGlobals` and its own), and the written
+ * config listed it twice.
  */
-export function withoutTakenBack<T>(list: readonly T[]): T[] {
+export function withoutTakenBack<T>(entries: readonly T[]): T[] {
+  const list = [...new Set(entries)]
   const wild = /[*?{}]/
   const negative = list.flatMap((e) =>
     typeof e === 'string' && e.startsWith('!') ? [e.slice(1)] : [],
   )
-  if (negative.length === 0) return [...list]
+  if (negative.length === 0) return list
   const globs = negative
     .flatMap((n) => (wild.test(n) ? [n] : [n, `${n.replace(/\/+$/, '')}/**`]))
     .map((g) => new Bun.Glob(g.replace(/^\.\//, '')))
@@ -82,4 +86,14 @@ export function withoutTakenBack<T>(list: readonly T[]): T[] {
     const lit = e.replace(/^\.\//, '').replace(/\/+$/, '')
     return !globs.some((g) => g.match(lit))
   })
+}
+
+/**
+ * A path from the file system as a task glob that names only itself: a dir
+ * named `my{app}` read as a brace matched `myapp` instead. `[` `]` are
+ * literal in a task glob already; `*` and `?` stay, since the schema reads
+ * `\*` as a Windows separator, and they match the name too (a superset).
+ */
+export function literalGlob(p: string): string {
+  return p.replace(/^!|[{}]/g, '\\$&')
 }

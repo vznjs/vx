@@ -1,5 +1,12 @@
 # Workstream YD — Nx/Turbo parity (2026-10-07)
 
+- **YD-4.** Nx's `--projects` / `--exclude` labels `directory:<d>` and
+  `name:<n>` matched nothing. The aliases now emit `./<d>` and `<n>`.
+  Rows: `foreign-flags.test.ts` › "an alias parses exactly as its vx
+  spelling".
+- **YD-3.** The parity table called Turbo's `--no-cache` the same as
+  vx's. Turbo's still reads (its help: `--cache=local:r,remote:r`);
+  vx's reads nothing. The row and parity.md now say so. Docs only.
 - **YD-1.** Turbo's `--force` / `--summarize` and Nx's boolean flags
   take `=true` / `=false`. `--skip-nx-cache=false` forced every task,
   `--nx-bail=false` stopped on the first failure, `--summarize=true`

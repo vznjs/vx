@@ -503,6 +503,20 @@ once the root and the workspace config are found so both refusals stay
 as fast; the two git facts are asked while it runs. 100 projects, 40
 rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
 
+I-64. A task's RSS floor reads `/proc/self/status` only when the last
+`VmHWM` cannot decide the peak (it never falls). 500 cold tasks: 500
+reads → 3, ~17 ms of the scheduler's thread (~35 µs a read in vx).
+
+I-65. The config-eval retention sweep runs once a day on its own
+`schema_meta` clock, as the file-hash sweep does: no index covers
+`created_at`, so every close read every row and its JSON, 1–6 ms at
+8,000 rows (2 MB).
+
+I-66. A clean resolves the project root only once a directory exists
+to compare it with. After a restore's outputs were pruned nothing does,
+and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
+(2,000 calls, min of 5), ~9 ms of a 2,000-task restore.
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The
@@ -516,9 +530,15 @@ rounds: median 113.8 → 107.3 ms, min 96.1 → 87.6 (A/A 116.0 / 95.2).
   for the child's `execve`: 1,225 ms of a 1,000-task cold run's main
   thread. Every `Bun.spawn` option vx passes (env, `detached`, the extra
   fd) costs the same as a bare spawn (0.6–0.7 ms alone). Only spawning
-  off the main thread would move it.
+  off the main thread would move it: 2,000 `sh -c true` at concurrency
+  4, piped and detached, took 867–991 ms from the main thread and
+  684–767 from four Workers (startup included). Tasks that run for
+  tens of ms see a few percent; output, signals and resource usage
+  would cross threads.
 - **Any: the group guard's release line is a pipe write per task**
-  (`guardWrite`, ~80 ms of the same run). Batching the lines would
+  (`guardWrite`, ~80 ms of the same run; 4.6 µs a write in isolation,
+  so most of that is the profiler's; the guard reads ~186k lines/s, so
+  its pipe never fills). Batching the lines would
   widen the window in which a reused pgid could be killed, which
   kill-tree.ts says never happens; not taken.
 - **Owner: the close's WAL checkpoint is ~3 ms of every run.** A warm
@@ -820,3 +840,20 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
 - `vx show <task>` ~30 ms at 100 projects: it already loads only the
   named project; startup, the stream touch, the workspace config and
   discovery are the rest.
+
+## Probes refuted (2026-10-07)
+
+- Discovery at 2,000 projects (35–45 ms) waits on the CPU it shares
+  with the `git ls-files` walk started beside it: the per-directory
+  loop is 15–20 ms alone, 28–69 in the run. Flat promise arrays,
+  `readFile`, a `Bun.Glob` scan and capped concurrency: noise or worse.
+- `stable keys` at 2,000: the fold is ~10 ms of ~52 (26,010 xxh3 calls,
+  ~13 a task, cold JIT); a once-per-module version seed plus a lazy
+  `dirByProject` tied A/A (median 404.6 against 388.2 / 390.9). The
+  probe's three IN-queries are row-object building, not SQL.
+- Checkpoint on close (5–9 ms at 500): `bun:sqlite` exposes no
+  `NO_CKPT_ON_CLOSE`, and process exit closes and checkpoints anyway.
+- Ready-heap priorities cached per slot (no two `Map.get` per compare):
+  2,000-project restore 1,001–1,432 ms against base 1,020–1,401 and
+  A/A 1,034–1,442; up-to-date 377.9 min against 369.8 / 356.2. The
+  profile's 12 ms in `higher` was the profiler's.
