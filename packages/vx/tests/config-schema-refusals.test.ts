@@ -123,6 +123,15 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ plugins: [p] })).toBe(`${WS}: \`plugins[0].commands\` must be an object`)
   })
 
+  it('a `commands` array is refused, not read as the verbs 0, 1, …', () => {
+    const p = testPlugin('sweep-cmd-list', {
+      commands: [{ description: 'd', run: () => 0 }] as never,
+    })
+    expect(refusal({ plugins: [p] })).toBe(
+      `${WS}: \`plugins[0].commands\` must be an object keyed by verb, not an array`,
+    )
+  })
+
   it('a fingerprint claim over NO files is refused', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
@@ -227,6 +236,18 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       `${CFG}: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)`,
     )
     expect(taskRefusal({ exec: { command: 'x', env: { secret: ['GH_PAT'] } } })).toBeNull()
+    // `sh` (dash on Linux) drops a name that is no shell identifier from the
+    // environment it hands the command: `my.var` loaded clean and never
+    // reached the task there, and did under macOS's bash.
+    for (const n of ['my.var', 'A-B', '1A', 'A B', 'ü']) {
+      expect(define({ [n]: 'x' })).toBe(
+        `${CFG}: tasks.t.exec.env.define: ${JSON.stringify(n)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+      )
+      expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
+        `${CFG}: tasks.t.exec.env.passThrough: ${JSON.stringify(n)} is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs`,
+      )
+    }
+    expect(define({ _a1: 'x' })).toBeNull()
     // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
     expect(define({ A_B: 'x=y' })).toBeNull()
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()

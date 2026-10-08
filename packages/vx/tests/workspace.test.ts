@@ -875,13 +875,28 @@ describe('malformed workspace manifests', () => {
     expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
-  it('an empty `packages:` key defers to package.json, as pnpm reads it', async () => {
-    // Every entry commented out leaves `packages: null`; pnpm skips a falsy
-    // list, and vx refused the file as "must be an array".
-    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  # - "packages/*"\n')
+  it('an empty `packages:` key defers to package.json, as pnpm reads it (D-149)', async () => {
+    // A list commented out leaves `packages:` null. pnpm 10.28 ran the root
+    // alone; vx refused "`packages` must be an array of glob strings".
+    await writeFile(
+      path.join(dir, 'pnpm-workspace.yaml'),
+      `
+packages:
+  # - 'packages/*'
+`,
+    )
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await mkdir(path.join(dir, 'packages/a'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
     const single = await listProjects(await loadWorkspace(dir))
     expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
+
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'root', workspaces: ['packages/*'] }),
+    )
+    const members = await listProjects(await loadWorkspace(dir))
+    expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
   it('a trailing slash on a member glob does not make it recursive (item 985)', async () => {

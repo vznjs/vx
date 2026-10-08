@@ -471,8 +471,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
-  /** What existed at the arm, so a file born and gone since is no deletion (watch-judge.ts). */
-  const existedAtArm = gitFiles(workspaceRoot)
+  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
+  const atArm = gitFiles(workspaceRoot)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
   const changes = new ChangeJudge({
     workspaceRoot,
@@ -480,7 +480,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     held: () => held !== undefined,
     uncached: () => uncached,
     fenced: (ownDir, abs) => fenced(ownDir, abs),
-    ...(existedAtArm !== undefined ? { existedAtArm } : {}),
+    ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()

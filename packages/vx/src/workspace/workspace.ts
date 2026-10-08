@@ -267,12 +267,13 @@ async function readRootManifests(
       }
       catalogs = catalogsOf([parsed])
       const packages = (parsed as { packages?: unknown }).packages
-      // `packages:` with every entry commented out is null, which pnpm skips.
+      // A list commented out leaves `packages:` null, which pnpm reads as
+      // absent; vx refused it as "must be an array" (D-149).
       if (packages !== undefined && packages !== null) {
         return { globs: assertGlobList(packages, yamlPath, 'packages'), catalogs }
       }
     }
-    // No `packages:`: pnpm 10 keeps its settings and catalogs in this file
+    // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs in this file
     // for a single-package repo too. The root's package.json decides, as it
     // would without the file; read as an empty list, the root found zero
     // projects and every verb ran nothing and exited 0 (item 984).
