@@ -59,6 +59,8 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--dry-run': [],
   '--check': [],
   '--mjs': [],
+  '--native': [],
+  '--keep': [],
   '--plugin': ['key'],
   '--format': ['json'],
   '--run': ['id'],
@@ -104,6 +106,8 @@ describe('verbFlags is what each verb accepts', () => {
       const named = new Set(Array.from(src.matchAll(/'(--[a-z][a-z-]*)=?'/g), (m) => m[1]!))
       if (src.includes('parseCacheDirFlag(args')) named.add('--cache-dir')
       if (verb === 'watch') for (const f of WATCH_REFUSED_FLAGS) named.delete(f)
+      // Bun's own flag on init's vx-migrate spawn, not one init takes.
+      if (verb === 'init') named.delete('--no-install')
       expect(named.size).toBeGreaterThan(0)
       for (const f of named) if (!verbFlags(verb).includes(f)) missing.push(`${verb} ${f}`)
     }

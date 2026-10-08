@@ -43,3 +43,19 @@ export function notifyEscape(text: string): string {
   // eslint-disable-next-line no-control-regex -- the control range is the point
   return `\x1b]9;${text.replace(/[\x00-\x1f\x7f]/g, ' ')}\x07`
 }
+
+/**
+ * Whether the terminal `env` names opens OSC 8 links. A terminal that does
+ * not know the sequence may print it, so only ones known to read it get it;
+ * tmux and screen pass it through only when configured to.
+ */
+export function terminalLinks(env: Readonly<Record<string, string | undefined>>): boolean {
+  if (env['TMUX'] !== undefined || env['STY'] !== undefined) return false
+  const program = env['TERM_PROGRAM']
+  if (program === 'tmux' || program === 'screen') return false
+  if (program === 'ghostty' || program === 'WezTerm' || program === 'vscode') return true
+  if (program === 'iTerm.app') return atLeast(env['TERM_PROGRAM_VERSION'], 3, 1)
+  if (env['WT_SESSION'] !== undefined || env['KITTY_WINDOW_ID'] !== undefined) return true
+  if (env['KONSOLE_VERSION'] !== undefined) return true
+  return Number(env['VTE_VERSION'] ?? 0) >= 5000
+}

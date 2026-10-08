@@ -1,0 +1,152 @@
+/* The blog in the landing's look: each post on the index is a card, the
+   date, author and tags sit on one quiet line, and titles drop to a size
+   that reads on a phone. Only starlight-blog's own classes are styled;
+   post content is untouched. */
+
+.sl-blog-posts {
+  gap: 1rem;
+}
+
+.sl-blog-preview {
+  position: relative;
+  gap: 0;
+  margin: 0;
+  padding: 1.25rem 1.5rem 1.1rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 14px;
+  background: var(--vx-surface);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.sl-blog-preview:hover {
+  border-color: var(--vx-accent);
+  background: var(--vx-surface-2);
+}
+
+/* The title link covers the whole card; tags and author stay clickable. */
+.sl-blog-preview-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.sl-blog-preview .sl-blog-author,
+.sl-blog-preview .sl-blog-tag {
+  position: relative;
+  z-index: 1;
+}
+
+.sl-blog-preview-link {
+  margin-bottom: 0;
+  text-decoration: none;
+}
+
+.sl-blog-preview-link .sl-blog-preview-title {
+  margin: 0;
+  font-family: var(--vx-font-display);
+  font-size: clamp(1.2rem, 1rem + 0.9vw, 1.55rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--vx-fg);
+}
+
+.sl-blog-preview:hover .sl-blog-preview-link .sl-blog-preview-title {
+  color: var(--vx-accent);
+}
+
+.sl-blog-preview-excerpt {
+  margin-top: 0.6rem;
+  color: var(--vx-text);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.sl-blog-preview-footer {
+  margin-top: 0.75rem;
+}
+
+/* Date and author on one muted line, on the index and on a post. The
+   doubled class outranks the plugin's own column layout. */
+.sl-blog-metadata.sl-blog-metadata {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.6rem;
+  font-family: var(--vx-mono);
+  font-size: 0.78rem;
+  color: var(--vx-muted);
+}
+
+.sl-blog-metadata-items,
+.sl-blog-metadata-authors {
+  margin: 0;
+}
+
+.sl-blog-metadata-authors::before {
+  content: '·';
+  margin-right: 0.6rem;
+}
+
+.sl-blog-metadata .sl-blog-author-name {
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--vx-text);
+}
+
+.sl-blog-metadata .sl-blog-author-title {
+  display: none;
+}
+
+/* Tags as small pills, without the "Tags:" label. */
+.sl-blog-tags-label {
+  display: none;
+}
+
+.sl-blog-tags-list {
+  gap: 0.35rem;
+}
+
+.sl-blog-tags-list .sl-blog-tag {
+  margin: 0;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 999px;
+  background: var(--vx-bg);
+  font-family: var(--vx-mono);
+  font-size: 0.72rem;
+  color: var(--vx-muted);
+  text-decoration: none;
+}
+
+.sl-blog-tags-list .sl-blog-tag:hover {
+  border-color: var(--vx-accent);
+  color: var(--vx-accent);
+}
+
+/* The index has no table of contents: give the cards its column. */
+body:has(.sl-blog-preview) .right-sidebar-container {
+  display: none;
+}
+
+body:has(.sl-blog-preview) {
+  --sl-content-width: 52rem;
+}
+
+@media (max-width: 50rem) {
+  .sl-blog-preview {
+    padding: 1rem 1.1rem 0.9rem;
+    border-radius: 12px;
+  }
+}
+
+/* Release covers: rounded like the cards that hold them. */
+.sl-blog-preview img,
+.sl-markdown-content > img:first-child,
+.sl-blog-post img[src*='vx-0-0-'] {
+  border-radius: 10px;
+}

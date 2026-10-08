@@ -58,7 +58,7 @@ export function defaultLogger(
     forceFloorMs?: number
     coalesce?: boolean
     tty?: boolean
-    env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4; default process.env
+    env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4 / 8; default process.env
     forwardArgs?: readonly string[]
   },
 ): DefaultLogger

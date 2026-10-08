@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
-vx init [--dry] [--force] [--mjs] [--plugin <seam>]
+vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -763,6 +763,14 @@ iTerm2, WezTerm), `vx: 12 tasks done` or `vx: 1 of 12 tasks failed`.
 The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
 `ConEmuPID`); any other, tmux included, gets neither, since there
 OSC 9 may itself be a notification.
+
+In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
+VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
+tmux or screen), a failed task's frame links each path that names a
+file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, to
+that file, so a click from the workspace root opens the right one. The
+text is the task's output unchanged; a successful task's frame is never
+linked.
 
 The region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the final summary prints. In the
@@ -1680,8 +1688,12 @@ Exit codes:
 
 ## Releasing (maintainers)
 
-Every green merge releases itself. When CI finishes green on a push to
-`main`, `auto-release.yml` tags that commit with the next version and
+Releases are on demand. Dispatching `auto-release.yml` releases a
+commit on `main` whose CI went green: the `sha` input, or by default the
+newest such commit; one CI did not pass on is refused. Claude dispatches
+it at least once a day when `main` has changes, after merging that
+release's blog post (`.claude/skills/release/SKILL.md`), and shares the
+post on Bluesky. The workflow tags the commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
 last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
@@ -1695,11 +1707,9 @@ breaking change is a major. The notes: breaking changes first, then
 dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
-are dispatched rather than triggered. A green commit is released only
-when the last release is its ancestor, so an older tree never gets a
-higher version; `main`'s CI runs one at a time and drops the queued
-runs between, so a burst of merges yields one release per finished
-run. A commit that already carries a `v*` tag is skipped.
+are dispatched rather than triggered. A commit is released only when the
+last release is its ancestor, so an older tree never gets a higher
+version, and one that already carries a `v*` tag is a no-op.
 
 A version can still be cut by hand: push its tag (say `v1.0.0`),
 create a draft release for it, and dispatch `release.yml` (`tag`) and
@@ -1762,6 +1772,7 @@ workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
 the binary embeds Bun and npm code whose licenses must travel with it.
+The GitHub release carries the same file as an asset beside the binaries.
 After a dependency or Bun bump, `bun packages/vx/scripts/third-party-notices.ts`
 regenerates the notices; `tests/third-party-notices.unsafe.test.ts`
 fails until it does.
@@ -1829,10 +1840,18 @@ a binary that does not start.
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
-the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
+the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
+(owner, 2026-10-08): the installed one, else this vx's version through
+`bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
+terminal native (a `vx.config.ts` per package, the default) or keep;
+`--native` or `--keep` answer it, and without a terminal it is native.
+`--dry`, `--force` and `--mjs` pass through.
+
+`vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
 config live, so no task is copied — a temporary start until
-`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
+`vx init --native` writes native config. `--native` or `--keep` in any
+other repo is refused. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).

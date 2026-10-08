@@ -1224,3 +1224,15 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   failure again. Row: `flaky.test.ts` › "is not a pass a later failure
   on the key relapses from" (red without the fix; a healthy relapse is
   the control).
+- **X-182.** The hunt-17 finding (`vx run test --affected` exits 1 when
+  the changed project has no vx config) no longer reproduces: X-129
+  fixed it, and its row holds. Its class did not go: two more sites
+  judged "is the load partial" by count, and a config-less project in
+  the closure counts as loaded. `vx run lint --filter docs`, where
+  `docs` (lint `dependsOn: ['^gen']`) depends on config-less `util` and
+  only `app` declares `gen`, refused "no project in the workspace
+  declares gen"; `--exclude-dependencies=gen` there refused the name as
+  a typo. Both exit 0 run whole. `prepareRun` now asks once, by name
+  (`partialLoad`), at all four sites. Row: `prepare-run.test.ts` › "a
+  ^name and an --exclude-dependencies name only that project declares";
+  each site's old test reddens its own field.
