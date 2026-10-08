@@ -1612,6 +1612,7 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
+  catalogs?: Catalogs
 }
 ```
 
