@@ -201,7 +201,10 @@ are refused too: they format one run's result.
      the root filter and the ignore filter are rebuilt on the new set.
      Until 2026-09-10 the set was fixed when the loop armed: the next
      cycle ran the new package and every edit inside it was silence
-     (`tests/watch-loop-members.test.ts`, the added-package pair). The scope
+     (`tests/watch-loop-members.test.ts`, the added-package pair). A
+     cycle that fails re-reads too: a package added with a config that
+     does not load yet was left unwatched, and the fix to that config
+     ran nothing (WD-26). The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
    - The same re-read follows a cycle started by a file that shapes
@@ -315,7 +318,8 @@ started, and the persistent tasks they depend on, are handed back
 running (`RunSummary.persistent`) instead of being stopped when its
 graph ends. The loop holds them while it idles; the next cycle calls
 their `stop()` before its run, and the stop path calls it after the
-in-flight cycle returns. Any other persistent task is still stopped at
+in-flight cycle returns. A stop that lands while a cycle is stopping
+them ends the cycle there: it runs nothing (WD-22). Any other persistent task is still stopped at
 the end of its cycle, as under `vx run`. So a `persistent` dev server is up between cycles and
 re-spawned by each one. Until 2026-09-24 the server was stopped at the
 END of each cycle and was dead whenever watch sat idle

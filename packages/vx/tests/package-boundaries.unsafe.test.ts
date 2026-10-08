@@ -156,6 +156,9 @@ describe('package boundaries', () => {
       // Widened 2026-09-28 (L-26): `@vzn/vx-mcp`'s `listTasks` handed an
       // agent a task's command with its declared secret unmasked.
       'maskedCommand',
+      // Widened 2026-10-08 (L-11): `vx mcp` handed an agent an error that
+      // quoted a secret (a config's refusal, a crash) as it was.
+      'maskedLine',
       'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at

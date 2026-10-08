@@ -321,7 +321,7 @@ const DEFAULT_BUILD: TaskConfig = Object.freeze({
     inputs: Object.freeze({ files: Object.freeze(['**']) }),
     outputs: Object.freeze({ files: Object.freeze([]) }),
   }),
-}) as unknown as TaskConfig
+})
 
 /** The default `build`, which a menu of the tasks a user declared leaves out. */
 export function isDefaultBuild(task: TaskConfig | undefined): boolean {

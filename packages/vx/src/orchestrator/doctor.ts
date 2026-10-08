@@ -16,6 +16,7 @@ import {
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
+  maskedLine,
   relPosix,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -397,7 +398,8 @@ async function countLoadableTasks(
           : raw
         errors.push({
           path: relPosix(root, where),
-          message,
+          // A config's own throw is its author's text, a secret too (L-11).
+          message: maskedLine(message),
         })
       }
     }),
