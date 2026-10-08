@@ -42,6 +42,7 @@ const ROOT = resolve(import.meta.dir, '..', '..', '..') // packages/vx/scripts -
 // Core is a workspace member now, so its sources, manifest and compiled
 // binaries live under packages/vx — only README/LICENSE stay repo-wide.
 const CORE = join(ROOT, 'packages', 'vx')
+const NOTICES_FILE = 'THIRD_PARTY_NOTICES.txt'
 /** Object form: npm rewrites a string on publish and warns about it each time. */
 const REPO_URL = 'https://github.com/vznjs/vx'
 // npm rewrites a bare string into this object, so it is written out already
@@ -93,11 +94,14 @@ export async function emitPlatformPackages(args: {
   targets: readonly Target[]
   version: string
   outDir: string
+  /** Where the compiled binaries are; a test hands in its own. */
+  distDir?: string
 }): Promise<void> {
   const { mainName, base, distPrefix, targets, version, outDir } = args
+  const distDir = args.distDir ?? join(CORE, 'dist')
   for (const t of targets) {
     const pkgName = `${mainName}-${t.target}`
-    const binSrc = join(CORE, 'dist', `${distPrefix}-${t.target}`)
+    const binSrc = join(distDir, `${distPrefix}-${t.target}`)
     if (!(await Bun.file(binSrc).exists())) {
       throw new Error(`missing binary ${binSrc} — run \`vx run build\` first`)
     }
@@ -106,6 +110,10 @@ export async function emitPlatformPackages(args: {
     const binDst = join(pkgDir, base)
     await cp(binSrc, binDst)
     await chmod(binDst, 0o755)
+    // The binary embeds Bun and npm code whose licenses require their
+    // notices in every copy (scripts/third-party-notices.ts).
+    await cp(join(ROOT, 'LICENSE'), join(pkgDir, 'LICENSE'))
+    await cp(join(CORE, NOTICES_FILE), join(pkgDir, NOTICES_FILE))
 
     await writeJson(join(pkgDir, 'package.json'), {
       name: pkgName,
@@ -115,7 +123,7 @@ export async function emitPlatformPackages(args: {
       repository: REPOSITORY,
       os: [t.os],
       cpu: [t.cpu],
-      files: [base],
+      files: [base, 'LICENSE', NOTICES_FILE],
     })
     await Bun.write(
       join(pkgDir, 'README.md'),
