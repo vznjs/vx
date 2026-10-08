@@ -22,7 +22,8 @@ each part folds into the running digest under its own label
 every list of pairs folds its length first and delimits name from
 value with a `\0`, so no two layouts of the same bytes can collide by
 concatenation. Bun's xxh3 reads only 32 bits of a seed, so each step
-feeds the seed forward and the chain carries all 64 bits. The parts, as [Caching](../../caching/) numbers them:
+feeds the seed forward and the chain carries all 64 bits. The parts,
+as [Caching](../../caching/) numbers them:
 
 1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
    keys are derived can never be served by an entry from before it.
@@ -44,8 +45,9 @@ feeds the seed forward and the chain carries all 64 bits. The parts, as [Caching
     after the upstream keys and BEFORE the input files, and only when a
     plugin returned any, so a workspace with no `key` plugin derives
     the keys it derived before the stage existed.
-12. The git blob id of every file `cache.inputs.files` resolves to,
-    with its mode when it is an executable or a symlink.
+12. The content hashes of every file `cache.inputs.files` resolves to:
+    each file's git blob id, with its mode when it is an executable or
+    a symlink.
 
 Part 12 is where the money is. A build task in a real package resolves
 to hundreds of files, and a workspace has hundreds of packages.
