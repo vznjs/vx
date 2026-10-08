@@ -466,6 +466,11 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   try {
     await spawn.ready
   } catch (err) {
+    // A shell that exited before ready can leave its group running
+    // (`server & …; exit`): never registered, so no teardown reached it,
+    // and it held its port against the next `vx watch` cycle's server.
+    if (err instanceof PersistentReadyError && err.reason === 'exited')
+      await terminateChildren(() => [spawn.child])
     // A server the run's stop killed while it started is aborted, as any
     // task the stop kills (item 962): it read `failed (never ready:
     // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
