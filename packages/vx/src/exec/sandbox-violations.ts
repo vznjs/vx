@@ -434,7 +434,10 @@ export async function parseStraceViolations(
  * /path/x`, `deny(1) system-info vfs.disk-space` — so the operation picks
  * the list and the target is matched against its patterns. Anything
  * unparseable is NOT ignored: a record we cannot classify is exactly the
- * one worth seeing.
+ * one worth seeing. A file list matches the record's `path`, where it
+ * lands, as `read` and `write` patterns are anchored and as the report's
+ * own boundary judges it: a seatbelt record named through a link was
+ * reported and its pattern never matched.
  */
 function matchesIgnore(
   v: SandboxViolation,
@@ -444,7 +447,8 @@ function matchesIgnore(
   for (const which of v.ignorable) {
     const patterns = ignore[which]
     if (patterns === undefined) continue
-    if (patterns.some((pat) => pat === v.target || new Bun.Glob(pat).match(v.target!))) return true
+    const subject = which === 'read' || which === 'write' ? (v.path ?? v.target) : v.target
+    if (patterns.some((pat) => pat === subject || new Bun.Glob(pat).match(subject))) return true
   }
   return false
 }
