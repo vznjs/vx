@@ -562,6 +562,14 @@ describe('sandbox refusals the sweep found unheld (item 653)', () => {
       ],
     ),
   ]
+  for (const f of ['read', 'write']) {
+    it(`refuses a NUL byte in allow.${f} at the boundary`, () => {
+      expect(sandboxRefusal({ allow: { [f]: ['a\0b'] } })).toBe(
+        `${W}.sandbox.allow.${f}: "a\\u0000b" holds a NUL byte`,
+      )
+      expect(sandboxRefusal({ allow: { [f]: ['a/b'] } })).toBeNull()
+    })
+  }
   for (const [field, sandbox, message] of CASES) {
     it(`refuses a malformed ${field}`, () => {
       expect(sandboxRefusal(sandbox)).toBe(message)
