@@ -107,6 +107,41 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
+    'a server whose shell exited before ready is stopped with its group, not left holding its port',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              dev: {
+                exec: {
+                  command: 'sleep 30 & echo $! > bg.pid; exit 1',
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+            },
+          }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+      const pid = Number(readFileSync(path.join(dir, 'bg.pid'), 'utf8').trim())
+      try {
+        expect(r.outcomes[0]?.status).toBe('failed')
+        expect(await waitForDead(pid, 1_000)).toBe(true)
+      } finally {
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch {
+          // already gone
+        }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'persistent task with no readyWhen returns immediately (success), is SIGTERMd at end',
     async () => {
       // `sleep 30` is way longer than the test. If we ever block on
