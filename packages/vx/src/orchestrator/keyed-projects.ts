@@ -93,9 +93,12 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
  * the hashes are. An exec task's key folds its own id (`task:<id>`), so its
  * id is enough; a group's hash is a roll-up of its members' ids and hashes
  * with no id of its own, so two groups over the same members hash alike.
+ * The members are `keyUpstream`'s, which `computeGroupHash` is handed: under
+ * `--exclude-dependencies` `node.deps` holds order-only edges and lacks the
+ * dropped ones, and two groups the key told apart shared a unit.
  */
 function foldUnit(node: TaskNode): string {
-  return isGroupTask(node) && node.config.cache === undefined
-    ? `group|${[...node.deps].sort().join('|')}`
-    : `task|${node.id}`
+  if (!isGroupTask(node) || node.config.cache !== undefined) return `task|${node.id}`
+  const members = [...keyedDeps(node), ...(node.excludedUpstream ?? []).map((u) => u.node.id)]
+  return `group|${members.sort().join('|')}`
 }
