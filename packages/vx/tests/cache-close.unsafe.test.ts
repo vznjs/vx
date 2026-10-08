@@ -41,5 +41,7 @@ describe.skipIf(process.platform !== 'linux')('Cache.close()', () => {
     expect(heldUnder(root)).toEqual(['cache.db', 'cache.db-shm', 'cache.db-wal'])
     cache.close()
     expect(heldUnder(root)).toEqual([])
-  })
+    // Opening a fresh index took 6.7 s once on a loaded CI runner (run
+    // 37852595153), past bun's 5 s default; the row is about descriptors.
+  }, 30_000)
 })

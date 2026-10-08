@@ -1270,3 +1270,10 @@ reaches no build task.` The plan now carries the run's own line
   runners of six beside it (`shards`); a `gate` job keeps the required
   name "lint · format · test" and passes only when all three do. The
   `ci` job was CPU bound: 1,150 s of tasks on 4 cores, 5 of its 6 min.
+- **X-198.** Flake scan of 100 CI runs (M's ask): two rows failed once
+  on a loaded runner for time, not code. The SIGTERM-trap readiness row
+  gets a 5 s grace (macOS read 137 under 200 ms); `Cache.close()`'s row
+  a 30 s budget (a fresh index took 6.7 s against bun's 5 s). Open: one
+  sandbox-mask row lost its refused-write hint once; SRT feeds that
+  record over a socket read after the child exits, unproven here (no
+  bwrap).
