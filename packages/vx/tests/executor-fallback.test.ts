@@ -104,7 +104,7 @@ describe('a remote executor that gives a task back', () => {
       statuses: ['failed'],
       out: 'absent',
       said: [],
-      stderr: `${named}\n[vx] a#gen: ${named}`,
+      stderr: `[vx] a#gen: ${named}`,
     })
   })
 })

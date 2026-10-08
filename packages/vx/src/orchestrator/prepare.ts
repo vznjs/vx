@@ -368,8 +368,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ? options.projects.filter((p) => projects.has(p))
     : [...projects.keys()]
 
-  const requested = expandRequested(tasks, candidateProjects, projects)
-  let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects)
+  // A bare name skips the default `build`: it runs nothing, and matched,
+  // `vx run build` in a project declaring none ran 0 tasks, exit 0 (X-102).
+  // A dependant's `^build` still reaches it, and `lib#build` names it.
+  const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
+  let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -750,14 +753,20 @@ async function declaredNowhere(
   return undeclaredIn(unresolved, all.projects)
 }
 
-/** The bare names in `unresolved` no project in `projects` declares; `a#b` forms pass through. */
+/**
+ * The bare names in `unresolved` no project in `projects` declares; `a#b`
+ * forms pass through. Every project has a `build`, its default one if
+ * nothing declares it, and a bare name does not select that (X-102).
+ */
 function undeclaredIn(
   unresolved: readonly string[],
   projects: LoadedProjects['projects'],
 ): string[] {
   const declared = new Set<string>()
   for (const p of projects.values()) {
-    for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+    for (const [t, task] of Object.entries(p.config.tasks ?? {})) {
+      if (!isDefaultBuild(task)) declared.add(t)
+    }
   }
   return unresolved.filter((t) => t.includes('#') || !declared.has(t))
 }

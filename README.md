@@ -98,7 +98,7 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 Beside `turbo.json` or `nx.json`, `vx init` writes only a
 `vx.workspace.ts` that maps the old config until then: a temporary
 start, not a way to run the repo. The numbers above are native vx
-config. `@vzn/vx-migrate`'s first npm publish is pending.
+config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## Why it is faster

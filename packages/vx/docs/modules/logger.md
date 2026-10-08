@@ -89,8 +89,8 @@ the mode; `ci: true` whenever `CI` is truthy.
   with its blocker (`• blocked by lib#build`). Dependency-pulled
   nodes are silent on success/hit and fully framed on failure.
 - **`broad`** — executed tasks print one
-  ` ⏺ <time> success miss <id>` row (`no-cache` for a task with no
-  `cache` block); failures get full frames;
+  ` ⏺ <time> success miss <id>` row (`no-cache` for a task no cache
+  answered for, `ranNoCache`); failures get full frames;
   hits / up-to-date / skipped are silent (buffers dropped).
 - **`errors-only`** — only failed tasks print.
 - **`hash-only`** — one line per task with its key, no output.
