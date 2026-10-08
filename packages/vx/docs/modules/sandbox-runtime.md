@@ -585,7 +585,10 @@ across runs. A file one task wrote there was the next task's, and the
 next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
 `vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
-tag (SRT keys violations by the first 100 characters), created before the
+tag (SRT keys violations by the first 100 characters), and as `TMP` and
+`TEMP` when the task's env has them: passed through from the host, they
+named a temp directory the sandbox mounts read-only, and a tool reading
+them failed to write (`tests/sandbox-temp-vars.unsafe.test.ts`). Created before the
 spawn and removed with the task's bridges at its end, or at exit; a wrap
 that throws (a held port) removes it at once, as a failed spawn does its
 strace log, or a `vx watch` kept one per refusal until it quit. A
