@@ -398,6 +398,7 @@ free strings. Runtime behavior is unchanged (it returns its input).
 ```ts
 export function defineProject<const T extends ProjectConfig>(
   config: T &
+    KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
