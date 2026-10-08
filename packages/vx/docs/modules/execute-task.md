@@ -68,7 +68,8 @@ anything beneath it changes.
 6. On resolve → return `success` with `durationMs = spawn.readyMs()`.
 
 The orchestrator SIGTERMs every registry entry at end-of-run. Never
-caches.
+caches. A readiness timeout returns once the server's process group is
+gone (SIGTERM, grace, SIGKILL), not when its shell exits.
 
 ### C. Normal task
 

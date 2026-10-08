@@ -11,12 +11,12 @@ beforeEach(async () => {
 })
 afterEach(() => rm(root, { recursive: true, force: true }))
 
-const todos = async (packageManager: string): Promise<string[]> => {
+const todos = async (packageManager: string, bom = ''): Promise<string[]> => {
   const app = path.join(root, 'packages', 'app')
   await mkdir(app, { recursive: true })
   await writeFile(
     path.join(root, 'package.json'),
-    JSON.stringify({ private: true, packageManager }),
+    bom + JSON.stringify({ private: true, packageManager }),
   )
   const scripts = { build: 'tsc', postbuild: 'echo done' }
   const plan = migrateScripts([
@@ -34,6 +34,14 @@ it('an unknown packageManager defers to the lockfile beside it (D-96)', async ()
   ])
   // CONTROL: a known one is read as it says.
   expect(await todos('bun@1.4.2')).toEqual([
+    'bun ran `postbuild` around this script without being asked; folded into the command in that order',
+  ])
+})
+
+it('a package.json opening with a byte-order mark still names its manager', async () => {
+  // npm, pnpm and discovery strip the BOM; the detector's JSON.parse threw
+  // on it and read no manager, so bun's hook was credited to npm.
+  expect(await todos('bun@1.4.2', '\uFEFF')).toEqual([
     'bun ran `postbuild` around this script without being asked; folded into the command in that order',
   ])
 })

@@ -119,8 +119,10 @@ over (in order):
    `passThrough` leaves an unset name out). A name holding a NUL is
    refused at load.
 8. **`cache.inputs.runtime` resolved output** — `[command, output]`
-   pairs, where `output` is the combined, trimmed stdout + stderr of
-   each command run via `sh -c` in the **project dir** at hash time.
+   pairs, where `output` is the trimmed stdout of each command run via
+   `sh -c` in the **project dir** at hash time; a command with stderr
+   (or a NUL in stdout) folds `\0<stdout length>\0<stdout><stderr>`,
+   so bytes moved between the streams move the key.
    The runtime-output analog of step 7: the command _strings_ are in
    the resolved config (step 5), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
@@ -1153,9 +1155,9 @@ The store's directory carries no version: every key is seeded with
 `CACHE_VERSION`, which moves when hashing or the artifact layout does, so
 two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
-of another `SCHEMA_VERSION` drops its tables, says `shared cache store
-… re-indexed` once, and keeps every artifact, each indexed again when
-its task next hits. A home this user cannot write keeps the store
+of another `SCHEMA_VERSION` drops its tables, prints nothing (the
+cache is vx's to keep), and keeps every artifact, each indexed again
+when its task next hits. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace

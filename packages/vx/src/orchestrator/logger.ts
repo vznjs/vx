@@ -318,7 +318,7 @@ export function defaultLogger(
   // for as long as vx holds it: `vx run dev --all` showed none of its
   // servers' logs while it ran (C-56). So a ready server's output streams
   // from then on, a line at a time under its id; the partial line each
-  // holds waits for its newline, a second runEnd, or `settle`.
+  // holds waits for its newline, a status line, a second runEnd, or `settle`.
   const KEPT_LINE_CAP = 64 * 1024
   const keptLines = new Map<string, { node: TaskNode; rest: string }>()
   const streamKept = (node: TaskNode, chunk: string): void => {
@@ -450,6 +450,9 @@ export function defaultLogger(
       writer.settle()
     },
     status(line) {
+      // A kept server's held partial line is older than this line: held
+      // past it, a server's last words printed below its own exit notice.
+      flushKept()
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
       if (streamMidLine) {
