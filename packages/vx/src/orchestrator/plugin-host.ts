@@ -7,6 +7,7 @@
 //
 // See docs/design/pipeline-2026-09.md.
 
+import path from 'node:path'
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
@@ -206,6 +207,21 @@ function checkNodeShapes(nodes: Map<string, TaskNode>): void {
     const deps = (node as { deps?: unknown }).deps
     if (!Array.isArray(deps)) {
       throw new Error(`${key}'s deps is ${what(deps)}, not an array of task ids`)
+    }
+    // A node a hook adds is read as it wrote it: one with no `projectDir`
+    // ran as `internal error in a#x: TypeError: The "path" property must
+    // be of type string`, and a relative one keyed and ran against
+    // whatever directory vx was started in.
+    const fields = node as { projectName?: unknown; taskName?: unknown; projectDir?: unknown }
+    const shown = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(v) : what(v))
+    for (const field of ['projectName', 'taskName'] as const) {
+      if (typeof fields[field] !== 'string' || fields[field] === '') {
+        throw new Error(`${key}'s ${field} is ${shown(fields[field])}, not a name`)
+      }
+    }
+    const dir = fields.projectDir
+    if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
+      throw new Error(`${key}'s projectDir is ${shown(dir)}, not an absolute path`)
     }
   }
 }

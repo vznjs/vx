@@ -538,12 +538,12 @@ Hard invariants of the remote prefetch:
   local probes are the short-circuit's (§ Local restore tier). The
   prefetch never adds an upfront _local_ `get` / `isOutputsCurrent` /
   stat pass.
-- **Stable keys only.** A task whose `cache.inputs.files` could match
-  an upstream's declared output has a _preliminary_ key until that
-  upstream runs (e.g. a consumer that globs `**/*` over a sibling's
-  `generated.txt`). Prefetching it would target the wrong artifact, so
-  it's skipped — its key resolves correctly via the lazy read-through
-  in `execute-task`. Instability propagates: a task that folds an
+- **Stable keys only.** A task with a _preliminary_ key (§ Local
+  restore tier's stability gate: undeclared writes, an
+  `outputs.workspaceFiles` producer upstream, or, with
+  `rules.upfrontKeys: false`, input globs that match an upstream's
+  declared outputs) is not prefetched: its key would name the wrong
+  artifact, and it resolves via the lazy read-through in `execute-task`. Instability propagates: a task that folds an
   unstable upstream is itself unstable. When in doubt, skip.
 - **At most once.** The `LayeredCache` keeps an in-flight map keyed by
   hash; `prefetch` and `get` share it, and a settled `false` (remote
@@ -1155,9 +1155,9 @@ The store's directory carries no version: every key is seeded with
 `CACHE_VERSION`, which moves when hashing or the artifact layout does, so
 two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
-of another `SCHEMA_VERSION` drops its tables, says `shared cache store
-… re-indexed` once, and keeps every artifact, each indexed again when
-its task next hits. A home this user cannot write keeps the store
+of another `SCHEMA_VERSION` drops its tables, prints nothing (the
+cache is vx's to keep), and keeps every artifact, each indexed again
+when its task next hits. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace

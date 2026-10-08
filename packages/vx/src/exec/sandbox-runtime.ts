@@ -108,9 +108,13 @@ import {
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
+/** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
+let srtLoaded: SrtModule | undefined
 
 async function loadSrt(): Promise<SrtModule> {
-  if (!srtPromise) srtPromise = import('@anthropic-ai/sandbox-runtime')
+  if (!srtPromise) {
+    srtPromise = import('@anthropic-ai/sandbox-runtime').then((m) => (srtLoaded = m))
+  }
   return srtPromise
 }
 
@@ -1151,6 +1155,23 @@ export async function wrapSandboxedCommand(
   const tmp = taskTmpdir(tag)
   mkdirSync(tmp, { mode: 0o700 })
   trackTaskTmpdir(tmp)
+  try {
+    return await wrapIn(args, SandboxManager, userCommand, tag, tmp)
+  } catch (err) {
+    // Nothing spawned, so nothing releases it on exit: a `vx watch` kept
+    // one task directory per refused wrap (a held port) until it quit.
+    releaseBridges(tag)
+    throw err
+  }
+}
+
+async function wrapIn(
+  args: Parameters<typeof wrapSandboxedCommand>[0],
+  SandboxManager: SrtModule['SandboxManager'],
+  userCommand: string,
+  tag: string,
+  tmp: string,
+): ReturnType<typeof wrapSandboxedCommand> {
   // After the tag: SRT keys violations by the command's first 100 chars.
   const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
     process.env['JAVA_TOOL_OPTIONS'],
@@ -1624,8 +1645,17 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
-  if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
-    void resetSandbox().catch(() => {})
+  if (liveServers.delete(tag)) {
+    // A server's wrap counts as a live sandbox in SRT until this, and SRT
+    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
+    // grant) only at a count of 0: one stopped server kept every later
+    // task's stubs in the workspace until the reset.
+    try {
+      srtLoaded!.SandboxManager.cleanupAfterCommand()
+    } catch {
+      // best-effort, as a one-shot task's
+    }
+    if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return
@@ -1824,6 +1854,10 @@ async function runSandboxedOnce(
     )
     if (forwardsSignals) signalThrough(proc, proc.stdio[3] as number)
   } catch (err) {
+    if (straceLog) {
+      rmSync(straceLog, { force: true })
+      liveTempFiles.delete(straceLog)
+    }
     const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
     args.onStderr?.(stderr)
     releaseBridges(tag)
