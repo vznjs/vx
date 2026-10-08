@@ -654,6 +654,11 @@ describe('vx migrate (lerna)', () => {
     ['Lerna installed', { 'lerna.json': '{}', ...lerna9 }, true],
     ['Lerna 9 declared', { 'lerna.json': '{}', 'package.json': runs({ lerna: '^9.0.7' }) }, true],
     [
+      'Lerna 9 declared, both files saved with a BOM',
+      { 'lerna.json': '\uFEFF{}', 'package.json': '\uFEFF' + runs({ lerna: '^9.0.7' }) },
+      true,
+    ],
+    [
       'Lerna 5 that opts in',
       { 'lerna.json': '{ "useNx": true }', 'node_modules/lerna/package.json': installed('5.6.2') },
       true,

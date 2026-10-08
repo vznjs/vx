@@ -110,7 +110,10 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one.
+It is the one keyed group; a config cannot declare `cache` on one. A
+bare `vx run build` does not select it: run where no selected project
+declares `build`, it is refused as any undeclared name is, while
+`lib#build` names it and a dependant's `^build` reaches it.
 
 ### `description` (optional)
 
@@ -730,7 +733,9 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`. A bracket is a
+The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
+what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
+plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
@@ -1349,6 +1354,11 @@ reported, items 444 and 1011). A write outside the project is refused
 the same way and named on a failed task, never counted. The remedy is to
 declare it: `allow: { write: [...] }`.
 
+**A write grant cannot be removed on Linux.** A directory grant is
+mounted in place, so `rm -rf dist && tsc` under `write: ['dist/']`
+empties `dist` and then fails with `Read-only file system`; a failed
+task names the grant. Remove its contents instead: `rm -rf dist/*`.
+
 **The boundary is the workspace root.** A task may not leave its own
 project, so every sibling project and every root file is denied. Being
 stopped at that wall is the sandbox working, not a finding: only
@@ -1408,7 +1418,8 @@ aggregator. Running a group is equivalent to running its dependencies;
 nothing else happens (no spawn, no I/O, no cache read/write). An empty
 `dependsOn: []` is an explicit no-op group: it exists to be named — by a
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
-project with no `build` gets a keyed one (above).
+project with no `build` gets a keyed one (above), which a bare name
+does not select.
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1528,7 +1539,7 @@ interface WorkspaceRules {
   (one stopped while it waited on the workspace lock never held it), only when something is due (a run with
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
-  orphan sweep (artifacts no index row counts, older than an hour —
+  orphan sweep (artifacts no index row counts, judged by file time —
   see `vx cache prune`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000

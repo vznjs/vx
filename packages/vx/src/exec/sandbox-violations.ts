@@ -352,6 +352,11 @@ export async function parseStraceViolations(
       ...args.config.allowWrite.filter((w) => bindableWrites([w]).length > 0),
     ].map((p) => toRealPath(absolutize(p))),
   )
+  // A write glob no mount holds is a write grant too (`refusedWrites`
+  // counts its scratch): cp's probe of its destination there failed a task
+  // on its own output. One a read bind holds is readable; one outside the
+  // workspace, never reported.
+  const pendingWrites = (args.config.pendingWrites ?? []).map((g) => new Bun.Glob(g))
   const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
   const mounted = new Set([
     ...allowAbs,
@@ -388,6 +393,7 @@ export async function parseStraceViolations(
     if (!denyAnchors.some((root) => atOrUnder(abs, root))) continue
     // Skip paths the user explicitly allowed (and their descendants).
     if (isUnderAny(abs, allowAbs) && !hiddenByLink(lexical, abs, mounted, denyAnchors)) continue
+    if (underGlob(abs, pendingWrites)) continue
     if (read === true && !undeclared(abs)) continue
     const key = `${syscall}|${abs}`
     if (seen.has(key)) continue

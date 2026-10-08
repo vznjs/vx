@@ -13,6 +13,15 @@ import { maskedCommand, secretMask } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { RunContext } from './summary.js'
 
+/**
+ * A task no cache answered for: it declares no `cache`, or the run's policy
+ * read and wrote nothing. Its run is `no-cache`, never a miss, on every
+ * surface — `--dry`'s plan, the frame, the footer, `--report`, `--summarize`.
+ */
+export function ranNoCache(o: { node: TaskNode; cacheOff?: boolean }): boolean {
+  return o.node.config.cache === undefined || o.cacheOff === true
+}
+
 /** Payload of the `run:start` event — mirrors the Logger.runStart hook. */
 export interface RunStartInfo {
   total: number
@@ -373,7 +382,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
     durationMs: outcome.durationMs,
   }
   if (isGroupTask(outcome.node)) view.isGroup = true
-  else if (outcome.node.config.cache === undefined) view.noCache = true
+  else if (ranNoCache(outcome)) view.noCache = true
   if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
   if (outcome.storedCpuMs !== undefined) view.storedCpuMs = outcome.storedCpuMs
   if (outcome.storedPeakRssBytes !== undefined) view.storedPeakRssBytes = outcome.storedPeakRssBytes

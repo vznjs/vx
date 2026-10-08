@@ -166,6 +166,10 @@ Two cached tasks on one workspace path cannot both keep their cache, and the fir
 
 `maxCacheSize` (or `NX_MAX_CACHE_SIZE`, above it as in Nx) is the run's `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention, in Nx's grammar (`10GB`, `1.5 GB`, bare bytes); `0` is no cap.
 
+### Lerna
+
+`lerna run build` (Lerna 6+ runs it on Nx's task runner) runs each package's `build` after its dependencies' `build`, unless the repo configures Nx's task dependencies: nx.json `targetDefaults` (or the legacy `targetDependencies`), or an `nx` key in the `package.json` of a package that has the target. Beside a `lerna.json` with neither, each target's `dependsOn` is its `^` self (`build` → `^build`), in place of any other, as Lerna hands it to Nx; the exported graph holds no such edge. A migration writes the same.
+
 ### Project tags
 
 An Nx project's `tags` are its vx `tags`, so `vx run build --filter tag:scope:web` (or Nx's `--projects tag:scope:web`) selects what `nx run-many -t build -p tag:scope:web` does. A package whose `vx.config` declares `tags` keeps its own. A blank tag is dropped (vx refuses one).
@@ -215,7 +219,7 @@ It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works 
 
 - In a terminal it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (the workspace file `vx init` writes, declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native.
 - With no `vx.workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists, from `@vzn/vx-ci`, each installed beside `@vzn/vx` at vx-migrate's own version. Keep adds them to the file `vx init` writes, or to one already in that shape; any other workspace file is the user's and left alone.
-- It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, plus `@vzn/vx-migrate` for keep (the declared plugins are built into the vx binary, so none is installed) (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. `--no-install` skips it.
+- It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, the declared plugins' packages, and `@vzn/vx-migrate` for keep (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. `--no-install` skips it.
 
 A Lerna repo is an Nx one: Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph` exports, nx.json or not, so a `lerna.json` with no nx.json and no turbo.json is mapped from that graph, and keep writes the workspace file declaring `nx()` (`vx init` adopts by nx.json, and would map the scripts). Lerna is the installed one, else the root manifest's range; with neither, the lerna.json is another tool's (lerna-lite reads it too, and runs no Nx). A root whose scripts never `lerna run` runs its tasks another way and publishes with Lerna (webdriverio: `run-s`, `pnpm -r`), so its scripts stay the source. Not where Lerna runs its own runner: `useNx: false`, or Lerna 5 without `useNx: true`; those are `vx init`'s scripts mapping. Beside turbo.json, Turbo runs the tasks and Lerna only publishes: turbo.json is the source.
 

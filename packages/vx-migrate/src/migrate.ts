@@ -392,7 +392,10 @@ const LERNA_RUN = /(?:^|[\s;&|(])lerna\s+run\s/
 function lernaOnNx(root: string): boolean {
   const json = (file: string): Record<string, unknown> | undefined => {
     try {
-      return JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      return JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, '')) as Record<
+        string,
+        unknown
+      >
     } catch {
       return undefined
     }

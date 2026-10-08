@@ -296,7 +296,8 @@ export interface PruneOptions {
   olderThanMs?: number
   /**
    * After applying olderThanMs, if the cache still exceeds this size in
-   * bytes, evict LRU (smallest `accessed_at` first) until under it.
+   * bytes, evict LRU (smallest `accessed_at` first, a row-less artifact
+   * by its file time) until under it.
    */
   maxBytes?: number
   /**
@@ -312,10 +313,11 @@ export interface PruneResult {
   /** Bytes the evicted entries occupied, per the index. */
   bytesFreed: number
   /**
-   * Artifacts and temp files with no index row, unlinked by the orphan
-   * sweep that runs after eviction (a `SCHEMA_VERSION` drop, a deleted
-   * `cache.db`, a save that crashed before its rename). Files younger
-   * than one hour are never counted: they may be a save in flight.
+   * Artifacts and temp files with no index row, unlinked by the same
+   * policy (another vx version's open dropped the row, a deleted
+   * `cache.db`, a save that crashed before its rename). An artifact's file
+   * time plus an hour stands for its last use; a temp goes once an hour
+   * old. Files younger than one hour are never counted.
    */
   orphans: number
   /** Bytes the reaped orphans occupied on disk. */

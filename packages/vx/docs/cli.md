@@ -478,7 +478,7 @@ than run with the args unheard.
 | `--summarize[=<path>]`             | optional value | off                                       | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--profile[=<path>]`               | optional value | off (`profile.json` when set)             | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--tag <k=v>`                      | repeatable     | (none)                                    | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `--report[=markdown]`              | optional value | off                                       | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `--report[=markdown]`              | optional value | off                                       | At the end of the run, print a markdown run report to stdout, above the footer. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--report-file <path>`             | value          | off                                       | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Mutual exclusion:
@@ -976,7 +976,8 @@ execution used and appear on executed rows only (`peakRssBytes` only
 when the task's peak rose above vx's own footprint — a lighter task's
 figure would be vx's, handed back by the kernel; a Linux sandboxed task
 reports neither, since what bwrap's pid namespace used never reaches vx);
-a hit's `durationMs`
+`restored` appears on a hit only: `true` when its outputs were restored,
+`false` when they were already up to date. A hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
 artifact and appears under its own keys, `storedCpuMs` /
 `storedPeakRssBytes` (the work the hit skipped, the split
@@ -1004,9 +1005,10 @@ exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
 outcome bucket or `total`, but they make the run red, so they are
 listed separately and counted as `summary.aborted`.
 
-**`noCache: true`** marks a task that declares no `cache` block — it
-executes every run by design, so a hit rate should leave it out of the
-denominator. The key is present only when true; every other row is
+**`noCache: true`** marks a task no cache answered for: it declares no
+`cache` block (it executes every run by design), or the run's `--cache`
+read and wrote nothing (`--no-cache`), so a hit rate should leave it out
+of the denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
 **`notReady`** is present only on a failed persistent task: why it never
@@ -1083,8 +1085,9 @@ Default path: `profile.json` (cwd-relative).
 
 ### `--report[=markdown]`
 
-After a real run completes, prints a markdown run report to **stdout**
-(not the status logger — it stays machine-clean). One header line of
+At the end of a real run, prints a markdown run report to **stdout**,
+just above the footer: nothing prints below the footer. The report
+itself is machine-clean. One header line of
 totals plus a table, one row per task:
 
 ```markdown
@@ -1104,8 +1107,9 @@ signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
 or a timeout's reason, `failed (timed out, exit 143)`, a persistent
 task's `never ready: …`, or a sandboxed task's violation count, or
 `skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
-`Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
-block, which never consulted it / `local` / `remote` / `up-to-date` /
+`Cache` is its provenance (`miss` / `no-cache` for a task no cache
+answered for — no `cache` block, or a `--no-cache` / `--cache=local:` run —
+which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
@@ -1480,9 +1484,11 @@ After eviction, prune sweeps the cache directory for **orphans**: a
 drops every table and leaves the artifacts behind, as a deleted
 `cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
 renamed. A run that asks for an orphan's key indexes it again from its
-bytes and hits; one no task asks for again is only reclaimed here. Files younger than one hour are left alone: a save
-renames its artifact into place before the row commits, so a fresh
-row-less file is a save in flight. Only the names vx writes are taken:
+bytes and hits; one no task asks for again is only reclaimed here. The
+policy judges a row-less artifact as it judges an entry, by its file
+time plus an hour (a hit renews a file time over an hour old): another
+vx version sharing the store may still use it. A temp goes once it is an
+hour old; nothing younger than an hour is taken. Only the names vx writes are taken:
 `<hash>` is the key's 16 lowercase hex digits and the temp suffix is
 the one a save makes, so a `release.tar.zst` beside the index in a
 `cacheDir` you share is never touched (item 968). The converse, an
@@ -1535,8 +1541,8 @@ or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
 which the real prune resets first, it reads the index as that reset
 leaves it: the shared store's entries still face the policy, and every
-artifact past the hour's grace in the workspace's own directory is an
-orphan (item 1083).
+artifact in the workspace's own directory is row-less, judged by the
+policy on its file time (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
@@ -2322,7 +2328,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one). `none` when the history never mixed.
+  replayed one), and a pass that took a retry mixes its key alone, its
+  failed attempts counted as failures. `none` when the history never
+  mixed.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2403,9 +2411,10 @@ no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
 (`--force`, or a `--cache` without read), no entry for the key was
-there when it ran (pruned or evicted), neither run saved it while
-each ran beside a failed task (a task run past a failed dependency under
-`--continue` is never cached), or the previous run executed and no entry
+there when it ran (pruned or evicted), the previous run was not saved
+because it ran beside a failed task (a task run past a failed dependency
+under `--continue` is never cached; said ahead of a prune, and as
+"neither run saved it" when this run ran beside one too), or the previous run executed and no entry
 holds the key (its save failed, or a prune took it; a previous run whose
 policy wrote no cache says that instead). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
@@ -2413,13 +2422,13 @@ only a run with no recorded policy names `--no-cache` / `--force`.
 
 ```
 $ vx why app#build
-app#build — run 019f5a02-…
-  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
-  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
+  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
+  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
   verdict    cache key changed: file packages/app/src/input.txt
 
-  what changed (1 component, 41 unchanged):
-    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
+  what changed (1 component, 6 unchanged):
+    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
@@ -2598,7 +2607,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
           return 0 // the process exit code
         },
       },
@@ -2747,8 +2756,10 @@ task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
 when nothing that could hit ran, with `N failed` after the count on a
-red run. A task with no `cache` block could never hit, so it is
-counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`). A test renders this run and
+red run. A task with no `cache` block, or any task of a run whose
+`--cache` reads and writes nothing (`--no-cache`), could never hit, so it
+is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
+`--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);
