@@ -53,6 +53,7 @@ describe('definePlugin — the name is the package name', () => {
       expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
       // X-20: malformed JSON was a SyntaxError and a stack naming no file;
       // `null` a TypeError.
+      const file = path.join(unnamed, 'package.json')
       const said = (text: string): [string, string] => {
         writeFileSync(path.join(unnamed, 'package.json'), text)
         try {
@@ -62,7 +63,6 @@ describe('definePlugin — the name is the package name', () => {
           return [(err as Error).name, (err as Error).message]
         }
       }
-      const file = path.join(unnamed, 'package.json')
       expect([said('{"name": "p",}'), said('null')]).toEqual([
         [
           'UserError',
@@ -73,6 +73,11 @@ describe('definePlugin — the name is the package name', () => {
           `definePlugin: ${file} has no name — a plugin is a package, and its name is the package's`,
         ],
       ])
+      // Last: the name is memoized per directory. A byte-order mark (Windows
+      // editors save one) is stripped, as npm, Node and discovery strip it;
+      // JSON.parse refused it as a token.
+      writeFileSync(file, '\uFEFF{"name": "@acme/bom"}')
+      expect(definePlugin({ dir: unnamed }, {}).name).toBe('@acme/bom')
     } finally {
       rmSync(bare, { recursive: true, force: true })
       rmSync(unnamed, { recursive: true, force: true })
