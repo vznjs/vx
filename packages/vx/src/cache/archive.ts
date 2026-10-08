@@ -689,6 +689,14 @@ class Extractor {
     // resolve was a round trip spent on a comparison never made (item 627).
     let probe = path.dirname(targetResolved)
     while (probe.startsWith(baseResolved + path.sep)) {
+      // Nothing there resolves either: the lstat answers the common case
+      // (a clean pruned the directory) without the failed realpath's round
+      // trip and error (X-163). A dangling link is there and falls through,
+      // as does an lstat that fails otherwise: the realpath decides.
+      if (absent(probe)) {
+        probe = path.dirname(probe)
+        continue
+      }
       const real = await realOf(probe).then(
         (r) => r,
         () => null,
@@ -916,6 +924,15 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
       'through a link that leaves its directory. Remove the link and re-run (the restore ' +
       'puts a real directory there), or stop declaring outputs under it.',
   )
+}
+
+/** Whether nothing at all is at `p` (a dangling link is something). */
+function absent(p: string): boolean {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false }) === undefined
+  } catch {
+    return false
+  }
 }
 
 /**

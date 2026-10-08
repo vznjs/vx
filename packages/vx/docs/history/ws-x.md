@@ -1184,6 +1184,24 @@ reaches no build task.` The plan now carries the run's own line
   52.0 → 18.1 ms (A/A 55.3, unlocked 78.7); restore 49.3 → 20.3 ms (A/A
   47.1, unlocked 97.5). Rows: `lockfile-boundary.test.ts`,
   `frozen-selection.test.ts`.
+- **X-161.** A hit restored into a tree without its outputs (every
+  `dist/` deleted) repeated three things per task: the clean walked the
+  output globs the hit's check had just walked to find the tree stale;
+  the restore read the entry's rows from the index twice (the
+  missing-output check, then the stamps) after the batched probe had
+  loaded them; and the extractor's containment probe asked `realpath` of
+  the missing output directory, a thread-pool round trip that fails. The
+  clean now takes the check's list when nothing was awaited between
+  them, the probe's rows are held for its restores (dropped when an
+  entry's rows are replaced), and an `lstat` answers the containment
+  probe where nothing stands. A/B on the 1,090-package bench (compiled,
+  `build test --all --concurrency 10`, every `dist/` deleted, 45
+  interleaved rounds over two shared copies, A/A beside, on a box shared
+  with three other A/Bs): wall median 2,356 → 2,019 ms (A/A 2,246),
+  paired ratio 0.929 (A/A 0.961); CPU median 3,934 → 3,595 ms (A/A
+  3,862), paired 0.903 (A/A 0.983). Rows: `restore-rows-held.test.ts`,
+  `syscall-repeats.unsafe.test.ts` › "a hit restored into a tree without
+  its outputs".
 - **X-171.** The scheduler's warm-run overhead, three pieces. With no
   persistent task in the graph nothing can die, so `willSkip` no longer
   walks `deadServerBehind` (a stack and a set) for each dependency of
