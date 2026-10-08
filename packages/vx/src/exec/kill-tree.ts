@@ -64,11 +64,14 @@ export function closeSignalChannel(child: Child): void {
  */
 let guardFd: number | null | undefined
 
+// A group is listed once however often its line arrives: a `-` strikes
+// one entry, and a shell that keeps a failed printf buffered (bash as
+// macOS's sh, B-10) sends the line again with its retry.
 const GUARD_SCRIPT = [
   "g=' '",
   'while IFS= read -r l; do',
   '  case $l in',
-  '    +*) g="$g${l#+} " ;;',
+  '    +*) case $g in *" ${l#+} "*) ;; *) g="$g${l#+} " ;; esac ;;',
   '    -*) p=${l#-}; case $g in *" $p "*) g="${g%% $p *} ${g#* $p }" ;; esac ;;',
   '  esac',
   'done <&3',
@@ -168,9 +171,18 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
  * shell, which leads its group (every guarded spawn is `detached`); a
  * program that is not a shell is `exec`'d after it. A write to a guard
  * that has died is ignored rather than a SIGPIPE that kills the task.
+ * The pipe is vx's own nonblocking one, so a full queue fails the write
+ * (EAGAIN) and the group went unlisted: the write is retried while the
+ * guard lives. The shell cannot tell EAGAIN from EPIPE, so the guard's
+ * pid ends the wait, and vx SIGKILLs a guard it gives up on.
  */
 export function guardLine(fd: number): string {
-  return `trap '' PIPE; printf '+%s\\n' $$ >&${fd} 2>/dev/null; trap - PIPE; exec ${fd}>&-; `
+  const add = `printf '+%s\\n' $$ >&${fd} 2>/dev/null`
+  const retry =
+    guardProc === undefined
+      ? ''
+      : ` || until ${add}; do kill -0 ${guardProc.pid} 2>/dev/null || break; done`
+  return `trap '' PIPE; ${add}${retry}; trap - PIPE; exec ${fd}>&-; `
 }
 
 /**
