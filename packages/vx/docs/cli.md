@@ -1680,8 +1680,12 @@ Exit codes:
 
 ## Releasing (maintainers)
 
-Every green merge releases itself. When CI finishes green on a push to
-`main`, `auto-release.yml` tags that commit with the next version and
+Releases are on demand. Dispatching `auto-release.yml` releases a
+commit on `main` whose CI went green: the `sha` input, or by default the
+newest such commit; one CI did not pass on is refused. Claude dispatches
+it at least once a day when `main` has changes, after merging that
+release's blog post (`.claude/skills/release/SKILL.md`), and shares the
+post on Bluesky. The workflow tags the commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
 last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
@@ -1695,11 +1699,9 @@ breaking change is a major. The notes: breaking changes first, then
 dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
-are dispatched rather than triggered. A green commit is released only
-when the last release is its ancestor, so an older tree never gets a
-higher version; `main`'s CI runs one at a time and drops the queued
-runs between, so a burst of merges yields one release per finished
-run. A commit that already carries a `v*` tag is skipped.
+are dispatched rather than triggered. A commit is released only when the
+last release is its ancestor, so an older tree never gets a higher
+version, and one that already carries a `v*` tag is a no-op.
 
 A version can still be cut by hand: push its tag (say `v1.0.0`),
 create a draft release for it, and dispatch `release.yml` (`tag`) and

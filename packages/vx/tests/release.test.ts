@@ -5,7 +5,7 @@
 // binaries a draft release still needs (scripts/release-assets.ts).
 import { describe, expect, it } from 'bun:test'
 import { assetsToUpload, releaseFor, type Release } from '../scripts/release-assets.js'
-import { decideRelease, type Git } from '../scripts/auto-release.js'
+import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js'
 import {
   publishAll,
   publishOrder,
@@ -221,5 +221,31 @@ describe('release assets (scripts/release-assets.ts)', () => {
     expect(assetsToUpload('darwin', files, release('v1', true, ['vx-darwin-arm64']))).toEqual([
       'vx-darwin-x64',
     ])
+  })
+})
+
+describe('greenCommit', () => {
+  const runs = [
+    { head_sha: 'c3', conclusion: null },
+    { head_sha: 'c2', conclusion: 'cancelled' },
+    { head_sha: 'c1', conclusion: 'success' },
+    { head_sha: 'c0', conclusion: 'success' },
+  ]
+
+  it('picks the newest commit whose CI passed when none is asked for', () => {
+    expect(greenCommit('', runs)).toEqual({ sha: 'c1' })
+  })
+
+  it('releases an asked commit only when CI passed on it', () => {
+    expect(greenCommit('c0', runs)).toEqual({ sha: 'c0' })
+    expect(greenCommit('c2', runs)).toEqual({
+      refuse: 'CI did not pass on c2 on main; not releasing it',
+    })
+  })
+
+  it('refuses when main has no green run', () => {
+    expect(greenCommit('', runs.slice(0, 2))).toEqual({
+      refuse: 'no green CI run on main to release',
+    })
   })
 })
