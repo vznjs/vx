@@ -897,11 +897,23 @@ describe('whyDidThisRerunQuery', () => {
     expect(verdict({ failed: [1, 2] })).toBe(
       'cache key unchanged — neither run saved it: each ran beside a failed task (2 failed in this one), and a task run past a failed dependency (--continue) is never cached',
     )
+    // Only the previous run ran beside a failure, and this clean one saved
+    // the key: that blamed a prune, and no entry was ever pruned.
+    const prevTainted =
+      'cache key unchanged — the previous run on this key ran beside a failed task (1 failed in it) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit'
+    expect([verdict({ failed: [1, 0], entryAt: 2500 }), verdict({ failed: [1, 0] })]).toEqual([
+      prevTainted,
+      prevTainted,
+    ])
     // CONTROLS: one run without a failure, or an entry for the key, is not it.
     expect([verdict({ failed: [0, 2] }), verdict({ failed: [1, 2], entryAt: 500 })]).toEqual([
       unsaved,
       unknown,
     ])
+    // CONTROL: a previous run that failed beside others failed on its own.
+    expect(verdict({ prevStatus: 'failed', failed: [2, 0], entryAt: 2500 })).toBe(
+      'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit',
+    )
   })
 
   it('returns found=false for an unknown runId', () => {

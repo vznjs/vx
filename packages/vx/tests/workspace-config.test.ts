@@ -13,7 +13,8 @@ describe('parseCacheDirFlag', () => {
   it('the = form takes a value that starts with a dash; the space form refuses one', () => {
     expect(parseCacheDirFlag(['--cache-dir=-cache'], 0)).toEqual({ cacheDir: '-cache', next: 0 })
     expect(parseCacheDirFlag(['--cache-dir', '-cache'], 0)).toEqual({
-      error: '--cache-dir requires a path, got flag: -cache',
+      error:
+        '--cache-dir requires a path (got flag -cache; a path that starts with - needs --cache-dir=-cache)',
     })
   })
 })

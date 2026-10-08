@@ -33,6 +33,7 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -81,6 +82,7 @@ import {
   isMountableLiteral,
   localBindingOn,
   MOUNT_WILDCARDS,
+  namedPath,
   toRealPath,
   unique,
 } from './sandbox-paths.js'
@@ -103,6 +105,7 @@ import {
   releaseGroup,
   signalThrough,
   guardLine,
+  guardSession,
   spawnGuarded,
 } from './kill-tree.js'
 
@@ -279,9 +282,16 @@ export function dependencyReason(errors: readonly string[]): string {
  * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
  * on Linux (its retry loop swallows the code), neither naming the
  * directory (2026-09-16). Checked up front, with room for the sequence.
+ * On Linux the longer name is the network bridge's,
+ * `claude-http-<16 hex>.sock`, and it is the one that fails there.
  */
 export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
-  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const sample = path.join(
+    tmpdir,
+    process.platform === 'linux'
+      ? `claude-http-${'0'.repeat(16)}.sock`
+      : `srt-mux-${process.pid}-zzz.sock`,
+  )
   const limit = process.platform === 'darwin' ? 103 : 107
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined
@@ -701,7 +711,8 @@ export async function initSandbox(opts?: {
     ...(scopedDenyScan ? scopedScanConfig() : {}),
     ...bundledJavaAgent(),
   }
-  if (!srtUp) await unlinkStaleMuxSockets()
+  const wasUp = srtUp
+  if (!wasUp) await unlinkStaleMuxSockets()
   const listening = srtCleanupAdopted ? undefined : cleanupListeners()
   await SandboxManager.initialize(
     config,
@@ -711,6 +722,10 @@ export async function initSandbox(opts?: {
   )
   if (listening !== undefined) adoptSrtCleanup(listening)
   srtUp = true
+  if (!wasUp && process.platform === 'linux' && procfsIsOwn()) {
+    const { pids, paths } = sessionLeftovers(SandboxManager)
+    sessionRelease = guardSession(pids, paths)
+  }
   perTaskRun = opts?.allowAllUnixSockets === true || opts?.gitConfig === true ? config : undefined
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
@@ -759,12 +774,81 @@ function srtDown(): void {
   straceAvailableCache = undefined
 }
 
+/** Strikes the live session from the group guard's lists; set by `initSandbox`. */
+let sessionRelease: (() => void) | undefined
+
+/**
+ * The runtime's session as the group guard must take it if vx dies
+ * (kill-tree.md): the bridge socats, vx's children named by the socket
+ * they listen on, and what a `kill -9` leaves in the temp directory — the
+ * bridge sockets and the `srt-*` sockets vx itself holds (the violation
+ * observer's directory, the mux). The runtime exposes none of the pids and
+ * not the observer's path, so procfs answers: vx's children, and its own
+ * socket inodes against `/proc/net/unix`. ~3 ms, once per session.
+ */
+function sessionLeftovers(SandboxManager: SrtModule['SandboxManager']): {
+  pids: number[]
+  paths: string[]
+} {
+  const sockets = new Set(
+    [SandboxManager.getLinuxHttpSocketPath(), SandboxManager.getLinuxSocksSocketPath()].filter(
+      (p): p is string => p !== undefined,
+    ),
+  )
+  const pids: number[] = []
+  const paths = [...sockets]
+  try {
+    for (const entry of readdirSync('/proc')) {
+      const first = entry.charCodeAt(0)
+      if (first < 48 || first > 57) continue
+      try {
+        const stat = readFileSync(`/proc/${entry}/stat`, 'utf8')
+        if (Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ', 2)[1]) !== process.pid) continue
+        const argv = readFileSync(`/proc/${entry}/cmdline`, 'utf8').split('\0')
+        if (argv.some((a) => [...sockets].some((s) => a.startsWith(`UNIX-LISTEN:${s},`)))) {
+          pids.push(Number(entry))
+        }
+      } catch {
+        // exited
+      }
+    }
+    const inodes = new Set<string>()
+    for (const fd of readdirSync('/proc/self/fd')) {
+      try {
+        const link = readlinkSync(`/proc/self/fd/${fd}`)
+        if (link.startsWith('socket:[')) inodes.add(link.slice(8, -1))
+      } catch {
+        // closed
+      }
+    }
+    const tmp = os.tmpdir()
+    for (const line of readFileSync('/proc/net/unix', 'utf8').split('\n')) {
+      const f = line.trim().split(/\s+/)
+      if (f.length < 8 || !inodes.has(f[6]!)) continue
+      const p = f.slice(7).join(' ')
+      const dir = path.dirname(p)
+      if (dir === tmp && path.basename(p).startsWith('srt-mux-')) paths.push(p)
+      else if (path.dirname(dir) === tmp && path.basename(dir).startsWith('srt-obs-')) {
+        paths.push(dir)
+      }
+    }
+  } catch {
+    // Best-effort, as the guard is: what was found is listed.
+  }
+  return { pids, paths }
+}
+
 /** `reset` is the one `initSandbox` waits out before it starts SRT again. */
 function trackReset(reset: Promise<unknown>): void {
   const settled = reset.then(
     () => {},
     () => {},
   )
+  // Struck once the runtime has killed its bridges and removed its files;
+  // a reset `exit` starts never settles, and the guard takes the rest.
+  const release = sessionRelease
+  sessionRelease = undefined
+  if (release !== undefined) void settled.then(release)
   resetting = settled
   void settled.then(() => {
     if (resetting === settled) resetting = undefined
@@ -1173,7 +1257,12 @@ async function wrapIn(
   tmp: string,
 ): ReturnType<typeof wrapSandboxedCommand> {
   // After the tag: SRT keys violations by the command's first 100 chars.
-  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${javaToolOptionsFix(
+  // TMP and TEMP pass through from the host, whose temp directory the
+  // sandbox mounts read-only: a tool reading them failed to write there.
+  const alsoTmp = ['TMP', 'TEMP'].filter((name) => args.env[name] !== undefined)
+  const inTmp = `export TMPDIR=${shellQuote(tmp)}; ${alsoTmp
+    .map((name) => `export ${name}="$TMPDIR"; `)
+    .join('')}${javaToolOptionsFix(
     process.env['JAVA_TOOL_OPTIONS'],
     args.env['JAVA_TOOL_OPTIONS'],
   )}${userCommand}`
@@ -1219,6 +1308,10 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
+  if (ports.length > 0) {
+    hostBridges.set(tag, { ports, procs: [] })
+    writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
+  }
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1236,7 +1329,7 @@ async function wrapIn(
     process.platform === 'linux'
       ? literalReadPaths(customConfig)
       : process.platform === 'darwin'
-        ? seatbeltBrackets(customConfig)
+        ? seatbeltBrackets(customConfig, baselines.allowRead)
         : customConfig,
     ports.length > 0 || asksUnixSockets(args.config),
     args.config.gitConfig === true,
@@ -1246,7 +1339,13 @@ async function wrapIn(
       ...macProfileRules(args.config),
       ...darwinWallRules(args.config, baselines.allowRead),
     ]
-    if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    try {
+      if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    } catch (err) {
+      releaseBridges(tag)
+      afterCommand(SandboxManager)
+      throw err
+    }
   }
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
@@ -1383,15 +1482,24 @@ function ownGroupCommand(
     .join(' ')
   const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
   const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
+  // Bash reports a job a signal killed on its stderr, the task's: a task
+  // whose shell died of SIGKILL printed this whole wrapper (X-111).
+  const wait = `wait "$c" 2>/dev/null`
   if (setsid === undefined) {
-    return { command: `${tag0} ${run} wait "$c"`, forwards: false, traced: true }
+    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
-  return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
+  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
-/** What strace stops on: the reads, and what moves or makes a process's cwd. */
-const TRACED_CALLS = 'trace=openat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+/**
+ * What strace stops on: the reads, the execs and access probes (a refused
+ * `./gen.sh || fallback` passed unreported), and what moves or makes a
+ * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
+ * `git status` 30%, where the execs and probes cost nothing measurable.
+ */
+const TRACED_CALLS =
+  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -1433,22 +1541,32 @@ function literalReadPaths(
  * file and the route could not be granted. `[[]` is a class of one `[`; a
  * lone `]` is plain text (B-65). A deny path is a real directory, never a
  * pattern: a nested project's wall under `[legacy]/` compiled as a class,
- * matched nothing, and the root task read it.
+ * matched nothing, and the root task read it. So is each of `names`, the
+ * baseline reads: a linked dependency under `packages/[legacy]/` was a
+ * class too, and as an exact regex even `[[]` grants the directory's entry
+ * and none of its files, so its subtree is granted beside it (a trailing
+ * `/**` is stripped before the compile).
  */
 export function seatbeltBrackets(
   config: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2],
+  names: readonly string[] = [],
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const fs = config?.filesystem
   if (fs === undefined) return config
-  const literal = (paths: readonly string[]): string[] =>
-    paths.map((p) => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']'))
+  const literal = (p: string): string => p.replaceAll('\\[', '[[]').replaceAll('\\]', ']')
+  const bracketed = new Set(names.filter((n) => /[[\]]/.test(n)))
+  const read = (p: string): string[] => {
+    if (!bracketed.has(p)) return [literal(p)]
+    const at = p.replaceAll('[', '[[]')
+    return [at, `${at}/**/*`]
+  }
   return {
     ...config,
     filesystem: {
       ...fs,
       denyRead: fs.denyRead.map((p) => p.replaceAll('[', '[[]')),
-      allowWrite: literal(fs.allowWrite),
-      ...(fs.allowRead !== undefined ? { allowRead: literal(fs.allowRead) } : {}),
+      allowWrite: fs.allowWrite.map(literal),
+      ...(fs.allowRead !== undefined ? { allowRead: fs.allowRead.flatMap(read) } : {}),
     },
   }
 }
@@ -1502,17 +1620,39 @@ export function portBridgeSocket(tag: string, port: number): string {
 }
 
 /**
+ * Which loopback a bridged connection dials, chosen per connection from
+ * the namespace's listen tables (`$1` the port, `$2` the tables' directory):
+ * `::1` when only it holds the port, else 127.0.0.1. A server bound to
+ * `localhost` on a host that resolves `::1` first (Vite's default) listens
+ * on `::1` alone, and a fixed 127.0.0.1 dial was refused. Read before any
+ * byte moves, so a connection is never retried halfway through.
+ */
+export const PORT_DIAL_SCRIPT = `p=$1 n=\${2:-/proc/net}
+h=$(printf %04X "$p")
+if grep -qsE "^ *[0-9]+: 0{24}01000000:$h [0-9A-F]+:0{4} 0A" "$n/tcp6" &&
+  ! grep -qsE "^ *[0-9]+: (0100007F|0{8}):$h [0-9A-F]+:0{4} 0A" "$n/tcp"; then
+  exec socat - "TCP6:[::1]:$p"
+fi
+exec socat - "TCP4:127.0.0.1:$p"
+`
+
+/** Where the dial script lives: beside the bridge's sockets, written by `wrapSandboxedCommand`. */
+function portDialScript(tag: string): string {
+  return path.join(taskTmpdir(tag), `vx-port-dial-${tag}.sh`)
+}
+
+/**
  * The task's side of the bridge, in front of the user command inside the
  * sandbox: one socat per port, listening on the unix socket and relaying
- * into the namespace's loopback. Backgrounded and reaped with the shell,
- * exactly as SRT starts its own proxy bridges. `unlink-early` clears a
- * socket a killed task left behind; `>/dev/null` keeps its chatter out
- * of the task's frame.
+ * into the namespace's loopback through `PORT_DIAL_SCRIPT`. Backgrounded
+ * and reaped with the shell, exactly as SRT starts its own proxy bridges.
+ * `unlink-early` clears a socket a killed task left behind; `>/dev/null`
+ * keeps its chatter out of the task's frame.
  */
 export function portBridgeInner(ports: readonly number[], tag: string): string {
   const cmds = ports.map(
     (p) =>
-      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early TCP:127.0.0.1:${p} >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early ${shellQuote(`SYSTEM:sh ${portDialScript(tag)} ${p}`)} >/dev/null 2>&1 &`,
   )
   return `${cmds.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT;`
 }
@@ -1543,7 +1683,14 @@ const hostBridges = new Map<
  * (2026-10-03). Linux, own procfs only, as the wait.
  */
 function portsHeld(ports: readonly number[]): number[] {
-  if (ports.length === 0 || !procfsIsOwn()) return []
+  if (ports.length === 0) return []
+  // This run's own bridges first: a wrap claims its ports before it awaits,
+  // and two tasks granted one port both read the table before either
+  // bridge bound, so the second's bind failed unseen and its clients
+  // reached the first task.
+  const claimed = new Set([...hostBridges.values()].flatMap((b) => b.ports))
+  const ours = ports.filter((p) => claimed.has(p))
+  if (ours.length > 0 || !procfsIsOwn()) return ours
   const held = new Set<string>()
   for (const [file, any, loop] of [
     ['/proc/net/tcp', '00000000', '0100007F'],
@@ -1599,7 +1746,7 @@ async function hostBridgesListen(ports: readonly number[], tag: string): Promise
 }
 
 function spawnHostBridges(ports: readonly number[], tag: string): void {
-  const procs: Array<ReturnType<typeof Bun.spawn>> = []
+  const procs = hostBridges.get(tag)!.procs
   for (const p of ports) {
     // A spawn failure (no socat on the host) is the task's to report:
     // its own side dies the same way, in its frame.
@@ -1629,10 +1776,7 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
       // see above
     }
   }
-  if (procs.length > 0) {
-    hostBridges.set(tag, { ports, procs })
-    for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
-  }
+  if (procs.length > 0) for (const p of ports) unlinkOnExit(portBridgeSocket(tag, p))
 }
 
 /**
@@ -1646,15 +1790,9 @@ export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
   if (liveServers.delete(tag)) {
-    // A server's wrap counts as a live sandbox in SRT until this, and SRT
-    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
-    // grant) only at a count of 0: one stopped server kept every later
-    // task's stubs in the workspace until the reset.
-    try {
-      srtLoaded!.SandboxManager.cleanupAfterCommand()
-    } catch {
-      // best-effort, as a one-shot task's
-    }
+    // A server's wrap stays counted until it stops: one stopped server
+    // kept every later task's stubs in the workspace until the reset.
+    afterCommand(srtLoaded!.SandboxManager)
     if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
@@ -1697,12 +1835,22 @@ const TRACER_RETRY_LINE =
  * declared, so a second run redoes, not doubles, it.
  */
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
-  const { tracerFailed, ...first } = await runSandboxedOnce(args)
+  const { tracerFailed, ranMs, ...first } = await runSandboxedOnce(args)
   // A stopping run has killed the children it holds; a retry would be one
   // spawned after that kill.
   if (!tracerFailed || args.signal?.aborted === true) return first
   args.onStderr?.(TRACER_RETRY_LINE)
-  const { tracerFailed: _again, ...second } = await runSandboxedOnce(args)
+  // `timeout` bounds the task's whole run (schema.md), so the retry gets
+  // what the first attempt left of it, not a fresh window.
+  const {
+    tracerFailed: _again,
+    ranMs: _ran,
+    ...second
+  } = await runSandboxedOnce(
+    args.timeoutMs === undefined
+      ? args
+      : { ...args, timeoutMs: Math.max(0, args.timeoutMs - ranMs) },
+  )
   return {
     ...second,
     durationMs: first.durationMs + second.durationMs,
@@ -1769,7 +1917,7 @@ const STRACE_OWN_ERROR = /^(?:[^\s:]*\/)?strace: /
  */
 async function runSandboxedOnce(
   args: SandboxedRunArgs,
-): Promise<SandboxedRunResult & { tracerFailed: boolean }> {
+): Promise<SandboxedRunResult & { tracerFailed: boolean; ranMs: number }> {
   const start = Date.now()
   const { SandboxManager } = await loadSrt()
   // Linux: SRT's store sees only writes (below), so read denials need
@@ -1778,11 +1926,11 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace only `openat` — it's the actual file-read attempt, the
-  // signal the user cares about. `statx` / `newfstatat` / `access`
-  // are mostly shell PATH-walking and stat probes that aren't
-  // actionable (we'd report every node_modules/.bin entry the shell
-  // checks before resolving a command).
+  // We trace `openat`, the read itself, plus `execve` and the access
+  // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
+  // is a tax on every stat-heavy task. A probe's ENOENT counts only where
+  // the host has the path (`parseStraceViolations`), so a PATH walk past
+  // a missing `node_modules/.bin` entry reports nothing.
   //
   // `--seccomp-bpf` is what makes that filter cheap: without it strace
   // ptrace-stops the tracee on EVERY syscall and discards the untraced
@@ -1792,7 +1940,7 @@ async function runSandboxedOnce(
   // 24/24; under `strace -f -e trace=openat` the same four fail with
   // medians 2.5–7× over budget; with `--seccomp-bpf` 24/24 again), and
   // it taxed every other sandboxed task the same way. With the flag the
-  // kernel filter stops only on `openat`. strace ≥ 5.3 (2019); an older
+  // kernel filter stops only on the traced calls. strace ≥ 5.3 (2019); an older
   // one gets the slow form rather than no detection.
   const useStrace = await wantsStraceDetection()
   // Before the spawn: what the task creates under a widened grant is its own.
@@ -1819,6 +1967,7 @@ async function runSandboxedOnce(
       signal,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   }
   // Beside the task directories, which every sandbox replaces with its own:
@@ -1871,6 +2020,7 @@ async function runSandboxedOnce(
       spawnFailed: true,
       violations: [],
       tracerFailed: false,
+      ranMs: 0,
     }
   } finally {
     // The child holds its own copy; ours would keep nothing but a descriptor.
@@ -1880,6 +2030,7 @@ async function runSandboxedOnce(
   args.liveChildren?.add(proc)
   args.onSpawn?.(proc.pid)
   const timeout = armTimeout(proc, args.timeoutMs)
+  const armedAt = Date.now()
   const ac = new AbortController()
   // The unfinished last line of stderr, and whether a line was strace's.
   let partial = ''
@@ -1904,6 +2055,7 @@ async function runSandboxedOnce(
   // OR a clean exit that backgrounds a process) can't hang the run — timeout
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
+  const ranMs = Date.now() - armedAt
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
@@ -1983,6 +2135,7 @@ async function runSandboxedOnce(
             records.map((v) => v.line),
             bindableWrites(args.config.allowWrite),
             scratch,
+            [...baselines.allowRead, ...bindableReads(args.config.allowRead)],
           ),
           ...refusedConnections(records.map((v) => v.line)),
         ]
@@ -2016,6 +2169,15 @@ async function runSandboxedOnce(
     })
     if (outside.length > 0)
       violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
+    if (process.platform === 'linux') {
+      const removed = grantRemovalHint(
+        `${stdout}\n${stderr}`,
+        bindableWrites(args.config.allowWrite),
+        args.cwd,
+        args.reportWithin,
+      )
+      if (removed !== undefined) violations.push(removed)
+    }
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -2071,6 +2233,7 @@ async function runSandboxedOnce(
     // that is someone else's. macOS's `sandbox-exec` execs the command, so
     // its usage is the task's.
     ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
+    ranMs,
     tracerFailed:
       straceLog !== undefined &&
       !timeout.timedOut() &&
@@ -2125,6 +2288,45 @@ function outsideWritesHint(
     : `${refused} If the task needs one, grant its directory, e.g. ` +
       `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
+}
+
+/**
+ * Linux: a directory write grant is a bind mount, and a mount point cannot
+ * be removed or renamed, so `rm -rf dist` empties it and then fails with
+ * "Read-only file system" (EBUSY under a writable parent). Binding the
+ * parent instead would let the task write beside the grant, so the
+ * removal stays refused; a failure whose output names a grant on such an
+ * error line gets the spelling that works.
+ */
+function grantRemovalHint(
+  output: string,
+  roots: readonly string[],
+  cwd: string,
+  within: string,
+): SandboxViolation | undefined {
+  const lines = output
+    .split('\n')
+    .filter((l) => /Read-only file system|EROFS|EBUSY|resource busy/i.test(l))
+  if (lines.length === 0) return undefined
+  const named = roots.filter((root) => {
+    const rel = path.relative(cwd, root)
+    const spellings = rel === '' ? [root] : [root, rel]
+    return spellings.some((s) => {
+      const re = new RegExp(`(^|[\\s'"\`(])(\\./)?${RegExp.escape(s)}/?($|[\\s'"\`:,)])`)
+      return lines.some((l) => re.test(l))
+    })
+  })
+  if (named.length === 0) return undefined
+  const grants = named.map((r) => `'${path.relative(within, r) || '.'}/'`).join(', ')
+  const contents = path.relative(cwd, named[0]!) || '.'
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
+      `but not remove or rename it ("Read-only file system"). Remove its contents ` +
+      `instead, e.g. \`rm -rf ${contents}/*\`.`,
+  }
 }
 
 /** A path as a JS string literal a config can take: a quote in it is escaped. */
@@ -2192,8 +2394,12 @@ function sbplToken(value: string, field: string): string {
  */
 export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   const rules: string[] = []
+  // A name is an info type to one caller and a sysctl to another (Bun
+  // reads `hw.optional.neon` with sysctl-read), so it grants both.
   for (const t of c.systemInfo ?? []) {
-    rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
+    const name = sbplToken(t, 'allow.systemInfo')
+    rules.push(`(allow system-info (info-type "${name}"))`)
+    rules.push(`(allow sysctl-read (sysctl-name "${name}"))`)
   }
   if (localBindingOn(c)) {
     // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is
@@ -2307,29 +2513,13 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 }
 
 /**
- * Grant paths, with globs handled per platform.
- *
- * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
- * into `(subpath …)`, so a pattern is passed through and seatbelt matches
- * it — including files created DURING the run.
- *
- * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
- * The glob is expanded against the filesystem here, which means it covers
- * what exists when the task STARTS. A pattern matching a file the task
- * creates later grants nothing there — declare its directory instead.
- *
- * That last sentence is the whole contract, and until item 496 a task
- * that broke it learned so from its OWN tool. Measured, one task per
- * spelling, each writing files it declares:
- *
- *   write: ['g/**
  * The walls a glob grant can reach: each one under (or at) a glob's
  * literal head. On Linux `expandGrants` drops such a hit before the bind
  * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
  */
 export function wallsGlobsReach(grants: readonly string[], walls: readonly string[]): string[] {
   const heads = grants
-    .filter((g) => !isMountableLiteral(g))
+    .filter((g) => namedPath(g) === undefined)
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
 }
@@ -2353,7 +2543,7 @@ export function darwinWallRules(
     for (const w of walls) {
       const at = `(subpath "${sbplResolvedPath(w, 'wall')}")`
       const kept = literals
-        .filter((l) => isMountableLiteral(l) && atOrUnder(l, w))
+        .filter((l) => atOrUnder(l, w))
         .map((l) => `(require-not (subpath "${sbplResolvedPath(l, 'grant')}"))`)
       rules.push(
         kept.length === 0
@@ -2362,12 +2552,31 @@ export function darwinWallRules(
       )
     }
   }
-  deny('file-read-data', c.wallsReached?.read ?? [], [...c.allowRead, ...baseAllowRead])
-  deny('file-write*', c.wallsReached?.write ?? [], c.allowWrite)
+  // A baseline is a name the filesystem handed back, never a pattern: a
+  // bracket in it does not make it a glob.
+  const named = (grants: readonly string[]): string[] => grants.flatMap((g) => namedPath(g) ?? [])
+  deny('file-read-data', c.wallsReached?.read ?? [], [...named(c.allowRead), ...baseAllowRead])
+  deny('file-write*', c.wallsReached?.write ?? [], named(c.allowWrite))
   return rules
 }
 
-/**']         ok — collapsed to the directory
+/**
+ * Grant paths, with globs handled per platform.
+ *
+ * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
+ * into `(subpath …)`, so a pattern is passed through and seatbelt matches
+ * it — including files created DURING the run.
+ *
+ * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
+ * The glob is expanded against the filesystem here, which means it covers
+ * what exists when the task STARTS. A pattern matching a file the task
+ * creates later grants nothing there — declare its directory instead.
+ *
+ * That last sentence is the whole contract, and until item 496 a task
+ * that broke it learned so from its OWN tool. Measured, one task per
+ * spelling, each writing files it declares:
+ *
+ *   write: ['g/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory
  *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
  *   write: ['g/*.txt']      FAILED, same
@@ -2435,8 +2644,9 @@ function expandGrants(
       // A hit that IS a wall, or lies inside one, was matched, not named:
       // `read: ['*']` in a root project bound `.git` and `.vx`, and
       // `packages/*` a nested project its key excludes (B-1). A grant that
-      // names a wall literally never reaches this loop and stays.
-      if (walls.some((w) => atOrUnder(real, w))) continue
+      // names a wall literally never reaches this loop and stays, and one
+      // spelled with escaped brackets names it as surely.
+      if (namedPath(p) === undefined && walls.some((w) => atOrUnder(real, w))) continue
       out.push(abs)
       hits++
     }

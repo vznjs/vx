@@ -36,9 +36,12 @@ below; `key` goes to the first layer, like the run index.
   remote upload (two remote plugins over one local handle would otherwise
   pack every miss twice).
 - **A layer that throws is passed, not obeyed** (item 1020). A throw in
-  `get` / `has` / `prefetch` / `remoteHasMany` is a miss (or no answer)
-  in that layer and the walk goes on; a throw in `save` skips that
-  layer and the rest still save. Each is reported to `onLayerError`;
+  `get` / `has` / `prefetch` / `remoteHasMany` / `loadOutputFilesBatch`
+  is a miss (or no answer) in that layer and the walk goes on;
+  `remoteHasMany` answering a non-`Set`, or its layer's
+  `markRemoteAbsent` throwing, is that layer's no-answer too. A throw in
+  `save` skips that layer and the rest still save; a rejected
+  `drainUploads` is passed and the others still drain. Each is reported to `onLayerError`;
   `resolveCache` turns that into one warning per layer and method,
   naming the plugin. A save that fails in every layer still throws.
   Before, a raw plugin layer's throw ended the walk above the local

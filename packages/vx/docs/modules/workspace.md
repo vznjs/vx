@@ -61,6 +61,7 @@ export interface PackageJson {
 export interface Workspace {
   root: string
   packageGlobs: string[] // patterns relative to root
+  catalogs?: Catalogs // catalog name ('default' for `catalog:`) → key → spec
 }
 
 export interface ProjectMeta {
@@ -68,6 +69,7 @@ export interface ProjectMeta {
   dir: string // absolute project directory
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
+  catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
@@ -99,7 +101,7 @@ export interface ProjectEntry {
 // Workspace members whose package globs match no directory — `vx run`
 // warns with `unreachedHint`, which names them and what to check.
 export function unreachedPackages(workspace: Workspace): Promise<string[]>
-export function unreachedHint(unreached: readonly string[]): string
+export function unreachedHint(unreached: readonly string[], root: string): string
 
 // Whether a member glob reaches any package.json but the root's,
 // addressable or not; `vx init` names globs that reach none (M-46).
@@ -156,7 +158,11 @@ manifest-less `packages/tools`, and the standalone package below it ran
 in a workspace that does not list it. Nor can a directory discovery skips
 be claimed: a `node_modules` path, or a dot-dir a wildcard reached
 (`packages/*` over `packages/.tpl`), which `vx run` there answered "not
-inside a project". A `pnpm-workspace.yaml` is a hard
+inside a project". The walk matches each glob against the member's
+manifest path, as discovery does, so `packages/**` claims `packages`
+itself when it holds a `package.json` (npm lists it too); matched
+against the directory, it needed a segment below and a run from
+`packages` took it as its own root. A `pnpm-workspace.yaml` is a hard
 root, as pnpm has it: the walk stops at the nearest one, listed by an
 outer workspace or not. From `apps/inner` the walk went past its own file
 to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
@@ -179,7 +185,9 @@ itself IS the project. Throws a `UserError` if no candidate is found.
 one shallow scan (two levels, `node_modules` and dot directories
 skipped) for the `package.json` files the missing globs never reach, and
 `unreachedHint` is the line `vx init` and `vx run` print for them —
-the cause, the packages, the `workspaces` entry to add.
+the cause, the packages, the `workspaces` entry to add (the `packages`
+entry, where a `pnpm-workspace.yaml` holds pnpm's settings and no
+`packages:`).
 
 ### `loadWorkspace(root, reads?)`
 
@@ -193,6 +201,22 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
+`{ nohoist }`) is the single project too, as bun and yarn read it.
+
+A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
+one (the list commented out), defers to `package.json`, as pnpm does.
+
+A yarn `workspaces: { packages: null }` is the single project too, as
+yarn 1 and 4 read it.
+
+From the same parsed manifests it takes the catalogs a `catalog:` spec
+resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
+without that file, the root `package.json`'s, at the top level or under
+`workspaces` (bun). Discovery hands them to every `ProjectMeta`, so each
+package graph built from the metas resolves `catalog:` alike
+(`package-graph.md`).
+
 ### `listProjects(workspace)`
 
 Globs every `package.json` matching the patterns (`Bun.Glob`,
@@ -200,6 +224,11 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member outside the workspace root (`../ext/*`, an absolute glob) is
+  refused naming its directory: npm and pnpm take one, but `--affected`
+  asks git from the root and saw nothing outside it, so an edit there
+  moved the task's key and selected nothing. Move the root up to a
+  directory that holds every member.
 - A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
   skipped with a stderr line naming it (D-128): `--all` said only that no
   package matched, and a run from inside it "not inside a project".
@@ -241,8 +270,10 @@ Returns the project list sorted by `name`.
 Resolves the cache directory:
 
 - `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
-  `VX_CACHE_DIR`. Relative paths resolve against `root`; absolute
-  paths pass through.
+  `VX_CACHE_DIR`. Relative paths resolve against `root`, `~` and `~/`
+  against the home directory; absolute paths pass through.
+- The home directory itself is refused: the cache writes a `*`
+  `.gitignore` beside its index (D-153).
 - Default: `<root>/.vx/cache`.
 
 ### `resolveStoreRoot(root, config)`
@@ -250,10 +281,14 @@ Resolves the cache directory:
 Where the repository's shared store lives: `~/.vx/<id>/cache` on every
 platform (`$HOME` before the passwd entry), the id `repoIdOf(root)`
 (`repo-id.ts`, Nx 23's `~/.nx/<id>` rule, read from the `.git` files;
-git is spawned only for a repository with no parseable remote: one
-`rev-list` for its root commit, asynchronously, so `prepareRun` asks it
+git is spawned only when the config file cannot settle it: `remote -v`
+when it names a remote none of whose urls parse, holds an `include` or
+`url` rewrite, or sets `extensions.worktreeConfig` (as Nx; a remote-less
+config spawns none of it), then `rev-list` for a root commit,
+asynchronously, so `prepareRun` asks it
 before discovery and awaits it when the cache opens; shallow is read from
-the common dir's `shallow` file). Null
+the common dir's `shallow` file; the root is realpathed first, as git
+resolves it, so a symlinked path to the workspace is the same id). Null
 when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 

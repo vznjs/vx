@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v40'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v41'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -110,7 +110,9 @@ over (in order):
 6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
-   pulled deps don't see them (their cache identity stays clean).
+   pulled deps don't see them (their cache identity stays clean) — and
+   to a command: a requested default `build` runs none and folds none
+   (X-119).
 7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
@@ -595,9 +597,10 @@ row, its stored stdout included, made a 200-task plan over 1 MB outputs
 Caching is controlled by a four-axis `CachePolicy` — **localRead**,
 **localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
 each enforced inside the matching cache layer at construction time. The
-local `Cache` gets a `{ read, write }` slice gating only its task
-artifact get/save (never `recordRun` / `stats` / `prune` / ingest /
-hashing); the `LayeredCache` additionally gates its own remote
+local `Cache` gets a `{ read, write }` slice gating its task artifact
+get/save, the config-evaluation cache's reads and writes, and the
+file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
+/ key derivation); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
@@ -678,6 +681,9 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+left remote (`--download=none`) is held to the same checks: a moved
+key still lets a local consumer fetch its outputs, but the fetch saves
+no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
@@ -705,7 +711,10 @@ over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way.
+key derivation, step 3) withholds the save the same way, and no key
+taken before it is probed or restored: a hit the up-front probe found
+goes back to the scheduler and runs once its deps are done. Until X-124
+that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
 policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
@@ -725,9 +734,9 @@ artifact was saved and a later hit restores nothing — is said on the
 save path. Both are almost always a glob
 against the wrong directory; the output line names one other cause when
 it applies: a sandboxed task with no `exec.sandbox.allow.write`, whose
-writes never reached disk, or an output directory that is a symlink out
-of the project (`workspaceFiles`: out of the workspace), whose files vx
-drops as outside. `outputs.files: []` is a deliberate cached
+writes never reached disk, or a `workspaceFiles` directory that is a
+symlink out of the workspace, whose files vx drops as outside (a project
+output directory linked out of the project refuses the task instead, X-88). `outputs.files: []` is a deliberate cached
 no-op and says nothing; a task with no `cache` block is never checked.
 
 **The outputs are what exists when the task's command exits.** The run
@@ -836,7 +845,8 @@ With the rule off, an edge fixes the order, and the dependant is
   file back, so the dependant runs again on every warm run (X-32);
 - it **cleans by recorded rows**, never by glob, before a run (nothing:
   stale files of its own are its command's to clean, as under Turbo) and
-  before a restore (its rows only);
+  before a restore (its rows only, pruning emptied directories only
+  inside its declared trees, so a sibling's fresh directory stays);
 - its "already current" check requires its rows present and current and
   ignores everything else under the glob;
 - it is **never restore-tier**: it restores or runs after its upstream,
@@ -1162,7 +1172,9 @@ two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
 cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. A home this user cannot write keeps the store
+when its task next hits. The check, drop, re-create and stamp are one
+write transaction, so another version's open waits rather than landing
+between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, said once. Name a
 cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
@@ -1182,7 +1194,8 @@ root) and it holds everything, shared with no other workspace:
     ├── outputs/<rel>                       declared output files, project-relative (when any)
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
+    ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
+    │                                       packed under (v35), the miss's CPU and RSS
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1299,9 +1312,11 @@ project: vx reads outputs outside the task's sandbox, and a planted
 link packed a file the task could not read (L-23). Each refusal names
 the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
-followed, and nothing is removed through a symlinked directory: a
-`public -> static` link in the project took the tracked `static/*`
-with it, X-5) and prunes the directories it emptied (before a miss it keeps
+followed). An output directory that is a symlink (`dist -> real-out`) is
+followed by the clean as by the save and restore, so its target is the
+output and an entry holds only what its run wrote (X-88); one that
+resolves outside the project refuses the task, naming the link, and
+nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1343,9 +1358,14 @@ the task's declared outputs), and hits; one that fails the check is a
 miss, and the save that follows replaces it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
-the policy sums index rows, so orphans alone never make it due), once
-they are older than an hour (a save renames the artifact into place
-before its row commits, so a fresh row-less file is a save in flight).
+the policy sums index rows, so orphans alone never make it due). A
+row-less artifact may be in use: two vx versions share one store, and
+each open drops the other's rows. So the policy judges it as it judges a
+row, its file time standing for `accessed_at`: past `olderThan` it goes,
+and under `maxSize` it counts, oldest use first with the rows. A hit
+renews a file time over an hour old, so the last use is read as the file
+time plus an hour. A temp a crashed save left goes once it is an hour
+old, and nothing younger than an hour is taken.
 Captured stdout is stored twice on purpose: in the artifact (so it
 survives the remote round-trip) and in the `entries` row (so a local
 hit replays it with pure SQL, never decompressing the artifact).
@@ -1372,13 +1392,14 @@ when its task next asks for its key (below).
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'config_evals_swept_at', 'store_dir'
   value TEXT NOT NULL
 );
 
 -- The config-evaluation cache (§ Config evaluation cache): the validated,
 -- JSON-serialised result of a provably pure config, keyed by everything
--- the evaluation could have observed. Machine-local.
+-- the evaluation could have observed. Machine-local. Rows not written in
+-- 30 days are swept at most once a day (`config_evals_swept_at`).
 CREATE TABLE config_evals (
   key        TEXT PRIMARY KEY,
   json       TEXT NOT NULL,
@@ -1772,6 +1793,14 @@ breaking footer).
 
 ### History
 
+- **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
+  output directory linked inside its project was never cleaned, so an
+  entry could hold files a run of another key left there. The fix
+  cannot reach an entry already saved that way.
+- **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
+  X-34). An additive task's entry a hit replayed over a file the task
+  had removed, one that missed a same-size rewrite, and a runtime probe
+  answered before its upstream wrote.
 - **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the

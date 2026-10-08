@@ -7,6 +7,7 @@ import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
+import { relPosix } from './paths.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -19,6 +20,8 @@ export async function migrateNx(
   metas: readonly ProjectMeta[],
   format: MigrationFormat = 'ts',
   snapshot = path.join(root, NX_GRAPH_REL),
+  /** This run writes `vx.workspace.ts`, with nx.json's run settings as fields. */
+  writesWorkspace = false,
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
   const tracked = await trackedFiles(root)
@@ -64,7 +67,9 @@ export async function migrateNx(
     notes: [
       ...mapped.notes,
       ...unlisted.notes,
-      ...workspaceNotes((await readNxJson(root).catch(() => null))?.json),
+      ...nxWorkspaceFields((await readNxJson(root).catch(() => null))?.json)
+        .filter((f) => !writesWorkspace || f.source === undefined)
+        .map((f) => f.note),
     ],
   }
 }
@@ -86,7 +91,7 @@ async function unlistedProjects(
     (p) => path.resolve(p.dir) !== path.resolve(root) && !listed.has(path.resolve(p.dir)),
   )
   if (unlisted.length === 0) return { manifests: [], notes: [] }
-  const rels = unlisted.map((p) => path.relative(root, p.dir).split(path.sep).join('/')).sort()
+  const rels = unlisted.map((p) => relPosix(root, p.dir)).sort()
   const manifests: { relPath: string; contents: string }[] = []
   for (const p of unlisted) {
     const file = path.join(p.dir, 'package.json')
@@ -98,7 +103,7 @@ async function unlistedProjects(
     )
       continue
     manifests.push({
-      relPath: path.relative(root, file).split(path.sep).join('/'),
+      relPath: relPosix(root, file),
       contents: `${JSON.stringify({ name: p.name, private: true }, null, 2)}\n`,
     })
   }
@@ -117,14 +122,24 @@ async function unlistedProjects(
   }
 }
 
+/** A `vx.workspace.ts` field nx.json's run settings call for. */
+export interface NxWorkspaceField {
+  readonly field: 'concurrency' | 'affectedBase' | 'cacheRetention'
+  /** The value as TypeScript source; undefined when vx cannot read it. */
+  readonly source: string | undefined
+  /** What to tell a user whose workspace file this run does not write. */
+  readonly note: string
+}
+
+const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+
 /**
- * nx.json's run-wide settings `nx()` applies live and the written
- * `vx.workspace.ts` cannot hold (core writes it): each is a line naming
- * the field to add, or a migrated repo that ran one task at a time for a
- * shared database ran on every core. nx.json only: the files are written
- * for every machine, so `NX_PARALLEL` and friends are not read.
+ * nx.json's run-wide settings `nx()` applies live: each a field of the
+ * written `vx.workspace.ts`, or a migrated repo that ran one task at a time
+ * for a shared database ran on every core. nx.json only: the files are
+ * written for every machine, so `NX_PARALLEL` and friends are not read.
  */
-function workspaceNotes(json: Record<string, unknown> | undefined): string[] {
+export function nxWorkspaceFields(json: Record<string, unknown> | undefined): NxWorkspaceField[] {
   const nx = json as
     | {
         parallel?: unknown
@@ -134,21 +149,27 @@ function workspaceNotes(json: Record<string, unknown> | undefined): string[] {
         maxCacheSize?: unknown
       }
     | undefined
-  const out: string[] = []
+  const out: NxWorkspaceField[] = []
   const parallel = nx?.parallel ?? nx?.tasksRunnerOptions?.default?.options?.parallel
   if (typeof parallel === 'number' && Number.isInteger(parallel) && parallel > 0)
-    out.push(
-      `nx.json \`parallel: ${parallel}\`: add \`concurrency: ${parallel}\` to vx.workspace.ts`,
-    )
+    out.push({
+      field: 'concurrency',
+      source: String(parallel),
+      note: `nx.json \`parallel: ${parallel}\`: add \`concurrency: ${parallel}\` to vx.workspace.ts`,
+    })
   const base = nx?.defaultBase ?? nx?.affected?.defaultBase
   if (typeof base === 'string' && base.trim() !== '')
-    out.push(
-      `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`affectedBase: ${JSON.stringify(base.trim())}\` to vx.workspace.ts`,
-    )
+    out.push({
+      field: 'affectedBase',
+      source: quoted(base.trim()),
+      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`affectedBase: ${JSON.stringify(base.trim())}\` to vx.workspace.ts`,
+    })
   const size = nxSizeText(nx?.maxCacheSize)
   if (size !== undefined)
-    out.push(
-      `nx.json \`maxCacheSize\`: add \`cacheRetention: { maxSize: ${JSON.stringify(size)} }\` to vx.workspace.ts`,
-    )
+    out.push({
+      field: 'cacheRetention',
+      source: /^\d+[KMG]?B$/.test(size) ? `{ maxSize: ${quoted(size)} }` : undefined,
+      note: `nx.json \`maxCacheSize\`: add \`cacheRetention: { maxSize: ${JSON.stringify(size)} }\` to vx.workspace.ts`,
+    })
   return out
 }

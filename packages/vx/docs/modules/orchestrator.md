@@ -48,7 +48,7 @@ export function acquireRunLock(
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
-//   summarize?, profile?, tags?, command?, log?, bus?,
+//   summarize?, beforeFooter? (text above the footer), profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running)
 
@@ -133,8 +133,9 @@ export interface RunSummary {
     the others down the same way (`terminateChildren`, signals.md) and
     returns `ok && exit === 0` — a crashed dev server fails the run.
     Such a run's history is written after that wait, through a fresh
-    `Cache.inspect` handle on the cache directory, so `vx last` and the
-    flaky list see the server's failure.
+    writing `Cache` handle on the cache directory, so `vx last` and the
+    flaky list see the server's failure; an index another vx version
+    reset during the session is reset back silently, as a run's open does.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
     once with the kept tasks on `RunSummary.persistent`: the caller

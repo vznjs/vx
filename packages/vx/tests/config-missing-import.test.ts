@@ -121,6 +121,12 @@ describe('unprovidedBareImports', () => {
     await mkdir(from)
     const src = `import a from '@acme/self/tasks'\nimport b from '@acme/other'\n`
     expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@acme/other'])
+    // Bun resolves it through a manifest with a byte-order mark too.
+    await writeFile(
+      path.join(dir, 'package.json'),
+      '\uFEFF' + JSON.stringify({ name: '@acme/self', exports: { './tasks': './tasks.ts' } }),
+    )
+    expect(unprovidedBareImports(src, from, 'ts')).toEqual(['@acme/other'])
   })
 
   it('CONTROL: a self-name without exports, or past a nearer package.json, is listed (D-29)', async () => {
@@ -364,18 +370,13 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     expect(await owners(['preset.ts'])).toEqual(['app'])
   })
 
-  it('a config reaching into ANOTHER project records the edge and STOPS there', async () => {
-    // The header's second rule, and the one it says "makes the walk
-    // affordable at all": a config importing `../core/src/index.ts`
-    // records that edge and descends no further, because following it
-    // would drag substantially all of core's `src/` into the closure and
-    // the containment channel already selects the project that owns it.
-    //
-    // Two things have to be true for that rule to hold, and neither had a
-    // witness: the descend guard itself, and the REALPATH'd directory
-    // index it asks — `Bun.resolveSync` returns realpath'd targets, so an
-    // index built from raw dirs matches nothing, every file looks unowned
-    // and the walk descends through all of them.
+  it('a config reaching into ANOTHER project follows the imports of that file', async () => {
+    // The walk recorded the edge to `../core/src/index.ts` and stopped
+    // there, on the reasoning that containment selects core for anything
+    // deeper. It selects core, not the importer: `deep.ts` reaches app's
+    // resolved config through `index.ts`, the evaluation's closure follows
+    // it (`configImports`), so app's key moved while `--affected` ran core
+    // alone (X-128).
     await mkdir(path.join(root, 'core', 'src'), { recursive: true })
     await writeFile(path.join(root, 'core', 'src', 'deep.ts'), 'export const d = 1\n')
     await writeFile(path.join(root, 'core', 'src', 'index.ts'), "export { d } from './deep.js'\n")
@@ -407,13 +408,11 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
         })),
       ].sort()
 
-    // The edge itself IS recorded: the file app's config names is a
-    // dependency of app.
     expect(await ownersOf(['core/src/index.ts'])).toEqual(['app'])
-    // …and the walk stops there. `deep.ts` is core's, reached only by
-    // following an owned file's own imports, and containment already
-    // selects core for it.
-    expect(await ownersOf(['core/src/deep.ts'])).toEqual([])
+    expect(await ownersOf(['core/src/deep.ts'])).toEqual(['app'])
+    // CONTROL: a file of core's no import reaches selects nothing here.
+    await writeFile(path.join(root, 'core', 'src', 'other.ts'), 'export const o = 1\n')
+    expect(await ownersOf(['core/src/other.ts'])).toEqual([])
   })
 
   it('the config itself changing selects its project', async () => {

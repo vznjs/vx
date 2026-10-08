@@ -53,6 +53,7 @@ const CONFIG = `
         },
       },
       e2e: { dependsOn: ['backend'], exec: { command: 'echo e2e-done' } },
+      slow: { exec: { command: 'echo started > started.txt; sleep 1; echo done > done.txt' } },
     },
   }
 `
@@ -230,6 +231,47 @@ describe('a task dies with everything it forked', () => {
       process.kill(proc.pid, 'SIGHUP')
       expect(await proc.exited).toBe(129)
       expect(existsSync(path.join(root, 'packages', 'app', 'cleanup.txt'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a vx started with SIGHUP ignored (nohup) runs on through a hang-up',
+    async () => {
+      // Installing a handler replaces an inherited SIG_IGN, so `nohup vx
+      // run` stopped its run and exited 129 when the terminal closed.
+      // `exec` keeps the shell's pid and the ignore, as nohup does.
+      const proc = track(
+        Bun.spawn(
+          [
+            'sh',
+            '-c',
+            `trap '' HUP; exec "$0" "$@"`,
+            process.execPath,
+            BIN,
+            'run',
+            'slow',
+            '--all',
+          ],
+          {
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: '200' },
+          },
+        ),
+      )
+      const app = path.join(root, 'packages', 'app')
+      const deadline = Date.now() + 10_000
+      while (Date.now() < deadline) {
+        if (existsSync(path.join(app, 'started.txt'))) {
+          if (readFileSync(path.join(app, 'started.txt'), 'utf8') === 'started\n') break
+        }
+        await Bun.sleep(20)
+      }
+      process.kill(proc.pid, 'SIGHUP')
+      expect(await proc.exited).toBe(0)
+      expect(readFileSync(path.join(app, 'done.txt'), 'utf8')).toBe('done\n')
     },
     TIMEOUT,
   )

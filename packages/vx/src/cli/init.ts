@@ -42,7 +42,7 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
       if (seam === undefined || !Object.hasOwn(PLUGIN_TEMPLATES, seam)) {
         return {
           ...out,
-          error: `--plugin takes a seam: one of ${seams}${seam === undefined ? '' : ` (got '${seam}')`}`,
+          error: `--plugin takes a seam: one of ${seams}${seam === undefined ? '' : ` (got '${seam}')`}${seeHelp('init')}`,
         }
       }
       out.plugin = seam
@@ -56,7 +56,7 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
   if (out.plugin !== undefined && out.mjs) {
     return {
       ...out,
-      error: '--mjs does not combine with --plugin: the plugin templates are TypeScript',
+      error: `--mjs does not combine with --plugin: the plugin templates are TypeScript${seeHelp('init')}`,
     }
   }
   return out
@@ -369,7 +369,7 @@ function namelessNotes(root: string, dirs: readonly string[]): string[] {
   const withScripts = dirs
     .filter((dir) => {
       const scripts = (
-        JSON.parse(readText(path.join(dir, 'package.json')) || '{}') as {
+        JSON.parse(readText(path.join(dir, 'package.json')).replace(/^\uFEFF/, '') || '{}') as {
           scripts?: unknown
         }
       ).scripts

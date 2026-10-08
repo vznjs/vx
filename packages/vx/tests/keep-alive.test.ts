@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -138,6 +139,50 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       )
     }, 20_000)
   }
+
+  // Another vx version ran on this cache during the session and reset the
+  // index to its schema: the late history is this run's to write, and a
+  // schema mismatch resets silently. A reading handle refused it and
+  // printed "run history not recorded: ... another vx version".
+  it('records the history after another vx version reset the index mid-session', async () => {
+    const dir = await addProject(root, 'app', config(0))
+    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_KILL_GRACE_MS: '200' }
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env,
+      }),
+    )
+    await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+    // The held run may be writing its index right now; wait for its lock.
+    db.query('PRAGMA busy_timeout = 5000').get()
+    db.query("UPDATE schema_meta SET value = 'v0-other' WHERE key = 'version'").run()
+    db.close()
+    writeFileSync(path.join(dir, 'go'), '')
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    expect(code).toBe(0)
+    expect((out + err).split('\n').filter((l) => /history|schema|version/.test(l))).toEqual([])
+    const last = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env,
+    })
+    const json = await new Response(last.stdout).text()
+    expect(await last.exited).toBe(0)
+    const tasks = (JSON.parse(json) as { tasks: Array<{ task: string; status: string }> }).tasks
+    expect(tasks.map((t) => `${t.task}:${t.status}`).sort()).toEqual([
+      'dev:success',
+      'other:success',
+    ])
+  }, 20_000)
 
   // C-19: the teardown's default signal. No one pressed Ctrl-C here, so
   // the others get SIGTERM; a SIGINT in its place survived the suite.
@@ -515,6 +560,29 @@ describe('a persistent server that dies before the run stops it', () => {
       pinned: [],
       tally: '1 failed · 1 success · 2 total',
     })
+  }, 20_000)
+
+  // WD-10: its output block closed `running` under the line naming its exit.
+  it("a crashed dependency-only server's output block closes failed", async () => {
+    await addProject(root, 'app', crashing('echo READY; sleep 0.1; echo dying; touch gone; exit 3'))
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200', NO_COLOR: '1' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const closes = (out + err)
+      .split('\n')
+      .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
+      .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
+    expect([code, closes]).toEqual([1, ['└─ ▸ app#srv ── (T) failed (exit 3)']])
   }, 20_000)
 
   // WD-11: the count of servers it stopped took in one already dead.

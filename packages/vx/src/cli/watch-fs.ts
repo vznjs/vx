@@ -77,10 +77,10 @@ export function pollWatcher(
    */
   skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
 ): WatchHandle {
-  let previous = new Map<string, number>()
+  let previous = new Map<string, string>()
   let first = true
   const scan = (): void => {
-    const current = new Map<string, number>()
+    const current = new Map<string, string>()
     const walk = (abs: string, rel: string): void => {
       let entries: fs.Dirent[]
       try {
@@ -95,15 +95,23 @@ export function pollWatcher(
           if (recursive && !skipDir(childRel)) walk(path.join(abs, e.name), childRel)
           continue
         }
-        if (!e.isFile()) continue
+        // A link is an input as its target string (watch-judge.ts), so that
+        // string is sampled, never the target's times: a retarget inside
+        // one clock tick carries the same times.
+        const link = e.isSymbolicLink()
+        if (!e.isFile() && !link) continue
         try {
           // The later of the two clocks, as `modifiedBefore` reads them: a
           // replacement that carries the old file's mtime (`cp -p`, `rsync
           // -a`, `mv` of a file stamped the same) moved nothing under mtime
           // alone, and the poller never ran it where the native watcher did.
           // A rename or a write moves ctime, and no process can set it.
-          const st = fs.statSync(path.join(abs, e.name))
-          current.set(childRel, Math.max(st.mtimeMs, st.ctimeMs))
+          const p = path.join(abs, e.name)
+          if (link) current.set(childRel, `link:${fs.readlinkSync(p)}`)
+          else {
+            const st = fs.statSync(p)
+            current.set(childRel, String(Math.max(st.mtimeMs, st.ctimeMs)))
+          }
         } catch {
           // raced with a delete; the next scan settles it
         }
@@ -111,8 +119,8 @@ export function pollWatcher(
     }
     walk(dir, '')
     if (!first) {
-      for (const [rel, mtime] of current) {
-        if (previous.get(rel) !== mtime) onEvent(rel)
+      for (const [rel, stamp] of current) {
+        if (previous.get(rel) !== stamp) onEvent(rel)
       }
       for (const rel of previous.keys()) {
         if (!current.has(rel)) onEvent(rel)
@@ -341,7 +349,9 @@ export function modifiedBefore(abs: string, t: number): boolean {
     // carry a file's OLD mtime onto the new one, and judged by mtime alone
     // such an edit was "before the arm" and never ran (item 945). No
     // process can set a ctime, and a rename or a write moves it.
-    const st = fs.statSync(abs)
+    // The link's own times, not its target's: a link made after the arm
+    // to an old file is a new input, and followed it read as the target's.
+    const st = fs.lstatSync(abs)
     return Math.max(st.mtimeMs, st.ctimeMs) < t
   } catch {
     return false
@@ -390,6 +400,10 @@ export class WatcherPool {
   // network mount, a container bind — the attempt costs a denied syscall
   // and a two-second wait before the fallback takes over anyway.
   private readonly forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
+  // The stop closes the pool while a cycle may still be re-arming: an arm
+  // after it, or a proof that fails because it closed the watcher, would
+  // leave a live watcher or poller nothing ever closes.
+  private closed = false
 
   constructor(private readonly skip: (dir: string, rel: string) => boolean) {
     if (this.forcePoll)
@@ -403,6 +417,7 @@ export class WatcherPool {
   // By slot, not by handle: an OS watcher that never proves delivery is
   // swapped for a poller in place, and a drop must close what is there.
   arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {
+    if (this.closed) return CLOSED
     const watchers = this.watchers
     const at = watchers.length
     const handle: WatchHandle = {
@@ -434,8 +449,8 @@ export class WatcherPool {
       armed.ready.then((ok) => {
         if (ok) return
         armed.watcher.close()
-        // Dropped by a rearm before its proof settled: nothing to swap in.
-        if (watchers[at] !== armed.watcher) return
+        // Dropped by a rearm or the stop before its proof settled: nothing to swap in.
+        if (this.closed || watchers[at] !== armed.watcher) return
         // The watcher never proved delivery, so it is not one: an FSEvents
         // stream the OS refused, a filesystem that reports nothing. Swap in
         // the poller rather than run a loop that silently never fires.
@@ -454,6 +469,7 @@ export class WatcherPool {
   }
 
   closeAll(): void {
+    this.closed = true
     for (const w of this.watchers) {
       try {
         w.close()

@@ -33,7 +33,6 @@ export interface ConfigImportOwnersArgs {
   projects: readonly ProjectMeta[]
   changed: readonly string[] // workspace-relative POSIX
   skip: ReadonlySet<string> // already-selected projects
-  realDirs?: ReadonlyMap<string, string> // project dir → realpath, when the caller has them
 }
 export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
 ```
@@ -51,9 +50,10 @@ does not apply.
    quoted `./`, `../`, escape or tsconfig alias skips the scan), keep specifiers starting with `./` or `../`
    and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
-3. **Descend only through files owned by NO project** (or by a root
-   project, D-41). A config
-   reaching into another project records the edge and stops.
+3. **Descend through every file the walk reaches**, another project's
+   included: the evaluation follows those imports (`configImports`), so
+   the key does too (X-128). Each file is read once however many configs
+   reach it.
 4. One reverse BFS from the changed set answers every root at once.
 
 Any read or parse failure skips that file silently: failing selection
@@ -77,7 +77,7 @@ it in `cache.inputs.workspaceFiles`. Selecting every config the purity
 gate cannot vouch for on any unowned change was weighed and left: it
 would run every such project on a README edit.
 
-## The two rules that bound it
+## The rule that bounds it
 
 **Relative specifiers only.** A bare specifier is a package; it moves
 when the lockfile moves, and the workspace fingerprint already selects
@@ -89,14 +89,15 @@ maps is not scanned for one; at 5,000 configs that each import a
 package and sit under a tsconfig, the lookup costs a one-file change
 140 → 200 ms, and nothing when the configs import only `@vzn/vx`.
 
-**No descent past a project boundary.** This is what makes the walk
-affordable. When this repo's docs package config still imported core by
-relative path (`../../src/index.ts`), following that edge transitively
-would have dragged substantially all of core `src/` into the closure
-(today it imports the bare `@vzn/vx`). The edge is
-recorded (so editing `src/index.ts` selects `@vzn/vx-docs`), but the
-walk stops there, and containment already selects the project owning
-the target.
+**Not bounded by project.** The walk stopped at the first file of
+another project, on the reasoning that containment selects that project.
+It selects the owner, not the importer: `x`'s config imports
+`packages/lib/preset.mjs`, which imports `internal.mjs`, and an edit to
+`internal.mjs` moved `x`'s key while `--affected` ran `lib` alone. So did
+D-41's root-project case before it. The walk now follows every import
+the evaluation follows; a config reaching into another project's source
+pays for that project's import closure once (200 configs importing a
+500-file library: 10 → 28 ms for one changed file, min of 3).
 
 ## Realpath
 
@@ -132,26 +133,11 @@ the channel cost 0.36 ms.
 
 ## Where this stops
 
-The boundary rule buys a bounded walk and pays for it in completeness.
-Both cases below are UNDER-selection, they are deliberate, and they are
-pinned by tests so a future change has to face them:
-
-**A config importing into another project gets ONE hop.** `x`'s config
-imports `packages/lib/preset.mjs`; editing `preset.mjs` selects `x`, but
-editing `packages/lib/internal.mjs` — which `preset.mjs` imports — does
-not. `lib` is selected by containment; `x` is not, even though the value
-flows into its resolved config. Following it would make the walk's cost
-the size of an arbitrary project's source tree rather than the shared
-tooling set.
-
-**When the workspace root is ITSELF a project** (a `"."` member, or a
-root `vx.config` since D-39), its directory is the whole workspace, so
-every `shared/**` file is owned by it. The walk descends through the
-root project's own files as through unowned ones (D-41): they are the
-same shared tooling, and a member's config importing `shared/flag.mjs`,
-which imports `shared/deep.mjs`, is selected when `deep.mjs` changes.
-It stopped at the first hop before, and left that importer out while
-its key moved. A member's files still stop the walk.
+Imports only (a file a config READS is not followed, above), relative
+or tsconfig-mapped only, and nothing under `node_modules` or outside the
+workspace. Until X-128 the walk also stopped at the first file of
+another project (and, before D-41, of a root project): both left an
+importer out while its key moved.
 
 ## Known over-selection
 

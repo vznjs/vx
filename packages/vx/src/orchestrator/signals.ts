@@ -14,7 +14,7 @@
 // them to the runner around every spawn.
 
 import { signalExitCode } from '../exec/index.js'
-import { killGraceMs, settleWithin } from '../util/index.js'
+import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
@@ -69,7 +69,9 @@ export async function terminateChildren(
   signal: ForwardedSignal = 'SIGTERM',
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
-  const children = live()
+  // A ready server is in both of run()'s lists: signalled twice, it read
+  // the second as a repeated Ctrl-C (force quit).
+  const children = [...new Set(live())]
   // On the group guard's list until the sweep below is done: a shell that
   // dies on the signal lets its group go while what it forked runs out
   // the grace (kill-tree.ts, `holdGroups`).
@@ -131,6 +133,7 @@ export function forwardSignals(args: {
     // that ended the run.
     if (stopping !== undefined) exit(stopping)
     stopping = signal
+    claimExitForSignal()
     // Clear the live worker/status region BEFORE exiting so a TTY isn't
     // left with a frozen region in the scrollback. runEnd is idempotent
     // and a no-op for non-TTY loggers.
@@ -155,7 +158,8 @@ export function forwardSignals(args: {
   if (args.enabled) {
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
-    process.on('SIGHUP', onSighup)
+    // A hang-up vx was started deaf to (nohup) stays ignored.
+    if (!hangupIgnored()) process.on('SIGHUP', onSighup)
   }
   return {
     remove: () => {
