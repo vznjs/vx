@@ -827,32 +827,15 @@ describe('the evaluation deadline', () => {
     }, 15_000)
   }
 
-  // DEFECT PIN (current behaviour, not desired behaviour).
-  //
-  // `0` and any value past 2^31-1 both deadline INSTANTLY, so the two values a
-  // user reaches for to disable the deadline are the two that break every
-  // repeat config load:
-  //   * `0` is "fire on the next tick", not "no deadline" — while elsewhere in
-  //     this project a zero disables (the status line's floor);
-  //   * `999999999999` overflows setTimeout's 32-bit delay, which Bun clamps to
-  //     1ms (printing a TimeoutOverflowWarning), and then reports the failure
-  //     as "did not answer within 999999999999ms" — a message that cannot be
-  //     true and points nowhere near the cause.
-  // A clamp (and treating 0 as "no deadline") belongs in evalBudgetMs.
-  it('deadlines instantly on 0 \u2014 DEFECT, still pinned', async () => {
-    // STILL A DEFECT, and deliberately left as one: `0` is a SEPARATE mechanism
-    // from the 32-bit ceiling below, and its repair is a real design question
-    // rather than a clamp. Treating `0` as "no deadline" would match this
-    // project's other zero (the status line's floor: 0 disables) \u2014 but it
-    // would also let a wedged worker hang `vx watch` forever, which is the
-    // exact failure this deadline was added to prevent. That tension needs
-    // settling before the behaviour moves; pinned meanwhile so it cannot drift.
+  it('a budget of 0 falls back to the default instead of firing on the next tick (D-157)', async () => {
+    // `0` deadlined every repeat load instantly ("did not answer within 0ms"),
+    // so `vx watch` failed each cycle. It is out of range for a bound, as it is
+    // for VX_KILL_GRACE_MS, and falls back like the timer-ceiling case below:
+    // not "no deadline", which would let a wedged worker hang the watch loop.
     process.env[BUDGET_ENV] = '0'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
-    // The config sleeps 400 ms, so a rejection naming 0 ms fired before it
-    // could answer; a wall-clock bound on top raced a loaded box (D-94).
     const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
-    expect(outcome).toBe('REJECTED config worker did not answer within 0ms')
+    expect(outcome).toBe('RESOLVED {"tasks":{"ok":{}}}')
   }, 15_000)
 
   it('a budget past the timer ceiling falls back instead of firing at 1ms', async () => {

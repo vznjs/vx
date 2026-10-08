@@ -99,11 +99,14 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
   if (out.runId !== undefined && out.list !== undefined) {
     return {
       ...out,
-      error: `a run id and --list do not combine: replay ${out.runId}, or list runs`,
+      error: `a run id and --list do not combine: replay ${out.runId}, or list runs${seeHelp('last')}`,
     }
   }
   if (out.runId !== undefined && out.failed === true) {
-    return { ...out, error: `a run id and --failed do not combine: replay ${out.runId}` }
+    return {
+      ...out,
+      error: `a run id and --failed do not combine: replay ${out.runId}${seeHelp('last')}`,
+    }
   }
   return out
 }

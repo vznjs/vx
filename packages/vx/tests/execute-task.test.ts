@@ -2448,14 +2448,15 @@ describe('execute-task edges', () => {
     ])
   })
 
-  it("core does not abort a local request at the timeout; the runner's timedOut decides (X-125)", async () => {
-    // The runner times a local task from its spawn and says when it killed;
-    // a 0 past core's would-be deadline is a finish.
+  it("the local executor's own timedOut decides an exit 0 past the timeout (X-125)", async () => {
+    // The runner counts from the spawn and core arms no timer on a local
+    // request: a 0 past the declared timeout is the runner's to call, and it
+    // did not call it a kill.
     const local = localExecutor()
     let aborted: boolean | undefined
     local.execute = async (req: ExecuteRequest) => {
       await Bun.sleep(150)
-      aborted = req.signal?.aborted
+      aborted = req.signal!.aborted
       return { exitCode: 0, durationMs: 150, stdout: '', stderr: '', violations: [] }
     }
     const o = await executeTask({
