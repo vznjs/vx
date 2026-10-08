@@ -681,6 +681,9 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
+left remote (`--download=none`) is held to the same checks: a moved
+key still lets a local consumer fetch its outputs, but the fetch saves
+no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
@@ -708,7 +711,10 @@ over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
 A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way.
+key derivation, step 3) withholds the save the same way, and no key
+taken before it is probed or restored: a hit the up-front probe found
+goes back to the scheduler and runs once its deps are done. Until X-124
+that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
 policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
