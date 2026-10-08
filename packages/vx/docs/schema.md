@@ -1526,7 +1526,7 @@ interface WorkspaceRules {
   cache, shared with no other workspace.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
