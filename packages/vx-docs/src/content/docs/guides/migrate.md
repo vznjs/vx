@@ -1,9 +1,9 @@
 ---
 title: Migrate
-description: Move a Turborepo or Nx repo to native vx config. `vx init` gives a temporary start; `bunx @vzn/vx-migrate` writes the vx.config.ts files that are the goal.
+description: Move a Turborepo, Nx or Vite Task repo to native vx config. `vx init` gives a temporary start; `bunx @vzn/vx-migrate` writes the vx.config.ts files that are the goal.
 ---
 
-Move a Turborepo or Nx repo to native vx config. The `vx.workspace.ts`
+Move a Turborepo, Nx or Vite Task repo to native vx config. The `vx.workspace.ts`
 that `vx init` writes is a temporary start, not a way to run the repo;
 `bunx @vzn/vx-migrate` writes the `vx.config.ts` files you keep, and
 vx's benchmarks measure only that native config. Any other repo starts at the
@@ -16,10 +16,10 @@ your `package.json` scripts.
 ## One command
 
 `npx @vzn/vx-migrate` (`pnpx`, `bunx`, `yarn dlx`) is the whole adoption in a
-Turbo or Nx repo. It asks whether to migrate natively (a `vx.config.ts` per
+Turbo, Nx or [Vite Task](#vite-task) repo. It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
-without a terminal it is native. It installs vx with the repo's own package
+without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package
 manager and declares the plugins the repo calls for in `vx.workspace.ts`:
 the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
 and `github()` when `.github/workflows` exists, installing each beside vx at
@@ -306,6 +306,16 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;
 keep Nx for those.
+
+## Vite Task
+
+`npx @vzn/vx-migrate` in a repo whose root `package.json` lists
+`vite-plus` writes a `vx.config.ts` per package from each `vite.config`
+`run.tasks` and its `package.json` scripts (`--from vite-task` when
+turbo.json or Nx is there too). Vite Task traces the files a task reads
+and writes; vx declares them, so a task without explicit `cache.input`
+and `cache.output` runs uncached until its `TODO(vx-migrate)` is filled.
+The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 ## Common problems
 

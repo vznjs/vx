@@ -709,7 +709,7 @@ describe('vx migrate (lerna)', () => {
               ? [0, '', true, 1]
               : [
                   1,
-                  'vx-migrate: nothing to migrate: no turbo.json and no Nx workspace — for package.json scripts, run `vx init`\n',
+                  'vx-migrate: nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — for package.json scripts, run `vx init`\n',
                   false,
                   0,
                 ],
@@ -1248,14 +1248,14 @@ describe('vx migrate source detection', () => {
   )
 
   it(
-    'nx.json without the graph file tells the user how to generate it',
+    'nx.json without the graph file or nx tells the user to install',
     async () => {
       const root = await makeRoot('vx-migrate-det1-')
       try {
         await writeFile(path.join(root, 'nx.json'), '{}')
         const r = await vx(root, [])
         expect(r.code).toBe(1)
-        expect(r.err).toContain('nx graph --file=.nx/workspace-data/project-graph.json')
+        expect(r.err).toContain('run `npm install`, then vx-migrate again')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1315,11 +1315,11 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  // Turbo and Nx only (owner, 2026-10-01): lage, wireit and scripts are refused.
-  it('--from takes turbo or nx; any other name, scripts included, names `vx init`', () => {
+  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1): lage, wireit and scripts are refused.
+  it('--from takes turbo, nx or vite-task; any other name, scripts included, names `vx init`', () => {
     for (const v of ['scripts', 'lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo or nx (package.json scripts: `vx init`)',
+        '--from must be turbo, nx or vite-task (package.json scripts: `vx init`)',
       )
   })
 })
@@ -1501,7 +1501,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
@@ -1570,8 +1570,14 @@ describe('the writer: what the sweep found unheld', () => {
       const nx = await detect({}, ['--from', 'nx'])
       expect(nx.code).toBe(1)
       expect(nx.err).toBe(
-        "vx-migrate: no resolved Nx graph found, and exporting one failed (no node_modules/.bin/nx — install nx, or export a graph with `nx graph --file=<path>` and pass it as graph: '<path>') — export it with `nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx-migrate\n",
+        'vx-migrate: nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — run `npm install`, then vx-migrate again\n',
       )
+      // A fresh pnpm clone of an Nx repo: the repo's own manager is named.
+      const fresh = await detect({ 'nx.json': '{}', 'pnpm-lock.yaml': '' }, [])
+      expect([fresh.code, fresh.err]).toEqual([
+        1,
+        'vx-migrate: nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — run `pnpm install`, then vx-migrate again\n',
+      ])
     },
     TIMEOUT,
   )

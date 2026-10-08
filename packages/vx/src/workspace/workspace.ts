@@ -1,4 +1,4 @@
-import { constants, type Dirent } from 'node:fs'
+import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -267,11 +267,13 @@ async function readRootManifests(
       }
       catalogs = catalogsOf([parsed])
       const packages = (parsed as { packages?: unknown }).packages
-      if (packages !== undefined) {
+      // A list commented out leaves `packages:` null, which pnpm reads as
+      // absent; vx refused it as "must be an array" (D-149).
+      if (packages !== undefined && packages !== null) {
         return { globs: assertGlobList(packages, yamlPath, 'packages'), catalogs }
       }
     }
-    // No `packages:`: pnpm 10 keeps its settings and catalogs in this file
+    // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs in this file
     // for a single-package repo too. The root's package.json decides, as it
     // would without the file; read as an empty list, the root found zero
     // projects and every verb ran nothing and exited 0 (item 984).
@@ -348,8 +350,13 @@ export async function unreachedPackages(workspace: Workspace): Promise<string[]>
   return found.sort()
 }
 
-/** The line for `unreachedPackages`' finding: the cause, the packages, the glob to add. */
-export function unreachedHint(unreached: readonly string[]): string {
+/**
+ * The line for `unreachedPackages`' finding: the cause, the packages, the
+ * glob to add, and where. A `pnpm-workspace.yaml` with no `packages:` (pnpm
+ * keeps its settings there) is where pnpm reads the globs: the hint said
+ * there was no such file and named package.json, beside ngrx's (2026-10-07).
+ */
+export function unreachedHint(unreached: readonly string[], root: string): string {
   const n = unreached.length
   const shown = unreached.slice(0, 3).join(', ') + (n > 3 ? ` and ${n - 3} more` : '')
   const globs = [
@@ -357,11 +364,11 @@ export function unreachedHint(unreached: readonly string[]): string {
   ]
     .map((g) => `"${g}"`)
     .join(', ')
-  return (
-    `package.json declares no \`workspaces\` (and there is no pnpm-workspace.yaml), so the root is the only project ` +
-    `and ${n} package.json below it ${n === 1 ? 'is' : 'are'} not: ${shown}. ` +
-    `Add \`"workspaces": [${globs}]\` to package.json and re-run.`
-  )
+  const rest = `so the root is the only project and ${n} package.json below it ${n === 1 ? 'is' : 'are'} not: ${shown}.`
+  return existsSync(path.join(root, 'pnpm-workspace.yaml'))
+    ? `pnpm-workspace.yaml lists no \`packages\`, ${rest} Add \`packages: [${globs}]\` to pnpm-workspace.yaml and re-run.`
+    : `package.json declares no \`workspaces\` (and there is no pnpm-workspace.yaml), ${rest} ` +
+        `Add \`"workspaces": [${globs}]\` to package.json and re-run.`
 }
 
 /**

@@ -52,7 +52,9 @@ does not apply.
    and tsconfig aliases, resolve them, and record the REVERSE edge `target → importer`.
    Targets outside the workspace, or under `node_modules`, are dropped.
 3. **Descend only through files owned by NO project** (or by a root
-   project, D-41). A config
+   project, D-41, or by the importing file's own project: a config split
+   into `./tasks.mjs` that imports `../../shared/preset.mjs` is selected
+   when the preset changes). A config
    reaching into another project records the edge and stops.
 4. One reverse BFS from the changed set answers every root at once.
 

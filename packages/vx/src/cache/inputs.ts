@@ -33,6 +33,7 @@ import {
   slashBraceExpansions,
   splitNegations,
   staticPrefix,
+  stripTrailingSlash,
   taskGlob,
   UserError,
 } from '../util/index.js'
@@ -109,10 +110,10 @@ export interface ResolveInputsArgs {
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   /** Project-relative output globs to exclude from inputs. */
-  ownOutputs: string[]
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
    *  `inputs.workspaceFiles` (a task cannot invalidate itself). */
-  ownWorkspaceOutputs?: string[]
+  ownWorkspaceOutputs?: readonly string[]
   /** Absolute dirs of nested projects (cross-boundary isolation). */
   nestedProjectDirs: string[]
   /**
@@ -646,7 +647,7 @@ function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
 /** Resolve declared output globs (project-relative) to actual produced files. */
 export async function resolveOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
@@ -708,16 +709,9 @@ function containedIn(root: string, paths: readonly string[]): string[] {
   // Sync, as `hashFile`'s lstat: a realpath is microseconds, and the
   // promise round trip per call was most of this function's cost on every
   // miss (B, 2026-09-30).
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const realRoot = real(root) ?? root
+  const realRoot = realOrNull(root) ?? root
   const uniqueDirs = [...new Set(lexDirs)]
-  const resolved = uniqueDirs.map(real)
+  const resolved = uniqueDirs.map(realOrNull)
   const contained = new Set<string>()
   for (const [i, dir] of uniqueDirs.entries()) {
     const real = resolved[i]
@@ -747,7 +741,7 @@ function isInside(dir: string, abs: string): boolean {
  */
 export async function cleanOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   const files = await resolveOutputs(args)
@@ -801,7 +795,7 @@ export interface OutputStamp {
  */
 export async function stampOutputs(args: {
   projectDir: string
-  outputs: string[]
+  outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
@@ -810,7 +804,7 @@ export async function stampOutputs(args: {
 /** `stampOutputs` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -841,7 +835,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: string[]; nestedProjectDirs: string[] },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -849,7 +843,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: string[] },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -937,13 +931,6 @@ async function removeAll(all: readonly string[], root: string): Promise<string[]
  * output's own entry; what it leads to is not.
  */
 function notThroughLink(files: readonly string[], root: string): string[] {
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
   // Resolved only once a directory exists to compare: after a clean pruned
   // the outputs (the common restore) nothing does, and the call was most
   // of an empty clean.
@@ -955,9 +942,10 @@ function notThroughLink(files: readonly string[], root: string): string[] {
     if (ok === undefined) {
       // A directory already gone has nothing to delete through; its path
       // stays so the prune still reaches the parents it emptied.
-      const r = real(dir)
+      const r = realOrNull(dir)
       ok =
-        r === null || r === path.join((realRoot ??= real(root) ?? root), path.relative(root, dir))
+        r === null ||
+        r === path.join((realRoot ??= realOrNull(root) ?? root), path.relative(root, dir))
       own.set(dir, ok)
     }
     return ok
@@ -1067,7 +1055,7 @@ function inScope(dir: string, scope: PruneScope): boolean {
  */
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
@@ -1090,7 +1078,7 @@ export async function resolveWorkspaceOutputs(args: {
  */
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
-  outputs: string[]
+  outputs: readonly string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
   await pruneEmptiedDirs(
@@ -1101,8 +1089,12 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => relPosix(args.workspaceRoot, f))
 }
 
-function stripTrailingSlash(p: string): string {
-  return p.replace(/\/+$/, '')
+function realOrNull(p: string): string | null {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
 }
 
 // The literal-is-a-tree rule moved to `util/paths.ts` (item 442): it
@@ -1195,8 +1187,8 @@ async function assertNoInvisibleLiteralInputs(
 interface ResolveFilesArgs {
   projectDir: string
   workspaceRoot: string
-  files: string[] | undefined
-  ownOutputs: string[]
+  files: readonly string[] | undefined
+  ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles`, and the project's root-relative directory. */
   ownWorkspaceOutputs: readonly string[]
   projectRel: string

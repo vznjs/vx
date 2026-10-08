@@ -30,7 +30,7 @@
  * For each runner we measure three cache states over the whole repo
  * (`build` + `test`), median of `reps`, every runner pinned to the SAME
  * concurrency and measured strictly one-at-a-time (no resource fight):
- *   fresh        — cache cleared, cold run (key derivation + exec + save)
+ *   fresh        — cache and outputs cleared, cold run (key derivation + exec + save)
  *   warm-no-restore — second run, cache hit, outputs intact (skip path)
  *   warm-restore — outputs deleted, cache hit, outputs restored
  *
@@ -46,6 +46,7 @@ import os from 'node:os'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
 import { deleteDist, missingDist } from './outputs.js'
+import { regressions } from './regress.js'
 import { listSchedule, type GraphNode } from './ideal.js'
 import path from 'node:path'
 
@@ -438,6 +439,17 @@ type Row = {
   freshCpu: number
   warmNoRestoreCpu: number
   warmRestoreCpu: number
+  /** One edit to the top package's source, the rest warm; absent in rows measured before it. */
+  topEdited?: number
+}
+
+// Unique per edit across every runner, so each edit is a real change.
+let edits = 0
+async function editTop(dir: string): Promise<void> {
+  await writeFile(
+    path.join(dir, 'packages', pkgDirName(LAYERS, 1), 'src', 'index.js'),
+    `module.exports = ${++edits}\n`,
+  )
 }
 
 async function measure(r: Runner, dir: string): Promise<Row> {
@@ -445,8 +457,12 @@ async function measure(r: Runner, dir: string): Promise<Row> {
   const freshCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     await r.clear()
+    await deleteDist(dir)
     const res = await sh(r.run, dir)
     if (!res.ok) throw new Error(`${r.name} failed:\n${res.out.slice(-2000)}`)
+    const missing = await missingDist(dir)
+    if (missing.length > 0)
+      throw new Error(`${r.name} built ${missing.length} dist/ short, e.g. ${missing[0]}`)
     fresh.push(res.ms)
     freshCpu.push(res.cpuMs)
   }
@@ -470,6 +486,13 @@ async function measure(r: Runner, dir: string): Promise<Row> {
     warmRestore.push(res.ms)
     warmRestoreCpu.push(res.cpuMs)
   }
+  const topEdited: number[] = []
+  for (let i = 0; i < REPS; i++) {
+    await editTop(dir)
+    const res = await sh(r.run, dir)
+    if (!res.ok) throw new Error(`${r.name} failed after an edit:\n${res.out.slice(-2000)}`)
+    topEdited.push(res.ms)
+  }
   return {
     runner: r.name,
     version: r.version,
@@ -479,6 +502,7 @@ async function measure(r: Runner, dir: string): Promise<Row> {
     freshCpu: summarize(freshCpu).median,
     warmNoRestoreCpu: summarize(warmNoRestoreCpu).median,
     warmRestoreCpu: summarize(warmRestoreCpu).median,
+    topEdited: summarize(topEdited).median,
   }
 }
 
@@ -494,10 +518,12 @@ function markdown(rows: Row[], baseline: Baseline): string {
   const vx = rows.find((r) => r.runner === 'vx')
   const speed = (
     row: Row,
-    key: 'fresh' | 'warmNoRestore' | 'warmRestore' | 'freshCpu' | 'warmNoRestoreCpu',
+    key: 'fresh' | 'warmNoRestore' | 'warmRestore' | 'freshCpu' | 'warmNoRestoreCpu' | 'topEdited',
   ) => {
-    if (!vx || row.runner === 'vx' || vx[key] === 0 || Number.isNaN(row[key])) return ''
-    return ` (${(row[key] / vx[key]).toFixed(1)}× vx)`
+    const v = vx?.[key] ?? NaN
+    const x = row[key] ?? NaN
+    if (row.runner === 'vx' || v === 0 || Number.isNaN(v) || Number.isNaN(x)) return ''
+    return ` (${(x / v).toFixed(1)}× vx)`
   }
   const head = `# Benchmark results — vx vs Turborepo vs Nx
 
@@ -511,22 +537,24 @@ function markdown(rows: Row[], baseline: Baseline): string {
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
-| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold | CPU, warm |
-| ------ | ------- | ------------ | ----------------- | -------------- | --------- | --------- |
-| baseline (ideal) | — | ${fmt(baseline.fresh)} | ${fmt(baseline.warmNoRestore)} | ${fmt(baseline.warmRestore)} | ${fmt(baseline.freshCpu)} | ${fmt(baseline.warmNoRestoreCpu)} |
+| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | Top edited | CPU, cold | CPU, warm |
+| ------ | ------- | ------------ | ----------------- | -------------- | ---------- | --------- | --------- |
+| baseline (ideal) | — | ${fmt(baseline.fresh)} | ${fmt(baseline.warmNoRestore)} | ${fmt(baseline.warmRestore)} | — | ${fmt(baseline.freshCpu)} | ${fmt(baseline.warmNoRestoreCpu)} |
 `
   const body = rows
     .map(
       (r) =>
-        `| ${r.runner} | ${r.version} | ${fmt(r.fresh)}${speed(r, 'fresh')} | ${fmt(r.warmNoRestore)}${speed(r, 'warmNoRestore')} | ${fmt(r.warmRestore)}${speed(r, 'warmRestore')} | ${fmt(r.freshCpu)}${speed(r, 'freshCpu')} | ${fmt(r.warmNoRestoreCpu)}${speed(r, 'warmNoRestoreCpu')} |`,
+        `| ${r.runner} | ${r.version} | ${fmt(r.fresh)}${speed(r, 'fresh')} | ${fmt(r.warmNoRestore)}${speed(r, 'warmNoRestore')} | ${fmt(r.warmRestore)}${speed(r, 'warmRestore')} | ${fmt(r.topEdited ?? NaN)}${speed(r, 'topEdited')} | ${fmt(r.freshCpu)}${speed(r, 'freshCpu')} | ${fmt(r.warmNoRestoreCpu)}${speed(r, 'warmNoRestoreCpu')} |`,
     )
     .join('\n')
   return `${head}${body}
 
-**Cache states.** *Fresh* clears the runner's cache and runs cold (key
+**Cache states.** *Fresh* clears the runner's cache and every \`dist/\`, then runs cold (key
 derivation + execution + save). *Warm, no restore* re-runs with the cache
 warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every \`dist/\` first, so the runner restores outputs from cache.
+*Top edited* changes the top package's source once per rep with the rest
+warm: two tasks run (its \`build\` and \`test\`), every other task is a hit.
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on ${CONCURRENCY} workers along the
@@ -675,6 +703,23 @@ async function measureBaseline(dir: string): Promise<Baseline> {
 
 const BASELINE_ONLY = process.env['BASELINE_ONLY'] === '1'
 
+// The committed run, read before this one overwrites it: a row slower than
+// its committed twin on the same workspace shape is a regression to see.
+const committed = JSON.parse(await Bun.file(path.join(import.meta.dir, 'results.json')).text()) as {
+  layers: number
+  perLayer: number
+  depsPerPkg: number
+  concurrency: number
+  buildSleep: string
+  rows: Row[]
+}
+const sameShape =
+  committed.layers === LAYERS &&
+  committed.perLayer === PER_LAYER &&
+  committed.depsPerPkg === DEPS_PER_PKG &&
+  committed.concurrency === CONCURRENCY &&
+  committed.buildSleep === BUILD_SLEEP
+
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
 
 console.error(`scaffolding ${PACKAGES} packages × ${LAYERS} layers in ${ws} …`)
@@ -766,4 +811,16 @@ await writeFile(
 
 console.error('\n' + md)
 console.error('\nwrote bench/RESULTS.md + bench/results.json')
+if (sameShape) {
+  const measured = new Set(runners.map((r) => r.name))
+  const slower = regressions(
+    committed.rows,
+    rows.filter((r) => measured.has(r.runner)),
+  )
+  console.error(
+    slower.length === 0
+      ? 'no timing more than 10% slower than the committed run'
+      : `slower than the committed run by more than 10%:\n  ${slower.join('\n  ')}`,
+  )
+}
 await rm(ws, { recursive: true, force: true })
