@@ -924,11 +924,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   replayed them as a green hit. The local executor fails the same child
   as timed out. Any exit after the timeout's abort is now a timeout on a
   plugin executor; the local one keeps its runner's own verdict, since
-  core arms no clock on a local request (#3153). Rows:
+  core's request timer starts before the spawn. Rows:
   `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
   abort is a timeout on a plugin executor too (X-125)",
   `execute-task.test.ts` › "the local executor's own timedOut decides an
   exit 0 after the request's abort (X-125)".
+
 - **X-129.** `vx run test --affected` where the changed project has no
   vx config and another declares `test` exited 1, "no projects declare
   task(s): test", against item 1024. The guard loaded the rest of the
@@ -947,5 +948,3 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   without bumping `version` is the documented contract's breach, not this
   path. Row: `lockfile-claim.test.ts` › "another claimant's memo is not
   trusted".
-  `execute-task.test.ts` › "core does not abort a local request at the
-  timeout; the runner's timedOut decides (X-125)".
