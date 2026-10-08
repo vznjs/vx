@@ -847,6 +847,127 @@ describe('signal handling during vx run (e2e)', () => {
   )
 })
 
+// A task runs in a session of its own, so a Ctrl-Z's SIGTSTP to the
+// terminal's group stopped vx alone: the task ran on, writing, and its
+// timeout counted the stop. A counter the task bumps every 20 ms is the
+// probe: it holds still while the task is stopped and moves once resumed.
+describe('a Ctrl-Z stops the tasks with vx', () => {
+  let fixture: Fixture
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  const tick = (file: string): string => (existsSync(file) ? readFileSync(file, 'utf8') : '')
+
+  async function untilTicking(file: string): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (tick(file).trim() === '' && Date.now() < deadline) await Bun.sleep(20)
+    expect(tick(file).trim()).not.toBe('')
+  }
+
+  /** The counters stand still for 150 ms, seven ticks: every task is stopped. */
+  async function untilFrozen(files: string[]): Promise<void> {
+    const deadline = Date.now() + 5_000
+    while (Date.now() < deadline) {
+      const before = files.map(tick)
+      await Bun.sleep(150)
+      if (files.map(tick).join('\0') === before.join('\0')) return
+    }
+    throw new Error(`${files.join(', ')} kept moving while vx was stopped`)
+  }
+
+  async function untilMoved(file: string, from: string): Promise<void> {
+    const deadline = Date.now() + 5_000
+    while (tick(file) === from && Date.now() < deadline) await Bun.sleep(20)
+    expect(tick(file)).not.toBe(from)
+  }
+
+  const vx = (...args: string[]) =>
+    Bun.spawn([process.execPath, BIN, ...args], {
+      cwd: fixture.root,
+      env: { ...process.env },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+  it(
+    'SIGTSTP stops a running task with vx, and SIGCONT resumes it',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: { t: { exec: { command: "i=0; while :; do i=$((i+1)); echo $i > tick.txt; sleep 0.02; done" } } } }`,
+      )
+      const file = path.join(dir, 'tick.txt')
+      const proc = vx('run', 't', '--all')
+      try {
+        await untilTicking(file)
+        proc.kill('SIGTSTP')
+        await untilFrozen([file])
+        const frozen = tick(file)
+        proc.kill('SIGCONT')
+        await untilMoved(file, frozen)
+        proc.kill('SIGINT')
+        expect(await proc.exited).toBe(130)
+      } finally {
+        proc.kill('SIGKILL')
+      }
+    },
+    TIMEOUT,
+  )
+
+  // Stopped past the timeout, each task still finishes: a one-shot's
+  // `exec.timeout` and a persistent task's readiness deadline count only
+  // the time vx ran. Before, both fired the moment vx resumed.
+  it(
+    'a stop longer than the timeout fails neither a one-shot task nor a readiness wait',
+    async () => {
+      const count = (then: string): string =>
+        `i=0; while [ $i -lt 40 ]; do i=$((i+1)); echo $i > $OUT; sleep 0.02; done; ${then}`
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              one: { exec: { command: ${JSON.stringify(`OUT=one.txt; ${count('true')}`)}, timeout: 3000 } },
+              srv: {
+                exec: {
+                  command: ${JSON.stringify(`OUT=srv.txt; ${count('echo READY; while :; do sleep 0.05; done')}`)},
+                  persistent: { readyWhen: 'READY' },
+                  timeout: 3000,
+                },
+              },
+              all: { exec: { command: 'true' }, dependsOn: ['one', 'srv'] },
+            },
+          }
+        `,
+      )
+      const files = [path.join(dir, 'one.txt'), path.join(dir, 'srv.txt')]
+      const proc = vx('run', 'all', '--all')
+      try {
+        for (const file of files) await untilTicking(file)
+        proc.kill('SIGTSTP')
+        await untilFrozen(files)
+        // Stopped mid-count: a vx that stopped alone froze them at the end.
+        expect(files.map((f) => Number(tick(f)) < 40)).toEqual([true, true])
+        // Past both deadlines, counted from the spawn.
+        await Bun.sleep(3_200)
+        proc.kill('SIGCONT')
+        const code = await proc.exited
+        expect({ code, out: await new Response(proc.stdout).text() }).toMatchObject({ code: 0 })
+        expect(files.map((f) => tick(f).trim())).toEqual(['40', '40'])
+      } finally {
+        proc.kill('SIGKILL')
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('terminateChildren — the second sweep re-reads what is live', () => {
   it(
     'a child that appears DURING the grace is killed by the second sweep',

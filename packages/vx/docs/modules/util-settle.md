@@ -13,6 +13,8 @@ settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // VX_KILL_GRACE_MS, else defaultMs
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
+noteStopped(ms: number): void                     // a Ctrl-Z's stop, measured by its handler
+runningTimeout(fn, ms): { clear(): void }         // setTimeout that counts no stop
 ```
 
 - `teardownTimeoutMs` reads `VX_TEARDOWN_TIMEOUT_MS` per call (a test
@@ -44,8 +46,17 @@ exitClaimedBySignal(): boolean
   done, and the verb settles first with the run's verdict; the claim
   keeps bin.ts from exiting 1 ahead of it.
 
+- `noteStopped` / `runningTimeout`: a Ctrl-Z stops a run's tasks with
+  vx (`signals.md`), so a task's `exec.timeout` and a persistent task's
+  readiness deadline (`exec/runner.ts`) count only the time vx ran. A
+  wall-clock timer that came due during the stop fired the moment vx
+  resumed; this one, when it fires, re-arms for the stopped time noted
+  since it was armed. The handler notes the stop before any timer runs:
+  its own SIGSTOP returns on the resume.
+
 ## Tests
 
 `tests/util-settle.test.ts` (both deadlines and the grace knob);
 `tests/timeout-bounds.test.ts`; `tests/exit-held-loop.test.ts` and
-`tests/signal-handling.test.ts` (the exit claim).
+`tests/signal-handling.test.ts` (the exit claim; a stop longer than
+the timeout fails neither a one-shot task nor a readiness wait).

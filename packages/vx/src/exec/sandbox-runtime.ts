@@ -1318,9 +1318,10 @@ async function wrapIn(
  * bwrap's monitor, which dies of it, and the namespace goes with SIGKILL,
  * so vx sends a polite signal's name down fd 3 instead (`signalThrough`)
  * and a watcher forked before the `exec` signals the group, `$$`, with it
- * (item 752). The command runs in the foreground because an `&` command
- * starts with SIGINT ignored, and a shell cannot trap what it inherited
- * ignored. The command does not get fd 3; a caller that passed none
+ * (item 752) — with each line it reads, since a Ctrl-Z sends STOP, then
+ * CONT, ahead of any TERM. The command runs in the foreground because an
+ * `&` command starts with SIGINT ignored, and a shell cannot trap what it
+ * inherited ignored. The command does not get fd 3; a caller that passed none
  * forwards nothing, silently.
  *
  * Tools resolve on vx's own PATH; without `setsid` the command keeps the
@@ -1352,7 +1353,7 @@ function ownGroupCommand(
   if (trace === undefined) {
     const run = `exec ${setsid ?? ''}${shellQuote(sh)} -c ${shellQuote(userCommand)}`
     if (setsid === undefined) return { command: `${tag0} ${run}`, forwards: false, traced: false }
-    const watch = `{ IFS= read -r s && kill -s "$s" -- "-$$"; } 2>/dev/null <&3 3<&- &`
+    const watch = `{ while IFS= read -r s; do kill -s "$s" -- "-$$"; done; } 2>/dev/null <&3 3<&- &`
     return { command: `${tag0} ${watch} ${run} 3<&-`, forwards: true, traced: false }
   }
   // Traced, strace runs INSIDE the sandbox, around the command alone:
@@ -1403,7 +1404,7 @@ function ownGroupCommand(
   if (setsid === undefined) {
     return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
-  const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
+  const watch = `{ while IFS= read -r s; do kill -s "$s" -- "-$c"; done; } 2>/dev/null <&3 3<&- &`
   return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 

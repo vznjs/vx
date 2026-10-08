@@ -50,6 +50,24 @@ give it a SIGINT trap, or `exec` it. `forwardedSignal` is the rule, and
 the reason `'SIGINT'` (the watch loop's Ctrl-C) the children get
 SIGINT; any other reason, SIGHUP's included, sends SIGTERM.
 
+A Ctrl-Z (SIGTSTP) stops the run's tasks with vx (2026-10-08). The
+terminal stops its foreground group, vx's, and a task is in a session of
+its own: before, vx stopped and its tasks ran on, writing, and nothing
+resumed them on `fg` because nothing had stopped them. The handler
+SIGSTOPs every live group and the ready persistent ones, then stops vx
+with SIGSTOP; that call returns once a SIGCONT (`fg`, `bg`) resumes vx,
+and the handler SIGCONTs the same groups. A Linux sandboxed task gets
+both down its fd-3 channel (`sandbox-runtime.md`): its group is in the
+sandbox's pid namespace. The stop is measured around vx's own SIGSTOP
+and noted (`noteStopped`, `util-settle.md`) before any timer runs, so a
+task's `exec.timeout` and a readiness deadline count only the time vx
+ran; before, one that came due during the stop fired on the resume. A
+`durationMs`, a kill grace and the history still read the wall clock.
+Only a SIGTSTP is handled: a SIGSTOP to vx alone (`kill -STOP`) cannot
+be caught and stops vx alone, as before. A SIGTSTP to a vx whose group
+is orphaned stops it too, where the kernel's default would have
+discarded the signal; nothing then resumes vx but a SIGCONT.
+
 `terminateChildren` is that teardown on its own, minus the exit: the
 process handler, `RunOptions.signal` (an embedder aborting a run — the
 watch loop's Ctrl-C) and the foreground keep-alive all run it. It
@@ -83,7 +101,7 @@ export function forwardSignals(args: {
   stop: (signal: StopSignal) => void // aborts run()'s own controller
   done: Promise<void> // settles once run() has left its finally
   boundMs: number // how long a signal waits for `done`
-}): SignalForwarding // { remove(): void }
+}): SignalForwarding // { remove(): void }; handles SIGINT, SIGTERM, SIGHUP and SIGTSTP
 ```
 
 The two registries stay with `run()`, which hands them to the runner
@@ -114,7 +132,10 @@ ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,
 `handleSignals: false` installs none; a one-shot and a ready persistent
 task each hear the signal as vx forwards it, a Ctrl-C as SIGINT; a
-task is its own session leader); `tests/plugin-teardown.test.ts` (a
+task is its own session leader; a SIGTSTP stops a running task with vx
+and a SIGCONT resumes it; a stop longer than the timeout fails neither
+a one-shot task nor a readiness wait); `tests/sandbox-runtime.unsafe.test.ts`
+(the same stop and resume for a sandboxed task, through its channel); `tests/plugin-teardown.test.ts` (a
 SIGINT flushes the sinks and tears the plugins down before the exit; a
 second signal does not wait for a teardown that hangs); `tests/abort.test.ts`
 (`RunOptions.signal`: the running child and its dependents `aborted`,

@@ -16,7 +16,10 @@ does not matter.
 
 ```ts
 export type Child = ReturnType<typeof Bun.spawn>
-export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void
+export function killTree(
+  child: Child,
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGSTOP' | 'SIGCONT', // STOP/CONT: a Ctrl-Z (signals.md)
+): void
 export async function untilGroupsGone(children: readonly Child[], graceMs: number): Promise<Child[]>
 export function signalThrough(child: Child, fd: number): void
 export function closeSignalChannel(child: Child): void

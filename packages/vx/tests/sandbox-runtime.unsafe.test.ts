@@ -6070,6 +6070,52 @@ describe.skipIf(!available || process.platform !== 'linux')(
       TIMEOUT,
     )
 
+    // A Ctrl-Z goes down the same pipe as STOP, then CONT: the command's
+    // group is in the sandbox's pid namespace. A watcher that read one line
+    // stopped the task and never resumed it.
+    it(
+      'SIGTSTP stops a sandboxed task with vx, and SIGCONT resumes it',
+      async () => {
+        const dir = await addProject(
+          root,
+          'app',
+          `export default { tasks: { t: { exec: {
+            command: "i=0; while :; do i=$((i+1)); echo $i > tick.txt; sleep 0.02; done",
+            sandbox: { allow: { read: ['.'], write: ['tick.txt'] } },
+          } } } }`,
+        )
+        const file = path.join(dir, 'tick.txt')
+        const tick = (): string => (existsSync(file) ? readFileSync(file, 'utf8') : '')
+        const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        try {
+          const deadline = Date.now() + 20_000
+          while (tick().trim() === '' && Date.now() < deadline) await Bun.sleep(20)
+          proc.kill('SIGTSTP')
+          let frozen: string | undefined
+          const until = Date.now() + 5_000
+          while (frozen === undefined && Date.now() < until) {
+            const before = tick()
+            await Bun.sleep(150)
+            if (tick() === before) frozen = before
+          }
+          expect(frozen).toBeDefined()
+          proc.kill('SIGCONT')
+          const moved = Date.now() + 5_000
+          while (tick() === frozen && Date.now() < moved) await Bun.sleep(20)
+          expect(tick()).not.toBe(frozen)
+          proc.kill('SIGINT')
+          expect(await proc.exited).toBe(130)
+        } finally {
+          proc.kill('SIGKILL')
+        }
+      },
+      TIMEOUT,
+    )
+
     // A signal exit is `process.exit`, which never reaches the task's own
     // unlink: one strace log per sandboxed task stayed in the temp dir
     // (item 848). Since item 849 a first signal lets the run end and read

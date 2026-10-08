@@ -91,7 +91,7 @@ export function exitSignal(code: number): string | undefined
 export function execWord(command: string): string | undefined
 export function execWrap(command: string): string // `exec <command>` when execWord finds a word
 
-export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> }
+export function armTimeout(proc, timeoutMs): { timedOut(): boolean; settle(): Promise<void> } // counts no Ctrl-Z stop (runningTimeout)
 export const POST_EXIT_CUT_LINE: string
 export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Promise<boolean>
 export function spawnFailureText(err: unknown, cwd: string, what?: string): string

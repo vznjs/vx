@@ -53,6 +53,8 @@ export {
   claimExitForSignal,
   exitClaimedBySignal,
   killGraceMs,
+  noteStopped,
+  runningTimeout,
   settleWithin,
   teardownTimeoutMs,
 } from './settle.js'

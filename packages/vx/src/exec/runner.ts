@@ -12,6 +12,7 @@ import {
   isOutOfFds,
   killGraceMs,
   OUT_OF_FDS_HINT,
+  runningTimeout,
   type SecretMask,
 } from '../util/index.js'
 import {
@@ -400,8 +401,9 @@ export function armTimeout(
   let firedAt: number | undefined
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const graceMs = killGraceMs(TIMEOUT_SIGKILL_GRACE_MS)
-  let timer = setTimeout(() => {
-    timer = afterPendingExits(fire)
+  let turn: ReturnType<typeof setTimeout> | undefined
+  const deadline = runningTimeout(() => {
+    turn = afterPendingExits(fire)
   }, timeoutMs)
   function fire(): void {
     firedAt = Date.now()
@@ -418,7 +420,8 @@ export function armTimeout(
   return {
     timedOut: () => firedAt !== undefined,
     settle: async () => {
-      clearTimeout(timer)
+      deadline.clear()
+      clearTimeout(turn)
       if (killTimer !== undefined) clearTimeout(killTimer)
       if (firedAt === undefined) return
       const left = await untilGroupsGone([proc], Math.max(0, firedAt + graceMs - Date.now()))
@@ -623,7 +626,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const markReady = (): void => {
     if (readyAt === undefined) {
       readyAt = Date.now()
-      if (readyTimer !== undefined) clearTimeout(readyTimer)
+      readyTimer?.clear()
       resolveReady()
     }
   }
@@ -713,7 +716,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // timeout, then SIGTERM — the exit handler's later reject is a
   // no-op on the settled promise. Cleared the moment ready fires so
   // a healthy server is never killed by a stale timer.
-  let readyTimer: ReturnType<typeof setTimeout> | undefined
+  let readyTimer: { clear(): void } | undefined
   if (readyRe && opts.timeoutMs !== undefined) {
     const giveUp = (): void => {
       if (readyAt === undefined) {
@@ -741,8 +744,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         killTimer.unref?.()
       }
     }
-    readyTimer = setTimeout(() => {
-      readyTimer = afterPendingExits(giveUp)
+    readyTimer = runningTimeout(() => {
+      const turn = afterPendingExits(giveUp)
+      readyTimer = { clear: () => clearTimeout(turn) }
     }, opts.timeoutMs)
   }
 
@@ -752,7 +756,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     opts.liveChildren?.delete(child)
     markGroupIfGone(child)
     releaseGroup(child)
-    if (readyTimer !== undefined) clearTimeout(readyTimer)
+    readyTimer?.clear()
     if (readyAt === undefined) {
       rejectReady(
         new PersistentReadyError(

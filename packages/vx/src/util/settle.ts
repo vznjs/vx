@@ -83,3 +83,32 @@ export function claimExitForSignal(): void {
 export function exitClaimedBySignal(): boolean {
   return signalOwnsExit
 }
+
+// Time vx spent stopped by a Ctrl-Z (`orchestrator/signals.ts`): its
+// tasks were stopped with it, so a task timeout does not count it.
+let stoppedMs = 0
+
+/** Add a stop's length to the clock `runningTimeout` reads. */
+export function noteStopped(ms: number): void {
+  stoppedMs += ms
+}
+
+/**
+ * `setTimeout` for `ms` of time vx was not stopped. A timer is due on the
+ * wall clock, so one that came due during a Ctrl-Z fired the moment vx
+ * resumed and killed a task that had run a fraction of its budget; this
+ * one first waits out the stop it slept through. The stop is noted before
+ * any timer can run: the handler measures it around its own SIGSTOP.
+ */
+export function runningTimeout(fn: () => void, ms: number): { clear(): void } {
+  let timer: ReturnType<typeof setTimeout>
+  const arm = (wait: number, since: number): void => {
+    timer = setTimeout(() => {
+      const owed = stoppedMs - since
+      if (owed > 0) arm(owed, stoppedMs)
+      else fn()
+    }, wait)
+  }
+  arm(ms, stoppedMs)
+  return { clear: () => clearTimeout(timer) }
+}

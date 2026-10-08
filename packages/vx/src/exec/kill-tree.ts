@@ -25,7 +25,12 @@ export type Child = ReturnType<typeof Bun.spawn>
  */
 const channels = new Map<Child, number>()
 
-/** Route `child`'s SIGINT and SIGTERM through `fd`, an end vx owns. */
+/**
+ * Route `child`'s every signal but SIGKILL through `fd`, an end vx owns.
+ * A Ctrl-Z's SIGSTOP too: the command's group is in the sandbox's pid
+ * namespace, out of vx's reach, and stopping bwrap's would stop the
+ * watcher that could pass it on.
+ */
 export function signalThrough(child: Child, fd: number): void {
   channels.set(child, fd)
 }
@@ -202,7 +207,10 @@ export function markGroupIfGone(child: Child): void {
   if (!groupAlive(child)) goneGroups.add(child)
 }
 
-export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void {
+export function killTree(
+  child: Child,
+  signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL' | 'SIGSTOP' | 'SIGCONT',
+): void {
   // A pid of 0 would name OUR group (kill(0)): a child that never
   // spawned has nothing to kill.
   if (!(child.pid > 0) || goneGroups.has(child)) return
