@@ -471,24 +471,26 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
     // The batch query is never preflighted, as in Turbo.
     const preflight = this.config.preflight && method !== 'POST'
-    const res = await this.breaker.send(() =>
-      withRetry(
-        async () => {
-          const extra = init.headers ?? {}
-          const to = preflight
-            ? await this.preflight(this.url(pathname), method, extra, signal)
-            : { url: this.url(pathname), auth: true }
-          const s = signal()
-          return this.fetchImpl(to.url, {
-            method,
-            headers: this.headers(extra, to.auth),
-            ...(init.body === undefined ? {} : { body: init.body }),
-            ...(s === undefined ? {} : { signal: s }),
-          })
-        },
-        this.config.retries,
-        this.wait,
-      ),
+    const res = await this.breaker.send(
+      () =>
+        withRetry(
+          async () => {
+            const extra = init.headers ?? {}
+            const to = preflight
+              ? await this.preflight(this.url(pathname), method, extra, signal)
+              : { url: this.url(pathname), auth: true }
+            const s = signal()
+            return this.fetchImpl(to.url, {
+              method,
+              headers: this.headers(extra, to.auth),
+              ...(init.body === undefined ? {} : { body: init.body }),
+              ...(s === undefined ? {} : { signal: s }),
+            })
+          },
+          this.config.retries,
+          this.wait,
+        ),
+      method === 'GET',
     )
     if (method === 'PUT' && res.status === 403) {
       const first = !this.writesRefused
@@ -549,8 +551,11 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       headers: { Accept: 'application/octet-stream' },
     })
     if (res === undefined) return null
-    if (res.status === 404) return null
-    if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
+    if (res.status !== 200) {
+      await res.body?.cancel()
+      if (res.status === 404) return null
+      throw new Error(`HTTP ${res.status}`)
+    }
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
     if (this.key === undefined) return { body: res, durationMs }
@@ -574,7 +579,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     try {
       const max = this.maxSignedBody
       const past = () => new Error(`the signed artifact runs past ${max} bytes — treated as a miss`)
-      if (Number(res.headers.get('content-length') ?? 0) > max) throw past()
+      if (Number(res.headers.get('content-length') ?? 0) > max) {
+        await res.body?.cancel()
+        throw past()
+      }
       let n = 0
       const counted = res.body?.pipeThrough(
         new TransformStream<Uint8Array, Uint8Array>({
