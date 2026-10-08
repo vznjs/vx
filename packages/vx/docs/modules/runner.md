@@ -134,7 +134,8 @@ export function peakRssBytes(maxRSS: number): number // bytes, whatever unit the
   `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
-  line), so no comment can swallow them. The sandbox wrapper and the
+  line), so no comment can swallow them; one scan reads quotes,
+  comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
   bytes are corrupted.

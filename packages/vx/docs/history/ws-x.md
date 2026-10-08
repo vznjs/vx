@@ -556,3 +556,13 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-110.** Args after `--` landed on the wrong line or inside a
+  comment: a `<<word` in a comment or quotes (`# then << check`,
+  `node -e "1<<x"`) made every later line a heredoc body, so the args
+  went on that line and ` --fix # …` ran `--fix` as a command; a quote in
+  a real heredoc body, or a template literal's closing newline after a
+  trailing comment (`echo args: # c\n`), let the comment take them; a
+  comment line after a heredoc, or a `<<\X` heredoc, put them on its
+  terminator (`X --fix`), which then closed nothing. One scan now reads
+  quotes, comments and heredoc bodies together. Rows: `runner.test.ts` ›
+  `withForwardArgs` X-110 rows.
