@@ -21,6 +21,8 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `depends on … but no such project or task is declared` | Fix the name, or declare that task in that package.                 |
 | `No projects declare task(s)`                      | A typo, or no config declares it: `vx show` lists every task.           |
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
+| `filter "…" matched no projects`                   | A typo: the message suggests the closest name. `vx show` lists every project. |
+| `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |
 | `vx: command not found`                            | A local install is not on PATH: run `npx vx` or `bunx vx`.              |
 
 ## vx did something unexpected
@@ -33,6 +35,15 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
   `cache.inputs.files`. `vx why <project#task>` shows what the key saw;
   [`exec.sandbox`](../sandboxing/), with reads granted no wider than
   the inputs, refuses that read and names it.
+- **`cache.inputs matched no files`.** The globs name nothing in the
+  project, so the key ignores its source. Fix the paths; they are
+  relative to the project directory.
+- **`cache.outputs matched no files`.** The task wrote elsewhere, so a
+  hit restores nothing. Point `outputs.files` at what the task writes;
+  a sandboxed task also needs `exec.sandbox.allow.write` for it.
+- **`not ready after …: waiting for a line matching`.** A persistent
+  task's `readyWhen` has not matched its output yet. Fix the pattern,
+  or set `exec.timeout` to bound the wait.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
   names the part of the key that changed.
 - **A variable is empty inside the command.** Past a small essential
