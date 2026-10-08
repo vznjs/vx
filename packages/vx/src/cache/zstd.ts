@@ -157,7 +157,7 @@ export const zstdEncoder = (): TransformStream<Uint8Array, Uint8Array> =>
   new CompressionStream('zstd') as unknown as TransformStream<Uint8Array, Uint8Array>
 
 /** Bytes in memory as a one-chunk stream, for a reader that takes a stream. */
-export const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start(c) {
       c.enqueue(bytes)

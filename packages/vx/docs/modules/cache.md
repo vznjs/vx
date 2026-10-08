@@ -429,8 +429,8 @@ more CPU than the work for a one-file artifact. A save scans the tar it
 packed rather than decoding its own bytes back, in memory and on the
 calling thread (`scanTarBytes`); an ingest decodes and scans the stream.
 Both scanners run one header decoder (`TarDecoder`), so a save indexes
-the names, sizes, modes and mtimes a restore reads and refuses the
-names a restore refuses (`tests/scan-tar-bytes.test.ts`).
+the rows a restore reads and refuses the names a restore refuses
+(`tests/scan-tar-bytes.test.ts`).
 
 SQLite stores metadata only:
 
