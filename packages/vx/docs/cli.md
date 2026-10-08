@@ -1266,7 +1266,8 @@ run...` precedes it.
    the configs; so is one inside a project, which re-reads the set as the
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
-   run stale (item 949). The directory
+   run stale (item 949). An import whose file is gone stays on the list
+   by the name it would have, so its return is a cycle (X-133). The directory
    each `<dir>/*` package glob names (`packages/` for `packages/*`) is
    watched for members coming and going: a package added while the watch
    runs is a cycle that runs it, and its directory is watched from then
