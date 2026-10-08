@@ -46,7 +46,8 @@ and `ws-runtime` (a declared command's output, project- or
 workspace-rooted), `forward` (the argv forwarded after `--`), `package`
 (the project's own `package.json`), `workspace` (the fingerprint),
 `config` (the evaluated task config), `upstream` (a dependency's input
-key, by task id) and `plugin` (a plugin's material, by name). When
+key, by task id), `plugin` (a plugin's material, by name) and `format`
+(the key format, which moves only with a vx upgrade). When
 `@vzn/vx-lockfile` is declared, a dependency bump shows up as
 `plugin @vzn/vx-lockfile/pnpm` for exactly the projects it reaches.
 

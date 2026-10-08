@@ -1251,7 +1251,8 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
    same task graph, same cache behaviour. The line `vx watch: initial
 run...` precedes it.
-2. **Watch loop.** After the initial run finishes, the directory of
+2. **Watch loop.** After the initial run finishes (or once it waits only
+   on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
    plus each `pkg#task`'s own project; only those when every task is
    anchored) plus its transitive dependencies, the closure `--filter 'app...'` walks, cross-project
@@ -1437,7 +1438,8 @@ launches a fresh one, so the two never hold one port. One that dies
 while watch idles is said (`vx: app#dev exited with code 3`); the next
 change starts it again. An edit while a cycle waits only on a server
 that has not printed its `readyWhen` line stops that cycle and starts
-the next, so a fix reaches a server stuck before ready. Stopping watch stops the server too. For dev-server workflows where you want the server
+the next, so a fix reaches a server stuck before ready, in the initial
+run too. Stopping watch stops the server too. For dev-server workflows where you want the server
 to stay up across changes, use the dev tool's own watch (`vite`,
 `tsc -b -w`, `bun --watch`) rather than `vx watch`.
 
@@ -2481,7 +2483,9 @@ id), `env` (a declared variable, by digest), `runtime` and
 fingerprint: the lockfile and the other root manifests), `config` (the
 evaluated task config), `upstream` (a dependency's input key — a
 lockfile change moves it too, so that row rides with the
-fingerprint's) and `plugin` (a `key` plugin's material, by name).
+fingerprint's), `plugin` (a `key` plugin's material, by name) and
+`format` (the key format vx itself folds: it moves only with an
+upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still

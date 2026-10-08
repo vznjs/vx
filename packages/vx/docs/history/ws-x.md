@@ -1073,6 +1073,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   `shared-outputs.test.ts` › "takes another task's workspace output back
   from a project's own inputs".
 
+- **X-139.** A dev server stuck before its `readyWhen` line in `vx
+watch`'s initial run held that run for good: the loop armed only after
+  it, so the fix was never heard. The loop now arms once the initial run
+  waits on readiness alone (every config is loaded by then) and takes the
+  run as its cycle in flight. Rows: `watch-initial-readiness.test.ts`.
 - **X-138.** A package added mid-watch was armed only after the cycle
   it triggered had run, so an edit to it during that cycle fell in the
   gap and ran nothing. The cycle now re-arms (quietly) before it runs;
@@ -1095,6 +1100,13 @@ passed 1× before` and `vx info` listed it for thirty days, though the
 reaches no build task.` The plan now carries the run's own line
   (`RunPlan.noneAffected`). Row: `affected-dependents.test.ts` › "a change
   no requested task reaches is a clean "nothing affected"".
+- **X-142.** After an upgrade that bumped `CACHE_VERSION`, every task
+  missed once and `vx why` said `cache key changed … (inputs differ)` with
+  `no component-level difference was recorded`: the fold never recorded
+  the version. The capture now records it (`format cache-version`), so
+  `vx why` names the upgrade and says there is nothing to fix. Rows:
+  `why.test.ts` › "a key the format moved names the upgrade, not an
+  input (X-142)", `key-fold.test.ts`, `cache.test.ts`.
 - **X-140.** `vx last`'s "re-run what failed" line handed the run's
   forwarded args (`-- --shard 2`) to every failed task, but a run forwards
   them to requested tasks only: a failed dependency re-ran as another
