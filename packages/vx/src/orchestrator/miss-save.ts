@@ -148,11 +148,9 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // `cache.outputs` is not a write grant; `exec.sandbox.allow.write` is.
     const sandboxed = node.config.exec?.sandbox !== undefined
     const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
-    // The workspace side too: a `workspaceFiles` directory linked out of
-    // the workspace drops every file the same way (M-65).
-    const linkedOut =
-      outputDirLinkedOut(node.projectDir, a.outputs, 'the project') ??
-      outputDirLinkedOut(a.workspaceRoot, a.wsOutputs, 'the workspace')
+    // A `workspaceFiles` directory linked out of the workspace drops every
+    // file (M-65); a project one is refused by the resolver (X-88).
+    const linkedOut = outputDirLinkedOut(a.workspaceRoot, a.wsOutputs)
     log.status(
       `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
@@ -300,15 +298,13 @@ function markWritten(
 }
 
 /**
- * The first output directory a pattern names that is a symlink resolving
- * outside `baseDir` (the project, or the workspace root for
- * `workspaceFiles`): every file under it is dropped as outside, and the
- * empty-artifact warning blamed the glob (M-61, M-65).
+ * The first `workspaceFiles` directory that is a symlink resolving outside
+ * the workspace root: every file under it is dropped as outside, and the
+ * empty-artifact warning blamed the glob (M-65).
  */
 function outputDirLinkedOut(
   baseDir: string,
   outputs: readonly string[],
-  base: string,
 ): { dir: string; target: string; base: string } | undefined {
   const realProject = realpathOrNull(baseDir) ?? baseDir
   // `dist` names the tree `dist/**`: the same reading the resolver gives.
@@ -326,7 +322,7 @@ function outputDirLinkedOut(
       }
       const target = realpathOrNull(abs)
       if (target !== null && target !== realProject && !target.startsWith(realProject + path.sep)) {
-        return { dir, target, base }
+        return { dir, target, base: 'the workspace' }
       }
     }
   }

@@ -24,7 +24,7 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
 export function guardLine(fd: number): string // the shell line that lists `$$`'s group and closes the pipe
 export function releaseGroup(child: Child): void
 export function holdGroups(children: readonly Child[]): () => void
-export function markGroupIfGone(child: Child): void
+export function releaseServerGroup(child: Child): void
 ```
 
 `signalThrough` routes a child's SIGINT and SIGTERM down `fd`, a pipe vx
@@ -96,11 +96,14 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   comes while a group is held is written when the hold ends; holds
   count, so two teardowns over one group let it go once both are done.
 - A child whose group was empty when its leader exited is never signalled
-  again (`markGroupIfGone`, from `runPersistent`'s exit): its number is
+  again (`releaseServerGroup`, from `runPersistent`'s exit): its number is
   free, and a ready server stays in the run's registry after it exits, so
   the end-of-run teardown's `kill(-pid)` could reach a group the kernel
   had since handed it (item 874). `groupAlive` reads such a group as gone.
-  A group that still has a member keeps its number, and is signalled.
+  A group that still has a member keeps its number, is signalled, and
+  stays listed until a teardown lets it go: the registry still owns it,
+  and struck at the leader's exit, the `server` of a `server & echo up`
+  outlived a `kill -9` of vx.
 - A clean exit closes the pipe too, with the list empty, so the guard
   kills nothing. A released group is left as before: a one-shot task's
   `server &` outlives vx's clean exit, and a pid the kernel reuses is
@@ -109,6 +112,14 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   path is vx's own teardown (`signals.md`).
 - Best-effort: a guard that cannot start, or a write it is gone for,
   stops the guarding for the process and never fails a task.
+- A guard that is behind is waited for, up to 1 s. Bun opens the pipe
+  nonblocking and the kernel queues ~280 unread writes whatever their
+  size (a burst of 420 releases overran a running guard), so a write
+  EAGAINs while the guard lives. That read as a dead guard: vx stopped
+  guarding while the guard kept every group whose release it never got,
+  and SIGKILLed them at vx's CLEAN exit. A guard vx gives up on is
+  SIGKILLed with its list. A child's own `+` line meets the same queue
+  and is not retried: a group whose line hit a full queue is unlisted.
 - The pipe is not inherited: Bun opens it close-on-exec, and a task's
   `/proc/self/fd` holds 0, 1 and 2 only (probed 2026-09-26).
 - A per-spawn watcher in the task's own shell was the first sketch and
@@ -187,6 +198,10 @@ and "a never-ready server a dead shell left goes with a vx that exits
 inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
 itself in a child that SIGKILLs itself: a deferred release is written when
 the hold ends, and a group two teardowns hold stays listed until both let go.
+`tests/kill-tree-guard-backlog.test.ts`: a task spawned after a burst of
+2,000 releases still dies with a `kill -9` (fails without the wait), and
+a released task's grandchild outlives a clean exit after a stopped guard
+overran the queue (fails without the guard's SIGKILL).
 
 `tests/task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
 each reap a task's backgrounded grandchild (its pid from the inner
