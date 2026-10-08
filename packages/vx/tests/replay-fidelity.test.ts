@@ -78,3 +78,60 @@ describe('cache-hit stdout replay fidelity', () => {
     expect(replay.out.join('')).toBe(EXPECTED)
   })
 })
+
+describe('cache-hit replay keeps both streams in order', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-replay-order-' })
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            emit: {
+              exec: { command: 'sh emit.sh' },
+              cache: { inputs: { files: ['emit.sh'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+    )
+    // The sleeps order the two pipes; RS + e in stdout is the task's own text.
+    await writeFile(
+      path.join(dir, 'emit.sh'),
+      "printf 'one\\n'; sleep 0.2; printf 'two\\n' >&2; sleep 0.2; printf 'thr\\036e\\n'\n",
+    )
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const streams = (): { log: Logger; seen: string[] } => {
+    const seen: string[] = []
+    const log: Logger = {
+      status() {},
+      taskStdout(_node, chunk) {
+        seen.push(`out:${chunk}`)
+      },
+      taskStderr(_node, chunk) {
+        seen.push(`err:${chunk}`)
+      },
+      taskComplete() {},
+    }
+    return { log, seen }
+  }
+  const opts = { tasks: ['emit'], projects: ['app'], handleSignals: false }
+
+  it('stderr between two stdout lines replays between them', async () => {
+    const live = streams()
+    expect((await run({ cwd: root, ...opts, log: live.log })).ok).toBe(true)
+    const expected = ['out:one\n', 'err:two\n', 'out:thr\u001ee\n']
+    expect(live.seen).toEqual(expected)
+
+    const replay = streams()
+    const r2 = await run({ cwd: root, ...opts, log: replay.log })
+    expect(r2.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(replay.seen).toEqual(expected)
+  })
+})

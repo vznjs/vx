@@ -133,8 +133,8 @@ describe('a secret the bound cuts', () => {
     async () => {
       const secret = 'sekritvalue42'
       const xs = (n: number): string => `head -c ${n} /dev/zero | tr '\\0' x`
-      // The first copy straddles the head's end (6 chars kept), the second
-      // the tail's start (7 kept); the middle between them is dropped.
+      // Unmasked, the first copy would straddle the head's end and the second
+      // the tail's start; the middle between them is dropped.
       const command = [
         xs(CAPTURE_HEAD_CHARS - 6),
         'printf "$API_TOKEN"',
@@ -178,11 +178,11 @@ describe('a secret the bound cuts', () => {
       expect(replayed).toContain('of output not kept')
       expect(replayed).not.toContain('sekrit')
       expect(replayed).not.toContain('value42')
-      // Control: each piece is masked where it was, not dropped.
-      const line = replayed.indexOf('\n[vx] ')
-      expect(replayed.slice(line - 4, line)).toBe('x***')
+      // Control: the entry keeps what the run printed, masked before the
+      // bound cut it, so each copy is a whole mask where it was.
+      expect(replayed.slice(CAPTURE_HEAD_CHARS - 7, CAPTURE_HEAD_CHARS - 2)).toBe('x***x')
       expect(replayed.slice(-(CAPTURE_TAIL_CHARS - 7) - 4, -(CAPTURE_TAIL_CHARS - 7) + 1)).toBe(
-        '\n***x',
+        'x***x',
       )
     },
     TIMEOUT,

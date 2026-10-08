@@ -92,8 +92,8 @@ one-shot handler mid-cleanup.
 3. **If caching is on**: `cache.get(hash)`.
    - Hit: `restoreHit` (`hit-restore.ts`, below) — `cleanOutputs(cleanArgs)`
      and `cache.restoreOutputs(hash, projectDir)` unless a proof shows
-     the tree current → replay `hit.stdout` via `log.taskStdout` (no
-     stderr is cached). Return a
+     the tree current → replay the stored output log (`hit.stdout`)
+     through `log.taskStdout` / `log.taskStderr`, in order. Return a
      `cache-hit` (or `cache-hit-remote` if `hit.source === 'remote'`)
      outcome with `durationMs = performance.now() - cacheOpStart` —
      the user-perceived restore time.
