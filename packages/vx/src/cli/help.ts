@@ -110,10 +110,10 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check]',
     '  vx init [--dry] [--force] [--mjs] [--plugin <seam>]',
-    '  vx upgrade [tag]',
+    '  vx upgrade [TAG]',
     '  vx show [PROJECT[#TASK] | TASK] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',
-    '  vx why (TASK | PKG#TASK) [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
+    '  vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]',
     '  vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]',
     '  vx completions bash|zsh|fish',
     '  vx help [VERB]',
@@ -140,8 +140,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  to its flags; unnamed layers keep their value. Examples:',
     '                                  local:rw,remote:r (remote read-only), remote: (remote off),',
     '                                  local:r (local read-only).',
-    '      --cache-dir <path>          Cache directory override (cwd-relative). Beats the workspace',
-    '                                  cacheDir field + the .vx/cache default.',
+    '      --cache-dir <path>          Cache directory override (cwd-relative). Beats VX_CACHE_DIR,',
+    '                                  the workspace cacheDir field and the ~/.vx/<id>/cache default.',
     '      --retry <n>                 Re-run a failed task up to <n> more times (default for tasks',
     "                                  without their own exec.retries; explicit config wins). Doesn't",
     '                                  affect cache keys.',
@@ -215,11 +215,11 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                       lock status.',
     '      --format <fmt>   pretty (default) | json.',
     "  vx why <task>        Why did this task re-run? Compares the task's latest",
-    '                       run (or --run <id>) against its previous run: names the',
+    '                       run (or --run RUNID) against its previous run: names the',
     '                       exact changed cache-key components (files / env / runtime',
     '                       / upstream) from the persisted input fingerprints.',
     '      --format <fmt>   pretty (default) | json.',
-    "  vx last [runId]      Replay a recorded run's summary from the local history —",
+    "  vx last [RUNID]      Replay a recorded run's summary from the local history —",
     '                       header (command, when, branch, counts) plus the per-task',
     '                       table, failures first. No re-execution, no cache probe.',
     '      --list[=N]       List the N most recent runs (default 10) with run ids.',
@@ -356,7 +356,7 @@ export const WATCH_REFUSED_FLAGS: readonly string[] = [
  * The flags one verb accepts: those on its own Usage line, and for a verb
  * that takes `[OPTIONS]` (run, watch) the documented run flags — less the
  * ones watch refuses. The Usage line is the verb's synopsis; a section's
- * prose names other verbs' flags (`vx lock --check`, `--run <id>` under
+ * prose names other verbs' flags (`vx lock --check`, `--run RUNID` under
  * `vx why`) and is not read.
  */
 export function acceptedFlags(verb: string): string[] {

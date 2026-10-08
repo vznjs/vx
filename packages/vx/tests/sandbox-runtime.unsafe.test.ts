@@ -4781,6 +4781,40 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     expect([up, existsSync(sock)]).toEqual([true, true])
   })
 
+  // bwrap stubs each absent mandatory deny under a write grant on the host
+  // (`.bashrc`, `.vscode`, … at the runtime's cwd), and SRT removes them
+  // once every wrap is cleaned up. A server's never was, so after one
+  // stopped every later task left its stubs in the workspace. A child
+  // process: the stubs land in its cwd, not the suite's.
+  it("a stopped server's release lets a later task's bwrap stubs go", async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws)
+    const script = [
+      `import { initSandbox, resetSandbox, runSandboxed, resolveSandboxConfig, wrapSandboxedCommand, releaseBridges } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'))}`,
+      `import { readdirSync } from 'node:fs'`,
+      `const dir = process.cwd()`,
+      `const args = (command) => ({ command, cwd: dir, env: process.env, baseAllowRead: [dir], baseDenyRead: [], reportWithin: dir, reportLinked: [], config: resolveSandboxConfig({ allow: { read: ['.'], write: ['.'] } }, dir) })`,
+      `await initSandbox()`,
+      `const w = await wrapSandboxedCommand({ ...args('true'), server: true })`,
+      `await Bun.spawn(['sh', '-c', w.wrapped], { cwd: dir }).exited`,
+      `const stubbed = readdirSync(dir).includes('.bashrc')`,
+      `releaseBridges(w.tag)`,
+      `await runSandboxed(args('true'))`,
+      `console.log(JSON.stringify([stubbed, readdirSync(dir)]))`,
+      `await resetSandbox()`,
+    ].join('\n')
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, '-e', script],
+      cwd: ws,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([p.stdout.toString().trim(), p.stderr.toString()]).toEqual([
+      JSON.stringify([true, []]),
+      '',
+    ])
+  }, 20_000)
+
   // A literal `ignore` entry is realpath'd WHOLE: a denial through a link
   // lands on the link's target, which is what the record names, so the
   // entry naming the link silences it (sweep of B-11, `ign-nowild-dirname`).

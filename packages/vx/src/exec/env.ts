@@ -33,6 +33,11 @@ export const ESSENTIAL_ENV: readonly string[] = [
   'NO_COLOR',
   'CI',
   'NODE_OPTIONS',
+  // Where corepack and pnpm keep their own binaries, as HOME is: a machine
+  // path, never task output. Without them a corepack shim re-downloads its
+  // manager (offline or sandboxed: fails) and pnpm loses its global dir.
+  'COREPACK_HOME',
+  'PNPM_HOME',
 ]
 
 /**

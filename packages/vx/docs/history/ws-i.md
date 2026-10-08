@@ -507,6 +507,11 @@ I-64. A task's RSS floor reads `/proc/self/status` only when the last
 `VmHWM` cannot decide the peak (it never falls). 500 cold tasks: 500
 reads → 3, ~17 ms of the scheduler's thread (~35 µs a read in vx).
 
+I-65. The config-eval retention sweep runs once a day on its own
+`schema_meta` clock, as the file-hash sweep does: no index covers
+`created_at`, so every close read every row and its JSON, 1–6 ms at
+8,000 rows (2 MB).
+
 ## Leads for other streams
 
 - **A: a cold save commits one SQLite transaction per entry.** The

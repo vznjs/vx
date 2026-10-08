@@ -123,9 +123,7 @@ describe('verbFlags is what each verb accepts', () => {
 
   it('a flag another verb names in passing is never suggested to run', () => {
     // `--frozen`'s help line says "pair with vx lock --check".
-    expect(parseRunArgs(['build', '--chek']).error).toBe(
-      'unknown flag: --chek (see `vx run --help`)',
-    )
+    expect(parseRunArgs(['build', '--chek']).error).toBe('unknown flag: --chek')
   })
 })
 

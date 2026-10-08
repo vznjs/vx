@@ -201,6 +201,52 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     const last = await lastRun(root)
     expect(last.tasks.map((t) => t.status)).toEqual(['success'])
   }, 20_000)
+  // WD-16: a stop after the summary signalled once by the abort, then again
+  // by the wait's own teardown once another kept server went: a server that
+  // reads a second signal as "quit now" lost its graceful shutdown.
+  for (const [signal, sent, code] of [
+    ['SIGTERM', 'T', 143],
+    ['SIGINT', 'I', 130],
+    ['SIGHUP', 'T', 129],
+  ] as const) {
+    it(`a ${signal} after the summary signals a kept server once`, async () => {
+      const dir = await addProject(
+        root,
+        'app',
+        `export default { tasks: {
+          fast: { exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+          slow: {
+            exec: {
+              command: "trap 'echo T >> sigs' TERM; trap 'echo I >> sigs' INT; echo $$ > pid.txt; echo READY; while true; do sleep 30 & wait; done",
+              persistent: { readyWhen: 'READY' },
+            },
+          },
+        } }`,
+      )
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', 'app#fast', 'app#slow'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '500' },
+        }),
+      )
+      let out = ''
+      const reading = (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })()
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      const deadline = Date.now() + 10_000
+      while (!out.includes('─ vx ') && Date.now() < deadline) await Bun.sleep(20)
+      expect(out).toContain('─ vx ')
+      proc.kill(signal)
+      expect(await proc.exited).toBe(code)
+      await reading
+      expect(await waitForDead(pid, 1_000)).toBe(true)
+      expect(readFileSync(path.join(dir, 'sigs'), 'utf8')).toBe(`${sent}\n`)
+    }, 20_000)
+  }
+
   // C-66: a plugin's subscriptions were released only after the keep-alive
   // wait, so through a dev session it heard the server after its teardown.
   it('a plugin hears nothing after its teardown while vx holds a server', async () => {
@@ -488,6 +534,27 @@ describe('a persistent server that dies before the run stops it', () => {
       .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
       .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
     expect([code, closes]).toEqual([1, ['└─ ▸ app#srv ── (T) failed (exit 3)']])
+  }, 20_000)
+
+  // WD-11: the count of servers it stopped took in one already dead.
+  it('the server that ends the wait counts only the others still up', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        srv: { exec: { command: 'echo READY; sleep 0.1; touch gone; exit 3', persistent: { readyWhen: 'READY' } } },
+        srv2: {
+          dependsOn: ['srv'],
+          exec: { command: 'echo READY; while [ ! -f gone ]; do sleep 0.02; done; sleep 0.05; touch gone2; exit 4', persistent: { readyWhen: 'READY' } },
+        },
+        e2e: { dependsOn: ['srv2'], exec: { command: 'while [ ! -f gone2 ]; do sleep 0.02; done; sleep 0.2' } },
+      } }`,
+    )
+    expect((await run(root, ['srv', 'srv2', 'e2e'])).said).toEqual([
+      'vx: app#srv exited with code 3 while the run went on',
+      'vx: app#srv2 exited with code 4 while the run went on',
+      'vx: app#srv exited with code 3',
+    ])
   }, 20_000)
 
   // Item 1102: a signal death printed the signal's name as its code.
