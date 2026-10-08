@@ -1444,8 +1444,11 @@ watch`.
 
 ## `vx cache prune`
 
-Evict old or oversized cache entries. Operates on
-`<cacheDir>/cache.db` plus the on-disk `<hash>.tar.zst` artifacts.
+Evict old or oversized cache entries. Operates on the entries and
+`<hash>.tar.zst` artifacts of the store the workspace's index records
+(`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
+`<cacheDir>` itself when the workspace names one (`cacheDir`,
+`VX_CACHE_DIR`, `--cache-dir`).
 
 `prune` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
@@ -1526,9 +1529,10 @@ Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 orphans the sweep would take, then returns without touching the index
 or the directory; the real prune with the same flags reaps exactly what
 it named (an in-flight save aside). On an index an earlier vx wrote,
-which the real prune resets first, it says so on stderr and names every
-artifact past the hour's grace as an orphan, since that is what the
-reset leaves (item 1083).
+which the real prune resets first, it reads the index as that reset
+leaves it: the shared store's entries still face the policy, and every
+artifact past the hour's grace in the workspace's own directory is an
+orphan (item 1083).
 
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
