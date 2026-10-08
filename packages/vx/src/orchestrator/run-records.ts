@@ -14,8 +14,11 @@ import { isCacheHit, taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]
-  /** Tasks that ran behind a failed dependency (`--continue=always`). */
-  tainted?: ReadonlySet<string>
+  /**
+   * Tasks that ran behind a failed dependency (`--continue=always`) or one
+   * `--exclude-dependencies` dropped, each with the task at the root of it.
+   */
+  tainted?: ReadonlyMap<string, string>
   runId: string
   /** Wall-clock ms at run start; every per-task ns offset is anchored to it. */
   startedAtMs: number
@@ -67,12 +70,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     // aborted (killed by a shutdown signal) isn't a real run.
     if (o.status === 'aborted') continue
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
+    const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
     runs.push({
-      // A failure behind a failed dependency is recorded keyless (`''`, which
-      // the key readers skip): the flaky list asks a key whether it failed.
-      ...(o.hash !== undefined && !(o.status === 'failed' && input.tainted?.has(o.node.id) === true)
-        ? { hash: o.hash }
-        : {}),
+      ...(o.hash !== undefined ? { hash: o.hash } : {}),
       project: o.node.projectName,
       task: o.node.taskName,
       status: o.status,
@@ -107,7 +107,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       ...(isCacheHit(o.status) ? { restored: o.restored === true } : {}),
       ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       cached: o.node.config.cache !== undefined,
-      ...(o.blockedBy !== undefined ? { blockedBy: o.blockedBy } : {}),
+      // A task that ran behind a failure names it too, so the flakiness
+      // projection counts its outcome on no key (failure-mode.ts).
+      ...(blockedBy !== undefined ? { blockedBy } : {}),
       ...(o.timedOut === true ? { timedOut: true as const } : {}),
       ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
       ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),

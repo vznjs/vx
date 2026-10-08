@@ -220,6 +220,107 @@ describe('a failure behind a failed dependency (--continue=always)', () => {
   )
 })
 
+// A pass behind a failed dependency is no pass on the key: the bytes it
+// built on were not the key's. A healthy failure later is a break.
+describe('a pass behind a failed dependency (--continue=always)', () => {
+  it(
+    'is not a pass a later failure on the key relapses from',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-flaky-taint-pass-' })
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                prep: { exec: { command: 'test -f ../../prep-ok' } },
+                test: {
+                  dependsOn: ['prep'],
+                  exec: { command: 'test -f ../../test-ok' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/input.txt': 'v1\n' },
+        })
+        await writeFile(path.join(root, 'test-ok'), '')
+        const tainted = await vx(root, [
+          'run',
+          'test',
+          '--all',
+          '--continue=always',
+          '--summarize=tainted.json',
+        ])
+        expect(tainted.code).toBe(1)
+        await writeFile(path.join(root, 'prep-ok'), '')
+        await unlink(path.join(root, 'test-ok'))
+        const red = await vx(root, ['run', 'test', '--all', '--summarize=red.json'])
+        expect(red.code).toBe(1)
+        const test = async (f: string) =>
+          (JSON.parse(await readFile(path.join(root, f), 'utf8')).tasks as any[]).find(
+            (t) => t.id === 'app#test',
+          )
+        // The positive first: it passed tainted, then failed healthy, on one key.
+        const [before, after] = [await test('tainted.json'), await test('red.json')]
+        expect([before.status, after.status, after.hash]).toEqual([
+          'success',
+          'failed',
+          before.hash,
+        ])
+        expect(red.text).not.toContain('flaky -')
+        expect(after.flaky).toBeUndefined()
+        const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
+        expect(json.flakyTasks).toEqual([])
+        // Control: a healthy pass on the key, then a healthy failure, is a flake.
+        await writeFile(path.join(root, 'test-ok'), '')
+        expect((await vx(root, ['run', 'test', '--all', '--force'])).code).toBe(0)
+        await unlink(path.join(root, 'test-ok'))
+        const relapse = await vx(root, ['run', 'test', '--all', '--force'])
+        expect(relapse.code).toBe(1)
+        expect(relapse.text).toContain('flaky - passed 1× before')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a failure behind it, then a healthy pass, is no flake either',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-flaky-taint-fail-' })
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                prep: { exec: { command: 'test -f ../../green' } },
+                test: {
+                  dependsOn: ['prep'],
+                  exec: { command: 'test -f ../../green' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/input.txt': 'v1\n' },
+        })
+        const red = await vx(root, ['run', 'test', '--all', '--continue=always'])
+        expect(red.code).toBe(1)
+        await writeFile(path.join(root, 'green'), '')
+        const green = await vx(root, ['run', 'test', '--all', '--force'])
+        expect(green.code).toBe(0)
+        expect(green.text).not.toContain('flaky -')
+        const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
+        expect(json.flakyTasks).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // A task with no cache block keys on its config alone: a run's row never
 // calls it flaky, and the doctor's list did for thirty days.
 describe('a task with no cache block', () => {

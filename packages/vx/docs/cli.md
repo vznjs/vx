@@ -2452,8 +2452,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   replayed one), and a pass that took a retry counts too, its failed
   attempts counted as failures. A task with no cache block keys on its
   config alone, so its key says nothing about its inputs: it is never
-  listed. A failure behind a failed dependency, in a run that continues
-  past failures, is that dependency's and counts on no key. `none` when
+  listed. A pass or a failure behind a failed dependency, in a run that
+  continues past failures, is not its key's and counts on no key. `none` when
   no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
