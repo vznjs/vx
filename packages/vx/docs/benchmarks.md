@@ -171,6 +171,33 @@ A real repo's copies each link `node_modules/@vzn/vx-migrate` (or the
 plugin under test) to their arm's checkout, so a plugin change is
 measured with its own core.
 
+### The per-PR guard
+
+`packages/vx-bench/perf-guard.ts` runs in every PR's gate as
+`@vzn/vx-bench#check.perf`. It builds a 25- and a 100-package workspace
+and drives core in-process through five phases: cold run, up-to-date
+run, restore run, plan, one-edit run. Two kinds of number, against
+`packages/vx-bench/perf-baseline.json`:
+
+- **Counts**, exact: processes spawned, xxh3 calls, blob-hash updates,
+  SQLite statements. The same code does the same work on any box, so
+  any change fails. Statements gated by the 50 ms racy-mtime windows
+  (the directory snapshots) are left out; they move with load.
+- **Time**, loose: each timed phase's min over 7 reps at 100 packages,
+  divided by a calibration loop run between reps. Fails past 1.5× the
+  baseline, and only if two re-measures agree.
+
+Each measure runs in a child with a hermetic environment, since vx
+hashes `BUN_OPTIONS`, a HOME bunfig and its parent run's variables.
+A change meant to move a number records it:
+
+```bash
+vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
+```
+
+Run it through `vx run`: the baseline's times are taken under the task
+sandbox, as the check is.
+
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
