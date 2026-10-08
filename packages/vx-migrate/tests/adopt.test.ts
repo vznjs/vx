@@ -7,7 +7,13 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { installArgv, missingPackages, packageManagerOf, parseModeAnswer } from '../src/adopt.js'
+import {
+  installArgv,
+  missingPackages,
+  packageManagerOf,
+  parseModeAnswer,
+  removeArgv,
+} from '../src/adopt.js'
 import { parseMigrateArgs } from '../src/migrate.js'
 import { generatedPlugins } from '../src/workspace-plugins.js'
 
@@ -121,6 +127,30 @@ describe('the package manager', () => {
         ['yarn', 'add', '-D', '@vzn/vx'],
         ['bun', 'add', '-d', '@vzn/vx'],
         ['npm', 'install', '-D', '@vzn/vx'],
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('removes at the workspace root: pnpm -w, Yarn 1 -W, Berry without', async () => {
+    const root = await tmp('vx-adopt-rm-')
+    try {
+      await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
+      const yarn1 = removeArgv(root, 'yarn', ['@vzn/vx-migrate'])
+      await writeFile(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
+      expect([
+        removeArgv(root, 'pnpm', ['@vzn/vx-migrate']),
+        yarn1,
+        removeArgv(root, 'yarn', ['@vzn/vx-migrate']),
+        removeArgv(root, 'bun', ['@vzn/vx-migrate']),
+        removeArgv(root, 'npm', ['@vzn/vx-migrate']),
+      ]).toEqual([
+        ['pnpm', 'remove', '-w', '@vzn/vx-migrate'],
+        ['yarn', 'remove', '-W', '@vzn/vx-migrate'],
+        ['yarn', 'remove', '@vzn/vx-migrate'],
+        ['bun', 'remove', '@vzn/vx-migrate'],
+        ['npm', 'uninstall', '@vzn/vx-migrate'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

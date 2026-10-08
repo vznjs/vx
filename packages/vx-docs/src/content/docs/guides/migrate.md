@@ -39,13 +39,11 @@ are the same adoption one stage at a time.
    with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
    `vx-preset.ts` when turbo.json has global fields or a task `env` several
    packages share. It never overwrites a
-   file without `--force`.
-5. Review each `TODO(vx-migrate)` comment. A task a package's own
-   `vx.config.ts` declares wins; `turbo()` fills only the rest.
-6. Once `vx run build --all` does what `turbo run build` did, remove
-   `turbo()` and its import from `vx.workspace.ts`, then delete
-   `turbo.json`: the configs declare every task it mapped, and the
-   migrator's `note:` says so while `turbo()` is still there.
+   file without `--force`. It takes `turbo()` out of `vx.workspace.ts`
+   and uninstalls `@vzn/vx-migrate` unless a `turboCache()` still needs it.
+5. Review each `TODO(vx-migrate)` comment.
+6. Once `vx run build --all` does what `turbo run build` did, delete
+   `turbo.json`: the configs declare every task it mapped.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -82,6 +80,8 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 
 ```text
 $ bunx @vzn/vx-migrate
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+vx-migrate: npm uninstall @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: dropped turbo() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
@@ -195,16 +195,14 @@ The command itself comes from your `package.json` script, with its
    `nx` installed it stops and prints the export command.
 5. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`. With `turbo.json` there too, pass
-   `--from nx` (or `--from turbo`).
+   `--from nx` (or `--from turbo`). It takes `nx()` out of
+   `vx.workspace.ts` and uninstalls `@vzn/vx-migrate` unless a written
+   task runs an `nx-exec` or `nx-env` line, or `nxCache()` needs it.
 6. Review each `TODO(vx-migrate)` comment, and rewrite each `nx-exec`
-   line (an executor target) as the command it runs; a task a project's
-   own `vx.config.ts` declares wins, and `nx()` fills only the rest.
+   line (an executor target) as the command it runs.
 7. Once `vx run build --all` does what `nx run-many -t build` did,
-   remove `nx()` and its import from `vx.workspace.ts`, then delete
-   `nx.json`: the configs declare every task the graph had, and the
-   migrator's `note:` says so while `nx()` is still there. Keep Nx and
-   `@vzn/vx-migrate` installed while a config still runs an `nx-exec`
-   line, and `@vzn/vx-migrate` while one runs an `nx-env` line.
+   delete `nx.json`: the configs declare every task the graph had. Keep
+   Nx installed while a config still runs an `nx-exec` line.
 
 A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
 runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
@@ -230,10 +228,11 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 
 ```text
 $ bunx @vzn/vx-migrate
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
 vx-migrate: nx graph → vx.config.ts
-note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 note: dropped nx() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
+note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
 2 tasks migrated clean, 0 TODOs
 files written:

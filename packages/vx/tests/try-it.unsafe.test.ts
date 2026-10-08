@@ -326,30 +326,54 @@ const BUILT = [
 ]
 
 /** `bunx @vzn/vx-migrate` as bunx runs it: bunx names itself in
- *  `npm_config_user_agent`, and the report's `next:` line names the runner. */
+ *  `npm_config_user_agent`, and the report's `next:` line names the runner.
+ *  Its `npm` calls are recorded, then done as `step` does them. */
 function migrate(root: string): [number | null, string] {
-  const r = Bun.spawnSync({
-    cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
-    cwd: root,
-    env: { ...process.env, NO_COLOR: '1', npm_config_user_agent: `bun/${Bun.version}` },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return [r.exitCode, r.stdout.toString()]
+  const bin = mkdtempSync(path.join(os.tmpdir(), 'vx-try-npm-'))
+  const calls = path.join(bin, 'calls')
+  writeFileSync(path.join(bin, 'npm'), `#!/bin/sh\necho "$@" >> "${calls}"\n`)
+  chmodSync(path.join(bin, 'npm'), 0o755)
+  try {
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${bin}${path.delimiter}${process.env['PATH']}`,
+        NO_COLOR: '1',
+        npm_config_user_agent: `bun/${Bun.version}`,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const lines = existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
+    for (const line of lines) {
+      const removed = /^uninstall((?: @vzn\/[\w-]+)+)$/.exec(line)
+      if (removed === null) {
+        expect(step(root, `npm ${line}`).code).toBe(0)
+        continue
+      }
+      const manifest = path.join(root, 'package.json')
+      const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as {
+        devDependencies?: Record<string, string>
+      }
+      for (const name of removed[1]!.trim().split(' ')) {
+        delete pkg.devDependencies?.[name]
+        rmSync(path.join(root, 'node_modules', name), { force: true })
+      }
+      writeFileSync(manifest, JSON.stringify(pkg, null, 2))
+    }
+    return [r.exitCode, r.stdout.toString()]
+  } finally {
+    rmSync(bin, { recursive: true, force: true })
+  }
 }
 
-/** The guide's last step: the plugin and its import out of
- *  `vx.workspace.ts`, the tool's config deleted; then two builds on the
- *  written configs alone, each run's statuses for app and lib. */
+/** The guide's last step: vx-migrate already took the plugin out of
+ *  `vx.workspace.ts`; the tool's config deleted, two builds on the written
+ *  configs alone, each run's statuses for app and lib. */
 function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[][] {
-  const ws = path.join(root, 'vx.workspace.ts')
-  const text = readFileSync(ws, 'utf8')
-    .split('\n')
-    .filter((l) => !l.includes(`import { ${plugin} }`))
-    .join('\n')
-    .replace(`${plugin}()`, '')
-  expect(text).not.toContain(plugin)
-  writeFileSync(ws, text)
+  expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).not.toContain(`${plugin}()`)
   rmSync(path.join(root, config))
   const git = gitIn(root)
   git('add', '-A')
