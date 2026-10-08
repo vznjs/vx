@@ -249,6 +249,49 @@ describe('the picker outside a git work tree', () => {
   }, 20_000)
 })
 
+// `vx last` prints the run's command as a line to paste: a run whose task
+// came from the picker recorded `vx run -- x`, which opens the picker again
+// and drops the choice.
+describe('a task picked on a terminal', () => {
+  it('is named in the command `vx last` replays', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-picker-tty-' })
+    try {
+      await addProject(root, 'app', {
+        config: `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+      })
+      let screen = ''
+      let typed = false
+      const proc = Bun.spawn([process.execPath, BIN, 'run', '--', 'x'], {
+        cwd: root,
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        terminal: {
+          data: (term, data) => {
+            screen += new TextDecoder().decode(data)
+            if (!typed && screen.includes('Pick a task [1-1]: ')) {
+              typed = true
+              term.write('1\r')
+            }
+          },
+        },
+      })
+      const stop = setTimeout(() => proc.kill('SIGTERM'), 8_000)
+      const code = await proc.exited
+      clearTimeout(stop)
+      proc.terminal?.close()
+      const last = Bun.spawnSync([process.execPath, BIN, 'last'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect({ code, command: last.stdout.toString().split('\n')[1] }).toEqual({
+        code: 0,
+        command: '  $ vx run app#build -- x',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
 // `vx run > out.txt` on a terminal: the menu and prompt went to stdout, so
 // they landed in the file and the terminal sat blank, waiting on a number.
 describe('the picker with stdout redirected', () => {

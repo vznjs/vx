@@ -633,6 +633,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   const cwd = process.cwd()
   let tasks = [...parsed.tasks]
+  let picked: string | undefined
 
   // No positionals → interactive picker (TTY only). Yields a single
   // anchored pkg#task; the rest of the pipeline treats it like any
@@ -681,10 +682,11 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
       only = new Set(selected.names)
     }
-    const picked = await pickTask(cwd, {}, load, only)
-    if (picked === 'interrupted') return 130
-    if (!picked) return 1
-    tasks = [`${picked.project}#${picked.task}`]
+    const chosen = await pickTask(cwd, {}, load, only)
+    if (chosen === 'interrupted') return 130
+    if (!chosen) return 1
+    picked = `${chosen.project}#${chosen.task}`
+    tasks = [picked]
   }
 
   const resolved = await resolveRunOptions(parsed, cwd, tasks)
@@ -699,8 +701,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
   // show what was actually run. `args` is everything after `run`, quoted
-  // so `vx last` replays one paste-able line.
-  opts.command = ['vx', 'run', ...args.map(shellQuote)].join(' ')
+  // so `vx last` replays one paste-able line; a picked task is named in
+  // it, or the line would open the picker again.
+  opts.command = [
+    'vx',
+    'run',
+    ...(picked !== undefined ? [shellQuote(picked)] : []),
+    ...args.map(shellQuote),
+  ].join(' ')
 
   // Planning paths short-circuit execution. Both build the full task
   // graph + probe the cache; the difference is just the formatter.
