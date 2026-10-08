@@ -50,7 +50,8 @@ A task-name pattern is allowed: `dependsOn: ['build.*']` here, `'^build.*'`
 in dependencies. Bare wildcards and negation (`*`, `!task`) are not.
 A package that declares no `build` gets a default one: a group behind
 `^build`, keyed on all its files, so editing a package consumed as source
-re-runs its dependents (`vx show` marks it `default build`). A cycle or a
+re-runs its dependents (`vx show` lists it as a group; for a package
+with no config it says `default build`). A cycle or a
 missing `'pkg#task'` is an error.
 
 | When a task fails            | vx                                                        |
@@ -109,6 +110,7 @@ export default defineProject({
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
 | Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), files git ignores, the task's own outputs, a nested project's files |
+| In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
 Declared outputs are wiped before every run that writes the cache and every
@@ -158,6 +160,7 @@ app#build — run 019f5a02-…
 | `cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown` | vx does not guess |
 | `` this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only `` | not cached at all |
 | `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
+| `no prior run for this (project, task)` | nothing to compare with yet |
 
 A hit after you changed something means that something is not declared.
 
@@ -170,6 +173,7 @@ Past a small essential allowlist (below), a task sees only the variables you pas
 | `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
 | `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
+| `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` are masked without it |
 
 The child always gets a small essential allowlist so normal CLI tools
 work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
