@@ -551,7 +551,12 @@ On macOS vx hands seatbelt's SRT the grant as written, and SRT compiles
 a spelling holding `[` as a regex in which a backslash is a literal one,
 so the escaped `pages/\[id\].tsx` named no file. vx spells `\[` as `[[]`
 and `\]` as `]` there (`seatbeltBrackets`), and a deny path's `[` as
-`[[]`: a nested project's wall under `[legacy]/` matched nothing. A project under a bracketed
+`[[]`: a nested project's wall under `[legacy]/` matched nothing. A
+baseline read (a `node_modules`, a linked dependency) is a name, so its
+`[` is spelled `[[]` and its subtree granted beside it: raw, a dependency
+under `packages/[legacy]/` was a class that matched `packages/l`, and an
+exact regex grants a directory's entry and none of its files. A baseline
+inside a wall a glob reaches is carved out whatever its name holds. A project under a bracketed
 directory is refused on both platforms (B-60, B-65): seatbelt compiled
 vx's own workspace wall as a class too, so it matched nothing. So is one
 under a directory holding `*` or `?`, whose grants matched its siblings.
