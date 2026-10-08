@@ -162,8 +162,22 @@ function guardWrite(line: string): void {
  */
 export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child {
   startGuard()
-  return spawn(typeof guardFd === 'number' ? guardFd : undefined)
+  if (typeof guardFd !== 'number') return spawn(undefined)
+  handingTo = guardProc?.pid
+  try {
+    return spawn(guardFd)
+  } finally {
+    handingTo = undefined
+  }
 }
+
+/**
+ * The guard whose pipe `spawnGuarded` is handing over right now. Only a
+ * line built for that hand-over retries: its pipe is broken only once
+ * the guard has exited, so `kill -0` ends the wait. A line for any other
+ * pipe would wait on a guard that has nothing to do with it.
+ */
+let handingTo: number | undefined
 
 /**
  * The shell line that lists `$$`'s group on the guard's pipe at `fd` and
@@ -179,9 +193,9 @@ export function spawnGuarded(spawn: (guard: number | undefined) => Child): Child
 export function guardLine(fd: number): string {
   const add = `printf '+%s\\n' $$ >&${fd} 2>/dev/null`
   const retry =
-    guardProc === undefined
+    handingTo === undefined
       ? ''
-      : ` || until ${add}; do kill -0 ${guardProc.pid} 2>/dev/null || break; done`
+      : ` || until ${add}; do kill -0 ${handingTo} 2>/dev/null || break; done`
   return `trap '' PIPE; ${add}${retry}; trap - PIPE; exec ${fd}>&-; `
 }
 

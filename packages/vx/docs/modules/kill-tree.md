@@ -121,7 +121,8 @@ PIPE` covers a guard that dies after the hand-over, so the task still
   went unlisted and survived a `kill -9`. Its shell retries a failed
   write until it lands or the guard's pid is gone (`kill -0`); the shell
   cannot tell EAGAIN from EPIPE, and a guard vx gives up on is
-  SIGKILLed, so the pid ends the wait. The success path costs nothing
+  SIGKILLed, so the pid ends the wait. Only a line built inside
+  `spawnGuarded` retries: any other pipe is not that guard's. The success path costs nothing
   new. The guard lists a group once however often its line arrives: a
   `-` strikes one entry, and a shell that keeps a failed printf
   buffered (bash as macOS's sh, B-10) resends it with the retry.
