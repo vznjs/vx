@@ -4,7 +4,7 @@
 // Everything else is the standard "method not found".
 
 import { Console } from 'node:console'
-import { isUserError, VERSION } from '@vzn/vx'
+import { isUserError, maskedLine, VERSION } from '@vzn/vx'
 import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
 /** The newest protocol revision this server speaks; an older client's version is echoed back. */
@@ -126,8 +126,14 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
           // protocol error: it names what to fix ("taskId must be …"). By
           // name, not instanceof: inside a compiled vx the tools' core and
           // this plugin's `@vzn/vx` can be two copies of the same class.
+          // Masked, as the CLI masks the error it ends on: a config's
+          // refusal quotes the config's own strings, and the agent is
+          // often a remote model (L-11).
           if (isUserError(err)) {
-            return reply({ content: [{ type: 'text', text: err.message }], isError: true })
+            return reply({
+              content: [{ type: 'text', text: maskedLine(err.message) }],
+              isError: true,
+            })
           }
           throw err
         }
@@ -136,7 +142,7 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
         return fail(-32601, `method not found: ${msg.method}`)
     }
   } catch (err) {
-    return fail(-32603, err instanceof Error ? err.message : String(err))
+    return fail(-32603, maskedLine(err instanceof Error ? err.message : String(err)))
   }
 }
 
