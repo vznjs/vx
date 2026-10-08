@@ -55,7 +55,9 @@ export function makeWatchIgnore(
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
 ): (base: string, filename: string) => boolean {
-  const cacheAbs = path.resolve(cacheDir)
+  // Watchers report under the real root; a cache dir named through a link
+  // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
+  const cacheAbs = realThrough(path.resolve(cacheDir))
   // A task's own outputs are not edits: without this every cycle that
   // writes `dist/` (or `out.txt`) re-runs once more, reporting
   // "up-to-date" for the trouble. Matched under the directory the globs
@@ -130,6 +132,16 @@ export function makeWatchIgnore(
       if (containers.some((c) => c === rel || c.startsWith(`${rel}/`))) return true
     }
     return false
+  }
+}
+
+/** `p` with its longest existing prefix realpath'd: the cache dir may not exist yet. */
+function realThrough(p: string): string {
+  try {
+    return realPath(p)
+  } catch {
+    const up = path.dirname(p)
+    return up === p ? p : path.join(realThrough(up), path.basename(p))
   }
 }
 

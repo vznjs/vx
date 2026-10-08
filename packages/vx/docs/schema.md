@@ -819,7 +819,8 @@ backslash stays an escape.
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
 `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
-`outputs.workspaceFiles` (a task never invalidates itself).
+outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
+in its own project (a task never invalidates itself).
 
 `vx watch`: when any config declares `inputs.workspaceFiles`, the loop
 watches the workspace root recursively (any file can be an input once
