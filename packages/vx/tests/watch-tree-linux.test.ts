@@ -90,6 +90,25 @@ describe.skipIf(process.platform !== 'linux')('the recursive arm on Linux', () =
     }
   })
 
+  // A watch holds the inode: a directory removed and made again before its
+  // event was handled (`rm -rf gen && mkdir gen`, a checkout) still stats
+  // as a directory, and the dead watch on the old one stood in for it.
+  it('a directory removed and made again at once is watched again', async () => {
+    const t = await armed(async (dir) => {
+      await mkdir(path.join(dir, 'gen'))
+    })
+    try {
+      fs.rmSync(path.join(t.dir, 'gen'), { recursive: true })
+      fs.mkdirSync(path.join(t.dir, 'gen'))
+      await until(() => t.seen.includes('gen'), 'the directory made again')
+      await Bun.sleep(50)
+      await writeFile(path.join(t.dir, 'gen/f.txt'), 'x')
+      await until(() => t.seen.includes('gen/f.txt'), 'the write in the new directory')
+    } finally {
+      await t.end()
+    }
+  })
+
   // At the OS watch limit the recursive form threw, and the pool polled
   // instead (E-49). A walk that swallowed the refusal for a subdirectory
   // would arm half a tree without a word.

@@ -59,10 +59,15 @@ describe('the package manager', () => {
       const locked = packageManagerOf(root)
       await rm(path.join(root, 'yarn.lock'))
       const agent = packageManagerOf(root, 'bun/1.4.2 npm/? node/v24')
-      expect([declared, locked, agent, packageManagerOf(root)]).toEqual([
+      // A Windows editor saves the manifest with a BOM; npm and Bun accept it.
+      await writeFile(path.join(root, 'package.json'), '\uFEFF{"packageManager":"pnpm@9.15.0"}')
+      const bom = packageManagerOf(root)
+      await at({})
+      expect([declared, locked, agent, bom, packageManagerOf(root)]).toEqual([
         'pnpm',
         'yarn',
         'bun',
+        'pnpm',
         'npm',
       ])
     } finally {
@@ -109,9 +114,20 @@ describe('the package manager', () => {
       const installedOnly = missingPackages(root, wanted)
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'), '{}')
-      expect([listedOnly, installedOnly, missingPackages(root, wanted)]).toEqual([
+      const listedAndInstalled = missingPackages(root, wanted)
+      await writeFile(
+        path.join(root, 'package.json'),
+        '\uFEFF' + JSON.stringify({ devDependencies: { '@vzn/vx': '*' } }),
+      )
+      expect([
+        listedOnly,
+        installedOnly,
+        listedAndInstalled,
+        missingPackages(root, wanted),
+      ]).toEqual([
         ['@vzn/vx', '@vzn/vx-migrate'],
         ['@vzn/vx', '@vzn/vx-migrate'],
+        ['@vzn/vx-migrate'],
         ['@vzn/vx-migrate'],
       ])
     } finally {

@@ -36,6 +36,17 @@ const list = (v: string | undefined): string[] =>
     .map((s) => s.trim())
     .filter((s) => s !== '')
 
+// Nx's `--projects` labels (find-matching-projects, 23.2.1): `name:` and
+// `directory:` say which match to make; vx's filter says it by form. `tag:`
+// is a filter form already.
+const nxPattern = (p: string): string => {
+  const neg = p.startsWith('!') ? '!' : ''
+  const s = neg === '' ? p : p.slice(1)
+  if (s.startsWith('name:')) return `${neg}${s.slice(5)}`
+  if (s.startsWith('directory:')) return `${neg}./${s.slice(10)}`
+  return p
+}
+
 const GRAPH_IMAGE = /\.(svg|png|jpe?g|pdf|json|html|mermaid)$/i
 
 export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
@@ -142,7 +153,14 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     outcome: 'same',
     vx: '`--output-logs full|errors-only|hash-only|none`',
   },
-  { runner: 'turbo', names: ['--no-cache'], value: false, outcome: 'same', vx: '`--no-cache`' },
+  {
+    runner: 'turbo',
+    names: ['--no-cache'],
+    value: false,
+    outcome: 'same',
+    // Turbo 2.11's own help: "Equivalent to `--cache=local:r,remote:r`".
+    vx: "`--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`",
+  },
   {
     runner: 'turbo',
     names: ['--cache'],
@@ -407,8 +425,16 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['-p', '--projects'],
     value: true,
     outcome: 'alias',
-    vx: '`--filter <pattern>`, one per project',
-    to: (v) => list(v).flatMap((p) => ['--filter', p]),
+    vx: "`--filter <pattern>`, one per project (`directory:<d>` is `./<d>`, `name:<n>` is `<n>`); a list opening with `!` starts from all (`--filter '*'`)",
+    // Nx reads a leading exclusion as "all projects but": `-p '!b,a'` is
+    // every project except b, where vx's filters alone would select a.
+    to: (v) => {
+      const ps = list(v)
+      return [...(ps[0]?.startsWith('!') ? ['*'] : []), ...ps].flatMap((p) => [
+        '--filter',
+        nxPattern(p),
+      ])
+    },
   },
   {
     runner: 'nx',
@@ -416,7 +442,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: true,
     outcome: 'alias',
     vx: "`--filter '!<pattern>'`, one per project",
-    to: (v) => list(v).flatMap((p) => ['--filter', `!${p}`]),
+    to: (v) => list(v).flatMap((p) => ['--filter', `!${nxPattern(p)}`]),
   },
   {
     runner: 'nx',

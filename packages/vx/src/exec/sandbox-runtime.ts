@@ -108,9 +108,13 @@ import {
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
+/** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
+let srtLoaded: SrtModule | undefined
 
 async function loadSrt(): Promise<SrtModule> {
-  if (!srtPromise) srtPromise = import('@anthropic-ai/sandbox-runtime')
+  if (!srtPromise) {
+    srtPromise = import('@anthropic-ai/sandbox-runtime').then((m) => (srtLoaded = m))
+  }
   return srtPromise
 }
 
@@ -275,9 +279,16 @@ export function dependencyReason(errors: readonly string[]): string {
  * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
  * on Linux (its retry loop swallows the code), neither naming the
  * directory (2026-09-16). Checked up front, with room for the sequence.
+ * On Linux the longer name is the network bridge's,
+ * `claude-http-<16 hex>.sock`, and it is the one that fails there.
  */
 export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
-  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const sample = path.join(
+    tmpdir,
+    process.platform === 'linux'
+      ? `claude-http-${'0'.repeat(16)}.sock`
+      : `srt-mux-${process.pid}-zzz.sock`,
+  )
   const limit = process.platform === 'darwin' ? 103 : 107
   const length = Buffer.byteLength(sample)
   if (length <= limit) return undefined
@@ -1215,6 +1226,7 @@ async function wrapIn(
         `holds ${held.length === 1 ? 'it' : 'them'} or list another port`,
     )
   }
+  if (ports.length > 0) writeFileSync(portDialScript(tag), PORT_DIAL_SCRIPT)
   const grouped =
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
@@ -1242,7 +1254,13 @@ async function wrapIn(
       ...macProfileRules(args.config),
       ...darwinWallRules(args.config, baselines.allowRead),
     ]
-    if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    try {
+      if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
+    } catch (err) {
+      releaseBridges(tag)
+      afterCommand(SandboxManager)
+      throw err
+    }
   }
   // Linux: the shell execs bwrap, so bwrap is the spawn itself and its
   // `--die-with-parent` is keyed to vx. Behind a shell that waited on it,
@@ -1379,11 +1397,14 @@ function ownGroupCommand(
     .join(' ')
   const body = shellQuote(`exec ${TRACE_FD}>&-; ${userCommand}`)
   const run = `{ trap - INT QUIT; exec ${setsid ?? ''}${tracer} ${shellQuote(sh)} -c ${body} 3<&-; } & c=$!;`
+  // Bash reports a job a signal killed on its stderr, the task's: a task
+  // whose shell died of SIGKILL printed this whole wrapper (X-111).
+  const wait = `wait "$c" 2>/dev/null`
   if (setsid === undefined) {
-    return { command: `${tag0} ${run} wait "$c"`, forwards: false, traced: true }
+    return { command: `${tag0} ${run} ${wait}`, forwards: false, traced: true }
   }
   const watch = `{ IFS= read -r s && kill -s "$s" -- "-$c"; } 2>/dev/null <&3 3<&- &`
-  return { command: `${tag0} ${run} ${watch} wait "$c"`, forwards: true, traced: true }
+  return { command: `${tag0} ${run} ${watch} ${wait}`, forwards: true, traced: true }
 }
 
 /** What strace stops on: the reads, and what moves or makes a process's cwd. */
@@ -1498,17 +1519,39 @@ export function portBridgeSocket(tag: string, port: number): string {
 }
 
 /**
+ * Which loopback a bridged connection dials, chosen per connection from
+ * the namespace's listen tables (`$1` the port, `$2` the tables' directory):
+ * `::1` when only it holds the port, else 127.0.0.1. A server bound to
+ * `localhost` on a host that resolves `::1` first (Vite's default) listens
+ * on `::1` alone, and a fixed 127.0.0.1 dial was refused. Read before any
+ * byte moves, so a connection is never retried halfway through.
+ */
+export const PORT_DIAL_SCRIPT = `p=$1 n=\${2:-/proc/net}
+h=$(printf %04X "$p")
+if grep -qsE "^ *[0-9]+: 0{24}01000000:$h [0-9A-F]+:0{4} 0A" "$n/tcp6" &&
+  ! grep -qsE "^ *[0-9]+: (0100007F|0{8}):$h [0-9A-F]+:0{4} 0A" "$n/tcp"; then
+  exec socat - "TCP6:[::1]:$p"
+fi
+exec socat - "TCP4:127.0.0.1:$p"
+`
+
+/** Where the dial script lives: beside the bridge's sockets, written by `wrapSandboxedCommand`. */
+function portDialScript(tag: string): string {
+  return path.join(taskTmpdir(tag), `vx-port-dial-${tag}.sh`)
+}
+
+/**
  * The task's side of the bridge, in front of the user command inside the
  * sandbox: one socat per port, listening on the unix socket and relaying
- * into the namespace's loopback. Backgrounded and reaped with the shell,
- * exactly as SRT starts its own proxy bridges. `unlink-early` clears a
- * socket a killed task left behind; `>/dev/null` keeps its chatter out
- * of the task's frame.
+ * into the namespace's loopback through `PORT_DIAL_SCRIPT`. Backgrounded
+ * and reaped with the shell, exactly as SRT starts its own proxy bridges.
+ * `unlink-early` clears a socket a killed task left behind; `>/dev/null`
+ * keeps its chatter out of the task's frame.
  */
 export function portBridgeInner(ports: readonly number[], tag: string): string {
   const cmds = ports.map(
     (p) =>
-      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early TCP:127.0.0.1:${p} >/dev/null 2>&1 &`,
+      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early ${shellQuote(`SYSTEM:sh ${portDialScript(tag)} ${p}`)} >/dev/null 2>&1 &`,
   )
   return `${cmds.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT;`
 }
@@ -1641,8 +1684,17 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
 export function releaseBridges(tag: string): void {
   const tmp = taskTmpdir(tag)
   if (liveTaskTmpdirs.delete(tmp)) rmSync(tmp, { recursive: true, force: true })
-  if (liveServers.delete(tag) && liveServers.size === 0 && resetDeferred) {
-    void resetSandbox().catch(() => {})
+  if (liveServers.delete(tag)) {
+    // A server's wrap counts as a live sandbox in SRT until this, and SRT
+    // removes bwrap's host stubs (`.bashrc`, `.vscode`, … under a write
+    // grant) only at a count of 0: one stopped server kept every later
+    // task's stubs in the workspace until the reset.
+    try {
+      srtLoaded!.SandboxManager.cleanupAfterCommand()
+    } catch {
+      // best-effort, as a one-shot task's
+    }
+    if (liveServers.size === 0 && resetDeferred) void resetSandbox().catch(() => {})
   }
   const bridges = hostBridges.get(tag)
   if (bridges === undefined) return
@@ -2003,6 +2055,15 @@ async function runSandboxedOnce(
     })
     if (outside.length > 0)
       violations.push(outsideWritesHint(outside, baselines.denyRead, args.reportWithin))
+    if (process.platform === 'linux') {
+      const removed = grantRemovalHint(
+        `${stdout}\n${stderr}`,
+        bindableWrites(args.config.allowWrite),
+        args.cwd,
+        args.reportWithin,
+      )
+      if (removed !== undefined) violations.push(removed)
+    }
   }
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -2112,6 +2173,45 @@ function outsideWritesHint(
     : `${refused} If the task needs one, grant its directory, e.g. ` +
       `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
+}
+
+/**
+ * Linux: a directory write grant is a bind mount, and a mount point cannot
+ * be removed or renamed, so `rm -rf dist` empties it and then fails with
+ * "Read-only file system" (EBUSY under a writable parent). Binding the
+ * parent instead would let the task write beside the grant, so the
+ * removal stays refused; a failure whose output names a grant on such an
+ * error line gets the spelling that works.
+ */
+function grantRemovalHint(
+  output: string,
+  roots: readonly string[],
+  cwd: string,
+  within: string,
+): SandboxViolation | undefined {
+  const lines = output
+    .split('\n')
+    .filter((l) => /Read-only file system|EROFS|EBUSY|resource busy/i.test(l))
+  if (lines.length === 0) return undefined
+  const named = roots.filter((root) => {
+    const rel = path.relative(cwd, root)
+    const spellings = rel === '' ? [root] : [root, rel]
+    return spellings.some((s) => {
+      const re = new RegExp(`(^|[\\s'"\`(])(\\./)?${RegExp.escape(s)}/?($|[\\s'"\`:,)])`)
+      return lines.some((l) => re.test(l))
+    })
+  })
+  if (named.length === 0) return undefined
+  const grants = named.map((r) => `'${path.relative(within, r) || '.'}/'`).join(', ')
+  const contents = path.relative(cwd, named[0]!) || '.'
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the write grant ${grants} is mounted in place on Linux: the task may empty it ` +
+      `but not remove or rename it ("Read-only file system"). Remove its contents ` +
+      `instead, e.g. \`rm -rf ${contents}/*\`.`,
+  }
 }
 
 /** A path as a JS string literal a config can take: a quote in it is escaped. */
@@ -2294,22 +2394,6 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
 }
 
 /**
- * Grant paths, with globs handled per platform.
- *
- * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
- * into `(subpath …)`, so a pattern is passed through and seatbelt matches
- * it — including files created DURING the run.
- *
- * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
- * The glob is expanded against the filesystem here, which means it covers
- * what exists when the task STARTS. A pattern matching a file the task
- * creates later grants nothing there — declare its directory instead.
- *
- * That last sentence is the whole contract, and until item 496 a task
- * that broke it learned so from its OWN tool. Measured, one task per
- * spelling, each writing files it declares:
- *
- *   write: ['g/**
  * The walls a glob grant can reach: each one under (or at) a glob's
  * literal head. On Linux `expandGrants` drops such a hit before the bind
  * (B-1); seatbelt matches a glob as a path regex, with no hit to drop.
@@ -2354,7 +2438,23 @@ export function darwinWallRules(
   return rules
 }
 
-/**']         ok — collapsed to the directory
+/**
+ * Grant paths, with globs handled per platform.
+ *
+ * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
+ * into `(subpath …)`, so a pattern is passed through and seatbelt matches
+ * it — including files created DURING the run.
+ *
+ * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
+ * The glob is expanded against the filesystem here, which means it covers
+ * what exists when the task STARTS. A pattern matching a file the task
+ * creates later grants nothing there — declare its directory instead.
+ *
+ * That last sentence is the whole contract, and until item 496 a task
+ * that broke it learned so from its OWN tool. Measured, one task per
+ * spelling, each writing files it declares:
+ *
+ *   write: ['g/**']         ok — collapsed to the directory
  *   write: ['g/a.txt']      ok — a literal is widened to its directory
  *   write: ['g/*']          FAILED: `bash: g/a.txt: Read-only file system`
  *   write: ['g/*.txt']      FAILED, same

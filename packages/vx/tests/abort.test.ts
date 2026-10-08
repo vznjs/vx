@@ -6,7 +6,7 @@
 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run, type Logger, type RunSummaryRecord } from '../src/orchestrator/index.js'
@@ -262,6 +262,42 @@ describe('RunOptions.signal aborts a run in flight', () => {
     expect(await waitForDead(pid, 1_000)).toBe(true)
   }, 20_000)
 
+  // A server whose readyWhen matches only once the stop has landed (its
+  // trap prints the marker on the way down) read `success`, where a
+  // one-shot that exits 0 on the stop is aborted (item 962).
+  it('a server that turns ready after the run stops is aborted, not a success', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `export default { tasks: {
+        srv: { exec: {
+          command: "trap 'echo READY; exit 0' TERM; echo $$ > pid.txt; while :; do sleep 0.05; done",
+          persistent: { readyWhen: 'READY' },
+        } },
+        e2e: { dependsOn: ['srv'], exec: { command: 'true' } },
+      } }`,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['e2e'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    ac.abort()
+    const r = await running
+    expect(
+      r.outcomes.map((o) => [o.node.id, o.status]).sort((a, b) => (a[0]! < b[0]! ? -1 : 1)),
+    ).toEqual([
+      ['app#e2e', 'aborted'],
+      ['app#srv', 'aborted'],
+    ])
+    expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
   // C-65: probes are the run's own. Two runs in one process (an embedder's
   // daemon, the `inflight` case): stopping one kills its probe, not the
   // other's, whose task still answers.
@@ -335,5 +371,43 @@ describe('RunOptions.signal aborts a run in flight', () => {
     const r = await running
     expect([r.ok, r.persistent]).toEqual([false, undefined])
     expect(await waitForDead(pid, 1_000)).toBe(true)
+  }, 20_000)
+
+  // A ready server sits in the live set and the persistent registry at
+  // once; the stop signalled its group twice, and a server that reads a
+  // second Ctrl-C as "force quit" skipped its cleanup.
+  it('a stop signals each group once, a ready server included', async () => {
+    const dir = await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            srv: { exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
+            e2e: { dependsOn: ['srv'], exec: { command: 'echo $$ > e2e.pid; exec sleep 30' } },
+          },
+        }
+      `,
+    )
+    const ac = new AbortController()
+    const running = run({
+      cwd: root,
+      tasks: ['e2e'],
+      projects: ['app'],
+      log: silent,
+      handleSignals: false,
+      signal: ac.signal,
+    })
+    const srv = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const e2e = await waitForPid(path.join(dir, 'e2e.pid'), 10_000)
+    const kill = spyOn(process, 'kill')
+    try {
+      ac.abort('SIGINT')
+      await running
+      const sent = kill.mock.calls.filter((c) => c[1] === 'SIGINT').map((c) => c[0])
+      expect(sent.sort((a, b) => a - b)).toEqual([-srv, -e2e].sort((a, b) => a - b))
+    } finally {
+      kill.mockRestore()
+    }
   }, 20_000)
 })
