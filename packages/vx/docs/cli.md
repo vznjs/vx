@@ -1521,7 +1521,7 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx last --list`) rather than printing a bare "unknown subcommand".
 
 ```
-vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
+vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
 vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
