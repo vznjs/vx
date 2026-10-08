@@ -744,3 +744,12 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   header now carries the field's maximum, as one before 1970 carries 0;
   the sidecar keeps the real mtime. Row: `archive-extract-meta.test.ts` ›
   "packs and restores an mtime past what ustar holds (2242)".
+- **X-115.** A local artifact holding a name that read unsafe failed its
+  task on every run with the entry kept, where every other bad local
+  artifact is dropped and the task run (A-52). The save and the ingest
+  proved each name safe, so the bytes had changed: a long name's pax
+  record has no header checksum and is judged before the CRC at the end
+  is read, so one flipped bit (`.` → `/`) was enough. The restore now
+  throws it as a `CorruptArtifactError`. Row: `artifact-roundtrip.test.ts`
+  › "a local artifact whose name reads unsafe is dropped and run, as
+  corrupt bytes are".

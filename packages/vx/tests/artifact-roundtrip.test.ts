@@ -14,6 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { ArchiveSecurityError } from '../src/cache/archive.js'
 import { ArtifactVanishedError, Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { withSum } from './helpers/artifact-sum.js'
 
@@ -423,6 +424,40 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     expect([
       await Bun.file(cache.outputsPath('garbled')).exists(),
       await cache.get('garbled'),
+    ]).toEqual([false, null])
+  })
+
+  it('a local artifact whose name reads unsafe is dropped and run, as corrupt bytes are', async () => {
+    // A name over 100 bytes with no ustar split rides a pax record, which no
+    // header checksum covers, and the name is judged before the CRC at the
+    // end is read: one flipped bit (`.` 0x2E → `/` 0x2F) made the name
+    // `dist//…`, and the refusal failed the task on every run, the entry
+    // never dropped.
+    const long = `.${'x'.repeat(120)}.js`
+    await write(path.join(projectDir, 'dist', long), 'BUILT')
+    await cache.save({
+      hash: 'flipped',
+      entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir,
+      outputFiles: [path.join(projectDir, 'dist', long)],
+    })
+    const tar = Bun.zstdDecompressSync(await Bun.file(cache.outputsPath('flipped')).bytes())
+    const at = Buffer.from(tar).indexOf(`path=outputs/dist/${long}`) + 'path=outputs/dist/'.length
+    expect(tar[at]).toBe(0x2e)
+    tar[at] = 0x2f
+    await Bun.write(cache.outputsPath('flipped'), Bun.zstdCompressSync(tar))
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+
+    const flipped = await cache.restoreOutputs('flipped', projectDir).catch((e: unknown) => e)
+    expect(flipped).toBeInstanceOf(ArtifactVanishedError)
+    expect((flipped as Error).cause).toBeInstanceOf(CorruptArtifactError)
+    expect(((flipped as Error).cause as Error).cause).toBeInstanceOf(ArchiveSecurityError)
+    expect((flipped as Error).message).toBe(
+      `cache: corrupt artifact for flipped: archive entry name has empty path component (unsafe): outputs/dist//${long.slice(1)}; dropped it`,
+    )
+    expect([
+      await Bun.file(cache.outputsPath('flipped')).exists(),
+      await cache.get('flipped'),
     ]).toEqual([false, null])
   })
 

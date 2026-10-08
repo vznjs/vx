@@ -495,9 +495,10 @@ Reads via `get()` are non-blocking thanks to WAL.
   that entry as a miss and runs the task. An artifact that is not a
   readable archive or lacks an output the index recorded
   (`CorruptArtifactError`) is dropped, unless the cache is read-only,
-  and throws `ArtifactVanishedError` the same way (A-52). Throws
-  `ArchiveSecurityError` on an unsafe name or an
-  escape by name. A directory on the tree side that links out of the
+  and throws `ArtifactVanishedError` the same way (A-52). So is one
+  holding an unsafe name or an escape by name (`ArchiveSecurityError`,
+  as the `CorruptArtifactError`'s cause): the save proved every name
+  safe, so the bytes changed since (X-115). A directory on the tree side that links out of the
   anchor is the tree's fault, not the artifact's: a `UserError` naming
   the link and its target (it is kept, never written through). A link
   that stays inside the anchor is written through, a dangling one too:
