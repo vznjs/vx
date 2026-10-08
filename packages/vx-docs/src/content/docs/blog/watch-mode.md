@@ -77,8 +77,8 @@ reach.
 - Flags that describe one run (`--dry`, `--graph`, `--summarize`,
   `--profile`, `--report`, `--report-file`, `--verbosity` above 0) are
   rejected up front, because a loop has no single run.
-- Persistent tasks re-spawn each cycle. For a server that should stay
-  up across edits, the tool's own watch (`vite`, `tsc -b -w`) is the
-  right layer.
+- A persistent task starts once and stays up across cycles; each cycle
+  re-runs what it depends on, as the keys decide. It restarts only when
+  its own config or forwarded args change, or when it dies.
 
 Reference: [`vx watch`](../../cli/#vx-watch).

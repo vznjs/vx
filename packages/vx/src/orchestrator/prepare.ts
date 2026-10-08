@@ -362,6 +362,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   const { projects, configured: projectsWithConfigs } = loaded
   mark('load configs')
+  // A config the load left out may declare what nothing loaded does. Asked by
+  // name, never by count: a config-less project counts as loaded, so a
+  // scope holding one hid an unloaded declarer (X-129, X-182).
+  const partialLoad = projectsWithConfigs.some((m) => !projects.has(m.name))
 
   // Boundary geometry considers every workspace project, loaded or not,
   // config or not: `--affected` gives a changed path to the deepest project
@@ -385,12 +389,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // it, and the run said no project did (C-3). Only what is still
     // unjudged pays for the rest of the workspace.
     unresolvedTasks = undeclaredIn(unresolvedTasks, projects)
-    // By name, not by count: a config-less project in the scope counts as
-    // loaded, and a changed one hid an unloaded `test` declarer (X-129).
-    if (
-      unresolvedTasks.some((t) => !t.includes('#')) &&
-      projectsWithConfigs.some((m) => !projects.has(m.name))
-    ) {
+    if (partialLoad && unresolvedTasks.some((t) => !t.includes('#'))) {
       unresolvedTasks = await declaredNowhere(unresolvedTasks, () =>
         loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
       )
@@ -407,7 +406,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   )
   if (options.projects !== undefined && options.selectedByDiff !== true && bare.length > 0) {
     let nowhere = undeclaredIn(bare, projects)
-    if (nowhere.length > 0 && projectsWithConfigs.some((m) => !projects.has(m.name))) {
+    if (nowhere.length > 0 && partialLoad) {
       nowhere = await declaredNowhere(nowhere, () =>
         loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
       )
@@ -527,7 +526,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         requested: req,
         workspaceRoot,
         rules: workspaceConfig?.rules,
-        ...(projects.size < projectsWithConfigs.length
+        ...(partialLoad
           ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
           : {}),
       })
@@ -588,7 +587,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       for (const p of projects.values())
         for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
       let unknown = excludeNames.filter((n) => !declared.has(n))
-      if (unknown.length > 0 && projects.size < projectsWithConfigs.length) {
+      if (unknown.length > 0 && partialLoad) {
         unknown = await declaredNowhere(unknown, () =>
           loadProjects({ ...loadArgs, seeds: 'all', closure: false, staged: projects }),
         )

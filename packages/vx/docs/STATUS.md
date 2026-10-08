@@ -261,9 +261,8 @@ later (K README and site, L security findings, M CI reliability, N adoption
 paths, O Windows, stopped: Windows is WSL, and its workflow and native
 code paths went 2026-10-02); each stream's record and leads are
 its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
-green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
-only queued ones; `auto-release.yml` releases any commit the last tag is
-behind): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
+green commit on `main` released until 2026-10-08 (now on demand,
+`auto-release.yml`): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
 at a time (W12, W13, …) takes a queue from the coordinator and records
 its items in the stream file of their area (adoption in `ws-g.md`) or
 its own `ws-W<n>.md`.
@@ -316,8 +315,10 @@ by 2026-09-10 (`docs/history/2026-09-status-next-log.md`); the fifth,
 macOS violation reporting being lossy under load, is a recorded decision
 since item 586 (Decisions below), not an open item.
 
-**Releases.** Every green merge to main releases itself (item 1018,
-`auto-release.yml`). The first two ran on 2026-09-27: v0.0.22 (74814d28)
+**Releases.** On demand since 2026-10-08 (owner): Claude dispatches
+`auto-release.yml` at least daily when main has changes, with a blog
+post and a Bluesky share (`.claude/skills/release/SKILL.md`); before
+that every green merge released itself (item 1018). The first two ran on 2026-09-27: v0.0.22 (74814d28)
 and v0.0.23 (f7096cea) were tagged, released with generated notes, their
 four binaries attached by the dispatched `release.yml`, and `@vzn/vx`
 with its four platform packages published by the dispatched `npm.yml`.

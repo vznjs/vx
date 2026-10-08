@@ -177,8 +177,8 @@ const KNOWN_TASK_KEYS = new Set([
   'command',
   'description',
   // `turbo watch` restarts a persistent task only when it says so; `vx
-  // watch` stops and re-spawns every persistent task each cycle, so either
-  // value maps to nothing.
+  // watch` keeps it up and restarts it only when its config changes or it
+  // dies, so either value maps to nothing.
   'interruptible',
   // Labels: Turbo keeps them out of the hash and the behaviour.
   'tags',

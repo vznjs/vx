@@ -127,7 +127,7 @@ config.
 | Output ownership   | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
 | Clean-tree hashing | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
 | Daemon             | **None**                                  | None for `turbo run`           | On by default    |
-| Per-task sandbox   | **Yes**: kernel-level, opt-in             | No                             | No               |
+| Per-task sandbox   | **Yes**: kernel-level, opt-in, local      | No                             | On Nx Cloud only |
 | Plugin API         | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
 | Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
 

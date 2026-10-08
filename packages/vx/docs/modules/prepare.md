@@ -92,7 +92,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 5. **Build the task graph** — `buildTaskGraph(...)`, the whole graph;
    the `graph` and `key` stages see it all. A `^name` no project in the
    workspace declares is refused (`undeclaredDepsError`), with or without
-   `--exclude-dependencies`; when the load was scoped, the builder cannot
+   `--exclude-dependencies`; when the load was scoped (a config it left
+   out, asked by name: a config-less project in the closure does not
+   make it whole, X-182), the builder cannot
    see the whole workspace, so it hands such a name back
    (`undeclaredDeps`) and `refuseUndeclaredDeps` evaluates the configs
    the scope left out — only then, and never for a name something loaded

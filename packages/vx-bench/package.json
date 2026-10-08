@@ -18,6 +18,6 @@
     "@types/picomatch": "^4.0.3",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*",
-    "picomatch": "4.0.3"
+    "picomatch": "4.0.4"
   }
 }

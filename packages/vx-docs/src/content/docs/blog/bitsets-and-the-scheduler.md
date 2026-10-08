@@ -70,12 +70,13 @@ probing the local cache once, up front:
 - **Misses** own the worker pool from the first tick.
 
 The up-front probe is not extra work: the execution path consumes the
-same result instead of probing again. Measured at −6.6% on a mixed
+same result instead of probing again. Measured 1.07× faster on a mixed
 slow-upstream, warm-downstream workload and at parity on all-hit runs.
 
-A task whose key is only *preliminary*, because its inputs could match
-a same-project upstream's declared outputs, stays in neither tier: it
-waits for its dependencies like any other task and is not probed early,
+A task whose key is only *preliminary*, because an upstream may write
+a file it reads before it runs (a same-project upstream with no
+`cache` block, or one with root-anchored `outputs.workspaceFiles`),
+stays in neither tier: it waits for its dependencies like any other task and is not probed early,
 because reusing a preliminary probe would be a stale-hit path. The rule
 that decides stability is shared with the remote prefetch so the two
 cannot disagree.

@@ -178,7 +178,7 @@ The plugins honour the tools' own switches for it too: Turbo's
 ## Remote execution
 
 `reapi()` can also send tasks to a worker pool (NativeLink, BuildBuddy,
-Buildfarm); the graph and the scheduling stay here. It is never on by
+Buildbarn); the graph and the scheduling stay here. It is never on by
 default:
 
 ```ts

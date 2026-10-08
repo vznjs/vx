@@ -66,8 +66,8 @@ the local store:
   remote answer larger than asked for are refused as they are read.
 
 Remote execution (`@vzn/vx-reapi`) holds each blob to its digest, and
-writes a server's outputs only inside the workspace, through no link
-that leads out of it.
+writes only the server's outputs a declared glob names, inside the
+workspace, through no link that leads out of it.
 
 ## What the sandbox stops
 
@@ -114,7 +114,8 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 The value, of 6 characters or more, of a variable whose name holds
 `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (not one
 ending `_FILE`, `_PATH` or `_DIR`, nor `GIT_CONFIG_KEY_<n>`), or that a
-task lists in `exec.env.secret`, is printed as `***` wherever vx shows, stores or
+task lists in `exec.env.secret`, and the password of a URL
+(`scheme://user:<password>@`) in any variable's value, is printed as `***` wherever vx shows, stores or
 exports it: task output, the stdout a hit replays, commands, an
 executor's error, telemetry,
 `vx show` and `vx mcp`'s `listTasks` (L-26). Values in the run history are digests under a per-store

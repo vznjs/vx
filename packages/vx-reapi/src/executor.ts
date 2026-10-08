@@ -1379,7 +1379,6 @@ export async function materialiseOutputs(
   warn: (m: string) => void,
   created?: string[],
 ): Promise<void> {
-  const files = result.output_files ?? []
   // A glob with a wildcard FIRST segment has no REAPI spelling, so it is sent
   // as '' — whole-working-directory capture — and the worker returns inputs
   // and undeclared siblings alongside the real outputs. There is no way to
@@ -1419,9 +1418,16 @@ export async function materialiseOutputs(
     const rel = toPosix(path.relative(req.workspaceRoot, abs))
     return declared.includes(rel) || matchers.some((m) => m.match(rel))
   }
+  const fence = new Fence(req.workspaceRoot)
+  // A file or link no declared glob names is neither fetched nor written:
+  // the workspace root was the only fence, so a result (or a record planted
+  // in the action cache) could write `.git/hooks/post-checkout` 0755 or
+  // another project's sources. Core's remote ingest refuses the same.
+  const files = (result.output_files ?? []).filter((f) =>
+    isDeclared(fence.lexical(req.cwd, f.path)),
+  )
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
-  const fence = new Fence(req.workspaceRoot)
   const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
   const batched = await client.batchReadBlobs(small.map((f) => f.digest))
 
@@ -1459,6 +1465,7 @@ export async function materialiseOutputs(
   // it as a copy would silently change what the next task sees.
   for (const sl of result.output_symlinks ?? []) {
     const abs = fence.lexical(req.cwd, sl.path)
+    if (!isDeclared(abs)) continue
     await fence.dir(path.dirname(abs))
     await makeDir(path.dirname(abs), created)
     await fence.symlink(sl.target, abs, created)

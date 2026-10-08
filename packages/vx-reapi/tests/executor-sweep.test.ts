@@ -194,7 +194,13 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     let printed = ''
     const before = executes()
     const res = await withExecutor((run) =>
-      run(request({ cacheKey: 'k-hit', onStdout: (c: string) => (printed += c) })),
+      run(
+        request({
+          cacheKey: 'k-hit',
+          outputs: { files: ['out.txt', 'empty.txt'], workspaceFiles: [] },
+          onStdout: (c: string) => (printed += c),
+        }),
+      ),
     )
     expect(executes()).toBe(before)
     expect([res.exitCode, res.stdout, printed]).toEqual([0, 'recorded stdout', 'recorded stdout'])
