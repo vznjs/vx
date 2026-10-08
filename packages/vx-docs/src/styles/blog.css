@@ -143,3 +143,10 @@ body:has(.sl-blog-preview) {
     border-radius: 12px;
   }
 }
+
+/* Release covers: rounded like the cards that hold them. */
+.sl-blog-preview img,
+.sl-markdown-content > img:first-child,
+.sl-blog-post img[src*='vx-0-0-'] {
+  border-radius: 10px;
+}

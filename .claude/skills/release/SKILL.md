@@ -31,9 +31,9 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   refactors, docs, CI. Verify every command, flag and config key in an
   example against current source; prefer real output from a fixture
   run of `bun packages/vx/src/bin.ts …` in the scratchpad.
-- Title `vx 0.0.<N+1>: <one short headline>`: the release's story in
-  a few plain words ("Runs that explain themselves"), never a list of
-  features (owner, 2026-10-08). Date today,
+- Title `vx 0.0.<N+1> Release`, nothing else (owner, 2026-10-08:
+  feature-list and headline titles were both rejected). The story goes
+  in the cover headline and the excerpt. Date today,
   tag `release`, an excerpt, an intro, `**In this release**` links,
   one `##` per change with one example and its PR links,
   `## Breaking changes` when any, then How to update and Learn more as
@@ -43,6 +43,17 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   heading; never say vx runs or works in a Turbo or Nx repo (it maps
   them; migration is a start toward native config); config samples
   import from `@vzn/vx/config`.
+
+- Show, don't tell (owner: "viz is better than words"): every
+  example in a `frame="terminal"` block, every before/after number as
+  a `vx-charts` bar figure (copy the markup from the last post), a
+  mermaid flowchart where a change has a shape. No tables.
+- Cover: add the version to
+  `/mnt/project-files/org/docs-site/release-covers/covers.json` (date,
+  headline with one `[accented]` phrase, up to 8 terminal lines), run
+  `node render.mjs /home/user/vx <N+1>` there, and set the post's
+  `cover: { image: ../../../assets/blog/vx-0-0-<N+1>.png, alt }`. Look
+  at the PNG before committing it.
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
 open a PR `docs(vx-docs): release post for v0.0.<N+1>` and squash-merge
@@ -74,7 +85,7 @@ title and description (the post's title and excerpt):
 
 ```sh
 cd /mnt/project-files/x-posts/_source
-NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "<post title>" --desc "<excerpt>" --dry
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/blog/vx-0-0-<N+1>/ --title "<post title>: <cover headline>" --desc "<excerpt>" --dry
 ```
 
 Read the `--dry` record, then run it again without `--dry`. It logs to

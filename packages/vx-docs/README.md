@@ -117,9 +117,13 @@ Each release gets a post, written before it is cut
 releases up to v0.0.625. A post holds at most ten changes a user would
 notice, each a `##` section with one example and its PR links, then
 Breaking changes, How to update and Learn more. The title is the
-version and one short headline (`vx 0.0.625: Runs that explain
-themselves`), never a list of features. The slug is `vx-0-0-<version>`, the tag `release`, and the date
-the release's day. The design essays stay beside them.
+version alone (`vx 0.0.625 Release`), as Nx, Vite and Bun title theirs;
+the story is the cover's headline and the excerpt. Every post has a
+cover (`src/assets/blog/vx-0-0-<version>.png`, 1200×630) and shows
+rather than tells: a terminal frame per example, a bar chart for every
+before/after number, a mermaid diagram where a change has a shape. The
+slug is `vx-0-0-<version>`, the tag `release`, and the date the
+release's day. The design essays stay beside them.
 
 ## Commands
 
