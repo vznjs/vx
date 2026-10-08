@@ -110,7 +110,9 @@ over (in order):
 6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
-   pulled deps don't see them (their cache identity stays clean).
+   pulled deps don't see them (their cache identity stays clean) — and
+   to a command: a requested default `build` runs none and folds none
+   (X-119).
 7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current

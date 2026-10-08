@@ -1,4 +1,3 @@
-import path from 'node:path'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
@@ -335,7 +334,8 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
   function add(node: TaskNode): void {
     nodes.set(node.id, node)
-    if ((node.config.dependsOn?.length ?? 0) > 0) {
+    if (isKeyedGroup(node.config) && onCycle(node.projectName)) deferred.push(node)
+    else if ((node.config.dependsOn?.length ?? 0) > 0) {
       stack.push({ node, entry: 0, added: false, pending: null, next: 0 })
     }
   }
@@ -445,9 +445,42 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
     return component.get(start)!
   }
+  // Default builds on a package cycle, expanded once the rest is built.
+  const deferred: TaskNode[] = []
   const onCycle = (name: string): boolean => cyclic.has(componentOf(name))
   const sameCycle = (a: string, b: string): boolean =>
     onCycle(a) && componentOf(a) === componentOf(b)
+
+  // `^name` from `start`: edges to the nearest holders of `name` among the
+  // packages below it, passing through the ones `visited` holds and the
+  // ones that declare no `name`, and on past a default build on a cycle.
+  // True when it found a holder.
+  function walkHolders(frame: Frame, name: string, visited: Set<string>, start: string): boolean {
+    const frontier = [...packageGraph.directDeps(start)]
+    let held = false
+    while (frontier.length > 0) {
+      const target = frontier.pop()!
+      if (visited.has(target)) continue
+      visited.add(target)
+      if (visit(frame, target, name, false)) {
+        held = true
+        const task = declaredTask(projects.get(target)!.config, name)!
+        if (isKeyedGroup(task) && onCycle(target)) {
+          frontier.push(...packageGraph.directDeps(target))
+        }
+      } else frontier.push(...packageGraph.directDeps(target))
+    }
+    return held
+  }
+
+  // An edge by name (`build`, `pkg#build`) to a default build on a package
+  // cycle goes on past it as a `^build` walk does: that build folds nothing
+  // of the builds on its cycle, so `a#test` on `build` with `a` ↔ `b` both
+  // on the default build folded none of `b` and hit after `b` changed.
+  function goPast(frame: Frame, project: string, name: string, visited: Set<string>): void {
+    const task = declaredTask(projects.get(project)!.config, name)!
+    if (isKeyedGroup(task) && onCycle(project)) walkHolders(frame, name, visited, project)
+  }
 
   // Resolves one `dependsOn` entry of `frame`'s task into its edges.
   function resolveEntry(frame: Frame, raw: string): void {
@@ -498,6 +531,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
             `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
           )
         }
+        goPast(frame, projectName, spec.task, new Set([projectName]))
       }
     } else if (spec.kind === 'deps') {
       // Nearest-holder frontier (Turbo/Nx direct-deps parity +
@@ -522,44 +556,34 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // depend on itself.
       //
       // The default `build` sits on every project, so on a package cycle it
-      // would make a task cycle no config declares. Its own walk passes
-      // through the projects on its cycle (each of their builds reaches it),
-      // and a walk that meets it on a cycle takes the edge and goes on past
-      // it, so the builds it could not depend on still come first.
-      const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
-      const keyed = isKeyedGroup(node.config)
+      // would make a task cycle no config declares. One on a cycle walks
+      // last (`resolveDeferred`), and a walk that meets it on a cycle takes
+      // the edge and goes on past it, so the builds it could not depend on
+      // still come first.
       const visited = new Set<string>([projectName])
+      if (!isTaskPattern(spec.task)) {
+        const held = walkHolders(frame, spec.task, visited, projectName)
+        if (!held && !declaredAnywhere(projectName, spec.task)) {
+          if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
+          undeclaredDeps(id, spec.task)
+        }
+        return
+      }
+      // A pattern that matches nothing stays legal, as `build.*` does.
+      const re = compileTaskPattern(spec.task)
       const frontier = [...packageGraph.directDeps(projectName)]
-      let held = false
       while (frontier.length > 0) {
         const target = frontier.pop()!
         if (visited.has(target)) continue
         visited.add(target)
-        if (re === null) {
-          if (keyed && sameCycle(projectName, target)) {
-            frontier.push(...packageGraph.directDeps(target))
-          } else if (visit(frame, target, spec.task, false)) {
-            held = true
-            const task = declaredTask(projects.get(target)!.config, spec.task)!
-            if (isKeyedGroup(task) && onCycle(target)) {
-              frontier.push(...packageGraph.directDeps(target))
-            }
-          } else frontier.push(...packageGraph.directDeps(target))
+        const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
+          re.test(n),
+        )
+        if (names.length > 0) {
+          for (const name of names) visit(frame, target, name, false)
         } else {
-          const names = Object.keys(projects.get(target)?.config.tasks ?? {}).filter((n) =>
-            re.test(n),
-          )
-          if (names.length > 0) {
-            for (const name of names) visit(frame, target, name, false)
-          } else {
-            frontier.push(...packageGraph.directDeps(target))
-          }
+          frontier.push(...packageGraph.directDeps(target))
         }
-      }
-      // A pattern that matches nothing stays legal, as `build.*` does.
-      if (re === null && !held && !declaredAnywhere(projectName, spec.task)) {
-        if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
-        undeclaredDeps(id, spec.task)
       }
     } else {
       // Cross-project edge: pkg#task. Missing target is a hard error
@@ -574,11 +598,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
         )
       }
+      goPast(frame, spec.project, spec.task, new Set([projectName, spec.project]))
     }
   }
 
-  for (const { project, task } of requested) {
-    visit(null, project, task, true)
+  const drain = (): void => {
     while (stack.length > 0) {
       const frame = stack[stack.length - 1]!
       const { node, pending } = frame
@@ -605,8 +629,95 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     }
   }
 
+  for (const { project, task } of requested) {
+    visit(null, project, task, true)
+    drain()
+  }
+
+  // A default build on a package cycle: its `^build` walk, run once the
+  // graph holds everything else. A build on its cycle that reaches it is
+  // passed through (an edge to it would close a task cycle no config
+  // declares); one that does not is a holder like any other, so the default
+  // build waits for it and folds its key. Passed through unasked, `p#test`
+  // on `p#build` ran beside a `t#build` on no `^build` and hit after `t`
+  // changed. A build no other edge brought is expanded to ask, and pruned
+  // again when it reaches back. Each walk sees the edges the ones before it
+  // took, so no edge closes a cycle.
+  let expanded = false
+  const resolveDeferred = (x: TaskNode): void => {
+    // The default build's one entry is `^` and its own name.
+    const name = x.taskName
+    const frame: Frame = { node: x, entry: 0, added: false, pending: null, next: 0 }
+    let reaching: Set<string> | null = null
+    const visited = new Set<string>([x.projectName])
+    const frontier = [...packageGraph.directDeps(x.projectName)]
+    while (frontier.length > 0) {
+      const target = frontier.pop()!
+      if (visited.has(target)) continue
+      visited.add(target)
+      const task = declaredTask(projects.get(target)?.config, name)
+      if (task === undefined) {
+        frontier.push(...packageGraph.directDeps(target))
+        continue
+      }
+      const to = taskId(target, name)
+      if (sameCycle(x.projectName, target)) {
+        if (!isKeyedGroup(task) && !nodes.has(to)) {
+          visit(null, target, name, false)
+          drain()
+          expanded = true
+          reaching = null
+        }
+        if (isKeyedGroup(task) || (reaching ??= reachingTo(nodes, x.id)).has(to)) {
+          frontier.push(...packageGraph.directDeps(target))
+          continue
+        }
+      }
+      const size = nodes.size
+      frame.added = false
+      visit(frame, target, name, false)
+      drain()
+      if (nodes.size !== size) reaching = null
+      if (isKeyedGroup(task) && onCycle(target)) frontier.push(...packageGraph.directDeps(target))
+    }
+    x.deps = [...new Set(x.deps)].sort()
+  }
+  for (let i = 0; i < deferred.length; i++) resolveDeferred(deferred[i]!)
+  if (expanded) {
+    const keep = new Set<string>()
+    const roots = [...nodes.values()].filter((n) => n.requested).map((n) => n.id)
+    while (roots.length > 0) {
+      const id = roots.pop()!
+      if (keep.has(id)) continue
+      keep.add(id)
+      roots.push(...nodes.get(id)!.deps)
+    }
+    for (const id of nodes.keys()) if (!keep.has(id)) nodes.delete(id)
+  }
+
   checkGraph(nodes, options.workspaceRoot, options.rules)
   return nodes
+}
+
+/** The ids of the tasks that reach `target` along `deps`, itself included. */
+function reachingTo(nodes: Map<string, TaskNode>, target: string): Set<string> {
+  const dependants = new Map<string, string[]>()
+  for (const n of nodes.values()) {
+    for (const d of n.deps) {
+      const list = dependants.get(d)
+      if (list === undefined) dependants.set(d, [n.id])
+      else list.push(n.id)
+    }
+  }
+  const out = new Set<string>()
+  const stack = [target]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (out.has(id)) continue
+    out.add(id)
+    stack.push(...(dependants.get(id) ?? []))
+  }
+  return out
 }
 
 /**

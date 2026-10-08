@@ -612,7 +612,14 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', 'hello'])
     expect(code).toBe(1)
-    expect(stderr).toContain('not inside a project')
+    expect(stderr).toBe(
+      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+    )
+    stderr = ''
+    expect(await run(['watch', 'hello'])).toBe(1)
+    expect(stderr).toBe(
+      'vx watch: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx watch --help`)\n',
+    )
   })
 
   it('cwd inside a project package resolves to that project', async () => {

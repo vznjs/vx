@@ -809,3 +809,30 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   -- on the command as the local executor does", `vx-reapi`
   `executor-helpers-sweep.test.ts` › "puts the args before a trailing
   comment, as the local executor does".
+- **X-118.** A default `build` on a package cycle (X-100) passed
+  through every project on its cycle, a declared `build` that never
+  reaches it included: with `p` (default `build`) and `t` (`build` on
+  no `^build`) depending on each other, `p#build` took no edge to
+  `t#build`, so `p#test` on `build` ran beside `t#build` and its key
+  folded nothing of `t`: a stale hit after `t` changed. A default `build`
+  on a cycle now walks once the rest of the graph is built and passes
+  through only the builds that reach it. Rows: `task-graph.test.ts` › "a
+  default build on a cycle keeps the edge to a build that never reaches
+  it", "a default build on a cycle passes a build that reaches it through
+  another task".
+- **X-119.** A requested default `build` (the one keyed group) folded
+  the args after `--` into its key though it runs no command: in
+  `vx run lib#build app#e2e -- --x`, `app#build`, which never sees
+  `--x`, folds `lib#build`'s key, so it missed for every new set of args
+  and saved under a key no run without them derives. A group's key now
+  folds no forwarded args. Row: `task-hash-derive.test.ts` › "a
+  requested default build ignores them: it runs no command".
+- **X-120.** An edge by name (`build`, `pkg#build`) to a default
+  `build` on a package cycle stopped there, where a `^build` walk goes on
+  past it (X-100): with `a` and `b` on the default build depending on
+  each other, neither build folds the other, so `a#test` on `build`
+  folded nothing of `b` and hit after `b` changed. Such an edge now goes
+  on past it as `^build` does. A request whose closure then reaches a
+  task cycle among declared builds is refused, as a run of those builds
+  already was. Row: `task-graph.test.ts` › "an edge by name to a default
+  build on a cycle goes on past it, as ^build does".
