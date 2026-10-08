@@ -1073,6 +1073,11 @@ passed 1× before` and `vx info` listed it for thirty days, though the
   `shared-outputs.test.ts` › "takes another task's workspace output back
   from a project's own inputs".
 
+- **X-139.** A dev server stuck before its `readyWhen` line in `vx
+watch`'s initial run held that run for good: the loop armed only after
+  it, so the fix was never heard. The loop now arms once the initial run
+  waits on readiness alone (every config is loaded by then) and takes the
+  run as its cycle in flight. Rows: `watch-initial-readiness.test.ts`.
 - **X-138.** A package added mid-watch was armed only after the cycle
   it triggered had run, so an edit to it during that cycle fell in the
   gap and ran nothing. The cycle now re-arms (quietly) before it runs;
