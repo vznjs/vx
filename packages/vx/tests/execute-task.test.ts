@@ -2449,21 +2449,21 @@ describe('execute-task edges', () => {
   })
 
   it("the local executor's own timedOut decides an exit 0 after the request's abort (X-125)", async () => {
-    // Core's request timer starts before the runner's, which counts from the
-    // spawn: a 0 between the two is a finish, and the runner, which says
-    // when it killed, did not.
+    // The runner times a local task from its spawn and says when it
+    // killed; core arms no clock on the local request, so an exit 0 past
+    // `exec.timeout` by core's count is a finish, not a timeout.
     const local = localExecutor()
-    local.execute = (req: ExecuteRequest) =>
-      new Promise((resolve) =>
-        req.signal!.addEventListener('abort', () =>
-          resolve({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }),
-        ),
-      )
+    let aborted: boolean | undefined
+    local.execute = async (req: ExecuteRequest) => {
+      await Bun.sleep(150)
+      aborted = req.signal!.aborted
+      return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+    }
     const o = await executeTask({
       ...baseArgs(b, node(b, { exec: { command: 'true', timeout: 50 } }), log),
       executor: local,
     })
-    expect([o.status, o.exitCode, o.timedOut]).toEqual(['success', 0, undefined])
+    expect([o.status, o.exitCode, o.timedOut, aborted]).toEqual(['success', 0, undefined, false])
   })
 
   it('stops retrying at the first success', async () => {
