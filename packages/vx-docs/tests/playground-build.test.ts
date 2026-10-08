@@ -26,6 +26,7 @@ describe('the playground build', () => {
       'node:os': 'stub',
       'node:module': 'stub',
       '@anthropic-ai/sandbox-runtime': 'stub',
+      'bun:ffi': 'stub',
     })
   })
 

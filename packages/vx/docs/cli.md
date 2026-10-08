@@ -2037,7 +2037,7 @@ package's README.
 
 ## Turbo and Nx flags
 
-What a Turbo or Nx user types into `vx run` (and `vx watch`): each flag
+What a Turbo, Nx or Vite Task (`vp run`) user types into `vx run` (and `vx watch`): each flag
 vx takes as it is (`same`), rewrites to its own spelling before the
 parse (`alias`), or refuses with the vx way to say it (`refuse`) —
 none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
@@ -2129,6 +2129,13 @@ copy to the source.
 | nx     | `--skip-sync`                                     | refuse  | vx never runs sync generators: drop it                                                                                                            |
 | nx     | `--tui`, `--no-tui`, `--tui-auto-exit`            | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
 | nx     | `--no-cloud`                                      | refuse  | vx has no cloud: drop it                                                                                                                          |
+| vp     | `-r`, `--recursive`                               | alias   | `--all`                                                                                                                                           |
+| vp     | `-w`, `--workspace-root`                          | alias   | `--filter //` (the root project)                                                                                                                  |
+| vp     | `--concurrency-limit <v>`                         | alias   | `--concurrency <n>`                                                                                                                               |
+| vp     | `--ignore-depends-on`                             | alias   | `--exclude-dependencies`                                                                                                                          |
+| vp     | `--fail-if-no-match`                              | alias   | nothing: a filter that matches nothing already fails the run                                                                                      |
+| vp     | `--log <v>`                                       | refuse  | vx frames each task’s output: `--output-logs <mode>` sets how much                                                                                |
+| vp     | `--last-details`                                  | refuse  | `vx last` prints the last run                                                                                                                     |
 
 ## Machine-readable output
 
@@ -2280,7 +2287,7 @@ workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
-cache versions:   keys vx-cache-v40 · index schema v32
+cache versions:   keys vx-cache-v41 · index schema v32
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2327,11 +2334,10 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's flaky notes add to:
   every task whose history (30 days, what the cache keeps) holds a
-  cache key that both passed and failed, most failures first, with
+  cache key that failed after it had passed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
-  replayed one), and a pass that took a retry mixes its key alone, its
-  failed attempts counted as failures. `none` when the history never
-  mixed.
+  replayed one), and a pass that took a retry counts too, its failed
+  attempts counted as failures. `none` when no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
@@ -2813,12 +2819,14 @@ run history alone, no service:
  ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
-A task is flaky when its exact cache key has BOTH passed and failed on
-record (this run counted; a cache hit is a pass, it replayed one), or
-when it needed a retry (`exec.retries` / `--retry`) this run. A failure
-on a key that never passed is a break and carries no note — a changed
-input that fails is what a red run usually means. Only tasks with a
-`cache` block are judged: "same inputs, different outcome" is a claim
+A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
+(this run counted; a cache hit is a pass, it replayed one), or when it
+needed a retry (`exec.retries` / `--retry`) this run. A failure on a
+key that never passed is a break and carries no note — a changed input
+that fails is what a red run usually means — and the first pass after
+only failures is a recovery (a missing tool installed), not a flake.
+Only tasks with a `cache` block are judged: "same inputs, red after
+green" is a claim
 only declared inputs can back, and a task without them keys on its
 config alone. It is judged as the task finishes, so the row carries
 it: zero cost for a hit or a skip, one probe of the failed-row index

@@ -18,8 +18,8 @@ import {
   closeSignalChannel,
   holdGroups,
   killTree,
-  markGroupIfGone,
   releaseGroup,
+  releaseServerGroup,
   signalThrough,
   guardLine,
   spawnGuarded,
@@ -485,12 +485,14 @@ const READY_MATCH_WINDOW_CHARS = 64 * 1024
 
 /**
  * Terminal escapes a `readyWhen` pattern is matched without: CSI (colour,
- * cursor), OSC (titles, links) and the two-byte forms. Vite under
+ * cursor), OSC (titles, links), charset picks (`tput sgr0` writes
+ * `\x1b(B\x1b[m`) and the two-byte forms. Vite under
  * `FORCE_COLOR` prints `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched
  * (item 1059). The streamed bytes keep them; only the tested text drops them.
  */
-// eslint-disable-next-line no-control-regex -- ESC is the point
-const TERMINAL_ESCAPE_RE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g
+const TERMINAL_ESCAPE_RE =
+  // eslint-disable-next-line no-control-regex -- ESC is the point
+  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[ -/]+[0-~]|[@-Z\\-_])/g
 
 /**
  * Why a persistent task never became ready — the reason every label and
@@ -753,8 +755,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // — reject the ready promise so the caller can surface it.
   void child.exited.then((code) => {
     opts.liveChildren?.delete(child)
-    markGroupIfGone(child)
-    releaseGroup(child)
+    releaseServerGroup(child)
     if (readyTimer !== undefined) clearTimeout(readyTimer)
     if (readyAt === undefined && gaveUpAt === undefined) {
       rejectReady(

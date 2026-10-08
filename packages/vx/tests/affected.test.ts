@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { mkdir, mkdtemp, writeFile, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -25,9 +25,22 @@ const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
   // signing proxies) that globally enforce commit signing and would
-  // reject our throwaway fixture commits.
+  // reject our throwaway fixture commits. The identity rides here, not in
+  // two `git config` spawns per repository: ~100 rows init one, and under
+  // the gate's sandbox a spawn is the fixture's main cost.
   const proc = Bun.spawn({
-    cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+    cmd: [
+      'git',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'tag.gpgSign=false',
+      '-c',
+      'user.email=test@vx.local',
+      '-c',
+      'user.name=vx test',
+      ...args,
+    ],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -45,6 +58,43 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
     const detail = [stderr.trim(), stdout.trim()].filter((s) => s.length > 0).join(' | ')
     throw new Error(`git ${args.join(' ')} (cwd=${cwd}) exited ${exit}: ${detail}`)
   }
+}
+
+/**
+ * Commit `commits` on top of HEAD's branch in one `git fast-import`, then
+ * `git reset` the index (and, `--hard`, the worktree) to the new HEAD. The
+ * rows that need fifty commits or six thousand files made them with a
+ * spawn per commit or a loose object per file, seconds under the gate's
+ * sandbox; these are the same commits in two spawns.
+ */
+async function fastCommits(
+  cwd: string,
+  commits: ReadonlyArray<{ message: string; files: Readonly<Record<string, string>> }>,
+  reset: '--hard' | '--mixed',
+): Promise<void> {
+  const branch = (await readFile(path.join(cwd, '.git', 'HEAD'), 'utf8')).replace(/^ref: /, '')
+  const data = (s: string): string => `data ${Buffer.byteLength(s)}\n${s}\n`
+  const stream = commits
+    .map(
+      (c, i) =>
+        `commit ${branch.trim()}\ncommitter vx test <test@vx.local> ${1_700_000_000 + i} +0000\n` +
+        data(c.message) +
+        (i === 0 ? 'from HEAD^0\n' : '') +
+        Object.entries(c.files)
+          .map(([file, content]) => `M 100644 inline ${file}\n${data(content)}`)
+          .join(''),
+    )
+    .join('')
+  const proc = Bun.spawn({
+    cmd: ['git', 'fast-import', '--quiet'],
+    cwd,
+    stdin: new Blob([stream]),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [stderr, exit] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+  if (exit !== 0) throw new Error(`git fast-import (cwd=${cwd}) exited ${exit}: ${stderr.trim()}`)
+  await git(cwd, 'reset', '-q', reset)
 }
 
 describe('affectedProjects', () => {
@@ -73,8 +123,6 @@ describe('affectedProjects', () => {
     ]
 
     await git(root, 'init', '-q')
-    await git(root, 'config', 'user.email', 'test@vx.local')
-    await git(root, 'config', 'user.name', 'vx test')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'initial')
   })
@@ -383,8 +431,6 @@ describe('affectedProjects', () => {
     await mkdir(subC, { recursive: true })
     await writeFile(path.join(subC, 'file.txt'), 'c-initial')
     await git(path.join(root, 'vendor/sub'), 'init', '-q')
-    await git(path.join(root, 'vendor/sub'), 'config', 'user.email', 'test@vx.local')
-    await git(path.join(root, 'vendor/sub'), 'config', 'user.name', 'vx test')
     await git(path.join(root, 'vendor/sub'), 'add', '.')
     await git(path.join(root, 'vendor/sub'), 'commit', '-q', '-m', 'c')
     // `git add` of an embedded repository records a gitlink — what a submodule is.
@@ -1357,25 +1403,22 @@ describe('affectedProjects', () => {
       ? 'present'
       : `MISSING — root ${existsSync(root) ? `holds [${readdirSync(root).join(', ')}]` : 'is gone'}`
     expect(fixture).toBe('present')
-    // `-a` instead of a separate `git add .`: file.txt is tracked from the
-    // fixture's initial commit, so staging tracked modifications is exactly
-    // equivalent here and halves the subprocess count (150 spawns → 100).
-    for (let i = 0; i < 50; i++) {
-      await writeFile(path.join(root, 'packages/b/file.txt'), `b-v${i}`)
-      // ONE retry, and only here. This loop is fixture SETUP — 50 real
-      // commits, because `HEAD~50` has to resolve — and on a loaded darwin
-      // runner git itself failed mid-loop with
-      //   `unable to create temporary file: Invalid argument`
-      //   `fatal: failed to write commit object`
-      // i.e. the filesystem refused git's object write, with vx not even in
-      // the picture. Retrying the SETUP cannot mask a defect in the code
-      // under test (that is asserted below, after the loop), and the second
-      // failure still throws with git's own message attached.
-      try {
-        await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
-      } catch {
-        await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
-      }
+    const commits = Array.from({ length: 50 }, (_, i) => ({
+      message: `b-${i}`,
+      files: { 'packages/b/file.txt': `b-v${i}` },
+    }))
+    // ONE retry, and only here. This is fixture SETUP — 50 real commits,
+    // because `HEAD~50` has to resolve — and on a loaded darwin runner git
+    // itself failed with
+    //   `unable to create temporary file: Invalid argument`
+    // i.e. the filesystem refused git's object write, with vx not even in
+    // the picture. Retrying the SETUP cannot mask a defect in the code
+    // under test (that is asserted below), and the second failure still
+    // throws with git's own message attached.
+    try {
+      await fastCommits(root, commits, '--hard')
+    } catch {
+      await fastCommits(root, commits, '--hard')
     }
     // Assert the fixture BEFORE the behaviour under test. `HEAD~50` only
     // resolves if all 50 commits landed, and if one silently didn't, the
@@ -1397,19 +1440,8 @@ describe('affectedProjects', () => {
     }).toEqual({ count: '51', exitCode: 0, stderr: '' })
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~50', projects })
     expect([...out]).toEqual(['b'])
-    // An explicit budget, because the DEFAULT one was never chosen for this
-    // test. It performs 100 real git subprocess spawns; at the ~30-50ms a
-    // spawn costs on a loaded shared runner that is 3-5s, so bun's 5s default
-    // sits right on the line — and this is the THIRD time it has redded CI
-    // (see the two prior occurrences described above, both of which pointed
-    // away from the cause).
-    //
-    // Raising a timeout is usually the wrong instinct and this file's own
-    // history says so, but the distinction the decision log draws applies
-    // here: the watch flake failed by LOSING an event, so more time could
-    // never help. This one fails by running long — the last CI failure
-    // overshot by 63ms — and the work it does is genuinely several seconds.
-    // The bound still catches a real hang, which is what it is for.
+    // The budget dates from a fixture of 100 spawns that ran past bun's 5 s
+    // default on a loaded runner; it still only bounds a hang.
   }, 30_000)
 
   // nx#16975: a diff naming thousands of files overflowed a fixed buffer
@@ -1417,15 +1449,17 @@ describe('affectedProjects', () => {
   it('six thousand changed files, over a megabyte of paths, select their project and no other', async () => {
     await mkdir(path.join(root, 'packages/b/gen'), { recursive: true })
     const long = 'x'.repeat(160)
+    const files = Object.fromEntries(
+      Array.from({ length: 6000 }, (_, i) => [`packages/b/gen/${long}-${i}.txt`, `${i}`]),
+    )
     await Promise.all(
-      Array.from({ length: 6000 }, (_, i) =>
-        writeFile(path.join(root, `packages/b/gen/${long}-${i}.txt`), `${i}`),
-      ),
+      Object.entries(files).map(([file, content]) => writeFile(path.join(root, file), content)),
     )
     const listed = Bun.spawnSync({ cmd: ['git', 'ls-files', '-o', '-z'], cwd: root })
     expect(listed.stdout.length).toBeGreaterThan(1024 * 1024)
-    await git(root, 'add', '.')
-    await git(root, 'commit', '-q', '-m', 'generated')
+    // `--mixed`: the files are on disk already; the reset stats them into
+    // the index, so the worktree is clean as after `git add` + commit.
+    await fastCommits(root, [{ message: 'generated', files }], '--mixed')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
     expect([...out]).toEqual(['b'])
     // Removed here, under this row's bound: the 6,000 files and their git
@@ -1460,8 +1494,6 @@ describe('defaultAffectedBase', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-default-'))
     try {
       await git(root, 'init', '-q')
-      await git(root, 'config', 'user.email', 'test@vx.local')
-      await git(root, 'config', 'user.name', 'vx test')
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
@@ -1483,8 +1515,6 @@ describe('defaultAffectedBase', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-trunk-'))
     try {
       await git(root, 'init', '-q', '-b', 'main')
-      await git(root, 'config', 'user.email', 'test@vx.local')
-      await git(root, 'config', 'user.name', 'vx test')
       const commit = async (v: string): Promise<void> => {
         await writeFile(path.join(root, 'a'), v)
         await git(root, 'add', '.')
@@ -1512,8 +1542,6 @@ describe('defaultAffectedBase', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-self-'))
     try {
       await git(root, 'init', '-q', '-b', 'feat')
-      await git(root, 'config', 'user.email', 'test@vx.local')
-      await git(root, 'config', 'user.name', 'vx test')
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
@@ -1537,8 +1565,6 @@ describe('defaultAffectedBase', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-symref-'))
     try {
       await git(root, 'init', '-q')
-      await git(root, 'config', 'user.email', 'test@vx.local')
-      await git(root, 'config', 'user.name', 'vx test')
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
@@ -1557,8 +1583,6 @@ describe('defaultAffectedBase', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-gone-'))
     try {
       await git(root, 'init', '-q')
-      await git(root, 'config', 'user.email', 'test@vx.local')
-      await git(root, 'config', 'user.name', 'vx test')
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
@@ -1670,8 +1694,6 @@ describe('affectedProjects workspaceFiles gate', () => {
       },
     ]
     await git(root, 'init', '-q')
-    await git(root, 'config', 'user.email', 'test@vx.local')
-    await git(root, 'config', 'user.name', 'vx test')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'initial')
   })
@@ -1813,8 +1835,6 @@ describe('affectedProjects: config import closures', () => {
     projects = [meta('app', 'packages/app'), meta('lib', 'packages/lib'), meta('x', 'apps/x')]
 
     await git(root, 'init', '-q')
-    await git(root, 'config', 'user.email', 'test@vx.local')
-    await git(root, 'config', 'user.name', 'vx test')
     await git(root, 'add', '-A')
     await git(root, 'commit', '-q', '-m', 'initial')
   })
@@ -2025,8 +2045,6 @@ describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
       },
     ]
     await git(root, 'init', '-q')
-    await git(root, 'config', 'user.email', 'test@vx.local')
-    await git(root, 'config', 'user.name', 'vx test')
     await git(root, 'add', '-A')
     await git(root, 'commit', '-q', '-m', 'initial')
   })
@@ -2209,8 +2227,6 @@ describe('a fingerprint claim in a workspace BELOW the git root', () => {
       { name: 'a', dir: path.join(ws, 'packages/a'), configPath: null, packageJson: { name: 'a' } },
     ]
     await git(repo, 'init', '-q')
-    await git(repo, 'config', 'user.email', 'test@vx.local')
-    await git(repo, 'config', 'user.name', 'vx test')
     await git(repo, 'add', '.')
     await git(repo, 'commit', '-q', '-m', 'initial')
   })
