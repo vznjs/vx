@@ -21,7 +21,21 @@
             "required": ["chain", "entries"],
             "properties": {
               "chain": { "type": "array", "items": { "type": "string" } },
-              "entries": { "$ref": "#/$defs/entries" }
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "name", "change", "before", "after"],
+                  "properties": {
+                    "kind": { "type": "string" },
+                    "name": { "type": "string" },
+                    "change": { "enum": ["added", "removed", "changed"] },
+                    "before": { "type": ["string", "null"] },
+                    "after": { "type": ["string", "null"] }
+                  }
+                }
+              }
             }
           }
         }
@@ -107,24 +121,23 @@
         "taskId": { "type": "string" },
         "found": { "type": "boolean" },
         "previousRunId": { "type": ["string", "null"] },
-        "entries": { "$ref": "#/$defs/entries" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name", "change", "before", "after"],
+            "properties": {
+              "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
+              "name": { "type": "string" },
+              "change": { "enum": ["added", "removed", "changed"] },
+              "before": { "type": ["string", "null"] },
+              "after": { "type": ["string", "null"] }
+            }
+          }
+        },
         "unchangedCount": { "type": "integer" },
         "note": { "type": "string" }
-      }
-    },
-    "entries": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["kind", "name", "change", "before", "after"],
-        "properties": {
-          "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
-          "name": { "type": "string" },
-          "change": { "enum": ["added", "removed", "changed"] },
-          "before": { "type": ["string", "null"] },
-          "after": { "type": ["string", "null"] }
-        }
       }
     },
     "explanation": {

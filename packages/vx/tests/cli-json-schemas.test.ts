@@ -483,7 +483,7 @@ describe('each schema object is its source type', () => {
         note: true,
       }),
     )
-    expect(def('why', 'entries', 'items')).toEqual(
+    expect(def('why', 'diff', 'properties', 'entries', 'items')).toEqual(
       keys<InputDiffEntry>({ kind: true, name: true, change: true, before: true, after: true }),
     )
     expect(def('why', 'explanation')).toEqual(

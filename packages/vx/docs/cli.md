@@ -2526,7 +2526,7 @@ task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff }`); when the task's recorded runs predate run ids, `{ taskId,
+why, diff, roots }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key.
 
