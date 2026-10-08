@@ -935,7 +935,11 @@ tell the bridge from another listener: a port the host already held
 counted as the bridge's, whose own bind failed unseen, so the task passed
 and a client of the port reached the other process. `portsHeld` reads the
 table first and the wrap refuses such a port by name (2026-10-03,
-`sandbox-port-held.unsafe.test.ts`). The unix socket lives in the sandbox tmpdir, bound read-write on
+`sandbox-port-held.unsafe.test.ts`). Two tasks of one run granted the
+same port both read that table before either bridge bound, so the
+second passed the same way; the wrap now claims its ports in `hostBridges`
+before it awaits and refuses a port another live wrap of this process
+claims (2026-10-08). The unix socket lives in the sandbox tmpdir, bound read-write on
 both sides. The task's side has to CREATE a unix socket under SRT's seccomp
 filter, so `prepareSandbox` passes `allowAllUnixSockets` when any task
 declares a port list (or `unixSockets`), and `wrapSandboxedCommand` then
