@@ -1125,3 +1125,8 @@ reaches no build task.` The plan now carries the run's own line
   vanished and the run exited 0 having run the others. The lock now
   refuses it as it does a moved config (D-88). Row:
   `frozen-deleted-config.test.ts`.
+- **X-145.** The default `build` was named as a declared task where
+  `vx run build --all` refuses it: `vx build` hinted that run, and
+  `vx show build` printed a block per project. Both now skip it as the
+  picker and the run do; `vx show` and `vx info` still count it. Rows:
+  `default-build-not-declared.test.ts`, `show-default-build.test.ts`.

@@ -154,13 +154,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
 
   if (bareTask) {
-    const declaring = [...projects.values()].filter(
-      (p) => declaredTask(p.config, projectName!) !== undefined,
+    // As `vx run <task> --all` takes it: the default build is declared by no one (X-145).
+    const declares = (task: TaskConfig | undefined): boolean =>
+      task !== undefined && !isDefaultBuild(task)
+    const declaring = [...projects.values()].filter((p) =>
+      declares(declaredTask(p.config, projectName!)),
     )
     if (declaring.length === 0) {
       const names = new Set<string>()
       for (const p of projects.values())
-        for (const t of Object.keys(p.config.tasks ?? {})) names.add(t)
+        for (const [t, task] of Object.entries(p.config.tasks ?? {}))
+          if (declares(task)) names.add(t)
       // `nx show projects` lists them; here a bare `vx show` does.
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
       throw new UserError(

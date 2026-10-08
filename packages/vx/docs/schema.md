@@ -113,7 +113,9 @@ source moves its dependants' keys and reaches them under `--affected`.
 It is the one keyed group; a config cannot declare `cache` on one. A
 bare `vx run build` does not select it: run where no selected project
 declares `build`, it is refused as any undeclared name is, while
-`lib#build` names it and a dependant's `^build` reaches it.
+`lib#build` names it and a dependant's `^build` reaches it. `vx show`
+and `vx info` count it; `vx show build` and the `vx build` hint, which
+name declared tasks, do not.
 
 ### `description` (optional)
 
