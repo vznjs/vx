@@ -1897,12 +1897,13 @@ describe('affectedProjects: config import closures', () => {
     expect(await editThenSelect('shared/b.mjs', `export const B = 2\n`)).toEqual([])
   })
 
-  it('CONTROL: no descent past a project boundary', async () => {
+  it('the walk descends past a project boundary (X-128)', async () => {
     // `x`'s config imports lib/preset.mjs, which imports lib/internal.mjs.
-    // Editing internal.mjs selects lib by CONTAINMENT and must not reach x —
-    // the rule that keeps this walk from dragging in a whole source tree.
+    // The evaluation follows that import, so editing internal.mjs moves x's
+    // key; the walk stopped at preset.mjs and selected lib alone.
     expect(await editThenSelect('packages/lib/internal.mjs', `export const I = 2\n`)).toEqual([
       'lib',
+      'x',
     ])
   })
 
