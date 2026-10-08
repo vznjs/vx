@@ -81,7 +81,7 @@ jobs:
           echo "darwin=$darwin" >> "$GITHUB_OUTPUT"
 
   ci:
-    name: lint · format · test
+    name: lint · format · unsafe
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -210,8 +210,9 @@ jobs:
           # vx's exit code stays the gate: it is captured, the summary is
           # checked either way — a FAILING run is when the summary matters
           # most, since it carries the failure callout — and then re-raised.
+          # Core's twelve test shards run in the `shards` job, beside this one.
           set +e
-          bun packages/vx/src/bin.ts run ci --all
+          bun packages/vx/src/bin.ts run ci --all --exclude-dependencies=test.bun.shard-1,test.bun.shard-2,test.bun.shard-3,test.bun.shard-4,test.bun.shard-5,test.bun.shard-6,test.bun.shard-7,test.bun.shard-8,test.bun.shard-9,test.bun.shard-10,test.bun.shard-11,test.bun.shard-12
           code=$?
           set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
@@ -236,6 +237,65 @@ jobs:
         run: |
           if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
           bun packages/vx/src/bin.ts run build.bun.linux-arm64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
+
+  # Core's test shards, two runners of six beside `ci`: one 4-core runner
+  # spent ~5 of its 6 minutes on 1,150 s of tasks, CPU bound (2026-10-08).
+  shards:
+    name: core shards (${{ matrix.part }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: 1-6
+            tasks: test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6
+          - part: 7-12
+            tasks: test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .vx/cache
+            ~/.vx
+          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
+          restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
+
+      - name: vx run core shards
+        env:
+          VX_REQUIRE_SANDBOX: '1'
+          VX_REQUIRE_WATCH_EVENTS: '1'
+          VX_REQUIRE_NONROOT: '1'
+        run: bun packages/vx/src/bin.ts run ${{ matrix.tasks }} --filter @vzn/vx
+
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .vx/cache
+            ~/.vx
+          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
+
+  # The required check: green only when `ci` and both shard runners are.
+  gate:
+    name: lint · format · test
+    needs: [ci, shards]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: ci and shards passed
+        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}" = success
 
   # The `ci` job above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI

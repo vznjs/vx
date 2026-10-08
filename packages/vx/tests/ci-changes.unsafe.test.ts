@@ -230,6 +230,7 @@ describe('the gating', () => {
       .filter(([name, j]) => name !== 'changes' && (j.if !== undefined || j.needs !== undefined))
       .map(([name, j]) => [name, j.needs, j.if])
     expect(gated).toEqual([
+      ['gate', ['ci', 'shards'], 'always()'],
       [
         'packages',
         'changes',
