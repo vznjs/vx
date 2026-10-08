@@ -1265,3 +1265,8 @@ reaches no build task.` The plan now carries the run's own line
   `run graph` stage median 198 → 167 ms in an earlier 14-round timing
   run.
   Rows: `settle-now.test.ts`.
+
+- **X-196.** CI: core's twelve test shards leave the `ci` job for two
+  runners of six beside it (`shards`); a `gate` job keeps the required
+  name "lint · format · test" and passes only when all three do. The
+  `ci` job was CPU bound: 1,150 s of tasks on 4 cores, 5 of its 6 min.
