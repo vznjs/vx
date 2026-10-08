@@ -105,6 +105,36 @@ function taskStdio(terminal: boolean | undefined, stdin: 'ignore' | 'pipe') {
     : ([stdin, 'pipe', 'pipe'] as const)
 }
 
+/**
+ * Read the terminal's modes before a task that holds it runs, and return
+ * what puts them back once it exits: a task killed in raw mode (or one
+ * that never undid its `stty raw -echo`) left the user's terminal with no
+ * echo and no Ctrl-C. Bun restores them at exit only when vx's stdout is
+ * the terminal, so `vx run … > log` kept them, and the rest of a run
+ * printed in them. `detached`, as the task is: a vx in a background job
+ * would be stopped by SIGTTOU on the set.
+ */
+function keepTerminalModes(): (() => void) | undefined {
+  const saved = stty('-g')
+  if (saved === undefined) return undefined
+  return () => {
+    if (stty('-g') !== saved) stty(saved)
+  }
+}
+
+function stty(arg: string): string | undefined {
+  try {
+    const out = Bun.spawnSync(['stty', arg], {
+      stdio: ['inherit', 'pipe', 'ignore'],
+      detached: true,
+    })
+    return out.success ? out.stdout.toString().trim() : undefined
+  } catch {
+    // No stty: the modes stay the task's, as before.
+    return undefined
+  }
+}
+
 export function shellQuote(arg: string): string {
   if (arg === '') return `''`
   // A `#` opens a comment only at a word's start, so `app#build` stays bare.
@@ -566,6 +596,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
 
   let child: ReturnType<typeof Bun.spawn>
+  const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     const signalFd = opts.signalChannel === true
     child = spawnGuarded((guard) =>
@@ -597,6 +628,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         },
       ),
     )
+    if (restoreModes !== undefined) void child.exited.then(restoreModes)
     if (signalFd) {
       signalThrough(child, child.stdio[3] as number)
       const spawned = child
@@ -800,6 +832,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const fullCommand = withForwardArgs(opts.command, opts.forwardArgs)
 
   let proc: ReturnType<typeof Bun.spawn>
+  const restoreModes = opts.terminal === true ? keepTerminalModes() : undefined
   try {
     proc = spawnGuarded((guard) =>
       Bun.spawn(shellArgv((guard === undefined ? '' : guardLine(3)) + execWrap(fullCommand)), {
@@ -834,6 +867,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   // lets a clean exit EOF immediately and only cuts off a stuck reader after a
   // brief grace — without this the run hangs forever.
   await proc.exited
+  restoreModes?.()
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
