@@ -842,3 +842,7 @@ graph` ~260 ms), then `load configs` 33, close 12–15 (the checkpoint
   probe's three IN-queries are row-object building, not SQL.
 - Checkpoint on close (5–9 ms at 500): `bun:sqlite` exposes no
   `NO_CKPT_ON_CLOSE`, and process exit closes and checkpoints anyway.
+- Ready-heap priorities cached per slot (no two `Map.get` per compare):
+  2,000-project restore 1,001–1,432 ms against base 1,020–1,401 and
+  A/A 1,034–1,442; up-to-date 377.9 min against 369.8 / 356.2. The
+  profile's 12 ms in `higher` was the profiler's.
