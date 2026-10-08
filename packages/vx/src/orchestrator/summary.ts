@@ -382,8 +382,7 @@ export function formatRunSummary(
     .map((o) => o.durationMs)
   let savedMs = 0
   for (const o of outcomes)
-    if (isCacheHit(o.status) && !isGroupTask(o.node))
-      savedMs += o.storedDurationMs ?? 0
+    if (isCacheHit(o.status) && !isGroupTask(o.node)) savedMs += o.storedDurationMs ?? 0
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
   const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
