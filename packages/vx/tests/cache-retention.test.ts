@@ -293,9 +293,9 @@ describe('the cacheRetention field', () => {
       refusal({ maxSize: '0G' }),
       refusal({ maxSize: '10' }),
     ]).toEqual([
-      `${WS}: \`cacheRetention\`.olderThan of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention\`.maxSize of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention\`.maxSize '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
+      `${WS}: \`cacheRetention.olderThan\` of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention.maxSize\` of 0 evicts every entry after every run`,
+      `${WS}: \`cacheRetention.maxSize\` '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
     ])
     expect(refusal({ maxSize: '10B' })).toBeNull()
   })
@@ -312,9 +312,9 @@ describe('the cacheRetention field', () => {
       `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
       `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
       `${WS}: \`cacheRetention\` names neither \`olderThan\` nor \`maxSize\``,
-      `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
-      `${WS}: \`cacheRetention\`.olderThan must be a duration like '30d', '12h', '90m' or '45s'`,
-      `${WS}: \`cacheRetention\`.maxSize must be a size like '10G', '500MB' or '64KB'`,
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got "30 days")`,
+      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30)`,
+      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got "1.5G")`,
     ])
     expect(refusal({ maxAge: '30d' })).toContain('unknown field')
   })

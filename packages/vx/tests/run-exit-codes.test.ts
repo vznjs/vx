@@ -7,7 +7,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import { afterAll, beforeAll, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run as cli } from '../src/cli/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -42,18 +42,21 @@ describe('vx run', () => {
   })
 
   it('Ctrl-C at the picker exits 130, as an interrupted run does', async () => {
-    // The picker runs only on a terminal: stdin and stdout are TTY streams
-    // here, and Ctrl-C reaches readline raw (E-6 pinned pickTask's answer;
-    // this pins the verb's exit for it).
+    // The picker runs only on a terminal: stdin, stdout and stderr (the
+    // menu's stream) are TTY streams here, and Ctrl-C reaches readline raw
+    // (E-6 pinned pickTask's answer; this pins the verb's exit for it).
     const stdin = Object.assign(new PassThrough(), { isTTY: true })
     const stdout = Object.assign(new PassThrough(), { isTTY: true })
+    const stderr = Object.assign(new PassThrough(), { isTTY: true })
     stdout.on('data', () => undefined)
+    stderr.on('data', () => undefined)
     const inDesc = Object.getOwnPropertyDescriptor(process, 'stdin')!
     const outDesc = Object.getOwnPropertyDescriptor(process, 'stdout')!
+    const errDesc = Object.getOwnPropertyDescriptor(process, 'stderr')!
     const prevCwd = process.cwd()
-    const err = spyOn(process.stderr, 'write').mockImplementation((() => true) as never)
     Object.defineProperty(process, 'stdin', { value: stdin, configurable: true })
     Object.defineProperty(process, 'stdout', { value: stdout, configurable: true })
+    Object.defineProperty(process, 'stderr', { value: stderr, configurable: true })
     process.chdir(root)
     try {
       const code = cli(['run'])
@@ -64,7 +67,7 @@ describe('vx run', () => {
       process.chdir(prevCwd)
       Object.defineProperty(process, 'stdin', inDesc)
       Object.defineProperty(process, 'stdout', outDesc)
-      err.mockRestore()
+      Object.defineProperty(process, 'stderr', errDesc)
     }
   })
 

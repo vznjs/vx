@@ -170,8 +170,10 @@ function ownerOf(dir: string, memo: Map<string, Owner>): Owner {
   }
   let manager: string | undefined
   try {
-    const pm = (JSON.parse(read('package.json') ?? '') as { packageManager?: unknown })
-      .packageManager
+    // A byte-order mark is stripped, as npm, pnpm and discovery strip it:
+    // JSON.parse threw on one and the field went unread.
+    const manifest = (read('package.json') ?? '').replace(/^\uFEFF/, '')
+    const pm = (JSON.parse(manifest) as { packageManager?: unknown }).packageManager
     // A manager vx knows nothing of (zod's `nub@0.8.3`) says nothing about
     // hooks: the lockfile beside it does, and "nub ran `postbuild`" was a
     // claim nothing had checked (D-96).
@@ -539,7 +541,7 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
 function lernaPackages(dir: string): string[] | undefined {
   let json: unknown
   try {
-    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8'))
+    json = JSON.parse(readFileSync(path.join(dir, 'lerna.json'), 'utf8').replace(/^\uFEFF/, ''))
   } catch {
     return undefined
   }

@@ -5,6 +5,9 @@
   outside a scope that names no project now reads as `./<pattern>`.
   Rows: `filter.test.ts` › "a name holding a `/` outside a scope that
   names no project is a directory".
+- **YD-3.** The parity table called Turbo's `--no-cache` the same as
+  vx's. Turbo's still reads (its help: `--cache=local:r,remote:r`);
+  vx's reads nothing. The row and parity.md now say so. Docs only.
 - **YD-1.** Turbo's `--force` / `--summarize` and Nx's boolean flags
   take `=true` / `=false`. `--skip-nx-cache=false` forced every task,
   `--nx-bail=false` stopped on the first failure, `--summarize=true`
