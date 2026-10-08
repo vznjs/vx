@@ -222,6 +222,54 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // Bun's `'pipe'` is a socketpair, which Linux will not open through
+  // `/proc/self/fd/1`: a task's `echo x > /dev/stdout` failed "No such
+  // device or address", sandboxed or not (X-113). The plain run is the
+  // same claim through the orchestrator.
+  for (const sandbox of [true, false]) {
+    it(
+      `a ${sandbox ? 'sandboxed' : 'plain'} task and server open /dev/stdout and /dev/stderr by path`,
+      async () => {
+        const sb = sandbox ? "sandbox: { allow: { read: ['**/*'] } }," : ''
+        await addProject(fixture.root, 'app', {
+          files: {},
+          config: `export default { tasks: {
+            t: { exec: { command: 'echo x > /dev/stdout && echo y | tee /dev/stderr', ${sb} } },
+            dev: { exec: {
+              command: 'echo Listening > /dev/stdout && exec sleep 30',
+              persistent: { readyWhen: 'Listening' },
+              timeout: 15000,
+              ${sb}
+            } },
+          } }`,
+        })
+        const out: Record<string, string> = {}
+        const err: Record<string, string> = {}
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['t', 'dev'],
+          log: {
+            status() {},
+            taskStdout(n: { taskName: string }, chunk: string) {
+              out[n.taskName] = (out[n.taskName] ?? '') + chunk
+            },
+            taskStderr(n: { taskName: string }, chunk: string) {
+              err[n.taskName] = (err[n.taskName] ?? '') + chunk
+            },
+            taskComplete() {},
+          } as never,
+        })
+        expect(r.outcomes.map((o) => `${o.node.taskName} ${o.status}`).sort()).toEqual([
+          'dev success',
+          't success',
+        ])
+        expect(out).toEqual({ dev: 'Listening\n', t: 'x\ny\n' })
+        expect(err).toEqual({ t: 'y\n' })
+      },
+      TIMEOUT,
+    )
+  }
+
   // The task's PATH leads with the project's node_modules/.bin, and the
   // sandboxed spawn (`strace … -- sh -c` on Linux, `sh -c` elsewhere) let
   // strace or Bun resolve `sh` through it: a dependency's `sh` bin ran in

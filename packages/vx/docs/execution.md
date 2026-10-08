@@ -503,6 +503,13 @@ wire forwarders attach beside it). What renders:
   blocks collapse under `::group::` commands; failures stay open and
   emit `::error` annotations.
 
+A task's stdout and stderr are pipes, so `echo x > /dev/stdout` and
+`cmd | tee /dev/stderr` work as in a terminal or under Turbo. Bun's own
+`'pipe'` is a socketpair, which Linux will not open by path, and they
+failed with "No such device or address" until X-113
+(`tests/runner.test.ts` › "a task's stdout and stderr are pipes it can
+open by path"; sandboxed in `tests/sandbox-runtime.unsafe.test.ts`).
+
 There is no special handling for binary output. Stdin is never the
 terminal unless the task declares `exec.interactive` and vx's stdin is
 a TTY (schema.md § `interactive`): then the task gets vx's stdin,

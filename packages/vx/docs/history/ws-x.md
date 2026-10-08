@@ -802,6 +802,20 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   that share a name each keep their own capacity",
   `placement.test.ts` › "two executors that share a name get two pools;
   one executor keeps one".
+- **X-113.** On Linux `echo x > /dev/stdout` and `cmd | tee /dev/stderr`
+  failed in every task with "No such device or address": Bun's `'pipe'`
+  is a socketpair (on macOS too, where `/dev/fd/N` dups it and works),
+  and Linux opens `/dev/stdout` through `/proc/self/fd/1`, which a
+  socket refuses. `TaskPipes` (runner.ts) makes real pipes with
+  `pipe2` through `bun:ffi` for the one-shot, persistent and sandboxed
+  spawns. Cost within the A/A spread: 300 uncached tasks at
+  `--concurrency 1`, min of 31 interleaved, 628.8 ms before, 631.7
+  after, 616.5 A/A. Rows: `runner.test.ts` › "a task's stdout and
+  stderr are pipes it can open by path", `sandbox-runtime.unsafe.test.ts`
+  › "a sandboxed task and server open /dev/stdout and /dev/stderr by
+  path" and its plain twin. On macOS a sandboxed task failed the same
+  writes EPERM: seatbelt judges the resolved `/dev/fd/1`, which SRT's
+  `/dev/stdout` grant does not name, so vx grants `/dev/fd` there.
 - **X-110.** Args after `--` landed on the wrong line or inside a
   comment: a `<<word` in a comment or quotes (`# then << check`,
   `node -e "1<<x"`) made every later line a heredoc body, so the args
@@ -943,9 +957,11 @@ inside a git work tree` (one helper, `notAWorkTree`, shared with the
   replayed them as a green hit. The local executor fails the same child
   as timed out. Any exit after the timeout's abort is now a timeout on a
   plugin executor; the local one keeps its runner's own verdict, since
-  core's request timer starts before the spawn. Rows:
+  core arms no clock on a local request (#3153). Rows:
   `plugin-executor-abort.test.ts` › "an exit 0 after exec.timeout's
   abort is a timeout on a plugin executor too (X-125)",
+  `execute-task.test.ts` › "core does not abort a local request at the
+  timeout; the runner's timedOut decides (X-125)".
   `execute-task.test.ts` › "the local executor's own timedOut decides an
   exit 0 after the request's abort (X-125)".
 
