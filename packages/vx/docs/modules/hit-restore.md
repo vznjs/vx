@@ -5,7 +5,8 @@
 A confirmed cache entry, materialised: decide whether the tree is
 already current (the whole-subtree directory proof, then the per-file
 fingerprint proof) and skip the restore when it is; otherwise clean the
-declared outputs and restore the artifact; mark the exact changed paths
+declared outputs (pruning only inside the declared trees, so a sibling's
+fresh directory stays; inputs.md) and restore the artifact; mark the exact changed paths
 against the git snapshot so a same-project consumer need not re-spawn
 git; replay the stored stdout; build the cache-hit outcome. Moved out
 of `execute-task.ts` on 2026-09-10 as pure code motion — the mirror of

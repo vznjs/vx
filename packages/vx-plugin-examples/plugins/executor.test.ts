@@ -97,3 +97,20 @@ it("runs the command through this machine's sh, not a project's node_modules/.bi
   })
   expect([r.outcomes.map((o) => o.status), out.join('')]).toEqual([['success'], 'real\n'])
 }, 20_000)
+
+it('puts the args after -- on the command as the local executor does', async () => {
+  await pkg(
+    'a',
+    `export default { tasks: { say: { exec: { command: "printf '<%s>' # each arg" } } } }`,
+  )
+  await workspace('shellExecutor()')
+  const out: string[] = []
+  const r = await run({
+    cwd: root,
+    tasks: ['say'],
+    forwardArgs: ["it's", 'a b'],
+    log: { ...log(), taskStdout: (_n, chunk) => void out.push(chunk) },
+    handleSignals: false,
+  })
+  expect([r.outcomes.map((o) => o.status), out.join('')]).toEqual([['success'], "<it's><a b>"])
+}, 20_000)

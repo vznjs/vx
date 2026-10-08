@@ -94,9 +94,9 @@ Start with one package and leave the rest of your tooling as it is.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.
-- **A package has no `vx.config.ts`.** It has no tasks, and `^build` reaches through it to the nearest package that has one.
+- **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
-- **A package has nothing to build, but others depend on it.** Give it `build: { dependsOn: [] }`, so their `^build` waits on nothing.
+- **A package has nothing to build, but others depend on it.** Its default `build` waits on its own dependencies' builds. `build: { dependsOn: [] }` waits on nothing, but also drops its files from its dependents' keys: use it only when no dependent reads its source.
 
 ## Known limits
 

@@ -89,9 +89,15 @@ install per spec:
   else, and a prerelease satisfies a range only as npm's `semver` says
   (`2.0.0-beta.1` is not `^2.0.0`). Padding is trimmed, as every
   manager does.
-- **`catalog:`** — the package the key names: the catalog's range lives
-  in `pnpm-workspace.yaml` or bun's root manifest, which the graph does
-  not read (turborepo#10785 keeps this edge).
+- **`catalog:`, `catalog:<name>`** — the spec the catalog names for the
+  key, decided by the rules above: zenstack's `nuxt: "catalog:"` is
+  `4.3.1`, which its versionless `nuxt` sample does not satisfy, so no
+  edge (read as one, `^build` was a cycle). Catalogs come from
+  `pnpm-workspace.yaml` (`catalog`, `catalogs`) or, without it, bun's
+  root `package.json` (the same keys, top level or under `workspaces`),
+  read with the workspace globs, so no extra read. A catalog vx did not
+  read (Yarn's `.yarnrc.yml`) or one without the key keeps the edge the
+  key names (turborepo#10785 keeps this edge).
 - **Anything else** — a dist-tag (`latest` came from the registry in
   all four), a git or tarball URL, an unmet range — is no edge.
 
@@ -176,8 +182,8 @@ and graph traversal.
   the cache key via the workspace fingerprint (lockfile hash) and
   the project package.json hash. An entry naming a workspace package
   that the manager installs from the registry is one of them.
-- **Doesn't read a lockfile or a catalog.** Which entries link is
-  decided from the manifests alone (the section above).
+- **Doesn't read a lockfile.** Which entries link is decided from the
+  manifests and the root's catalogs (the section above).
 - **Doesn't classify dep types beyond peer / not peer.** For the
   task graph `dependencies`, `devDependencies` and
   `optionalDependencies` are equivalent — each says "this package
@@ -213,8 +219,9 @@ and graph traversal.
 - an installed entry, not a peer on the same key, decides the edge (turborepo#12640)
 - a key in two installed fields links when either precedence order installs the local copy
 - `*`, `workspace:^` and `workspace:~` take any version; a tag, a URL or an unmet `workspace:` range do not
-- a `catalog:` entry keeps the edge its key names (turborepo#10785)
+- a `catalog:` entry is the spec its catalog names; one no catalog names keeps the edge (turborepo#10785)
 - `vx run --dry=json`, `...pkg` and `--affected` follow the linked package, not the key
+- a `catalog:` entry the workspace package does not satisfy is no edge, pnpm and bun (zenstack)
 
 The list is the suite's `it` names, pinned in order by
 `tests/module-shape-drift.test.ts`.

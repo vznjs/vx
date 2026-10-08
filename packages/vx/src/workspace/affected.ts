@@ -176,6 +176,14 @@ export async function affectedChanges(
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
     )
   }
+  // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
+  // verified, and `git diff ^main` diffed from main itself, so changes
+  // only main made were selected (`^` is illegal in a ref name).
+  if (since.startsWith('^')) {
+    throw new UserError(
+      `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
+    )
+  }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
   // on a branch whose base has moved on, `git diff <base>` reports every
   // file OTHER people changed on the base (over-selection that defeats a
@@ -432,7 +440,17 @@ async function dependentsAtBase(
     ) {
       continue
     }
-    byDir.set(dir, { name: pkg.name, dir, packageJson: pkg, configPath: null })
+    // Today's catalogs, or both graphs would differ on every `catalog:`
+    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
+    // edit, which the fingerprint widening and the root's own change answer.
+    const catalogs = projects[0]?.catalogs
+    byDir.set(dir, {
+      name: pkg.name,
+      dir,
+      packageJson: pkg,
+      configPath: null,
+      ...(catalogs === undefined ? {} : { catalogs }),
+    })
     if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
   }
   const now = buildPackageGraph([...projects])

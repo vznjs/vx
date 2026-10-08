@@ -61,6 +61,7 @@ export interface PackageJson {
 export interface Workspace {
   root: string
   packageGlobs: string[] // patterns relative to root
+  catalogs?: Catalogs // catalog name ('default' for `catalog:`) → key → spec
 }
 
 export interface ProjectMeta {
@@ -68,6 +69,7 @@ export interface ProjectMeta {
   dir: string // absolute project directory
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
+  catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
 export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
@@ -193,6 +195,13 @@ Reads the package-glob list (through `reads`, so the manifest
 | yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
 | single project         | `package.json` without `workspaces` → returns `['.']`            |
 
+From the same parsed manifests it takes the catalogs a `catalog:` spec
+resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
+without that file, the root `package.json`'s, at the top level or under
+`workspaces` (bun). Discovery hands them to every `ProjectMeta`, so each
+package graph built from the metas resolves `catalog:` alike
+(`package-graph.md`).
+
 ### `listProjects(workspace)`
 
 Globs every `package.json` matching the patterns (`Bun.Glob`,
@@ -200,6 +209,11 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 
 - Skip if no `name` field (`discoverProjects` collects the directory for
   `vx init`, which names one that has scripts, D-106).
+- A member outside the workspace root (`../ext/*`, an absolute glob) is
+  refused naming its directory: npm and pnpm take one, but `--affected`
+  asks git from the root and saw nothing outside it, so an edit there
+  moved the task's key and selected nothing. Move the root up to a
+  directory that holds every member.
 - A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
   skipped with a stderr line naming it (D-128): `--all` said only that no
   package matched, and a run from inside it "not inside a project".
