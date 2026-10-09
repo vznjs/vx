@@ -62,7 +62,8 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 ## MCP
 
 When `@vzn/vx-mcp` is a plugin in `vx.workspace.ts`, `vx mcp` serves the
-same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
+same facts and runs tasks. Adoption does not add it: install
+`@vzn/vx-mcp` and put `mcp()` (from `'@vzn/vx-mcp'`) in `plugins`. Its tools: `listTasks`, `getCacheStats`,
 `getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`,
 `getWorkspaceInfo`, `runTasks`, `planTasks`. `runTasks` answers what
 `vx run <tasks> --format json` prints, `planTasks` what
@@ -77,4 +78,8 @@ same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
   does not re-run a task, the file is not one of its inputs. Fix the
   config, do not force.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
-- Docs as markdown: https://vznjs.github.io/vx/llms.txt
+- Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
+  When that host is unreachable, the same pages are
+  `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:
+  `quickstart`, `guides/migrate`, `guides/configure`, `guides/agents`,
+  `guides/troubleshooting`, `guides/ci`, `guides/plugins`.

@@ -122,3 +122,10 @@ and log output reads better. Each must cost the warm path nothing.
   `VX_E_USAGE` on stdout. The other prompt, vx-migrate's native/keep,
   already answers native without a TTY. Row: `run-exit-codes.test.ts`
   "a JSON answer never opens the picker".
+
+- **DX-20** Agent-trial fixes the docs could make (org/devex/agent-trial.md
+  rows 1, 2, 9, 11). The skill names raw-markdown page paths for when
+  github.io is unreachable and says adoption does not add `vx mcp`; the
+  quickstart and migrate guide carry a `bun add -d` line; `vx last`'s
+  schema says `cached` is "declares a cache", not "hit". Rows 3, 5–8, 12
+  were already fixed on main and wait for a release.

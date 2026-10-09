@@ -31,7 +31,7 @@ are the same adoption one stage at a time.
 
 ## Turborepo
 
-1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
+1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`; Bun: `bun add -d @vzn/vx`).
 2. Run `npx vx init --keep`. Beside `turbo.json` or `turbo.jsonc` it writes this
    `vx.workspace.ts` and nothing else, then prints a `next:` line.
 3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
@@ -183,7 +183,7 @@ The command itself comes from your `package.json` script, with its
 
 ## Nx
 
-1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`).
+1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`; Bun: `bun add -d @vzn/vx`).
 2. Run `npx vx init --keep`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
    A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
