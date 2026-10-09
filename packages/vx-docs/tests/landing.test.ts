@@ -280,22 +280,21 @@ describe('the landing page', () => {
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Fastest cold build and cached run.')
+    expect(text(bench)).toContain('The least runner overhead, cold and cached.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
     expect(bench).not.toContain('<table')
     const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
       (m) => m[1]!,
     )
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
-      'Cold build: total time',
-      'Cold build: CPU burned',
-      'Fully cached run (restored)',
-      'Fully cached run (up-to-date)',
-      'Secondary: time the runner adds to a cold build',
+      'Cold build: overhead the runner adds',
+      'Cold build: CPU the runner burns',
+      'Fully cached run, restored: overhead',
+      'Fully cached run, up-to-date: overhead',
     ])
-    // Total cold time leads; the time a runner adds is a labelled last row
-    // with no multiple (owner, 2026-10-09: it read 34× where the build is 1.36×).
-    for (const [i, f] of figures.entries()) {
+    // Runner overhead only, never a cold build's total time (owner,
+    // 2026-10-09 17:54: "the overhead is what matters").
+    for (const f of figures) {
       const bars = [
         ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
       ]
@@ -306,10 +305,6 @@ describe('the landing page', () => {
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
-      if (i === figures.length - 1) {
-        expect(notes).toEqual([undefined, undefined, undefined, undefined])
-        continue
-      }
       expect(
         notes.slice(1).filter((n) => !/^vx (?:[\d.]+×|\d+%) (?:faster|slower)$/.test(n ?? '')),
       ).toEqual([])
@@ -338,9 +333,9 @@ describe('the landing page', () => {
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
-      'faster cold build than Turborepo',
-      'less CPU burned on a cold build than Turborepo',
-      'faster fully cached run than Nx',
+      'less overhead on a cold build than Turborepo',
+      'less CPU burned by the runner than Turborepo',
+      'less overhead on a fully cached run than Nx',
     ])
     const bench = section(html, 'bench')
     const notes = [

@@ -13,14 +13,15 @@ to vx with one command and timed against the tool they already use.
 the `build` tasks without examples and integrations: 25 tasks for each
 tool.
 
-| Case                     | vx         | Nx     | vx is       |
+| Runner overhead          | vx         | Nx     | vx is       |
 | ------------------------ | ---------- | ------ | ----------- |
-| Cold build               | **34.6 s** | 39.4 s | 14% faster  |
 | Restore from cache       | **0.39 s** | 1.26 s | 3.2× faster |
 | Nothing changed          | **0.22 s** | 1.43 s | 6.5× faster |
 
-"N% faster" means Nx takes N% longer. Restore deletes the build outputs
-and keeps the cache; "nothing changed" deletes nothing.
+Every task is a cache hit in both rows, so the whole run is the
+runner's overhead. Restore deletes the build outputs and keeps the
+cache; "nothing changed" deletes nothing. "N× faster" means Nx takes N
+times as long.
 
 Run 2026-10-09 on linux x64, 4 cores: vx 0.0.633 configured by
 `vx init --native`, Nx 23.2.1 with the daemon off and no Nx Cloud, pnpm
