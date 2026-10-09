@@ -14,6 +14,15 @@ can you compute the key, and how sure are you that the key captures
 everything that matters? This post is about the first half. The next
 few are about the second.
 
+```mermaid
+flowchart LR
+  I[git ls-files -s: blob ids from the index] --> K[task key]
+  S[git status: dirty and untracked files] --> H[hash only those] --> K
+  C[resolved config] --> K
+  U[upstream keys] --> K
+  style K stroke:#c6f84e,stroke-width:2px
+```
+
 ## Twelve parts, one chain
 
 A vx cache key is an xxh3 hash, seed-chained across twelve parts:

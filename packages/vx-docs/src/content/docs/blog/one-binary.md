@@ -14,6 +14,14 @@ CI and the last thing you want to have an opinion about your Node
 version. vx is built on Bun, and the way you never notice that is that
 you never install Bun.
 
+```mermaid
+flowchart LR
+  N[npm install -D @vzn/vx] --> B[prebuilt binary for your platform]
+  R[GitHub release] --> B
+  B --> X[vx: no postinstall, no runtime to match]
+  style X stroke:#c6f84e,stroke-width:2px
+```
+
 ## What you install
 
 ```bash

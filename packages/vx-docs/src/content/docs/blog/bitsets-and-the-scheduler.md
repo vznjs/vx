@@ -15,6 +15,15 @@ that the naive algorithm shows up in the profile of every warm run,
 because the graph is rebuilt every run and there is no daemon to hide
 it in.
 
+```mermaid
+flowchart LR
+  P[probe the cache once] --> H{hit?}
+  H -->|yes| R[restore lane, up to 2x workers]
+  H -->|no| E[exec tier owns the worker pool]
+  E --> T[closures as bitsets, one tick at a time]
+  style E stroke:#c6f84e,stroke-width:2px
+```
+
 ## Closures as bitsets
 
 Two questions come up constantly: which tasks are downstream of this

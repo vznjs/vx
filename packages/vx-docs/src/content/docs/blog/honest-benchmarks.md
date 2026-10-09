@@ -23,6 +23,19 @@ Every warm number on
 this page is a consequence of the same discipline, but this is the one
 you feel on every uncached build.
 
+```mermaid
+flowchart LR
+  G[one generated graph] --> V[vx]
+  G --> T[Turborepo]
+  G --> N[Nx]
+  G --> VT[Vite Task]
+  V --> R[same machine, each in its own native config]
+  T --> R
+  N --> R
+  VT --> R
+  style R stroke:#c6f84e,stroke-width:2px
+```
+
 ## Synthetic: the same graph, four runners
 
 `bun packages/vx-bench/compare.ts 100 11 1` scaffolds one workspace of

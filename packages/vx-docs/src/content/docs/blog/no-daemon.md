@@ -18,6 +18,17 @@ the answer ready.
 vx has no daemon and will not grow one. Here is the reasoning, and
 what replaced it.
 
+```mermaid
+flowchart LR
+  subgraph daemon
+    W[file watcher] --> M[model of the tree] --> A1[answer]
+  end
+  subgraph vx
+    Q[ask git once per run] --> A2[answer]
+  end
+  style A2 stroke:#c6f84e,stroke-width:2px
+```
+
 ## What a daemon costs
 
 A daemon is a second copy of the truth. It holds a model of the tree

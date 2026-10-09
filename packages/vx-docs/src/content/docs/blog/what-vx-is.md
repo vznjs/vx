@@ -18,6 +18,18 @@ generators, a dashboard, a cloud. vx's description is one sentence.
 That sentence is a design, not a slogan, and this post walks through
 what it commits us to.
 
+```mermaid
+flowchart LR
+  D[discover] --> E[evaluate configs]
+  E --> G[build the graph]
+  G --> K[derive keys]
+  K --> S[schedule]
+  S --> X[executor: where it runs]
+  S --> C[cache: where artifacts live]
+  S --> T[telemetry: who watches]
+  style K stroke:#c6f84e,stroke-width:2px
+```
+
 ## The pipeline
 
 A run is a pipeline with five stages, and each one has a documented

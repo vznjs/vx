@@ -20,6 +20,13 @@ the decision is not reopened. The drivers, in order:
 3. **Extensibility.** A seam for every stage; a plugin for everything
    distributed.
 
+```mermaid
+flowchart LR
+  P[1. performance] -->|beats| M[2. modularity]
+  M -->|beats| E[3. extensibility]
+  style P stroke:#c6f84e,stroke-width:2px
+```
+
 The order matters because it says what loses. A seam that costs a
 millisecond on the warm path when no plugin fills it is not added; the
 zero-cost gate is added first. A module boundary that would force a
