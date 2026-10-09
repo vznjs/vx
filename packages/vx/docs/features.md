@@ -25,7 +25,7 @@ config key or an environment variable is missing here.
 - **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. no post
 - **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · no post
 - **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · no post
-- **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · no post
+- **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · post: [Flags you already know](https://vznjs.github.io/vx/blog/flags-you-already-know/)
 - **Ctrl-C leaves nothing running** (`VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`) — the whole process tree stops, then teardown runs. [page](https://vznjs.github.io/vx/features/ctrl-c/) · post: [Ctrl-C leaves nothing running](https://vznjs.github.io/vx/blog/ctrl-c/)
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
 - **No daemon** — every run starts cold and still answers in milliseconds. [page](https://vznjs.github.io/vx/features/no-daemon/) · post: [No daemon, on purpose](https://vznjs.github.io/vx/blog/no-daemon/)
