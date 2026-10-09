@@ -148,6 +148,8 @@ and log output reads better. Each must cost the warm path nothing.
 
 - **DX-24** `pnpm exec vx init` failed with "installing vx failed (…
   exited -1)" (Growth's trpc trial): PATH held pnpm's placeholder with
-  no shebang (ENOEXEC) and the spawn error was dropped. vx-migrate now
-  runs the manager that launched it (`npm_execpath`) and names the
-  spawn error. Rows: `adopt.test.ts` "managerArgv".
+  no shebang (ENOEXEC) and the spawn error was dropped. When PATH's
+  manager cannot be spawned, vx-migrate now runs the one that launched
+  it (`npm_execpath`), and names the spawn error. PATH stays first: the
+  try-it rows' npm stand-in caught an execpath-first draft bypassing it.
+  Rows: `adopt.test.ts` "install when PATH holds an unrunnable manager".

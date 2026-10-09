@@ -571,3 +571,46 @@ describe('managerArgv', () => {
     ]).toEqual([argv, argv])
   })
 })
+
+describe('install when PATH holds an unrunnable manager', () => {
+  // `pnpm exec vx init` under pnpm 12: PATH's pnpm has no shebang (ENOEXEC).
+  // A child process, since Bun.spawn looks PATH up in the startup env.
+  const probe = async (execpath: string) => {
+    const root = await tmp('vx-adopt-enoexec-')
+    await mkdir(path.join(root, 'bin'))
+    await mkdir(path.join(root, 'ws'))
+    await writeFile(path.join(root, 'bin', 'pnpm'), 'not a script\n')
+    await chmod(path.join(root, 'bin', 'pnpm'), 0o755)
+    await mkdir(path.join(root, 'real'))
+    await writeFile(path.join(root, 'real', 'pnpm'), '#!/bin/sh\necho "real pnpm $*"\n')
+    await chmod(path.join(root, 'real', 'pnpm'), 0o755)
+    await writeFile(path.join(root, 'ws', 'package.json'), '{"name":"ws"}')
+    await writeFile(path.join(root, 'ws', 'pnpm-lock.yaml'), '')
+    await writeFile(
+      path.join(root, 'probe.ts'),
+      `import { install } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/adopt.ts'))}
+try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } catch (e) { console.log((e as Error).message) }
+`,
+    )
+    const r = Bun.spawnSync([process.execPath, path.join(root, 'probe.ts')], {
+      env: {
+        ...process.env,
+        PATH: `${path.join(root, 'bin')}:${process.env['PATH']}`,
+        npm_execpath: execpath === '' ? '' : path.join(root, execpath),
+        npm_config_user_agent: '',
+      },
+    })
+    await rm(root, { recursive: true, force: true })
+    return r.stdout.toString().split('\n').slice(1, 2)[0]!
+  }
+
+  it('runs the pnpm that launched it', async () => {
+    expect(await probe('real/pnpm')).toBe('real pnpm add -D -w @vzn/vx')
+  })
+
+  it('names the spawn error when nothing else can run it', async () => {
+    expect(await probe('')).toStartWith(
+      'installing vx failed (pnpm add -D -w @vzn/vx exited -1: ENOEXEC',
+    )
+  })
+})

@@ -179,10 +179,11 @@ export function uninstall(root: string, packages: readonly string[]): Promise<st
 }
 
 /**
- * The command that runs `argv`'s manager: the one that launched us
- * (`npm_execpath`) when it is that manager, else the name on PATH. Under
- * `pnpm exec`, PATH can hold a pnpm placeholder with no shebang that
- * exec refuses (ENOEXEC), while `npm_execpath` is the pnpm running now.
+ * The command that runs `argv`'s manager when its name on PATH cannot be
+ * spawned: the one that launched us (`npm_execpath`), if it is that
+ * manager. Under `pnpm exec`, PATH can hold a pnpm placeholder with no
+ * shebang that exec refuses (ENOEXEC), while `npm_execpath` is the pnpm
+ * running now. PATH stays first: it is what the user's shell would run.
  */
 export function managerArgv(
   argv: readonly string[],
@@ -199,16 +200,21 @@ export function managerArgv(
 async function runManager(root: string, argv: string[], what: string): Promise<string> {
   const line = argv.join(' ')
   process.stdout.write(`vx-migrate: ${line}\n`)
+  const spawn = (cmd: string[]) =>
+    Bun.spawn(cmd, { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] }).exited
   let code: number
   let why = ''
   try {
-    code = await Bun.spawn(managerArgv(argv, process.env), {
-      cwd: root,
-      stdio: ['inherit', 'inherit', 'inherit'],
-    }).exited
+    code = await spawn(argv)
   } catch (e) {
-    code = -1
-    why = `: ${(e as Error).message}`
+    const launcher = managerArgv(argv, process.env)
+    try {
+      if (launcher[0] === argv[0]) throw e
+      code = await spawn(launcher)
+    } catch (e2) {
+      code = -1
+      why = `: ${(e2 as Error).message}`
+    }
   }
   if (code !== 0) {
     throw new UserError(
