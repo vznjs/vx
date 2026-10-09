@@ -34,7 +34,10 @@ vx show --format json                          # projects, their tasks and depen
 vx run test --affected=origin/main --dry=json  # what would run, cache hit or miss, and why
 ```
 
-Under `--affected`, each kept task in `--dry=json` carries `affected`:
+Under `--affected`, `--dry=json` states `affectedBase` (the ref it diffed
+against; name one, `--affected=origin/main`, rather than trust the guess)
+and each task you asked for carries `affected` (a dependency it pulls in
+does not):
 `{ kind, file?, project?, via? }`, where `kind` is `input` (a changed file
 is one of its inputs), `project`, `package`, `named` or `selected`, and
 `via` is the `dependsOn` chain that carried the change.

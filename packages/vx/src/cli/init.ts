@@ -421,12 +421,17 @@ const INSTALL: Record<PackageManager, string> = {
 
 const EXEC: Record<PackageManager, string> = { pnpm: 'pnpm', yarn: 'yarn', bun: 'bunx', npm: 'npx' }
 
-/** Install what the workspace file imports, if missing, then run the repo's build. */
+/**
+ * Install what the workspace file imports, if missing, then run the repo's
+ * build. Pinned to this vx's version: every @vzn package releases in
+ * lockstep, and `latest` beside an older vx mismatched them (agent trial 2).
+ */
 export function adoptionNext(
   root: string,
   runner: 'turbo' | 'nx',
   source: string,
   needs: readonly string[] = ['@vzn/vx', '@vzn/vx-migrate'],
+  version: string = VERSION,
 ): string {
   const pm = LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1] ?? 'npm'
   const missing = needs.filter(
@@ -443,7 +448,9 @@ export function adoptionNext(
     pm === 'yarn' && !readText(path.join(root, 'yarn.lock')).includes('__metadata:')
       ? `${INSTALL.yarn} -W`
       : INSTALL[pm]
-  return `${install} ${missing.join(' ')} && ${run}`
+  // A source checkout is 0.0.0, which npm never had.
+  const pinned = version === '0.0.0' ? missing : missing.map((p) => `${p}@${version}`)
+  return `${install} ${pinned.join(' ')} && ${run}`
 }
 
 function readText(file: string): string {

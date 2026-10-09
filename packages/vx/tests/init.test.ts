@@ -1608,6 +1608,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-migrate'), { recursive: true })
       await writeFile(path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json'), '{}')
       rows.push(adoptionNext(root, 'nx', 'nx.json'))
+      // A released vx pins what it names to its own version.
+      rows.push(adoptionNext(root, 'nx', 'nx.json', undefined, '0.0.633'))
       const all = '@vzn/vx @vzn/vx-migrate'
       expect(rows).toEqual([
         `npm install -D ${all} && vx run compile --all`,
@@ -1618,6 +1620,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
         `yarn add -D ${all} && yarn vx run compile --all`,
         `pnpm add -D -w ${all} && pnpm vx run compile --all`,
         'pnpm add -D -w @vzn/vx && pnpm vx run compile --all',
+        'pnpm add -D -w @vzn/vx@0.0.633 && pnpm vx run compile --all',
       ])
     } finally {
       if (ua === undefined) delete process.env['npm_config_user_agent']

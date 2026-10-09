@@ -23,7 +23,7 @@ export interface PlanTaskJson {
   description?: string
   affected?: AffectedReason // why `--affected` kept it (affected-tasks.md)
 }
-export function formatPlanJson(plan: RunPlan): string
+export function formatPlanJson(plan: RunPlan, affectedBase?: string): string
 export function formatGraphDot(plan: RunPlan): string
 ```
 
@@ -94,7 +94,8 @@ locally and what `'only'` means.
 
 ## `formatPlanJson`
 
-JSON-friendly object, each task a `PlanTaskJson`; `schemas/plan.json`
+JSON-friendly object, each task a `PlanTaskJson`, led by `affectedBase`
+under `--affected`; `schemas/plan.json`
 states it and `tests/cli-json-schemas.test.ts` holds it:
 
 ```json

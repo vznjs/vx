@@ -976,6 +976,10 @@ single `file` for a lockfile claim, a manifest edge or a config import),
 selected its project). `via` is the `dependsOn` chain, nearest first, to
 the task the change reached. A dependency the kept tasks pull in carries
 none. The reasons are gathered only for a plan; a run pays nothing.
+`--dry=json` also states `affectedBase`, the ref the diff was taken
+against: a bare `--affected` guesses it (`origin/HEAD`, a trunk branch,
+else `HEAD~1`), so a reason that names no file may come from a commit
+the base reaches, a root `package.json` edit among them.
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):

@@ -190,26 +190,29 @@ beforeAll(async () => {
     }) as unknown as TaskNode
   outputs['plan']!.push(
     JSON.parse(
-      formatPlanJson({
-        tasks: [
-          {
-            node: node('a#build', 'compile'),
-            hash: 'k1',
-            cacheStatus: 'hit-remote',
-            deps: [],
-            executor: 'remote',
-            download: 'deferred',
-            affected: {
-              kind: 'input',
-              file: 'packages/b/src/a.ts',
-              project: 'b',
-              via: ['b#build'],
+      formatPlanJson(
+        {
+          tasks: [
+            {
+              node: node('a#build', 'compile'),
+              hash: 'k1',
+              cacheStatus: 'hit-remote',
+              deps: [],
+              executor: 'remote',
+              download: 'deferred',
+              affected: {
+                kind: 'input',
+                file: 'packages/b/src/a.ts',
+                project: 'b',
+                via: ['b#build'],
+              },
             },
-          },
-          { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
-        ],
-        downloadDowngrades: [{ taskId: 'a#build', reason: 'a dependant reads its outputs' }],
-      }),
+            { node: node('a#ci'), hash: 'k2', cacheStatus: 'group', deps: ['a#build'] },
+          ],
+          downloadDowngrades: [{ taskId: 'a#build', reason: 'a dependant reads its outputs' }],
+        },
+        'origin/main',
+      ),
     ),
   )
   const sum = path.join(root, 'summary.json')
