@@ -55,7 +55,8 @@ repeated failures on changing inputs.
 
 Only `runTasks` runs anything, through `vx run --format json` itself
 (`planTasks` asks the same CLI for `--dry=json`),
-so the CLI's selection, refusals and sandbox apply. The transport is
+so the CLI's selection, refusals and sandbox apply. `mcp({ run: ['test'] })`
+limits it to the tasks you name, and `run: false` turns it off. The transport is
 stdio, which is process-private, so there is no port, no auth and no
 attack surface beyond the process the agent already spawned.
 

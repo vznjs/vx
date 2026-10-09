@@ -70,6 +70,8 @@ same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
 ## Rules
 
 - Never delete or edit the cache by hand; vx repairs it itself.
+- A sandboxed task that fails on a denied path: grant that one path in
+  `exec.sandbox.allow`. Never remove `sandbox` or widen it further.
 - A cached task declares its inputs (`cache.inputs.files`); if a change
   does not re-run a task, the file is not one of its inputs. Fix the
   config, do not force.
