@@ -129,14 +129,19 @@ describe('getRunHistory and explainCacheKey, what they read', () => {
 })
 
 describe('the server, exactly', () => {
+  // It said "Nothing here runs a task" while runTasks ran them.
   it('initialize names the server and says what it is', async () => {
-    const r = (await handleMessage(
-      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
-      ctx,
-    )) as { result: { instructions: string } }
-    expect(r.result.instructions).toBe(
+    const said = async (run?: boolean): Promise<string> =>
+      (
+        (await handleMessage(
+          JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+          run === undefined ? ctx : { ...ctx, run },
+        )) as { result: { instructions: string } }
+      ).result.instructions
+    expect([await said(), await said(false)]).toEqual([
+      'This workspace’s vx tasks, cache and run history. runTasks runs tasks; every other tool only reads.',
       'Read-only view of this workspace’s vx cache and run history. Nothing here runs a task.',
-    )
+    ])
   })
 
   it('a tool result is the JSON, indented two spaces', async () => {

@@ -121,7 +121,9 @@ that run are the ones your configs declare, from the workspace root, with
 the environment `vx mcp` started with, filtered by each task's `exec.env`
 and held by its `exec.sandbox`. `force` costs a rerun, not a wrong entry:
 the key stays the same. What reaches the agent (summaries, refusals,
-`getFailures` output) is masked as described under Secrets. An agent that
+`getFailures` output) is masked as described under Secrets.
+`mcp({ run: false })` takes `runTasks` away, and `mcp({ run: ['test'] })`
+limits it to those task names. An agent that
 can edit `vx.config.ts` can run anything, as you can, because configs are
 code vx trusts.
 

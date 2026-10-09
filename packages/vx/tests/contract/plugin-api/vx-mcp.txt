@@ -1,2 +1,8 @@
 == function mcp (src/index.ts)
 export function mcp(): VxPlugin
+export function mcp(options: McpOptions): VxPlugin
+export function mcp(options: McpOptions = {}): VxPlugin
+== type McpOptions (src/index.ts)
+export interface McpOptions {
+  run?: boolean | readonly string[]
+}

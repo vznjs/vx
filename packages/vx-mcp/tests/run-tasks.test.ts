@@ -6,7 +6,9 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { handleToolCall } from '../src/tools.js'
+import { handleToolCall, listTools } from '../src/tools.js'
+import { handleMessage } from '../src/server.js'
+import { mcp } from '../src/index.js'
 
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 const PLUGIN_ENTRY = path.resolve(import.meta.dir, '../src/index.ts')
@@ -133,5 +135,53 @@ describe('runTasks', () => {
       exitCode: 0,
       tasks: ['a#build:success'],
     })
+  })
+})
+
+// `mcp({ run })`: a workspace narrows what an agent may run.
+describe('mcp({ run })', () => {
+  it('false takes runTasks off the list and refuses a call', async () => {
+    const off = { ...ctx, run: false }
+    expect(listTools(off).map((t) => t.name)).not.toContain('runTasks')
+    // CONTROL: the default lists it.
+    expect(listTools(ctx).map((t) => t.name)).toContain('runTasks')
+    const viaServer = (await handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'runTasks', arguments: { tasks: ['a#build'] } },
+      }),
+      off,
+    )) as { error: { message: string } }
+    expect(viaServer.error.message).toBe('tools/call: unknown tool: runTasks')
+    const direct = await handleToolCall('runTasks', { tasks: ['a#build'] }, off).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(direct).toBe('runTasks: off in this workspace (mcp({ run: false }))')
+  })
+
+  it('a list runs the tasks it names and refuses the rest before anything runs', async () => {
+    const only = { ...ctx, run: ['build'] }
+    const ok = (await handleToolCall('runTasks', { tasks: ['a#build'], force: true }, only)) as {
+      summary: Summary
+    }
+    expect(ids(ok.summary)).toEqual(['a#build:success'])
+    const refused = await handleToolCall('runTasks', { tasks: ['build', 'a#fail'] }, only).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(refused).toBe('runTasks: a#fail not allowed here — mcp({ run }) allows build')
+  })
+
+  it('refuses a run option that is not true, false or task names', () => {
+    for (const run of ['build', [''], [1]] as unknown as boolean[]) {
+      expect(() => mcp({ run })).toThrow(
+        'mcp({ run }): run must be true, false or an array of task names',
+      )
+    }
+    // CONTROL: each accepted shape builds.
+    for (const run of [true, false, ['test']]) expect(() => mcp({ run })).not.toThrow()
   })
 })

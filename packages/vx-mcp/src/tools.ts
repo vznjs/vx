@@ -38,6 +38,8 @@ export interface ToolContext {
   readonly workspaceRoot: string
   /** The argv that runs this vx (`CommandContext.vx`); `runTasks` spawns it. */
   readonly vx: readonly string[]
+  /** `mcp({ run })`: false takes `runTasks` away, a list limits it to those task names. */
+  readonly run?: boolean | readonly string[]
 }
 
 const TOOLS: readonly ToolDef[] = [
@@ -221,8 +223,8 @@ const TOOLS: readonly ToolDef[] = [
   },
 ]
 
-export function listTools(): readonly ToolDef[] {
-  return TOOLS
+export function listTools(ctx?: ToolContext): readonly ToolDef[] {
+  return ctx?.run === false ? TOOLS.filter((t) => t.name !== 'runTasks') : TOOLS
 }
 
 /** Dispatch a tool call by name. Returns a JSON-serializable result. */
@@ -717,7 +719,23 @@ async function runTasks(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
-  return vxJson(runArgv(args, 'runTasks'), 'summary', ctx)
+  const argv = runArgv(args, 'runTasks')
+  if (ctx.run === false)
+    throw new UserError('runTasks: off in this workspace (mcp({ run: false }))')
+  if (Array.isArray(ctx.run)) {
+    // A task's `dependsOn` still runs: the list names what an agent may
+    // ask for, and a task's dependencies are part of that task.
+    const allowed = ctx.run as readonly string[]
+    const denied = (args['tasks'] as string[]).filter(
+      (t) => !allowed.includes(t.slice(t.lastIndexOf('#') + 1)),
+    )
+    if (denied.length > 0) {
+      throw new UserError(
+        `runTasks: ${denied.join(', ')} not allowed here — mcp({ run }) allows ${allowed.join(', ')}`,
+      )
+    }
+  }
+  return vxJson(argv, 'summary', ctx)
 }
 
 async function planTasks(

@@ -18,9 +18,26 @@
 // where the reference SDK pulls in an HTTP stack this transport never uses,
 // and server.ts is about 210 lines — a number a test holds to the file.
 
-import { definePlugin, type VxPlugin } from '@vzn/vx'
+import { definePlugin, UserError, type VxPlugin } from '@vzn/vx'
 
-export function mcp(): VxPlugin {
+export interface McpOptions {
+  /**
+   * What `runTasks` may run: true (the default) any task, false nothing
+   * (the tool is not listed), or a list of task names (`test`, `lint`).
+   */
+  run?: boolean | readonly string[]
+}
+
+export function mcp(): VxPlugin
+export function mcp(options: McpOptions): VxPlugin
+export function mcp(options: McpOptions = {}): VxPlugin {
+  const run = options.run ?? true
+  if (
+    typeof run !== 'boolean' &&
+    !(Array.isArray(run) && run.every((t) => typeof t === 'string' && t.length > 0))
+  ) {
+    throw new UserError('mcp({ run }): run must be true, false or an array of task names')
+  }
   return definePlugin(import.meta, {
     commands: {
       mcp: {
@@ -42,7 +59,12 @@ export function mcp(): VxPlugin {
           // Loaded by the verb alone: every run evaluates the workspace config,
           // and the server's modules cost it ~12 ms there.
           const { serveStdio } = await import('./server.js')
-          await serveStdio({ cacheDir: ctx.cacheDir, workspaceRoot: ctx.workspaceRoot, vx: ctx.vx })
+          await serveStdio({
+            cacheDir: ctx.cacheDir,
+            workspaceRoot: ctx.workspaceRoot,
+            vx: ctx.vx,
+            run,
+          })
           return 0
         },
       },
