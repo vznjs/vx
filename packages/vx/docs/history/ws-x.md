@@ -1336,6 +1336,13 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `VX_E_NO_WORKSPACE`). One `refuse()` in `cli/help.ts` prints a
   refusal a verb returns rather than throws.
 
+- **X-203.** An unknown verb answers `--format json` with
+  `VX_E_UNKNOWN_COMMAND` (a stray top-level flag with `VX_E_USAGE`), and
+  `vx cache` without a known subcommand and `vx run` with no task off a
+  TTY with `VX_E_USAGE`. Every refusal that can be asked for JSON now
+  carries a code; `watch`, `lock`, `init` and `upgrade` take no
+  `--format`.
+
 - **X-204.** Cache-save step 2: a small artifact (under `ON_THREAD_MAX`)
   is read and packed on this thread, into one buffer (`tarPackInto`),
   with no promise or generator hop per file or block. Pack CPU per 1,000
@@ -1343,9 +1350,3 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   Small: pack was not where the save's CPU goes; step 3 (inline
   artifacts) is. A row holds the sync pack byte-equal to the streamed
   one on every name shape.
-- **X-203.** An unknown verb answers `--format json` with
-  `VX_E_UNKNOWN_COMMAND` (a stray top-level flag with `VX_E_USAGE`), and
-  `vx cache` without a known subcommand and `vx run` with no task off a
-  TTY with `VX_E_USAGE`. Every refusal that can be asked for JSON now
-  carries a code; `watch`, `lock`, `init` and `upgrade` take no
-  `--format`.
