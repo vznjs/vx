@@ -2489,7 +2489,7 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
   (null when the cache dir holds the entries), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheRetention`
-  (`{ olderThan?, maxSize?, maxBytes? }`, null when none is declared),
+  (`{ olderThan, maxSize, maxBytes }`, each only when set, null when none is declared),
   `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
   outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
