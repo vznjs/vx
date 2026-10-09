@@ -93,7 +93,7 @@ config key or an environment variable is missing here.
 - **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Hits replay both streams** — stdout and stderr come back in the order the run printed them. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
-- **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. no post
+- **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
 - **Background remote uploads** — remote writes drain at the end of the run and never fail the build. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
@@ -106,7 +106,7 @@ config key or an environment variable is missing here.
 - **Flaky detection** — a task that fails then passes is reported flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim](https://vznjs.github.io/vx/blog/flaky-tasks/)
 - **Project boundaries** — globs never cross into another project. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Artifact integrity checks** — a CRC-32, a key match and an outputs-only check on every artifact; damage is a miss. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
-- **Sandbox names what to grant** — a refused write is named beside the failed task with the path to allow. no post
+- **Sandbox names what to grant** — a refused write is named beside the failed task with the path to allow. post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Strict numeric flags** — `0x10`, `1e3` and `2.7` are refused, never reinterpreted. post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 - **Verified releases** — binaries carry provenance, `vx upgrade` checks SHA-256, npm publishes with provenance. post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 
@@ -125,8 +125,8 @@ config key or an environment variable is missing here.
 
 - **Config in TypeScript** (`vx.config.ts`, `defineProject`, `vx.workspace.ts`, `defineWorkspace`) — typed, composable; no named inputs. [page](https://vznjs.github.io/vx/features/typescript-config/) · post: [Config in TypeScript](https://vznjs.github.io/vx/blog/config-in-typescript/)
 - **Tasks** (`tasks`, `exec.command`, `dependsOn`, `description`, `tags`) — one command per task; the shell is the API. post: [One command per task](https://vznjs.github.io/vx/blog/one-command-per-task/)
-- **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. no post
-- **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT_MS`) — bound a config's evaluation. no post
+- **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
+- **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT_MS`) — bound a config's evaluation. post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Typed config helpers** (`defineProject`) — autocomplete for task names in `dependsOn`, errors while you edit. post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
 - **Presets** — a TypeScript function returning a task config, shared across projects. post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
@@ -135,7 +135,7 @@ config key or an environment variable is missing here.
 ## CI
 
 - **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
-- **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. no post
+- **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **Cache scope from the ref** (`github({ cacheScope })`) — main writes trusted keys; a PR writes only its own scope. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 
 ## Adoption
@@ -146,8 +146,8 @@ config key or an environment variable is missing here.
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)
 - **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · post: [Try the planner in your browser](https://vznjs.github.io/vx/blog/the-playground/)
 - **Benchmarks you can re-run** (`@vzn/vx-bench`) — vx against Turborepo and Nx. [page](https://vznjs.github.io/vx/features/fastest/) · posts: [Benchmarks you can re-run](https://vznjs.github.io/vx/blog/honest-benchmarks/), [Why vx is fast](https://vznjs.github.io/vx/blog/why-vx-is-fast/)
-- **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. no post
-- **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. no post
+- **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. post: [From npm scripts or Vite Task](https://vznjs.github.io/vx/blog/from-scripts-and-vite-task/)
+- **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. post: [From npm scripts or Vite Task](https://vznjs.github.io/vx/blog/from-scripts-and-vite-task/)
 - **Nx executors as one process** (`nx-exec`) — any Nx executor runs as one vx task with its Nx env set. post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **Programmatic API** (`run`, `planRun`) — run or plan from your own scripts via `@vzn/vx`. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 
