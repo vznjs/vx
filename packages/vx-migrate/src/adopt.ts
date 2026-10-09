@@ -158,14 +158,16 @@ export function install(
   packages: readonly string[],
   version: string | null = null,
 ): Promise<string> {
+  const pm = packageManagerOf(root, process.env['npm_config_user_agent'])
   return runManager(
     root,
-    installArgv(
-      root,
-      packageManagerOf(root, process.env['npm_config_user_agent']),
-      version === null ? packages : packages.map((p) => `${p}@${version}`),
-    ),
+    installArgv(root, pm, version === null ? packages : packages.map((p) => `${p}@${version}`)),
     'installing vx',
+    // pnpm 12 refuses a version younger than minimumReleaseAge, and vx
+    // releases daily; its words scroll by above, so the way out is named.
+    pm === 'pnpm'
+      ? `; if pnpm refused a version published within its minimumReleaseAge, list ${packages.join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
+      : '',
   )
 }
 
@@ -197,7 +199,12 @@ export function managerArgv(
   return /\.[cm]?js$/.test(exec) ? ['node', exec, ...argv.slice(1)] : [exec, ...argv.slice(1)]
 }
 
-async function runManager(root: string, argv: string[], what: string): Promise<string> {
+async function runManager(
+  root: string,
+  argv: string[],
+  what: string,
+  ranHint = '',
+): Promise<string> {
   const line = argv.join(' ')
   process.stdout.write(`vx-migrate: ${line}\n`)
   const spawn = (cmd: string[]) =>
@@ -218,7 +225,7 @@ async function runManager(root: string, argv: string[], what: string): Promise<s
   }
   if (code !== 0) {
     throw new UserError(
-      `${what} failed (${line} exited ${code}${why}); run it, then vx-migrate again`,
+      `${what} failed (${line} exited ${code}${why}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`,
     )
   }
   return line
