@@ -31,7 +31,7 @@ These are reproducible on your own machine, not marketing figures:
   current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo, Nx and Vite Task** — `bun packages/vx-bench/compare.ts` scaffolds
   one repo (1,601 projects, 30 dependency levels, 9,603 tasks) and runs every runner cold,
-  with nothing changed, with outputs restored and after a leaf and a core edit.
+  with nothing changed and with outputs restored.
   The committed results live in
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
   a command away.
