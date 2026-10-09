@@ -73,11 +73,13 @@ describe('docs/features.md links land', () => {
 
   it('every feature link names a page the hub builds', () => {
     const slugs = new Set(
-      [
-        ...readFileSync(path.join(DOCS_SITE, 'src/features/features.ts'), 'utf8').matchAll(
-          /slug: '([^']+)'/g,
-        ),
-      ].map((m) => m[1]!),
+      ['features.ts', 'more.ts'].flatMap((f) =>
+        [
+          ...readFileSync(path.join(DOCS_SITE, 'src/features', f), 'utf8').matchAll(
+            /slug: '([^']+)'/g,
+          ),
+        ].map((m) => m[1]!),
+      ),
     )
     const pages = links
       .filter((l) => /^features\/.+\/$/.test(l))
