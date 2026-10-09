@@ -101,7 +101,7 @@ config key or an environment variable is missing here.
 ## Correctness
 
 - **Sandboxed tasks** (`exec.sandbox`: `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`) — a task reads and writes only what it declares; `allow` names `read`, `write`, `network`, `unixSockets`, `localBinding`, `pty`, `systemInfo`, `gitConfig`, `machLookup`. [page](https://vznjs.github.io/vx/features/sandbox/) · post: [The sandbox](https://vznjs.github.io/vx/blog/the-sandbox/)
-- **Env isolation** (`exec.env`: `define`, `passThrough`, `secret`) — a task sees only the env it names; secrets are masked. no post
+- **Env isolation** (`exec.env`: `define`, `passThrough`, `secret`) — a task sees only the env it names; secrets are masked. post: [A task sees only the env it names](https://vznjs.github.io/vx/blog/env-isolation/)
 - **vx lock** (`vx lock`, `--check`, `--frozen`) — freeze what configs evaluate to; CI checks it. [page](https://vznjs.github.io/vx/features/vx-lock/) · post: [vx lock: freezing what the key sees](https://vznjs.github.io/vx/blog/lock-and-frozen/)
 - **Flaky detection** — a task that fails then passes is reported flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim](https://vznjs.github.io/vx/blog/flaky-tasks/)
 - **Project boundaries** — globs never cross into another project. no post
