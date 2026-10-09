@@ -6,7 +6,7 @@
         "hash xxh3": 1899,
         "spawn git": 5,
         "spawn sh": 51,
-        "sqlite statement": 1179
+        "sqlite statement": 697
       },
       "up-to-date run @25": {
         "hash blob update": 50,
@@ -29,14 +29,14 @@
         "hash xxh3": 1308,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 368
+        "sqlite statement": 194
       },
       "cold run @100": {
         "hash blob update": 200,
         "hash xxh3": 7673,
         "spawn git": 5,
         "spawn sh": 200,
-        "sqlite statement": 4632
+        "sqlite statement": 2650
       },
       "up-to-date run @100": {
         "hash blob update": 200,
@@ -59,13 +59,72 @@
         "hash xxh3": 5208,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 1321
+        "sqlite statement": 647
+      },
+      "cold run --frozen @25": {
+        "hash xxh3": 1825,
+        "spawn git": 5,
+        "spawn sh": 50,
+        "sqlite statement": 645
+      },
+      "up-to-date run --frozen @25": {
+        "hash xxh3": 942,
+        "spawn git": 3,
+        "sqlite statement": 21
+      },
+      "restore run --frozen @25": {
+        "hash xxh3": 942,
+        "spawn git": 3,
+        "sqlite statement": 72
+      },
+      "plan --frozen @25": {
+        "hash xxh3": 941,
+        "spawn git": 3,
+        "sqlite statement": 68
+      },
+      "one-edit run --frozen @25": {
+        "hash blob update": 2,
+        "hash xxh3": 1260,
+        "spawn git": 3,
+        "spawn sh": 18,
+        "sqlite statement": 191
+      },
+      "cold run --frozen @100": {
+        "hash xxh3": 7375,
+        "spawn git": 5,
+        "spawn sh": 200,
+        "sqlite statement": 2448
+      },
+      "up-to-date run --frozen @100": {
+        "hash xxh3": 3792,
+        "spawn git": 3,
+        "sqlite statement": 24
+      },
+      "restore run --frozen @100": {
+        "hash xxh3": 3792,
+        "spawn git": 3,
+        "sqlite statement": 225
+      },
+      "plan --frozen @100": {
+        "hash xxh3": 3791,
+        "spawn git": 3,
+        "sqlite statement": 218
+      },
+      "one-edit run --frozen @100": {
+        "hash blob update": 2,
+        "hash xxh3": 5010,
+        "spawn git": 3,
+        "spawn sh": 68,
+        "sqlite statement": 644
       }
     },
     "time": {
-      "plan @100": 1.263,
-      "restore run @100": 4.952,
-      "up-to-date run @100": 1.646
+      "plan --frozen @100": 1.119,
+      "plan @100": 1.212,
+      "restore run --frozen @100": 4.35,
+      "restore run @100": 4.103,
+      "up-to-date run --frozen @100": 1.795,
+      "up-to-date run @100": 2.183
     }
   }
 }
