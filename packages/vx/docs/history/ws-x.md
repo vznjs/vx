@@ -1401,3 +1401,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   stale and withheld the save. Growth's withastro/astro trial (0.0.632,
   `--concurrency 10`): a restore re-ran 25 of 33 builds, each warning
   that `src/runtime/client/.vx-tmp-…` changed after its key was taken.
+- **X-210.** `vx prune --production` (Turbo 2.11's flag): no
+  `devDependencies` edge between workspace packages is followed, and
+  the kept manifests and every lockfile stop naming a package left out
+  that way (bun and npm workspace records, pnpm importers, berry
+  `workspace:` links; classic walks the stripped manifests). A name
+  another field also holds stays. The copy installs frozen under bun,
+  pnpm, npm and yarn 1 (`tests/prune.test.ts`).

@@ -11,7 +11,7 @@
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
 import { reachDigests } from '@vzn/vx'
-import { depsOf, record, type Json } from './json.js'
+import { depsOf, devOnly, dropDev, record, type Json } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -243,7 +243,7 @@ export function importerDigests(
  * field as written — catalogs, overrides, patches and trusted
  * dependencies are the workspace's, and the root manifest still names them.
  */
-export function pruneLockfile(text: string, { dirs }: PruneScope): string {
+export function pruneLockfile(text: string, { dirs, dropped }: PruneScope): string {
   const lock = parseLockfile(text)
   const doc = Bun.JSONC.parse(text) as Json
   const reached = new Set<string>()
@@ -260,16 +260,26 @@ export function pruneLockfile(text: string, { dirs }: PruneScope): string {
     }
     for (const name of entry.deps.keys()) visit(resolve(lock, key, name))
   }
+  const workspaces = record(doc['workspaces']) ?? {}
+  const skip = new Map<string, Set<string>>()
+  for (const [dir, manifest] of Object.entries(workspaces)) {
+    const key = dir === '' ? '.' : dir
+    if (!dirs.has(key)) {
+      delete workspaces[dir]
+      continue
+    }
+    const names = devOnly(record(manifest), dropped)
+    skip.set(key, names)
+    dropDev(record(manifest), names)
+  }
   for (const [dir, deps] of lock.workspaces) {
     if (!dirs.has(dir)) continue
     let from = ''
     for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir && dir !== '.') from = name
     if (from !== '') visit(from)
-    for (const name of deps.keys()) visit(resolve(lock, from, name))
+    const gone = skip.get(dir)
+    for (const name of deps.keys()) if (gone?.has(name) !== true) visit(resolve(lock, from, name))
   }
-  const workspaces = record(doc['workspaces']) ?? {}
-  for (const dir of Object.keys(workspaces))
-    if (!dirs.has(dir === '' ? '.' : dir)) delete workspaces[dir]
   const packages = record(doc['packages']) ?? {}
   for (const key of Object.keys(packages)) if (!reached.has(key)) delete packages[key]
   return writeLockfile(doc)

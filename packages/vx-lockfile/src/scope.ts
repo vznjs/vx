@@ -8,4 +8,10 @@ export interface PruneScope {
   readonly workspaces: readonly string[]
   /** Each kept dir's manifest dependencies (every bucket): yarn classic records no workspaces, so its walk starts here. */
   readonly manifests: ReadonlyMap<string, ReadonlyMap<string, string>>
+  /**
+   * Workspace package names `--production` struck from the kept manifests'
+   * devDependencies: the lockfile's kept workspaces stop naming them too.
+   * Empty otherwise.
+   */
+  readonly dropped: ReadonlySet<string>
 }
