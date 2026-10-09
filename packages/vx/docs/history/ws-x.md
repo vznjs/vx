@@ -1335,3 +1335,11 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `VX_E_UNKNOWN_TASK`, `VX_E_NO_HISTORY`, `VX_E_AMBIGUOUS`,
   `VX_E_NO_WORKSPACE`). One `refuse()` in `cli/help.ts` prints a
   refusal a verb returns rather than throws.
+
+- **X-204.** Cache-save step 2: a small artifact (under `ON_THREAD_MAX`)
+  is read and packed on this thread, into one buffer (`tarPackInto`),
+  with no promise or generator hop per file or block. Pack CPU per 1,000
+  one-file saves: 23.1 → 18.9 ms (min of 15, two interleaved rounds).
+  Small: pack was not where the save's CPU goes; step 3 (inline
+  artifacts) is. A row holds the sync pack byte-equal to the streamed
+  one on every name shape.
