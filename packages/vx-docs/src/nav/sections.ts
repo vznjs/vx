@@ -52,8 +52,9 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
     { label: 'Try it', link: '/playground/' },
   ],
-  // Four short groups in plain words. The caching deep dive and "What a run
-  // does" are reference only; the Docs' caching page links the first.
+  // Short groups in plain words; Plugins is each published plugin's README.
+  // The caching deep dive and "What a run does" are reference only; the
+  // Docs' caching page links the first.
   Reference: [
     {
       label: 'CLI',
@@ -89,6 +90,18 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
         { label: 'Turbo / Nx parity map', link: '/parity/' },
         { label: 'Turbo / Nx config support', link: '/compare/turbo-nx-support/' },
         { label: 'Upstream bug ledger', link: '/upstream-ledger/' },
+      ],
+    },
+    {
+      label: 'Plugins',
+      items: [
+        { label: '@vzn/vx-ci', link: '/plugins/vx-ci/' },
+        { label: '@vzn/vx-lockfile', link: '/plugins/vx-lockfile/' },
+        { label: '@vzn/vx-mcp', link: '/plugins/vx-mcp/' },
+        { label: '@vzn/vx-migrate', link: '/plugins/vx-migrate/' },
+        { label: '@vzn/vx-otel', link: '/plugins/vx-otel/' },
+        { label: '@vzn/vx-reapi', link: '/plugins/vx-reapi/' },
+        { label: '@vzn/vx-schedule-history', link: '/plugins/vx-schedule-history/' },
       ],
     },
     { label: 'Glossary', link: '/glossary/' },

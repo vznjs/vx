@@ -1465,7 +1465,7 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
       .sort()
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
     const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
-    const rows = [...section.matchAll(/^\| `(@vzn\/[\w-]+)` /gm)].map((m) => m[1]!)
+    const rows = [...section.matchAll(/^\| \[?`(@vzn\/[\w-]+)`/gm)].map((m) => m[1]!)
     expect([...rows].sort()).toEqual(shipped)
   })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {

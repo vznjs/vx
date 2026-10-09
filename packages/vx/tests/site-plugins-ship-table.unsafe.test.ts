@@ -28,7 +28,7 @@ describe('the plugins guide lists the hooks each shipped plugin fills', () => {
     const rows: Record<string, string[]> = {}
     const filled: Record<string, string[]> = {}
     for (const [pkg, names] of Object.entries(FACTORIES)) {
-      const row = PAGE.split('\n').find((l) => l.startsWith(`| \`@vzn/${pkg}\``))
+      const row = PAGE.split('\n').find((l) => /^\| \[?`@vzn\/([\w-]+)`/.exec(l)?.[1] === pkg)
       expect(row).toBeDefined()
       const cell = row!.split('|')[2]!.replace(/`[A-Za-z]+\(\)`/g, '')
       rows[pkg] = [...cell.matchAll(/`([a-z]+)`/g)].map((m) => m[1]!).sort()

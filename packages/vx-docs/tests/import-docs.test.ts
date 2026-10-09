@@ -149,7 +149,7 @@ describe('frontmatter', () => {
 })
 
 describe('a run', () => {
-  it('clears generated pages a deleted source left, keeps authored ones, skips STATUS', async () => {
+  it('clears generated pages a deleted source left, keeps authored ones, skips STATUS, imports public plugin READMEs', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vx-import-docs-'))
     try {
       const docs = path.join(root, 'docs')
@@ -160,9 +160,35 @@ describe('a run', () => {
       await writeFile(path.join(docs, 'STATUS.md'), '# Status\n')
       await writeFile(path.join(out, 'gone.md'), `---\n${GENERATED_MARK}\ntitle: "Gone"\n---\n`)
       await writeFile(path.join(out, 'authored.md'), '---\ntitle: "Mine"\n---\n')
-      expect(await importDocs(docs, out)).toBe(1)
+      const pkgs = path.join(root, 'packages')
+      for (const [dir, priv] of [
+        ['vx-a', false],
+        ['vx-b', true],
+      ] as const) {
+        await mkdir(path.join(pkgs, dir), { recursive: true })
+        await writeFile(path.join(pkgs, dir, 'package.json'), JSON.stringify({ private: priv }))
+        await writeFile(
+          path.join(pkgs, dir, 'README.md'),
+          '# `@vzn/vx-a`\n\nA plugin that fills one stage of the run for you.\n\n' +
+            'See [the source](src/index.ts), [docs](https://x.dev/) and <dir> in `<dir>`.\n',
+        )
+      }
+      expect(await importDocs(docs, out, pkgs)).toBe(2)
       const listing = await Array.fromAsync(new Bun.Glob('**/*.md').scan({ cwd: out }))
-      expect(listing.sort()).toEqual(['architecture.md', 'authored.md', 'design/index.md'])
+      expect(listing.sort()).toEqual([
+        'architecture.md',
+        'authored.md',
+        'design/index.md',
+        'plugins/vx-a.md',
+      ])
+      expect(await readFile(path.join(out, 'plugins/vx-a.md'), 'utf8')).toBe(
+        `---\n${GENERATED_MARK}\ntitle: "@vzn/vx-a"\n` +
+          'description: "A plugin that fills one stage of the run for you."\n' +
+          'editUrl: "https://github.com/vznjs/vx/edit/main/packages/vx-a/README.md"\n---\n' +
+          'A plugin that fills one stage of the run for you.\n\n' +
+          'See [the source](https://github.com/vznjs/vx/blob/main/packages/vx-a/src/index.ts), ' +
+          '[docs](https://x.dev/) and &lt;dir&gt; in `<dir>`.\n',
+      )
       expect(await readFile(path.join(out, 'authored.md'), 'utf8')).toBe(
         '---\ntitle: "Mine"\n---\n',
       )
