@@ -170,7 +170,7 @@
         },
         "locations": {
           "type": "array",
-          "description": "on a failed row: the existing files its output names, in order of first appearance",
+          "description": "on a failed row: the existing files its output names, in order of first appearance; a file it also names with a line drops its bare mention",
           "items": {
             "type": "object",
             "additionalProperties": false,

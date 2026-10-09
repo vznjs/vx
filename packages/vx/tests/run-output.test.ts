@@ -89,6 +89,9 @@ const CONFIG = `
       ok: {
         exec: { command: 'echo fine src/a.ts:1' },
       },
+      bunlike: {
+        exec: { command: "printf 'package.json\\nsrc/a.ts:\\n4 | x\\n  at <anonymous> (src/a.ts:4:19)\\n'; exit 1" },
+      },
       flip: {
         exec: { command: 'test -f fixed || exit 4' },
       },
@@ -219,6 +222,19 @@ describe('vx last --format json (e2e)', () => {
       } finally {
         await chmod(failures(), 0o755)
       }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a file also named with a line drops its bare mention (bun test's header); a bare-only one stays",
+    async () => {
+      expect((await vx(root, ['run', 'app#bunlike'])).code).not.toBe(0)
+      const [row] = await lastRows(root)
+      expect(row!.locations).toEqual([
+        { file: path.join(app, 'package.json') },
+        { file: path.join(app, 'src', 'a.ts'), line: 4, col: 19 },
+      ])
     },
     TIMEOUT,
   )
