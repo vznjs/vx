@@ -139,12 +139,18 @@
         "durationMs": { "type": "number" },
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },
-        "cacheHit": { "type": ["boolean", "null"] },
+        "cacheHit": {
+          "type": ["boolean", "null"],
+          "description": "true when the task's outputs came from the cache instead of running"
+        },
         "restored": {
           "type": ["boolean", "null"],
           "description": "on a hit: true when outputs were restored, false when up-to-date"
         },
-        "cached": { "type": ["boolean", "null"] },
+        "cached": {
+          "type": ["boolean", "null"],
+          "description": "whether the task declares a cache (false prints no-cache); not whether this run hit it"
+        },
         "hash": { "type": "string" },
         "cpuMs": { "type": ["number", "null"] },
         "peakRssBytes": { "type": ["integer", "null"] },

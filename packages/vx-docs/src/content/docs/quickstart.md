@@ -14,7 +14,8 @@ that binary.
 ## Install
 
 1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
-   workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`).
+   workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`; Bun:
+   `bun add -d @vzn/vx`).
 2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
    repo (`format: prettier --check .`) becomes a task in a root
