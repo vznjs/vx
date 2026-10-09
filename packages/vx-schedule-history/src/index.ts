@@ -25,6 +25,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
+import path from 'node:path'
 import { criticalPathPriorities } from './critical-path.js'
 import type { HistoryRow } from './history-view.js'
 
@@ -66,6 +67,14 @@ export interface ScheduleHistoryOptions {
    * a hint for the cold run, not evidence.
    */
   readonly assume?: Readonly<Record<string, number>>
+  /**
+   * A timings file, from the workspace root, that carries the learned
+   * durations between machines: read before ordering, rewritten after the
+   * run with each task's p50 (task id → ms), so CI caches one file. A
+   * recorded p50 here wins over it, and it wins over `assume`; like
+   * `assume`, it never feeds the workspace median.
+   */
+  readonly file?: string
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
@@ -201,6 +210,7 @@ const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
   memory: 'number',
   reservations: 'object',
   assume: 'object',
+  file: 'string',
 }
 
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
@@ -229,6 +239,13 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     // a second run in the same process (`vx watch`) reads its own.
     async schedule(nodes, ctx) {
       numberWarnings(options, ctx.warn)
+      const file =
+        options.file === undefined ? undefined : path.resolve(ctx.workspaceRoot, options.file)
+      // Loaded with the option: every run evaluates the workspace config.
+      const carried =
+        file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
+      if (file !== undefined)
+        scheduled = { file, carried, cache: ctx.localCache, ids: [...nodes.keys()] }
       let table: HistoryTable
       try {
         table = await readHistory(ctx.localCache, [...nodes.keys()], options)
@@ -241,8 +258,41 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
-      return criticalPathPriorities([...nodes.values()], table, assumptions(options, ctx.warn))
+      return criticalPathPriorities([...nodes.values()], table, {
+        ...assumptions(options, ctx.warn),
+        ...carried,
+      })
     },
+  }
+  // The timings file is written for a run only: `schedule` also orders a
+  // `--dry` plan, which has no `setup` and records nothing.
+  let scheduled:
+    | { file: string; carried: Readonly<Record<string, number>>; cache: Cache; ids: string[] }
+    | undefined
+  let inRun = false
+  // A run that executed nothing and restored only tasks the file already
+  // times leaves it as it was: an all-cached CI run re-reads no history.
+  let changed = false
+  if (options.file !== undefined) {
+    hooks.setup = (ctx) => {
+      inRun = true
+      changed = false
+      ctx.on('onTaskComplete', (node, outcome) => {
+        if (outcome.status === 'success' || !(node.id in (scheduled?.carried ?? {}))) {
+          changed = true
+        }
+      })
+    }
+    // After the run's history is recorded and before its cache closes.
+    hooks.teardown = async () => {
+      const done = scheduled
+      const wrote = inRun && changed
+      scheduled = undefined
+      inRun = false
+      if (!wrote || done === undefined) return
+      const table = await readHistory(done.cache, done.ids, options)
+      ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
+    }
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.

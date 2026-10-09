@@ -1456,3 +1456,13 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   4.62/4.74/4.83 s). One more SQLite statement per run, two per task on a
   cold one (baseline re-recorded). Rows: `cache-holds-nothing.test.ts`;
   the up-front-key rows seed their cache.
+- **X-217** CI-shareable schedule history (M via EA, 2026-10-09):
+  `scheduleHistoryPlugin({ file })` reads one timings JSON before
+  ordering and rewrites it after a run that executed something or
+  restored a task the file lacked; `--dry` writes nothing. A local p50
+  wins over the file, the file over `assume`. Feeding remote-hit
+  durations into history was built and dropped (EA: order matters for
+  misses). Warm `--frozen` 1,090 packages with the
+  plugin, min of 10: main 1,125 ms, with `file` 1,137, without 1,229
+  (noise); perf-guard counts unchanged. Rows:
+  `timings-file.test.ts`. vx's own CI writes `.vx/timings.json`.
