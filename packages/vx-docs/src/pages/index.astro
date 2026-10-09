@@ -169,6 +169,7 @@ const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
 const releases = (await posts('releases')).slice(0, 4)
 const essays = (await posts('blog')).slice(0, 3)
 const latest = releases[0]!
+const firstSentence = (t: string): string => t.split(/(?<=[.!?])\s/)[0]!
 const MCP_TOOLS = [
   'listTasks',
   'planTasks',
@@ -319,41 +320,54 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
 
       <section class="section" id="shipping">
         <div class="container">
-          <div class="section-head">
-            <p class="vx-kicker">// shipping every day</p>
-            <h2>New in vx.</h2>
-          </div>
-          <div class="ship-grid">
-            <div class="ship-releases">
-              <h3>Releases</h3>
-              <ol>
-                {
-                  releases.map((r) => (
-                    <li>
-                      <a href={r.href}>
-                        <span class="ship-ver">{r.version}</span>
-                        <span class="ship-title">{r.title}</span>
-                        <span class="ship-date">{formatDate(r.date)}</span>
-                      </a>
-                    </li>
-                  ))
-                }
-              </ol>
-              <a class="section-link" href={href('releases/')}>Every release →</a>
+          <div class="section-head ship-head">
+            <div>
+              <p class="vx-kicker">// shipping every day</p>
+              <h2>New in vx.</h2>
             </div>
-            <div class="ship-posts">
+            <div class="ship-head-links">
+              <a class="section-link" href={href('releases/')}>Every release →</a>
+              <a class="section-link" href={href('blog/')}>The blog →</a>
+            </div>
+          </div>
+          <div class="ship-top">
+            <a class="ship-feature" href={latest.href}>
+              <span class="ship-badge">
+                <span class="ship-dot" aria-hidden="true"></span>Latest release · {latest.version}
+              </span>
+              <h3 class="ship-feature-title">{latest.title}</h3>
+              <p class="ship-feature-lead">{firstSentence(latest.excerpt)}</p>
+              <span class="ship-feature-foot">
+                <span class="ship-date">{formatDate(latest.date)}</span>
+                <span class="ship-read">Read the release <span class="arr">→</span></span>
+              </span>
+            </a>
+            <ol class="ship-timeline">
               {
-                essays.map((p) => (
-                  <a class="ship-post" href={p.href}>
-                    <Cover post={p} sizes="(min-width: 1100px) 300px, 100vw" />
-                    <span class="ship-date">{formatDate(p.date)}</span>
-                    <span class:list={['ship-title', { 'vx-title-in-cover': coverShowsTitle(p) }]}>{p.title}</span>
-                  </a>
+                releases.slice(1).map((r) => (
+                  <li>
+                    <a href={r.href}>
+                      <span class="ship-date">{formatDate(r.date)}</span>
+                      <span class="ship-ver">{r.version}</span>
+                      <span class="ship-title">{r.title}</span>
+                    </a>
+                  </li>
                 ))
               }
-            </div>
+            </ol>
           </div>
-          <a class="section-link" href={href('blog/')}>The blog →</a>
+          <h3 class="ship-sub">From the blog</h3>
+          <div class="ship-posts">
+            {
+              essays.map((p) => (
+                <a class="ship-post" href={p.href}>
+                  <Cover post={p} sizes="(min-width: 1100px) 380px, 80vw" />
+                  <span class:list={['ship-title', { 'vx-title-in-cover': coverShowsTitle(p) }]}>{p.title}</span>
+                  <span class="ship-date">{formatDate(p.date)}</span>
+                </a>
+              ))
+            }
+          </div>
         </div>
       </section>
 
