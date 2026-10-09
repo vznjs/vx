@@ -69,6 +69,8 @@ config key or an environment variable is missing here.
 - **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
 - **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. no post
+- **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. no post
+- **Agent skill** (`skills/vx/SKILL.md`) — an installable skill that teaches a coding agent to run, debug and query vx. no post
 
 ## Cache
 

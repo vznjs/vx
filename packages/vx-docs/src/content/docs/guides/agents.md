@@ -14,6 +14,17 @@ markdown. [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is every doc
 file. Any page is also served raw beside its HTML: add `.md` to its
 path, as in [quickstart.md](https://vznjs.github.io/vx/quickstart.md).
 
+## Install the vx skill
+
+`@vzn/vx` ships an agent skill: one `SKILL.md` that teaches an agent to
+run tasks, read failures and query the workspace as JSON. Copy it where
+your agent reads skills, for Claude Code:
+
+```sh
+mkdir -p .claude/skills/vx
+cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
+```
+
 ## Run tasks
 
 The commands are the same for an agent as for you:
@@ -30,8 +41,8 @@ verdict: `0` when every task passed.
 
 ## Read answers as JSON
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
-`--format json`. Each prints one JSON document to stdout, and every
+`vx run`, `vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune`
+take `--format json`. Each prints one JSON document to stdout, and every
 notice goes to stderr, so stdout always parses. Each shape is a JSON
 Schema shipped in the package (`node_modules/@vzn/vx/schemas/`).
 
@@ -40,7 +51,13 @@ vx show --format json              # every project and its tasks
 vx why app#build --format json     # why app#build re-ran, down to the root cause
 vx last --failed --format json     # the last failed run, task by task
 vx run build --all --dry=json      # what a run would do, before it runs
+vx run build --all --format json   # the run's result; task output goes to stderr
 ```
+
+Under `--affected`, `--dry=json` gives each kept task an `affected`
+reason: the changed input, or the `dependsOn` chain that reached it.
+A failed row of `vx last --format json` carries the task's `output` and
+the files it names (`locations`).
 
 ## Ask the workspace over MCP
 
@@ -67,6 +84,7 @@ claude mcp add vx -- vx mcp
 ```
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun` and `getWorkspaceInfo`. None of
+`explainCacheKey`, `whyDidThisRerun`, `getFailures` and
+`getWorkspaceInfo`. None of
 them runs a task or writes the cache. See
 [vx mcp](../plugins/#vx-mcp) for each one.

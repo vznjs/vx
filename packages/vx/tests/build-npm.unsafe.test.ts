@@ -61,6 +61,8 @@ describe('the published @vzn/vx tree', () => {
     expect(manifest.exports).toEqual(core.exports)
     expect(manifest.files).toEqual([
       ...coreEntries(core.exports),
+      'schemas',
+      'skills',
       'launcher.cjs',
       'README.md',
       'LICENSE',
