@@ -1431,3 +1431,12 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   count above the same phase's with no lock fails. Measured on 1,090
   packages: first task cold 320 vs 460 ms, warm 337 vs 365, restore 745
   vs 761. Three extra hashes per entry on the frozen path tripped it.
+
+- **X-214** A Turbo-mapped repo whose tasks share one long
+  `workspaceFiles` list (astro: 2,114 tasks, one 425-entry list over
+  4,000 files) planned in 20.8 s, 7.0 s now, keys unchanged. The list
+  resolves once per declaration and each task then takes its own outputs
+  out (the memo was keyed by project too); project and workspace files
+  merge in one pass over two sorted lists instead of a Set and a sort;
+  task globs compile once per pattern; the overlap check asks a take-back
+  list about an output glob once. Row: `workspace-files-shared-memo.test.ts`.

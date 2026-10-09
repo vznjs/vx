@@ -219,7 +219,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
     // Dedupe: when the project dir IS the workspace root (or a glob
     // overlaps), the same absolute path can arrive via both lists —
     // it must contribute to the key exactly once.
-    if (wsFiles.length > 0) files = [...new Set([...projectFiles, ...wsFiles])].sort()
+    if (wsFiles.length > 0) files = mergeSorted(projectFiles, wsFiles)
   }
   // Two awaited empty resolutions per task were ~3 ms of a 1000-task warm
   // run (profiled 2026-09-09); a task declaring neither skips the fan-out.
@@ -285,7 +285,6 @@ function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return undefined
 
-  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
   // A path the task's own outputs take back with `!` is no output, so it
   // stays an input (A-44).
   const ownOutput = outputMatcher(args.ownWorkspaceOutputs)
@@ -310,40 +309,44 @@ function resolveWorkspaceFiles(args: {
   // The memo is valid for the snapshot it was computed over: a task that
   // wrote workspace outputs mid-run replaces the partition, and the next
   // caller sees a different array and scans again.
-  const memoKey =
-    args.memo === undefined
-      ? undefined
-      : JSON.stringify([
-          positive,
-          negative,
-          args.ownWorkspaceOutputs,
-          args.ownOutputs,
-          args.projectRel,
-        ])
+  let isExcluded: ((rel: string) => boolean) | undefined
   let isPositive: ((rel: string) => boolean) | undefined
-  const excluded = (rel: string): boolean => isExcluded(rel) || ownOutput(rel) || ownProject(rel)
+  const excludedByDeclaration = (rel: string): boolean =>
+    (isExcluded ??= anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]))(rel)
+  const own = (rel: string): boolean => ownOutput(rel) || ownProject(rel)
   const listing: InputListing = {
     root: args.workspaceRoot,
     listed: gitFiles,
-    isInput: (rel) => (isPositive ??= anyTaskGlob(asTrees(positive)))(rel) && !excluded(rel),
+    isInput: (rel) =>
+      (isPositive ??= anyTaskGlob(asTrees(positive)))(rel) &&
+      !excludedByDeclaration(rel) &&
+      !own(rel),
     nested: () => false,
     ...reachOf(positive),
   }
-  if (memoKey !== undefined) {
-    const hit = args.memo!.get(memoKey)
-    if (hit !== undefined && hit.snapshot === gitFiles) return { files: hit.result, listing }
+  // Two levels: the declaration's files over the snapshot, shared by every
+  // task that declares it, then the task's own outputs taken out. A
+  // Turbo-mapped repo gives two thousand tasks one 400-entry list, and a
+  // memo keyed by the project too scanned, resolved and sorted the 4,000
+  // files it matched once per task (astro, 2026-10-09).
+  const declared = JSON.stringify([positive, negative])
+  let base: Promise<string[]> | undefined
+  const hit = args.memo?.get(declared)
+  if (hit !== undefined && hit.snapshot === gitFiles) base = hit.result
+  if (base === undefined) {
+    isPositive ??= anyTaskGlob(asTrees(positive))
+    base = resolveWorkspaceFilesOver(args, gitFiles, positive, isPositive, excludedByDeclaration)
+    args.memo?.set(declared, { snapshot: gitFiles, result: base })
   }
-  isPositive ??= anyTaskGlob(asTrees(positive))
-  const result = resolveWorkspaceFilesOver(
-    args,
-    gitFiles,
-    positive,
-    isPositive,
-    excluded,
-    undecodable,
-  )
-  if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
-  return { files: result, listing }
+  const ownsAny =
+    splitNegations(args.ownWorkspaceOutputs).positive.length > 0 ||
+    splitNegations(args.ownOutputs).positive.length > 0
+  const files = base.then((all) => {
+    const kept = ownsAny ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs))) : all
+    refuseUndecodable(kept, undecodable, args.workspaceRoot, 'workspaceFiles')
+    return kept
+  })
+  return { files, listing }
 }
 
 async function resolveWorkspaceFilesOver(
@@ -352,7 +355,6 @@ async function resolveWorkspaceFilesOver(
   positive: readonly string[],
   isPositive: (rel: string) => boolean,
   excluded: (rel: string) => boolean,
-  undecodable: ReadonlySet<string> | undefined,
 ): Promise<string[]> {
   // Second call site of the literal-input guard. `resolveWorkspaceFiles`
   // carries its own copy of the filter-over-git-set design, so the same
@@ -371,11 +373,45 @@ async function resolveWorkspaceFilesOver(
   if (unmatchedLiterals.size > 0) {
     await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.workspaceRoot, 'workspaceFiles')
   }
-  refuseUndecodable(candidates, undecodable, args.workspaceRoot, 'workspaceFiles')
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
   const oids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
+}
+
+/**
+ * The sorted union of two path lists, each once. Both sides arrive sorted
+ * and distinct, so one merge does what a Set and a sort of the
+ * concatenation did: 3.7 s of an astro plan, where 2,000 tasks each joined
+ * a few project files to the same 4,000 workspace files (2026-10-09). A
+ * side out of order takes the general path.
+ */
+function mergeSorted(a: readonly string[], b: readonly string[]): string[] {
+  if (a.length === 0 && isStrictlySorted(b)) return b as string[]
+  if (!isStrictlySorted(a) || !isStrictlySorted(b)) return [...new Set([...a, ...b])].sort()
+  const out: string[] = []
+  let i = 0
+  let j = 0
+  while (i < a.length && j < b.length) {
+    const x = a[i]!
+    const y = b[j]!
+    if (x <= y) {
+      out.push(x)
+      i++
+      if (x === y) j++
+    } else {
+      out.push(y)
+      j++
+    }
+  }
+  while (i < a.length) out.push(a[i++]!)
+  while (j < b.length) out.push(b[j++]!)
+  return out
+}
+
+function isStrictlySorted(list: readonly string[]): boolean {
+  for (let i = 1; i < list.length; i++) if (!(list[i - 1]! < list[i]!)) return false
+  return true
 }
 
 /** A project-relative matcher asked of root-relative paths: false outside the project. */

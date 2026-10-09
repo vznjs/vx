@@ -195,6 +195,30 @@ export const EXTGLOB = /[!@+*?]\(/
  * else: one site that forgot is a route directory that keys nothing.
  */
 export function taskGlob(pattern: string): Bun.Glob {
+  const memo = memoFor(taskGlobs)
+  let glob = memo.get(pattern)
+  if (glob === undefined) memo.set(pattern, (glob = compileTaskGlob(pattern)))
+  return glob
+}
+
+/**
+ * Compiled once per pattern: a Turbo-mapped config repeats one 400-entry
+ * list across two thousand tasks, and the graph's overlap checks compiled
+ * each entry per task pair, 3.3 s of an astro plan (2026-10-09). A pattern
+ * comes from a config, so the set is bounded by what the configs say. Kept
+ * per `Bun.Glob` in force: the playground and a test swap it, and a glob
+ * built by one is not the other's.
+ */
+const taskGlobs = new WeakMap<object, Map<string, Bun.Glob>>()
+const anyTaskGlobs = new WeakMap<object, Map<string, (rel: string) => boolean>>()
+
+function memoFor<T>(memos: WeakMap<object, Map<string, T>>): Map<string, T> {
+  let memo = memos.get(Bun.Glob)
+  if (memo === undefined) memos.set(Bun.Glob, (memo = new Map()))
+  return memo
+}
+
+function compileTaskGlob(pattern: string): Bun.Glob {
   // A `]` with no `[` before it is already literal to `Bun.Glob`.
   const source = pattern.includes('[') ? pattern.replace(/(?<!\\)[[\]]/g, '\\$&') : pattern
   const glob = new Bun.Glob(source)
@@ -228,6 +252,14 @@ export function taskGlob(pattern: string): Bun.Glob {
  * `src/a.ts` and never `src/deep/a.ts`, and an edit there was a stale hit.
  */
 export function anyTaskGlob(rawPatterns: readonly string[]): (rel: string) => boolean {
+  const memo = memoFor(anyTaskGlobs)
+  const key = rawPatterns.join('\0')
+  let any = memo.get(key)
+  if (any === undefined) memo.set(key, (any = compileAnyTaskGlob(rawPatterns)))
+  return any
+}
+
+function compileAnyTaskGlob(rawPatterns: readonly string[]): (rel: string) => boolean {
   const patterns = rawPatterns.flatMap(braceAlternatives)
   if (patterns.length === 0) return () => false
   const sources = patterns.map(regExpSource)
