@@ -88,7 +88,7 @@ config key or an environment variable is missing here.
 - **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
-- **Remote outputs** (`--download`) — all, top-level only, or none. no post
+- **Remote outputs** (`--download`) — all, top-level only, or none. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. no post
 - **Hits replay both streams** — stdout and stderr come back in the order the run printed them. no post
@@ -162,9 +162,9 @@ config key or an environment variable is missing here.
 - **vx prune** (`@vzn/vx-lockfile`, `vx prune`) — copy projects and their deps, lockfile pruned, for a Docker build. post: [Ship one app, not the whole monorepo](https://vznjs.github.io/vx/blog/vx-prune/)
 - **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. no post
 - **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. no post
-- **REAPI TLS, mTLS and headers** — connect to hosted servers such as BuildBuddy the way Bazel does. no post
-- **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. no post
-- **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. no post
+- **REAPI TLS, mTLS and headers** — connect to hosted servers such as BuildBuddy the way Bazel does. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
+- **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
+- **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **Install as a remote action** (`exec.remote: 'only'`) — `node_modules` is built by an action, so stateless workers have it. no post
 - **OTel live export** (`otel({ live })`) — spans and metrics stream as tasks end, so a dashboard follows a CI run live. post: [Watch a CI run while it runs](https://vznjs.github.io/vx/blog/otel-live/)
 - **Memory-aware admission** (`@vzn/vx-schedule-history`) — tasks are packed by the peak memory learned from past runs. no post
