@@ -83,6 +83,8 @@ flowchart LR
 
 ```ts
 // vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+
 export default defineWorkspace({ cacheScope: 'trusted' })
 ```
 
