@@ -15,7 +15,7 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default { plugins: [scheduleHistoryPlugin()] }
 ```
 
-`scheduleHistoryPlugin({ window?, assume?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`scheduleHistoryPlugin({ window?, assume?, file?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -26,6 +26,33 @@ export default {
 ```
 
 A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+
+## Timings between CI runners
+
+A fresh CI runner has no history. `file` names a JSON file, from the
+workspace root, that carries it: read before ordering, rewritten after
+each run with every task's p50, so a CI cache keeps one file.
+
+```ts
+export default {
+  plugins: [scheduleHistoryPlugin({ file: '.vx-timings.json' })],
+}
+```
+
+```yaml
+# GitHub Actions
+- uses: actions/cache@v4
+  with:
+    path: .vx-timings.json
+    key: vx-timings-${{ github.run_id }}
+    restore-keys: vx-timings-
+```
+
+The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
+sorted. A p50 recorded on this machine wins over it, and it wins over
+`assume`; like `assume`, it never feeds the workspace median. A task the
+run did not see keeps its time. A file that is not one warns and is read
+as empty; `--dry` writes nothing.
 
 ## Reservations learned from history
 

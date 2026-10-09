@@ -15,7 +15,7 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => scheduleHistoryPlugin({ windw: 5 } as never))).toBe(
-    'scheduleHistoryPlugin() has unknown option "windw" (allowed: assume, memory, reservations, resources, window) \u2014 did you mean window?',
+    'scheduleHistoryPlugin() has unknown option "windw" (allowed: assume, file, memory, reservations, resources, window) \u2014 did you mean window?',
   )
 })
 

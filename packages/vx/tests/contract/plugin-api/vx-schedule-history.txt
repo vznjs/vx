@@ -41,4 +41,5 @@ export interface ScheduleHistoryOptions {
   readonly memory?: number
   readonly reservations?: Readonly<Record<string, ResourceEstimate>>
   readonly assume?: Readonly<Record<string, number>>
+  readonly file?: string
 }
