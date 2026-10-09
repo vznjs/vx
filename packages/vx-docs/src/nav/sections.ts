@@ -48,6 +48,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'Migrate', link: '/guides/migrate/' },
     { label: 'Plugins', link: '/guides/plugins/' },
     { label: 'AI agents', link: '/guides/agents/' },
+    { label: 'Built for agents', link: '/concepts/ai-first/' },
     { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
     { label: 'Try it', link: '/playground/' },
