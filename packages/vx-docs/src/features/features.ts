@@ -697,7 +697,7 @@ export default defineProject({
     image: 'migrate.png',
     imageAlt: 'vx-migrate writing a vx.config.ts per package.',
     docs: { label: 'Migrate', href: 'guides/migrate/' },
-    deepDive: { label: 'From Turborepo', href: 'blog/from-turborepo/' },
+    deepDive: { label: 'Moving to vx from Turborepo', href: 'blog/from-turborepo/' },
   },
   {
     slug: 'turbo-nx-flags',

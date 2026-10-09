@@ -325,6 +325,12 @@ body:has(.vx-landing) {
 .foot-col .links a:hover {
   color: var(--text-hi);
 }
+.foot-legal {
+  display: block;
+  margin: 16px auto 0;
+  font: 12px/1.5 var(--font-body);
+  color: var(--text-faint);
+}
 .foot-bottom {
   margin: 40px auto 0;
   padding-top: 24px;
