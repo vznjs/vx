@@ -222,3 +222,7 @@ json` replayed a failure already fixed with no word of it. A failed
   task now carries `fixedIn`, the first later run where it passed (ran
   or hit). Rows: `run-output.test.ts` (another task passing is no fix),
   vx-mcp `tools.test.ts`, `cli-json-schemas.test.ts`.
+- **DX-38** Trial-2 row 4: bun test heads a failure with a bare
+  `app.test.js:` and gives the line only in the stack, so `locations`
+  led with a lineless entry. A file also named with a line now drops
+  its bare mention. Row: `run-output.test.ts` (with a bare-only control).
