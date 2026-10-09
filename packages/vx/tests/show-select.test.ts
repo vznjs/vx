@@ -43,7 +43,11 @@ function names(...args: string[]): { code: number | null; names: string[]; err: 
   const out = r.stdout.toString()
   return {
     code: r.exitCode,
-    names: out === '' ? [] : (JSON.parse(out) as { name: string }[]).map((p) => p.name),
+    // A refusal's stdout is its error document (cli.md § Error codes), not a list.
+    names:
+      out === '' || out.startsWith('{"ok":false')
+        ? []
+        : (JSON.parse(out) as { name: string }[]).map((p) => p.name),
     err: r.stderr.toString(),
   }
 }

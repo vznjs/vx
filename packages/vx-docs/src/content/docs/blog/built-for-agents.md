@@ -57,7 +57,9 @@ at `node_modules/@vzn/vx/schemas/`: `summary.json`, `plan.json`,
 `show.json`, `info.json`, `why.json`, `last.json` and `cache.json`.
 Every object closes its key set, so a new field is a schema change, never
 a surprise. A test holds each verb's output to its schema, so stdout
-always parses.
+always parses. A refusal under `--format json` is a JSON line too, with
+a stable code an agent can branch on: see
+[A refusal an agent can read](../error-codes/).
 
 ## A failure keeps its log and its files
 

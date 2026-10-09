@@ -1670,7 +1670,7 @@ function detectCycle(nodes: Map<string, TaskNode>): void {
           for (let i = 0; i < stack.length; i += 2) path.push(idsArr[stack[i]!]!)
           const startInPath = path.indexOf(idsArr[depIdx]!)
           const cycle = [...path.slice(startInPath), idsArr[depIdx]!].join(' -> ')
-          throw new UserError(`Cycle detected in task graph: ${cycle}`)
+          throw new UserError(`Cycle detected in task graph: ${cycle}`, 'VX_E_CYCLE')
         }
         color[depIdx] = GRAY
         stack.push(depIdx, 0)

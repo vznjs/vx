@@ -5,6 +5,7 @@ index.ts
 launcher.cjs
 package.json
 schemas/cache.json
+schemas/error.json
 schemas/info.json
 schemas/last.json
 schemas/plan.json
