@@ -842,6 +842,7 @@ export class Cache implements CacheLayer {
       if (mode !== 'open') {
         throw new UserError(
           `the cache at ${cacheDir} holds index schema ${found} from another vx version; this vx reads ${SCHEMA_VERSION}, so nothing in it is readable here, and this verb leaves it untouched. The next \`vx run\` resets it`,
+          'VX_E_CACHE_VERSION',
         )
       }
     }

@@ -127,8 +127,9 @@ const TOOLS: readonly ToolDef[] = [
       'Run tasks as `vx run <tasks> --format json` does and return its exit code and the run summary ' +
       '(ok, per-task status, cache hits, durations; the `--summarize` document). The tasks run here, ' +
       'with this workspace’s cache and sandbox. `all`, `filter`, `affected` and `force` are the CLI ' +
-      'flags. A refusal before the run (an unknown task, a bad filter) returns no summary and the CLI’s ' +
-      'message as `error`; a failed task’s output is getFailures.',
+      'flags. A refusal before the run (an unknown task, a bad filter) returns no summary, the CLI’s ' +
+      'message as `error` and its stable `code` (VX_E_UNKNOWN_TASK, VX_E_USAGE, …); a failed task’s ' +
+      'output is getFailures.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -616,10 +617,14 @@ async function runTasks(
   } catch {
     summary = undefined
   }
-  if (summary !== undefined) return { exitCode, summary }
+  // A refusal's stdout is its error document (core's cli.md § Error codes):
+  // its stable code rides along with the CLI's prose.
+  const refusal = (summary as { error?: { code?: unknown } } | undefined)?.error
+  if (summary !== undefined && refusal === undefined) return { exitCode, summary }
   const tail = err.length > ERROR_TAIL_BYTES ? err.slice(-ERROR_TAIL_BYTES) : err
   return {
     exitCode,
+    ...(typeof refusal?.code === 'string' ? { code: refusal.code } : {}),
     error: tail
       .trimEnd()
       .split('\n')

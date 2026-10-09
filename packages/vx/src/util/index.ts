@@ -3,6 +3,8 @@
 
 export {
   DISK_FULL_HINT,
+  errorCode,
+  errorDocument,
   fsRefusalHint,
   isDiskFull,
   isFsRefusal,
@@ -17,6 +19,7 @@ export {
   isOutOfFds,
   notAWorkTree,
   OUT_OF_FDS_HINT,
+  wantsJson,
 } from './errors.js'
 export { configErrorFrame } from './config-frame.js'
 export { xxh3, xxh3hex } from './hash.js'

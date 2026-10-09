@@ -11,9 +11,13 @@ errors keep the stack so we can debug them.
 
 ```ts
 export class UserError extends Error {
-  constructor(message: string)
+  readonly code: string // VX_E_…, default VX_E_REFUSED
+  constructor(message: string, code?: string)
 }
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
+export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
+export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
+export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
 
 // The environment's refusals, reported like a UserError — one line naming the path, never a stack:
 export function isPermissionError(err: unknown): err is NodeJS.ErrnoException // EACCES, EPERM, EROFS
@@ -37,7 +41,11 @@ export function notAWorkTree(cwd: string, stderr?: string): UserError // the one
 (`isFsRefusal`) as its message plus `fsRefusalHint`; a process out of
 file descriptors (`isOutOfFds`) as its message plus `OUT_OF_FDS_HINT`;
 anything else with
-its stack. Every one sets exit code 1 — nothing is re-thrown.
+its stack. Every one sets exit code 1 — nothing is re-thrown. When the
+argv asks for JSON (`wantsJson`), `bin.ts` also prints `errorDocument`
+on stdout with `errorCode`: a UserError's own code (`VX_E_CONFIG` for a
+codeless one that opens with its config file), `VX_E_FDS`, `VX_E_FS`,
+or `VX_E_INTERNAL`. The codes are listed in `cli.md` § Error codes.
 `isTmpdirRefusal` is not `bin.ts`'s: the sandbox runtime and the run
 lock ask it and add `TMPDIR_HINT` to their own message, because a
 minimal image's sandboxed task once said only "EACCES … mkdtemp"

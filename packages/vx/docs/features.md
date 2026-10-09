@@ -67,6 +67,7 @@ config key or an environment variable is missing here.
 - **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. no post
 - **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
+- **Stable error codes** (`VX_E_…`) — under `--format json` a refusal is a JSON line on stdout with a code an agent branches on. post: [A refusal an agent can read](https://vznjs.github.io/vx/blog/error-codes/)
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
 - **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. no post
 - **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. no post

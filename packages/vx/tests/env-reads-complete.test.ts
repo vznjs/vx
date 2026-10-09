@@ -18,7 +18,8 @@ function literals(dir: string): Map<string, string> {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) for (const [k, v] of literals(p)) out.set(k, v)
     else if (e.name.endsWith('.ts'))
-      for (const m of readFileSync(p, 'utf8').matchAll(/'(VX_[A-Z0-9_]+)'/g))
+      // `VX_E_…` is an error code (util/errors.ts), not a variable.
+      for (const m of readFileSync(p, 'utf8').matchAll(/'(VX_(?!E_)[A-Z0-9_]+)'/g))
         out.set(m[1]!, path.relative(SRC, p))
   }
   return out

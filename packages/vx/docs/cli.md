@@ -2261,6 +2261,29 @@ the frame and the tasks' output with it, goes to stderr, so
 refuses `--dry` (use `--dry=json`), a bare `--graph` and
 `--report=markdown`, which print on stdout too.
 
+### Error codes
+
+A verb asked for JSON (`--format json`, `--format=json`, `--dry=json`,
+before any `--`) answers a refusal on stdout too, as one line that
+`schemas/error.json` describes: `{"ok":false,"error":{"code","message"}}`.
+The exit code (1) and the prose on stderr do not change. Branch on the
+code; the message may change.
+
+| Code                 | When                                                                  |
+| -------------------- | --------------------------------------------------------------------- |
+| `VX_E_USAGE`         | A flag, argument or selection `vx run` does not take.                 |
+| `VX_E_UNKNOWN_TASK`  | No project in scope declares a requested task.                        |
+| `VX_E_CONFIG`        | A `vx.config.*` or `vx.workspace.*` that does not load or is refused. |
+| `VX_E_CYCLE`         | The task graph has a cycle.                                           |
+| `VX_E_NO_WORKSPACE`  | No workspace root above the working directory.                        |
+| `VX_E_CACHE_VERSION` | A reading verb met a cache index from another vx version.             |
+| `VX_E_REFUSED`       | Any other refusal (a plugin's, a check's) with no code of its own.    |
+| `VX_E_FS`            | The file system refused a write: permissions, a full disk.            |
+| `VX_E_FDS`           | Out of file descriptors.                                              |
+| `VX_E_INTERNAL`      | A defect in vx; stderr carries the stack.                             |
+
+A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
+
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
 script) writes that product alone there; a notice or warning it meets
