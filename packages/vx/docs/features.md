@@ -46,10 +46,10 @@ config key or an environment variable is missing here.
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
-- **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
+- **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
-- **Run tags** (`--tag`) — label a run; recorded in history. no post
-- **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. no post
+- **Run tags** (`--tag`) — label a run; recorded in history. post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
+- **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **Output flows** — what is printed follows the run's intent (focused, broad or CI); a truthy `CI` wins. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Cache-aware glyphs** — each task line's glyph shows ran, fresh, restored locally or remotely, failed, skipped or persistent. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. no post
@@ -60,7 +60,7 @@ config key or an environment variable is missing here.
 ## Plan and explain
 
 - **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
-- **Graph** (`--graph`) — the task graph as Graphviz DOT. no post
+- **Graph** (`--graph`) — the task graph as Graphviz DOT. post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`) — replay a recorded run's summary, or list recent runs. [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
@@ -70,7 +70,7 @@ config key or an environment variable is missing here.
 - **Stable error codes** (`VX_E_…`) — under `--format json` a refusal is a JSON line on stdout with a code an agent branches on. post: [A refusal an agent can read](https://vznjs.github.io/vx/blog/error-codes/)
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
-- **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. no post
+- **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **Agent skill** (`skills/vx/SKILL.md`) — an installable skill that teaches a coding agent to run, debug and query vx. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 
 ## Cache
