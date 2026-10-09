@@ -45,7 +45,7 @@ directory as the store:
 
 ```ts
 // plugins/cache.ts
-import { mkdir, rename } from 'node:fs/promises'
+import { link, mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { definePlugin, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
@@ -62,7 +62,13 @@ class DirRemote implements RemoteCacheLayer {
     await mkdir(this.endpoint, { recursive: true })
     const tmp = path.join(this.endpoint, `.${hash}.${process.pid}`)
     await Bun.write(tmp, body)
-    await rename(tmp, path.join(this.endpoint, hash))
+    try {
+      await link(tmp, path.join(this.endpoint, hash))
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    } finally {
+      await unlink(tmp)
+    }
   }
 }
 
@@ -77,6 +83,12 @@ export function dirCache(dir: string): VxPlugin {
   })
 }
 ```
+
+`put` writes aside and links the file into place rather than renaming
+it: on a shared directory a rename can swap the file under a reader,
+while a link never replaces an existing file, and an `EEXIST` is
+success because the same hash means the same bytes. (Thanks to a
+reader's comment.)
 
 Swap the directory for S3, R2 or your own HTTP server. `LayeredCache`
 does the rest: the local cache stays in front, a remote error turns into
