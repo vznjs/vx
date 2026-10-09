@@ -217,3 +217,8 @@ directions; the link;`vx docs VX_E_USAGE` alone).
   means "declares a cache", as `last.json` already did. Left as is: a
   rename of `cached` (breaks the JSON contract for a wording issue) and
   one JSON indentation across verbs (mixed already; compact saves tokens).
+- **DX-37** Trial-2 row 9: `getFailures` and `vx last --failed --format
+json` replayed a failure already fixed with no word of it. A failed
+  task now carries `fixedIn`, the first later run where it passed (ran
+  or hit). Rows: `run-output.test.ts` (another task passing is no fix),
+  vx-mcp `tools.test.ts`, `cli-json-schemas.test.ts`.

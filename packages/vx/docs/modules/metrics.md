@@ -51,6 +51,7 @@ export interface TaskFailure {
   timedOut?: true
   output: string // '' when the run kept none
   locations: OutputLocation[]
+  fixedIn?: string // the first later run where the task passed
 }
 export interface TaskLog {
   runId: string

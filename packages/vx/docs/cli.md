@@ -2812,7 +2812,8 @@ emits `{ invocation, tasks }` for scripting; a failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute), so an agent reads why without
-the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
+the terminal. `fixedIn` names the first later run where that task
+passed, so a replayed failure that is already fixed says so. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that
