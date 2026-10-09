@@ -95,9 +95,9 @@ describe('a refused word names the nearest one the verb takes', () => {
   })
 
   it('a flag far from --help gets no hint (control)', async () => {
-    expect(await refused(['lock', '--json'])).toEqual([
+    expect(await refused(['lock', '--zzz'])).toEqual([
       1,
-      'vx lock: unknown flag: --json (see `vx lock --help`)',
+      'vx lock: unknown flag: --zzz (see `vx lock --help`)',
     ])
   })
 })

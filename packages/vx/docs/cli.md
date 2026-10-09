@@ -30,7 +30,7 @@ released binary carries its own Bun and the row never says it.
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
-vx lock [--check]
+vx lock [--check] [--format pretty|json]
 vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
@@ -1672,6 +1672,7 @@ sees, a plugin's `discover` stage included (X-143).
 ```
 vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
 vx lock --check      # Audit: hash checks + full re-evaluation vs the lock. Exit 1 on drift.
+vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
 
 Plain runs ALWAYS evaluate live — the lock's existence changes
@@ -1686,6 +1687,9 @@ stored hashes AND re-evaluates every config in the current
 environment, `Bun.deepEquals`-comparing against the frozen objects —
 catching eval-time env and import-closure drift that byte hashes
 cannot see. The CI recipe is `vx lock --check && vx run … --frozen`.
+`--format json` prints the audit as one document
+(`schemas/lock.json`, exit code unchanged; a missing lock is one of
+its `problems`); it answers `--check` only.
 Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
 

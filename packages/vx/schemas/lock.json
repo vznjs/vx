@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx lock --check --format json",
+  "description": "The lock audit: exit 0 when upToDate, else 1 with each drift in problems.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["upToDate", "audited", "notAudited", "problems"],
+  "properties": {
+    "upToDate": { "type": "boolean" },
+    "audited": { "type": "integer", "description": "projects with a vx.config, each audited" },
+    "notAudited": {
+      "type": "integer",
+      "description": "projects without a vx.config: nothing to freeze, never audited"
+    },
+    "problems": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "one line per drift, as the plain audit prints it on stderr; a missing lock is one"
+    }
+  }
+}

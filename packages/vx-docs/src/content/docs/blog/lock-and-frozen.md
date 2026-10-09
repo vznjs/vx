@@ -70,6 +70,13 @@ first line, which is the point.
   where it is provably pure. `--frozen` is about determinism, and the
   milliseconds it saves are incidental.
 
+## For agents
+
+An agent asks the same question in JSON: `vx lock --check --format json`
+prints `{"upToDate": false, "audited": 4, "notAudited": 0, "problems": [...]}`
+with the same exit code, and `vx mcp` answers it as `checkLock`. Each
+problem is the line a person would read on stderr.
+
 ## Where it came from
 
 The lock exists because the resolved-config hash made configs

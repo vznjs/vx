@@ -334,7 +334,7 @@ describe('cli run()', () => {
       ['last', '--json'],
       ['show', '--json'],
       // CONTROL: a verb with no --format gets no such hint.
-      ['lock', '--json'],
+      ['upgrade', '--json'],
       // CONTROL: a positional is not a flag, and gets no hint, even one two
       // edits from a flag the verb takes.
       ['info', 'format'],
@@ -363,7 +363,7 @@ describe('cli run()', () => {
       'vx info: unknown flag: --json (did you mean --format json?) (see `vx info --help`)',
       'vx last: unknown flag: --json (did you mean --format json?) (see `vx last --help`)',
       'vx show: unknown flag: --json (did you mean --format json?) (see `vx show --help`)',
-      'vx lock: unknown flag: --json (see `vx lock --help`)',
+      'vx upgrade: unknown flag: --json (see `vx upgrade --help`)',
       'vx info: unexpected argument: format (see `vx info --help`)',
       'vx lock: unexpected argument: foo (see `vx lock --help`)',
       'vx cache prune: unexpected argument: foo (see `vx cache --help`)',
@@ -1693,7 +1693,7 @@ describe('parseRunArgs', () => {
     // `Execution (for run)` block — 26 lines of run's flags — into `vx lock
     // --help`. The exact set is the assertion; a `not.toContain` would pass
     // on any single flag leaking.
-    expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--frozen'])
+    expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--format', '--frozen'])
     expect(flagsIn(verbHelpText('init'))).toEqual([
       '--dry',
       '--force',

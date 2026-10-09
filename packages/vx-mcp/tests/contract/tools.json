@@ -252,6 +252,21 @@
       "exitCode"
     ]
   },
+  "checkLock": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "answer": [
+      "exitCode",
+      "lock",
+      "lock.audited",
+      "lock.notAudited",
+      "lock.problems",
+      "lock.problems[]",
+      "lock.upToDate"
+    ]
+  },
   "getFailures": {
     "inputSchema": {
       "type": "object",

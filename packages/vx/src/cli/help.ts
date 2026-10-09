@@ -108,7 +108,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
     '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
-    '  vx lock [--check]',
+    '  vx lock [--check] [--format pretty|json]',
     '  vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
     '  vx upgrade [TAG]',
     '  vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]',
@@ -264,7 +264,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx lock --check      Audit the lock: file-changed hash report PLUS a full',
     '                       re-evaluation compared against the frozen objects. Exits 1',
     '                       on drift (e.g. configs that read env vars). Run it before',
-    '                       `vx run --frozen` in CI.',
+    '                       `vx run --frozen` in CI. With --format json it prints',
+    '                       {upToDate, audited, notAudited, problems}.',
     '',
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
   ].join('\n')
