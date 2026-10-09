@@ -1,6 +1,6 @@
-// The landing nav's dropdowns: under each place in SECTIONS, the pages a
+// The header's dropdowns: under each place in SECTIONS, the pages a
 // reader most often wants from it. The Blog's and Releases' panels list
-// their newest posts instead (components/landing/Nav.astro).
+// their newest posts instead (components/starlight/Header.astro).
 
 import { CATEGORIES } from '../features/features.js'
 import type { SectionId } from './sections.js'

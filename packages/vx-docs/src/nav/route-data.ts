@@ -3,9 +3,10 @@
 // top-level group that lists the page; a page no group lists goes by its
 // path: the blog's to the Blog, a release note's to Releases, and every
 // other one, internals included, to the Reference, which is where the
-// internals index is linked from. The blog and Releases have no sidebar, no
-// table of contents and no prev/next: their pages are a listing and posts
-// read one column wide (components/blog/).
+// internals index is linked from; the landing and the feature pages go to
+// their own. Those four have no sidebar, no table of contents and no
+// prev/next: their pages are a listing and posts read one column wide
+// (components/blog/), or run full width in the landing's look.
 
 import { defineRouteMiddleware, type StarlightRouteData } from '@astrojs/starlight/route-data'
 import { ogCover } from '../blog/og-cover.js'
@@ -21,7 +22,8 @@ function links(entries: Entry[]): Link[] {
 /** A page's section from its route id (`blog/hello-vx`, `modules/cache`, `404`). */
 function sectionByPath(id: string): SectionId {
   const top = id.split('/')[0]
-  return top === 'blog' || top === 'releases' ? top : 'reference'
+  if (top === '' || top === 'index') return 'home'
+  return top === 'blog' || top === 'releases' || top === 'features' ? top : 'reference'
 }
 
 export const onRequest = defineRouteMiddleware(async (context) => {
@@ -30,11 +32,11 @@ export const onRequest = defineRouteMiddleware(async (context) => {
   const listed = groups.find((g) => links(g.entries).some((l) => l.isCurrent))
   const section = listed === undefined ? sectionByPath(route.id) : GROUP_SECTION[listed.label]!
   context.locals.vxSection = section
-  if (section === 'blog' || section === 'releases') {
+  if (section !== 'docs' && section !== 'reference') {
     route.hasSidebar = false
     route.toc = undefined
     route.pagination = { prev: undefined, next: undefined }
-    await ogCover(route, context.site)
+    if (section === 'blog' || section === 'releases') await ogCover(route, context.site)
     return
   }
 

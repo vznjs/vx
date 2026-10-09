@@ -1,35 +1,79 @@
 ---
-// Starlight's header with the site's places beside the title. The
-// current section is marked from route-data.ts. Below 50rem the links move
-// into the menu (Sidebar.astro), where there is room for them; a page with
-// no sidebar (the blog) has no menu, so they stay in the header.
+// The one header of every page: the site's places beside the title, each
+// opening a panel of its main pages (src/nav/menu.ts) or its newest posts on
+// hover or keyboard focus, no script. The current section is marked from
+// route-data.ts. Below 50rem the places move into the menu (Sidebar.astro),
+// where there is room for them; a page with no sidebar gets MobileMenu.
+import { formatDate, posts } from '../../blog/posts.js'
+import { MENU, type MenuLink } from '../../nav/menu.js'
 import Search from '@astrojs/starlight/components/Search.astro'
 import SiteTitle from '@astrojs/starlight/components/SiteTitle.astro'
 import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro'
 import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro'
 import { SECTIONS } from '../../nav/sections.js'
+import MobileMenu from '../MobileMenu.astro'
 
 const base = import.meta.env.BASE_URL
 const current = Astro.locals.vxSection
 const menu = Astro.locals.starlightRoute.hasSidebar
+const latest = async (kind: 'blog' | 'releases'): Promise<MenuLink[]> =>
+  (await posts(kind)).slice(0, 4).map((p) => ({
+    label: p.version ? `${p.version} · ${p.title}` : p.title,
+    href: p.href.slice(base.length),
+    line: formatDate(p.date),
+  }))
+const panels: Partial<Record<string, MenuLink[]>> = {
+  ...MENU,
+  blog: await latest('blog'),
+  releases: await latest('releases'),
+}
 ---
 
 <div class="vx-header">
   <div class="vx-title">
     <SiteTitle />
-    <nav class:list={['vx-places', menu ? 'sl-hidden md:sl-flex' : 'sl-flex']} aria-label="Sections">
+    <nav class="vx-places sl-hidden md:sl-flex" aria-label="Sections">
       {
-        SECTIONS.map((s) => (
-          <a href={`${base}${s.href}`} aria-current={s.id === current ? 'true' : undefined}>
-            {s.label}
-          </a>
-        ))
+        SECTIONS.map((s) => {
+          const items = panels[s.id]
+          return (
+            <div class="vx-place">
+              <a href={`${base}${s.href}`} aria-current={s.id === current ? 'true' : undefined}>
+                {s.label}
+              </a>
+              {items && (
+                <div class:list={['vx-panel', { 'vx-panel-wide': items.length > 6 }]}>
+                  <ul>
+                    {items.map((l) => (
+                      <li>
+                        <a class="vx-mi" href={`${base}${l.href}`}>
+                          <span>{l.label}</span>
+                          {l.line && <span class="vx-mi-line">{l.line}</span>}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  <a class="vx-mi-all" href={`${base}${s.href}`}>
+                    All of {s.label.toLowerCase()} <span aria-hidden="true">→</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          )
+        })
       }
     </nav>
   </div>
   <div class="vx-search sl-flex print:hidden">
     <Search />
   </div>
+  {
+    !menu && (
+      <div class="vx-mobile md:sl-hidden print:hidden">
+        <MobileMenu current={current} />
+      </div>
+    )
+  }
   <div class="vx-right sl-hidden md:sl-flex print:hidden">
     <SocialIcons />
     <ThemeSelect />
@@ -49,15 +93,17 @@ const menu = Astro.locals.starlightRoute.hasSidebar
     align-items: center;
     gap: 2rem;
     min-width: 0;
-    overflow: clip;
-    padding: 0.25rem;
-    margin: -0.25rem;
   }
   .vx-places {
     gap: 1.5rem;
     align-items: center;
   }
-  .vx-places a {
+  .vx-place {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .vx-place > a {
     font: 500 var(--sl-text-sm) / 1 var(--vx-mono);
     text-transform: lowercase;
     color: var(--vx-muted);
@@ -65,12 +111,88 @@ const menu = Astro.locals.starlightRoute.hasSidebar
     padding-block: 0.4rem;
     border-bottom: 2px solid transparent;
   }
-  .vx-places a:hover {
+  .vx-place > a:hover {
     color: var(--vx-fg);
   }
-  .vx-places a[aria-current='true'] {
+  .vx-place > a[aria-current='true'] {
     color: var(--vx-fg);
     border-bottom-color: var(--vx-accent);
+  }
+  .vx-panel {
+    position: absolute;
+    top: calc(100% + 0.6rem);
+    left: -1rem;
+    z-index: 20;
+    width: 21rem;
+    padding: 0.6rem;
+    border: 1px solid var(--vx-border);
+    border-radius: 0.9rem;
+    background: var(--vx-surface);
+    box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition:
+      opacity 0.14s,
+      transform 0.14s,
+      visibility 0s 0.14s;
+  }
+  /* A bridge over the gap, so the pointer reaches the panel open. */
+  .vx-panel::before {
+    content: '';
+    position: absolute;
+    inset: -0.8rem 0 auto;
+    height: 0.8rem;
+  }
+  .vx-panel-wide {
+    width: 35rem;
+  }
+  .vx-place:hover > .vx-panel,
+  .vx-place:focus-within > .vx-panel {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      opacity 0.14s,
+      transform 0.14s;
+  }
+  .vx-panel ul {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .vx-panel-wide ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vx-mi {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.55rem;
+    font: 600 0.875rem/1.25 var(--vx-font-body);
+    color: var(--vx-fg);
+    text-decoration: none;
+  }
+  .vx-mi:hover {
+    background: color-mix(in srgb, var(--vx-fg) 7%, transparent);
+  }
+  .vx-mi-line {
+    font: 400 0.78rem/1.35 var(--vx-font-body);
+    color: var(--vx-muted);
+  }
+  .vx-mi-all {
+    display: block;
+    margin-top: 0.4rem;
+    padding: 0.6rem 0.75rem 0.25rem;
+    border-top: 1px solid var(--vx-border);
+    font: 500 0.75rem/1 var(--vx-mono);
+    color: var(--vx-accent);
+    text-decoration: none;
+  }
+  .vx-mobile {
+    --vx-mm-top: var(--sl-nav-height);
   }
   .vx-search {
     flex: 1;

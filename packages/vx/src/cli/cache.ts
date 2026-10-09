@@ -56,15 +56,19 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
       return await pruneCmd(rest)
     case undefined:
       // A bare `vx cache prune` refuses too: the hint names a whole command.
-      process.stderr.write(
-        `vx cache: missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}\n`,
+      return refuse(
+        'cache',
+        args,
+        `missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}`,
+        'VX_E_USAGE',
       )
-      return 1
     default:
-      process.stderr.write(
-        `vx cache: unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}\n`,
+      return refuse(
+        'cache',
+        args,
+        `unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}`,
+        'VX_E_USAGE',
       )
-      return 1
   }
 }
 

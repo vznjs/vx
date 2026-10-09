@@ -96,6 +96,11 @@ describe('a refusal under --format json', () => {
         ['cache', 'prune', '--max-size', '1G', '--format', 'json'],
         bare,
       ),
+      cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),
+      runNoTask: await refusal(['run', '--format', 'json']),
+      verb: await refusal(['bogus', '--format', 'json']),
+      taskAsVerb: await refusal(['build', '--format', 'json']),
+      topFlag: await refusal(['--bogus', '--format', 'json']),
     }).toEqual({
       showUsage: 'VX_E_USAGE',
       showProject: 'VX_E_UNKNOWN_PROJECT',
@@ -106,6 +111,11 @@ describe('a refusal under --format json', () => {
       lastHistory: 'VX_E_NO_HISTORY',
       pruneUsage: 'VX_E_USAGE',
       pruneWorkspace: 'VX_E_NO_WORKSPACE',
+      cacheSub: 'VX_E_USAGE',
+      runNoTask: 'VX_E_USAGE',
+      verb: 'VX_E_UNKNOWN_COMMAND',
+      taskAsVerb: 'VX_E_UNKNOWN_COMMAND',
+      topFlag: 'VX_E_USAGE',
     })
   })
 

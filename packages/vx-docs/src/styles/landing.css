@@ -94,8 +94,7 @@ body:has(.vx-landing) {
   overflow-x: clip;
 }
 .vx-landing {
-  /* theme.css's dark --vx-* tokens: the landing is dark only, and loads
-     none of the docs' CSS. */
+  /* theme.css's dark --vx-* tokens; features.css sets the light ones. */
   --vx-bg: #0a0b0d;
   --vx-fg: #f2f5ef;
   --vx-text: #cbd1c9;
@@ -201,145 +200,27 @@ body:has(.vx-landing) {
 }
 
 /* ============================================================
-   Nav
+   Shell: the page runs full width inside Starlight's splash frame
    ============================================================ */
-.nav {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--gutter);
-  height: 64px;
-  border-bottom: 1px solid var(--line);
+:root:has(.vx-landing) header.header {
   /* Opaque, not a backdrop blur: the blur re-filtered the page under it
      on every scrolled frame. */
-  background: var(--ink-900);
+  background: var(--vx-bg);
 }
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 40px;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-}
-.brand .word {
-  font: var(--fw-bold) 19px/1 var(--font-display);
-  color: var(--text-hi);
-  letter-spacing: -0.02em;
-}
-.nav-links {
-  display: flex;
-  gap: 26px;
-}
-.nav-links a {
-  font: var(--fw-medium) var(--text-sm) / 1 var(--font-mono);
-  color: var(--text-mut);
-  text-decoration: none;
-  letter-spacing: 0.01em;
-}
-.nav-links a:hover {
-  color: var(--text-hi);
-}
-/* The places' panels: open on hover or keyboard focus, no script. */
-.nav-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: 64px;
-}
-.nav-item > a[aria-current='page'] {
-  color: var(--text-hi);
-}
-.nav-panel {
-  position: absolute;
-  top: 56px;
-  left: -18px;
-  width: 340px;
-  padding: 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: var(--ink-850);
-  box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.7);
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-4px);
-  transition:
-    opacity 0.14s,
-    transform 0.14s,
-    visibility 0s 0.14s;
-}
-.nav-panel-wide {
-  width: 560px;
-}
-.nav-panel-wide ul {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.nav-item:hover > .nav-panel,
-.nav-item:focus-within > .nav-panel {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-  transition:
-    opacity 0.14s,
-    transform 0.14s;
-}
-.nav-panel ul {
-  display: grid;
-  gap: 2px;
-  margin: 0;
+:root:has(.vx-landing) .content-panel {
   padding: 0;
-  list-style: none;
+  border: 0;
 }
-.nav-links .nav-mi {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 9px;
-  font: var(--fw-semibold) 14px/1.25 var(--font-display);
-  color: var(--text-hi);
-  letter-spacing: -0.01em;
+:root:has(.vx-landing) .sl-container {
+  max-width: none;
+  margin: 0;
 }
-.nav-links .nav-mi:hover {
-  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
+:root:has(.vx-landing) main {
+  padding-bottom: 0;
 }
-.nav-mi-line {
-  font: 400 12.5px/1.35 var(--font-body);
-  color: var(--text-mut);
-}
-.nav-links .nav-mi-all {
-  display: block;
-  margin-top: 6px;
-  padding: 10px 12px 4px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--phosphor);
-}
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.btn-github {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  font: var(--fw-medium) var(--text-xs) / 1 var(--font-mono);
-  color: var(--text);
-  text-decoration: none;
-}
-.btn-github:hover {
-  border-color: var(--line);
-  color: var(--text-hi);
+/* The page's own footer stands in for Starlight's. */
+:root:has(.vx-landing) .content-panel footer {
+  display: none;
 }
 
 .phosphor {
@@ -824,9 +705,6 @@ body:has(.vx-landing) {
   }
 }
 @media (max-width: 900px) {
-  .nav-links {
-    display: none;
-  }
   .foot-grid {
     grid-template-columns: minmax(0, 1fr);
   }

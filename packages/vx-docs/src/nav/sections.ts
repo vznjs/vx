@@ -1,8 +1,9 @@
 // The site's places (design/site-short-2026-09.md § The shape, plus the
 // feature pages): the Docs and the Reference each have a sidebar of their
-// own, the Blog and Releases have none, and Features is a set of
-// standalone pages (src/pages/features/) outside Starlight. The landing is
-// the story; the Guide it replaced redirects there.
+// own; the Blog, Releases, Features and the landing ('home', no place in the
+// top nav) have none. Every page is a Starlight page, so one header, search
+// and theme serve them all. The landing is the story; the Guide it replaced
+// redirects there.
 //
 // Starlight has one sidebar. SIDEBAR is it, as two top-level groups whose
 // labels are the section names; route-data.ts shows a page only the group its
@@ -12,12 +13,12 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'features' | 'docs' | 'reference' | 'blog' | 'releases'
+export type SectionId = 'home' | 'features' | 'docs' | 'reference' | 'blog' | 'releases'
 
 declare global {
   namespace App {
     interface Locals {
-      /** Which place a Starlight page belongs to (route-data.ts); never Features. */
+      /** Which place a page belongs to (route-data.ts). */
       vxSection: SectionId
     }
   }

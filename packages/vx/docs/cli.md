@@ -2272,6 +2272,7 @@ code; the message may change.
 | Code                   | When                                                                  |
 | ---------------------- | --------------------------------------------------------------------- |
 | `VX_E_USAGE`           | A flag, argument or selection the verb does not take.                 |
+| `VX_E_UNKNOWN_COMMAND` | No verb of that name here, core's or a declared plugin's.             |
 | `VX_E_UNKNOWN_TASK`    | No project in scope declares a requested task.                        |
 | `VX_E_UNKNOWN_PROJECT` | `vx show` names a project the workspace does not have.                |
 | `VX_E_NO_HISTORY`      | `vx why` / `vx last` find no recorded run for what they were asked.   |
