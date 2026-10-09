@@ -9,6 +9,7 @@
 
 import {
   Cache,
+  cacheKeyDiff,
   clampInt,
   collectInfo,
   loadResolvedProjects,
@@ -19,6 +20,7 @@ import {
   UserError,
   latestRunId,
   resolveRunId,
+  rootCauses,
   runFailures,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
@@ -92,7 +94,7 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'whyDidThisRerun',
     description:
-      'Compare a run’s cache key for a task against the previous run and say whether it changed. `runId` defaults to the task’s latest run, as `vx why` does; getRunHistory lists the others.',
+      'Compare a run’s cache key for a task against the previous run and say whether it changed, what moved (`diff`: each input, env var or upstream key that changed) and, under a moved upstream, the tasks whose own inputs moved (`roots`) — `vx why --format json`’s answer. `runId` defaults to the task’s latest run, as `vx why` does; getRunHistory lists the others.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -513,7 +515,12 @@ async function whyDidThisRerun(
     }
     // The canonical query, not a copy: two implementations of this once
     // answered differently about rows that recorded no cache key.
-    return { ...whyDidThisRerunQuery(db, runId, taskId) }
+    const why = whyDidThisRerunQuery(db, runId, taskId)
+    if (!why.found) return { ...why }
+    // `vx why --format json`'s answer: what moved in the key, and under a
+    // moved upstream the tasks whose own inputs moved.
+    const diff = cacheKeyDiff(db, runId, taskId)
+    return { ...why, diff, roots: rootCauses(db, runId, taskId, diff.entries) }
   } finally {
     cache.close()
   }

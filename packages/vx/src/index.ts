@@ -245,9 +245,17 @@ export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
 // façade 2026-09-10 with no consumer; the telemetry seam above is the
 // canonical export path.
 export {
+  cacheKeyDiff,
   latestRunId,
   resolveRunId,
+  rootCauses,
   runFailures,
   whyDidThisRerunQuery,
 } from './orchestrator/index.js'
-export type { OutputLocation, RunFailures, TaskFailure } from './orchestrator/index.js'
+export type {
+  CacheKeyDiff,
+  OutputLocation,
+  RootCause,
+  RunFailures,
+  TaskFailure,
+} from './orchestrator/index.js'

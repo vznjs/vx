@@ -150,6 +150,14 @@
       ]
     },
     "answer": [
+      "diff",
+      "diff.entries",
+      "diff.found",
+      "diff.note",
+      "diff.previousRunId",
+      "diff.runId",
+      "diff.taskId",
+      "diff.unchangedCount",
       "found",
       "hashChanged",
       "note",
@@ -159,6 +167,7 @@
       "previousRun.restored",
       "previousRun.startedAt",
       "previousRun.status",
+      "roots",
       "runId",
       "taskId",
       "thisRun",

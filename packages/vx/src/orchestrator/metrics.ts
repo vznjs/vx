@@ -803,6 +803,41 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   }
 }
 
+export interface RootCause {
+  /** From the asked task down to the one whose own inputs moved. */
+  chain: string[]
+  entries: CacheKeyDiff['entries']
+}
+
+/**
+ * The tasks under `taskId`'s moved upstreams whose OWN key components
+ * moved in the same run, each with the chain that carried it up. A task
+ * visited once is not walked again (a diamond names its root once).
+ */
+export function rootCauses(
+  db: Database,
+  runId: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+): RootCause[] {
+  const roots: RootCause[] = []
+  const seen = new Set([taskId])
+  const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
+    for (const e of moved) {
+      if (e.kind !== 'upstream' || seen.has(e.name)) continue
+      seen.add(e.name)
+      const next = [...chain, e.name]
+      const d = cacheKeyDiff(db, runId, e.name)
+      if (!d.found) continue
+      const own = d.entries.filter((x) => x.kind !== 'upstream')
+      if (own.length > 0) roots.push({ chain: next, entries: own })
+      walk(next, d.entries)
+    }
+  }
+  walk([taskId], entries)
+  return roots
+}
+
 // ---------------------------------------------------------------------------
 // Run comparison — diff a run against the immediately-previous invocation
 // ---------------------------------------------------------------------------

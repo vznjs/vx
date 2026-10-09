@@ -20,6 +20,7 @@ explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
 latestRunId(db, taskId): string | null              // the run a caller without one means
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
+rootCauses(db, runId, taskId, entries): RootCause[] // under moved upstreams, the tasks whose own inputs moved
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 
 // The argument and row types, exported from the module index:
@@ -27,6 +28,7 @@ ListRunsArgs        // { limit?, project?, task?, runId? }
 ListInvocationsArgs // { limit? }
 CacheEntryRow       // an entries row: hash, project, task, command, exitCode, durationMs, sizeBytes, createdAt, accessedAt
 InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
+RootCause           // { chain: the asked task down to the root, entries: its own moved components }
 ```
 
 `run-failures.ts` beside it keeps a failed run's task output in
@@ -130,6 +132,6 @@ rows whose fingerprints were pruned);
 
 ## Replacing this module
 
-A reader over another store implements the same eight signatures (the
+A reader over another store implements the same nine signatures (the
 join, `diffKeyComponents`, needs no store and is reused as it is); the
 CLI verbs and the MCP tools format, they do not query.
