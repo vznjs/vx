@@ -160,11 +160,11 @@ config key or an environment variable is missing here.
 - **OpenTelemetry** (`@vzn/vx-otel`) — each run exported to your OpenTelemetry backend, never breaking it. [page](https://vznjs.github.io/vx/features/opentelemetry/) · post: [Observability that cannot break a run](https://vznjs.github.io/vx/blog/telemetry-never-breaks-a-run/)
 - **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats, run history, `vx why`'s full answer, a run tool and a plan tool for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
 - **vx prune** (`@vzn/vx-lockfile`, `vx prune`) — copy projects and their deps, lockfile pruned, for a Docker build. post: [Ship one app, not the whole monorepo](https://vznjs.github.io/vx/blog/vx-prune/)
-- **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. no post
+- **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. post: [A scheduler that learns from your runs](https://vznjs.github.io/vx/blog/a-scheduler-that-learns/)
 - **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 - **REAPI TLS, mTLS and headers** — connect to hosted servers such as BuildBuddy the way Bazel does. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **Install as a remote action** (`exec.remote: 'only'`) — `node_modules` is built by an action, so stateless workers have it. post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **OTel live export** (`otel({ live })`) — spans and metrics stream as tasks end, so a dashboard follows a CI run live. post: [Watch a CI run while it runs](https://vznjs.github.io/vx/blog/otel-live/)
-- **Memory-aware admission** (`@vzn/vx-schedule-history`) — tasks are packed by the peak memory learned from past runs. no post
+- **Memory-aware admission** (`@vzn/vx-schedule-history`) — tasks are packed by the peak memory learned from past runs. post: [A scheduler that learns from your runs](https://vznjs.github.io/vx/blog/a-scheduler-that-learns/)
