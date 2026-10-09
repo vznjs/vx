@@ -45,6 +45,7 @@ does.
 | `getTaskLog`      | What did this task print? A failure's output or the cached log, as `vx last --log` reads it.              |
 | `pruneCache`      | Free cache space by age or size; a dry run unless the call says `dryRun: false`.                          |
 | `planInit`        | What would adopting vx write here? Each file and its TODOs, as `vx init --dry --format json` plans them.   |
+| `searchDocs`      | Where is this documented? The reference sections that match, offline, as `vx docs` finds them.  |
 | `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a `--frozen` run.                     |
 | `getConfig`       | What does this task declare? Its resolved inputs, outputs, env and sandbox, as `vx show` prints them.     |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |

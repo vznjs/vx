@@ -469,6 +469,7 @@ export default defineWorkspace({ plugins: [mcp()] })
 | `getTaskLog`       | What did one task print (`vx last --log`)                        |
 | `pruneCache`       | Evict cache entries (`vx cache prune`), dry run by default       |
 | `planInit`         | What `vx init` would write (`vx init --dry`), nothing written    |
+| `searchDocs`       | Search the reference offline (`vx docs`)                         |
 | `checkLock`        | The config lock audit (`vx lock --check`)                        |
 | `getConfig`        | A project's or task's resolved config (`vx show`)                |
 | `getFailures`      | Why did the run fail: each task's output and the files it names  |
