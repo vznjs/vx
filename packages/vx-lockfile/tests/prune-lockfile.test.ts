@@ -18,9 +18,14 @@ import {
 
 const MEMBERS = new Set(['packages/a', 'packages/b', 'packages/c'])
 
-function scope(dirs: readonly string[], workspaces = dirs.filter((d) => d !== '.')): PruneScope {
+function scope(
+  dirs: readonly string[],
+  workspaces = dirs.filter((d) => d !== '.'),
+  dropped: ReadonlySet<string> = new Set(),
+): PruneScope {
   return {
     dirs: new Set(dirs),
+    dropped,
     members: MEMBERS,
     workspaces,
     manifests: new Map([
@@ -217,5 +222,62 @@ describe('yarn.lock', () => {
     expect(() => pruneYarn(YARN_BERRY_LOCK, scope(['.', 'packages/a']))).toThrow(
       'yarn.lock: b@workspace:packages/b is a workspace the subset leaves out',
     )
+  })
+})
+
+// `--production`: the kept workspaces stop naming a dependency their
+// manifests named only as a dev dependency. The fixtures' root has one,
+// `is-number@^2`, reached by nothing else, so its entry goes with it and
+// the root importer empties; `b`'s own `is-number@^7` stays.
+describe('a dropped dev dependency', () => {
+  const DROP = scope(['.', 'packages/a', 'packages/b'], undefined, new Set(['is-number']))
+  it.each([
+    ['bun.lock', BUN_LOCK, pruneBun, '"is-number@2.1.0"', '"is-number@7.0.0"'],
+    ['pnpm-lock.yaml', PNPM_LOCK, prunePnpm, 'is-number@2.1.0', 'is-number@7.0.0'],
+    ['package-lock.json', NPM_LOCK, pruneNpm, 'is-number-2.1.0.tgz', 'is-number-7.0.0.tgz'],
+  ] as const)('%s', (_, source, prune, entry, kept) => {
+    // CONTROL: kept without the drop.
+    expect(prune(source, AB)).toContain(entry)
+    const pruned = prune(source, DROP)
+    expect(pruned).not.toContain(entry)
+    expect(pruned).not.toContain('^2.0.0')
+    expect(pruned).toContain(kept)
+    expect(pruned).toContain('^7.0.0')
+  })
+
+  it('pnpm writes an importer the drop empties as {}, and leaves one already {}', () => {
+    const pruned = prunePnpm(PNPM_LOCK, DROP)
+    expect(isCut(PNPM_LOCK.replace('  .:\n', '  .: {}\n'), pruned)).toBe(true)
+    expect(pruned).toContain('importers:\n\n  .: {}\n\n  packages/a:\n')
+    expect(prunePnpm(pruned, DROP)).toBe(pruned)
+  })
+
+  it('a name another field also holds is installed in production and stays', () => {
+    const both = BUN_LOCK.replace(
+      '"name": "root",\n      "devDependencies": {',
+      '"name": "root",\n      "dependencies": {\n        "is-number": "^2.0.0",\n      },\n      "devDependencies": {',
+    )
+    expect(both).not.toBe(BUN_LOCK)
+    expect(pruneBun(both, DROP)).toContain('"is-number@2.1.0"')
+  })
+
+  it('berry drops a workspace link from the kept entry, and the field when it empties', () => {
+    const source = YARN_BERRY_LOCK.replace(
+      '"root@workspace:."\n  dependencies:\n    is-number: "npm:^2.0.0"',
+      '"root@workspace:."\n  dependencies:\n    b: "workspace:*"',
+    )
+    expect(source).not.toBe(YARN_BERRY_LOCK)
+    const C = scope(['.', 'packages/c'])
+    // CONTROL: without the drop the root's link leaves the subset.
+    expect(() => pruneYarn(source, C)).toThrow(
+      'b@workspace:packages/b is a workspace the subset leaves out',
+    )
+    const pruned = pruneYarn(source, scope(['.', 'packages/c'], undefined, new Set(['b'])))
+    expect(pruned).toContain(
+      '"root@workspace:.":\n  version: 0.0.0-use.local\n  resolution: "root@workspace:."\n  languageName: unknown\n',
+    )
+    expect(pruned).not.toContain('b@workspace')
+    // A registry range under a dropped name is not a workspace link: kept.
+    expect(pruneYarn(YARN_BERRY_LOCK, DROP)).toContain('"is-number@npm:^2.0.0"')
   })
 })

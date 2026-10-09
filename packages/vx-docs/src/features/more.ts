@@ -1837,6 +1837,7 @@ export const MORE: readonly Feature[] = [
     body: [
       'A Docker image for one app should not install the whole monorepo’s dependencies. `vx prune @demo/web --docker` writes just the projects it needs and a lockfile cut down to them.',
       'Copy `json/` first and install, then `full/`, and the install layer caches until a dependency changes.',
+      'For the image that only runs the app, `--production` also leaves out workspace packages that only dev dependencies pull in.',
     ],
     example: {
       lang: 'text',

@@ -100,11 +100,15 @@ function vx(cwd: string, ...args: string[]): { code: number; stdout: string; std
  * `other` → `dep-other`. Each `dep-*` is a `file:` directory inside the
  * project naming it, so an install needs no registry.
  */
-async function workspace(pm: Pm, home: string): Promise<string> {
+async function workspace(pm: Pm, home: string, devTool = false): Promise<string> {
   const root = await scratch(`vx-prune-${pm}-`)
   const link = pm === 'bun' || pm === 'pnpm' ? 'workspace:*' : '1.0.0'
-  const manifest = (name: string, deps: Record<string, string>): string =>
-    `${JSON.stringify({ name, version: '1.0.0', dependencies: deps }, null, 2)}\n`
+  const manifest = (
+    name: string,
+    deps: Record<string, string>,
+    dev?: Record<string, string>,
+  ): string =>
+    `${JSON.stringify({ name, version: '1.0.0', dependencies: deps, ...(dev ? { devDependencies: dev } : {}) }, null, 2)}\n`
   if (pm === 'pnpm') {
     await write(path.join(root, 'package.json'), '{ "name": "ws", "private": true }\n')
     await write(
@@ -122,11 +126,15 @@ onlyBuiltDependencies: []
       `${JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }, null, 2)}\n`,
     )
   }
-  const project = async (name: string, deps: Record<string, string>): Promise<void> => {
+  const project = async (
+    name: string,
+    deps: Record<string, string>,
+    dev?: Record<string, string>,
+  ): Promise<void> => {
     const dir = path.join(root, 'packages', name)
     await write(
       path.join(dir, 'package.json'),
-      manifest(name, { ...deps, [`dep-${name}`]: `file:./vendor/dep-${name}` }),
+      manifest(name, { ...deps, [`dep-${name}`]: `file:./vendor/dep-${name}` }, dev),
     )
     await write(
       path.join(dir, 'vendor', `dep-${name}`, 'package.json'),
@@ -134,9 +142,11 @@ onlyBuiltDependencies: []
     )
     await write(path.join(dir, 'src', 'index.js'), `export const name = '${name}'\n`)
   }
-  await project('app', { lib: link })
-  await project('lib', {})
+  // `tool` reaches the subset only as `app`'s and `lib`'s dev dependency.
+  await project('app', { lib: link }, devTool ? { tool: link } : undefined)
+  await project('lib', {}, devTool ? { tool: link } : undefined)
   await project('other', {})
+  if (devTool) await project('tool', {})
   await write(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'export default { tasks: {} }\n')
   await write(
     path.join(root, 'vx.workspace.mjs'),
@@ -242,6 +252,54 @@ onlyBuiltDependencies: []
   )
 })
 
+describe.each(['bun', 'pnpm', 'npm', 'yarn'] as const)('vx prune --production with %s()', (pm) => {
+  it.skipIf(!available(pm))(
+    'leaves out a package only dev dependencies reach, and the copy installs frozen',
+    async () => {
+      const home = await scratch('vx-prune-home-')
+      const root = await workspace(pm, home, true)
+      const lockfile = LOCKFILE[pm]
+      expect(await Bun.file(path.join(root, lockfile)).text()).toContain('dep-tool')
+
+      // CONTROL: without the flag the dev dependency is followed.
+      const all = vx(root, 'prune', 'app', '--out-dir', 'out-all')
+      expect({ code: all.code, stderr: all.stderr }).toEqual({ code: 0, stderr: '' })
+      expect(all.stdout).toContain('  tool (packages/tool)\n')
+
+      const r = vx(root, 'prune', 'app', '--docker', '--production')
+      expect({ code: r.code, stderr: r.stderr }).toEqual({ code: 0, stderr: '' })
+      expect(r.stdout).toBe(
+        `vx prune: 2 projects → out (json/ + full/) (production), ${lockfile} pruned\n` +
+          '  app (packages/app)\n' +
+          '  lib (packages/lib)\n',
+      )
+      const full = path.join(root, 'out', 'full')
+      for (const dir of [full, path.join(root, 'out', 'json')]) {
+        for (const name of ['app', 'lib']) {
+          const pkg = (await Bun.file(path.join(dir, 'packages', name, 'package.json')).json()) as {
+            devDependencies?: unknown
+            dependencies: Record<string, string>
+          }
+          expect(pkg.devDependencies).toBeUndefined()
+          expect(Object.keys(pkg.dependencies).sort()).toEqual(
+            name === 'app' ? ['dep-app', 'lib'] : ['dep-lib'],
+          )
+        }
+      }
+      const pruned = await Bun.file(path.join(full, lockfile)).text()
+      expect(pruned).toContain('dep-lib')
+      expect(pruned).not.toContain('tool')
+      const frozen = install(pm, full, home, true)
+      expect({ code: frozen.code, out: frozen.code === 0 ? '' : frozen.out }).toEqual({
+        code: 0,
+        out: '',
+      })
+      expect(await Bun.file(path.join(full, lockfile)).text()).toBe(pruned)
+    },
+    60_000,
+  )
+})
+
 describe('vx prune without an install', () => {
   async function bare(): Promise<string> {
     const root = await scratch('vx-prune-refuse-')
@@ -301,7 +359,7 @@ export default { plugins: [bun(), npm()] }
       code: 1,
       stdout: '',
       stderr:
-        'vx prune: --out-dir needs a path, got the flag --docker\nusage: vx prune <project...> [--out-dir <dir>] [--docker]\n',
+        'vx prune: --out-dir needs a path, got the flag --docker\nusage: vx prune <project...> [--out-dir <dir>] [--docker] [--production]\n',
     })
     expect((await readdir(root)).sort()).toEqual(['package.json', 'packages', 'vx.workspace.mjs'])
     // CONTROL: the `=` form names a path that starts with '-'.

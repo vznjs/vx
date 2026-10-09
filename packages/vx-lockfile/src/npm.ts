@@ -8,7 +8,7 @@
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
 import { reachDigests } from '@vzn/vx'
-import { depsOf, record, type Json } from './json.js'
+import { depsOf, devOnly, dropDev, record, type Json } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -147,9 +147,18 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
  * same paths.
  */
 export function pruneLockfile(text: string, scope: PruneScope): string {
-  const { dirs, members, workspaces } = scope
+  const { dirs, members, workspaces, dropped } = scope
   const lock = parseLockfile(text)
   const doc = JSON.parse(text) as Json
+  const packages = record(doc['packages'])!
+  // What production struck from each kept workspace's manifest, struck from its entry too.
+  const skip = new Map<string, Set<string>>()
+  for (const p of Object.keys(packages)) {
+    if (!dirs.has(p === '' ? '.' : p)) continue
+    const names = devOnly(record(packages[p]), dropped)
+    skip.set(p, names)
+    dropDev(record(packages[p]), names)
+  }
   const reached = new Set<string>()
   const visit = (p: string | undefined): void => {
     if (p === undefined || reached.has(p)) return
@@ -159,13 +168,13 @@ export function pruneLockfile(text: string, scope: PruneScope): string {
     }
     reached.add(p)
     if (e.link !== undefined) return visit(lock.packages.has(e.link) ? e.link : undefined)
-    for (const name of e.deps.keys()) visit(resolve(lock, p, name))
+    const gone = skip.get(p)
+    for (const name of e.deps.keys()) if (gone?.has(name) !== true) visit(resolve(lock, p, name))
   }
   for (const [p, e] of lock.packages) {
     const linked = e.link !== undefined && dirs.has(e.link)
     if (linked || dirs.has(p === '' ? '.' : p)) visit(p)
   }
-  const packages = record(doc['packages'])!
   for (const p of Object.keys(packages)) if (!reached.has(p)) delete packages[p]
   const rootEntry = record(packages[''])
   if (rootEntry?.['workspaces'] !== undefined) rootEntry['workspaces'] = [...workspaces]

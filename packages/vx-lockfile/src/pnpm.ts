@@ -12,8 +12,8 @@
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
 import { reachDigests } from '@vzn/vx'
-import { pruneSections } from './blocks.js'
-import { record } from './json.js'
+import { pruneEntries, pruneSections, yamlKey } from './blocks.js'
+import { devOnly, record } from './json.js'
 import type { PruneScope } from './scope.js'
 
 export interface Lockfile {
@@ -283,13 +283,23 @@ function buildGraph(lock: Lockfile): Graph {
  * overrides and settings are the workspace's, and the subset's manifests
  * still name them. A multi-document lockfile keeps the env document whole.
  */
-export function pruneLockfile(text: string, { dirs }: PruneScope): string {
+export function pruneLockfile(text: string, { dirs, dropped }: PruneScope): string {
   const marker = [...text.matchAll(/^---[ \t]*$/gm)].at(-1)
   const cut = marker === undefined ? 0 : marker.index + marker[0].length
   const lock = parseLockfile(text)
+  // What production struck from each kept importer's manifest.
+  const skip = new Map<string, Set<string>>()
+  if (dropped.size > 0) {
+    const docs: unknown = Bun.YAML.parse(text)
+    const doc = record(Array.isArray(docs) ? docs.at(-1) : docs)
+    for (const [dir, entry] of Object.entries(record(doc?.['importers']) ?? {})) {
+      if (dirs.has(dir)) skip.set(dir, devOnly(record(entry), dropped))
+    }
+  }
   const reached = new Set<string>()
-  const visit = (dir: string, deps: ReadonlyMap<string, string>): void => {
+  const visit = (dir: string, deps: ReadonlyMap<string, string>, importer = false): void => {
     for (const [name, version] of deps) {
+      if (importer && skip.get(dir)?.has(name) === true) continue
       if (version.startsWith('link:')) {
         const target = joinPosix(dir, version.slice('link:'.length))
         if (lock.importers.has(target) && !dirs.has(target)) {
@@ -303,17 +313,69 @@ export function pruneLockfile(text: string, { dirs }: PruneScope): string {
       visit('.', lock.snapshots.get(key) ?? new Map())
     }
   }
-  for (const [dir, deps] of lock.importers) if (dirs.has(dir)) visit(dir, deps)
+  for (const [dir, deps] of lock.importers) if (dirs.has(dir)) visit(dir, deps, true)
   const v9 = Number.parseInt(lock.version, 10) >= 9
   const packages = new Set([...reached].map((key) => (v9 ? packageKey(key) : key)))
   return (
     text.slice(0, cut) +
-    pruneSections(text.slice(cut), {
-      importers: (dir) => dirs.has(dir),
-      packages: (key) => packages.has(key),
-      snapshots: (key) => reached.has(key),
-    })
+    dropImporterDev(
+      pruneSections(text.slice(cut), {
+        importers: (dir) => dirs.has(dir),
+        packages: (key) => packages.has(key),
+        snapshots: (key) => reached.has(key),
+      }),
+      skip,
+    )
   )
+}
+
+/**
+ * Each importer's `devDependencies` without the `dropped` names, cut as
+ * lines like every other prune: the subsection goes when it empties, and
+ * an importer left with nothing is `{}`, as pnpm writes one.
+ */
+function dropImporterDev(text: string, skip: ReadonlyMap<string, ReadonlySet<string>>): string {
+  if (![...skip.values()].some((s) => s.size > 0)) return text
+  const lines = text.split('\n')
+  const start = lines.findIndex((l) => /^importers:\s*$/.test(l))
+  if (start === -1) return text
+  let end = start + 1
+  while (end < lines.length && !/^\S/.test(lines[end]!)) end++
+  const indented = (l: string, n: number): boolean =>
+    l.startsWith(' '.repeat(n)) && /^[^\s#]/.test(l.slice(n))
+  const out = lines.slice(0, start + 1)
+  let i = start + 1
+  while (i < end) {
+    if (!indented(lines[i]!, 2)) {
+      out.push(lines[i++]!)
+      continue
+    }
+    const key = i
+    const dropped = skip.get(yamlKey(lines[key]!)) ?? new Set<string>()
+    let stop = i + 1
+    while (stop < end && !indented(lines[stop]!, 2)) stop++
+    const body: string[] = []
+    for (let j = key + 1; j < stop;) {
+      if (lines[j] !== '    devDependencies:') {
+        body.push(lines[j++]!)
+        continue
+      }
+      let sub = j + 1
+      while (sub < stop && (lines[sub]!.trim() === '' || /^ {5,}/.test(lines[sub]!))) sub++
+      const kept = pruneEntries(lines, j + 1, sub, 6, (l) => !dropped.has(yamlKey(l)))
+      if (kept.some((l) => indented(l, 6))) body.push(lines[j]!, ...kept)
+      else body.push(...kept.filter((l) => l.trim() === ''))
+      j = sub
+    }
+    const emptied = !body.some((l) => indented(l, 4)) && stop - key - 1 > body.length
+    const entry = !emptied
+      ? [lines[key]!, ...body]
+      : [`${lines[key]!.replace(/:\s*$/, '')}: {}`, ...body.filter((l) => l.trim() === '')]
+    out.push(...entry)
+    i = stop
+  }
+  out.push(...lines.slice(end))
+  return out.join('\n')
 }
 
 /** `packages/a` + `../b` → `packages/b`; `.` + `packages/a` → `packages/a`. POSIX, as the lockfile writes paths. */

@@ -1,9 +1,12 @@
-// `vx prune <project...> [--out-dir <dir>] [--docker]`: the workspace cut to
+// `vx prune <project...> [--out-dir <dir>] [--docker] [--production]`: the workspace cut to
 // the named projects and their transitive workspace dependencies, for a
 // Docker build that installs and builds only what it ships (`turbo prune`).
 // Every lockfile here is cut to what the subset installs, so the copy
 // installs with a frozen lockfile and a lockfile line the subset cannot
-// reach does not bust the install layer.
+// reach does not bust the install layer. `--production` follows no
+// devDependencies edge between workspace packages: a package only a dev
+// dependency pulls in is left out, and the kept manifests and lockfile no
+// longer name it (`turbo prune --production`).
 //
 //   <out>/            the subset (with --docker: <out>/full/)
 //     package.json      `workspaces` rewritten to the subset's dirs
@@ -31,7 +34,7 @@ import * as pnpmLock from './pnpm.js'
 import * as yarnLock from './yarn.js'
 import type { PruneScope } from './scope.js'
 
-const USAGE = 'usage: vx prune <project...> [--out-dir <dir>] [--docker]'
+const USAGE = 'usage: vx prune <project...> [--out-dir <dir>] [--docker] [--production]'
 
 const LOCKFILES: Readonly<Record<string, (text: string, scope: PruneScope) => string>> = {
   'pnpm-lock.yaml': pnpmLock.pruneLockfile,
@@ -70,16 +73,19 @@ interface Args {
   readonly projects: readonly string[]
   readonly outDir: string
   readonly docker: boolean
+  readonly production: boolean
 }
 
 function parseArgs(argv: readonly string[]): Args | null {
   const projects: string[] = []
   let outDir = 'out'
   let docker = false
+  let production = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!
     if (a === '--help' || a === '-h') return null
     if (a === '--docker') docker = true
+    else if (a === '--production') production = true
     else if (a === '--out-dir' || a.startsWith('--out-dir=')) {
       const v = a === '--out-dir' ? argv[++i] : a.slice('--out-dir='.length)
       if (v === undefined || v === '')
@@ -93,7 +99,7 @@ function parseArgs(argv: readonly string[]): Args | null {
     else projects.push(a)
   }
   if (projects.length === 0) throw new UserError(`vx prune: name at least one project\n${USAGE}`)
-  return { projects, outDir, docker }
+  return { projects, outDir, docker, production }
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -123,7 +129,14 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
       `vx prune: no project named ${unknown.map((n) => JSON.stringify(n)).join(', ')} (the root is always kept; name the projects under it)`,
     )
   }
-  const graph = buildPackageGraph(projects)
+  // Production: the graph without dev edges, so a package reached only
+  // through a devDependencies entry is never added. The linking rules are
+  // the graph's own either way.
+  const graph = buildPackageGraph(
+    args.production
+      ? projects.map((p) => ({ ...p, packageJson: { ...p.packageJson, devDependencies: {} } }))
+      : projects,
+  )
   const names = new Set<string>()
   const add = (name: string): void => {
     if (names.has(name) || !byName.has(name)) return
@@ -207,17 +220,43 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
       : { ...(field as object), packages: workspaces }
   }
 
+  // Production: each kept manifest (the root's too) without the
+  // devDependencies entries naming a workspace package the subset leaves
+  // out, written over the copy; the lockfiles drop the same entries.
+  const dropped = new Set<string>()
+  const rewritten = new Map<string, Record<string, unknown>>()
+  if (args.production) {
+    const strip = (rel: string, pkg: Record<string, unknown>): void => {
+      const dev = record(pkg['devDependencies'])
+      const gone = Object.keys(dev ?? {}).filter((n) => byName.has(n) && !names.has(n))
+      if (dev === undefined || gone.length === 0) return
+      for (const n of gone) dropped.add(n)
+      const { devDependencies: _, ...rest } = pkg
+      const kept = Object.entries(dev).filter(([n]) => !gone.includes(n))
+      rewritten.set(
+        rel,
+        kept.length === 0 ? rest : { ...pkg, devDependencies: Object.fromEntries(kept) },
+      )
+    }
+    strip('.', rootManifest)
+    for (const [i, p] of subset.entries()) {
+      strip(rels[i]!, JSON.parse(await Bun.file(path.join(p.dir, 'package.json')).text()))
+    }
+  }
   const manifests = new Map<string, ReadonlyMap<string, string>>()
   type Deps = Partial<Record<(typeof DEP_FIELDS)[number], Record<string, string>>>
   const depsOf = (pkg: Deps): ReadonlyMap<string, string> =>
     new Map(DEP_FIELDS.flatMap((f) => Object.entries(pkg[f] ?? {})))
-  manifests.set('.', depsOf(rootManifest as Deps))
-  for (const [i, p] of subset.entries()) manifests.set(rels[i]!, depsOf(p.packageJson))
+  manifests.set('.', depsOf((rewritten.get('.') ?? rootManifest) as Deps))
+  for (const [i, p] of subset.entries()) {
+    manifests.set(rels[i]!, depsOf((rewritten.get(rels[i]!) ?? p.packageJson) as Deps))
+  }
   const scope: PruneScope = {
     dirs: new Set(['.', ...rels]),
     members: new Set(projects.map((p) => posix(path.relative(root, p.dir)))),
     workspaces,
     manifests,
+    dropped,
   }
 
   if (
@@ -245,11 +284,12 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
       rewriteWorkspaceYaml(await Bun.file(workspaceYaml).text(), patterns),
     )
   }
-  // A manifest with no `workspaces` (pnpm's) is copied byte for byte.
-  if (listed !== undefined)
-    written.set('package.json', `${JSON.stringify(rootManifest, null, 2)}\n`)
+  // A manifest with no `workspaces` (pnpm's) is copied byte for byte
+  // unless production rewrote it.
+  const rootOut = rewritten.get('.') ?? (listed !== undefined ? rootManifest : undefined)
+  if (rootOut !== undefined) written.set('package.json', `${JSON.stringify(rootOut, null, 2)}\n`)
   const installFiles = [
-    ...(listed === undefined ? ['package.json'] : []),
+    ...(rootOut === undefined ? ['package.json'] : []),
     ...INSTALL_FILES,
     ...(await namedFiles(root, rootManifest)),
   ]
@@ -272,12 +312,22 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
       filter: (src) => !COPY_EXCLUDES.has(path.basename(src)),
     })
   }
+  const manifestText = (rel: string): string | undefined => {
+    const pkg = rel === '.' ? undefined : rewritten.get(rel)
+    return pkg === undefined ? undefined : `${JSON.stringify(pkg, null, 2)}\n`
+  }
+  for (const rel of rels) {
+    const text = manifestText(rel)
+    if (text !== undefined) await writeFile(path.join(full, rel, 'package.json'), text)
+  }
   if (args.docker) {
     const json = path.join(out, 'json')
     await emit(json, [])
     for (const rel of rels) {
       await mkdir(path.join(json, rel), { recursive: true })
-      await cp(path.join(root, rel, 'package.json'), path.join(json, rel, 'package.json'))
+      const text = manifestText(rel)
+      if (text !== undefined) await writeFile(path.join(json, rel, 'package.json'), text)
+      else await cp(path.join(root, rel, 'package.json'), path.join(json, rel, 'package.json'))
     }
   }
 
@@ -285,6 +335,7 @@ export async function prune(argv: readonly string[], ctx: CommandContext): Promi
   process.stdout.write(
     `vx prune: ${subset.length} project${subset.length === 1 ? '' : 's'} → ${args.outDir}` +
       `${args.docker ? ' (json/ + full/)' : ''}` +
+      `${args.production ? ' (production)' : ''}` +
       `${lockfiles.length > 0 ? `, ${lockfiles.join(', ')} pruned` : ''}\n` +
       subset.map((p, i) => `  ${p.name} (${rels[i]})\n`).join(''),
   )

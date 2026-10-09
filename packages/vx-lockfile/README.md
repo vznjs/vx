@@ -52,7 +52,7 @@ The claim, the per-project key, the memo and the `--affected` diff are core's `l
 Declaring any of the four plugins adds `vx prune` (the `commands` seam): the workspace cut to some projects and their transitive workspace dependencies, for a Docker build that installs and builds only what it ships — `turbo prune`.
 
 ```sh
-vx prune <project...> [--out-dir <dir>] [--docker]
+vx prune <project...> [--out-dir <dir>] [--docker] [--production]
 ```
 
 The out dir (default `out/`, relative to the cwd) gets the root `package.json` with `workspaces` rewritten to the subset's dirs (a glob character in a dir name bracketed, `a[1]` → `a[[]1]`, so the pattern matches that dir alone), `pnpm-workspace.yaml` with `packages` rewritten (every other key as written), each lockfile at the root **pruned** to what the subset installs, the install config (`.npmrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, `bunfig.toml`, `.nvmrc`, `.node-version`, the patch files `patchedDependencies` names, Yarn's `yarnPath` and plugins), `vx.workspace.*`, the root `vx.config.*`, and each project directory less `node_modules`, `.git`, `.vx` and `.turbo`. A workspace package a copied vx config imports (a local plugin) comes along with its closure: the config loads before any task. A relative config import that leaves the subset is warned about. `--docker` writes `json/` — the root install files and each project's `package.json`, the cacheable install layer — and `full/`, everything:
@@ -65,6 +65,8 @@ RUN bunx vx run app#build
 ```
 
 The pruned lockfile is the source with whole entries cut, in the package manager's own layout, so it installs with a frozen lockfile (`bun install --frozen-lockfile`, `pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`) and a line only another project reaches no longer busts the install layer. Kept: the root's and each kept workspace's entries and every package they reach — through Bun's and npm's hoisted walk (a package stays at the path it held; nothing is re-hoisted), pnpm's snapshots, Yarn's descriptors. Workspace-wide fields (catalogs, overrides, patches, settings, `trustedDependencies`) stay whole: the root manifest still names them. pnpm's env document stays whole. Yarn classic records no workspaces, so its walk starts at each kept manifest's dependencies.
+
+`--production` follows no `devDependencies` edge between workspace packages: a package only a dev dependency reaches is left out (`turbo prune --production`). Each kept manifest, the root's too, loses the `devDependencies` entries naming one, its field gone when it empties, and every lockfile drops the same entries: bun's and npm's workspace records, pnpm's importer (`{}` when it empties), Yarn berry's `workspace:` link in the workspace entry; Yarn classic walks the stripped manifests. A name another field also holds is installed in production and stays. Third-party dev dependencies stay in the lockfile: an install with `--production` / `--omit=dev` / `--prod` skips them. For the stage that runs a built app, not the one that builds it.
 
 Refused, with the reason: an out dir that is or contains the root, one inside a copied project, one that already has content; a project name the workspace lacks (the root is always kept); `bun.lockb` without `bun.lock` (binary — `bun install --save-text-lockfile`). A `file:` or `link:` dependency outside every copied project is not copied. One plugin or four, there is one `prune`: it prunes every lockfile at the root.
 
