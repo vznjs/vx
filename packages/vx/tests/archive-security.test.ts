@@ -493,6 +493,37 @@ describe('name rejections', () => {
     )
   })
 
+  // `outputs/.` names the anchor itself: ingest kept it, and every hit
+  // failed renaming a file over the project directory, blamed on the
+  // user's tree (found by archive-restore-fuzz.test.ts).
+  it('rejects a `.` segment at ingest and at restore', async () => {
+    const ws = path.join(dest, 'ws')
+    await mkdir(ws)
+    const refusals: string[] = []
+    for (const name of ['outputs/.', 'workspace-outputs/.', 'outputs/./', 'outputs/./a.txt']) {
+      const tar = await withSum(tarWithEntry(name, new Uint8Array(1)))
+      const scanned = await scanBothOrThrow(tar).then(
+        () => 'kept',
+        (e: unknown) => (e instanceof ArchiveSecurityError ? 'refused' : String(e)),
+      )
+      const restored = await extractArtifactStream(streamOf(tar), dest, ws).then(
+        () => 'kept',
+        (e: unknown) => (e instanceof ArchiveSecurityError ? 'refused' : String(e)),
+      )
+      refusals.push(`${name} ${scanned} ${restored}`)
+    }
+    expect(refusals).toEqual([
+      'outputs/. refused refused',
+      'workspace-outputs/. refused refused',
+      'outputs/./ refused refused',
+      'outputs/./a.txt refused refused',
+    ])
+    expect(await readdir(dest)).toEqual(['ws'])
+    // CONTROL: a dot that starts a name is not a segment.
+    await restore(tarWithEntry('outputs/.env/.x', new Uint8Array([120])), dest)
+    expect((await stat(path.join(dest, '.env', '.x'))).isFile()).toBe(true)
+  })
+
   it('rejects an absolute name', async () => {
     await expect(restore(tarWithEntry('/etc/passwd', new Uint8Array(1)), dest)).rejects.toThrow(
       /escape|absolute|unsafe/i,

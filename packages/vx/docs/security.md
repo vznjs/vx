@@ -59,9 +59,9 @@ the local store:
   refused under another (a local read-back is not re-checked);
 - on arrival, carries only the files the task declares as outputs;
 - lands each file under the task's project or declared workspace path:
-  traversal and names that escape are refused before anything lands, a
-  refused archive leaves nothing behind, and links and devices are
-  never written;
+  traversal (`..`, `.`, absolute names) is refused before anything
+  lands, a refused archive leaves nothing behind, and links and devices
+  are never written; a seeded fuzz of hostile archives holds this;
 - is bounded: a decompression bomb, an oversized header or body, and a
   remote answer larger than asked for are refused as they are read.
 

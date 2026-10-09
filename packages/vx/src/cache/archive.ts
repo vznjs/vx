@@ -1085,6 +1085,12 @@ function assertSafeName(name: string): void {
   if (name.includes('//')) {
     throw new ArchiveSecurityError(`archive entry name has empty path component (unsafe): ${name}`)
   }
+  // vx never packs a `.` segment, and `outputs/.` names the anchor itself:
+  // ingest kept it, and every hit then failed renaming a file over the
+  // project directory, blamed on the user's tree.
+  if (hasDotSegment(name)) {
+    throw new ArchiveSecurityError(`archive entry name has a '.' segment (unsafe): ${name}`)
+  }
   // No backslash refusal: vx runs on Linux and macOS (Windows through WSL),
   // where it is a name character, and the save scans its own artifact with
   // these checks, so refusing one made `dist/back\slash` uncacheable.
@@ -1121,6 +1127,10 @@ const NAME_MAX = 255
 
 /** Bytes a path may hold, its terminating NUL included (limits.h). */
 const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+
+function hasDotSegment(p: string): boolean {
+  return p === '.' || p.startsWith('./') || p.endsWith('/.') || p.includes('/./')
+}
 
 function hasParentSegment(p: string): boolean {
   if (p === '..' || p.startsWith('../') || p.endsWith('/..')) return true
