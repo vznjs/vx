@@ -1974,7 +1974,8 @@ Each script becomes a task with its command verbatim. `build` gets
 compile`, is a group, and the edge goes on the script that does the
 work) and **no cache block** — under a
 `TODO(vx-migrate)` showing the block to add with the package's real
-inputs and outputs. A task without a cache block always runs; a block
+inputs and outputs, and the same block commented as the task's first
+line: set the real globs and delete the `// `. A task without a cache block always runs; a block
 with EMPTY outputs is not "uncached" but a no-output task that hits on
 unchanged inputs and skips the build with nothing to restore (a deleted
 `dist` stays deleted under a green `up-to-date` run — what `init`
@@ -2120,8 +2121,8 @@ order may matter, so it is not made a group.
 
 The report lists each TODO once per reason: tasks that share one are
 named together (the first five, then a count; the files carry each),
-and when no task caches it says a cache block from a TODO makes the
-second run a hit. Its `next:` line is a command the user can type: the
+and when no task caches it says uncommenting a TODO task's cache line
+makes the second run a hit. Its `next:` line is a command the user can type: the
 runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
 `npm_config_user_agent`) with the installed `vx` bin, else the
 `@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no

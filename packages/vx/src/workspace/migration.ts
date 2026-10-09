@@ -482,7 +482,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // A run of tasks none of which caches is never a hit, and a first try
   // that runs twice to see the cache work saw it run twice.
   if (!cached && [...todos.keys()].some(isCacheTodo)) {
-    report.push('', 'no task caches yet: add the cache block a TODO shows, and a second run hits')
+    report.push(
+      '',
+      'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits',
+    )
   }
   const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
   // The line is the next thing to type, so it names what that run would
@@ -695,7 +698,16 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
         : IDENT.test(t.name)
           ? t.name
           : quoteTsLiteral(t.name)
-    lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
+    const rendered = renderValue(t.task, '    ')
+    // The suggested block sits in the task, commented: deleting `// `
+    // after setting the real globs caches it, no copying from the TODO.
+    const block =
+      t.task['cache'] === undefined
+        ? t.todos.find(isCacheTodo)?.match(/^cache: add `(.+?)`/)?.[1]
+        : undefined
+    lines.push(
+      `    ${key}: ${block === undefined ? rendered : rendered.replace('{\n', `{\n      // ${block},\n`)},`,
+    )
   }
   lines.push('  },', format === 'ts' ? '} satisfies ProjectConfig' : '}', '')
   return lines.join('\n')

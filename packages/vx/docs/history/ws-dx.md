@@ -234,3 +234,8 @@ json` replayed a failure already fixed with no word of it. A failed
   `.gitignore` drops (`git check-ignore`), with the `!name` line that
   keeps them: on vueuse `--mjs` wrote configs `packages/**/*.mjs` hid
   from every commit (Growth). Row: `init.test.ts` (none, dropped, fixed).
+- **DX-41** `vx init` writes each cache TODO's suggested block into
+  the task itself, commented (`// cache: { … },`): setting the globs
+  and deleting `// ` caches it, no copying from the TODO line. A fresh
+  two-package workspace went from init to `all cached` by that one
+  edit. Row: `migration.test.ts` (commented line in the TODO task only).
