@@ -44,7 +44,7 @@ config key or an environment variable is missing here.
 - **Output modes** (`--output-logs`) — full, errors-only, hash-only or none; the default follows the flow. no post
 - **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
-- **Failed output kept for agents** — a failure's full log is saved and pointed to. no post
+- **Failed output kept for agents** — a failure's full log is saved and pointed to. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. no post
 - **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · no post
@@ -65,13 +65,13 @@ config key or an environment variable is missing here.
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`) — replay a recorded run's summary, or list recent runs. [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
 - **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
-- **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. no post
-- **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
+- **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
+- **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Stable error codes** (`VX_E_…`) — under `--format json` a refusal is a JSON line on stdout with a code an agent branches on. post: [A refusal an agent can read](https://vznjs.github.io/vx/blog/error-codes/)
-- **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
-- **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. no post
+- **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
+- **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. no post
-- **Agent skill** (`skills/vx/SKILL.md`) — an installable skill that teaches a coding agent to run, debug and query vx. no post
+- **Agent skill** (`skills/vx/SKILL.md`) — an installable skill that teaches a coding agent to run, debug and query vx. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 
 ## Cache
 
