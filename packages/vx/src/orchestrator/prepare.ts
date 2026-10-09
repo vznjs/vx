@@ -74,6 +74,7 @@ import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
+import { refuseFiltersThroughGroups } from './upstream.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -664,6 +665,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
     }
+    refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies
     let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
     if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {

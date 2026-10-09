@@ -1310,3 +1310,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   the unsafe suite, the canary and the cross-compile; `darwin-gate`
   keeps the required name "core tests (macOS)" and passes when both
   passed or `changes` skipped both. Linux after X-196: 3m46, was 6m06.
+
+- **X-200.** A `cache.inputs.tasks` pattern that matches no dependency
+  but does match a group's member (`'build.*'` over `dependsOn: ['build']`,
+  a group of `build.a` and `build.b`) selected nothing and served stale
+  hits. The run now refuses it at plan, naming the member and the group
+  (`refuseFiltersThroughGroups`). Exact names were already refused at load.
