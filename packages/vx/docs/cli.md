@@ -942,14 +942,16 @@ Schema, held like the read verbs' (see Machine-readable output):
       "p50Ms": 72640
     }
   ],
-  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0 }
+  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0, "criticalPath": [] }
 }
 ```
 
 Every task with history carries `p50Ms`, hits included (only the text
 view's `~p50` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
-readable.
+readable. Its `criticalPath` names the would-run tasks with history on
+the chain `wallMs` measures, dependencies first: the tasks to speed up
+to shorten the run.
 
 **Why a task is affected.** Under `--affected`, each requested task the
 diff kept gets a line, and its JSON object an `affected` reason:
@@ -1001,6 +1003,7 @@ Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
   "startedAt": "2026-09-27T17:34:54.572Z",
   "endedAt": "2026-09-27T17:34:54.586Z",
   "totalMs": 14.123643,
+  "savedMs": 9,
   "tasks": [
     {
       "id": "a#build",
@@ -1010,6 +1013,7 @@ Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
       "exitCode": 0,
       "durationMs": 3,
       "hash": "48007ccadd42ed7d",
+      "storedDurationMs": 9,
       "storedCpuMs": 2.059,
       "wallclockStartNs": "9456491",
       "wallclockEndNs": "12902888"
@@ -1041,10 +1045,10 @@ reports neither, since what bwrap's pid namespace used never reaches vx);
 `restored` appears on a hit only: `true` when its outputs were restored,
 `false` when they were already up to date. A hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
-artifact and appears under its own keys, `storedCpuMs` /
-`storedPeakRssBytes` (the work the hit skipped, the split
-`storedDurationMs` draws in the event stream) — a remote worker's peak
-is never presented as this run's. `admissionHeldMs` appears on a row
+artifact and appears under its own keys, `storedDurationMs` /
+`storedCpuMs` / `storedPeakRssBytes` (the work the hit skipped) — a
+remote worker's peak is never presented as this run's. `savedMs` is
+their sum over the hits, the footer's `saved` as a number. `admissionHeldMs` appears on a row
 only when an `admit` policy (a plugin's — `@vzn/vx-schedule-history`
 packs learned reservations) refused the task while a worker was free:
 the wait from that first refusal to its dispatch, the plugin's hand on

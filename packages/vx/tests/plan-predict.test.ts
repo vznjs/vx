@@ -391,7 +391,12 @@ describe('plan() — time prediction', () => {
 
     // Summing every task would give 380; taking the single slowest would give
     // 200. Only a real longest-path walk gives 100 + 200 + 30.
-    expect(p.predicted).toEqual({ wallMs: 330, workMs: 380, unknownCount: 0 })
+    expect(p.predicted).toEqual({
+      wallMs: 330,
+      workMs: 380,
+      unknownCount: 0,
+      criticalPath: ['a#root', 'a#right', 'a#join'],
+    })
     // Each task also carries its own p50 for the per-line `~eta`.
     expect(p.tasks.find((t) => t.node.id === 'a#right')!.p50Ms).toBe(200)
   })
@@ -414,7 +419,12 @@ describe('plan() — time prediction', () => {
       cache: stubCache(() => null).layer,
       history: hist.provider,
     })
-    expect(p.predicted).toEqual({ wallMs: 930, workMs: 950, unknownCount: 0 })
+    expect(p.predicted).toEqual({
+      wallMs: 930,
+      workMs: 950,
+      unknownCount: 0,
+      criticalPath: ['a#heavy', 'a#join'],
+    })
 
     // CONTROL: the same graph with the deps the other way round predicts the
     // same wall — the walk is independent of the order deps are listed in.
@@ -517,7 +527,12 @@ describe('plan() — time prediction', () => {
       history: hist.provider,
     })
 
-    expect(p.predicted).toEqual({ wallMs: 330, workMs: 380, unknownCount: 0 })
+    expect(p.predicted).toEqual({
+      wallMs: 330,
+      workMs: 380,
+      unknownCount: 0,
+      criticalPath: ['a#root', 'a#right', 'a#join'],
+    })
   })
 
   it('costs a cache hit and a group at zero even when history has numbers for them', async () => {
@@ -532,7 +547,7 @@ describe('plan() — time prediction', () => {
     // A restore is a tar extract and a group runs nothing: a warm plan must
     // predict ~0, not the execution time the hit is SAVING.
     expect(statusById(p)['a#warm']).toBe('hit-local')
-    expect(p.predicted).toEqual({ wallMs: 0, workMs: 0, unknownCount: 0 })
+    expect(p.predicted).toEqual({ wallMs: 0, workMs: 0, unknownCount: 0, criticalPath: [] })
     // The p50 is still attached — plan-format shows it on would-run lines only.
     expect(p.tasks.find((t) => t.node.id === 'a#warm')!.p50Ms).toBe(900)
   })
@@ -553,7 +568,12 @@ describe('plan() — time prediction', () => {
       ['a#install', 'noop'],
       ['a#build', undefined],
     ])
-    expect(p.predicted).toEqual({ wallMs: 100, workMs: 100, unknownCount: 0 })
+    expect(p.predicted).toEqual({
+      wallMs: 100,
+      workMs: 100,
+      unknownCount: 0,
+      criticalPath: ['a#build'],
+    })
   })
 
   it('counts a would-run task with no history instead of guessing a cost', async () => {
@@ -567,7 +587,12 @@ describe('plan() — time prediction', () => {
 
     // wallMs/workMs are honest LOWER BOUNDS: the unknown task adds 0 and is
     // surfaced as a count so the footer can say "+?".
-    expect(p.predicted).toEqual({ wallMs: 400, workMs: 400, unknownCount: 1 })
+    expect(p.predicted).toEqual({
+      wallMs: 400,
+      workMs: 400,
+      unknownCount: 1,
+      criticalPath: ['a#known'],
+    })
     expect(p.tasks.find((t) => t.node.id === 'a#fresh')!.p50Ms).toBeUndefined()
   })
 
@@ -582,7 +607,12 @@ describe('plan() — time prediction', () => {
 
     expect(statusById(p)).toEqual({ 'a#warm': 'hit-local', 'a#dev': 'no-cache' })
     // Only `a#dev` costs anything: its upstream is a hit worth 0.
-    expect(p.predicted).toEqual({ wallMs: 250, workMs: 250, unknownCount: 0 })
+    expect(p.predicted).toEqual({
+      wallMs: 250,
+      workMs: 250,
+      unknownCount: 0,
+      criticalPath: ['a#dev'],
+    })
   })
 
   it('asks history only about real tasks, never groups', async () => {

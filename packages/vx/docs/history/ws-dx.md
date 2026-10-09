@@ -87,3 +87,8 @@ and log output reads better. Each must cost the warm path nothing.
   saying what each run's end evicts, and paths under the home
   directory as `~/…` (pretty only; the JSON stays absolute and gains
   `cacheRetention`). Rows: `show-info.test.ts` › the rendered rows.
+- **DX-13.** Run JSON (`--summarize`, `vx run --format json`) gains
+  `savedMs` and each hit's `storedDurationMs`; `--dry=json`'s
+  `predicted` gains `criticalPath`, the would-run tasks with history
+  on the `wallMs` chain. Rows: `run-artifacts.test.ts` › a hit's
+  stored usage; `plan-predict.test.ts` › time prediction.

@@ -52,6 +52,7 @@ export interface SummaryTaskJson {
   flaky?: { passes: number; failures: number; attempts: number }
   cpuMs?: number
   peakRssBytes?: number
+  storedDurationMs?: number
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
@@ -71,6 +72,8 @@ export interface RunSummaryJson {
   startedAt: string
   endedAt: string
   totalMs: number
+  /** What the hits skipped: the sum of their `storedDurationMs`. */
+  savedMs: number
   tasks: SummaryTaskJson[]
   aborted: SummaryTaskJson[]
   summary: Tally
@@ -105,6 +108,7 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): SummaryTaskJson {
     ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
     // A hit's row names what the PRODUCING execution used under its own
     // keys, so a consumer never reads a remote worker's peak as this run's.
+    ...(o.storedDurationMs !== undefined ? { storedDurationMs: o.storedDurationMs } : {}),
     ...(o.storedCpuMs !== undefined ? { storedCpuMs: o.storedCpuMs } : {}),
     ...(o.storedPeakRssBytes !== undefined ? { storedPeakRssBytes: o.storedPeakRssBytes } : {}),
     // Present only when an `admit` policy held the task with a worker free.
@@ -159,6 +163,11 @@ export function runSummaryJson(
     startedAt: new Date(args.startedAtMs).toISOString(),
     endedAt: new Date(args.endedAtMs).toISOString(),
     totalMs: args.totalMs,
+    // The summary row's `saved`, by the same rule: hits only, groups aside.
+    savedMs: counted.reduce(
+      (ms, o) => (isCacheHit(o.status) ? ms + (o.storedDurationMs ?? 0) : ms),
+      0,
+    ),
     tasks: counted.map((o) => taskEntry(o, flakyById.get(o.node.id))),
     aborted: aborted.map((o) => taskEntry(o)),
     // The FULL list: `tallyOutcomes` applies the same group/aborted
