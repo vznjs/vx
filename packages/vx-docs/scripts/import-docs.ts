@@ -167,11 +167,31 @@ function transformProse(line: string, sourceDir: string, prefix: string, linkMap
 const yaml = (s: string) => JSON.stringify(s)
 
 export function deriveDescription(lines: string[]): string {
-  for (const raw of lines) {
+  // A paragraph, not a line: a skipped paragraph (a bold status note, a
+  // list) must not hand its second line to the description.
+  const paragraphs: string[] = []
+  let current: string[] = []
+  let fenced = false
+  for (const raw of [...lines, '']) {
     const line = raw.trim()
-    if (line === '') continue
-    if (/^[#>|`-]|^\*|^\d+\.|^<|^!\[|^:::/.test(line)) continue
-    const plain = line
+    if (line.startsWith('```')) fenced = !fenced
+    if (fenced || line.startsWith('```')) continue
+    if (line !== '') current.push(line)
+    else if (current.length > 0) {
+      paragraphs.push(current.join(' '))
+      current = []
+    }
+  }
+  // A status note or a README's link line describes the page only when
+  // nothing else does.
+  const fallback = /^\*\*Status|^Website:/i
+  const ranked = [
+    ...paragraphs.filter((p) => !fallback.test(p)),
+    ...paragraphs.filter((p) => fallback.test(p)),
+  ]
+  for (const para of ranked) {
+    if (/^[#>|-]|^\* |^\d+\.|^<|^!\[|^:::/.test(para)) continue
+    const plain = para
       .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
       .replace(/[`*_]/g, '')
       .replace(/<([A-Za-z][\w./*-]*)>/g, '$1')
@@ -299,11 +319,31 @@ function transformReadme(dir: string, content: string): string {
 
 // ---- design index (so /design/ and ./design/ links resolve) ----
 
-export function designIndex(designFiles: { url: string; title: string }[]): string {
-  const items = designFiles
-    .sort((a, b) => a.title.localeCompare(b.title))
-    .map((d) => `- [${d.title}](../${d.url})`)
-    .join('\n')
+export function designIndex(
+  designFiles: { url: string; title: string; description?: string }[],
+): string {
+  // Newest first, by the month a note's file name carries; a note without
+  // one sorts last.
+  const monthOf = (url: string) => /-(\d{4})-(\d{2})(?:-\d{2})?\/$/.exec(url)
+  const groups = new Map<string, string[]>()
+  const sorted = [...designFiles].sort((a, b) => {
+    const ka = monthOf(a.url)?.slice(1).join('-') ?? ''
+    const kb = monthOf(b.url)?.slice(1).join('-') ?? ''
+    return kb.localeCompare(ka) || a.title.localeCompare(b.title)
+  })
+  for (const d of sorted) {
+    const m = monthOf(d.url)
+    const heading = m
+      ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1)).toLocaleString('en-US', {
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })
+      : 'Undated'
+    const line = `- [${d.title}](../${d.url})${d.description ? `: ${d.description}` : ''}`
+    groups.set(heading, [...(groups.get(heading) ?? []), line])
+  }
+  const sections = [...groups].map(([h, lines]) => `## ${h}\n\n${lines.join('\n')}`).join('\n\n')
   return `---
 ${GENERATED_MARK}
 title: Design notes
@@ -312,9 +352,9 @@ description: Forward-looking proposals and historical design notes for vx — th
 
 These are forward-looking proposals and historical design notes — the
 record of what was explored, what shipped, and why. They are not part of
-the stable contract.
+the stable contract. Newest first.
 
-${items}
+${sections}
 `
 }
 
@@ -357,7 +397,7 @@ export async function importDocs(
     await rm(path.join(outDir, entry), { recursive: true, force: true })
   }
 
-  const designFiles: { url: string; title: string }[] = []
+  const designFiles: { url: string; title: string; description?: string }[] = []
 
   for (const srcRel of sources) {
     const content = await Bun.file(path.join(docsDir, srcRel)).text()
@@ -370,7 +410,9 @@ export async function importDocs(
     if (srcRel.startsWith('design/')) {
       const m = /^title:\s*(.+)$/m.exec(transformed)
       const title = m ? JSON.parse(m[1]!) : srcRel
-      designFiles.push({ url: cleanUrlFor(srcRel), title })
+      const d = /^description:\s*(.+)$/m.exec(transformed)
+      const description = d ? JSON.parse(d[1]!) : undefined
+      designFiles.push({ url: cleanUrlFor(srcRel), title, description })
     }
   }
 

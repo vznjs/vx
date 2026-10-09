@@ -124,9 +124,13 @@ describe('frontmatter', () => {
     expect(
       deriveDescription([
         '* a bullet that is long enough to be a description',
+        '',
         '1. a numbered line that is long enough as well',
+        '',
         '![an image](x.png) with a caption long enough',
+        '',
         'too short',
+        '',
         'See [the cache](./cache.md) for `<hash>` and **what it keeps** here.',
       ]),
     ).toBe('See the cache for hash and what it keeps here.')
@@ -135,16 +139,52 @@ describe('frontmatter', () => {
     expect([cut.length <= 158, cut.endsWith('word…')]).toEqual([true, true])
   })
 
-  it('the design index lists its notes by title', () => {
+  it('a description is a whole paragraph, past a status note and a code block', () => {
+    expect(
+      deriveDescription([
+        '**Status: shipped 2026-09-03, see the',
+        'plan below.**',
+        '',
+        '```ts',
+        'const looksLikeProse = "a long enough line inside a fence"',
+        '',
+        'const another = "a second long enough line inside the fence"',
+        '```',
+        '',
+        '`vx lock` freezes every project config',
+        'into vx-lock.json.',
+      ]),
+    ).toBe('vx lock freezes every project config into vx-lock.json.')
+    expect(deriveDescription(['**Status: the record of a finished campaign.**'])).toBe(
+      'Status: the record of a finished campaign.',
+    )
+  })
+
+  it('the design index groups its notes by month, newest first', () => {
     expect(
       designIndex([
-        { url: 'design/b/', title: 'Beta' },
-        { url: 'design/a/', title: 'Alpha' },
+        { url: 'design/old-2026-06/', title: 'Old' },
+        { url: 'design/plain/', title: 'Plain' },
+        { url: 'design/b-2026-09-28/', title: 'Beta', description: 'Why beta.' },
+        { url: 'design/a-2026-09/', title: 'Alpha' },
       ])
         .trimEnd()
         .split('\n')
-        .slice(-2),
-    ).toEqual(['- [Alpha](../design/a/)', '- [Beta](../design/b/)'])
+        .slice(-12),
+    ).toEqual([
+      '## September 2026',
+      '',
+      '- [Alpha](../design/a-2026-09/)',
+      '- [Beta](../design/b-2026-09-28/): Why beta.',
+      '',
+      '## June 2026',
+      '',
+      '- [Old](../design/old-2026-06/)',
+      '',
+      '## Undated',
+      '',
+      '- [Plain](../design/plain/)',
+    ])
   })
 })
 
