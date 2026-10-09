@@ -1,86 +1,41 @@
 ---
-// The frame of every feature page: the landing's look (landing.css), its
-// nav and footer, and a theme of the reader's choosing. The theme is the one
-// the docs store (`starlight-theme`), so a reader's pick holds across the
-// site; a first visit is dark, as the docs' ThemeProvider seeds it.
+// The frame of every feature page: the landing's look (landing.css) inside
+// the site's one Starlight shell (header, search, theme, phone menu), so a
+// feature page is found by search and reads as part of the docs.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import Footer from '../landing/Footer.astro'
-import Nav from '../landing/Nav.astro'
 import '../../styles/landing.css'
 import '../../styles/features.css'
 
 interface Props {
   title: string
   description: string
-  /** The page's path under the base, `features/` or `features/<slug>/`. */
-  path: string
   ogImage?: string
 }
-const { title, description, path, ogImage } = Astro.props
-const base = import.meta.env.BASE_URL
-const url = new URL(`${base}${path}`, Astro.site).href
-const image = ogImage ?? new URL(`${base}og.png`, Astro.site).href
+const { title, description, ogImage } = Astro.props
+const head = ogImage
+  ? [{ tag: 'meta' as const, attrs: { property: 'og:image', content: ogImage } }]
+  : []
 ---
 
-<!doctype html>
-<html lang="en" data-theme="dark">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
-    <meta name="description" content={description} />
-    <link rel="canonical" href={url} />
-    <link rel="sitemap" href={`${base}sitemap-index.xml`} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={url} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
-    <meta property="og:image" content={image} />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" href={`${base}logo-mark.svg`} />
-    <script is:inline>
-      try {
-        const stored = localStorage.getItem('starlight-theme')
-        const seeded = localStorage.getItem('vx-theme-seeded')
-        const light = matchMedia('(prefers-color-scheme: light)').matches
-        document.documentElement.dataset.theme =
-          stored === 'light' || stored === 'dark' ? stored : seeded && light ? 'light' : 'dark'
-      } catch {}
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
-    />
-  </head>
-  <body>
-    <div class="vx-landing vx-features">
-      <Nav current="features" themeToggle />
-      <main>
-        <slot />
-        <div class="fedit">
-          <p class="container">
-            <a
-              href="https://github.com/vznjs/vx/edit/main/packages/vx-docs/src/features/features.ts"
-              >Edit this page</a
-            >
-          </p>
-        </div>
-      </main>
-      <Footer />
+<StarlightPage
+  frontmatter={{
+    title,
+    description,
+    template: 'splash',
+    head,
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content vx-landing vx-features">
+    <slot />
+    <div class="fedit">
+      <p class="container">
+        <a href="https://github.com/vznjs/vx/edit/main/packages/vx-docs/src/features/features.ts"
+          >Edit this page</a
+        >
+      </p>
     </div>
-    <script>
-      document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
-        const root = document.documentElement
-        const next = root.dataset['theme'] === 'light' ? 'dark' : 'light'
-        root.dataset['theme'] = next
-        try {
-          localStorage.setItem('starlight-theme', next)
-          localStorage.setItem('vx-theme-seeded', '1')
-        } catch {
-          // storage unavailable: the choice lasts for this page
-        }
-      })
-    </script>
-  </body>
-</html>
+    <Footer />
+  </div>
+</StarlightPage>

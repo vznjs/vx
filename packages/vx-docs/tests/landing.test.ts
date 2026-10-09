@@ -109,6 +109,7 @@ const OLD_LINKS = [
 ]
 const CHAPTER = 'the Guide collapsed into this page; the chapter redirects to its line'
 const REMOVED: Record<string, string> = {
+  'logo-mark.svg': 'the favicon is the shared Starlight head’s, favicon.svg',
   'architecture/': 'internals, reached from the Reference; the footer lists what a user reads',
   'benchmarks/#five-real-turbo-repos-2026-09-11': 'the #real panel went; one benchmark stays',
   'benchmarks/#how-the-overhead-scales-with-the-workspace-2026-09-10':

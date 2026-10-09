@@ -1,7 +1,8 @@
 ---
 // Starlight's page title, and the blog's and the Releases': a post's hero
 // (byline, headline, excerpt as the dek, then the cover, wider than the
-// column), or a listing's masthead.
+// column), or a listing's masthead. The landing and the feature pages set
+// their own headline, so they keep only the skip link's target.
 import Default from '@astrojs/starlight/components/PageTitle.astro'
 import Byline from '../blog/Byline.astro'
 import Cover from '../blog/Cover.astro'
@@ -17,7 +18,9 @@ const post = kind && route.entry.data.date ? await postAt(route.id) : undefined
 ---
 
 {
-  post ? (
+  section === 'home' || section === 'features' ? (
+    <span id={PAGE_TITLE_ID} />
+  ) : post ? (
     <header class="vx-post-hero" data-release={post.version ? "" : undefined}>
       <a class="vx-back" href={sectionHref(post.kind)}>
         <span aria-hidden="true">←</span> {post.kind === 'releases' ? 'Releases' : 'Blog'}

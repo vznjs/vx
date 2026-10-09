@@ -268,7 +268,8 @@ describe('the built feature pages', () => {
       for (const m of page(rel).matchAll(/<img\b[^>]*>/g)) {
         const tag = m[0]
         const src = /\ssrc="([^"]+)"/.exec(tag)?.[1] ?? ''
-        if (!src.includes('/_astro/')) continue
+        // The header's logo is an SVG, not a feature image.
+        if (!src.includes('/_astro/') || src.endsWith('.svg')) continue
         imgs++
         const srcset = /\ssrcset="([^"]+)"/.exec(tag)?.[1] ?? ''
         const urls = [src, ...srcset.split(',').map((s) => s.trim().split(' ')[0]!)]
