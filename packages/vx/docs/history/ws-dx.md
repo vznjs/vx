@@ -111,3 +111,8 @@ and log output reads better. Each must cost the warm path nothing.
   output or a cached task's entry log, so a passing task's log reads
   too. Core `taskLog` (run-failures.ts) serves both. Rows: core
   `last-log.test.ts`, vx-mcp `task-log.test.ts`.
+- **DX-18.** `vx init` first run, walked on a fresh Turbo and a fresh
+  Nx repo without a TTY: both migrate native with no prompt and end on
+  `next: … vx run build --all`. The one rough edge was a second
+  `vx init`: it fetched vx-migrate, which refused to overwrite its own
+  configs, exit 1. It now says vx is set up, with the next step, exit 0. Row: `init.test.ts` "a second vx init after the native migration".

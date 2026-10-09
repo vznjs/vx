@@ -1552,6 +1552,31 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('a second vx init after the native migration says it is set up, exit 0', async () => {
+    // It spawned vx-migrate, which refused to overwrite its own configs, exit 1.
+    const root = await makeScriptsWorkspace()
+    try {
+      await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": { "build": {} } }\n')
+      await Bun.write(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'export default {}\n')
+      expect(await vx(root, ['init'])).toEqual({
+        code: 0,
+        out: "vx is already set up here (vx.workspace.mjs and the projects' vx.config files); --force regenerates them from turbo.json.\n\nnext: vx run build --all\n",
+        err: '',
+      })
+      // Control: a workspace that runs the repo through turbo() is no native setup.
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n",
+      )
+      const control = await vx(root, ['init'])
+      expect(control.out).not.toContain('already set up')
+      expect(control.err).toContain('refusing to overwrite existing files')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it("the next step installs with the repo's own package manager, what is missing only", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-next-'))
     const ua = process.env['npm_config_user_agent']
