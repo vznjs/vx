@@ -16,10 +16,10 @@ config key or an environment variable is missing here.
 - **Every project** (`--all`) — run the task in every project that declares it. [page](https://vznjs.github.io/vx/features/quickstart/) · no post
 - **pnpm-style filters** (`--filter`) — select projects by name, glob, path, dependencies (`foo...`), dependents (`...foo`), negation or a git range. [page](https://vznjs.github.io/vx/features/affected/) · post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Affected only** (`--affected`, `affectedBase`) — run what a change reaches, following task edges from a git base. [page](https://vznjs.github.io/vx/features/affected/) · post: [Run only what a change reaches](https://vznjs.github.io/vx/blog/affected/)
-- **Concurrency** (`--concurrency`, `concurrency`) — a count or a share of the CPUs this process may use (`50%`). [page](https://vznjs.github.io/vx/features/concurrency/) · no post
+- **Concurrency** (`--concurrency`, `concurrency`) — a count or a share of the CPUs this process may use (`50%`). [page](https://vznjs.github.io/vx/features/concurrency/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Skip dependencies** (`--exclude-dependencies`) — skip all `dependsOn` edges, or named ones. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
-- **Failure policy** (`--continue`) — never, deps-ok (default: dependents skip) or always. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
-- **Every skip names its blocker** — a skipped task says which failure blocked it. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
+- **Failure policy** (`--continue`) — never, deps-ok (default: dependents skip) or always. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
+- **Every skip names its blocker** — a skipped task says which failure blocked it. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Retries** (`--retry`, `exec.retries`) — re-run a failed task; a pass after a failure marks it flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim only declared inputs can back](https://vznjs.github.io/vx/blog/flaky-tasks/)
 - **Timeouts** (`--timeout`, `exec.timeout`, `timeout`, `VX_TASK_TIMEOUT`) — kill and fail a runaway task. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
@@ -35,7 +35,7 @@ config key or an environment variable is missing here.
 - **Every name must resolve** — `vx run lint test typecheck` refuses to start if one name matches no project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Tag filters** (`--filter tag:<pattern>`) — select projects by their config `tags`. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Directory and root filters** (`./<dir>`, `{<dir>}`, `.`, `//`) — select projects by path, or the root project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
-- **Executor pools** (executor `capacity`) — a remote pool is admitted against its own width, not the laptop's cores. no post
+- **Executor pools** (executor `capacity`) — a remote pool is admitted against its own width, not the laptop's cores. post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **Runs take turns** — two vx runs on one workspace wait on a lock and name who they wait for. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 
 ## Output
@@ -43,7 +43,7 @@ config key or an environment variable is missing here.
 - **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Output modes** (`--output-logs`) — full, errors-only, hash-only or none; the default follows the flow. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
-- **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
+- **Per-task table** (`--verbosity`) — a per-task summary after the run. post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
@@ -83,7 +83,7 @@ config key or an environment variable is missing here.
 - **Config keyed as evaluated** — the key sees the resolved config object. [page](https://vznjs.github.io/vx/features/typescript-config/) · post: [Configs are programs](https://vznjs.github.io/vx/blog/resolved-config-hashing/)
 - **Cascade through inputs** — a task's key folds its upstream input keys, never outputs. post: [Cascade through dependencies](https://vznjs.github.io/vx/blog/cascade-through-inputs/)
 - **Lockfile-aware keys** (`@vzn/vx-lockfile`: `pnpm()`, `bun()`, `npm()`, `yarn()`) — a bump re-keys only the projects whose closure changed. [page](https://vznjs.github.io/vx/features/lockfile-keys/) · post: [A lockfile bump should re-key two tasks](https://vznjs.github.io/vx/blog/lockfile-aware-keys/)
-- **Upfront keys** (`upfrontKeys`) — refuses an input glob a same-project task's outputs could match, so every key is known before anything runs. no post
+- **Upfront keys** (`upfrontKeys`) — refuses an input glob a same-project task's outputs could match, so every key is known before anything runs. post: [Cascade through dependencies by folding input keys, never outputs](https://vznjs.github.io/vx/blog/cascade-through-inputs/)
 - **Cache controls** (`--no-cache`, `--force`, `--cache`) — off, refresh, or per-layer read/write. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
@@ -94,7 +94,7 @@ config key or an environment variable is missing here.
 - **Hits replay both streams** — stdout and stderr come back in the order the run printed them. no post
 - **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. no post
 - **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. no post
-- **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. no post
+- **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
 - **Background remote uploads** — remote writes drain at the end of the run and never fail the build. no post
 - **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. no post
 
@@ -128,8 +128,8 @@ config key or an environment variable is missing here.
 - **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. no post
 - **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT_MS`) — bound a config's evaluation. no post
 - **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
-- **Typed config helpers** (`defineProject`) — autocomplete for task names in `dependsOn`, errors while you edit. no post
-- **Presets** — a TypeScript function returning a task config, shared across projects. no post
+- **Typed config helpers** (`defineProject`) — autocomplete for task names in `dependsOn`, errors while you edit. post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
+- **Presets** — a TypeScript function returning a task config, shared across projects. post: [Config in TypeScript, and why there are no named inputs](https://vznjs.github.io/vx/blog/config-in-typescript/)
 - **Clean config errors** — a bad config fails at load naming the key, with no stack trace. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 
 ## CI
@@ -142,13 +142,13 @@ config key or an environment variable is missing here.
 
 - **Start in a minute** (`vx init`, `--dry`, `--force`, `--mjs`) — write `vx.workspace.ts` and one `vx.config.ts` per package. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [Hello, vx](https://vznjs.github.io/vx/blog/hello-vx/)
 - **Migrate from Turborepo or Nx** (`vx init`, `--native`, `--keep`, `@vzn/vx-migrate`) — native config, or keep `turbo()` / `nx()` as a start. [page](https://vznjs.github.io/vx/features/migrate/) · posts: [From Turborepo](https://vznjs.github.io/vx/blog/from-turborepo/), [From Nx](https://vznjs.github.io/vx/blog/from-nx/)
-- **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. no post
+- **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)
 - **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · post: [Try the planner in your browser](https://vznjs.github.io/vx/blog/the-playground/)
 - **Benchmarks you can re-run** (`@vzn/vx-bench`) — vx against Turborepo and Nx. [page](https://vznjs.github.io/vx/features/fastest/) · posts: [Benchmarks you can re-run](https://vznjs.github.io/vx/blog/honest-benchmarks/), [Why vx is fast](https://vznjs.github.io/vx/blog/why-vx-is-fast/)
 - **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. no post
 - **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. no post
-- **Nx executors as one process** (`nx-exec`) — any Nx executor runs as one vx task with its Nx env set. no post
+- **Nx executors as one process** (`nx-exec`) — any Nx executor runs as one vx task with its Nx env set. post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **Programmatic API** (`run`, `planRun`) — run or plan from your own scripts via `@vzn/vx`. no post
 
 ## Plugins
@@ -165,6 +165,6 @@ config key or an environment variable is missing here.
 - **REAPI TLS, mTLS and headers** — connect to hosted servers such as BuildBuddy the way Bazel does. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
-- **Install as a remote action** (`exec.remote: 'only'`) — `node_modules` is built by an action, so stateless workers have it. no post
+- **Install as a remote action** (`exec.remote: 'only'`) — `node_modules` is built by an action, so stateless workers have it. post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **OTel live export** (`otel({ live })`) — spans and metrics stream as tasks end, so a dashboard follows a CI run live. post: [Watch a CI run while it runs](https://vznjs.github.io/vx/blog/otel-live/)
 - **Memory-aware admission** (`@vzn/vx-schedule-history`) — tasks are packed by the peak memory learned from past runs. no post
