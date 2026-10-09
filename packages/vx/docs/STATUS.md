@@ -327,9 +327,10 @@ Merge handoff (2026-10-08): upstream `d4e268d42e4e3fb694e634d41f33d2f07dba608f`
 adds the shared site navigation/footer, release announcement, agents/shipping sections
 and feature strip. The resolved landing retains them alongside both qualified benchmark
 cases and their generated data. Raw primary/preliminary evidence still records the measured
-`b8238866` source, not the incoming core changes. The 57/57 result above is pre-merge;
-new-lock installation, focused site checks and the full post-merge gate remain with the
-coordinator. Conflict resolution ran no data generation or runtime tests.
+`b8238866` source, not the incoming core changes. After installing the new frozen lockfile,
+the full post-merge gate passed all 59 tasks on pinned Bun 1.4.2 with four workers.
+Feature copy and all 34 cover footers are workload-scoped; 33 covers were updated,
+with reproducible SVG sources and pixel-preservation checks. No measurements changed.
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped
