@@ -1,6 +1,6 @@
 # Cache save CPU — design
 
-> **Status:** proposal (2026-10-08). Step 1 shipped as X-191, step 2 as X-204 (`docs/history/ws-x.md`).
+> **Status:** proposal (2026-10-08). Step 1 shipped as X-191, step 2 as X-204, step 3 as X-205 (`docs/history/ws-x.md`).
 
 ## What we're solving
 
@@ -227,6 +227,7 @@ Each step is A/B'd on the 1,090-package cold row (interleaved arms, min-of-N, be
 - Large artifacts (> `INLINE_MAX`), which keep the file path except for steps 1, 2 and 4.
 - The output-log feature itself (the other thread).
 - fsync policy.
+- `auto_vacuum` / incremental vacuum on the store. Step 3 skipped it: a prune frees inline pages for reuse but the file does not shrink. Open until a store's size after prune is measured to matter.
 
 ## Open questions
 

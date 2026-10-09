@@ -730,12 +730,16 @@ export interface CacheLayer {
    */
   hashFile(filePath: string): Promise<string>
   /**
-   * Absolute path to the on-disk outputs artifact for a hash —
+   * Absolute path a file-backed artifact for a hash has —
    * `<cacheDir>/<hash>.tar.zst`. Returns the path whether or
-   * not the artifact exists. Exposed for telemetry / dashboards;
-   * `restoreOutputs` is the canonical way to materialize the bytes.
+   * not the artifact exists: a small artifact lives in the index, not
+   * in a file (`artifactSize` is its size). Exposed for telemetry /
+   * dashboards; `restoreOutputs` is the canonical way to materialize
+   * the bytes.
    */
   outputsPath(hash: string): string
+  /** The stored artifact's compressed size, wherever it lives; undefined when none is stored. */
+  artifactSize?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

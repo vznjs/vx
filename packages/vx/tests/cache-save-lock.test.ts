@@ -4,7 +4,8 @@
 // the same cache directory, a full disk — left the new bytes beside the
 // previous save's rows, and every later restore of the key failed the task:
 // "artifact is missing 1 recorded output(s)". The rename now happens inside
-// the IMMEDIATE transaction, once the lock is held.
+// the IMMEDIATE transaction, once the lock is held. An inline artifact is a
+// row of that transaction itself.
 
 import { Database } from 'bun:sqlite'
 import { existsSync, readdirSync } from 'node:fs'
@@ -13,6 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { isInline, storedArtifact } from './helpers/stored-artifact.js'
 
 let root: string
 let cacheDir: string
@@ -28,11 +30,19 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** Build `dist/<file>` alone and save it under `h1`. */
-async function saveBuild(cache: Cache, file: string): Promise<void> {
+/**
+ * Build `dist/<file>` alone and save it under `h1`. `big`: incompressible
+ * bytes past INLINE_MAX beside it, so the artifact is a file.
+ */
+async function saveBuild(cache: Cache, file: string, big = false): Promise<void> {
   await rm(path.join(proj, 'dist'), { recursive: true, force: true })
   await mkdir(path.join(proj, 'dist'), { recursive: true })
-  await writeFile(path.join(proj, 'dist', file), file)
+  await writeFile(
+    path.join(proj, 'dist', file),
+    big
+      ? Buffer.concat([Buffer.from(file), crypto.getRandomValues(new Uint8Array(48 * 1024))])
+      : file,
+  )
   await cache.save({
     hash: 'h1',
     projectDir: proj,
@@ -81,7 +91,7 @@ describe('a save whose index transaction cannot commit', () => {
 
   it('one that fails after the rename takes the artifact back out: the key misses', async () => {
     const first = new Cache(cacheDir)
-    await saveBuild(first, 'chunk-aaaa.js')
+    await saveBuild(first, 'chunk-aaaa.js', true)
     first.close()
     // The rows' insert fails once the lock is held and the bytes are in
     // place — the shape of a full disk at the commit.
@@ -93,7 +103,7 @@ describe('a save whose index transaction cannot commit', () => {
     const forced = new Cache(cacheDir, { read: false, write: true })
     let refused: unknown
     try {
-      await saveBuild(forced, 'chunk-bbbb.js')
+      await saveBuild(forced, 'chunk-bbbb.js', true)
     } catch (err) {
       refused = err
     } finally {
@@ -104,6 +114,59 @@ describe('a save whose index transaction cannot commit', () => {
     const reader = new Cache(cacheDir)
     try {
       expect(await reader.get('h1')).toBeNull()
+    } finally {
+      reader.close()
+    }
+  })
+
+  // Test 1 of docs/design/cache-save-cpu-2026-10.md: the blob is upserted
+  // before the entry row, so a refused row insert is a throw after it.
+  it('an inline save that fails after its blob insert leaves no row and no blob', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      cache
+        .dbHandle()
+        .exec(
+          "CREATE TRIGGER refuse BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
+        )
+      const refused = await saveBuild(cache, 'chunk-aaaa.js').catch((e: unknown) => e)
+      expect(String(refused)).toContain('refused')
+      expect([
+        await cache.get('h1'),
+        storedArtifact(cache, 'h1'),
+        readdirSync(cacheDir).filter((n) => n.includes('.tar.zst')),
+      ]).toEqual([null, null, []])
+      // CONTROL: the same save with the trigger gone lands inline.
+      cache.dbHandle().exec('DROP TRIGGER refuse')
+      await saveBuild(cache, 'chunk-aaaa.js')
+      expect([(await cache.get('h1'))?.stdout, isInline(cache, 'h1')]).toEqual([
+        'chunk-aaaa.js',
+        true,
+      ])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('an inline re-save that fails leaves the previous entry whole: bytes and rows', async () => {
+    const first = new Cache(cacheDir)
+    await saveBuild(first, 'chunk-aaaa.js')
+    first.close()
+    const db = new Database(path.join(cacheDir, 'cache.db'))
+    db.exec(
+      "CREATE TRIGGER refuse BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    )
+    db.close()
+    const forced = new Cache(cacheDir, { read: false, write: true })
+    const refused = await saveBuild(forced, 'chunk-bbbb.js').catch((e: unknown) => e)
+    forced.close()
+    expect(String(refused)).toContain('refused')
+    const reader = new Cache(cacheDir)
+    try {
+      expect((await reader.get('h1'))?.stdout).toBe('chunk-aaaa.js')
+      const into = path.join(root, 'restore')
+      await reader.restoreOutputs('h1', into)
+      expect(readdirSync(path.join(into, 'dist'))).toEqual(['chunk-aaaa.js'])
     } finally {
       reader.close()
     }

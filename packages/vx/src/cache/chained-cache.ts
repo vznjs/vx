@@ -12,6 +12,7 @@
 // (item 1020). A save that fails in EVERY layer still throws, so the
 // caller's own "cache save failed" line stays the one word on it.
 
+import { statSync } from 'node:fs'
 import type {
   Cache,
   CacheEntry,
@@ -246,6 +247,14 @@ export class ChainedCache implements CacheLayer {
 
   outputsPath(hash: string): string {
     return this.owner(hash).outputsPath(hash)
+  }
+
+  /** A layer that cannot say keeps a file at `outputsPath`, or nothing. */
+  artifactSize(hash: string): number | undefined {
+    const owner = this.owner(hash)
+    return owner.artifactSize !== undefined
+      ? owner.artifactSize(hash)
+      : statSync(owner.outputsPath(hash), { throwIfNoEntry: false })?.size
   }
 
   prune(options: PruneOptions): Promise<PruneResult> {

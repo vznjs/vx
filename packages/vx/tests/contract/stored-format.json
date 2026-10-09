@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v32",
+    "version": "v33",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -13,6 +13,17 @@
       "CREATE INDEX runs_run_id     ON runs(run_id)",
       "",
       "CREATE INDEX runs_started_at ON runs(started_at)",
+      "",
+      "CREATE TABLE artifacts (",
+      "hash  TEXT PRIMARY KEY,",
+      "at    INTEGER NOT NULL,",
+      "bytes BLOB NOT NULL",
+      ") WITHOUT ROWID",
+      "",
+      "CREATE TABLE artifacts_meta (",
+      "key   TEXT PRIMARY KEY,",
+      "value TEXT NOT NULL",
+      ")",
       "",
       "CREATE TABLE blob_sizes (",
       "oid     TEXT PRIMARY KEY,",

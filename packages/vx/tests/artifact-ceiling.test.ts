@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { storedKeys } from './helpers/stored-artifact.js'
 
 const CEILING = 64 * 1024
 
@@ -76,6 +77,7 @@ describe('an output set past the artifact ceiling', () => {
     ])
     // No artifact and no temp left behind it.
     expect(await artifactFiles(root)).toEqual([])
+    expect(storedKeys(path.join(root, '.vx', 'cache'))).toEqual([])
     const again = await run({
       cwd: root,
       tasks: ['build'],
@@ -118,6 +120,7 @@ describe('an output set past the artifact ceiling', () => {
     await run({ cwd: root, tasks: ['build'], log: collecting(under), artifactCeiling: exact - 1 })
     expect(under.filter((l) => l.includes('cache save failed'))).toHaveLength(1)
     expect(await artifactFiles(root)).toEqual([])
+    expect(storedKeys(path.join(root, '.vx', 'cache'))).toEqual([])
     const at: string[] = []
     await run({ cwd: root, tasks: ['build'], log: collecting(at), artifactCeiling: exact })
     expect(at.filter((l) => l.includes('cache save failed'))).toEqual([])
@@ -151,6 +154,7 @@ describe('an output set past the artifact ceiling', () => {
     ])
     // The run's own save is refused by the same cap, so nothing is left.
     expect(await artifactFiles(root)).toEqual([])
+    expect(storedKeys(path.join(root, '.vx', 'cache'))).toEqual([])
   })
 
   it('an ingest enforces it too: remote bytes past it never land', async () => {
@@ -175,7 +179,7 @@ describe('an output set past the artifact ceiling', () => {
         ),
       )
       expect(await other.get(hash)).toBeNull()
-      expect((await readdir(otherDir)).filter((f) => f.includes('.tar.zst'))).toEqual([])
+      expect(storedKeys(otherDir)).toEqual([])
     } finally {
       other.close()
     }
@@ -220,6 +224,7 @@ describe('an output set past the artifact ceiling', () => {
           f.includes('.tar.zst'),
         ),
       ).toEqual([])
+      expect(storedKeys(path.join(root, 'other-cache'))).toEqual([])
     } finally {
       other.close()
     }

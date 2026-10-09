@@ -5,6 +5,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { rm, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { storedKeys } from './helpers/stored-artifact.js'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   addProject as addProjectTo,
@@ -83,6 +84,7 @@ describe('interrupted run publishes nothing', () => {
       }
       const files = existsSync(cacheDir) ? await readdir(cacheDir) : []
       expect(files.filter((f) => f.endsWith('.tar.zst') || f.includes('.tmp-'))).toEqual([])
+      expect(existsSync(cacheDir) ? storedKeys(cacheDir) : []).toEqual([])
     },
     TIMEOUT,
   )

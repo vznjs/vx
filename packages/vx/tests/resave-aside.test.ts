@@ -24,6 +24,8 @@ await mock.module('node:fs', () => ({
 const { Cache } = await import('../src/cache/index.js')
 
 const HASH = '0123456789abcdef'
+/** Incompressible bytes past INLINE_MAX: the artifact is a file, not inline in the index. */
+const PAD = crypto.getRandomValues(new Uint8Array(48 * 1024))
 
 describe('a re-save of a key', () => {
   let root: string
@@ -47,7 +49,7 @@ describe('a re-save of a key', () => {
 
   const save = async (body: string): Promise<void> => {
     const out = path.join(projectDir, 'dist', 'out.txt')
-    await writeFile(out, body)
+    await writeFile(out, Buffer.concat([Buffer.from(body), PAD]))
     await cache.save({
       hash: HASH,
       projectDir,
@@ -68,6 +70,7 @@ describe('a re-save of a key', () => {
     expect((await cache.get(HASH))?.stdout).toBe('second')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     await cache.restoreOutputs(HASH, projectDir)
-    expect(await readFile(path.join(projectDir, 'dist', 'out.txt'), 'utf8')).toBe('second')
+    const restored = await readFile(path.join(projectDir, 'dist', 'out.txt'))
+    expect(restored.subarray(0, 6).toString()).toBe('second')
   })
 })

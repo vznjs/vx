@@ -19,9 +19,14 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
-/** Save `p/dist/a.js` (or restore it after a save), with the fd table full for the call. */
+/**
+ * Save `p/dist/a.js` (or restore it after a save), with the fd table full for
+ * the call. `file`: an incompressible `a.js` past INLINE_MAX, so the artifact
+ * is a file the restore opens, not bytes inline in the index.
+ */
 async function outOfFds(
   op: 'save' | 'restore' | 'open',
+  file = false,
 ): Promise<{ name: string; message: string }> {
   const script = path.join(root, 'probe.ts')
   await Bun.write(
@@ -31,7 +36,7 @@ import { Cache } from ${JSON.stringify(CACHE)}
 const root = ${JSON.stringify(root)}
 const proj = root + '/p'
 mkdirSync(proj + '/dist', { recursive: true })
-writeFileSync(proj + '/dist/a.js', 'x')
+writeFileSync(proj + '/dist/a.js', ${file} ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : 'x')
 const cache = new Cache(root + '/cache')
 const args = { hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/a.js'], entry: { taskId: 'p#b', command: 'x', durationMs: 1, stdout: '' } }
 if (${JSON.stringify(op)} === 'restore') await cache.save(args)
@@ -68,10 +73,20 @@ console.log(JSON.stringify(out))
 describe('a process out of file descriptors', () => {
   it('fails a restore with the limit to raise, not as a corrupt artifact', async () => {
     const artifact = path.join(root, 'cache', 'h1.tar.zst')
-    expect(await outOfFds('restore')).toEqual({
+    expect(await outOfFds('restore', true)).toEqual({
       name: 'UserError',
       message: `restore of h1 into ${root}/p could not open a file (EMFILE: too many open files, open '${artifact}') — ${HINT}`,
     })
+  })
+
+  it('fails the restore of an inline artifact the same way, at the first file it stages', async () => {
+    const { name, message } = await outOfFds('restore')
+    const staged = message.match(/open '(.*)'\) — /)?.[1]
+    expect([name, path.dirname(staged ?? ''), message.replace(staged ?? '', '<staged>')]).toEqual([
+      'UserError',
+      `${root}/p/dist`,
+      `restore of h1 into ${root}/p could not open a file (EMFILE: too many open files, open '<staged>') — ${HINT}`,
+    ])
   })
 
   it('fails a save with the limit to raise', async () => {

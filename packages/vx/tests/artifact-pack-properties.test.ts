@@ -33,6 +33,7 @@ import { ArtifactVanishedError, Cache, CorruptArtifactError } from '../src/cache
 import { TarFormatError } from '../src/cache/tar-stream.js'
 import { UserError } from '../src/util/index.js'
 import { streamOf } from './helpers/stream.js'
+import { replaceStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
 const enc = new TextEncoder()
 const same = (a: Uint8Array, b: Uint8Array): boolean => Buffer.compare(a, b) === 0
@@ -248,7 +249,7 @@ describe('Cache.save → restoreOutputs, seeded', () => {
         }
 
         await cache.save(args)
-        const stored = new Uint8Array(readFileSync(cache.outputsPath(hash)))
+        const stored = storedArtifact(cache, hash)!
         expect(same(stored, compressed), `${ctx}: stored`).toBe(true)
         const dest = fresh('d')
         await cache.restoreOutputs(hash, dest)
@@ -368,6 +369,7 @@ describe('a damaged artifact, seeded', () => {
               f.includes('.tar.zst'),
             )
             expect(artifacts, ctx).toEqual([])
+            expect(storedArtifact(cache, hash), ctx).toBeNull()
             outcomes.refused++
           } else {
             const dest = fresh('r')
@@ -381,7 +383,7 @@ describe('a damaged artifact, seeded', () => {
           // Local: bytes damaged on disk after a good save, every other pair.
           if (k % 4 < 2) continue
           await local.save(args)
-          writeFileSync(local.outputsPath(hash), bad)
+          replaceStoredArtifact(local, hash, bad)
           const dest = fresh('l')
           const lerr = await local.restoreOutputs(hash, dest).then(
             () => null,

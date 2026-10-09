@@ -7,9 +7,10 @@
 // Two steps cannot run as a user runs them, and each is replaced by what it
 // does: `npm install -D @vzn/vx @vzn/vx-migrate` links exactly the packages
 // it names from this checkout (`@vzn/vx-migrate` is not on npm yet, and the
-// workspace's `workspace:*` ranges are what `npm pack` rewrites), and the
-// Nx repo's own `nx` is a stand-in whose one verb is `graph --file`, as in
-// vx-migrate's suites. Every `npx vx …` line runs verbatim.
+// workspace's `workspace:*` ranges are what `npm pack` rewrites), as does
+// the `npm install -D @vzn/…` vx-migrate runs (helpers/npm-checkout.ts), and
+// the Nx repo's own `nx` is a stand-in whose one verb is `graph --file`, as
+// in vx-migrate's suites. Every `npx vx …` line runs verbatim.
 
 import {
   cpSync,
@@ -19,7 +20,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
   chmodSync,
 } from 'node:fs'
@@ -27,6 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { withNpm } from './helpers/npm.js'
+import { installFromCheckout, withCheckoutNpm } from './helpers/npm-checkout.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -69,39 +70,15 @@ function step(root: string, line: string): { code: number | null; out: string } 
   const command = line.replace(/\s+#.*$/, '').trim()
   const install = INSTALL.exec(command)
   if (install !== null) {
-    mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-    mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
-    for (const name of install[1]!.trim().split(' ')) {
-      const dir = name.slice('@vzn/'.length)
-      symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
-      const bins = (
-        JSON.parse(readFileSync(path.join(PACKAGES, dir, 'package.json'), 'utf8')) as {
-          bin?: Record<string, string>
-        }
-      ).bin
-      for (const [bin, rel] of Object.entries(bins ?? {})) {
-        symlinkSync(path.join(PACKAGES, dir, rel), path.join(root, 'node_modules', '.bin', bin))
-      }
-    }
-    // npm -D lists what it installs; vx-migrate installs a package the
-    // manifest does not list.
-    const manifest = path.join(root, 'package.json')
-    const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as Record<string, unknown>
-    const dev = { ...(pkg.devDependencies as Record<string, string> | undefined) }
-    for (const name of install[1]!.trim().split(' ')) dev[name] = '*'
-    writeFileSync(manifest, JSON.stringify({ ...pkg, devDependencies: dev }, null, 2))
-    // npm writes its lockfile on an install, and the migrator's report
-    // names the lockfile plugin for it: a stand-in without one printed a
-    // report no user sees.
-    const lock = path.join(root, 'package-lock.json')
-    if (command.startsWith('npm ') && !existsSync(lock))
-      writeFileSync(lock, '{"lockfileVersion":3,"packages":{}}\n')
+    installFromCheckout(root, install[1]!.trim().split(' '))
     return { code: 0, out: '' }
   }
   const r = Bun.spawnSync({
     cmd: ['sh', '-c', command],
     cwd: root,
-    env: withNpm({ ...process.env, NO_COLOR: '1', npm_config_yes: 'false' }),
+    // vx-migrate's own `npm install -D @vzn/…` (`vx init` in a Turbo or Nx
+    // repo) is answered from this checkout too.
+    env: withCheckoutNpm(withNpm({ ...process.env, NO_COLOR: '1', npm_config_yes: 'false' })),
     stdout: 'pipe',
     stderr: 'pipe',
   })

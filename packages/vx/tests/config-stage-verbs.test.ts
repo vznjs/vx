@@ -4,12 +4,14 @@
 // them, not only to `vx run`. Subprocess-driven so the dispatcher wiring is
 // the one a user hits.
 
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { Database } from 'bun:sqlite'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { storedKeys } from './helpers/stored-artifact.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -108,18 +110,22 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
   it(
     '`vx cache prune` prunes the moved directory and never creates the default one',
     async () => {
-      // The freed figure is the artifact the prune deletes, measured on disk
-      // rather than read back from the index the prune itself sums.
+      // The freed figure is the artifact the prune deletes, measured where it
+      // is stored (inline, the bytes themselves) rather than read back from
+      // the entry row the prune itself sums.
       const moved = path.join(root, '.vx', 'moved')
-      const artifacts = (await readdir(moved)).filter((f) => f.endsWith('.tar.zst'))
-      expect(artifacts).toHaveLength(1)
-      const size = (await stat(path.join(moved, artifacts[0]!))).size
+      expect(storedKeys(moved)).toHaveLength(1)
+      const db = new Database(path.join(moved, 'cache.db'), { readonly: true })
+      const { size } = db.query('SELECT length(bytes) AS size FROM artifacts').get() as {
+        size: number
+      }
+      db.close()
       expect(size).toBeLessThan(1024)
 
       const r = await vx(root, ['cache', 'prune', '--max-size', '1B'])
       expect(`${r.code}\n${r.err}`).toBe('0\n')
       expect(r.out).toBe(`Pruned 1 entry (${size} B freed)\n`)
-      expect(existsSync(path.join(moved, artifacts[0]!))).toBe(false)
+      expect(storedKeys(moved)).toEqual([])
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
     TIMEOUT,

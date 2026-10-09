@@ -165,56 +165,102 @@ describe('an upgrade resets the cache in silence', () => {
     expect(index().version).toBe(SCHEMA_VERSION)
   })
 
-  // Item 1083: the dry prune refused an earlier schema, so it could not
-  // preview the prune after an upgrade, which resets the index and reaps
-  // every aged artifact as row-less. It now names what that prune reaps,
-  // in silence, and still writes nothing.
-  it('`vx cache prune --dry-run` on an earlier schema names what the real prune reaps', async () => {
-    expect(await runOnce()).toEqual([])
-    pokeVersion('v0')
-    const cacheDir = path.join(root, '.vx', 'cache')
-    const artifacts = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
-    expect(artifacts).toHaveLength(1)
-    const aged = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000)
-    await utimes(path.join(cacheDir, artifacts[0]!), aged, aged)
-    const bytes = Bun.file(path.join(cacheDir, artifacts[0]!)).size
-    const before = index()
-    const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
-    expect({ ...dry, after: index() }).toEqual({
-      threw: null,
-      stderr: '',
-      stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(bytes)})\n`,
-      after: before,
-    })
-    const wet = await verb(['cache', 'prune', '--older-than', '30d'])
-    expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
-      threw: null,
-      stdout: `Pruned 0 entries (0 B freed), reaped 1 orphaned artifact (${formatBytes(bytes)})\n`,
-    })
-  })
+  /**
+   * Make the build's artifact a file: an incompressible output past
+   * INLINE_MAX. Left alone, its artifact (no outputs) is inline in the index.
+   */
+  async function fileArtifact(): Promise<void> {
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'head -c 49152 /dev/urandom > out.bin' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.bin'] } } } } }\n`,
+    )
+  }
 
-  // The preview reads the reset's row-less artifacts through the same
-  // policy the real prune applies: one younger than `--older-than` stays.
-  it('`vx cache prune --dry-run` on an earlier schema keeps an artifact the policy keeps', async () => {
-    expect(await runOnce()).toEqual([])
-    pokeVersion('v0')
+  /** The one artifact's key, inline or a file, and its compressed size. */
+  function artifact(): { key: string; bytes: number; inline: boolean } {
     const cacheDir = path.join(root, '.vx', 'cache')
-    const artifacts = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
-    expect(artifacts).toHaveLength(1)
-    const recent = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
-    await utimes(path.join(cacheDir, artifacts[0]!), recent, recent)
-    const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
-    expect(dry).toEqual({
-      threw: null,
-      stderr: '',
-      stdout: 'Would prune 0 entries (0 B)\n',
+    const files = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+    const db = new Database(path.join(cacheDir, 'cache.db'))
+    try {
+      const rows = db.query('SELECT hash, length(bytes) AS bytes FROM artifacts').all() as Array<{
+        hash: string
+        bytes: number
+      }>
+      const found = [
+        ...rows.map((r) => ({ key: r.hash, bytes: r.bytes, inline: true })),
+        ...files.map((f) => ({
+          key: f.slice(0, -'.tar.zst'.length),
+          bytes: Bun.file(path.join(cacheDir, f)).size,
+          inline: false,
+        })),
+      ]
+      expect(found).toHaveLength(1)
+      return found[0]!
+    } finally {
+      db.close()
+    }
+  }
+
+  /** Set the artifact's last use, as a row-less sweep reads it: its file time, or its `at`. */
+  async function lastUsed(a: { key: string; inline: boolean }, when: Date): Promise<void> {
+    const cacheDir = path.join(root, '.vx', 'cache')
+    if (!a.inline) return utimes(path.join(cacheDir, `${a.key}.tar.zst`), when, when)
+    const db = new Database(path.join(cacheDir, 'cache.db'))
+    db.query('UPDATE artifacts SET at = ? WHERE hash = ?').run(when.getTime(), a.key)
+    db.close()
+  }
+
+  for (const where of ['inline', 'file'] as const) {
+    // Item 1083: the dry prune refused an earlier schema, so it could not
+    // preview the prune after an upgrade, which resets the index and reaps
+    // every aged artifact as row-less. It now names what that prune reaps,
+    // in silence, and still writes nothing. A reset keeps inline artifacts
+    // too, so the preview reads them where they are.
+    it(`\`vx cache prune --dry-run\` on an earlier schema names what the real prune reaps (${where})`, async () => {
+      if (where === 'file') await fileArtifact()
+      expect(await runOnce()).toEqual([])
+      pokeVersion('v0')
+      const a = artifact()
+      expect(a.inline).toBe(where === 'inline')
+      await lastUsed(a, new Date(Date.now() - 40 * 24 * 60 * 60 * 1000))
+      const before = index()
+      const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
+      expect({ ...dry, after: index() }).toEqual({
+        threw: null,
+        stderr: '',
+        stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(a.bytes)})\n`,
+        after: before,
+      })
+      const wet = await verb(['cache', 'prune', '--older-than', '30d'])
+      expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
+        threw: null,
+        stdout: `Pruned 0 entries (0 B freed), reaped 1 orphaned artifact (${formatBytes(a.bytes)})\n`,
+      })
     })
-    const wet = await verb(['cache', 'prune', '--older-than', '30d'])
-    expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
-      threw: null,
-      stdout: 'Pruned 0 entries (0 B freed)\n',
+
+    // The preview reads the reset's row-less artifacts through the same
+    // policy the real prune applies: one younger than `--older-than` stays.
+    it(`\`vx cache prune --dry-run\` on an earlier schema keeps an artifact the policy keeps (${where})`, async () => {
+      if (where === 'file') await fileArtifact()
+      expect(await runOnce()).toEqual([])
+      pokeVersion('v0')
+      const a = artifact()
+      await lastUsed(a, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000))
+      const dry = await verb(['cache', 'prune', '--older-than', '30d', '--dry-run'])
+      expect(dry).toEqual({
+        threw: null,
+        stderr: '',
+        stdout: 'Would prune 0 entries (0 B)\n',
+      })
+      const wet = await verb(['cache', 'prune', '--older-than', '30d'])
+      expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
+        threw: null,
+        stdout: 'Pruned 0 entries (0 B freed)\n',
+      })
+      expect(artifact().key).toBe(a.key)
     })
-  })
+  }
 
   it('a run resets a NEWER schema too; a reading verb leaves it untouched', async () => {
     expect(await runOnce()).toEqual([])

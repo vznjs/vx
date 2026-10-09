@@ -5,10 +5,11 @@
 // swap, and a prune with no workspace could exit 0.
 
 import { realpathSync } from 'node:fs'
-import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { storedKeys } from './helpers/stored-artifact.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -50,9 +51,8 @@ describe('vx cache prune', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  /** The artifacts in the cache directory, as `<hash>.tar.zst` names. */
-  const artifacts = async (): Promise<string[]> =>
-    (await readdir(cacheDir)).filter((n) => n.endsWith('.tar.zst')).sort()
+  /** The keys with an artifact in the cache directory, inline or as a file. */
+  const artifacts = async (): Promise<string[]> => storedKeys(cacheDir)
 
   it(
     'a dry run deletes nothing and says what it would reap; the real one reaps it',
@@ -71,7 +71,7 @@ describe('vx cache prune', () => {
       expect(dry.out).toMatch(
         /^Would prune 1 entry \(\d+ B\), would reap 1 orphaned artifact \(6 B\)\n$/,
       )
-      expect(await artifacts()).toEqual([...saved, path.basename(orphan)].sort())
+      expect(await artifacts()).toEqual([...saved, 'ab'.repeat(8)].sort())
 
       const real = await vx(root, ['cache', 'prune', '--max-size', '1B'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })

@@ -11,6 +11,7 @@ import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { storedBytesUnder } from './helpers/stored-artifact.js'
 import { PARITY_TIMEOUT as TIMEOUT, summarized } from './helpers/parity.js'
 
 // The shape of `dist/out` follows the one input file: `dir` writes a
@@ -264,8 +265,8 @@ describe('a symlinked output that leaves the project (e2e)', () => {
         const again = await summarized(root, ['app#build'])
         expect(again.tasks.get('app#build')?.['status']).toBe('success')
         const held: string[] = []
-        for await (const f of new Bun.Glob('**/*.tar.zst').scan({ cwd: root, dot: true })) {
-          const tar = Bun.zstdDecompressSync(await Bun.file(path.join(root, f)).bytes())
+        for (const [f, bytes] of storedBytesUnder(root)) {
+          const tar = Bun.zstdDecompressSync(bytes)
           if (new TextDecoder().decode(tar).includes('L23-SECRET')) held.push(f)
         }
         expect(held).toEqual([])

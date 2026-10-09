@@ -49,9 +49,10 @@ function fill(cache: Cache, insert: (i: number, pad: string) => void): void {
   }
 }
 
-async function save(cache: Cache, hash: string): Promise<void> {
+/** `file`: an incompressible output past INLINE_MAX, so the artifact is a file, not inline. */
+async function save(cache: Cache, hash: string, file = false): Promise<void> {
   const out = path.join(proj, 'dist', `${hash}.txt`)
-  writeFileSync(out, hash.repeat(50))
+  writeFileSync(out, file ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : hash.repeat(50))
   await cache.save({
     hash,
     projectDir: proj,
@@ -115,7 +116,7 @@ describe('a full disk', () => {
       throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' })
     }) as typeof fsp.writeFile)
     try {
-      await expect(save(cache, 'h1')).rejects.toThrow('ENOSPC')
+      await expect(save(cache, 'h1', true)).rejects.toThrow('ENOSPC')
       expect(readdirSync(cacheDir).filter((n) => n.includes('.tmp-'))).toEqual([])
     } finally {
       spy.mockRestore()
@@ -126,8 +127,8 @@ describe('a full disk', () => {
   it('prune unlinks the artifacts, then deletes the rows once the space is back', async () => {
     const cache = new Cache(cacheDir)
     try {
-      await save(cache, 'h1')
-      await save(cache, 'h2')
+      await save(cache, 'h1', true)
+      await save(cache, 'h2', true)
       const db = cache.dbHandle()
       const real = db.transaction.bind(db)
       let failed = false

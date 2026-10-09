@@ -17,6 +17,11 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { ArchiveSecurityError } from '../src/cache/archive.js'
 import { ArtifactVanishedError, Cache, CorruptArtifactError } from '../src/cache/cache.js'
 import { withSum } from './helpers/artifact-sum.js'
+import {
+  removeStoredArtifact,
+  replaceStoredArtifact,
+  storedArtifact,
+} from './helpers/stored-artifact.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -400,7 +405,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // what the mapping buys is the CLASS. The two ask for opposite answers:
     // a prune raced this run (a miss: the task runs, vanished-artifact.test.ts),
     // versus the cache holds bad bytes (the task fails). Assert the class.
-    await rm(cache.outputsPath('gone'), { force: true })
+    removeStoredArtifact(cache, 'gone')
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
     const gone = await cache.restoreOutputs('gone', projectDir).catch((e: unknown) => e)
@@ -412,7 +417,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // stores the key again; a vanished artifact carries no cause.
     expect((gone as Error).cause).toBeUndefined()
     await saveEntry('garbled')
-    await Bun.write(cache.outputsPath('garbled'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    replaceStoredArtifact(cache, 'garbled', new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
     const garbled = await cache.restoreOutputs('garbled', projectDir).catch((e: unknown) => e)
@@ -421,10 +426,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     expect((garbled as Error).message).toBe(
       'cache: corrupt artifact for garbled: artifact is not a readable archive; dropped it',
     )
-    expect([
-      await Bun.file(cache.outputsPath('garbled')).exists(),
-      await cache.get('garbled'),
-    ]).toEqual([false, null])
+    expect([storedArtifact(cache, 'garbled'), await cache.get('garbled')]).toEqual([null, null])
   })
 
   it('a local artifact whose name reads unsafe is dropped and run, as corrupt bytes are', async () => {
@@ -441,11 +443,11 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
       projectDir,
       outputFiles: [path.join(projectDir, 'dist', long)],
     })
-    const tar = Bun.zstdDecompressSync(await Bun.file(cache.outputsPath('flipped')).bytes())
+    const tar = Bun.zstdDecompressSync(storedArtifact(cache, 'flipped')!)
     const at = Buffer.from(tar).indexOf(`path=outputs/dist/${long}`) + 'path=outputs/dist/'.length
     expect(tar[at]).toBe(0x2e)
     tar[at] = 0x2f
-    await Bun.write(cache.outputsPath('flipped'), Bun.zstdCompressSync(tar))
+    replaceStoredArtifact(cache, 'flipped', Bun.zstdCompressSync(tar))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
 
     const flipped = await cache.restoreOutputs('flipped', projectDir).catch((e: unknown) => e)
@@ -455,10 +457,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     expect((flipped as Error).message).toBe(
       `cache: corrupt artifact for flipped: archive entry name has empty path component (unsafe): outputs/dist//${long.slice(1)}; dropped it`,
     )
-    expect([
-      await Bun.file(cache.outputsPath('flipped')).exists(),
-      await cache.get('flipped'),
-    ]).toEqual([false, null])
+    expect([storedArtifact(cache, 'flipped'), await cache.get('flipped')]).toEqual([null, null])
   })
 
   it('throws when the artifact cannot produce an output the index recorded', async () => {
@@ -470,7 +469,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // `tar --format=gnu`, which bsdtar (macOS) REFUSES — so on darwin it
     // wrote an EMPTY archive and passed for the wrong reason.
     const hollow = await withSum(await new Bun.Archive({ stdout: '' }).bytes())
-    await Bun.write(cache.outputsPath('hollow'), await Bun.zstdCompress(hollow))
+    replaceStoredArtifact(cache, 'hollow', await Bun.zstdCompress(hollow))
 
     await expect(cache.restoreOutputs('hollow', projectDir)).rejects.toThrow(
       /missing 1 recorded output/i,
@@ -519,7 +518,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
 
   it('leaves a corrupt entry in place under a cache this run may only read', async () => {
     await saveEntry('ro-garbled')
-    await Bun.write(cache.outputsPath('ro-garbled'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    replaceStoredArtifact(cache, 'ro-garbled', new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     const ro = new Cache(cacheDir, { read: true, write: false })
     try {
@@ -531,7 +530,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     } finally {
       ro.close()
     }
-    expect(await Bun.file(cache.outputsPath('ro-garbled')).exists()).toBe(true)
+    expect(storedArtifact(cache, 'ro-garbled')).not.toBeNull()
   })
 
   it('carries the underlying error as the CAUSE of an unreadable archive', async () => {
@@ -541,7 +540,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // reader gets about WHY the decode failed. Dropping it leaves the
     // sentence and removes everything actionable behind it.
     await saveEntry('nocause')
-    await Bun.write(cache.outputsPath('nocause'), new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
+    replaceStoredArtifact(cache, 'nocause', new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
     let caught: unknown
     try {
@@ -751,10 +750,7 @@ describe('a project output under the reserved workspace-outputs/', () => {
         "for outputs.workspaceFiles — write the task's files to another directory, or take them " +
         "back with a '!' entry",
     )
-    expect([
-      await cache.get('reserved'),
-      await Bun.file(cache.outputsPath('reserved')).exists(),
-    ]).toEqual([null, false])
+    expect([await cache.get('reserved'), storedArtifact(cache, 'reserved')]).toEqual([null, null])
   })
 
   // Controls: a neighbour's name and a nested one are ordinary outputs.

@@ -13,7 +13,9 @@
 //   - the workspace fingerprint stat'ed each file before reading it;
 //   - a hit restored into a tree without its outputs walked the output
 //     globs twice (the check, then the clean) and asked realpath about the
-//     missing output directory (X-161, X-163).
+//     missing output directory (X-161, X-163);
+//   - a hit stat'ed its artifact file to prove it was there, which an
+//     artifact inline in the index (v33) is by its row.
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -23,6 +25,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
+import { isInline } from './helpers/stored-artifact.js'
 import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
@@ -310,6 +314,55 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         'lstat',
         'openat',
       ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a hit on an inline artifact asks the file system nothing about it; a file hit stats it once',
+    async () => {
+      const cacheDir = path.join(dir, 'hits', 'cache')
+      const proj = path.join(dir, 'hits', 'p')
+      await mkdir(proj, { recursive: true })
+      const cache = new Cache(cacheDir)
+      const save = async (hash: string, body: Uint8Array | string): Promise<void> => {
+        await writeFile(path.join(proj, `${hash}.txt`), body)
+        await cache.save({
+          hash,
+          projectDir: proj,
+          outputFiles: [path.join(proj, `${hash}.txt`)],
+          entry: { taskId: 'p#build', command: 'c', durationMs: 1, stdout: '' },
+        })
+      }
+      try {
+        await save('00000000000000a1', 'small')
+        await save('00000000000000a2', 'many')
+        // Incompressible and past INLINE_MAX: a file.
+        await save('00000000000000f1', crypto.getRandomValues(new Uint8Array(48 * 1024)))
+        expect(['00000000000000a1', '00000000000000f1'].map((h) => isInline(cache, h))).toEqual([
+          true,
+          false,
+        ])
+      } finally {
+        cache.close()
+      }
+      const calls = await trace(
+        dir,
+        `
+        import { Cache } from '$SRC/cache/index.js'
+        const cache = new Cache(${JSON.stringify(cacheDir)})
+        if ((await cache.get('00000000000000a1')) === null) throw new Error('no hit')
+        if ((await cache.getMany(['00000000000000a2'])).size !== 1) throw new Error('no hit')
+        if ((await cache.get('00000000000000f1')) === null) throw new Error('no hit')
+        if ((await cache.has('00000000000000a1')) !== 'local') throw new Error('no hit')
+        cache.close()
+        `,
+      )
+      expect(
+        ['00000000000000a1', '00000000000000a2', '00000000000000f1'].map((h) =>
+          on(calls, path.join(cacheDir, `${h}.tar.zst`)),
+        ),
+      ).toEqual([[], [], ['stat']])
     },
     TIMEOUT,
   )

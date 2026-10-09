@@ -12,6 +12,7 @@ import {
   type RunRecord,
   FILE_HASH_RACY_MS,
 } from '../src/cache/cache.js'
+import { isInline, storedArtifact } from './helpers/stored-artifact.js'
 
 /** Git blob OID (sha1 domain — fixtures live outside any repo). */
 function blobOid(content: string): string {
@@ -430,7 +431,10 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  async function saveSample(hash: string, files: Record<string, string>): Promise<void> {
+  async function saveSample(
+    hash: string,
+    files: Record<string, string | Uint8Array>,
+  ): Promise<void> {
     const abs: string[] = []
     for (const [rel, content] of Object.entries(files)) {
       const full = path.join(projectDir, rel)
@@ -451,16 +455,26 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     })
   }
 
-  it('save writes a single <hash>.tar file (not a directory)', async () => {
-    await saveSample('h-tar', { 'dist/a.js': 'A', 'dist/b.js': 'B' })
+  it('save writes a large artifact as a single <hash>.tar.zst file (not a directory)', async () => {
+    const big = crypto.getRandomValues(new Uint8Array(48 * 1024))
+    await saveSample('h-tar', { 'dist/a.js': big, 'dist/b.js': 'B' })
     const cacheDir = path.join(dir, '.vx-cache')
     // The artifact is one file, not a directory tree.
     const stats = await stat(path.join(cacheDir, 'h-tar.tar.zst'))
-    expect(stats.isFile()).toBe(true)
+    expect([stats.isFile(), isInline(cache, 'h-tar')]).toEqual([true, false])
     // No more <hash>/ subdir layout.
     expect(await Bun.file(path.join(cacheDir, 'h-tar', 'outputs', 'dist', 'a.js')).exists()).toBe(
       false,
     )
+  })
+
+  it('save keeps a small artifact as one row in the index, with no file', async () => {
+    await saveSample('h-row', { 'dist/a.js': 'A', 'dist/b.js': 'B' })
+    const cacheDir = path.join(dir, '.vx-cache')
+    expect([
+      isInline(cache, 'h-row'),
+      await Bun.file(path.join(cacheDir, 'h-row.tar.zst')).exists(),
+    ]).toEqual([true, false])
   })
 
   it('stdout stored alongside outputs in the artifact', async () => {
@@ -496,11 +510,18 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     expect(p.endsWith('h-path.tar.zst')).toBe(true)
   })
 
-  it('prune removes the .tar files', async () => {
+  it('prune removes the artifacts, inline and file alike', async () => {
     await saveSample('h-prune', { 'a.txt': 'a' })
+    await saveSample('h-prune-file', { 'a.txt': crypto.getRandomValues(new Uint8Array(48 * 1024)) })
     const cacheDir = path.join(dir, '.vx-cache')
-    expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(true)
+    expect([
+      isInline(cache, 'h-prune'),
+      await Bun.file(path.join(cacheDir, 'h-prune-file.tar.zst')).exists(),
+    ]).toEqual([true, true])
     await cache.prune({ olderThanMs: Date.now() + 2 * 60 * 60 * 1000 }) // evict everything
-    expect(await Bun.file(path.join(cacheDir, 'h-prune.tar.zst')).exists()).toBe(false)
+    expect([
+      storedArtifact(cache, 'h-prune'),
+      await Bun.file(path.join(cacheDir, 'h-prune-file.tar.zst')).exists(),
+    ]).toEqual([null, false])
   })
 })

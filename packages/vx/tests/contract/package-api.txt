@@ -41,6 +41,7 @@ export class Cache implements CacheLayer {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
   outputsPath(hash: string): string
+  artifactSize(hash: string): number | undefined
   async recordOutputDirs(
     hash: string,
     projectDir: string,
@@ -127,6 +128,7 @@ export class LayeredCache implements CacheLayer {
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   async has(hash: string): Promise<'local' | 'remote' | null>
   outputsPath(hash: string): string
+  artifactSize(hash: string): number | undefined
   hashFile(filePath: string): Promise<string>
   async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   async save(args: SaveArgs): Promise<void>
@@ -509,6 +511,7 @@ export interface CacheLayer {
   stats(opts?: CacheStatsOptions): CacheStats
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
+  artifactSize?(hash: string): number | undefined
   prune(options: PruneOptions): Promise<PruneResult>
   close(): void
 }

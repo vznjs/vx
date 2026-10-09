@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
 import type { InvocationRecord } from '../src/cache/index.js'
+import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {
@@ -154,10 +155,23 @@ describe('LayeredCache', () => {
     local = new Cache(cacheDir)
   }
 
-  async function saveSample(cache: Cache | LayeredCache, hash: string): Promise<void> {
+  /** `file`: incompressible bytes past INLINE_MAX beside it, so the artifact is a file. */
+  async function saveSample(
+    cache: Cache | LayeredCache,
+    hash: string,
+    file = false,
+  ): Promise<void> {
     const outFile = path.join(projectDir, 'dist', 'out.txt')
     await mkdir(path.dirname(outFile), { recursive: true })
-    await writeFile(outFile, `produced-${hash}`)
+    await writeFile(
+      outFile,
+      file
+        ? Buffer.concat([
+            Buffer.from(`produced-${hash}`),
+            crypto.getRandomValues(new Uint8Array(48 * 1024)),
+          ])
+        : `produced-${hash}`,
+    )
     await cache.save({
       hash,
       projectDir,
@@ -617,7 +631,7 @@ describe('LayeredCache', () => {
     const read = local.getIngested.bind(local)
     // A concurrent prune on a shared cache dir removes the artifact.
     spyOn(local, 'getIngested').mockImplementation(async (hash) => {
-      await rm(local.outputsPath(hash), { force: true })
+      removeStoredArtifact(local, hash)
       return read(hash)
     })
     expect(await layered.get('h-gone')).toBeNull()
@@ -803,7 +817,7 @@ describe('LayeredCache', () => {
 
     // Remove the artifacts the still-queued uploads have not read yet. Only
     // the artifacts.
-    for (const hash of queuedHashes) await rm(path.join(cacheDir, `${hash}.tar.zst`))
+    for (const hash of queuedHashes) removeStoredArtifact(local, hash)
 
     const drain = layered.drainUploads()
     releasePut()
@@ -822,62 +836,77 @@ describe('LayeredCache', () => {
     // A path, not a buffer: the plugin streams it and never holds it whole.
     // The path is a private name for the artifact, gone once the PUT ends.
     const layered = makeLayered()
-    await saveSample(layered, 'h-file')
+    await saveSample(layered, 'h-file', true)
     const names = remote.putBodies.map((b) => (b as { name?: unknown }).name)
     expect(names).toHaveLength(1)
     expect(String(names[0]).startsWith(`${local.outputsPath('h-file')}.tmp-`)).toBe(true)
     expect(await readdir(cacheDir)).not.toContain(path.basename(String(names[0])))
   })
 
-  it('a re-save of the key during an upload leaves every read of its body the same', async () => {
-    // A plugin reads its body twice (a digest pass, then the bytes); a
-    // body opened by the live path read the re-save's bytes the second time.
-    let midPut!: () => void
-    const reading = new Promise<void>((resolve) => {
-      midPut = resolve
-    })
-    let resume!: () => void
-    const gate = new Promise<void>((resolve) => {
-      resume = resolve
-    })
-    const reads: string[] = []
-    const errors: Error[] = []
-    const layered = new LayeredCache(
-      local,
-      {
-        ...remote.layer,
-        async put(_hash, body) {
-          reads.push(Buffer.from(await body.bytes()).toString('hex'))
-          midPut()
-          await gate
-          reads.push(Buffer.from(await body.bytes()).toString('hex'))
-        },
-      },
-      { onRemoteError: (e) => errors.push(e) },
+  it("an inline artifact's upload body is its bytes, read when the job runs", async () => {
+    const layered = makeLayered()
+    await saveSample(layered, 'h-inline')
+    expect(isInline(local, 'h-inline')).toBe(true)
+    expect(remote.putBodies).toHaveLength(1)
+    expect(Buffer.from(await remote.putBodies[0]!.bytes())).toEqual(
+      Buffer.from(storedArtifact(local, 'h-inline')!),
     )
-    const outFile = path.join(projectDir, 'dist', 'out.txt')
-    await mkdir(path.dirname(outFile), { recursive: true })
-    const save = async (cache: Cache | LayeredCache, text: string) => {
-      await writeFile(outFile, text)
-      await cache.save({
-        hash: 'h-resave',
-        projectDir,
-        outputFiles: [outFile],
-        entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
-      })
-    }
-    await save(layered, 'first')
-    await reading
-    const firstBytes = Buffer.from(await Bun.file(local.outputsPath('h-resave')).bytes())
-    await save(local, 'second, longer than the first')
-    expect(Buffer.from(await Bun.file(local.outputsPath('h-resave')).bytes())).not.toEqual(
-      firstBytes,
-    )
-    resume()
-    await layered.drainUploads()
-    expect(errors).toEqual([])
-    expect(reads).toEqual([firstBytes.toString('hex'), firstBytes.toString('hex')])
   })
+
+  // Test 9 of docs/design/cache-save-cpu-2026-10.md for the inline artifact;
+  // the file's pin is a private link.
+  for (const where of ['inline', 'file'] as const) {
+    it(`a re-save of the key during an upload leaves every read of its ${where} body the same`, async () => {
+      // A plugin reads its body twice (a digest pass, then the bytes); a
+      // body opened by the live path read the re-save's bytes the second time.
+      let midPut!: () => void
+      const reading = new Promise<void>((resolve) => {
+        midPut = resolve
+      })
+      let resume!: () => void
+      const gate = new Promise<void>((resolve) => {
+        resume = resolve
+      })
+      const reads: string[] = []
+      const errors: Error[] = []
+      const layered = new LayeredCache(
+        local,
+        {
+          ...remote.layer,
+          async put(_hash, body) {
+            reads.push(Buffer.from(await body.bytes()).toString('hex'))
+            midPut()
+            await gate
+            reads.push(Buffer.from(await body.bytes()).toString('hex'))
+          },
+        },
+        { onRemoteError: (e) => errors.push(e) },
+      )
+      const outFile = path.join(projectDir, 'dist', 'out.txt')
+      await mkdir(path.dirname(outFile), { recursive: true })
+      const pad =
+        where === 'file' ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : new Uint8Array(0)
+      const save = async (cache: Cache | LayeredCache, text: string) => {
+        await writeFile(outFile, Buffer.concat([Buffer.from(text), pad]))
+        await cache.save({
+          hash: 'h-resave',
+          projectDir,
+          outputFiles: [outFile],
+          entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
+        })
+      }
+      await save(layered, 'first')
+      await reading
+      expect(isInline(local, 'h-resave')).toBe(where === 'inline')
+      const firstBytes = Buffer.from(storedArtifact(local, 'h-resave')!)
+      await save(local, 'second, longer than the first')
+      expect(Buffer.from(storedArtifact(local, 'h-resave')!)).not.toEqual(firstBytes)
+      resume()
+      await layered.drainUploads()
+      expect(errors).toEqual([])
+      expect(reads).toEqual([firstBytes.toString('hex'), firstBytes.toString('hex')])
+    })
+  }
 
   it('save() still packs in memory when local writes are disabled', async () => {
     // Control for the deferred read: with `--cache=local:,remote:rw` there

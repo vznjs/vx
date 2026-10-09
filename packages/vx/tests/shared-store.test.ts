@@ -16,6 +16,7 @@ import { run } from '../src/orchestrator/index.js'
 import { resolveStoreRoot } from '../src/workspace/index.js'
 import { parseGitConfigRemotes, parseRemoteUrl, repoIdOf } from '../src/workspace/repo-id.js'
 import { restoreEnv } from './helpers/env.js'
+import { storedKeys } from './helpers/stored-artifact.js'
 import { gitIn, gitInitCommit } from './helpers/workspace.js'
 import {
   addProject,
@@ -112,13 +113,13 @@ describe('the shared store', () => {
     expect(await build(b)).toEqual({ status: 'cache-hit', restored: true })
     expect(await readFile(path.join(b.pkg, 'out.txt'), 'utf8')).toBe('hi\n')
     // The entry and its artifact are the store's, not either workspace's.
-    const artifacts = (await Array.fromAsync(new Bun.Glob('*.tar.zst').scan(await store()))).length
-    expect(artifacts).toBe(1)
+    expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
+    expect(storedKeys(path.join(a.root, '.vx', 'cache'))).toEqual([])
     expect(
-      await Array.fromAsync(new Bun.Glob('*.tar.zst').scan(path.join(a.root, '.vx', 'cache'))),
-    ).toEqual([])
-    expect(
-      rows(a, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entries'"),
+      rows(
+        a,
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('entries', 'artifacts')",
+      ),
     ).toEqual([])
   })
 

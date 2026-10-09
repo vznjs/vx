@@ -25,6 +25,7 @@ import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
+import { storedArtifact } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 30_000
 
@@ -589,7 +590,7 @@ describe('workspace-outputs artifact namespace', () => {
   const entry = { taskId: 'pkg#gen', command: 'gen', exitCode: 0, durationMs: 5, stdout: '' }
 
   async function tarNames(hash: string): Promise<string[]> {
-    const compressed = await Bun.file(cache.outputsPath(hash)).bytes()
+    const compressed = storedArtifact(cache, hash)!
     const { entries } = await scanArtifact(streamOf(await Bun.zstdDecompress(compressed)))
     return entries.map((e) => e.name)
   }
