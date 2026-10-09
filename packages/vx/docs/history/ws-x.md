@@ -1357,8 +1357,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   no rename, no stat on a hit. A larger one stays a file and its blob
   row is deleted in that transaction, so readers prefer the blob and
   never pair one writer's rows with another's bytes; the restore reads
-  rows and blob in one read snapshot. Adopt, ingest, pin, prune, the
-  orphan sweep (a row-less blob is judged by its `at`) and `vx info`
+  rows and blob in one read snapshot, serving a probe's held rows
+  (X-162) only while the blob's `at` is the one the probe read. Adopt,
+  ingest, pin, prune, the orphan sweep (a row-less blob is judged by its `at`) and `vx info`
   cover both kinds; `CacheLayer.artifactSize?` replaces a stat of
   `outputsPath`. `artifacts` sits outside the schema reset, guarded by
   its own layout sentinel (`a1`), so a reset keeps the bytes and the

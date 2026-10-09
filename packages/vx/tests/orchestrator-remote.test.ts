@@ -31,6 +31,7 @@ import {
   type TelemetryRecord,
 } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
+import { storedKeys } from './helpers/stored-artifact.js'
 
 /**
  * Absolute specifier for the cache module, so a fixture's generated
@@ -316,9 +317,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect([...remote.getCounts.values()]).toEqual([])
         expect([...remote.headCounts.values()]).toEqual([1])
         const cacheDir = path.join(fixture.root, '.vx', 'cache')
-        const glob = new Bun.Glob('*.tar.zst')
-        const artifacts = [...glob.scanSync({ cwd: cacheDir })]
-        expect(artifacts).toEqual([])
+        expect(storedKeys(cacheDir)).toEqual([])
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

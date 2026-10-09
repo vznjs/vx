@@ -757,7 +757,9 @@ describe('Cache storage (v10)', () => {
       const { chmod, mkdir, writeFile } = await import('node:fs/promises')
       const outFile = path.join(projectDir, 'dist', 'out.txt')
       await mkdir(path.dirname(outFile), { recursive: true })
-      await writeFile(outFile, 'produced')
+      // Incompressible and past INLINE_MAX: the artifact is a file, the
+      // thing a user's permissions can refuse (an inline one is the index's).
+      await writeFile(outFile, crypto.getRandomValues(new Uint8Array(48 * 1024)))
       await cache.save({
         hash: 'h-unread',
         projectDir,
@@ -765,6 +767,7 @@ describe('Cache storage (v10)', () => {
         entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
       })
       const artifact = path.join(cacheDir, 'h-unread.tar.zst')
+      expect(isInline(cache, 'h-unread')).toBe(false)
       await chmod(artifact, 0o000)
       try {
         const err = await cache.restoreOutputs('h-unread', projectDir).then(
@@ -1042,7 +1045,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(CorruptArtifactError)
-    expect(existsSync(path.join(cacheDir, 'h-corrupt.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-corrupt')).toBeNull()
     expect(await cache.get('h-corrupt')).toBeNull()
   })
 
@@ -1060,7 +1063,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(CorruptArtifactError)
-    expect(existsSync(path.join(cacheDir, 'h-not-tar.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-not-tar')).toBeNull()
     expect(await cache.get('h-not-tar')).toBeNull()
   })
 
@@ -1147,7 +1150,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(/missing stdout entry/)
-    expect(existsSync(path.join(cacheDir, 'h-no-stdout.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-no-stdout')).toBeNull()
     expect(await cache.get('h-no-stdout')).toBeNull()
   })
 
@@ -1310,7 +1313,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(CorruptArtifactError)
-    expect(existsSync(path.join(cacheDir, 'h-bomb.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-bomb')).toBeNull()
     expect(await cache.get('h-bomb')).toBeNull()
   })
 
@@ -1348,7 +1351,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(CorruptArtifactError)
-    expect(existsSync(path.join(cacheDir, 'h-garbage.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-garbage')).toBeNull()
   })
 
   it('ingest() reads a 4-byte Frame_Content_Size (fcsFlag 2) and rejects an oversize declaration', async () => {
@@ -1370,7 +1373,7 @@ describe('Cache storage (v10)', () => {
         durationMs: 1,
       }),
     ).rejects.toThrow(/declares .* decompressed bytes/)
-    expect(existsSync(path.join(cacheDir, 'h-bomb4.tar.zst'))).toBe(false)
+    expect(storedArtifact(cache, 'h-bomb4')).toBeNull()
     expect(await cache.get('h-bomb4')).toBeNull()
   })
 

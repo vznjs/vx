@@ -682,6 +682,11 @@ export class Cache implements CacheLayer {
   private readonly staleTimes = new Set<string>()
   /** The same for inline artifacts, whose `at` stands for the file time. */
   private readonly staleInline = new Set<string>()
+  /**
+   * The `at` of each inline artifact the last probe held rows for: a restore
+   * serves those rows only while the blob still carries it.
+   */
+  private readonly heldInlineAt = new Map<string, number>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1038,7 +1043,7 @@ export class Cache implements CacheLayer {
       this.db,
       'SELECT e.exit_code, a.at AS inline_at FROM entries e LEFT JOIN artifacts a ON a.hash = e.hash WHERE e.hash = ?',
     )
-    this.selectBlob = lazyStatement(this.db, 'SELECT bytes FROM artifacts WHERE hash = ?')
+    this.selectBlob = lazyStatement(this.db, 'SELECT at, bytes FROM artifacts WHERE hash = ?')
     this.upsertBlob = lazyStatement(
       this.db,
       'INSERT INTO artifacts(hash, at, bytes) VALUES (?, ?, ?) ON CONFLICT(hash) DO UPDATE SET at = excluded.at, bytes = excluded.bytes',
@@ -1545,6 +1550,8 @@ export class Cache implements CacheLayer {
     const liveHashes = live.map((r) => r.hash)
     const fileRows = this.loadOutputFilesBatch(liveHashes)
     this.outputs.hold(fileRows)
+    this.heldInlineAt.clear()
+    for (const r of live) if (r.inline_at !== null) this.heldInlineAt.set(r.hash, r.inline_at)
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       if (row.accessed_at < refreshStart) this.touched.add(row.hash)
@@ -1697,14 +1704,17 @@ export class Cache implements CacheLayer {
     // An inline artifact and its rows are read in one read transaction, so
     // one snapshot: a re-save of the key in another process replaces both
     // in one commit, and two reads could pair its rows with the old bytes.
-    // The rows are read again rather than taken from the probe's.
+    // The probe's held rows (X-162) serve only while the blob carries the
+    // `at` the probe saw: a re-save or a renewal since moves it, and then
+    // the rows are read again in the blob's snapshot.
     let rows: readonly OutputFileRow[] = []
     let inline: Uint8Array | undefined
     this.guard(() =>
       this.db.transaction(() => {
-        inline = (this.selectBlob.get(hash) as { bytes: Uint8Array } | null)?.bytes
+        const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
+        inline = blob?.bytes
         rows =
-          inline === undefined
+          blob === null || blob.at === this.heldInlineAt.get(hash)
             ? this.outputs.rowsOf(hash)
             : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
       })(),

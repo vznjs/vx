@@ -66,3 +66,32 @@ export function storedKeys(dir: string, dbFile = 'cache.db'): string[] {
   }
   return [...keys].sort()
 }
+
+/**
+ * Every stored artifact's bytes under `root`, files and inline blobs of any
+ * `*.db` index or store, by where each lives: what a test that scanned for
+ * `*.tar.zst` files to prove something never landed must scan now.
+ */
+export function storedBytesUnder(root: string): Map<string, Uint8Array> {
+  const out = new Map<string, Uint8Array>()
+  for (const f of new Bun.Glob('**/*.tar.zst').scanSync({ cwd: root, dot: true })) {
+    out.set(f, new Uint8Array(readFileSync(path.join(root, f))))
+  }
+  for (const f of new Bun.Glob('**/*.db').scanSync({ cwd: root, dot: true })) {
+    const db = new Database(path.join(root, f), { readonly: true })
+    try {
+      const has = db
+        .query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifacts'")
+        .get()
+      if (has === null) continue
+      const rows = db.query('SELECT hash, bytes FROM artifacts').all() as Array<{
+        hash: string
+        bytes: Uint8Array
+      }>
+      for (const r of rows) out.set(`${f}#${r.hash}`, r.bytes)
+    } finally {
+      db.close()
+    }
+  }
+  return out
+}

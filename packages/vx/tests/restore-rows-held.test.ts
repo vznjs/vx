@@ -71,3 +71,26 @@ it('rows replaced after the probe are the ones the restore checks (X-162)', asyn
     cache.close()
   }
 })
+
+it('an inline artifact re-saved by another writer after the probe restores with its own rows', async () => {
+  root = mkdtempSync(path.join(tmpdir(), 'vx-rows-held-'))
+  const proj = path.join(root, 'proj')
+  const cacheDir = path.join(root, 'cache')
+  mkdirSync(proj)
+  const cache = new Cache(cacheDir, { read: true, write: true })
+  const other = new Cache(cacheDir, { read: true, write: true })
+  try {
+    await saveFiles(cache, proj, { 'a.txt': 'a' })
+    expect((await cache.getMany([HASH])).get(HASH)?.outputFiles).toEqual(['a.txt'])
+    // A later millisecond: the re-save's `at` is not the probe's.
+    await Bun.sleep(2)
+    rmSync(path.join(proj, 'a.txt'))
+    await saveFiles(other, proj, { 'b.txt': 'b' })
+    const out = path.join(root, 'out')
+    await cache.restoreOutputs(HASH, out)
+    expect(readFileSync(path.join(out, 'b.txt'), 'utf8')).toBe('b')
+  } finally {
+    other.close()
+    cache.close()
+  }
+})

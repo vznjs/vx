@@ -507,7 +507,10 @@ layer carries it as it carried stdout (v42).
 
 `restoreOutputs()` reads an inline artifact and the entry's
 `output_files` rows in one read transaction, so a re-save in another
-process cannot pair its rows with the other bytes. `pinArtifact()`
+process cannot pair its rows with the other bytes. The rows a probe
+held (X-162) serve it only while the blob's `at` is the one the probe
+read; a re-save or renewal since moves it and the rows are read again
+in the blob's snapshot. `pinArtifact()`
 (the upload's body) hands an inline artifact over as a `Blob` of its
 bytes, read once; a file as a private hard link.
 
