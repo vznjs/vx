@@ -150,7 +150,10 @@ async function resolveTarget(
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
   if (target.includes('#')) {
-    throw new UserError(`vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`)
+    throw new UserError(
+      `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,
+      'VX_E_NO_HISTORY',
+    )
   }
   const matches = ids.filter((id) => id.endsWith(`#${target}`))
   if (matches.length === 1) return matches[0]!
@@ -160,10 +163,12 @@ async function resolveTarget(
     throw new UserError(
       `vx why: "${target}" ran in ${matches.length} projects — pick one:\n` +
         matches.map((m) => `  ${m}`).join('\n'),
+      'VX_E_AMBIGUOUS',
     )
   }
   throw new UserError(
     `vx why: no recorded runs for task "${target}"${suggest(target, ids, invoked)}`,
+    'VX_E_NO_HISTORY',
   )
 }
 
@@ -186,9 +191,12 @@ function restoredWord(r: { restored: boolean | null }): string {
 
 export async function whyCmd(args: readonly string[]): Promise<number> {
   const parsed = parseWhyArgs(args)
-  if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`)
+  if (parsed.error !== undefined) throw new UserError(`vx why: ${parsed.error}`, 'VX_E_USAGE')
   if (parsed.target === undefined) {
-    throw new UserError('vx why: <task> required (e.g. vx why app#build, or vx why build)')
+    throw new UserError(
+      'vx why: <task> required (e.g. vx why app#build, or vx why build)',
+      'VX_E_USAGE',
+    )
   }
 
   const root = await findWorkspaceRoot(process.cwd())
@@ -205,6 +213,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       if (runId === null) {
         throw new UserError(
           `vx why: no recorded run ${parsed.runId} (vx last --list shows recent runs)`,
+          'VX_E_NO_HISTORY',
         )
       }
     } else runId = latestRunId(db, taskId)
@@ -230,6 +239,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     if (!why.found) {
       throw new UserError(
         `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
+        'VX_E_NO_HISTORY',
       )
     }
     const diff = cacheKeyDiff(db, runId, taskId)
