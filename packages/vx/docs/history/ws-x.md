@@ -1328,3 +1328,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `UserError` takes a `code`; first codes: `VX_E_USAGE`,
   `VX_E_UNKNOWN_TASK`, `VX_E_CONFIG`, `VX_E_CYCLE`, `VX_E_NO_WORKSPACE`,
   `VX_E_REFUSED`, `VX_E_FS`, `VX_E_FDS`, `VX_E_INTERNAL`.
+
+- **X-202.** Error codes for the reading verbs: `show`, `info`, `why`,
+  `last` and `cache prune` answer their refusals under `--format json`
+  with a code too (`VX_E_USAGE`, `VX_E_UNKNOWN_PROJECT`,
+  `VX_E_UNKNOWN_TASK`, `VX_E_NO_HISTORY`, `VX_E_AMBIGUOUS`,
+  `VX_E_NO_WORKSPACE`). One `refuse()` in `cli/help.ts` prints a
+  refusal a verb returns rather than throws.

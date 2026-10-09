@@ -10,7 +10,7 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
+import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
 import { affectedFilterFor, resolveFilters } from './select.js'
 import {
@@ -82,10 +82,7 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
 
 export async function showCmd(args: readonly string[]): Promise<number> {
   const parsed = parseShowArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vx show: ${parsed.error}\n`)
-    return 1
-  }
+  if (parsed.error) return refuse('show', args, parsed.error, 'VX_E_USAGE')
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd(), reads)
   const metas = await discoverCliProjects(await loadWorkspace(root, reads))
@@ -98,6 +95,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     if (rootMeta === undefined) {
       throw new UserError(
         `vx show: "${parsed.target}" names the workspace root's project, and the root is no project here`,
+        'VX_E_USAGE',
       )
     }
     parsed.target = `${rootMeta.name}${parsed.target.slice(2)}`
@@ -114,12 +112,14 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const list = projectName === '' ? 'vx show' : `vx show ${projectName}`
     throw new UserError(
       `vx show: missing task name after '#' in "${parsed.target}" (${list} lists the tasks)`,
+      'VX_E_USAGE',
     )
   }
   if (projectName !== undefined && (taskName !== undefined || byName.has(projectName))) {
     if (!byName.has(projectName)) {
       throw new UserError(
         `vx show: unknown project: "${projectName}"${suggest(projectName, [...byName.keys()], '', 'projects')}`,
+        'VX_E_UNKNOWN_PROJECT',
       )
     }
   }
@@ -138,18 +138,19 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     if (scope !== 'all') {
       throw new UserError(
         'vx show: --filter and --affected narrow a list: `vx show` or `vx show <task>`',
+        'VX_E_USAGE',
       )
     }
     const raw = [...parsed.filters]
     let affected: string | undefined
     if (parsed.affected !== undefined) {
       const f = await affectedFilterFor(process.cwd(), parsed.affected)
-      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`)
+      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, 'VX_E_USAGE')
       affected = f
       raw.unshift(f)
     }
     const r = await resolveFilters(process.cwd(), raw, { noCreate: true }, affected)
-    if ('error' in r) throw new UserError(`vx show: ${r.error}`)
+    if ('error' in r) throw new UserError(`vx show: ${r.error}`, 'VX_E_USAGE')
     if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
     selected = new Set('empty' in r ? [] : r.names)
     if ('names' in r && r.affected !== undefined)
@@ -181,6 +182,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       const nx = projectName === 'projects' ? ' (`nx show projects` is `vx show` here)' : ''
       throw new UserError(
         `vx show: unknown project or task: "${projectName}"${nx}${suggest(projectName!, [...byName.keys(), ...names], '', 'projects and tasks')}`,
+        'VX_E_UNKNOWN_TASK',
       )
     }
     let shown = declaring.filter((p) => inSelection(p.name))
@@ -224,6 +226,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   if (task === undefined) {
     throw new UserError(
       `vx show: unknown task: "${meta.name}#${taskName}"${suggest(taskName, Object.keys(config?.tasks ?? {}), `${meta.name}#`, 'its tasks')}`,
+      'VX_E_UNKNOWN_TASK',
     )
   }
   process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format))

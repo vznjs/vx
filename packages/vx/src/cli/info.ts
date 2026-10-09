@@ -6,7 +6,7 @@
 
 import os from 'node:os'
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
-import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
+import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 import { MIN_BUN } from '../util/index.js'
@@ -45,10 +45,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
 
 export async function infoCmd(args: readonly string[]): Promise<number> {
   const parsed = parseInfoArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vx info: ${parsed.error}\n`)
-    return 1
-  }
+  if (parsed.error) return refuse('info', args, parsed.error, 'VX_E_USAGE')
   // `collectInfo` takes a resolved directory from `vx mcp` too, where one
   // not made yet is a workspace that never ran; the flag is the user's,
   // and a directory it names that is not there is a typo (item 900).

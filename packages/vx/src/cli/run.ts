@@ -3,7 +3,7 @@ import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
-import { flagHint, formatValue, seeHelp } from './help.js'
+import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   planRun,
   formatRunReportMarkdown,
@@ -21,14 +21,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import {
-  errorDocument,
-  MAX_TIMEOUT_MS,
-  maskedLine,
-  parseDecimalInt,
-  machineParallelism,
-  wantsJson,
-} from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -653,21 +646,10 @@ export async function resolveRunOptions(
 /** How many task names a run with no task names before `and N more`. */
 const TASKS_SHOWN = 12
 
-/**
- * A refusal `vx run` prints itself: one line on stderr, exit 1, and under
- * `--format json` (or `--dry=json`) the same as a JSON document on stdout,
- * as `bin.ts` prints for a thrown one, so an agent reads a code.
- */
-function refuse(args: readonly string[], message: string, code: string): number {
-  process.stderr.write(`vx run: ${message}\n`)
-  if (wantsJson(args)) process.stdout.write(errorDocument(code, maskedLine(`vx run: ${message}`)))
-  return 1
-}
-
 export async function runCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
-    return refuse(args, `${parsed.error}${seeHelp('run')}`, 'VX_E_USAGE')
+    return refuse('run', args, `${parsed.error}${seeHelp('run')}`, 'VX_E_USAGE')
   }
 
   const cwd = process.cwd()
@@ -704,11 +686,11 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     // `--filter` / `--affected` scope the menu, as they scope a bare task:
     // the menu listed every project and the anchored pick ran outside it.
     const scope = await scopeFilters(parsed, cwd)
-    if ('error' in scope) return refuse(args, scope.error, 'VX_E_USAGE')
+    if ('error' in scope) return refuse('run', args, scope.error, 'VX_E_USAGE')
     let only: ReadonlySet<string> | undefined
     if (scope.filterStrings.length > 0) {
       const selected = await resolveFilters(cwd, scope.filterStrings, load, scope.affectedFilter)
-      if ('error' in selected) return refuse(args, selected.error, 'VX_E_USAGE')
+      if ('error' in selected) return refuse('run', args, selected.error, 'VX_E_USAGE')
       if ('empty' in selected) {
         process.stderr.write(`vx run: ${selected.empty}\n`)
         return 0
@@ -723,7 +705,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const resolved = await resolveRunOptions(parsed, cwd, tasks)
-  if ('error' in resolved) return refuse(args, resolved.error, 'VX_E_USAGE')
+  if ('error' in resolved) return refuse('run', args, resolved.error, 'VX_E_USAGE')
   if ('nothingSelected' in resolved) {
     process.stderr.write(`vx run: ${resolved.nothingSelected}\n`)
     return 0
@@ -815,7 +797,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   const summary = await runOrchestrator(opts)
   if (summary.refused !== undefined) {
     const unknown = summary.refused.startsWith('no projects declare')
-    return refuse(args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
+    return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
   }
   if (wantsReport) {
     const md =
