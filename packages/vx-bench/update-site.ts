@@ -126,7 +126,8 @@ function versus(ours: number, theirs: number): string {
 }
 const FORMULA = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
 // Under every bench table: when, where and which versions (owner, 2026-10-09).
-const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx from source, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
+const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
+const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
 // Beside every bench number (owner, 2026-10-09), true to compare.ts's shape.
 const WORKLOAD =
   'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'

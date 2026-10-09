@@ -347,7 +347,11 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   const vxRun = binWorks
     ? [vxBin]
     : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
-  const vxVer = (await sh([...vxRun, '--version'], dir)).out.trim()
+  // A source build reports 0.0.0; the commit says which vx ran (owner,
+  // 2026-10-09: every bench table names its versions).
+  const rev = await sh(['git', 'rev-parse', '--short=9', 'HEAD'], vxRoot)
+  const vxCommit = rev.ok ? rev.out.trim() : ''
+  const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim() || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
   const conc = ['--concurrency', String(CONCURRENCY)]
   const clearVx = () => rm(path.join(dir, '.vx'), { recursive: true, force: true })
   const suffix = compiled.ok ? '' : ' (ts-source)'
@@ -358,13 +362,13 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
   runners.push({
     name: `vx${suffix}`,
-    version: vxVer || 'workspace',
+    version: vxVer,
     run: [...vxRun, 'run', 'build', 'test', '--all', ...conc, '--frozen'],
     clear: clearVx,
   })
   runners.push({
     name: `vx (no lock)${suffix}`,
-    version: vxVer || 'workspace',
+    version: vxVer,
     run: [...vxRun, 'run', 'build', 'test', '--all', ...conc],
     clear: clearVx,
   })
