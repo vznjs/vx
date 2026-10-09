@@ -573,6 +573,9 @@ function ensurePrivateDir(dir: string): string | null {
   if (!st.isDirectory()) return `${dir} is not a directory`
   const uid = process.getuid?.()
   if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`
+  // One others could write may already hold what they planted (a link, an
+  // entry of their own), and closing it now would keep those: not used.
+  if ((st.mode & 0o022) !== 0) return `${dir} is writable by other users`
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
   // unused on a stock macOS home (owner, 2026-10-06: "you should own it").

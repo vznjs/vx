@@ -193,6 +193,23 @@ describe('the shared store', () => {
     ]).toEqual(['700', { log: ['task app#build success'], err: [] }, 1])
   })
 
+  it('a ~/.vx others could write is not used: what they planted stays out of reach', async () => {
+    // Closing it to 700 would keep a link or an entry another user had
+    // already put there; the workspace's own cache is used instead.
+    await mkdir(path.join(home, '.vx'), { mode: 0o777 })
+    await chmod(path.join(home, '.vx'), 0o777)
+    const a = await workspace()
+    expect((await build(a)).status).toBe('success')
+    // CONTROL: the run cached, in the workspace, so the store was refused,
+    // not every cache.
+    expect([
+      (statSync(path.join(home, '.vx')).mode & 0o777).toString(8),
+      (await stores()).length,
+      existsSync(path.join(a.root, '.vx', 'cache', 'store.db')),
+      said(a),
+    ]).toEqual(['777', 0, true, { log: ['task app#build success'], err: [] }])
+  })
+
   it('makes each level of the store owner-only', async () => {
     const a = await workspace()
     await build(a)
