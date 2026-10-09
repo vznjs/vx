@@ -125,6 +125,8 @@ function versus(ours: number, theirs: number): string {
   return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
 const FORMULA = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+// Under every bench table: when, where and which versions (owner, 2026-10-09).
+const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx from source, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
 // Beside every bench number (owner, 2026-10-09), true to compare.ts's shape.
 const WORKLOAD =
   'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
@@ -140,14 +142,15 @@ const tableBlock =
     .join('\n') +
   '\n]\n' +
   `const benchFormula = '${FORMULA}'\n` +
-  `const benchWorkload = '${WORKLOAD}'\n`
+  `const benchWorkload = '${WORKLOAD}'\n` +
+  `const benchRun = '${RUN}'\n`
 
 // ---- landing page ----
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
 landing = rewrite(
   landing,
-  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n(?:const benchWorkload = '[^'\n]*'\n)?/,
+  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n(?:const benchWorkload = '[^'\n]*'\n)?(?:const benchRun = '[^'\n]*'\n)?/,
   tableBlock,
   'the benchTable block',
 )
@@ -178,6 +181,7 @@ ${table.map(([label, n, f, ratio]) => `| ${label} | **${f(vx)}** | ${vs(turbo, n
 ${FORMULA}
 
 ${WORKLOAD}
+${RUN}
 
 The secondary row is the wall time over the tasks' own ideal schedule (${span(B.fresh)}).
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).

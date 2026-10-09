@@ -82,6 +82,7 @@ const benchTable = [
 ]
 const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
 const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
+const benchRun = 'Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.'
 
 /** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {
@@ -297,6 +298,7 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
             <Fragment set:html={benchBars} />
             <p class="bench-formula">{benchFormula}</p>
             <p class="bench-formula bench-workload">{benchWorkload}</p>
+            <p class="bench-formula bench-workload">{benchRun}</p>
           </div>
           <ul class="reasons">
             {

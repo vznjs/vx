@@ -66,6 +66,7 @@ isolate the runner's own overhead from compilation.
 vx N% faster: that tool takes N% longer than vx; N× faster: N times as long; slower: vx takes that much longer.
 
 Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for), because on a
