@@ -625,6 +625,28 @@ are not compared (owner, 2026-10-09). Each rep in order: vx restore 0.39 / 0.50 
 noop 0.22 / 0.24 / 0.23 s, Nx 1.43 / 1.59 / 1.49 s. "N% faster" means
 the other tool takes N% longer.
 
+### create-t3-turbo and react-email, against Turbo (2026-10-09)
+
+[t3-oss/create-t3-turbo](https://github.com/t3-oss/create-t3-turbo) at
+`8f945b7` (Turbo 2.5.8, 3 tasks) and
+[resend/react-email](https://github.com/resend/react-email) at
+`1531a39` (Turbo 2.9.14, 7 tasks), filter `./packages/*`, 10 workers
+each. vx 0.0.634 configured by `vx init --native`, plus
+`scheduleHistoryPlugin({ file: '.vx-timings.json' })` fed timings from
+one earlier untimed run (the file is the only thing kept across the
+cache wipe). Turbo is each repo's own, `--no-daemon`. pnpm 12.4.2,
+Node 22.22, linux x64, 4 cores, 16 GB.
+
+| Repo            | Case        | vx      | Turbo   | vx is       |
+| --------------- | ----------- | ------- | ------- | ----------- |
+| create-t3-turbo | Restore     | 0.087 s | 0.519 s | 6.0× faster |
+| create-t3-turbo | Nothing new | 0.081 s | 0.476 s | 5.9× faster |
+| react-email     | Restore     | 0.283 s | 0.382 s | 35% faster  |
+| react-email     | Nothing new | 0.136 s | 0.252 s | 85% faster  |
+
+Both cases are runner overhead: every task is a cache hit. Cold build
+times are not compared (owner, 2026-10-09).
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
