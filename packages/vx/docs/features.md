@@ -40,9 +40,9 @@ config key or an environment variable is missing here.
 
 ## Output
 
-- **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · no post
+- **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Output modes** (`--output-logs`) — full, errors-only, hash-only or none; the default follows the flow. no post
-- **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · no post
+- **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. no post
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. no post
