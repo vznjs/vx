@@ -750,6 +750,30 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
+    slug: 'vx-docs',
+    title: 'The reference, offline',
+    category: 'insight',
+    hook: '`vx docs <query>` searches the CLI, config and cache reference with no network.',
+    body: [
+      'The reference ships inside vx, so the answer matches the version you run, on a plane or in a locked-down CI box.',
+      'A query prints the best sections whole, with a link to each on the site. An error code prints its fix, and `--format json` hands the hits to an agent.',
+    ],
+    example: {
+      lang: 'sh',
+      code: 'vx docs affected\nvx docs VX_E_CYCLE\nvx docs "remote cache" --format json',
+    },
+    image: 'vx-docs.png',
+    imageAlt: 'vx docs printing a reference section offline.',
+    docs: {
+      label: 'vx docs',
+      href: 'cli/#vx-docs',
+    },
+    deepDive: {
+      label: 'The reference, offline',
+      href: 'blog/vx-docs-offline/',
+    },
+  },
+  {
     slug: 'affected-reasons',
     title: 'Why a task is affected',
     category: 'insight',
