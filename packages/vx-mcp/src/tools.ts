@@ -1,6 +1,7 @@
-// The seven tools, as pure handlers over one workspace: five over its
-// cache.db, one over its resolved configs, one the doctor's facts (what
-// `vx info` prints, from the same collector). Every handler opens what it
+// The tools, as handlers over one workspace: most read its cache.db, its
+// resolved configs or the doctor's facts (what `vx info` prints, from the
+// same collector); `runTasks` runs `vx run --format json` as a child, the
+// CLI's own selection and refusals included. Every handler opens what it
 // reads for the call and closes it — the server is a short-lived adapter —
 // and validates its arguments at the boundary rather than coercing them:
 // an agent that sends the wrong shape must be told, not answered with data
@@ -13,6 +14,7 @@ import {
   loadResolvedProjects,
   LocalHistoryProvider,
   maskedCommand,
+  maskedLine,
   splitTaskId,
   UserError,
   latestRunId,
@@ -31,6 +33,8 @@ export interface ToolContext {
   /** The workspace's cache directory (`.vx/cache`), from the command context. */
   readonly cacheDir: string
   readonly workspaceRoot: string
+  /** The argv that runs this vx (`CommandContext.vx`); `runTasks` spawns it. */
+  readonly vx: readonly string[]
 }
 
 const TOOLS: readonly ToolDef[] = [
@@ -118,6 +122,33 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'runTasks',
+    description:
+      'Run tasks as `vx run <tasks> --format json` does and return its exit code and the run summary ' +
+      '(ok, per-task status, cache hits, durations; the `--summarize` document). The tasks run here, ' +
+      'with this workspace’s cache and sandbox. `all`, `filter`, `affected` and `force` are the CLI ' +
+      'flags. A refusal before the run (an unknown task, a bad filter) returns no summary and the CLI’s ' +
+      'message as `error`; a failed task’s output is getFailures.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tasks: { type: 'array', items: { type: 'string' }, minItems: 1 },
+        all: { type: 'boolean', description: '--all: every project' },
+        filter: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '--filter values (a project, a glob, ...pkg, [ref])',
+        },
+        affected: {
+          oneOf: [{ type: 'boolean' }, { type: 'string' }],
+          description: '--affected: true for the default ref, or a git ref',
+        },
+        force: { type: 'boolean', description: '--force: run past the cache' },
+      },
+      required: ['tasks'],
+    },
+  },
+  {
     name: 'getWorkspaceInfo',
     description:
       'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
@@ -177,6 +208,8 @@ export async function handleToolCall(
       return whyDidThisRerun(args, ctx)
     case 'getFailures':
       return getFailures(args, ctx)
+    case 'runTasks':
+      return runTasks(args, ctx)
     case 'getWorkspaceInfo':
       return getWorkspaceInfo(ctx)
     default:
@@ -515,4 +548,82 @@ async function getWorkspaceInfo(ctx: ToolContext): Promise<Record<string, unknow
     warn: (m) => process.stderr.write(`${m}\n`),
   })
   return { ...facts }
+}
+
+/** The argv after `vx`: each argument checked, so no value can pass as a flag. */
+function runArgv(args: Record<string, unknown>): string[] {
+  const tasks = args['tasks']
+  if (
+    !Array.isArray(tasks) ||
+    tasks.length === 0 ||
+    !tasks.every((t) => typeof t === 'string' && t.length > 0 && !t.startsWith('-'))
+  ) {
+    throw new UserError(
+      'runTasks: tasks must be a non-empty array of task names (none starting with "-")',
+    )
+  }
+  const argv = ['run', ...(tasks as string[])]
+  for (const flag of ['all', 'force'] as const) {
+    const v = args[flag]
+    if (v === undefined) continue
+    if (typeof v !== 'boolean') throw new UserError(`runTasks: ${flag} must be a boolean`)
+    if (v) argv.push(`--${flag}`)
+  }
+  const filter = args['filter']
+  if (filter !== undefined) {
+    if (!Array.isArray(filter) || !filter.every((f) => typeof f === 'string' && f.length > 0)) {
+      throw new UserError('runTasks: filter must be an array of non-empty strings')
+    }
+    for (const f of filter as string[]) argv.push(`--filter=${f}`)
+  }
+  const affected = args['affected']
+  if (affected !== undefined) {
+    if (affected === true) argv.push('--affected')
+    else if (typeof affected === 'string' && affected.length > 0)
+      argv.push(`--affected=${affected}`)
+    else if (affected !== false) {
+      throw new UserError('runTasks: affected must be a boolean or a non-empty git ref')
+    }
+  }
+  argv.push('--format', 'json')
+  return argv
+}
+
+// The tail of the run's stderr an answer carries when there is no summary.
+const ERROR_TAIL_BYTES = 8 * 1024
+
+async function runTasks(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const argv = runArgv(args)
+  // stdout is the protocol's channel: the child's goes to a pipe, never to
+  // ours. stdin is closed so the CLI never waits on a picker.
+  const child = Bun.spawn([...ctx.vx, ...argv], {
+    cwd: ctx.workspaceRoot,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [out, err, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  let summary: unknown
+  try {
+    summary = out.trim() === '' ? undefined : JSON.parse(out)
+  } catch {
+    summary = undefined
+  }
+  if (summary !== undefined) return { exitCode, summary }
+  const tail = err.length > ERROR_TAIL_BYTES ? err.slice(-ERROR_TAIL_BYTES) : err
+  return {
+    exitCode,
+    error: tail
+      .trimEnd()
+      .split('\n')
+      .map((l) => maskedLine(l))
+      .join('\n'),
+  }
 }

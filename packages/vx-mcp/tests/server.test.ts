@@ -13,11 +13,11 @@ const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 const PLUGIN_ENTRY = path.resolve(import.meta.dir, '../src/index.ts')
 
 let root: string
-let ctx: { cacheDir: string; workspaceRoot: string }
+let ctx: { cacheDir: string; workspaceRoot: string; vx: readonly string[] }
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-server-'))
-  ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root }
+  ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root, vx: [] }
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
@@ -89,6 +89,7 @@ describe('handleMessage', () => {
   it('a notification gets no reply even when it fails; the same call with an id does', async () => {
     const crashing = {
       workspaceRoot: root,
+      vx: [],
       get cacheDir(): string {
         throw new Error('boom')
       },
@@ -118,7 +119,7 @@ describe('handleMessage', () => {
     ])
   })
 
-  it('tools/list advertises the seven tools with object schemas', async () => {
+  it('tools/list advertises the eight tools with object schemas', async () => {
     const r = (await handleMessage(req(4, 'tools/list'), ctx)) as {
       result: { tools: Array<{ name: string; inputSchema: { type: string } }> }
     }
@@ -129,6 +130,7 @@ describe('handleMessage', () => {
       'getRunHistory',
       'getWorkspaceInfo',
       'listTasks',
+      'runTasks',
       'whyDidThisRerun',
     ])
     for (const t of r.result.tools) expect(t.inputSchema.type).toBe('object')
@@ -298,7 +300,7 @@ describe('vx mcp over stdio (the real entry point)', () => {
       .split('\n')
       .map((l) => JSON.parse(l) as { id: number; result: Record<string, unknown> })
     expect(replies.map((r) => r.id)).toEqual([1, 2, 3])
-    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(7)
+    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(8)
     const history = JSON.parse(
       (replies[2]!.result['content'] as Array<{ text: string }>)[0]!.text,
     ) as {

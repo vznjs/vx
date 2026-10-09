@@ -155,7 +155,7 @@ config key or an environment variable is missing here.
 - **The local floor** — running and caching here are core's, not plugins. post: [The local floor](https://vznjs.github.io/vx/blog/the-local-floor/)
 - **Remote cache and execution** (`@vzn/vx-reapi`, `exec.remote`) — Bazel REAPI cache and workers; the scheduler stays here. [page](https://vznjs.github.io/vx/features/remote-execution/) · post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **OpenTelemetry** (`@vzn/vx-otel`) — each run exported to your OpenTelemetry backend, never breaking it. [page](https://vznjs.github.io/vx/features/opentelemetry/) · post: [Observability that cannot break a run](https://vznjs.github.io/vx/blog/telemetry-never-breaks-a-run/)
-- **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats and run history for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
+- **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats, run history and a run tool for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
 - **vx prune** (`@vzn/vx-lockfile`, `vx prune`) — copy projects and their deps, lockfile pruned, for a Docker build. no post
 - **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. no post
 - **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. no post

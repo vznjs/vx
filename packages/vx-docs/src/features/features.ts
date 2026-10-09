@@ -706,7 +706,7 @@ export default defineWorkspace({
     hook: 'Give your agent the build’s memory over MCP.',
     body: [
       'Coding agents spend tokens working out your build: reading configs, guessing tasks, re-running to check the cache. vx already knows.',
-      '`@vzn/vx-mcp` adds `vx mcp`, a read-only MCP server any MCP client can call: the tasks, run history, cache stats and why a task re-ran.',
+      '`@vzn/vx-mcp` adds `vx mcp`, an MCP server any MCP client can call: the tasks, run history, cache stats, why a task re-ran, and a tool that runs tasks and returns the run summary.',
     ],
     example: { lang: 'ts', code: workspace('@vzn/vx-mcp', 'mcp()') },
     image: 'mcp.png',

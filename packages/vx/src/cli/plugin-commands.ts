@@ -99,6 +99,9 @@ export async function resolvePluginCommand(
         workspaceRoot: ws.workspaceRoot,
         cacheDir: ws.cacheDir,
         concurrency: ws.concurrency,
+        vx: (await import('./upgrade.js')).isCompiledBinary()
+          ? [process.execPath]
+          : [process.execPath, Bun.main],
         warn: (m) => process.stderr.write(`${maskedLine(m)}\n`),
       },
     }

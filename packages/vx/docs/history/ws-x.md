@@ -1310,3 +1310,8 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   the unsafe suite, the canary and the cross-compile; `darwin-gate`
   keeps the required name "core tests (macOS)" and passes when both
   passed or `changes` skipped both. Linux after X-196: 3m46, was 6m06.
+- **X-199.** `vx mcp` runs tasks: `runTasks` (`tasks`, `all`, `filter`,
+  `affected`, `force`) spawns `vx run --format json` and answers the exit
+  code and the run summary, or the CLI's masked refusal as `error`. The
+  argv comes from the new `CommandContext.vx` (the binary, or the runtime
+  and entry from source). The other seven tools still only read.

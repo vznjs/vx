@@ -15,7 +15,7 @@ import { bun } from '@vzn/vx-lockfile'
 //   github() — write each run as a GitHub Actions job summary. Activates on
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
 //              own plugins so their decline paths run on every laptop run.
-//   mcp()    — adds `vx mcp`, the read-only MCP server AI agents talk to.
+//   mcp()    — adds `vx mcp`, the MCP server AI agents talk to.
 //   bun()    — keys each package's tasks on its own dependency closure
 //              from bun.lock, so a `bun add` in one package re-keys that
 //              package and its dependants, not the whole repo.
