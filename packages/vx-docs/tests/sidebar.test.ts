@@ -32,7 +32,7 @@ const DOCS_PAGES: [string, string][] = [
   ['Troubleshooting', 'guides/troubleshooting/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
-const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare']
+const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
 
@@ -116,7 +116,7 @@ describe('the sidebars', () => {
     expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
   })
 
-  it('the Reference is the four groups, and ends with the internals index, which links every internals page', () => {
+  it('the Reference is its groups, and ends with the internals index, which links every internals page', () => {
     expect(groupLabels(reference)).toEqual(REFERENCE_GROUPS)
     const links = sidebarLinks(reference)
     expect(links.at(-1)).toEqual(['Internals (for contributors)', 'internals/'])

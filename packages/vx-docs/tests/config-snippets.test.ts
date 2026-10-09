@@ -31,12 +31,14 @@ const AMBIENT = [
   '@vzn/vx-schedule-history',
 ]
 
+// plugins/ is each plugin's README, whose snippets use that plugin's own
+// types, which the ambient `any` above cannot name.
 async function pages(dir: string): Promise<string[]> {
   const out: string[] = []
   for (const e of await readdir(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
-      if (e.name !== 'blog' && e.name !== 'releases') out.push(...(await pages(p)))
+      if (!['blog', 'releases', 'plugins'].includes(e.name)) out.push(...(await pages(p)))
     } else if (/\.mdx?$/.test(e.name) && !p.endsWith('guides/plugins.md')) out.push(p)
   }
   return out

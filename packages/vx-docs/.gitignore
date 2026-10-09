@@ -25,6 +25,7 @@ dist/
 /src/content/docs/security.md
 /src/content/docs/modules/
 /src/content/docs/design/
+/src/content/docs/plugins/
 
 # The playground bundle, built by `build.playground` (scripts/build-playground.ts)
 /public/playground/

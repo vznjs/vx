@@ -365,13 +365,13 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 
 | Package                     | Hooks it fills                             |
 | --------------------------- | ------------------------------------------ |
-| `@vzn/vx-reapi`             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
-| `@vzn/vx-migrate`           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
-| `@vzn/vx-lockfile`          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)), `commands` (`vx prune`) |
-| `@vzn/vx-schedule-history`  | `schedule`, `admit`, `commands`            |
-| `@vzn/vx-otel`              | `telemetry` ([below](#opentelemetry))      |
-| `@vzn/vx-ci`            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |
-| `@vzn/vx-mcp`               | `commands` ([below](#vx-mcp))              |
+| [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
+| [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
+| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)), `commands` (`vx prune`) |
+| [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
+| [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
+| [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |
+| [`@vzn/vx-mcp`](../../plugins/vx-mcp/)               | `commands` ([below](#vx-mcp))              |
 
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
