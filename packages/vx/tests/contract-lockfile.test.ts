@@ -6,6 +6,8 @@
 // of that file) and must accept the committed one: `--check` passes and
 // `--frozen` runs from it. A change to how `configHash` is taken, or to
 // `LOCKFILE_VERSION`, fails here before it fails every user's CI.
+// The last field, `validated`, is a digest under vx's version: it is the
+// one line another vx writes differently, and a reader never requires it.
 //
 // Regenerate after a deliberate change, then review the diff:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-lockfile.test.ts

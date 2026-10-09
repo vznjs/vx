@@ -553,3 +553,39 @@ describe('frozenProjectConfigs — the validation memo', () => {
     expect(store.rows.size).toBe(0)
   })
 })
+
+describe("the lock's validated stamp", () => {
+  const meta = () => ({ name: 'pkg', configPath: path.join(root, 'pkg/vx.config.ts') })
+  const breakIt = (l: Lockfile) => {
+    l.projects['pkg']!.config = { tasks: [] } as unknown as ProjectConfig
+    return l
+  }
+
+  it('a lock vx wrote is not validated again, with no store', async () => {
+    await writeLockfile(root, lock())
+    const read = breakIt((await readLockfile(root))!)
+    expect(await frozenProjectConfig(read, meta(), root)).toEqual(read.projects['pkg']!.config)
+  })
+
+  it('control: an edited lock keeps its stamp and is validated', async () => {
+    await writeLockfile(root, lock())
+    const text = await Bun.file(lockfilePath(root)).text()
+    await writeRaw(text.replace('echo hi', 'echo ho'))
+    const err = await rejection(
+      frozenProjectConfig(breakIt((await readLockfile(root))!), meta(), root),
+    )
+    expect(err.message).toBe(
+      `${LOCKFILE_NAME} (pkg): \`tasks\` must be an object keyed by task name`,
+    )
+  })
+
+  it('is the last field, written once when a read lock is written back', async () => {
+    await writeLockfile(root, lock())
+    await writeLockfile(root, (await readLockfile(root))!)
+    const text = await Bun.file(lockfilePath(root)).text()
+    expect(text.match(/"validated"/g)?.length).toBe(1)
+    expect(Object.keys(JSON.parse(text))).toEqual(['version', 'projects', 'validated'])
+    const read = breakIt((await readLockfile(root))!)
+    expect(await frozenProjectConfig(read, meta(), root)).toEqual(read.projects['pkg']!.config)
+  })
+})

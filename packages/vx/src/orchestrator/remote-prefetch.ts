@@ -113,11 +113,17 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
  */
 export function getContext(node: TaskNode, command: string) {
   const outputs = node.config.cache?.outputs
+  let masked: string | undefined
   return {
     taskId: node.id,
     // Stored in the entry row a remote hit inserts: masked as a save's is,
-    // or the token a config inlined sat in cache.db (L-27).
-    command: maskedCommand(command, node.config.exec?.env),
+    // or the token a config inlined sat in cache.db (L-27). Masked on the
+    // first read: only an adopt or a remote hit reads it, and masking every
+    // lookup's command cost a cold 1,090-package run ~20 ms before its
+    // first task.
+    get command() {
+      return (masked ??= maskedCommand(command, node.config.exec?.env))
+    },
     outputs: { files: outputs?.files ?? [], workspaceFiles: outputs?.workspaceFiles ?? [] },
   }
 }

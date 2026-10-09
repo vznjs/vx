@@ -123,6 +123,13 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
 
 /**
+ * Row-less lookups answered by a stat each before the artifact directory
+ * is listed once instead: a warm run's few misses keep their stat, a
+ * cold run's thousands share one listing.
+ */
+const ADOPT_STATS = 64
+
+/**
  * A hit renews an entry's `accessed_at` only once it is older than this:
  * renewing every hit rewrote 2,180 rows at a warm 1,090-package run's
  * close, ~30 ms of it. So `accessed_at` trails the last use by at most
@@ -730,6 +737,10 @@ export class Cache implements CacheLayer {
   private readonly heldInlineAt = new Map<string, number>()
   /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
   private readonly rowless = new Set<string>()
+  /** Row-less lookups that stat'ed their artifact path (`artifactFileMayExist`). */
+  private adoptStats = 0
+  /** The artifact directory's names, listed once past `ADOPT_STATS`; this process's writes kept in it. */
+  private artifactNames: Set<string> | undefined
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -1472,20 +1483,21 @@ export class Cache implements CacheLayer {
    * reader reads it, and indexed in one transaction with its bytes.
    */
   private async adopt(hash: string, ctx: CacheGetContext): Promise<boolean> {
-    const meta: IngestMeta = {
+    // Built only for an artifact found: its command is masked on read.
+    const meta = (): IngestMeta => ({
       taskId: ctx.taskId,
       command: ctx.command,
       durationMs: 0,
       ...(ctx.outputs !== undefined ? { outputs: ctx.outputs } : {}),
-    }
+    })
     // Only a key whose lookup saw a row-less inline artifact asks for it: a
     // statement per miss otherwise, on every cold save.
     const blob = this.rowless.delete(hash)
       ? (this.selectBlob.get(hash) as { bytes: Uint8Array } | null)
       : null
-    if (blob !== null) return this.adopted(this.writeArtifactAndIndex(hash, blob.bytes, meta))
+    if (blob !== null) return this.adopted(this.writeArtifactAndIndex(hash, blob.bytes, meta()))
     const finalPath = this.tarPath(hash)
-    if (!existsSync(finalPath)) return false
+    if (!this.artifactFileMayExist(hash)) return false
     const tmpPath = this.tempPath(hash)
     try {
       // A second name for the same bytes: the index step renames it over
@@ -1500,7 +1512,28 @@ export class Cache implements CacheLayer {
     } catch {
       return false
     }
-    return this.adopted(this.writeArtifactAndIndex(hash, { tmpPath }, meta))
+    return this.adopted(this.writeArtifactAndIndex(hash, { tmpPath }, meta()))
+  }
+
+  /**
+   * Whether `hash` may have a file artifact: a stat for the first
+   * `ADOPT_STATS` asks, then one listing of the directory. A cold
+   * 1,090-package run asked 3,270 times before its first task ran. A
+   * name listed and since removed fails the adopt's link, a miss; a file
+   * another process writes after the listing is missed too, and its own
+   * row serves it.
+   */
+  private artifactFileMayExist(hash: string): boolean {
+    const name = `${hash}.tar.zst`
+    if (this.artifactNames === undefined) {
+      if (++this.adoptStats <= ADOPT_STATS) return existsSync(path.join(this.artifactDir, name))
+      try {
+        this.artifactNames = new Set(readdirSync(this.artifactDir))
+      } catch {
+        this.artifactNames = new Set()
+      }
+    }
+    return this.artifactNames.has(name)
   }
 
   /** An adoption's verdict: an artifact that fails the checks is a miss. */
@@ -2391,6 +2424,7 @@ export class Cache implements CacheLayer {
       } else {
         aside = moveAside()
         renameSync(tmpPath!, finalPath)
+        this.artifactNames?.add(path.basename(finalPath))
         renamed = true
         deleteBlob.run(hash)
       }

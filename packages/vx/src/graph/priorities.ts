@@ -125,20 +125,26 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
   }
 
   // Reverse-topo sweep: every direct dependent's closure is final
-  // before its dependency folds it in. closure[i] = bitset over node
-  // indices of i's transitive dependents.
+  // before its dependency folds it in. closure[t] = bitset over topo
+  // POSITIONS of the node at position t's transitive dependents. A
+  // dependent sits after its dependency, so a closure holds only bits
+  // past its own position, and each OR starts at the dependent's word:
+  // half the words of indexing by insertion order on a layered graph.
+  const pos = new Int32Array(n)
+  for (let t = 0; t < tail; t++) pos[topo[t]!] = t
   const closure = new Uint32Array(n * words)
   const counts = new Map<string, number>()
   for (let t = tail - 1; t >= 0; t--) {
     const i = topo[t]!
-    const base = i * words
-    for (const r of directReverse[i]!) {
+    const base = t * words
+    for (const ri of directReverse[i]!) {
+      const r = pos[ri]!
       closure[base + (r >>> 5)]! |= 1 << (r & 31)
       const rbase = r * words
-      for (let w = 0; w < words; w++) closure[base + w]! |= closure[rbase + w]!
+      for (let w = r >>> 5; w < words; w++) closure[base + w]! |= closure[rbase + w]!
     }
     let count = 0
-    for (let w = 0; w < words; w++) {
+    for (let w = t >>> 5; w < words; w++) {
       let v = closure[base + w]!
       v = v - ((v >>> 1) & 0x55555555)
       v = (v & 0x33333333) + ((v >>> 2) & 0x33333333)
