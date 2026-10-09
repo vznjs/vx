@@ -384,6 +384,7 @@ export interface ApplyMigrationArgs {
   notes?: readonly string[]
   unmapped?: boolean
   format?: MigrationFormat
+  json?: boolean
 }
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
