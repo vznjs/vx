@@ -23,8 +23,8 @@ config key or an environment variable is missing here.
 - **Retries** (`--retry`, `exec.retries`) — re-run a failed task; a pass after a failure marks it flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim only declared inputs can back](https://vznjs.github.io/vx/blog/flaky-tasks/)
 - **Timeouts** (`--timeout`, `exec.timeout`, `timeout`, `VX_TASK_TIMEOUT`) — kill and fail a runaway task. no post
 - **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. no post
-- **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · no post
-- **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · no post
+- **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
+- **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · post: [Flags you already know](https://vznjs.github.io/vx/blog/flags-you-already-know/)
 - **Ctrl-C leaves nothing running** (`VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`) — the whole process tree stops, then teardown runs. [page](https://vznjs.github.io/vx/features/ctrl-c/) · post: [Ctrl-C leaves nothing running](https://vznjs.github.io/vx/blog/ctrl-c/)
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
@@ -114,11 +114,11 @@ config key or an environment variable is missing here.
 - **Watch mode** (`vx watch`, `VX_WATCH_POLL`) — re-run what a change affects, on content, not events. [page](https://vznjs.github.io/vx/features/watch/) · post: [Watch: a content gate](https://vznjs.github.io/vx/blog/watch-mode/)
 - **Dev servers in the graph** (`exec.persistent`, `readyWhen`, `VX_READY_NOTICE_MS`) — a server is a node; dependents start when it is ready. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
 - **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. no post
-- **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · no post
+- **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **vx upgrade** (`vx upgrade`) — replace the binary with a release. [page](https://vznjs.github.io/vx/features/upgrade/) · no post
 - **Help and version** (`vx help`, `vx version`) — every verb's reference. no post
-- **Did-you-mean** — a mistyped flag or verb gets the nearest valid spelling. no post
-- **Task typed as a verb** — `vx build app` answers with the exact `vx run` command that does it. no post
+- **Did-you-mean** — a mistyped flag or verb gets the nearest valid spelling. post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
+- **Task typed as a verb** — `vx build app` answers with the exact `vx run` command that does it. post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 
 ## Config
 
