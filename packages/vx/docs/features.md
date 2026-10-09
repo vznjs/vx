@@ -41,17 +41,17 @@ config key or an environment variable is missing here.
 ## Output
 
 - **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
-- **Output modes** (`--output-logs`) — full, errors-only, hash-only or none; the default follows the flow. no post
+- **Output modes** (`--output-logs`) — full, errors-only, hash-only or none; the default follows the flow. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
-- **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. no post
+- **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
-- **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · no post
+- **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run tags** (`--tag`) — label a run; recorded in history. no post
 - **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. no post
-- **Output flows** — what is printed follows the run's intent (focused, broad or CI); a truthy `CI` wins. no post
-- **Cache-aware glyphs** — each task line's glyph shows ran, fresh, restored locally or remotely, failed, skipped or persistent. no post
+- **Output flows** — what is printed follows the run's intent (focused, broad or CI); a truthy `CI` wins. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
+- **Cache-aware glyphs** — each task line's glyph shows ran, fresh, restored locally or remotely, failed, skipped or persistent. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. no post
 - **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env. no post
 - **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. no post
