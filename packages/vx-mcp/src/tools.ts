@@ -44,10 +44,22 @@ const TOOLS: readonly ToolDef[] = [
     name: 'listTasks',
     description:
       'Every project, its tags, and the tasks a run would see — command, dependsOn, whether it caches — ' +
-      'resolved like `vx run` resolves them (plugin stages included). Optional `project` narrows to one.',
+      'resolved like `vx run` resolves them (plugin stages included). Optional `project` narrows to one; ' +
+      '`filter` and `affected` narrow as `vx show --filter` / `--affected` do (not with `project`).',
     inputSchema: {
       type: 'object',
-      properties: { project: { type: 'string' } },
+      properties: {
+        project: { type: 'string' },
+        filter: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '--filter values (a project, a glob, ...pkg, [ref])',
+        },
+        affected: {
+          oneOf: [{ type: 'boolean' }, { type: 'string' }],
+          description: '--affected: true for the default ref, or a git ref',
+        },
+      },
     },
   },
   {
@@ -256,8 +268,19 @@ async function listTasks(
   if (project !== undefined && (typeof project !== 'string' || project.length === 0)) {
     throw new UserError('listTasks: project must be a non-empty string')
   }
+  const selection = selectionArgv(args, 'listTasks')
+  let scope: 'all' | string[] = project === undefined ? 'all' : [project]
+  if (selection.length > 0) {
+    if (project !== undefined)
+      throw new UserError('listTasks: project and filter/affected exclude each other')
+    // The CLI's selection, so a filter means here what it means to `vx run`.
+    const shown = await vxJson(['show', '--format', 'json', ...selection], 'projects', ctx)
+    if (shown['projects'] === undefined) return shown
+    scope = (shown['projects'] as Array<{ name: string }>).map((p) => p.name)
+    if (scope.length === 0) return { projects: [] }
+  }
   const projects = await loadResolvedProjects(ctx.workspaceRoot, {
-    scope: project === undefined ? 'all' : [project],
+    scope,
     warn: (m) => process.stderr.write(`${m}\n`),
   })
   if (project !== undefined && !projects.has(project)) {
@@ -608,6 +631,15 @@ function runArgv(args: Record<string, unknown>, tool: 'runTasks' | 'planTasks'):
     if (typeof v !== 'boolean') throw new UserError(`${tool}: ${flag} must be a boolean`)
     if (v) argv.push(`--${flag}`)
   }
+  argv.push(...selectionArgv(args, tool))
+  if (tool === 'planTasks') argv.push('--dry=json')
+  else argv.push('--format', 'json')
+  return argv
+}
+
+/** `filter` and `affected` off the wire as the CLI's `--filter` / `--affected` flags. */
+function selectionArgv(args: Record<string, unknown>, tool: string): string[] {
+  const argv: string[] = []
   const filter = args['filter']
   if (filter !== undefined) {
     if (!Array.isArray(filter) || !filter.every((f) => typeof f === 'string' && f.length > 0)) {
@@ -624,8 +656,6 @@ function runArgv(args: Record<string, unknown>, tool: 'runTasks' | 'planTasks'):
       throw new UserError(`${tool}: affected must be a boolean or a non-empty git ref`)
     }
   }
-  if (tool === 'planTasks') argv.push('--dry=json')
-  else argv.push('--format', 'json')
   return argv
 }
 
@@ -649,7 +679,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan',
+  key: 'summary' | 'plan' | 'projects',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

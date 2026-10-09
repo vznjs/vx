@@ -101,3 +101,7 @@ and log output reads better. Each must cost the warm path nothing.
   CLI as a child, as `runTasks` runs `--format json`; one argv builder
   and one spawn serve both. Rows: vx-mcp `plan-tasks.test.ts` (equal
   to the CLI's plan, nothing ran; a refusal carries no plan).
+- **DX-16.** MCP `listTasks` takes `filter` and `affected`: the CLI's
+  `vx show --format json` makes the selection, then the resolved list
+  narrows to it; `project` beside either is refused. Rows: vx-mcp
+  `list-tasks-scope.test.ts`.
