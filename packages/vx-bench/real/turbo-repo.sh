@@ -40,6 +40,10 @@ set -u
 # A shell's BUN_OPTIONS (`--smol`) changes the runtime every vx arm times
 # (bench-env.ts); the arms run without it.
 unset BUN_OPTIONS
+# vx's store is per user under ~/.vx/<repo id>/ since 2026-10-06, where the
+# cold arm's `.vx` wipe never reached it: reps 2+ of a cold arm were all hits.
+# A named cache dir holds everything inside the repo.
+export VX_CACHE_DIR=.vx/cache
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
 FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); turbo_scope=()
