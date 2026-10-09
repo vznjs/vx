@@ -787,8 +787,6 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
       '1 min 11 s',
       '6 min 13 s',
       '59 ms',
-      '777 ms',
-      '6.01 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)

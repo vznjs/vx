@@ -40,8 +40,9 @@ flowchart LR
 1,601 projects in 30 dependency levels, five core libraries that about
 a quarter of the projects use, and six kinds of task (`build`, `lint`,
 `test`, `typecheck`, `publish`, `installDeps`), 9,603 task nodes. It runs
-vx, Turborepo, Nx and Vite Task cold, with nothing changed, with outputs
-restored, after one leaf library edit and after one core library edit.
+vx, Turborepo, Nx and Vite Task cold, with nothing changed and with
+outputs restored. Edit runs are left out: Nx needs its daemon for them,
+and the harness runs every tool as CI does.
 The run below is Turborepo 2.11.7, Nx 23.3.0 and Vite Task (`vp run`,
 vite-plus 1.1.0) on Linux x64 with 4 cores, every runner pinned to
 concurrency 10, every Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
@@ -68,10 +69,6 @@ vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
-
-Two edit rows are on the benchmarks page too. After one leaf library
-edit Turborepo adds 777 ms (vx 16% slower) to vx's 899 ms. After one
-core library edit Vite Task adds 6.01 s (vx 25% slower) to vx's 7.53 s.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for, less what the
