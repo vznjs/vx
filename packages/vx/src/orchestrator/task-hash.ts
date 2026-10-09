@@ -411,8 +411,8 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  * in place. Its one behavioural case is a config with NO `exec`, where
  * the spread would add `exec: {}` — and nothing reaches here that way,
  * proven by throwing on a no-exec config and running the whole suite:
- * a group takes `computeGroupKey`, and the one keyed group (the default
- * `build`) declares no `remote`. `timeout`/`retries` stay folded — their keys are
+ * a group takes `computeGroupKey`, and a keyed group has no `exec`, so no
+ * `remote`. `timeout`/`retries` stay folded — their keys are
  * distinct by design (see the decision log); stripping them retroactively
  * would bump CACHE_VERSION.
  */
@@ -423,8 +423,8 @@ function hashableConfig(cfg: TaskConfig): unknown {
 }
 
 /**
- * A group's key: its upstream, and for a keyed group — the default
- * `build` (projects.ts), the one group with `cache` — its own inputs too,
+ * A group's key: its upstream, and for a keyed group — one with `cache`,
+ * the default `build` (projects.ts) or a config's — its own inputs too,
  * the way a task's key folds them.
  */
 export async function computeGroupKey(args: ComputeHashArgs): Promise<string> {

@@ -616,15 +616,12 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       // so a dependant's `^build` finds it and waits on nothing
       // (the quickstart). The comment here used to call that case
       // "almost certainly a config mistake" while the docs taught it.
-      if (dependsOn === undefined) {
+      // A keyed group (`cache` with no `exec`) is a declaration on its own:
+      // its inputs are a key that dependants fold, with no process.
+      if (dependsOn === undefined && cache === undefined) {
         throw new UserError(
-          `${where}: a task with no \`exec\` must declare \`dependsOn\` ` +
-            `(group tasks exist to chain dependencies)`,
-        )
-      }
-      if (cache !== undefined) {
-        throw new UserError(
-          `${where}: \`cache\` requires \`exec\` — a group task has nothing to cache`,
+          `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`cache.inputs\` ` +
+            `(group tasks exist to chain dependencies or carry a key)`,
         )
       }
     }
@@ -851,6 +848,11 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
+      }
+      if (exec === undefined && (outFiles.length > 0 || wsOutputs !== undefined)) {
+        throw new UserError(
+          `${where}.cache.outputs: a task with no \`exec\` writes nothing — \`outputs: { files: [] }\``,
+        )
       }
     }
   }

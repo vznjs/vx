@@ -109,7 +109,7 @@ export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
 }
 
-/** The default `build` (orchestrator/projects.ts): a config cannot key a group, so it is the one keyed group. */
+/** A keyed group: the default `build` (orchestrator/projects.ts), or a config's group with `cache`. */
 function isKeyedGroup(task: TaskConfig): boolean {
   return task.exec === undefined && task.cache !== undefined
 }
@@ -1505,8 +1505,8 @@ interface Side {
  * `inputs.files` rebased to the root against another task's
  * `outputs.workspaceFiles`, which may land in any project (X-135). A task's own outputs are
  * already subtracted from its inputs, and an output the reader's `!` entries
- * take back whole is no overlap. A keyed group is exempt: the default
- * `build` reads `**` of a config-less dependency and runs nothing, and its
+ * take back whole is no overlap. A keyed group is exempt: it runs nothing
+ * (the default `build` reads `**` of a config-less dependency), and its
  * key waits as before.
  */
 function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {

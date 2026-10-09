@@ -328,8 +328,8 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
  * one (owner, 2026-10-04): a group behind `^build`, keyed on every file of
  * the project. A package consumed as source then carries its files to every
  * dependent behind `^build`, in the key and in `--affected`, and the chain
- * through it to deeper builds holds. The one keyed group: a config cannot
- * declare `cache` on a group (config-schema.ts), so nothing else is.
+ * through it to deeper builds holds. A keyed group, as a config may
+ * declare one (config-schema.ts).
  */
 const DEFAULT_BUILD: TaskConfig = Object.freeze({
   dependsOn: Object.freeze(['^build']),
