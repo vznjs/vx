@@ -120,12 +120,13 @@ both. A task that adds files beside an upstream task's outputs wipes
 nothing before a run and only the files it recorded before a restore. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
-A fully cached 3,270-task run: vx 393ms, Turborepo 463ms (vx 18% faster),
-Nx 6.45s (vx 16× faster)
+Overhead on a 9,603-task run where nothing changed: vx 958 ms,
+Turborepo 1.05 s (vx 10% faster), Nx 25.96 s (vx 27× faster)
 ([benchmarks](../../benchmarks/); the key, part by part:
 [Caching in depth](../../caching/)).
 
-Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 ### Why did it re-run?
 

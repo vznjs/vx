@@ -1,5 +1,5 @@
 // A post or guide that quotes a benchmark figure with vx's multiple quotes both
-// from docs/benchmarks.md, whose 3,270-task table update-site.ts generates
+// from docs/benchmarks.md, whose 9,603-task table update-site.ts generates
 // from results.json: a new run regenerates that table, and a hand-typed multiple
 // beside an old figure would survive it. Each `<figure> (… vx N× faster)`
 // must appear on the page as `<figure> (vx N× faster)`.
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test'
 const DOCS = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs')
 const BENCH = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
 const QUOTE =
-  /(\d+m \d+s|\d+(?:\.\d+)?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx (?:[\d.]+×|\d+%) (?:faster|slower))\)/g
+  /(\d+ min \d+ s|\d+m \d+s|\d+(?:\.\d+)? ?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx (?:[\d.]+×|\d+%) (?:faster|slower))\)/g
 
 function pages(): string[] {
   const out: string[] = []

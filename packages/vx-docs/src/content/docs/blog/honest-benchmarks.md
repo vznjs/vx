@@ -6,21 +6,20 @@ authors:
 tags:
   - performance
   - benchmarks
-excerpt: "A synthetic 1,090-package workspace where vx, Turborepo, Nx and Vite Task each run the same graph from their own native config. Every number is a command away."
+excerpt: "A synthetic 9,603-task workspace where vx, Turborepo, Nx and Vite Task each run the same graph from their own native config. Every number is a command away."
 ---
 
 Benchmark numbers are only worth what the method behind them is worth.
 Here is the method, then the numbers.
 
 One number first, because it is the one that decides whether a runner
-is worth having. Imagine your tasks take three minutes on their own.
-What does the tool add on top? On the 3,270-task workspace below the
-tasks alone take 3m 38s under an ideal schedule. On a cold build vx adds
-**2.33s**. Nx adds **10.98s**, Vite Task **1m 11s** and Turborepo
-**1m 21s**.
-Every warm number on
-this page is a consequence of the same discipline, but this is the one
-you feel on every uncached build.
+is worth having. Imagine your tasks take six minutes on their own.
+What does the tool add on top? On the 9,603-task workspace below the
+tasks alone take 6 min 16 s under an ideal schedule. On a cold build vx
+adds **8.99 s**, Turborepo **10.06 s** and Nx **1 min 13 s**. Vite Task
+adds the least, **4.50 s**. With nothing changed, vx adds **958 ms**,
+the least of the four. No tool leads every row, and the table says
+where vx does not.
 
 ```mermaid
 flowchart LR
@@ -37,44 +36,49 @@ flowchart LR
 
 ## Synthetic: the same graph, four runners
 
-`bun packages/vx-bench/compare.ts 100 11 1` scaffolds one workspace of
-1,090 packages in 100 dependency layers, about 30 dependencies per
-package and three tasks each, 3,270 task nodes, and runs vx, Turborepo,
-Nx and Vite Task across the same three cache states: cold, warm with outputs
-wiped (restore), and warm with nothing touched (no-op). The run below
-is Turbo 2.11.7, Nx 23.2.1 and Vite Task (`vp run`, vite-plus 1.0.0)
-on Linux x64 with 4 cores, every runner pinned to concurrency 10, every
-Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
+`bun packages/vx-bench/compare.ts 3` scaffolds one workspace of
+1,601 projects in 30 dependency levels, five core libraries that about
+a quarter of the projects use, and six kinds of task (`build`, `lint`,
+`test`, `typecheck`, `publish`, `installDeps`), 9,603 task nodes. It runs
+vx, Turborepo, Nx and Vite Task cold, with nothing changed, with outputs
+restored, after one leaf library edit and after one core library edit.
+The run below is Turborepo 2.11.7, Nx 23.3.0 and Vite Task (`vp run`,
+vite-plus 1.1.0) on Linux x64 with 4 cores, every runner pinned to
+concurrency 10, every Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
 the compiled binary users install, from a `vx lock` snapshot
 (`--frozen`) as a CI pipeline runs it, Turbo and Nx run as they would in
 CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`), and
 the runners are measured strictly one at a
 time, each daemon stopped before the next runner is timed so it cannot
-idle-contend for CPU. `build` and `test` are `sleep 1`, so the numbers
-isolate the runner's own overhead from compilation.
+idle-contend for CPU. Every task is a `sleep` in fixed ratios (build
+1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s), so the
+numbers isolate the runner's own overhead from compilation.
 
-`build test --all`, the runner's overhead (a cold build's time over the
-3m 38s ideal schedule; a fully cached run is all overhead):
+The runner's overhead: the time it adds over the ideal run (a cold
+build over its ideal schedule; with nothing changed, over one git walk):
 
-| Runner    | Cold build overhead | Fully cached | Cold build CPU |
-| --------- | ------------------ | ------------ | -------------- |
-| vx        | **2.33s** | **393ms**    | **17.27s**     |
-| Turborepo | 1m 21s (vx 35× faster) | 463ms (vx 18% faster) | 21.04s (vx 22% faster) |
-| Nx        | 10.98s (vx 4.7× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
-| Vite Task | 1m 11s (vx 31× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
+| Runner    | Cold build overhead | Nothing changed | Cold build CPU |
+| --------- | ------------------- | --------------- | -------------- |
+| vx        | **8.99 s** | **958 ms** | **46.70 s** |
+| Turborepo | 10.06 s (vx 12% faster) | 1.05 s (vx 10% faster) | 1 min 11 s (vx 51% faster) |
+| Nx        | 1 min 13 s (vx 8.1× faster) | 25.96 s (vx 27× faster) | 6 min 13 s (vx 8× faster) |
+| Vite Task | 4.50 s (vx 100% slower) | 12.24 s (vx 13× faster) | 30.60 s (vx 53% slower) |
 
 vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx; slower: vx adds that much more.
 
-Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
-Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+
+Two edit rows are on the benchmarks page too. After one leaf library
+edit Turborepo adds 777 ms (vx 16% slower) to vx's 899 ms. After one
+core library edit Vite Task adds 6.01 s (vx 25% slower) to vx's 7.53 s.
 
 The first two columns are wall clock; the third is CPU time (user plus
-system, of the invocation and every child it waited for), because on a
-synthetic workspace the tasks sleep and that column measures the
-runner's own work per task. A daemon that outlives the invocation is
-not counted, so Turbo's and Nx's are floors. It is the fairest number for "what does
-the tool cost me." The wall-clock rows, the
-theoretical baseline and the measured floors (one git walk is 24ms on
+system, of the invocation and every child it waited for, less what the
+task commands burn), because on a synthetic workspace the tasks sleep
+and that column measures the runner's own work. A daemon that outlives
+the invocation is not counted, so Turborepo's and Nx's are floors. Every
+row, the ideal run and the measured floors (one git walk is 59 ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending

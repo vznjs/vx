@@ -369,14 +369,16 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
-      '3m 38s',
-      '2.33s',
-      '10.98s',
-      '1m 11s',
-      '1m 21s',
-      '10 ms per',
-      '1,090 packages',
-      '100 dependency layers',
+      '6 min 16 s',
+      '8.99 s',
+      '10.06 s',
+      '1 min 13 s',
+      '4.50 s',
+      '958 ms',
+      '1.05 s',
+      '25.96 s',
+      '12.24 s',
+      '9,603 tasks',
       '74 ms',
       '172 ms',
       '16–25 ms',
@@ -466,7 +468,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['393ms', '463ms', '6.45s']) {
+    for (const figure of ['958 ms', '1.05 s', '25.96 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -583,7 +585,16 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['2.33s', '1m 21s', '1m 11s', '10.98s', '393ms', '463ms', '6.45s']) {
+    for (const figure of [
+      '958 ms',
+      '1.05 s',
+      '25.96 s',
+      '12.24 s',
+      '8.99 s',
+      '10.06 s',
+      '1 min 13 s',
+      '4.50 s',
+    ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -764,24 +775,27 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // CPU trio (35 s for 34.61s, 73 s for 1m 13s), the fault items 336
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
-      '3m 38s',
-      '2.33s',
-      '1m 21s',
-      '10.98s',
-      '393ms',
-      '463ms',
-      '6.45s',
-      '17.27s',
-      '21.04s',
-      '52.19s',
-      '24ms',
+      '6 min 16 s',
+      '8.99 s',
+      '10.06 s',
+      '1 min 13 s',
+      '4.50 s',
+      '958 ms',
+      '1.05 s',
+      '25.96 s',
+      '46.70 s',
+      '1 min 11 s',
+      '6 min 13 s',
+      '59 ms',
+      '777 ms',
+      '6.01 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turbo 2.11.7', 'Nx 23.2.1']) {
+    for (const version of ['Turborepo 2.11.7', 'Nx 23.3.0']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }
@@ -873,7 +887,12 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['393ms', '6.45s (vx 16× faster)', '17.27s', '52.19s (vx 3× faster)']) {
+    for (const figure of [
+      '958 ms',
+      '25.96 s (vx 27× faster)',
+      '46.70 s',
+      '6 min 13 s (vx 8× faster)',
+    ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1286,7 +1305,7 @@ describe('the caching guide lists what the cache never reads', () => {
   })
   it('its benchmark figures are the benchmarks page’s, as written', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['393ms', '463ms', '6.45s']) {
+    for (const figure of ['958 ms', '1.05 s', '25.96 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1617,7 +1636,7 @@ describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
   it('its warm figures are on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['6.45s', '463ms']) {
+    for (const figure of ['25.96 s', '1.05 s', '958 ms']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2163,7 +2182,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
     expect(post('no-choice-on-the-market.md')).toContain(
-      "(vx 16× and 18% faster), Nx's daemon off as in CI.",
+      "(vx 27× and 10% faster), Nx's daemon off as in CI.",
     )
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
