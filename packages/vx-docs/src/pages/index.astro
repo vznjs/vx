@@ -171,11 +171,12 @@ const essays = (await posts('blog')).slice(0, 3)
 const latest = releases[0]!
 const MCP_TOOLS = [
   'listTasks',
-  'getRunHistory',
+  'planTasks',
+  'runTasks',
   'getFailures',
+  'getTaskLog',
   'whyDidThisRerun',
-  'explainCacheKey',
-  'getCacheStats',
+  'getConfig',
   'getWorkspaceInfo',
 ]
 const whyRun = `$ vx why @demo/web#build
@@ -262,9 +263,9 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
           <div class="agents-grid">
             <article class="agent-card">
               <h3><code>vx mcp</code></h3>
-              <p>Any MCP client reads your tasks, run history, cache and failures, read-only.</p>
+              <p>Any MCP client plans and runs the tasks you allow, and reads failures, history and cache.</p>
               <ul class="tool-chips">{MCP_TOOLS.map((t) => <li><code>{t}</code></li>)}</ul>
-              <a class="section-link" href={href('guides/agents/')}>AI agents guide →</a>
+              <a class="section-link" href={href('concepts/ai-first/')}>Built for agents →</a>
             </article>
             <article class="agent-card">
               <h3><code>vx why</code></h3>
