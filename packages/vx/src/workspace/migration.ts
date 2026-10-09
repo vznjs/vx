@@ -261,6 +261,11 @@ export interface ApplyMigrationArgs {
    * and compiled the config into its dist (TanStack/query, 2026-09-11).
    */
   format?: MigrationFormat
+  /**
+   * With `dry`: one JSON document on stdout (`schemas/init.json`) in place
+   * of the files and the report, so an agent reads the plan as data.
+   */
+  json?: boolean
 }
 
 export type MigrationFormat = 'ts' | 'mjs'
@@ -360,11 +365,11 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
   }
-  if (dry) {
+  if (dry && args.json !== true) {
     for (const f of files) {
       process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
     }
-  } else {
+  } else if (!dry) {
     for (const f of files) await Bun.write(f.abs, f.contents)
     for (const f of replaced) await unlink(f)
   }
@@ -476,7 +481,29 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ...(inGitWorkTree(root) ? [] : ['git init']),
     ...(empty ? [`declare a task as the example shows`] : []),
   ]
-  report.push('', `next: ${steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`}`)
+  const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
+  if (args.json === true) {
+    process.stdout.write(
+      `${JSON.stringify({
+        dry,
+        source,
+        files: files.map((f) => ({ path: f.relPath, contents: f.contents })),
+        kept,
+        replaced: replaced.map((f) => relPosix(root, f)),
+        todos: [...todos].map(([reason, tasks]) => ({ reason, tasks })),
+        notes: [
+          ...(empty && unreached.length > 0 ? [unreachedHint(unreached, root)] : []),
+          ...(empty ? noMembers : []),
+          ...(args.notes ?? []),
+          ...plan.headerNotes,
+          ...plan.notes,
+        ],
+        next,
+      })}\n`,
+    )
+    return 0
+  }
+  report.push('', `next: ${next}`)
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
 }

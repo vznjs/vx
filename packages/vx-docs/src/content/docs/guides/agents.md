@@ -41,8 +41,8 @@ verdict: `0` when every task passed ([exit codes](#branch-on-exit-codes-and-erro
 
 ## Read answers as JSON
 
-`vx run`, `vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune`
-take `--format json`. Each prints one JSON document to stdout, and every
+`vx run`, `vx show`, `vx info`, `vx why`, `vx last`, `vx cache prune`,
+`vx lock --check` and `vx init --dry` take `--format json`. Each prints one JSON document to stdout, and every
 notice goes to stderr, so stdout always parses. Each shape is a JSON
 Schema shipped in the package (`node_modules/@vzn/vx/schemas/`).
 
@@ -52,6 +52,7 @@ vx why app#build --format json     # why app#build re-ran, down to the root caus
 vx last --failed --format json     # the last failed run, task by task
 vx run build --all --dry=json      # what a run would do, before it runs
 vx run build --all --format json   # the run's result; task output goes to stderr
+vx init --dry --format json        # what adopting vx would write, file by file
 ```
 
 Under `--affected`, `--dry=json` gives each kept task an `affected`
@@ -114,10 +115,10 @@ claude mcp add vx -- vx mcp
 ```
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`, `pruneCache`,
+`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`, `pruneCache`, `planInit`,
 `getWorkspaceInfo`, `runTasks` and `planTasks`. `runTasks` runs
 `vx run <tasks> --format json` and returns the exit code and the run
 summary; `planTasks` returns the `vx run <tasks> --dry=json` plan
 without running anything; `pruneCache` evicts only with `dryRun:
-false`; the others only read. See
+false`; `planInit` returns the `vx init --dry --format json` plan; the others only read. See
 [vx mcp](../plugins/#vx-mcp) for each one.

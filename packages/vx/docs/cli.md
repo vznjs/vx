@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
-vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
+vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -1880,7 +1880,14 @@ the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
 `bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
 terminal native (a `vx.config.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
-`--dry`, `--force` and `--mjs` pass through.
+`--dry`, `--format`, `--force` and `--mjs` pass through.
+
+`vx init --dry --format json` prints the plan as one JSON document
+(`schemas/init.json`), nothing written: `files` (each path and its
+whole text), `kept`, `replaced`, `todos` (a reason and its tasks),
+`notes` and `next`. In a Turbo or Nx repo it is `@vzn/vx-migrate`'s
+plan. `--format json` without `--dry`, or with `--plugin`, is refused
+(`VX_E_USAGE`).
 Run again after the native migration (a workspace file that declares
 neither `turbo()` nor `nx()`, and project configs), it says vx is already
 set up and prints the next step, exit 0, without starting

@@ -1697,6 +1697,7 @@ describe('parseRunArgs', () => {
     expect(flagsIn(verbHelpText('init'))).toEqual([
       '--dry',
       '--force',
+      '--format',
       '--keep',
       '--mjs',
       '--native',

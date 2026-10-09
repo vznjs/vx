@@ -64,11 +64,13 @@ export interface MigrateArgs {
   noInstall?: boolean
   /** `--help` / `-h`: the usage on stdout, exit 0 (as `nx-env --help`). */
   help?: boolean
+  /** `--format json` (with `--dry`): the plan as one JSON document (core's `schemas/init.json`). */
+  json?: boolean
   error?: string
 }
 
 const USAGE =
-  'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+  'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -78,7 +80,13 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a === '--force') out.force = true
     else if (a === '--mjs') out.mjs = true
     else if (a === '--no-install') out.noInstall = true
-    else if (a === '--native' || a === '--keep') {
+    else if (a === '--format' || a?.startsWith('--format=')) {
+      const v = a === '--format' ? args[++i] : a.slice('--format='.length)
+      if (v !== 'json' && v !== 'pretty') {
+        return { ...out, error: `--format must be pretty or json (got ${v ?? 'nothing'})` }
+      }
+      out.json = v === 'json'
+    } else if (a === '--native' || a === '--keep') {
       const mode = a === '--native' ? 'native' : 'keep'
       if (out.mode !== undefined && out.mode !== mode) {
         return { ...out, error: '--native and --keep are two answers to one question; pass one' }
@@ -97,6 +105,8 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a?.startsWith('-')) return { ...out, error: `unknown flag: ${a}\n${USAGE}` }
     else return { ...out, error: `unexpected argument: ${a}\n${USAGE}` }
   }
+  if (out.json && !out.dry)
+    return { ...out, error: '--format json prints the plan, so it needs --dry' }
   return out
 }
 
@@ -314,6 +324,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     verb: 'vx-migrate',
     notes: headerNotes,
     dry: parsed.dry,
+    json: parsed.json === true,
     force: parsed.force,
     format,
   })
@@ -424,7 +435,7 @@ async function keep(
     ['@vzn/vx', '@vzn/vx-migrate', ...plugins.map((p) => p.pkg)],
     args,
   )) {
-    process.stdout.write(`vx-migrate: ${note}\n`)
+    ;(args.json ? process.stderr : process.stdout).write(`vx-migrate: ${note}\n`)
   }
   // `vx init` adopts nx() by nx.json, and a Lerna repo may have none: it
   // would map the scripts instead, so the file is written here.
@@ -435,9 +446,12 @@ async function keep(
   const core = existsSync(path.join(installed, 'package.json'))
     ? path.join(realpathSync(installed), 'src', 'index.ts')
     : Bun.resolveSync('@vzn/vx', import.meta.dir)
-  const flags = [args.dry && '--dry', args.force && '--force', args.mjs && '--mjs'].filter(
-    (f): f is string => typeof f === 'string',
-  )
+  const flags = [
+    args.dry && '--dry',
+    args.json && '--format=json',
+    args.force && '--force',
+    args.mjs && '--mjs',
+  ].filter((f): f is string => typeof f === 'string')
   const code = await Bun.spawn(
     [
       process.execPath,
@@ -462,6 +476,18 @@ async function keep(
   return code
 }
 
+/** `--keep --dry --format json` in a Lerna repo: core's `schemas/init.json` document. */
+function lernaPlan(
+  files: { path: string; contents: string }[],
+  kept: string[],
+  replaced: string[],
+): number {
+  process.stdout.write(
+    `${JSON.stringify({ dry: true, source: 'lerna.json', files, kept, replaced, todos: [], notes: [], next: null })}\n`,
+  )
+  return 0
+}
+
 /** `--keep` in a Lerna repo with no nx.json: the workspace file declaring `nx()`. */
 async function keepLerna(
   root: string,
@@ -482,6 +508,13 @@ async function keepLerna(
     }
     if (!args.dry && extended !== text) await Bun.write(path.join(root, existing), extended)
     const names = undeclared(text, all).map((p) => `${p.factory}()`)
+    if (args.json) {
+      return lernaPlan(
+        extended === text ? [] : [{ path: existing, contents: extended }],
+        extended === text ? [existing] : [],
+        [],
+      )
+    }
     if (names.length > 0)
       process.stdout.write(
         `vx-migrate: ${args.dry ? 'would declare' : 'declared'} ${names.join(', ')} in ${existing}\n`,
@@ -489,6 +522,13 @@ async function keepLerna(
     return 0
   }
   const text = renderWorkspaceFile(all, format)
+  if (args.json) {
+    return lernaPlan(
+      [{ path: name, contents: text }],
+      [],
+      existing !== undefined && existing !== name ? [existing] : [],
+    )
+  }
   if (args.dry) {
     process.stdout.write(`── ${name} ──\n${text}\nvx-migrate: would write ${name} (dry run)\n`)
     return 0

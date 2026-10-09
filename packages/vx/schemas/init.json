@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx init --dry --format json",
+  "description": "What vx init (or vx-migrate) would write, nothing written. In a Turbo or Nx repo the plan is vx-migrate's.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dry", "source", "files", "kept", "replaced", "todos", "notes", "next"],
+  "properties": {
+    "dry": { "const": true },
+    "source": {
+      "type": "string",
+      "description": "what the plan maps: package.json scripts, turbo.json, nx graph, lerna.json …"
+    },
+    "files": {
+      "type": "array",
+      "description": "each file the run would write, root-relative, with its whole text",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "contents"],
+        "properties": { "path": { "type": "string" }, "contents": { "type": "string" } }
+      }
+    },
+    "kept": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "configs already here that the run leaves as they are"
+    },
+    "replaced": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "files of another extension the run would delete for the new ones"
+    },
+    "todos": {
+      "type": "array",
+      "description": "what the mapping could not settle, one reason with the tasks it names",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "tasks"],
+        "properties": {
+          "reason": { "type": "string" },
+          "tasks": { "type": "array", "items": { "type": "string" }, "description": "project#task" }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "the report's notes"
+    },
+    "next": {
+      "type": ["string", "null"],
+      "description": "the command to type after the real run; null where the plan names none"
+    }
+  }
+}

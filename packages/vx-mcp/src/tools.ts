@@ -172,6 +172,20 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'planInit',
+    description:
+      'What `vx init` would write, nothing written, as `vx init --dry --format json` prints it: each file ' +
+      'with its whole text, the configs it keeps, the TODOs the mapping left, notes and the next command. ' +
+      "In a Turbo or Nx repo the plan is @vzn/vx-migrate's; `mode` keep plans the workspace file that " +
+      'runs the repo as it is, native (the default) a vx.config per package.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mode: { type: 'string', enum: ['native', 'keep'], description: 'Turbo or Nx repos only' },
+      },
+    },
+  },
+  {
     name: 'checkLock',
     description:
       'The config lock audit, as `vx lock --check --format json` prints it: `upToDate`, how many projects ' +
@@ -312,6 +326,8 @@ export async function handleToolCall(
       return getConfig(args, ctx)
     case 'pruneCache':
       return pruneCache(args, ctx)
+    case 'planInit':
+      return planInit(args, ctx)
     case 'checkLock':
       return vxJson(['lock', '--check', '--format', 'json'], 'lock', ctx)
     case 'getFailures':
@@ -671,6 +687,18 @@ function pruneCache(
   return vxJson(argv, 'prune', ctx)
 }
 
+function planInit(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const mode = args['mode']
+  if (mode !== undefined && mode !== 'native' && mode !== 'keep')
+    throw new UserError('planInit: mode must be native or keep')
+  const argv = ['init', '--dry', '--format', 'json']
+  if (mode !== undefined) argv.push(`--${mode}`)
+  return vxJson(argv, 'init', ctx)
+}
+
 function getConfig(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -830,7 +858,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune',
+  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune' | 'init',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

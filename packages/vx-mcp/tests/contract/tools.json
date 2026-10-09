@@ -280,6 +280,37 @@
       "prune.orphans"
     ]
   },
+  "planInit": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "native",
+            "keep"
+          ],
+          "description": "Turbo or Nx repos only"
+        }
+      }
+    },
+    "answer": [
+      "exitCode",
+      "init",
+      "init.dry",
+      "init.files",
+      "init.files[]",
+      "init.files[].contents",
+      "init.files[].path",
+      "init.kept",
+      "init.next",
+      "init.notes",
+      "init.notes[]",
+      "init.replaced",
+      "init.source",
+      "init.todos"
+    ]
+  },
   "checkLock": {
     "inputSchema": {
       "type": "object",

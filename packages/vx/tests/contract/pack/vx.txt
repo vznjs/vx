@@ -8,6 +8,7 @@ schemas/cache.json
 schemas/error.json
 schemas/info.json
 schemas/last.json
+schemas/init.json
 schemas/lock.json
 schemas/plan.json
 schemas/show.json

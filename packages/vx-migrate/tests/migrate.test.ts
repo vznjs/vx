@@ -1501,7 +1501,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
