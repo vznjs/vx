@@ -1394,3 +1394,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   tasks as keyed groups instead of `true` tasks: same keys, no spawn, no
   history row, not counted. Growth's TanStack/query trial (0.0.632) counted
   36 tasks under `vx run build` where Nx ran 25, 10 of them twins.
+- **X-209.** `.vx-tmp-*`, the name a restore writes each file under
+  before renaming it into place, is always ignored as an input. A key
+  taken while another task's artifact landed in a directory it reads
+  listed the temp; the rename removed it, so the recheck called the key
+  stale and withheld the save. Growth's withastro/astro trial (0.0.632,
+  `--concurrency 10`): a restore re-ran 25 of 33 builds, each warning
+  that `src/runtime/client/.vx-tmp-…` changed after its key was taken.

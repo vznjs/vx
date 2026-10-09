@@ -92,6 +92,11 @@ const ALWAYS_IGNORE = [
   // extracts the downloaded runtime into, `<cwd>/.<16 hex>-<8 hex>.tmp/`,
   // 60 MB mid-write under the same race (2026-09-29).
   '**/.????????????????-????????.tmp/**',
+  // vx's own restore temp (archive.ts), live only while an artifact lands
+  // beside its target. A key taken meanwhile listed it, the rename removed
+  // it, and every task reading that directory was withheld its save
+  // (withastro/astro: 25 of 33 builds re-ran on a restore, X-209).
+  '**/.vx-tmp-*',
 ]
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
