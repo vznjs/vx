@@ -152,6 +152,32 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'planTasks',
+    description:
+      'What runTasks would do, without running anything: `vx run <tasks> --dry=json`. Each task with ' +
+      'its predicted cache status (hit-local, hit-remote, miss, no-cache), hash, deps and p50, under ' +
+      '`affected` the changed file or the dependency chain that kept it, and `predicted` (wallMs, ' +
+      'workMs, criticalPath) from history. `all`, `filter` and `affected` are the CLI flags. A refusal ' +
+      'returns no plan and the CLI’s message as `error`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tasks: { type: 'array', items: { type: 'string' }, minItems: 1 },
+        all: { type: 'boolean', description: '--all: every project' },
+        filter: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '--filter values (a project, a glob, ...pkg, [ref])',
+        },
+        affected: {
+          oneOf: [{ type: 'boolean' }, { type: 'string' }],
+          description: '--affected: true for the default ref, or a git ref',
+        },
+      },
+      required: ['tasks'],
+    },
+  },
+  {
     name: 'getWorkspaceInfo',
     description:
       'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
@@ -213,6 +239,8 @@ export async function handleToolCall(
       return getFailures(args, ctx)
     case 'runTasks':
       return runTasks(args, ctx)
+    case 'planTasks':
+      return planTasks(args, ctx)
     case 'getWorkspaceInfo':
       return getWorkspaceInfo(ctx)
     default:
@@ -558,8 +586,11 @@ async function getWorkspaceInfo(ctx: ToolContext): Promise<Record<string, unknow
   return { ...facts }
 }
 
-/** The argv after `vx`: each argument checked, so no value can pass as a flag. */
-function runArgv(args: Record<string, unknown>): string[] {
+/**
+ * The argv after `vx` for runTasks, or for planTasks with `--dry=json`:
+ * each argument checked, so no value can pass as a flag.
+ */
+function runArgv(args: Record<string, unknown>, tool: 'runTasks' | 'planTasks'): string[] {
   const tasks = args['tasks']
   if (
     !Array.isArray(tasks) ||
@@ -567,20 +598,20 @@ function runArgv(args: Record<string, unknown>): string[] {
     !tasks.every((t) => typeof t === 'string' && t.length > 0 && !t.startsWith('-'))
   ) {
     throw new UserError(
-      'runTasks: tasks must be a non-empty array of task names (none starting with "-")',
+      `${tool}: tasks must be a non-empty array of task names (none starting with "-")`,
     )
   }
   const argv = ['run', ...(tasks as string[])]
   for (const flag of ['all', 'force'] as const) {
     const v = args[flag]
     if (v === undefined) continue
-    if (typeof v !== 'boolean') throw new UserError(`runTasks: ${flag} must be a boolean`)
+    if (typeof v !== 'boolean') throw new UserError(`${tool}: ${flag} must be a boolean`)
     if (v) argv.push(`--${flag}`)
   }
   const filter = args['filter']
   if (filter !== undefined) {
     if (!Array.isArray(filter) || !filter.every((f) => typeof f === 'string' && f.length > 0)) {
-      throw new UserError('runTasks: filter must be an array of non-empty strings')
+      throw new UserError(`${tool}: filter must be an array of non-empty strings`)
     }
     for (const f of filter as string[]) argv.push(`--filter=${f}`)
   }
@@ -590,10 +621,11 @@ function runArgv(args: Record<string, unknown>): string[] {
     else if (typeof affected === 'string' && affected.length > 0)
       argv.push(`--affected=${affected}`)
     else if (affected !== false) {
-      throw new UserError('runTasks: affected must be a boolean or a non-empty git ref')
+      throw new UserError(`${tool}: affected must be a boolean or a non-empty git ref`)
     }
   }
-  argv.push('--format', 'json')
+  if (tool === 'planTasks') argv.push('--dry=json')
+  else argv.push('--format', 'json')
   return argv
 }
 
@@ -604,7 +636,22 @@ async function runTasks(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
-  const argv = runArgv(args)
+  return vxJson(runArgv(args, 'runTasks'), 'summary', ctx)
+}
+
+async function planTasks(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  return vxJson(runArgv(args, 'planTasks'), 'plan', ctx)
+}
+
+/** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
+async function vxJson(
+  argv: string[],
+  key: 'summary' | 'plan',
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to
   // ours. stdin is closed so the CLI never waits on a picker.
   const child = Bun.spawn([...ctx.vx, ...argv], {
@@ -618,16 +665,16 @@ async function runTasks(
     new Response(child.stderr).text(),
     child.exited,
   ])
-  let summary: unknown
+  let answer: unknown
   try {
-    summary = out.trim() === '' ? undefined : JSON.parse(out)
+    answer = out.trim() === '' ? undefined : JSON.parse(out)
   } catch {
-    summary = undefined
+    answer = undefined
   }
   // A refusal's stdout is its error document (core's cli.md § Error codes):
   // its stable code rides along with the CLI's prose.
-  const refusal = (summary as { error?: { code?: unknown } } | undefined)?.error
-  if (summary !== undefined && refusal === undefined) return { exitCode, summary }
+  const refusal = (answer as { error?: { code?: unknown } } | undefined)?.error
+  if (answer !== undefined && refusal === undefined) return { exitCode, [key]: answer }
   const tail = err.length > ERROR_TAIL_BYTES ? err.slice(-ERROR_TAIL_BYTES) : err
   return {
     exitCode,

@@ -85,7 +85,8 @@ claude mcp add vx -- vx mcp
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
 `explainCacheKey`, `whyDidThisRerun`, `getFailures`,
-`getWorkspaceInfo` and `runTasks`. `runTasks` runs
+`getWorkspaceInfo`, `runTasks` and `planTasks`. `runTasks` runs
 `vx run <tasks> --format json` and returns the exit code and the run
-summary; the others only read. See
+summary; `planTasks` returns the `vx run <tasks> --dry=json` plan
+without running anything; the others only read. See
 [vx mcp](../plugins/#vx-mcp) for each one.

@@ -7,7 +7,8 @@
 // Declaring it adds `vx mcp` (the `commands` seam): a JSON-RPC 2.0 server
 // over stdio that AI coding agents speak natively. Its tools read the
 // workspace's local cache.db — the same queries `vx why`, `vx last` and
-// `vx info` read — and `runTasks` runs `vx run --format json` as a child.
+// `vx info` read — and `runTasks` / `planTasks` run `vx run --format json`
+// / `--dry=json` as a child.
 // `listTools` is how many and which; a count here is the same second copy
 // the tool list was, and it had drifted to "four" of six. The plugin is no
 // executor and no cache layer: a run goes through the CLI.
