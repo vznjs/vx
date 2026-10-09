@@ -17,6 +17,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -64,25 +65,31 @@ function tmp(tag: string): string {
 
 const INSTALL = /^npm install -D((?: @vzn\/[\w-]+)+)$/
 
+/** Links `@vzn/<dir>` and its bins in `root` to this checkout's, over whatever is there. */
+function link(root: string, dir: string): void {
+  mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+  mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
+  const at = path.join(root, 'node_modules', '@vzn', dir)
+  rmSync(at, { recursive: true, force: true })
+  symlinkSync(path.join(PACKAGES, dir), at)
+  const bins = (
+    JSON.parse(readFileSync(path.join(PACKAGES, dir, 'package.json'), 'utf8')) as {
+      bin?: Record<string, string>
+    }
+  ).bin
+  for (const [bin, rel] of Object.entries(bins ?? {})) {
+    const to = path.join(root, 'node_modules', '.bin', bin)
+    rmSync(to, { force: true })
+    symlinkSync(path.join(PACKAGES, dir, rel), to)
+  }
+}
+
 /** Runs one documented line in `root`; the install line links what it names. */
 function step(root: string, line: string): { code: number | null; out: string } {
   const command = line.replace(/\s+#.*$/, '').trim()
   const install = INSTALL.exec(command)
   if (install !== null) {
-    mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-    mkdirSync(path.join(root, 'node_modules', '.bin'), { recursive: true })
-    for (const name of install[1]!.trim().split(' ')) {
-      const dir = name.slice('@vzn/'.length)
-      symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
-      const bins = (
-        JSON.parse(readFileSync(path.join(PACKAGES, dir, 'package.json'), 'utf8')) as {
-          bin?: Record<string, string>
-        }
-      ).bin
-      for (const [bin, rel] of Object.entries(bins ?? {})) {
-        symlinkSync(path.join(PACKAGES, dir, rel), path.join(root, 'node_modules', '.bin', bin))
-      }
-    }
+    for (const name of install[1]!.trim().split(' ')) link(root, name.slice('@vzn/'.length))
     // npm -D lists what it installs; vx-migrate installs a package the
     // manifest does not list.
     const manifest = path.join(root, 'package.json')
@@ -105,6 +112,14 @@ function step(root: string, line: string): { code: number | null; out: string } 
     stdout: 'pipe',
     stderr: 'pipe',
   })
+  // A real npm install a command runs (`vx init`'s, for the plugins it
+  // names) fetches every `@vzn` package from the registry, this one's own
+  // core included: the next `npx vx` ran the released vx, and a schema
+  // this checkout bumped refused its index. Each is this checkout's again.
+  const scope = path.join(root, 'node_modules', '@vzn')
+  if (existsSync(scope)) {
+    for (const dir of readdirSync(scope)) if (existsSync(path.join(PACKAGES, dir))) link(root, dir)
+  }
   return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() }
 }
 
