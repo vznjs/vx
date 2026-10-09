@@ -43,6 +43,7 @@ export interface SummaryTaskJson {
   flaky?: { passes: number; failures: number; attempts: number }
   cpuMs?: number
   peakRssBytes?: number
+  storedDurationMs?: number // on a hit: what it skipped
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number
@@ -61,6 +62,7 @@ export interface RunSummaryJson {
   startedAt: string
   endedAt: string
   totalMs: number
+  savedMs: number // the hits' storedDurationMs, summed
   tasks: SummaryTaskJson[]
   aborted: SummaryTaskJson[]
   summary: Tally

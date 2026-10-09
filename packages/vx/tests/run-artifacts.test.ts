@@ -386,19 +386,31 @@ describe('writeRunSummary', () => {
         outcome({
           node: execNode('p', 'hit'),
           status: 'cache-hit',
+          storedDurationMs: 50,
           storedCpuMs: 7,
           storedPeakRssBytes: 9,
         }),
-        outcome({ node: execNode('p', 'held'), admissionHeldMs: 40 }),
+        outcome({ node: execNode('p', 'far'), status: 'cache-hit-remote', storedDurationMs: 25 }),
+        // Not a hit: what it stored is no saving, so `savedMs` leaves it out.
+        outcome({ node: execNode('p', 'held'), admissionHeldMs: 40, storedDurationMs: 1000 }),
         outcome({ node: execNode('p', 'slow'), status: 'failed', exitCode: 143, timedOut: true }),
         outcome({ node: execNode('p', 'dev'), status: 'failed', exitCode: 1, notReady: 'timeout' }),
         outcome({ node: execNode('p', 'plain') }),
       ],
     })
     const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      savedMs: number
       tasks: Array<Record<string, unknown>>
     }
-    const keys = ['storedCpuMs', 'storedPeakRssBytes', 'admissionHeldMs', 'timedOut', 'notReady']
+    expect(parsed.savedMs).toBe(75)
+    const keys = [
+      'storedDurationMs',
+      'storedCpuMs',
+      'storedPeakRssBytes',
+      'admissionHeldMs',
+      'timedOut',
+      'notReady',
+    ]
     const picked = Object.fromEntries(
       parsed.tasks.map((t) => [
         t['id'],
@@ -406,8 +418,9 @@ describe('writeRunSummary', () => {
       ]),
     )
     expect(picked).toEqual({
-      'p#hit': { storedCpuMs: 7, storedPeakRssBytes: 9 },
-      'p#held': { admissionHeldMs: 40 },
+      'p#hit': { storedDurationMs: 50, storedCpuMs: 7, storedPeakRssBytes: 9 },
+      'p#far': { storedDurationMs: 25 },
+      'p#held': { storedDurationMs: 1000, admissionHeldMs: 40 },
       'p#slow': { timedOut: true },
       'p#dev': { notReady: 'timeout' },
       'p#plain': {},

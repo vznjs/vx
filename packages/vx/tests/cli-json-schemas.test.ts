@@ -552,7 +552,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(props('plan', 'properties', 'predicted')).toEqual(
-      keys<PlanPrediction>({ wallMs: true, workMs: true, unknownCount: true }),
+      keys<PlanPrediction>({ wallMs: true, workMs: true, unknownCount: true, criticalPath: true }),
     )
     expect(props('plan', 'properties', 'downloadDowngrades', 'items')).toEqual(
       keys<NonNullable<RunPlan['downloadDowngrades']>[number]>({ taskId: true, reason: true }),
@@ -568,6 +568,7 @@ describe('each schema object is its source type', () => {
         startedAt: true,
         endedAt: true,
         totalMs: true,
+        savedMs: true,
         tasks: true,
         aborted: true,
         summary: true,
@@ -587,6 +588,7 @@ describe('each schema object is its source type', () => {
         flaky: true,
         cpuMs: true,
         peakRssBytes: true,
+        storedDurationMs: true,
         storedCpuMs: true,
         storedPeakRssBytes: true,
         admissionHeldMs: true,
