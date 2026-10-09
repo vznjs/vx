@@ -157,3 +157,10 @@ and log output reads better. Each must cost the warm path nothing.
 - **DX-25** MCP `pruneCache` (roadmap DX #3): `vx cache prune`'s JSON
   answer on the cache the other tools read; a dry run unless the call
   says `dryRun: false`. Rows: `vx-mcp/tests/prune-cache.test.ts`.
+
+- **DX-26** A failed pnpm install in vx-migrate names
+  `minimumReleaseAgeExclude` and the `@vzn/*` packages to list there:
+  pnpm 12 refuses releases newer than its `minimumReleaseAge`, and vx
+  releases daily. vx never loosens that setting itself; the migrate
+  guide says the same. Rows: `adopt.test.ts` "names
+  minimumReleaseAgeExclude when pnpm ran and refused".

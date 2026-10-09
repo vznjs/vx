@@ -29,6 +29,12 @@ the same version (`--no-install` leaves `package.json` alone). Your
 `package.json` scripts stay as they are. The steps below
 are the same adoption one stage at a time.
 
+pnpm 12 refuses a version published within its `minimumReleaseAge`,
+and vx releases daily. If an install stops on that, list the `@vzn/*`
+packages it names under `minimumReleaseAgeExclude` in
+`pnpm-workspace.yaml`, or install the previous version; vx-migrate's
+error names the same fix.
+
 ## Turborepo
 
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`; Bun: `bun add -d @vzn/vx`).

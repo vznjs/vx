@@ -575,11 +575,11 @@ describe('managerArgv', () => {
 describe('install when PATH holds an unrunnable manager', () => {
   // `pnpm exec vx init` under pnpm 12: PATH's pnpm has no shebang (ENOEXEC).
   // A child process, since Bun.spawn looks PATH up in the startup env.
-  const probe = async (execpath: string) => {
+  const probe = async (execpath: string, pathPnpm = 'not a script\n') => {
     const root = await tmp('vx-adopt-enoexec-')
     await mkdir(path.join(root, 'bin'))
     await mkdir(path.join(root, 'ws'))
-    await writeFile(path.join(root, 'bin', 'pnpm'), 'not a script\n')
+    await writeFile(path.join(root, 'bin', 'pnpm'), pathPnpm)
     await chmod(path.join(root, 'bin', 'pnpm'), 0o755)
     await mkdir(path.join(root, 'real'))
     await writeFile(path.join(root, 'real', 'pnpm'), '#!/bin/sh\necho "real pnpm $*"\n')
@@ -606,6 +606,12 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
 
   it('runs the pnpm that launched it', async () => {
     expect(await probe('real/pnpm')).toBe('real pnpm add -D -w @vzn/vx')
+  })
+
+  it('names minimumReleaseAgeExclude when pnpm ran and refused', async () => {
+    expect(await probe('', '#!/bin/sh\nexit 1\n')).toBe(
+      'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx-migrate again; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
+    )
   })
 
   it('names the spawn error when nothing else can run it', async () => {
