@@ -23,6 +23,7 @@ export interface LockfileEntry {
 export interface Lockfile {
   version: number
   projects: Record<string, LockfileEntry> // by project name
+  validated?: string // the self-digest writeLockfile appends
 }
 
 export function lockfilePath(root: string): string
@@ -47,7 +48,13 @@ unchanged lock does not validate again (1,000 projects: ~30 ms). A load
 that accepted every entry also keeps one row for the whole lock, and a
 later load reads that row alone instead of one per project (X-181). A
 refusal is never kept, and a lock not read by `readLockfile` has no
-bytes to key by. The CLI's own selection load (`loadCliProjects`, what a filter
+bytes to key by. `writeLockfile` also ends the lock with a `validated`
+field, a digest of the bytes above it under vx's version: `vx lock`
+validated every entry before writing, so a lock whose field matches is
+not validated again even on a cold run (1,090 projects: ~30 ms before
+the first task). An edited or merged lock, or one another vx wrote, has
+no match and is validated as before. Re-running `vx lock` under another vx changes
+that line alone; an older vx ignores it. The CLI's own selection load (`loadCliProjects`, what a filter
 that walks the graph stages) reads the lock the same way under
 `--frozen`, so the selection and the run see one graph. A run with
 nothing staged starts reading the lock when it finds the workspace root,

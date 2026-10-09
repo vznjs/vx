@@ -1415,3 +1415,13 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   reddens it. The default build's exemption from `rules.upfrontKeys`
   costs at most one extra miss (its `**` key moves when a sibling's
   outputs land), never a stale hit. Row: `default-build-cycle-key.test.ts`.
+
+- **X-212** Cold time to first task, 1,090 packages, `--frozen`: 380 →
+  ~330 ms (Turbo 2.11: 276). `vx lock` ends the lock with a `validated`
+  digest of its bytes under vx's version, so a lock vx wrote is not
+  validated again on a cold run (~35 ms); an edited or merged lock still
+  is. A lookup masks its command only when an adopt or remote hit reads
+  it; adopt lists the artifact directory once after 64 stats instead of
+  one stat per miss; the reverse-dependency closure walks topo positions.
+  Rows: `lockfile-boundary.test.ts` (stamp, with an edited-lock control),
+  `cache-adopt-listing.test.ts`.

@@ -36,6 +36,8 @@ export interface LockfileEntry {
 export interface Lockfile {
   version: number
   projects: Record<string, LockfileEntry>
+  /** Written by `writeLockfile` from the bytes; never read off the object. */
+  validated?: string
 }
 
 export function lockfilePath(root: string): string {
@@ -100,11 +102,32 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     }
   }
   lockDigests.set(parsed, xxh3(text).toString(16))
+  const stamped = VALIDATED_LINE.exec(text)
+  if (stamped !== null && stamped[1] === validatedDigest(text.slice(0, stamped.index) + '\n}')) {
+    selfValidated.add(parsed)
+  }
   return parsed as Lockfile
 }
 
 /** The digest of the bytes each lock `readLockfile` returned was parsed from. */
 const lockDigests = new WeakMap<object, string>()
+
+/**
+ * The lock's own record that this vx validated its entries: `vx lock`
+ * evaluates and validates every config, then writes a digest of the bytes
+ * it wrote, under vx's version (validation's rules are vx's alone, so Bun's
+ * is left out and does not churn a committed lock), as the last field. A lock
+ * whose digest matches is validated already, and a cold `--frozen` run
+ * skips the ~30 ms of validating 1,090 entries before its first task. An
+ * edit, a merge, or another vx version leaves it unmatched, and the
+ * entries are validated as before.
+ */
+const VALIDATED_LINE = /,\n {2}"validated": "([0-9a-f]+)"\n\}\n?$/
+const selfValidated = new WeakSet<object>()
+
+function validatedDigest(body: string): string {
+  return xxh3(`vx-lock-valid-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${body}`).toString(16)
+}
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   // Written beside its name and renamed over it: `Bun.write` truncates in
@@ -114,7 +137,8 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
   const file = lockfilePath(root)
   const tmp = `${file}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`
   try {
-    await Bun.write(tmp, `${JSON.stringify(lock, null, 2)}\n`)
+    const body = JSON.stringify({ version: lock.version, projects: lock.projects }, null, 2)
+    await Bun.write(tmp, `${body.slice(0, -2)},\n  "validated": "${validatedDigest(body)}"\n}\n`)
     await rename(tmp, file)
   } catch (err) {
     // Best effort: where the write was refused the temp cannot be named
@@ -187,7 +211,10 @@ export async function frozenProjectConfigs(
   // asked for 1,090 per-project rows in one `IN` query, ~10 ms of its
   // config load, where the eval-cache path it replaces is cheaper (X-181).
   // A scoped run still validates, and remembers, only what it loads.
-  if (prefix !== undefined && store !== undefined && store.getConfigEval(prefix) !== null) {
+  if (
+    selfValidated.has(lock) ||
+    (prefix !== undefined && store !== undefined && store.getConfigEval(prefix) !== null)
+  ) {
     return entries.map((e) => e.config)
   }
   const keys = prefix === undefined ? undefined : metas.map((m) => `${prefix}\0${m.name}`)
