@@ -630,7 +630,8 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     }
     // The six were honest-benchmarks' solidjs rows, gone with the
     // real-repo claims (owner, 2026-10-02); a new blog table raises this.
-    expect(checked).toBe(0)
+    // The eleven are scheduling-strategies' rows (2026-10-09).
+    expect(checked).toBe(11)
     expect(wrong).toEqual([])
   })
 
