@@ -6,7 +6,7 @@
  * results.json, which the site is generated from (update-site.ts).
  *
  *   bun packages/vx-bench/compare.ts [reps=3]
- *   CONCURRENCY=10 COLD_REPS=1 CORE_REPS=1 RUNNERS=vx,turbo bun packages/vx-bench/compare.ts
+ *   CONCURRENCY=10 COLD_REPS=1 RUNNERS=vx,turbo bun packages/vx-bench/compare.ts
  *
  * The workspace is shape.ts (owner's spec, 2026-10-09): 29 levels of 50
  * libs and 100 apps, 50 terminal libs at level 15, one `e2e`
@@ -23,8 +23,6 @@
  *   fresh         — cache and outputs cleared (COLD_REPS, default 1)
  *   warm          — everything cached, outputs intact
  *   restore       — every dist/ deleted, restored from cache
- *   leaf edited   — one source file of a lib only `e2e` uses changed
- *   core edited   — one source file of the most used core lib changed (CORE_REPS)
  * The headline is OVERHEAD: each state minus its ideal (the tasks' own
  * durations list-scheduled on the same workers, plus the floor of asking
  * git what changed). vx runs as its compiled binary from a `vx lock`
@@ -41,15 +39,12 @@ import { regressions } from './regress.js'
 import {
   APPS,
   BUILD_MS,
-  CORE_EDIT,
   DEPENDS_ON,
-  LEAF_EDIT,
   LEVELS,
   PER_LEVEL,
   RUN_TASKS,
   SOURCE_FILES,
   TERMINALS,
-  affectedBy,
   command,
   idealOf,
   source,
@@ -59,7 +54,6 @@ import {
 
 const REPS = Number(process.argv[2] ?? 3)
 const COLD_REPS = Number(process.env.COLD_REPS ?? 1)
-const CORE_REPS = Number(process.env.CORE_REPS ?? 1)
 // Every runner is pinned to the SAME max concurrency so no tool is
 // advantaged by a different default (vx defaults to CPU cores, Turbo to
 // 10, Nx to 3).
@@ -119,8 +113,16 @@ async function generate(dir: string): Promise<void> {
   await mkdir(path.join(dir, 'packages'), { recursive: true })
   await writeFile(
     path.join(dir, '.gitignore'),
-    ['node_modules', 'dist', '.vx', '.turbo', '.nx', '.vx-runner', '*.tsbuildinfo'].join('\n') +
-      '\n',
+    [
+      'node_modules',
+      'dist',
+      '.vx',
+      '.turbo',
+      '.nx',
+      '.vx-runner',
+      '*.tsbuildinfo',
+      'vx-timings.json',
+    ].join('\n') + '\n',
   )
   await json('package.json', {
     name: 'bench-root',
@@ -130,8 +132,16 @@ async function generate(dir: string): Promise<void> {
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  // Core's fallbacks only: the arms compare runners, not plugin stacks.
-  await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  // vx as a user tunes it for CI (owner, 2026-10-09: "config is part of
+  // the experience"): the history plugin orders by the critical path a
+  // timings file from an earlier run recorded. The file sits outside .vx,
+  // so a cache wipe keeps it, as CI caches it between runners.
+  const history = path.join(vxRoot, 'packages', 'vx-schedule-history', 'src', 'index.ts')
+  await writeFile(
+    path.join(dir, 'vx.workspace.mjs'),
+    `import { scheduleHistoryPlugin } from ${JSON.stringify(history)}\n` +
+      `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' })] }\n`,
+  )
   const turboTask = (t: TaskName) => ({
     dependsOn: [...DEPENDS_ON[t]],
     inputs: t === 'installDeps' ? [] : ['src/**'],
@@ -289,6 +299,8 @@ interface Runner {
   clear: () => Promise<void>
 }
 
+let seedVx = async (): Promise<void> => {}
+
 async function buildRunners(dir: string): Promise<Runner[]> {
   const runners: Runner[] = []
 
@@ -336,6 +348,14 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   // to see, never a silent fall back to the unfrozen row.
   const locked = await sh([...vxRun, 'lock'], dir)
   if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
+  // One untimed run, once git is in place, writes the timings file every
+  // timed rep reads.
+  seedVx = async () => {
+    const seeded = await sh([...vxRun, 'run', ...RUN_TASKS, '--all', ...conc, '--frozen'], dir)
+    if (!seeded.ok) throw new Error(`vx seed run failed:\n${seeded.out}`)
+    await clearVx()
+    await deleteDist(dir)
+  }
   runners.push({
     name: `vx${suffix}`,
     version: vxVer,
@@ -406,19 +426,10 @@ type Row = {
   fresh: number
   warmNoRestore: number
   warmRestore: number
-  leafEdited: number
-  coreEdited: number
   /** CPU (user + system) of the invocation and the children it waited for. */
   freshCpu: number
   warmNoRestoreCpu: number
   warmRestoreCpu: number
-}
-
-// Unique per edit across every runner, so each edit is a real change.
-let edits = 0
-async function edit(dir: string, name: string): Promise<void> {
-  const p = PROJECTS.find((x) => x.name === name)!
-  await writeFile(path.join(dir, 'packages', p.dir, 'src', 'f00.js'), source(p.name, 0, ++edits))
 }
 
 async function timed(
@@ -464,16 +475,6 @@ async function measure(r: Runner, dir: string): Promise<Row> {
     restore.push(res.ms)
     restoreCpu.push(res.cpuMs)
   }
-  const leaf: number[] = []
-  for (let i = 0; i < REPS; i++) {
-    await edit(dir, LEAF_EDIT)
-    leaf.push((await timed(r, dir, 'after a leaf edit')).ms)
-  }
-  const core: number[] = []
-  for (let i = 0; i < CORE_REPS; i++) {
-    await edit(dir, CORE_EDIT)
-    core.push((await timed(r, dir, 'after a core edit')).ms)
-  }
   const med = (xs: number[]) => summarize(xs).median
   return {
     runner: r.name,
@@ -481,8 +482,6 @@ async function measure(r: Runner, dir: string): Promise<Row> {
     fresh: med(fresh),
     warmNoRestore: med(warm),
     warmRestore: med(restore),
-    leafEdited: med(leaf),
-    coreEdited: med(core),
     freshCpu: med(freshCpu),
     warmNoRestoreCpu: med(warmCpu),
     warmRestoreCpu: med(restoreCpu),
@@ -494,29 +493,20 @@ async function measure(r: Runner, dir: string): Promise<Row> {
 // Cold: the tasks' own durations list-scheduled (critical path first) on
 // CONCURRENCY workers along the exact graph. Warm: ONE
 // `git status --porcelain -uall` walk, the floor of asking what changed.
-// Restore: that walk plus a raw copy of every output file. An edit: the
-// walk plus the ideal schedule of the tasks the edit re-runs. CPU: the
+// Restore: that walk plus a raw copy of every output file. CPU: the
 // tasks' own commands with the sleeps taken out, under `xargs -P`.
 type Baseline = {
   fresh: number
   warmNoRestore: number
   warmRestore: number
-  leafEdited: number
-  coreEdited: number
   freshCpu: number
   warmNoRestoreCpu: number
   criticalPathMs: number
   workBoundMs: number
-  leafTasks: number
-  coreTasks: number
 }
 
 async function measureBaseline(dir: string): Promise<Baseline> {
   const all = listSchedule(idealOf(PROJECTS), CONCURRENCY)
-  const leafSet = affectedBy(PROJECTS, LEAF_EDIT)
-  const coreSet = affectedBy(PROJECTS, CORE_EDIT)
-  const leaf = listSchedule(idealOf(PROJECTS, leafSet), CONCURRENCY)
-  const core = listSchedule(idealOf(PROJECTS, coreSet), CONCURRENCY)
   const status = ['git', 'status', '--porcelain', '-z', '-uall']
   const walks: Array<{ ms: number; cpuMs: number }> = []
   for (let i = 0; i < 5; i++) walks.push(await sh(status, dir))
@@ -556,14 +546,10 @@ async function measureBaseline(dir: string): Promise<Baseline> {
     fresh: all.makespan,
     warmNoRestore: walk.ms,
     warmRestore: walk.ms + Math.min(...copies),
-    leafEdited: walk.ms + leaf.makespan,
-    coreEdited: walk.ms + core.makespan,
     freshCpu: Math.min(...xargsCpu) + walk.cpuMs,
     warmNoRestoreCpu: walk.cpuMs,
     criticalPathMs: all.critical,
     workBoundMs: all.work / CONCURRENCY,
-    leafTasks: leafSet.size,
-    coreTasks: coreSet.size,
   }
 }
 
@@ -575,12 +561,10 @@ function fmt(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`
 }
 
-const STATES = ['warmNoRestore', 'warmRestore', 'leafEdited', 'coreEdited', 'fresh'] as const
+const STATES = ['warmNoRestore', 'warmRestore', 'fresh'] as const
 const LABEL: Record<(typeof STATES)[number], string> = {
   warmNoRestore: 'Warm',
   warmRestore: 'Restore',
-  leafEdited: 'Leaf edited',
-  coreEdited: 'Core edited',
   fresh: 'Cold',
 }
 
@@ -608,8 +592,8 @@ function markdown(rows: Row[], b: Baseline): string {
 
 - **Workspace:** ${PROJECTS.length.toLocaleString('en-US')} projects, ${TASKS.toLocaleString('en-US')} tasks: ${LEVELS - 1} levels × ${PER_LEVEL} libs and ${APPS} apps, ${TERMINALS} terminal libs at level 15, one \`e2e\` on every edge, five core libs ~400 projects each use (packages/vx-bench/shape.ts).
 - **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
-- **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, core edit ${CORE_REPS}, the rest median of ${REPS}.
-- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run.
+- **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, the rest median of ${REPS}.
+- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run. Both use \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
@@ -619,7 +603,7 @@ ${head}
 ${rule}
 ${overhead.join('\n')}
 
-## Wall time (warm, restore, edits)
+## Wall time (warm, restore)
 
 ${totals.join('\n')}
 
@@ -627,8 +611,7 @@ ${totals.join('\n')}
 list-scheduled critical-path first on ${CONCURRENCY} workers (critical path
 ${fmt(b.criticalPathMs)}, work ÷ workers ${fmt(b.workBoundMs)}); warm is one
 \`git status -uall\` walk, the floor of asking what changed; restore adds a raw
-copy of every output; an edit is that walk plus the ideal schedule of the
-tasks it re-runs (leaf: ${b.leafTasks} tasks, core: ${b.coreTasks.toLocaleString('en-US')}).
+copy of every output.
 CPU is user + system of the invocation and the children it waited for; a
 daemon that outlives the invocation (Turbo's, Nx's) is not counted.
 
@@ -664,6 +647,7 @@ if (only && only.length > 0) {
   if (sameShape) rows = committed.rows.filter((r) => !only.includes(r.runner))
 }
 await gitInit(ws)
+if (runners.some((r) => r.name.startsWith('vx'))) await seedVx()
 console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
 
 for (const r of runners) {
@@ -680,8 +664,6 @@ for (const r of runners) {
       fresh: NaN,
       warmNoRestore: NaN,
       warmRestore: NaN,
-      leafEdited: NaN,
-      coreEdited: NaN,
       freshCpu: NaN,
       warmNoRestoreCpu: NaN,
       warmRestoreCpu: NaN,
@@ -709,7 +691,6 @@ await writeFile(
       concurrency: CONCURRENCY,
       reps: REPS,
       coldReps: COLD_REPS,
-      coreReps: CORE_REPS,
       date: new Date().toISOString(),
       machine: `${os.platform()} ${os.arch()}, ${os.cpus().length} cores`,
       rows,

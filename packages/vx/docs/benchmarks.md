@@ -390,45 +390,45 @@ each used by about a quarter of the projects. 1,601 projects, 20 source files ea
 Tasks: `installDeps` (no command, after the dependencies' `build`), `build`,
 `lint` and `test` (after `installDeps`), `publish` (after `build`) and
 `typecheck` (after the dependencies' `build`); `e2e` has `lint` and `test`.
-9,603 task nodes. Each sleeps in the same ratios: build 1 s, test and
-typecheck 0.5 s, lint 0.25 s, publish 0.1 s, long enough that the tasks, not
+9,603 task nodes. Each sleeps in the same ratios: build 300 ms, test and
+typecheck 150 ms, lint 75 ms, publish 30 ms, long enough that the tasks, not
 any tool's own per-task work, set the pace. `build` writes 200 KB of seeded
-incompressible bytes plus a file that folds its dependencies' outputs, so an
-edit reaches every output downstream in every tool.
+incompressible bytes plus a file that folds its dependencies' outputs.
+The bench times what CI runs: a cold build, a run with nothing changed, and a
+restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
+does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
 config: Turborepo 2.11.7 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
 `^` inputs), Vite Task (`vp run`, vite-plus 1.1.0, tasks in each `vite.config.ts`).
 vx runs from a `vx lock` snapshot (`--frozen`), as a CI pipeline runs it;
-_vx, no lock_ evaluates every config per run. This machine: linux x64, 4 cores.
+_vx, no lock_ evaluates every config per run. Both order tasks with
+`scheduleHistoryPlugin({ file: 'vx-timings.json' })`, from timings an earlier
+run recorded; cache wipes keep that file, as CI caches it. This machine: linux x64, 4 cores.
 `bun packages/vx-bench/compare.ts 3`; the committed
 `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx          | vx, no lock | Turborepo                  | Nx                          | Vite Task                |
-| ------------------------------------- | ----------- | ----------- | -------------------------- | --------------------------- | ------------------------ |
-| **Nothing changed**                   | **958 ms**  | 982 ms      | 1.05 s (vx 10% faster)     | 25.96 s (vx 27× faster)     | 12.24 s (vx 13× faster)  |
-| **Nothing changed, outputs restored** | **1.70 s**  | 1.78 s      | 1.76 s (vx 4% faster)      | 25.21 s (vx 15× faster)     | 11.97 s (vx 7.1× faster) |
-| **One leaf library edited**           | **899 ms**  | 1.06 s      | 777 ms (vx 16% slower)     | 27.00 s (vx 30× faster)     | 10.63 s (vx 12× faster)  |
-| **One core library edited**           | **7.53 s**  | 7.59 s      | 8.64 s (vx 15% faster)     | 1 min 16 s (vx 10× faster)  | 6.01 s (vx 25% slower)   |
-| **Cold build**                        | **8.99 s**  | 8.38 s      | 10.06 s (vx 12% faster)    | 1 min 13 s (vx 8.1× faster) | 4.50 s (vx 100% slower)  |
-| **Cold build: CPU the runner burns**  | **46.70 s** | 46.18 s     | 1 min 11 s (vx 51% faster) | 6 min 13 s (vx 8× faster)   | 30.60 s (vx 53% slower)  |
+|                                       | vx          | vx, no lock | Turborepo                 | Nx                         | Vite Task                |
+| ------------------------------------- | ----------- | ----------- | ------------------------- | -------------------------- | ------------------------ |
+| **Nothing changed**                   | **1.07 s**  | 1.05 s      | 898 ms (vx 19% slower)    | 25.45 s (vx 24× faster)    | 11.75 s (vx 11× faster)  |
+| **Nothing changed, outputs restored** | **1.27 s**  | 1.20 s      | 844 ms (vx 51% slower)    | 23.82 s (vx 19× faster)    | 11.83 s (vx 9.3× faster) |
+| **Cold build**                        | **7.07 s**  | 7.72 s      | 9.15 s (vx 29% faster)    | 3 min 48 s (vx 32× faster) | 8.16 s (vx 15% faster)   |
+| **Cold build: CPU the runner burns**  | **32.28 s** | 35.25 s     | 1 min 3 s (vx 94% faster) | 6 min 6 s (vx 11× faster)  | 24.82 s (vx 30% slower)  |
 
 Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 
 **The ideal run** is the theoretical best case, so every row is overhead.
-Nothing changed: one `git status -uall` walk (59 ms), the floor of asking what changed.
-Outputs restored: that walk plus a raw copy of every output (408 ms).
-An edit: the walk plus the tasks it re-runs, list-scheduled on 10 workers
-(leaf: 8 tasks, 1.56 s; core: 8,912 tasks, 5 min 50 s).
+Nothing changed: one `git status -uall` walk (61 ms), the floor of asking what changed.
+Outputs restored: that walk plus a raw copy of every output (1.13 s).
 Cold: every task list-scheduled critical-path first (critical path
-30.50 s, work ÷ workers 6 min 16 s).
+9.15 s, work ÷ workers 1 min 53 s).
 **CPU** is user + system of the invocation and the children it waited for,
 less what the task commands themselves burn under `xargs -P 10`
-(27.74 s); a daemon that outlives the invocation (Turborepo's, Nx's)
+(29.84 s); a daemon that outlives the invocation (Turborepo's, Nx's)
 is not counted, so theirs is a floor.
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
@@ -443,8 +443,8 @@ is not counted, so theirs is a floor.
 `packages/vx-bench/compare.ts` scaffolds **one** shared monorepo, the shape in
 § Head to head (`packages/vx-bench/shape.ts`), with the **identical** shell
 commands, `src/**` inputs and `dist/**` outputs for every runner, then times
-each runner through five states: cold, nothing changed, outputs restored, one
-leaf library edited and one core library edited. Fairness is deliberate: vx runs
+each runner through the three states CI sees: cold, nothing changed and
+outputs restored. Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
 `vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;

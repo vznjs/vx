@@ -9,8 +9,7 @@
 // outlast any runner's own per-task work.
 //
 // Pure data: compare.ts writes it out for every runner, `idealOf` turns it
-// into the graph the ideal schedule runs over, and the edit scenarios read
-// which tasks an edit reaches from it.
+// into the graph the ideal schedule runs over.
 
 import type { GraphNode } from './ideal.js'
 import { prng } from './schedule-policy.js'
@@ -48,7 +47,7 @@ export const DEPENDS_ON: Record<TaskName, readonly string[]> = {
 
 export const RUN_TASKS: readonly TaskName[] = ['build', 'lint', 'test', 'publish', 'typecheck']
 
-export const BUILD_MS = Number(process.env.BENCH_BUILD_MS ?? 1000)
+export const BUILD_MS = Number(process.env.BENCH_BUILD_MS ?? 300)
 const OUTPUT_BYTES = 200 * 1024
 
 export function workspace(): Project[] {
@@ -139,33 +138,25 @@ export function command(p: Project, task: TaskName): string {
 }
 
 /** One source file's text; `n` varies it so files differ. */
-export const source = (name: string, n: number, edit = 0): string =>
-  `// ${name} f${n}\nexport const v${n} = ${JSON.stringify(`${name}:${n}:${edit}`)}\n` +
+export const source = (name: string, n: number): string =>
+  `// ${name} f${n}\nexport const v${n} = ${JSON.stringify(`${name}:${n}`)}\n` +
   `export function f${n}(x) {\n  return x + ${n}\n}\n`
 
-/**
- * The task graph as the ideal schedule sees it. `only`, when given, keeps
- * just those task ids (an edit's re-run), with edges among them.
- */
-export function idealOf(projects: readonly Project[], only?: ReadonlySet<string>): GraphNode[] {
+/** The task graph as the ideal schedule sees it. */
+export function idealOf(projects: readonly Project[]): GraphNode[] {
   const nodes: GraphNode[] = []
   const at = new Map<string, number>()
   const byName = new Map(projects.map((p) => [p.name, p]))
   for (const p of projects)
     for (const [t, dur] of Object.entries(p.tasks)) {
       const id = `${p.name}#${t}`
-      if (only && !only.has(id)) continue
       at.set(id, nodes.length)
       nodes.push({ id, dur: dur!, deps: [] })
     }
   for (const p of projects)
     for (const t of Object.keys(p.tasks) as TaskName[]) {
-      const me = at.get(`${p.name}#${t}`)
-      if (me === undefined) continue
-      for (const dep of upstream(p, t, byName)) {
-        const d = at.get(dep)
-        if (d !== undefined) nodes[me]!.deps.push(d)
-      }
+      const me = at.get(`${p.name}#${t}`)!
+      for (const dep of upstream(p, t, byName)) nodes[me]!.deps.push(at.get(dep)!)
     }
   return nodes
 }
@@ -180,34 +171,3 @@ function upstream(p: Project, t: TaskName, byName: Map<string, Project>): string
   }
   return out
 }
-
-/**
- * The task ids an edit to `edited`'s sources re-runs: its own tasks with
- * inputs (all but `installDeps`) and every task downstream of them.
- */
-export function affectedBy(projects: readonly Project[], edited: string): Set<string> {
-  const byName = new Map(projects.map((p) => [p.name, p]))
-  const down = new Map<string, string[]>()
-  for (const p of projects)
-    for (const t of Object.keys(p.tasks) as TaskName[])
-      for (const u of upstream(p, t, byName)) {
-        const list = down.get(u) ?? []
-        list.push(`${p.name}#${t}`)
-        down.set(u, list)
-      }
-  const seen = new Set<string>()
-  const stack = Object.keys(byName.get(edited)!.tasks)
-    .filter((t) => t !== 'installDeps')
-    .map((t) => `${edited}#${t}`)
-  while (stack.length > 0) {
-    const id = stack.pop()!
-    if (seen.has(id)) continue
-    seen.add(id)
-    stack.push(...(down.get(id) ?? []))
-  }
-  return seen
-}
-
-/** The edit scenarios: a lib nothing but `e2e` uses, and the first core lib. */
-export const LEAF_EDIT = `@bench/t${TERMINAL_LEVEL}-1`
-export const CORE_EDIT = '@bench/l1-1'

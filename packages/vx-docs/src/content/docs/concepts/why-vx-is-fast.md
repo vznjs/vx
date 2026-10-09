@@ -14,12 +14,12 @@ These are reproducible on your own machine, not marketing figures:
 
 - **Runner overhead**, the number to read first: the time a runner adds
   on top of the ideal run. On the synthetic 9,603-task workspace, with
-  nothing changed, vx adds 958 ms, Turborepo 1.05 s (vx 10% faster),
-  Vite Task 12.24 s (vx 13× faster) and Nx 25.96 s (vx 27× faster). On a
-  cold build over its 6 min 16 s ideal schedule, vx adds 8.99 s,
-  Turborepo 10.06 s (vx 12% faster) and Nx 1 min 13 s (vx 8.1× faster);
-  Vite Task adds less, 4.50 s (vx 100% slower).
-  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ. Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+  nothing changed, vx adds 1.07 s, Turborepo 898 ms (vx 19% slower),
+  Vite Task 11.75 s (vx 11× faster) and Nx 25.45 s (vx 24× faster). On a
+  cold build over its 1 min 53 s ideal schedule, vx adds 7.07 s,
+  Turborepo 9.15 s (vx 29% faster) and Nx 3 min 48 s (vx 32× faster);
+  Vite Task 8.16 s (vx 15% faster).
+  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ. Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot

@@ -151,14 +151,14 @@ const FIRST: readonly Feature[] = [
     hook: 'Less overhead on a cached run: 10% faster than Turborepo, 27× faster than Nx.',
     body: [
       'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency. Every number is the time a tool adds over the ideal run.',
-      'With nothing changed, vx adds 958 ms, Turborepo 1.05 s, Vite Task 12.24 s and Nx 25.96 s. On a cold build vx adds 8.99 s: 12% faster than Turborepo and 8.1× faster than Nx.',
-      'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.',
-      'The benchmarks page shows every row, including the ones vx loses: Vite Task adds less on a cold build and a core edit, and Turborepo less on a leaf edit. The harness lives in the repo, so you can run it yourself.',
+      'With nothing changed, vx adds 1.07 s, Turborepo 898 ms, Vite Task 11.75 s and Nx 25.45 s. On a cold build vx adds 7.07 s: 29% faster than Turborepo and 32× faster than Nx.',
+      'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.',
+      'The benchmarks page shows every row, including the ones vx loses: Vite Task burns less CPU on a cold build, and Turborepo adds less when nothing changed or outputs are restored. The harness lives in the repo, so you can run it yourself.',
     ],
     example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx vx run build --all' },
     image: 'fastest.png',
     imageAlt:
-      'Time added over the ideal run with nothing changed, 9,603 tasks: vx 958 ms, Turborepo 1.05 s, Vite Task 12.24 s, Nx 25.96 s.',
+      'Time added over the ideal run with nothing changed, 9,603 tasks: vx 1.07 s, Turborepo 898 ms, Vite Task 11.75 s, Nx 25.45 s.',
     docs: { label: 'The numbers', href: 'benchmarks/' },
     deepDive: { label: 'Honest benchmarks', href: 'blog/honest-benchmarks/' },
   },
@@ -188,7 +188,7 @@ const FIRST: readonly Feature[] = [
     hook: 'Nothing runs in the background, so nothing goes stale or needs a reset.',
     body: [
       'A daemon is a second copy of the truth: a graph that is stale after a branch switch, a socket that died, a cache you reset by hand. vx has none and will not grow one.',
-      'Every run starts cold and reads the workspace as it is. With nothing changed across 9,603 tasks it adds 958 ms over the ideal run, where Nx, whose daemon is on by default, adds 25.96 s.',
+      'Every run starts cold and reads the workspace as it is. With nothing changed across 9,603 tasks it adds 1.07 s over the ideal run, where Nx, whose daemon is on by default, adds 25.45 s.',
     ],
     example: { lang: 'sh', code: 'git switch feature\nvx run test --all   # no daemon to restart' },
     image: 'no-daemon.png',

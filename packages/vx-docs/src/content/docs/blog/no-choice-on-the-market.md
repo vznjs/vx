@@ -56,12 +56,12 @@ open-source runner carries a daemon that is on by default, a heavy
 schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
 cached-run cost that is not in the same league: on a 9,603-task
-workspace with nothing changed, Nx adds 25.96 s against Turborepo's
-1.05 s and vx's 958 ms (vx 27× and 10% faster), Nx's daemon off as in
-CI. Its cold build burns 6 min 13 s of runner CPU where Turborepo burns
-1 min 11 s and vx 46.70 s (vx 8× and 51% faster).
+workspace with nothing changed, Nx adds 25.45 s against Turborepo's
+898 ms and vx's 1.07 s (vx 24× faster and 19% slower), Nx's daemon off as in
+CI. Its cold build burns 6 min 6 s of runner CPU where Turborepo burns
+1 min 3 s and vx 32.28 s (vx 11× and 94% faster).
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 Nx is the right tool if you want the platform. If you want the runner,

@@ -13,12 +13,12 @@ Benchmark numbers are only worth what the method behind them is worth.
 Here is the method, then the numbers.
 
 One number first, because it is the one that decides whether a runner
-is worth having. Imagine your tasks take six minutes on their own.
+is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
-tasks alone take 6 min 16 s under an ideal schedule. On a cold build vx
-adds **8.99 s**, Turborepo **10.06 s** and Nx **1 min 13 s**. Vite Task
-adds the least, **4.50 s**. With nothing changed, vx adds **958 ms**,
-the least of the four. No tool leads every row, and the table says
+tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
+adds **7.07 s**, the least of the four: Vite Task **8.16 s**, Turborepo
+**9.15 s** and Nx **3 min 48 s**. With nothing changed, vx adds **1.07 s**
+and Turborepo less, **898 ms**. No tool leads every row, and the table says
 where vx does not.
 
 ```mermaid
@@ -60,14 +60,14 @@ build over its ideal schedule; with nothing changed, over one git walk):
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **8.99 s** | **958 ms** | **46.70 s** |
-| Turborepo | 10.06 s (vx 12% faster) | 1.05 s (vx 10% faster) | 1 min 11 s (vx 51% faster) |
-| Nx        | 1 min 13 s (vx 8.1× faster) | 25.96 s (vx 27× faster) | 6 min 13 s (vx 8× faster) |
-| Vite Task | 4.50 s (vx 100% slower) | 12.24 s (vx 13× faster) | 30.60 s (vx 53% slower) |
+| vx        | **7.07 s** | **1.07 s** | **32.28 s** |
+| Turborepo | 9.15 s (vx 29% faster) | 898 ms (vx 19% slower) | 1 min 3 s (vx 94% faster) |
+| Nx        | 3 min 48 s (vx 32× faster) | 25.45 s (vx 24× faster) | 6 min 6 s (vx 11× faster) |
+| Vite Task | 8.16 s (vx 15% faster) | 11.75 s (vx 11× faster) | 24.82 s (vx 30% slower) |
 
 vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx; slower: vx adds that much more.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 The first two columns are wall clock; the third is CPU time (user plus

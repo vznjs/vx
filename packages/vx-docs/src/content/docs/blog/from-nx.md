@@ -116,10 +116,10 @@ so a shared input list is an import.
 ## What you drop, and what replaces it
 
 - **The daemon.** vx has [none](../no-daemon/). On the 9,603-task
-  benchmark, on native config, with nothing changed vx adds 958 ms to
-  Nx's 25.96 s (vx 27× faster), and the cold run burns 46.70 s of
-  runner CPU to Nx's 6 min 13 s (vx 8× faster).
-  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+  benchmark, on native config, with nothing changed vx adds 1.07 s to
+  Nx's 25.45 s (vx 24× faster), and the cold run burns 32.28 s of
+  runner CPU to Nx's 6 min 6 s (vx 11× faster).
+  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
   Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
