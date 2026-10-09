@@ -1534,6 +1534,7 @@ export default defineWorkspace({
   affectedBase: 'origin/main',
   cacheScope: 'trusted',
   rules: { exclusiveOutputs: true, upfrontKeys: true },
+  schedule: 'most-work',
   plugins: [otel()],
 })
 ```
@@ -1554,6 +1555,8 @@ interface WorkspaceConfig {
   cacheScope?: string
   /** Graph rules checked before anything runs; each on unless set to false. */
   rules?: WorkspaceRules
+  /** Which ready task starts first with no timings: 'most-work' (default), 'critical-path', 'direct-dependents', 'ready-order'. */
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
 }
@@ -1631,6 +1634,17 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.
+- **`schedule`** — which ready task starts first when more are ready
+  than workers, with no timings. `most-work` (the default): the one the
+  most tasks wait on, at any depth. `critical-path`: the head of the
+  longest chain of tasks below it. `direct-dependents`: the one the most
+  tasks wait on directly (Nx's rule). `ready-order`: the one that became
+  ready first (Turbo's rule). Each loses some graph shape the others win
+  (`blog/scheduling-strategies`). A `schedule` plugin's weights
+  (`@vzn/vx-schedule-history`) still sort first, and the strategy breaks
+  their ties. The default costs what it did; another strategy is
+  computed only when named. Any other value is refused. Never folded
+  into a cache key.
 - **`rules`** — checks on the task graph, each on unless set to
   `false`. Turning one off allows a shape vx runs correctly but more
   slowly; never folded into a cache key. A value that is not a boolean,

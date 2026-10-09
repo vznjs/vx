@@ -159,6 +159,66 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
   return counts
 }
 
+/**
+ * The ready-queue baseline a workspace may pick in place of the default
+ * (`schedule` in vx.workspace.ts). Each ranks with no timings; a `schedule`
+ * plugin's weights still sort above it, and it breaks their ties.
+ *   - `most-work`: transitive dependents (`computeReverseDepCount`), the default.
+ *   - `critical-path`: steps on the longest chain of dependents below a task.
+ *   - `direct-dependents`: direct dependents only, Nx's rule.
+ *   - `ready-order`: none; the task that became ready first starts first, Turbo's rule.
+ */
+export type ScheduleStrategy = 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+
+/** The baseline for a strategy other than `most-work`, over the whole graph. */
+export function strategyPriorities(
+  nodes: Map<string, TaskNode>,
+  strategy: Exclude<ScheduleStrategy, 'most-work'>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  if (strategy === 'ready-order') {
+    for (const id of nodes.keys()) out.set(id, 0)
+    return out
+  }
+  const dependents = new Map<string, string[]>()
+  for (const node of nodes.values()) {
+    for (const dep of node.deps) {
+      if (!nodes.has(dep)) continue
+      const list = dependents.get(dep)
+      if (list === undefined) dependents.set(dep, [node.id])
+      else list.push(node.id)
+    }
+  }
+  if (strategy === 'direct-dependents') {
+    for (const id of nodes.keys()) out.set(id, dependents.get(id)?.length ?? 0)
+    return out
+  }
+  // Longest chain below each task, dependents first: a task's depth is one
+  // more than its deepest dependent's. Iterative, as a deep chain would
+  // overflow a recursive walk.
+  const left = new Map<string, number>()
+  const ready: string[] = []
+  for (const id of nodes.keys()) {
+    const n = dependents.get(id)?.length ?? 0
+    left.set(id, n)
+    if (n === 0) ready.push(id)
+  }
+  while (ready.length > 0) {
+    const id = ready.pop()!
+    let depth = 0
+    for (const d of dependents.get(id) ?? []) depth = Math.max(depth, out.get(d)! + 1)
+    out.set(id, depth)
+    for (const dep of nodes.get(id)!.deps) {
+      if (!nodes.has(dep)) continue
+      const n = left.get(dep)! - 1
+      left.set(dep, n)
+      if (n === 0) ready.push(dep)
+    }
+  }
+  for (const id of nodes.keys()) if (!out.has(id)) out.set(id, 0)
+  return out
+}
+
 export function mergePriorities(
   baseline: ReadonlyMap<string, number>,
   overrides: ReadonlyMap<string, number>,

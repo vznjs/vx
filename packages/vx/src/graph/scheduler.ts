@@ -5,7 +5,13 @@ import {
   isUserError,
   OUT_OF_FDS_HINT,
 } from '../util/index.js'
-import { computeReverseDepCount, mergePriorities, tieredReverseDepCount } from './priorities.js'
+import {
+  computeReverseDepCount,
+  mergePriorities,
+  strategyPriorities,
+  tieredReverseDepCount,
+  type ScheduleStrategy,
+} from './priorities.js'
 import { isGroupTask, type TaskNode } from './task-graph.js'
 
 /**
@@ -279,6 +285,11 @@ export interface ScheduleOptions {
    */
   priorities?: ReadonlyMap<string, number>
   /**
+   * The baseline ranking under `priorities` (`schedule` in vx.workspace.ts).
+   * Undefined or `most-work` is the reverse-deps count above.
+   */
+  strategy?: ScheduleStrategy
+  /**
    * Restore-tier task ids: confirmed stable-key LOCAL cache hits (the
    * local short-circuit). A restore-tier task:
    *   - becomes READY IMMEDIATELY — its `pending` does NOT gate it, since
@@ -494,9 +505,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // use those weights. Falls back to the reverse-deps-count heuristic
   // for nodes the caller didn't score, so partial coverage works.
   const baseline =
-    options.restoreTier !== undefined && options.restoreTier.size > 0
-      ? tieredReverseDepCount(nodes, options.restoreTier)
-      : computeReverseDepCount(nodes)
+    options.strategy !== undefined && options.strategy !== 'most-work'
+      ? strategyPriorities(nodes, options.strategy)
+      : options.restoreTier !== undefined && options.restoreTier.size > 0
+        ? tieredReverseDepCount(nodes, options.restoreTier)
+        : computeReverseDepCount(nodes)
   const priority: ReadonlyMap<string, number> = options.priorities
     ? mergePriorities(baseline, options.priorities)
     : baseline

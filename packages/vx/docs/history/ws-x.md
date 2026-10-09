@@ -1440,3 +1440,11 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   merge in one pass over two sorted lists instead of a Set and a sort;
   task globs compile once per pattern; the overlap check asks a take-back
   list about an output glob once. Row: `workspace-files-shared-memo.test.ts`.
+
+- **X-215** `schedule` in vx.workspace.ts (M via EA, 2026-10-09): the
+  ready-queue baseline with no timings, `most-work` (default),
+  `critical-path`, `direct-dependents` (Nx) or `ready-order` (Turbo). A
+  `schedule` plugin's weights still sort first; the strategy breaks their
+  ties. The default path is unchanged: perf-guard counts identical, warm
+  `--frozen` 1,090 packages min 341 vs 336 ms, cold first task 298/330
+  vs 305/343 (noise). Rows: `schedule-strategy.test.ts`.

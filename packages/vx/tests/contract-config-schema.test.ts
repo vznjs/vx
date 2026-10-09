@@ -60,6 +60,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       affectedBase: true,
       cacheScope: true,
       rules: true,
+      schedule: true,
       plugins: true,
     }),
     cacheRetention: keys<NonNullable<WorkspaceConfig['cacheRetention']>>({
@@ -134,6 +135,7 @@ function workspaceSeed(): Record<string, unknown> {
     affectedBase: 'origin/main',
     cacheScope: 'pr-1',
     rules: { exclusiveOutputs: true, upfrontKeys: true },
+    schedule: 'critical-path',
     plugins: [],
   }
 }

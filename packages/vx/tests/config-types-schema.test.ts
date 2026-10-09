@@ -39,6 +39,7 @@ const WORKSPACE = [
   'concurrency',
   'plugins',
   'rules',
+  'schedule',
   'timeout',
 ] as const satisfies readonly Keys<WorkspaceConfig>[]
 const PROJECT = ['tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
