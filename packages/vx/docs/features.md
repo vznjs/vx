@@ -96,7 +96,7 @@ config key or an environment variable is missing here.
 - **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. no post
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
 - **Background remote uploads** — remote writes drain at the end of the run and never fail the build. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
-- **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. no post
+- **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 
 ## Correctness
 
@@ -149,19 +149,19 @@ config key or an environment variable is missing here.
 - **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. no post
 - **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. no post
 - **Nx executors as one process** (`nx-exec`) — any Nx executor runs as one vx task with its Nx env set. post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
-- **Programmatic API** (`run`, `planRun`) — run or plan from your own scripts via `@vzn/vx`. no post
+- **Programmatic API** (`run`, `planRun`) — run or plan from your own scripts via `@vzn/vx`. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 
 ## Plugins
 
 - **A pipeline with seams** (`plugins`, `definePlugin`; stages `config` `discover` `project` `graph` `key` `fingerprint` `schedule` `admit` `executor` `cache` `telemetry` `commands`) — every stage is a plugin seam. [page](https://vznjs.github.io/vx/features/plugins/) · post: [A pipeline with seams](https://vznjs.github.io/vx/blog/pipeline-with-seams/)
-- **Write a plugin** (`vx init --plugin`) — scaffold a runnable plugin for a seam. [page](https://vznjs.github.io/vx/features/plugins/) · no post
+- **Write a plugin** (`vx init --plugin`) — scaffold a runnable plugin for a seam. [page](https://vznjs.github.io/vx/features/plugins/) · post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 - **The local floor** — running and caching here are core's, not plugins. post: [The local floor](https://vznjs.github.io/vx/blog/the-local-floor/)
 - **Remote cache and execution** (`@vzn/vx-reapi`, `exec.remote`) — Bazel REAPI cache and workers; the scheduler stays here. [page](https://vznjs.github.io/vx/features/remote-execution/) · post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **OpenTelemetry** (`@vzn/vx-otel`) — each run exported to your OpenTelemetry backend, never breaking it. [page](https://vznjs.github.io/vx/features/opentelemetry/) · post: [Observability that cannot break a run](https://vznjs.github.io/vx/blog/telemetry-never-breaks-a-run/)
 - **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats, run history, `vx why`'s full answer, a run tool and a plan tool for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
 - **vx prune** (`@vzn/vx-lockfile`, `vx prune`) — copy projects and their deps, lockfile pruned, for a Docker build. post: [Ship one app, not the whole monorepo](https://vznjs.github.io/vx/blog/vx-prune/)
 - **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. no post
-- **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. no post
+- **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 - **REAPI TLS, mTLS and headers** — connect to hosted servers such as BuildBuddy the way Bazel does. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)

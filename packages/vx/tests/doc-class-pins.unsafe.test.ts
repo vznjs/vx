@@ -35,6 +35,7 @@ const CLASS_PAGES = {
     'architecture.md',
     'cli.md',
     'comparison.md',
+    'extend-vx.md',
     'flows.md',
     'index.md',
     'layered-cache.md',
