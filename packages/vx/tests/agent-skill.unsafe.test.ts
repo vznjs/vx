@@ -37,7 +37,7 @@ describe('the agent skill', () => {
       'utf8',
     )
     const want = [...tools.matchAll(/^ {4}name: '(\w+)'/gm)].map((m) => m[1]!).sort()
-    const listed = /read-only: ([^.]+)\./.exec(SKILL)![1]!
+    const listed = /Its tools: ([^.]+)\./.exec(SKILL)![1]!
     const got = [...listed.matchAll(/`(\w+)`/g)].map((m) => m[1]!).sort()
     expect(want.length).toBeGreaterThan(5)
     expect(got).toEqual(want)
