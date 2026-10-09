@@ -595,7 +595,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     expect(shape(t.get('base#nx-input:production'))).toEqual(
       twin(undefined, { files: ['**/*', '!**/*.spec.ts'] }),
     )
-    expect(t.get('base#nx-input:production')?.task?.['exec']).toEqual({ command: 'true' })
+    expect(t.get('base#nx-input:production')?.task?.['exec']).toBeUndefined()
     expect(t.get('base#nx-input:production')?.task?.['cache']).toMatchObject({
       outputs: { files: [] },
     })

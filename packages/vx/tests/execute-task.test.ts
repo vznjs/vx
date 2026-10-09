@@ -2207,9 +2207,9 @@ describe('execute-task — cache.inputs.tasks filters the KEY, not the input set
 
 describe('execute-task — dispatch: group and persistent paths', () => {
   it('a group never touches the cache, costs nothing, and cascades its upstreams', async () => {
-    // A group has no `exec`, so it must not reach the cached path at all: the
-    // config loader refuses `cache` on a group, so a `cache.get` there would
-    // probe a key derived from a task that cannot produce outputs. Its hash
+    // A group has no `exec`, so it must not reach the cached path at all: a
+    // `cache.get` there would probe a key derived from a task that cannot
+    // produce outputs (a keyed group's `cache` is a key, never an entry). Its hash
     // exists only so downstream keys keep cascading THROUGH it, which means it
     // has to move with the upstream set and NOT with the order the scheduler
     // happened to finish them in (completion order varies run to run).

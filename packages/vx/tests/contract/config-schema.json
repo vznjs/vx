@@ -725,7 +725,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` (group tasks exist to chain dependencies)": [
+        "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `cache.inputs` (group tasks exist to chain dependencies or carry a key)": [
           "{}"
         ],
         "$CONFIG: tasks.t has unknown field \"x\" (allowed: cache, dependsOn, description, exec)": [
