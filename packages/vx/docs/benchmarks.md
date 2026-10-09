@@ -514,6 +514,53 @@ runner's own costs on a trivial task; the 3,270-task table at the top,
 where each task sleeps a second and every runner is scheduled the same
 way, is where the same shape is compared against Turborepo and Nx.
 
+## Scheduling order (2026-10-09)
+
+Which ready task starts first, measured inside vx: the default order
+(most transitive dependents), the `@vzn/vx-schedule-history` plugin, and
+three other rules written as measurement-only `schedule` plugins. One
+cold run per row (`--force`), linux x64, 4 cores, Bun 1.4.2, vx from
+source at `main` a85223a. Every task is a `sleep`. Each history arm
+starts from an empty history in its own copy of the workspace. The
+post: [Which task runs first?](https://vznjs.github.io/vx/blog/scheduling-strategies/).
+
+A slow task with nothing after it: one 60 s task, two chains of a
+29.75 s parent and a 0.25 s child, 2 workers.
+
+| Rule                                      | Wall time |
+| ----------------------------------------- | --------- |
+| Ready order                               | 60.2 s    |
+| Most transitive dependents (vx's default) | 90.0 s    |
+| Critical path by step count               | 89.9 s    |
+| Recorded time, run 1 (no history yet)     | 90.0 s    |
+
+Most direct dependents ties and falls back to ready order (60.2 s);
+recorded time runs 2 and 3 take 60.2 s each.
+
+The mirror: 100 independent tasks and a chain A then B, 2 s each, 10
+workers.
+
+| Rule                                      | Wall time |
+| ----------------------------------------- | --------- |
+| Ready order                               | 24.3 s    |
+| Most transitive dependents (vx's default) | 22.3 s    |
+| Critical path by step count               | 22.4 s    |
+
+Most direct dependents ties and falls back to ready order (24.3 s);
+recorded time runs 1 to 3 take 22.3 s, 22.2 s and 22.3 s.
+
+The headline graph: 1,090 packages, 3,270 tasks, 100 layers, 1 s
+tasks, 10 workers. The best possible run is 218 s.
+
+| Rule                                      | Wall time |
+| ----------------------------------------- | --------- |
+| Ready order                               | 301.7 s   |
+| Most direct dependents                    | 220.5 s   |
+| Most transitive dependents (vx's default) | 220.4 s   |
+| Critical path by step count               | 220.6 s   |
+
+Recorded time runs 1 to 3 take 220.6 s, 220.5 s and 220.5 s.
+
 ## Real repos
 
 Earlier sections here timed vx on public Turbo and Nx repos through
