@@ -116,3 +116,9 @@ and log output reads better. Each must cost the warm path nothing.
   `next: … vx run build --all`. The one rough edge was a second
   `vx init`: it fetched vx-migrate, which refused to overwrite its own
   configs, exit 1. It now says vx is set up, with the next step, exit 0. Row: `init.test.ts` "a second vx init after the native migration".
+- **DX-19.** DX #2, no TTY-only path for agents: `vx run` with no task
+  under `--format json` or `--dry=json` refused only without a TTY, so
+  an agent on a pty waited at the picker. It now refuses there too,
+  `VX_E_USAGE` on stdout. The other prompt, vx-migrate's native/keep,
+  already answers native without a TTY. Row: `run-exit-codes.test.ts`
+  "a JSON answer never opens the picker".
