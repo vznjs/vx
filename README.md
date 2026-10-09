@@ -171,4 +171,4 @@ scripts. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## License
 
-[MIT](LICENSE)
+vx is [MIT](LICENSE) licensed. The prebuilt binaries embed Bun and a few npm packages under permissive licenses; their notices ship as [THIRD_PARTY_NOTICES.txt](packages/vx/THIRD_PARTY_NOTICES.txt) in each platform package and GitHub release.
