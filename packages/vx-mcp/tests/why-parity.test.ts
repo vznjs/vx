@@ -50,7 +50,11 @@ it("whyDidThisRerun carries `vx why --format json`'s diff and roots", async () =
   const mcp = await handleToolCall(
     'whyDidThisRerun',
     { taskId: 'a#build' },
-    { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root },
+    {
+      cacheDir: path.join(root, '.vx', 'cache'),
+      workspaceRoot: root,
+      vx: [process.execPath, CORE_BIN],
+    },
   )
   expect(cli['roots']).toEqual([
     { chain: ['a#build', 'a#gen'], entries: expect.any(Array) as unknown },
