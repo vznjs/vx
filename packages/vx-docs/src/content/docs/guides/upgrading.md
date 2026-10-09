@@ -11,7 +11,7 @@ first; its text is that footer: what changed and what to do.
 
 ## cache: store small artifacts inline in the store index
 
-SCHEMA_VERSION v32 -> v33; the index is reset on first open, and artifacts are kept and indexed again on their next hit.
+SCHEMA_VERSION v33. The first run drops the local index once; artifact files stay and are re-adopted on their next hit.
 
 ## vx-reapi: connect a bare endpoint with TLS, as Bazel does
 
@@ -21,13 +21,13 @@ a vx-reapi endpoint with no scheme now uses TLS; a plaintext server needs grpc:/
 
 every cached task misses once after upgrading to vx-cache-v42.
 
-## cache: bump CACHE_VERSION to vx-cache-v41
-
-every cached task misses once after upgrading to vx-cache-v41.
-
 ## cache: drop unread store fields, fix chunking comments
 
 Cache.storeFallback and Cache.storeMoved are removed; nothing read them.
+
+## cache: clean through an in-project output link, bump to v41
+
+every cached task misses once after upgrading to vx-cache-v41.
 
 ## workspace: refuse env names sh would drop
 
@@ -41,7 +41,7 @@ config array fields are typed readonly; code that mutates a resolved config list
 
 a tag that --filter tag: cannot select (`**`, an upper-case glob such as `A*`) is now refused at config load.
 
-## cache: record the dry prune's API in the contract
+## cache: dry prune on an earlier index previews the store
 
 Cache.orphansBeforeReset is gone; open a Cache in 'preview' mode instead.
 
