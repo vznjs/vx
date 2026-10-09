@@ -88,6 +88,9 @@ time_arm() {
   local t0 t1 code
   t0=$(ms); code=$(run_"$1" "$2"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
+  # The next rep's same arm overwrites the log: a failed rep keeps its own
+  # copy (astro's cold rep 1 exited 1 and its cause was lost, 2026-10-09).
+  [ "$code" = 0 ] || cp ".vx-bench-$1-$2.log" ".vx-bench-$1-$2.fail-$t0.log"
 }
 # vx runs from a `vx lock` snapshot (`--frozen`), as CI would, taken once
 # here before any arm; a config edited after it is re-locked by running
