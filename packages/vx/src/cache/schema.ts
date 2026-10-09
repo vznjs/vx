@@ -256,22 +256,18 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     CREATE INDEX IF NOT EXISTS main.invocations_started ON invocations(started_at);
     CREATE INDEX IF NOT EXISTS main.invocations_branch  ON invocations(branch);
     CREATE INDEX IF NOT EXISTS main.invocations_ci      ON invocations(ci);
-    -- v22 (Tier 3): the input-fingerprint moat. One row per cache-key
-    -- component, keyed by the cache-ENTRY hash it belongs to (NOT a
-    -- run id). Written inside the entry-save transaction — only on a
-    -- miss/save, never on a hit — so a warm all-cache-hit run writes
-    -- nothing here (the warm path does zero extra work). The
-    -- why-did-this-re-run diff reads two entry hashes (this run's
-    -- runs.hash and the previous run's) and anti-joins their rows in
-    -- SQL over (kind,name,hash); a JSON blob would force an app-side
-    -- parse + compare on every probe. ON DELETE CASCADE keeps these
-    -- rows in sync with entries (a prune sweeps them automatically).
+    -- v22 (Tier 3): the input-fingerprint moat: each cache ENTRY's key
+    -- components (NOT a run's). Written inside the entry-save transaction,
+    -- only on a miss/save, so a warm all-cache-hit run writes nothing
+    -- here. v34: one row per entry, the components a JSON array of
+    -- [kind, name, hash] in (kind, name) code-unit order. A row per
+    -- component cost a b-tree insert each, and a task with 50 input
+    -- files spent ~0.5 ms a save on them; every reader loads the whole
+    -- set by entry hash and diffs it app-side anyway. ON DELETE CASCADE
+    -- keeps it in sync with entries (a prune sweeps it automatically).
     CREATE TABLE IF NOT EXISTS ${store}.entry_inputs (
-      entry_hash TEXT NOT NULL,
-      kind       TEXT NOT NULL,
-      name       TEXT NOT NULL,
-      hash       TEXT NOT NULL,
-      PRIMARY KEY (entry_hash, kind, name),
+      entry_hash TEXT PRIMARY KEY,
+      components TEXT NOT NULL,
       FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
     );
     -- v32: what belongs to the entries rather than to one workspace: the

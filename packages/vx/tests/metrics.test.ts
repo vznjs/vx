@@ -87,11 +87,10 @@ function seedEntryInputs(
     `INSERT OR IGNORE INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
      VALUES (?, 'pkg', 'test', 'cmd', 0, 0, 0, 0, 0)`,
   ).run(entryHash)
-  for (const r of rows) {
-    db.query(
-      'INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash) VALUES (?, ?, ?, ?)',
-    ).run(entryHash, r.kind, r.name, r.hash)
-  }
+  db.query('INSERT OR IGNORE INTO entry_inputs(entry_hash, components) VALUES (?, ?)').run(
+    entryHash,
+    JSON.stringify(rows.map((r) => [r.kind, r.name, r.hash])),
+  )
 }
 
 function withCache(fn: (cache: Cache) => void) {

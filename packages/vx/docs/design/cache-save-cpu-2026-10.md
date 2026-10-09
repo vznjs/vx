@@ -1,6 +1,6 @@
 # Cache save CPU — design
 
-> **Status:** proposal (2026-10-08). Step 1 shipped as X-191, step 2 as X-204, step 3 as X-205 (`docs/history/ws-x.md`).
+> **Status:** proposal (2026-10-08). Step 1 shipped as X-191, step 2 as X-204, step 3 as X-205; step 4 refuted (X-206); one `entry_inputs` row per entry shipped as X-207 (`docs/history/ws-x.md`).
 
 ## What we're solving
 

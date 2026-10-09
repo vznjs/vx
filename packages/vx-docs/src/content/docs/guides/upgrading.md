@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: one entry_inputs row per entry, not per component
+
+SCHEMA_VERSION v34. The first run drops the local index once; artifact files stay and are re-adopted on their next hit.
+
 ## cache: store small artifacts inline in the store index
 
 SCHEMA_VERSION v33. The first run drops the local index once; artifact files stay and are re-adopted on their next hit.
