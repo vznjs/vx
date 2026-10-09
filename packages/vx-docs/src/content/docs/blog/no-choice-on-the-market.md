@@ -19,18 +19,14 @@ content-addressed cache, `dependsOn` micro-syntax that reads the way
 you think, a `--filter` DSL borrowed from pnpm. It is quick on a warm
 cache and it stays out of the way.
 
-It also stops. Everything beyond "run it here and cache it in Vercel's
-remote cache" is either absent or marked experimental. There is no
-remote execution and no seam to add one. There is no way to change
-where a task runs. The config is JSON, so a shared input list is a
-`globalDependencies` array you keep in sync by hand, and nothing
+It also stops. It runs a task here and caches it, in Vercel's remote
+cache or in a self-hosted one through its open cache API; past that,
+there is no remote execution and no seam to add one. There is no way to
+change where a task runs. The config is JSON, so a shared input list is
+a `globalDependencies` array you keep in sync by hand, and nothing
 computed can participate in a key. Inputs default to every file in the
 package, which turns a README edit into a rebuild and adds hashing to
-every task. Outputs are restored additively, so
-a deleted file survives a cache hit. And the parts that would have
-grown into a platform are being deprecated rather than finished: the
-daemon for `turbo run` (2.8.11) and `--parallel` (by 2.9.18). The
-flag surface is the largest of any tool in this space.
+every task. The flag surface is the largest of any tool in this space.
 
 Turborepo is the right tool until the repository is large enough or
 the team needs something it cannot do, and then there is no next step
@@ -44,9 +40,10 @@ Rust, .NET, Java and Gradle. The company behind it is serious about
 large repositories.
 
 It is also a product, and the runner is the part of the product that
-gets you to the rest. The features that make a large monorepo bearable,
-distributed task execution, remote cache, flaky-test detection, the
-graph visualiser, the analytics, are Nx Cloud, paid and walled. The
+gets you to the rest. Several features that make a large monorepo bearable, distributed task
+execution, flaky-task detection and the analytics, are Nx Cloud, a paid
+service. The graph view is free, and a remote cache can be self-hosted.
+The
 open-source runner carries a daemon that is on by default, a heavy
 schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
