@@ -40,6 +40,7 @@ is one of its inputs), `project`, `package`, `named` or `selected`, and
 
 ```sh
 vx last --failed --format json   # the last failed run; a failed row has output and locations
+vx last --log app#build          # one task's output: a failure's, or its cached log
 ```
 
 A failed row's `output` is the task's output as plain text (secrets masked)
@@ -62,7 +63,7 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 
 When `@vzn/vx-mcp` is a plugin in `vx.workspace.ts`, `vx mcp` serves the
 same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
-`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`,
+`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`,
 `getWorkspaceInfo`, `runTasks`, `planTasks`. `runTasks` answers what
 `vx run <tasks> --format json` prints, `planTasks` what
 `vx run <tasks> --dry=json` prints; the others only read.

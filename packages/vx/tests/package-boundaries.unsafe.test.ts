@@ -180,6 +180,7 @@ describe('package boundaries', () => {
       'run',
       'runFailures',
       'splitTaskId',
+      'taskLog',
       'whyDidThisRerunQuery',
       // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
       // args after `--` on their own, and lost them where the local

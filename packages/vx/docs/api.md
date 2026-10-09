@@ -2302,6 +2302,38 @@ export interface TaskHistory {
 }
 ```
 
+## `taskLog`
+
+function · `src/orchestrator/run-failures.ts`
+
+`taskId`'s output in `runId`, or in the latest run that recorded the
+task when omitted; null when no such run recorded it.
+
+```ts
+export function taskLog(
+  cacheDir: string,
+  db: Database,
+  taskId: string,
+  runId?: string,
+): TaskLog | null
+```
+
+## `TaskLog`
+
+type · `src/orchestrator/run-failures.ts`
+
+One task's output in a recorded run, as `vx last --log` and getTaskLog read it.
+
+```ts
+export interface TaskLog {
+  runId: string
+  taskId: string
+  status: string
+  source: 'failure' | 'cache' | null
+  output: string
+}
+```
+
 ## `TaskLogBuffer`
 
 class · `src/orchestrator/task-log-buffer.ts`

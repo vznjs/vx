@@ -19,6 +19,7 @@ import {
   resolveRunId,
   runFailures,
   shortRunId,
+  taskLog,
 } from '../orchestrator/index.js'
 import { formatElapsed, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -30,6 +31,8 @@ interface LastArgs {
   /** Only runs that failed: the latest one replayed, or the list narrowed. */
   failed?: boolean
   format: 'pretty' | 'json'
+  /** `--log <task>`: that task's output in the run, not the run's summary. */
+  log?: string
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
   error?: string
@@ -73,6 +76,14 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       out.failed = true
       continue
     }
+    if (a === '--log' || a.startsWith('--log=')) {
+      const v = a === '--log' ? args[++i] : a.slice('--log='.length)
+      if (v === undefined || v === '' || v.startsWith('-')) {
+        return { ...out, error: `--log requires a task id, like app#build${seeHelp('last')}` }
+      }
+      out.log = v
+      continue
+    }
     if (a === '--format' || a.startsWith('--format=')) {
       const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'last')
       if (typeof fv === 'object') return { ...out, ...fv }
@@ -101,6 +112,12 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     return {
       ...out,
       error: `a run id and --list do not combine: replay ${out.runId}, or list runs${seeHelp('last')}`,
+    }
+  }
+  if (out.log !== undefined && (out.list !== undefined || out.failed === true)) {
+    return {
+      ...out,
+      error: `--log reads one task's output and combines only with a run id${seeHelp('last')}`,
     }
   }
   if (out.runId !== undefined && out.failed === true) {
@@ -294,6 +311,30 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
+
+    if (parsed.log !== undefined) {
+      const runId =
+        parsed.runId === undefined
+          ? undefined
+          : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
+      const log = taskLog(cacheDir, db, parsed.log, runId)
+      if (log === null) {
+        throw new UserError(
+          `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
+        )
+      }
+      if (parsed.format === 'json') {
+        process.stdout.write(`${JSON.stringify(log)}\n`)
+        return 0
+      }
+      if (log.source === null) {
+        process.stderr.write(
+          `vx last: ${log.taskId} ended ${log.status}; vx keeps output only for failed and cached tasks\n`,
+        )
+      }
+      process.stdout.write(log.output)
+      return 0
+    }
 
     if (parsed.list !== undefined) {
       const invocations =
