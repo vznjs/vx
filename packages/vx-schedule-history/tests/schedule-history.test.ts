@@ -136,6 +136,32 @@ describe('criticalPathPriorities', () => {
     // ordering exists for. Own-duration collapse would report 10.
     expect(out.get('pkg#base')).toBe(1020)
   })
+
+  it('a group costs nothing, so a gate never outranks the longest chain', () => {
+    // #3286's counterexample, scaled so the median would tip it: a gate
+    // charged the median (25 s) scores 50.25 s against the long task's 50.
+    const group = (id: string): TaskNode => ({ ...node(id), config: {} as TaskNode['config'] })
+    const nodes = [
+      node('long#build'),
+      group('l#gate'),
+      node('l#parent', ['l#gate']),
+      node('l#child', ['l#parent']),
+      group('r#gate'),
+      node('r#parent', ['r#gate']),
+      node('r#child', ['r#parent']),
+    ]
+    const history: HistoryTable = new Map([
+      ['long#build', hist(50_000)],
+      ['l#parent', hist(25_000)],
+      ['r#parent', hist(25_000)],
+      ['l#child', hist(250)],
+      ['r#child', hist(250)],
+    ])
+    const out = criticalPathPriorities(nodes, history)
+    expect([out.get('long#build'), out.get('l#gate'), out.get('r#gate')]).toEqual([
+      50_000, 25_250, 25_250,
+    ])
+  })
 })
 
 describe('criticalPathPriorities — assumed durations for the cold run', () => {

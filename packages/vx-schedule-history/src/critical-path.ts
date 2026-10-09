@@ -37,8 +37,12 @@ export function criticalPathPriorities(
       else dependentsOf.set(upstreamId, [n.id])
     }
   }
+  // A group runs nothing, so it has no history; the median would charge it
+  // a whole task and let a gate outrank the longest chain (PR #3286).
   const ownDuration = (n: TaskNode): number =>
-    history.get(n.id)?.p50DurationMs ?? assume[n.id] ?? workspaceMedian
+    n.config.exec?.command === undefined
+      ? 0
+      : (history.get(n.id)?.p50DurationMs ?? assume[n.id] ?? workspaceMedian)
 
   // Reverse-topological pass: a node's value is final once every dependent's
   // is, so start from the sinks (no dependents) and release each upstream
