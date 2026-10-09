@@ -281,8 +281,8 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    ${artifactTables(store)}
   `)
-  createArtifactTables(db, store)
 }
 
 /**
@@ -296,7 +296,12 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
  * it sits before `bytes` so reading it never walks a blob's overflow pages.
  */
 export function createArtifactTables(db: Database, store: 'main' | 'store'): void {
-  db.exec(`
+  db.exec(artifactTables(store))
+}
+
+// In the entry tables' exec, so an open runs no statement more for them.
+function artifactTables(store: 'main' | 'store'): string {
+  return `
     CREATE TABLE IF NOT EXISTS ${store}.artifacts (
       hash  TEXT PRIMARY KEY,
       at    INTEGER NOT NULL,
@@ -305,8 +310,7 @@ export function createArtifactTables(db: Database, store: 'main' | 'store'): voi
     CREATE TABLE IF NOT EXISTS ${store}.artifacts_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
-    );
-  `)
+    );`
 }
 
 /**

@@ -664,11 +664,11 @@ is on):
    incoming file when a rename replaces one, 0.55 ms a save on the main
    thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,
    2026-10-02). A reader probing between the two renames misses.
-   An inline save moves aside the file its key's previous row named,
-   the same way. As of every commit a key's bytes are in one place, and
-   a reader takes the inline bytes first, so a file left beside them
-   (a row-less one, from before a reset) is never read and the sweep
-   takes it. An inline save writes no file at all: no temp, no rename,
+   An inline save moves aside whatever file its key has, the same way
+   (a rename that finds nothing on a first save, in place of a statement
+   asking the index). As of every commit a key's bytes are in one place,
+   and a reader takes the inline bytes first, so a file an older vx
+   wrote beside them is never read and the sweep takes it. An inline save writes no file at all: no temp, no rename,
    and a crash leaves nothing behind (the bytes and the rows are one
    transaction in one database file).
 
@@ -1687,7 +1687,8 @@ CREATE TABLE artifacts (
 ) WITHOUT ROWID;
 
 -- 'layout' = 'a1': the artifacts table's own version; another value
--- drops the table, silently. Nothing else drops it.
+-- drops the table, silently. Nothing else drops it. Read only where
+-- the schema was not this vx's, so a layout change bumps the schema.
 CREATE TABLE artifacts_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

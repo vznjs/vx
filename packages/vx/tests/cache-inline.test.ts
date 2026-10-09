@@ -150,13 +150,15 @@ describe('3: one key moving file → inline → file', () => {
     try {
       const old = big()
       await save(cache, 'aaaaaaaaaaaaaaaa', old)
-      // Another version's open dropped the row: the file is row-less.
+      const file = path.join(cacheDir, 'aaaaaaaaaaaaaaaa.tar.zst')
+      const oldBytes = await readFile(file)
+      // Another version's open dropped the row: the file is row-less, and
+      // the inline save moves it aside as it would a row's.
       cache.dbHandle().query('DELETE FROM entries').run()
       await save(cache, 'aaaaaaaaaaaaaaaa', 'small')
-      expect([isInline(cache, 'aaaaaaaaaaaaaaaa'), files()]).toEqual([
-        true,
-        ['aaaaaaaaaaaaaaaa.tar.zst'],
-      ])
+      expect([isInline(cache, 'aaaaaaaaaaaaaaaa'), files()]).toEqual([true, []])
+      // An older vx, which knows no inline table, writes the key's file again.
+      await writeFile(file, oldBytes)
       expect(await restored(cache, 'aaaaaaaaaaaaaaaa')).toEqual({ 'out.txt': hex('small') })
       const aged = (Date.now() - 2 * HOUR) / 1000
       await utimes(path.join(cacheDir, 'aaaaaaaaaaaaaaaa.tar.zst'), aged, aged)
@@ -453,8 +455,10 @@ describe('12: the inline table’s own layout sentinel', () => {
     const writer = new Cache(cacheDir)
     await save(writer, 'h1', 'kept')
     writer.close()
+    // Another vx's: a layout change comes with a schema of its own.
     const raw = new Database(path.join(cacheDir, 'cache.db'))
     raw.query("UPDATE artifacts_meta SET value = 'zz' WHERE key = 'layout'").run()
+    raw.query("UPDATE schema_meta SET value = 'v999' WHERE key = 'version'").run()
     raw.close()
     const err = spyOn(process.stderr, 'write')
     const out = spyOn(process.stdout, 'write')
@@ -483,5 +487,54 @@ describe('12: the inline table’s own layout sentinel', () => {
       again.close()
     }
     expect(existsSync(path.join(cacheDir, 'h2.tar.zst'))).toBe(false)
+  })
+
+  it("a store at another vx's schema and layout drops the store's inline artifacts", async () => {
+    const store = path.join(root, 'store')
+    const open = (): Cache => new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
+    const writer = open()
+    await save(writer, 'h1', 'kept')
+    writer.close()
+    const raw = new Database(path.join(store, 'store.db'))
+    raw.query("UPDATE artifacts_meta SET value = 'zz' WHERE key = 'layout'").run()
+    raw.query("UPDATE store_meta SET value = 'v999' WHERE key = 'schema'").run()
+    raw.close()
+    const cache = open()
+    try {
+      expect([
+        cache.dbHandle().query('SELECT count(*) AS n FROM store.artifacts').get(),
+        cache.dbHandle().query("SELECT value FROM store.artifacts_meta WHERE key = 'layout'").get(),
+      ]).toEqual([{ n: 0 }, { value: 'a1' }])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('an index whose entries come back from a store stamps the table it makes', async () => {
+    const store = path.join(root, 'store')
+    new Cache(cacheDir, undefined, undefined, undefined, 'open', store).close()
+    const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null)
+    try {
+      expect(
+        own.dbHandle().query("SELECT value FROM main.artifacts_meta WHERE key = 'layout'").get(),
+      ).toEqual({ value: 'a1' })
+    } finally {
+      own.close()
+    }
+  })
+
+  it('a warm open at this schema reads no layout: the open costs no statement for it', async () => {
+    const writer = new Cache(cacheDir)
+    await save(writer, 'h1', 'kept')
+    writer.close()
+    const raw = new Database(path.join(cacheDir, 'cache.db'))
+    raw.query("UPDATE artifacts_meta SET value = 'zz' WHERE key = 'layout'").run()
+    raw.close()
+    const cache = new Cache(cacheDir)
+    try {
+      expect(isInline(cache, 'h1')).toBe(true)
+    } finally {
+      cache.close()
+    }
   })
 })

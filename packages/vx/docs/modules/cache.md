@@ -442,8 +442,13 @@ first, then the file. `at` is the last use, renewed as a file time is
 `artifacts` is in no drop a `SCHEMA_VERSION` reset makes (neither
 `STORE_TABLES` nor the index's list): a reset keeps the bytes, as it
 keeps files, and each is indexed again from them on its next hit
-(`adopt`). Its own version is `artifacts_meta.layout` (`'a1'`); another
-value drops the table, silently. A reading open over an index or store
+(`adopt`): the lookup that finds no row is driven by the asked keys, so
+it reports a row-less inline artifact in the same statement, and a miss
+asks `artifacts` only then. Its own version is `artifacts_meta.layout`
+(`'a1'`); another value drops the table, silently. It is read only
+where the schema was not this vx's (a reset, a new index or store, a
+store moved), so a warm open spends no statement on it and a layout
+change bumps `SCHEMA_VERSION` too. A reading open over an index or store
 of another schema (`vx cache prune --dry-run` after an upgrade) reads
 them through a TEMP view over the file, so it names the row-less ones
 the real prune reaps. A workspace index whose entries move to a store
@@ -492,8 +497,8 @@ layer carries it as it carried stdout (v42).
    is never written to a file; a larger one in memory is written to
    the temp first.
 3. In one `BEGIN IMMEDIATE` transaction, upserts an inline artifact
-   into `artifacts` — moving aside the file the key's previous row
-   named, unlinked after the commit — or `rename(2)`s the temp to
+   into `artifacts` — moving aside any file of the key, unlinked after
+   the commit — or `rename(2)`s the temp to
    `<cacheDir>/<hash>.tar.zst` and deletes the key's inline bytes; and
    writes the `entries` row (`ON CONFLICT(hash) DO UPDATE …`), the
    `output_files` rows and the `entry_inputs` rows, so bytes and rows

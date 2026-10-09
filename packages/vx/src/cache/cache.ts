@@ -266,7 +266,12 @@ const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_met
  */
 const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
 
-/** The `artifacts` table's own layout (`artifacts_meta.layout`): another value drops the table. */
+/**
+ * The `artifacts` table's own layout (`artifacts_meta.layout`): another value
+ * drops the table. It is read only where the schema was not this vx's (a
+ * reset, a new index or store, a store moved), so a change to it bumps
+ * `SCHEMA_VERSION` too: a warm open reads no statement for it.
+ */
 const ARTIFACT_LAYOUT = 'a1'
 
 /**
@@ -301,11 +306,16 @@ function indexOfAnotherSchema(dbFile: string): boolean {
 }
 
 /**
- * An entry row with its stdout, which lives apart (v29), none stored reading
- * as '', and its inline artifact's last use, null when the artifact is a file.
+ * Each asked key's entry row with its stdout, which lives apart (v29), none
+ * stored reading as '', and its inline artifact's last use, null when the
+ * artifact is a file. Driven by the keys, so a key with an inline artifact
+ * and no row (a reset kept it) answers too, `hash` null: the miss learns
+ * there is something to adopt in the statement that found no entry.
  */
-const SELECT_ENTRY =
-  "SELECT e.*, COALESCE(s.stdout, '') AS stdout, a.at AS inline_at FROM entries e LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = e.hash"
+const selectEntries = (keys: string): string =>
+  `SELECT q.value AS key, e.*, COALESCE(s.stdout, '') AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
+const SELECT_ENTRY = selectEntries('(SELECT ? AS value)')
+const SELECT_ENTRIES = selectEntries('json_each(?)')
 
 /**
  * What the orphan sweep may judge: a row-less artifact file or inline
@@ -446,8 +456,12 @@ export * from './layer.js'
 export * from './policy.js'
 export { zstdContentSize } from './zstd.js'
 
+type LiveRow = EntryRow & { hash: string }
+
 interface EntryRow {
-  hash: string
+  key: string
+  /** Null for a row-less inline artifact. */
+  hash: string | null
   project: string
   task: string
   command: string
@@ -462,7 +476,7 @@ interface EntryRow {
   inline_at: number | null
 }
 
-function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
+function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
   return {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
@@ -687,6 +701,8 @@ export class Cache implements CacheLayer {
    * serves those rows only while the blob still carries it.
    */
   private readonly heldInlineAt = new Map<string, number>()
+  /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
+  private readonly rowless = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
@@ -735,6 +751,8 @@ export class Cache implements CacheLayer {
    * indexed again as they hit. Never printed: the cache is vx's to keep.
    */
   readonly storeReset: SchemaReset | null = null
+  /** This open stamped the store's schema: it was new or another vx's. */
+  private storeStamped = false
 
   /** A reading verb's open: it never resets the index (the constructor's `mode`). */
   static inspect(cacheDir: string): Cache {
@@ -997,7 +1015,8 @@ export class Cache implements CacheLayer {
       createTables(this.db, 'main')
       if (absent && existsSync(dbFile)) this.keepArtifacts(dbFile)
     }
-    if (mode === 'open' && this.writeBlocked === null) {
+    const foreign = storeDir === undefined ? current !== SCHEMA_VERSION : this.storeStamped
+    if (mode === 'open' && this.writeBlocked === null && (foreign || storeDir !== recorded)) {
       readable(() => this.matchArtifactLayout(storeDir === undefined ? 'main' : 'store'))
     }
     if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
@@ -1034,7 +1053,7 @@ export class Cache implements CacheLayer {
       'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
-    this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
+    this.selectEntry = lazyStatement(this.db, SELECT_ENTRY)
     // `has` asks only whether the row is there and where its artifact is,
     // with no stdout joined. A column off the index, so the table row is
     // still read and a corrupt table refuses here as it does on `get`
@@ -1196,6 +1215,7 @@ export class Cache implements CacheLayer {
     // tables, and this one's `CREATE IF NOT EXISTS` kept them under its stamp.
     return this.db
       .transaction((): SchemaReset | null => {
+        this.storeStamped = true
         const now = read()
         let reset: SchemaReset | null = null
         if (now.has && now.found !== SCHEMA_VERSION) {
@@ -1241,8 +1261,8 @@ export class Cache implements CacheLayer {
   /**
    * `artifacts` holds the layout this vx writes, or is dropped and made
    * again: its version is its own (`ARTIFACT_LAYOUT`), apart from the
-   * schema's, so a schema reset keeps it. Silent, as a reset is. A warm
-   * open reads one row and takes no lock.
+   * schema's, so a schema reset keeps it. Silent, as a reset is. Asked
+   * only where the schema was not this vx's (`ARTIFACT_LAYOUT`).
    */
   private matchArtifactLayout(schema: 'main' | 'store'): void {
     const read = (): string | undefined =>
@@ -1253,6 +1273,8 @@ export class Cache implements CacheLayer {
           value: string
         } | null
       )?.value
+    // Read first: a workspace's first open of a current store asks too,
+    // and must not wait on the store's write lock to learn it holds `a1`.
     if (read() === ARTIFACT_LAYOUT) return
     this.db
       .transaction(() => {
@@ -1429,7 +1451,11 @@ export class Cache implements CacheLayer {
       durationMs: 0,
       ...(ctx.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
-    const blob = this.selectBlob.get(hash) as { bytes: Uint8Array } | null
+    // Only a key whose lookup saw a row-less inline artifact asks for it: a
+    // statement per miss otherwise, on every cold save.
+    const blob = this.rowless.delete(hash)
+      ? (this.selectBlob.get(hash) as { bytes: Uint8Array } | null)
+      : null
     if (blob !== null) return this.adopted(this.writeArtifactAndIndex(hash, blob.bytes, meta))
     const finalPath = this.tarPath(hash)
     if (!existsSync(finalPath)) return false
@@ -1475,8 +1501,12 @@ export class Cache implements CacheLayer {
   }
 
   private async readEntry(hash: string): Promise<CacheEntry | null> {
-    const row = this.selectEntry.get(hash) as EntryRow | undefined
-    if (!row) return null
+    const row = this.selectEntry.get(hash) as EntryRow | null
+    if (row === null) return null
+    if (row.hash === null) {
+      this.rowless.add(hash)
+      return null
+    }
 
     if (row.inline_at !== null) {
       if (row.inline_at < Date.now() - ORPHAN_GRACE_MS) this.staleInline.add(hash)
@@ -1500,7 +1530,7 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    const entry = entryOf(row, fileRows)
+    const entry = entryOf(row as LiveRow, fileRows)
     entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
     return entry
   }
@@ -1533,8 +1563,16 @@ export class Cache implements CacheLayer {
   private async getManyEntries(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
     const out = new Map<string, CacheEntry>()
     if (!this.read || hashes.length === 0) return out
-    const { test, params } = inHashes(hashes)
-    const rows = this.db.query(`${SELECT_ENTRY} WHERE e.hash ${test}`).all(...params) as EntryRow[]
+    const found = (
+      hashes.length === 1
+        ? [this.selectEntry.get(hashes[0]!)].filter((r) => r !== null)
+        : this.db.query(SELECT_ENTRIES).all(JSON.stringify(hashes))
+    ) as EntryRow[]
+    const rows: LiveRow[] = []
+    for (const r of found) {
+      if (r.hash === null) this.rowless.add(r.key)
+      else rows.push(r as LiveRow)
+    }
     if (rows.length === 0) return out
     const graceStart = Date.now() - ORPHAN_GRACE_MS
     const refreshStart = Date.now() - ACCESS_REFRESH_MS
@@ -2302,12 +2340,11 @@ export class Cache implements CacheLayer {
     //
     // An inline artifact is upserted in the same transaction, and a file
     // save deletes the key's inline one: as of every commit a key's live
-    // bytes are in one place. An inline save moves aside the file its
-    // key's previous row names (read under the lock); a file no row names
-    // is shadowed by the inline bytes, never read, and the sweep takes it.
+    // bytes are in one place. An inline save moves aside whatever file the
+    // key has, as a file save does: one rename that finds nothing on a
+    // first save, where asking the index first was a statement per save.
     let aside: string | undefined
     let renamed = false
-    const entryExists = this.entryExists
     const upsertBlob = this.upsertBlob
     const deleteBlob = this.deleteBlob
     const moveAside = (): string | undefined => {
@@ -2322,8 +2359,7 @@ export class Cache implements CacheLayer {
     }
     const tx = this.db.transaction(() => {
       if (inline !== null) {
-        const prev = entryExists.get(hash) as { inline_at: number | null } | null
-        if (prev !== null && prev.inline_at === null) aside = moveAside()
+        aside = moveAside()
         upsertBlob.run(hash, now, inline)
       } else {
         aside = moveAside()
