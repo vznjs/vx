@@ -76,8 +76,8 @@ config key or an environment variable is missing here.
 ## Cache
 
 - **Opt-in, explicit inputs** (`cache.inputs.files`) — a task caches only when it names its inputs. post: [Explicit over magical](https://vznjs.github.io/vx/blog/explicit-over-magical/)
-- **Inputs** (`cache.inputs.env`, `cache.inputs.runtime`, `cache.inputs.tasks`, `cache.inputs.workspaceFiles`, `cache.inputs.workspaceRuntime`) — env vars, tool versions, upstream tasks and workspace files in the key. no post
-- **Outputs** (`cache.outputs.files`, `cache.outputs.workspaceFiles`) — what a hit restores. no post
+- **Inputs** (`cache.inputs.env`, `cache.inputs.runtime`, `cache.inputs.tasks`, `cache.inputs.workspaceFiles`, `cache.inputs.workspaceRuntime`) — env vars, tool versions, upstream tasks and workspace files in the key. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Outputs** (`cache.outputs.files`, `cache.outputs.workspaceFiles`) — what a hit restores. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Outputs are exactly the snapshot** (`exclusiveOutputs`) — a hit leaves the tree as the run did; two tasks may not own one output without an edge. [page](https://vznjs.github.io/vx/features/strict-outputs/) · post: [The tree is exactly the snapshot](https://vznjs.github.io/vx/blog/strict-output-ownership/)
 - **Keys from git's index** — tracked clean files hash by their blob id, no read. [page](https://vznjs.github.io/vx/features/keys-from-git/) · post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
 - **Config keyed as evaluated** — the key sees the resolved config object. [page](https://vznjs.github.io/vx/features/typescript-config/) · post: [Configs are programs](https://vznjs.github.io/vx/blog/resolved-config-hashing/)
@@ -90,12 +90,12 @@ config key or an environment variable is missing here.
 - **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **Remote outputs** (`--download`) — all, top-level only, or none. post: [A remote server you can trust in production](https://vznjs.github.io/vx/blog/reapi-in-production/)
 - **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
-- **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. no post
-- **Hits replay both streams** — stdout and stderr come back in the order the run printed them. no post
-- **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. no post
+- **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Hits replay both streams** — stdout and stderr come back in the order the run printed them. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Config evaluation cache** — provably pure `vx.config.ts` files are read back as data, not evaluated again. no post
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
-- **Background remote uploads** — remote writes drain at the end of the run and never fail the build. no post
+- **Background remote uploads** — remote writes drain at the end of the run and never fail the build. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. no post
 
 ## Correctness
@@ -104,8 +104,8 @@ config key or an environment variable is missing here.
 - **Env isolation** (`exec.env`: `define`, `passThrough`, `secret`) — a task sees only the env it names; secrets are masked. post: [A task sees only the env it names](https://vznjs.github.io/vx/blog/env-isolation/)
 - **vx lock** (`vx lock`, `--check`, `--frozen`) — freeze what configs evaluate to; CI checks it. [page](https://vznjs.github.io/vx/features/vx-lock/) · post: [vx lock: freezing what the key sees](https://vznjs.github.io/vx/blog/lock-and-frozen/)
 - **Flaky detection** — a task that fails then passes is reported flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim](https://vznjs.github.io/vx/blog/flaky-tasks/)
-- **Project boundaries** — globs never cross into another project. no post
-- **Artifact integrity checks** — a CRC-32, a key match and an outputs-only check on every artifact; damage is a miss. no post
+- **Project boundaries** — globs never cross into another project. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Artifact integrity checks** — a CRC-32, a key match and an outputs-only check on every artifact; damage is a miss. post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Sandbox names what to grant** — a refused write is named beside the failed task with the path to allow. no post
 - **Strict numeric flags** — `0x10`, `1e3` and `2.7` are refused, never reinterpreted. no post
 - **Verified releases** — binaries carry provenance, `vx upgrade` checks SHA-256, npm publishes with provenance. no post
