@@ -244,10 +244,16 @@ describe('loadProjectConfig', () => {
       expect(cfg.tasks?.build?.dependsOn).toEqual([])
     })
 
-    it('rejects a task with no exec and no dependsOn', async () => {
+    it('rejects a task with no exec, no dependsOn and no cache', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(file, `export default { tasks: { empty: {} } }`)
-      await expect(loadProjectConfig(file)).rejects.toThrow(/must declare `dependsOn`/)
+      const err = await loadProjectConfig(file).then(
+        () => null,
+        (e: Error) => e.message,
+      )
+      expect(err).toBe(
+        `${file}: tasks.empty: a task with no \`exec\` must declare \`dependsOn\` or \`cache.inputs\` (group tasks exist to chain dependencies or carry a key)`,
+      )
     })
 
     it('accepts a string description on a task', async () => {
@@ -318,16 +324,37 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/persistent must be an object/)
     })
 
-    it('rejects cache on a group task (no exec)', async () => {
+    it('accepts a keyed group: cache with no exec, no dependsOn, no outputs', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(
         file,
         `export default { tasks: { g: {
-          dependsOn: ['^build'],
           cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
         } } }`,
       )
-      await expect(loadProjectConfig(file)).rejects.toThrow(/`cache` requires `exec`/)
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.g?.cache?.inputs.files).toEqual(['**'])
+    })
+
+    it('rejects outputs on a keyed group (a group writes nothing)', async () => {
+      const message = (outputs: string) =>
+        `export default { tasks: { g: {
+          cache: { inputs: { files: ['**'] }, outputs: ${outputs} },
+        } } }`
+      const file = path.join(dir, 'vx.config.mjs')
+      for (const outputs of [
+        `{ files: ['dist/**'] }`,
+        `{ files: [], workspaceFiles: ['out/**'] }`,
+      ]) {
+        await writeFile(file, message(outputs))
+        const err = await loadProjectConfig(file).then(
+          () => null,
+          (e: Error) => e.message,
+        )
+        expect(err).toBe(
+          `${file}: tasks.g.cache.outputs: a task with no \`exec\` writes nothing — \`outputs: { files: [] }\``,
+        )
+      }
     })
 
     it('rejects wildcards in cache.inputs.env (no silent literal misinterpretation)', async () => {

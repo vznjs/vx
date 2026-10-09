@@ -679,6 +679,9 @@ next?".
     G-76 (2026-09-30): at 300 projects the 293 twins add ~39 ms warm
     (stage mins, N=7), spread across keying, the run and the row; no
     site takes more than ~2.5 ms, so no kind or memo buys it back.
+    X-208 (2026-10-09): the twins are keyed groups now (a config may key
+    a group), so they spawn nothing and leave the run's task count; the
+    TanStack/query trial counted 36 tasks for Nx's 25.
 
 26. DONE as item 1075 — `nx()` keys its graph snapshot on the worktree's git state; an added import re-exports.
 

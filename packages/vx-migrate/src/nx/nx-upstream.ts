@@ -2,8 +2,8 @@
 // dependency's `name` input for every project the graph reaches, whether or
 // not a task edge exists, so a `test` with `^production` and no `dependsOn`
 // re-keys on a dependency's source. vx folds upstream KEYS along
-// `dependsOn`, so each project gets one `nx-input:<name>` task — `true`,
-// cached, keyed on the project's own `name` input — with an edge to its
+// `dependsOn`, so each project gets one `nx-input:<name>` task — a keyed
+// group, keyed on the project's own `name` input — with an edge to its
 // dependencies' twin. A task that reads `^name` depends on its direct
 // dependencies' twins and folds the whole closure through them: each
 // project's files are hashed once, not once per dependant (listing the
@@ -350,7 +350,8 @@ export function planNxUpstream(
       if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = inputs.wsFiles
       if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
       if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
-      const task: Record<string, unknown> = { exec: { command: 'true' } }
+      // A keyed group: dependants fold its key; nothing spawns.
+      const task: Record<string, unknown> = {}
       if (isFileset(name))
         task.description = `Nx fileset ${name} of this project and what it reaches`
       if (edges.size > 0) task.dependsOn = [...edges].sort()
