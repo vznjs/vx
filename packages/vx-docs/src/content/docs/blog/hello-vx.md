@@ -5,29 +5,58 @@ authors:
   - vzn
 tags:
   - announcement
-excerpt: 'Announcements, design notes and release write-ups for vx land here. The first one is short: what vx is, and where to look next.'
+excerpt: 'vx runs and caches a task graph, correctly, and stops there. One picture, one run, and where to go next.'
 ---
 
-Announcements, design notes and release write-ups for vx land here.
-The first one is short.
+**vx runs and caches a task graph, correctly, and stops there.** It is a
+task runner and a content-addressed cache for JavaScript monorepos, built
+on Bun, with nothing hidden behind a paid cloud.
 
-**vx runs and caches a task graph, correctly, and stops there.** It
-discovers the projects in a JavaScript monorepo, evaluates each
-`vx.config.ts`, builds one task graph, derives a content-addressed key
-per task and schedules the work. A fully cached run answers in tens of
-milliseconds; a cold run spends its time in your tools, not in the
-runner. Everything distributed — remote caches, remote execution,
-telemetry, AI agents — is a plugin on a documented seam, never a
-feature inside.
+```mermaid
+flowchart LR
+  D[discover projects] --> C[evaluate vx.config.ts]
+  C --> G[one task graph]
+  G --> K[a key per task]
+  K --> S[schedule]
+  S --> R[run here]
+  S --> X[or restore from the cache]
+  style K stroke:#c6f84e,stroke-width:2px
+```
 
-Where to look next:
+## One run, then the same run again
 
-- [Quickstart](../../quickstart/) — a workspace running under vx in a few
+Eight tasks across four packages, run cold, then run again with nothing
+changed:
+
+```sh frame="terminal"
+$ vx run build test --all --force
+  result    8 tasks · 0 cached (0%) · 879ms
+
+$ vx run build test --all
+  result    8 tasks · all cached · 2.06s saved · 26ms
+```
+
+The second run is 34× faster, because every key matched and every output
+was already on disk. A cold run spends its time in your tools, not in the
+runner.
+
+## What is in the box, and what is not
+
+- **In core:** the graph, the keys, the scheduler, the local cache and
+  running on this machine. A workspace with no plugins runs and caches.
+- **Plugins:** remote caches, remote execution, telemetry, CI summaries,
+  lockfile-aware keys, AI agents over MCP. Each one sits on a
+  documented seam, and you declare it in `vx.workspace.ts`.
+- **Never:** a hosted dashboard, a daemon, or a cloud you have to buy
+  into.
+
+## Where to go next
+
+- [Quickstart](../../quickstart/): a workspace running under vx in a few
   minutes, or [add vx to an existing repo](../../quickstart/#an-existing-repo)
   one package at a time.
-- [Benchmarks](../../benchmarks/) — vx, Turborepo, Nx and Vite Task on
-  the same 3,270-task graph, each in its own native config.
-- [Architecture](../../architecture/) — the pipeline, its seams, and why
-  the cache can be trusted.
-
-Release write-ups will follow here as they ship.
+- [What vx is, and what it refuses to be](../what-vx-is/): the next
+  story.
+- [Benchmarks](../../benchmarks/): vx, Turborepo, Nx and Vite Task on the
+  same graph, each in its own native config.
+- [Features](../../features/): every feature, each with a short post.
