@@ -321,9 +321,12 @@ would run:
     hook: 'Replay the last run’s summary, failures first, without running anything.',
     body: [
       'Scrolled past the failure? `vx last` replays the latest run from local history: failures first, then what ran, with each task’s peak memory and CPU.',
-      'Nothing re-runs. `vx last --list` shows recent runs, `--failed` replays the latest red one, and a replayed failure ends with the command that re-runs it.',
+      'Nothing re-runs. `vx last --list` shows recent runs, `--failed` replays the latest red one, `--log <task>` prints one task’s output, and a replayed failure ends with the command that re-runs it.',
     ],
-    example: { lang: 'sh', code: 'vx last\nvx last --list\nvx last --failed' },
+    example: {
+      lang: 'sh',
+      code: 'vx last\nvx last --list\nvx last --failed\nvx last --log app#test',
+    },
     image: 'vx-last.png',
     imageAlt: 'vx last replaying a run with peak memory and CPU per task.',
     docs: { label: 'vx last', href: 'cli/#vx-last' },

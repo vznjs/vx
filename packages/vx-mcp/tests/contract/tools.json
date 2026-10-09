@@ -197,6 +197,31 @@
       "thisRun.status"
     ]
   },
+  "getTaskLog": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "project#task"
+        },
+        "runId": {
+          "type": "string",
+          "description": "A run id, or a unique prefix of one; omitted = the latest run that ran the task"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "answer": [
+      "output",
+      "runId",
+      "source",
+      "status",
+      "taskId"
+    ]
+  },
   "getFailures": {
     "inputSchema": {
       "type": "object",

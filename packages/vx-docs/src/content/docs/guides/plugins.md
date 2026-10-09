@@ -466,6 +466,7 @@ export default defineWorkspace({ plugins: [mcp()] })
 | `getRunHistory`    | Which tasks run, how fast, how often they fail or flake?         |
 | `explainCacheKey`  | What is the cache identity of `pkg#build`?                       |
 | `whyDidThisRerun`  | Why did `pkg#test` re-run instead of hitting?                    |
+| `getTaskLog`       | What did one task print (`vx last --log`)                        |
 | `getFailures`      | Why did the run fail: each task's output and the files it names  |
 | `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
 | `runTasks`         | Run these tasks: the exit code and the run summary               |

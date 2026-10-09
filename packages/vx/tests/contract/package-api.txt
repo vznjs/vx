@@ -338,6 +338,13 @@ export async function run(options: RunOptions): Promise<RunSummary>
 export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
+== function taskLog (src/orchestrator/run-failures.ts)
+export function taskLog(
+  cacheDir: string,
+  db: Database,
+  taskId: string,
+  runId?: string,
+): TaskLog | null
 == function whyDidThisRerun (src/orchestrator/metrics.ts)
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
 == function withForwardArgs (src/exec/runner.ts)
@@ -1568,6 +1575,14 @@ export interface TaskInputs {
   readonly packageJsonDigest: string
   readonly configDigest: string
   readonly workspaceFingerprint: string
+}
+== type TaskLog (src/orchestrator/run-failures.ts)
+export interface TaskLog {
+  runId: string
+  taskId: string
+  status: string
+  source: 'failure' | 'cache' | null
+  output: string
 }
 == type TaskLogBundle (src/orchestrator/task-log-buffer.ts)
 export interface TaskLogBundle {

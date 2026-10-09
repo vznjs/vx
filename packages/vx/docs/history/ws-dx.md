@@ -105,3 +105,9 @@ and log output reads better. Each must cost the warm path nothing.
   `vx show --format json` makes the selection, then the resolved list
   narrows to it; `project` beside either is refused. Rows: vx-mcp
   `list-tasks-scope.test.ts`.
+- **DX-17.** Failed-task logs an agent can fetch (roadmap #2), beyond
+  #3273's failure output: `vx last --log <task>` and vx-mcp's
+  `getTaskLog` read one task's output from history, a failure's kept
+  output or a cached task's entry log, so a passing task's log reads
+  too. Core `taskLog` (run-failures.ts) serves both. Rows: core
+  `last-log.test.ts`, vx-mcp `task-log.test.ts`.

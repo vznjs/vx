@@ -42,6 +42,7 @@ does.
 | `getRunHistory`   | What have I been running and how fast? Recent runs with per-task p50, p99, success rate, hit rate.       |
 | `explainCacheKey` | What is the cache identity of `pkg#build`? The latest entry's hash, command, exit code, duration, size.   |
 | `whyDidThisRerun` | Why did `pkg#test` re-execute instead of hitting? The run's key against the previous run's.               |
+| `getTaskLog`      | What did this task print? A failure's output or the cached log, as `vx last --log` reads it.              |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
 | `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `vx-lock.json` exists — the facts a bug report needs. |
 | `runTasks` | Run these tasks. The exit code and the run summary, from `vx run --format json`. |

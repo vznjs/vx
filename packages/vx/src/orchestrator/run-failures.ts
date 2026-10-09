@@ -9,6 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
+import { splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 
 /** Failed runs whose output is kept; run ids are UUIDv7, so names sort by age. */
@@ -127,4 +128,65 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
       }
     }),
   }
+}
+
+/** One task's output in a recorded run, as `vx last --log` and getTaskLog read it. */
+export interface TaskLog {
+  runId: string
+  taskId: string
+  status: string
+  /**
+   * Where the output came from: the run's kept failure output, the cache
+   * entry the task saved or hit (masked as it was replayed), or null when
+   * vx kept none (an uncached task that passed, a skip).
+   */
+  source: 'failure' | 'cache' | null
+  /** Plain text; '' when `source` is null. The files it names: `runFailures`. */
+  output: string
+}
+
+/**
+ * `taskId`'s output in `runId`, or in the latest run that recorded the
+ * task when omitted; null when no such run recorded it.
+ */
+export function taskLog(
+  cacheDir: string,
+  db: Database,
+  taskId: string,
+  runId?: string,
+): TaskLog | null {
+  const [project, task] = splitTaskId(taskId)
+  if (project === '' || task === '') return null
+  const row = db
+    .query(
+      `SELECT run_id AS runId, hash, status FROM runs
+       WHERE project = ? AND task = ? AND run_id IS NOT NULL ${runId === undefined ? '' : 'AND run_id = ?'}
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(...(runId === undefined ? [project, task] : [project, task, runId])) as {
+    runId: string
+    hash: string
+    status: string
+  } | null
+  if (row === null) return null
+  const base = { runId: row.runId, taskId, status: row.status }
+  if (row.status === 'failed') {
+    const kept = runFailures(cacheDir, db, row.runId)?.tasks.find((t) => t.taskId === taskId)
+    if (kept !== undefined && kept.output !== '') {
+      return { ...base, source: 'failure', output: kept.output }
+    }
+  } else if (row.hash !== '') {
+    const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
+      stdout: string
+    } | null
+    if (stored !== null) {
+      const output = Bun.stripANSI(
+        decodeOutputLog(stored.stdout)
+          .map((c) => c.text)
+          .join(''),
+      )
+      return { ...base, source: 'cache', output }
+    }
+  }
+  return { ...base, source: null, output: '' }
 }

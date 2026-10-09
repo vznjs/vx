@@ -160,7 +160,13 @@ export {
   rootCauses,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
-export { runFailures, type RunFailures, type TaskFailure } from './run-failures.js'
+export {
+  runFailures,
+  type RunFailures,
+  type TaskFailure,
+  type TaskLog,
+  taskLog,
+} from './run-failures.js'
 export type { OutputLocation } from './path-links.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export type {

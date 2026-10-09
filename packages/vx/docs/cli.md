@@ -35,7 +35,7 @@ vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
@@ -2679,7 +2679,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -2717,7 +2717,16 @@ secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute), so an agent reads why without
 the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
-failed row reads `output: ''` and `locations: []`. `--list --format json`
+failed row reads `output: ''` and `locations: []`. `--log <task>`
+prints one task's output instead of the summary: in the latest run that
+recorded the task, or in RUNID's. A failed task's is the kept failure
+output; any other task's is its cache entry's log (the one a hit
+replays, masked as it was), so a passing task's log reads too, on a hit
+or in the run that saved it. An uncached task that passed, or a skip,
+kept none: stdout is empty and stderr says so, exit 0. With
+`--format json` it is `{ runId, taskId, status, source, output }`,
+`source` `'failure'`, `'cache'` or `null`. A task no run recorded is
+refused, exit 1; `--log` does not combine with `--list` or `--failed`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`

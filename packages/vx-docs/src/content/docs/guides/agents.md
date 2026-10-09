@@ -84,7 +84,7 @@ claude mcp add vx -- vx mcp
 ```
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures`,
+`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`,
 `getWorkspaceInfo`, `runTasks` and `planTasks`. `runTasks` runs
 `vx run <tasks> --format json` and returns the exit code and the run
 summary; `planTasks` returns the `vx run <tasks> --dry=json` plan

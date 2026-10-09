@@ -22,6 +22,7 @@ import {
   resolveRunId,
   rootCauses,
   runFailures,
+  taskLog,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
@@ -116,6 +117,25 @@ const TOOLS: readonly ToolDef[] = [
             'A run id from getRunHistory, or a unique prefix of one (as `vx last --list` prints it); omitted = the latest run of the task',
         },
         taskId: { type: 'string', description: 'project#task' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'getTaskLog',
+    description:
+      'One task’s output in a recorded run, as `vx last --log <taskId>` prints it: a failed task’s kept output, ' +
+      'any other task’s cache entry log (masked as a hit replays it), or none for an uncached pass or a skip ' +
+      '(`source` null). `runId` defaults to the latest run that recorded the task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'project#task' },
+        runId: {
+          type: 'string',
+          description:
+            'A run id, or a unique prefix of one; omitted = the latest run that ran the task',
+        },
       },
       required: ['taskId'],
     },
@@ -247,6 +267,8 @@ export async function handleToolCall(
       return explainCacheKey(args, ctx)
     case 'whyDidThisRerun':
       return whyDidThisRerun(args, ctx)
+    case 'getTaskLog':
+      return getTaskLog(args, ctx)
     case 'getFailures':
       return getFailures(args, ctx)
     case 'runTasks':
@@ -572,6 +594,35 @@ async function whyDidThisRerun(
     // moved upstream the tasks whose own inputs moved.
     const diff = cacheKeyDiff(db, runId, taskId)
     return { ...why, diff, roots: rootCauses(db, runId, taskId, diff.entries) }
+  } finally {
+    cache.close()
+  }
+}
+
+async function getTaskLog(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const taskId = args['taskId']
+  if (typeof taskId !== 'string' || taskId.length === 0) {
+    throw new UserError('getTaskLog: taskId must be a non-empty string (project#task)')
+  }
+  const given = args['runId']
+  if (given !== undefined && (typeof given !== 'string' || given === '')) {
+    throw new UserError('getTaskLog: runId, when given, must be a non-empty string')
+  }
+  const cache = Cache.inspect(ctx.cacheDir)
+  try {
+    const db = cache.dbHandle()
+    const runId = given === undefined ? undefined : resolveRunId(db, given, 'getTaskLog')
+    if (runId === null) throw new UserError(`getTaskLog: no recorded run ${given}`)
+    const log = taskLog(ctx.cacheDir, db, taskId, runId)
+    if (log === null) {
+      throw new UserError(
+        `getTaskLog: no recorded run of ${taskId}${given === undefined ? '' : ` in run ${given}`}`,
+      )
+    }
+    return { ...log }
   } finally {
     cache.close()
   }
