@@ -660,7 +660,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // anchored pkg#task; the rest of the pipeline treats it like any
   // explicit anchored positional.
   if (tasks.length === 0) {
-    if (!process.stdin.isTTY) {
+    // A JSON answer is for a program, which cannot pick from a menu: an
+    // agent on a pty waited at the picker forever.
+    const forProgram = parsed.format === 'json' || parsed.dry === 'json'
+    if (!process.stdin.isTTY || forProgram) {
       const names = await taskNamesHere(cwd)
       const shown = (names ?? []).slice(0, TASKS_SHOWN)
       const more = (names?.length ?? 0) - shown.length
@@ -671,7 +674,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       return refuse(
         'run',
         args,
-        `missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}`,
+        `missing task name (${forProgram ? 'a JSON answer opens' : 'stdin is not a TTY, so'} no picker; ${tasksHere})${seeHelp('run')}`,
         'VX_E_USAGE',
       )
     }

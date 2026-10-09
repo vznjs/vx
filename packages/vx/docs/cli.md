@@ -121,6 +121,9 @@ If no task name is given:
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
   naming the cwd project's tasks, else every project's (twelve, then
   `and N more`); outside a workspace it reads `vx run <task>, e.g. vx run build`.
+- **Under `--format json` or `--dry=json`**, on a terminal too — the
+  same refusal (`a JSON answer opens no picker; …`), with the
+  `VX_E_USAGE` error document on stdout: a program cannot pick.
 
 Exit codes:
 
