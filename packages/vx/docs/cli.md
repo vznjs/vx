@@ -1871,6 +1871,10 @@ the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
 terminal native (a `vx.config.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
 `--dry`, `--force` and `--mjs` pass through.
+Run again after the native migration (a workspace file that declares
+neither `turbo()` nor `nx()`, and project configs), it says vx is already
+set up and prints the next step, exit 0, without starting
+`@vzn/vx-migrate`; `--force` regenerates the files.
 
 `vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own

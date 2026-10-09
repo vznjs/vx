@@ -124,7 +124,25 @@ export async function initCmd(args: readonly string[]): Promise<number> {
         ? ['nx', 'nx.json']
         : undefined
   if (runner !== undefined) {
-    return parsed.mode === 'keep' ? adopt(root, ...runner, parsed) : migrate(root, parsed)
+    if (parsed.mode === 'keep') return adopt(root, ...runner, parsed)
+    // A second `vx init` after the native migration refused to overwrite
+    // the configs it wrote, exit 1, after a package fetch: the first-run
+    // walk (2026-10-09). Set up is an answer, with the next step.
+    const existing = WORKSPACE_CONFIG_FILENAMES.find((f) => existsSync(path.join(root, f)))
+    if (
+      existing !== undefined &&
+      !parsed.force &&
+      !parsed.dry &&
+      parsed.mode === undefined &&
+      metas.some((m) => m.configPath !== null) &&
+      !readFileSync(path.join(root, existing), 'utf8').includes(`${runner[0]}(`)
+    ) {
+      process.stdout.write(
+        `vx is already set up here (${existing} and the projects' vx.config files); --force regenerates them from ${runner[1]}.\n\nnext: ${adoptionNext(root, ...runner, ['@vzn/vx'])}\n`,
+      )
+      return 0
+    }
+    return migrate(root, parsed)
   }
   if (parsed.mode !== undefined) {
     throw new UserError(
@@ -375,9 +393,14 @@ const INSTALL: Record<PackageManager, string> = {
 const EXEC: Record<PackageManager, string> = { pnpm: 'pnpm', yarn: 'yarn', bun: 'bunx', npm: 'npx' }
 
 /** Install what the workspace file imports, if missing, then run the repo's build. */
-export function adoptionNext(root: string, runner: 'turbo' | 'nx', source: string): string {
+export function adoptionNext(
+  root: string,
+  runner: 'turbo' | 'nx',
+  source: string,
+  needs: readonly string[] = ['@vzn/vx', '@vzn/vx-migrate'],
+): string {
   const pm = LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1] ?? 'npm'
-  const missing = ['@vzn/vx', '@vzn/vx-migrate'].filter(
+  const missing = needs.filter(
     (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
   )
   // A global vx (no runner started this one) runs the workspace's plugins as they are.
