@@ -65,11 +65,12 @@ $ npx vx init --keep
 vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx vx run build --all
+next: npm install -D @vzn/vx-migrate@0.0.634 && npx vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
-`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and names only what is not installed yet.
+`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and names only what is not installed yet,
+pinned to the running vx's version: every `@vzn` package releases in lockstep.
 `vx init --keep --dry` prints the file instead of writing it; `--mjs` writes
 `vx.workspace.mjs` without the type import. An existing
 `vx.workspace.ts` that does not declare `turbo()` is left alone: add it
@@ -234,7 +235,7 @@ $ npx vx init --keep
 vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx vx run build --all
+next: npm install -D @vzn/vx-migrate@0.0.634 && npx vx run build --all
 ```
 
 `bunx @vzn/vx-migrate` reports what it wrote:
