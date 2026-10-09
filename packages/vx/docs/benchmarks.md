@@ -563,10 +563,30 @@ Recorded time runs 1 to 3 take 220.6 s, 220.5 s and 220.5 s.
 
 ## Real repos
 
-Earlier sections here timed vx on public Turbo and Nx repos through
-`@vzn/vx-migrate`'s plugins or the configs it wrote. Those runs measured
-the migration bridge, not native vx config, and are removed; a rerun on
-native config is pending (STATUS). The record is in git history.
+Public repos, each moved to native vx config with `vx init --native`
+and timed against the tool it ships with, through
+`packages/vx-bench/real/nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo):
+both tools run the same tasks with the same worker count, three
+interleaved reps per case, best of three. `restore` wipes the outputs
+and keeps both caches; `noop` wipes nothing. Nx runs with
+`NX_DAEMON=false` and no Nx Cloud.
+
+### TanStack/query (2026-10-09)
+
+Commit `817bd02`, scope `build` without examples and integrations: 25
+tasks each, 5 workers. vx 0.0.633, Nx 23.2.1, pnpm 12.4.2, linux x64,
+4 cores.
+
+| Case        | vx     | Nx     | vx is       |
+| ----------- | ------ | ------ | ----------- |
+| Cold build  | 34.6 s | 39.4 s | 14% faster  |
+| Restore     | 0.39 s | 1.26 s | 3.2× faster |
+| Nothing new | 0.22 s | 1.43 s | 6.5× faster |
+
+Each rep in order: vx cold 40.2 / 35.0 / 34.6 s, Nx cold 41.0 / 39.4 /
+39.7 s; vx restore 0.39 / 0.50 / 0.50 s, Nx 1.26 / 1.49 / 1.57 s; vx
+noop 0.22 / 0.24 / 0.23 s, Nx 1.43 / 1.59 / 1.49 s. "N% faster" means
+the other tool takes N% longer.
 
 ## Performance history
 
