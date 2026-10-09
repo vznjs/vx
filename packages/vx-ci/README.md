@@ -1,6 +1,8 @@
 # @vzn/vx-ci
 
-GitHub Actions integration for [`@vzn/vx`](https://github.com/vznjs/vx) — a
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-ci/> · source: <https://github.com/vznjs/vx>
+
+GitHub Actions integration for [`@vzn/vx`](https://vznjs.github.io/vx/) — a
 telemetry plugin that writes every `vx run` as a **job summary** on the
 workflow run page.
 
