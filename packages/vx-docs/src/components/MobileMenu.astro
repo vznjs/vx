@@ -1,0 +1,89 @@
+---
+// The phone menu for pages whose header has no room for the places: the
+// landing and feature pages (Nav.astro) and the Starlight pages with no
+// sidebar (the blog and releases; a page with a sidebar lists the places
+// at the head of Starlight's own menu). A <details>, so it opens with no
+// script. The parent decides at which width it shows.
+import { SECTIONS, type SectionId } from '../nav/sections.js'
+
+interface Props {
+  current?: SectionId | string
+}
+const { current } = Astro.props
+const base = import.meta.env.BASE_URL
+---
+
+<details class="vx-mm" data-mobile-menu>
+  <summary aria-label="Menu">
+    <svg class="vx-mm-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16"></path>
+    </svg>
+    <svg class="vx-mm-close" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18"></path>
+    </svg>
+  </summary>
+  <nav class="vx-mm-panel" aria-label="Site">
+    <a href={base}>Home</a>
+    {
+      SECTIONS.map((s) => (
+        <a href={`${base}${s.href}`} aria-current={s.id === current ? 'page' : undefined}>
+          {s.label}
+        </a>
+      ))
+    }
+    <a href="https://github.com/vznjs/vx">GitHub</a>
+  </nav>
+</details>
+
+<style>
+  .vx-mm {
+    position: relative;
+  }
+  .vx-mm summary {
+    list-style: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--sl-color-hairline, var(--line, #2a2d33));
+    color: var(--sl-color-white, var(--text-hi, #fff));
+    cursor: pointer;
+  }
+  .vx-mm summary::-webkit-details-marker {
+    display: none;
+  }
+  .vx-mm-close,
+  .vx-mm[open] .vx-mm-open {
+    display: none;
+  }
+  .vx-mm[open] .vx-mm-close {
+    display: block;
+  }
+  .vx-mm-panel {
+    position: fixed;
+    top: var(--vx-mm-top, 64px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 16px 16px;
+    background: var(--sl-color-bg-nav, var(--ink-900, #0b0c0e));
+    border-bottom: 1px solid var(--sl-color-hairline, var(--line, #2a2d33));
+  }
+  .vx-mm-panel a {
+    padding: 14px 4px;
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--sl-color-white, var(--text-hi, #fff));
+    text-decoration: none;
+    border-bottom: 1px solid var(--sl-color-hairline, var(--line, #2a2d33));
+  }
+  .vx-mm-panel a:last-child {
+    border-bottom: 0;
+  }
+  .vx-mm-panel a[aria-current='page'] {
+    color: var(--sl-color-accent-high, var(--accent, #c6f84e));
+  }
+</style>

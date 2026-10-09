@@ -3,10 +3,11 @@
 // brand, the site's places from src/nav/sections.ts, each opening a panel
 // of its main pages (src/nav/menu.ts) or its newest posts, and GitHub. The
 // feature pages can switch theme; the landing is dark only. The panels
-// open on hover and keyboard focus, no script; a phone shows none.
+// open on hover and keyboard focus, no script; a phone gets MobileMenu.
 import { formatDate, posts } from '../../blog/posts.js'
 import { MENU, type MenuLink } from '../../nav/menu.js'
 import { SECTIONS } from '../../nav/sections.js'
+import MobileMenu from '../MobileMenu.astro'
 
 interface Props {
   current?: string
@@ -85,5 +86,6 @@ const panels: Record<string, MenuLink[]> = {
       >
       GitHub
     </a>
+    <div class="nav-mobile"><MobileMenu current={current} /></div>
   </div>
 </header>

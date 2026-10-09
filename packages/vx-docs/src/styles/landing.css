@@ -823,9 +823,16 @@ body:has(.vx-landing) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.nav-mobile {
+  display: none;
+}
 @media (max-width: 900px) {
-  .nav-links {
+  .nav-links,
+  .btn-github {
     display: none;
+  }
+  .nav-mobile {
+    display: block;
   }
   .foot-grid {
     grid-template-columns: minmax(0, 1fr);
