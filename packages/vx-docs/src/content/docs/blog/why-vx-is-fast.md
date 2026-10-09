@@ -9,17 +9,16 @@ tags:
 excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
-The headline number is the one you pay on every uncached build: what
-the runner adds on top of your tasks. On a synthetic workspace of
-1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 40s, Nx in 3m 49s and Turborepo in
-4m 59s. vx adds 2 s; Turborepo adds 1 min 21 s (vx 34× faster), Nx 11 s
-(vx 4.7× faster) and Vite Task 1 min 11 s (vx 30× faster).
+The headline number is the one you pay on every uncached build: the
+total cold build. On a synthetic workspace of 1,090 packages and 3,270
+tasks, vx finishes the cold build in 3m 40s, Nx in 3m 49s (vx 1.04×
+faster), Vite Task in 4m 49s (vx 1.31× faster) and Turborepo in 4m 59s
+(vx 1.36× faster).
 Warm, a fully cached `vx run build test --all` finishes in 393ms,
-Turborepo in 463ms (vx 1.1× faster), Nx in 6.45s (vx 16× faster) and
+Turborepo in 463ms (vx 1.18× faster), Nx in 6.45s (vx 16× faster) and
 Vite Task in 2.49s (vx 6.3× faster). The cold build burns 17 s of CPU
-in vx, 21 s in Turborepo (vx 1.2× faster), 52 s in Nx (vx 3× faster)
-and 12 s in Vite Task (vx 1.4× slower), each runner in its own native
+in vx, 21 s in Turborepo (vx 1.22× faster), 52 s in Nx (vx 3× faster)
+and 12 s in Vite Task (vx 1.39× slower), each runner in its own native
 config.
 
 None of that comes from a microbenchmark trick. It comes from five

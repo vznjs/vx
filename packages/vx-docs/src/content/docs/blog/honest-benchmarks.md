@@ -54,14 +54,14 @@ time, each daemon stopped before the next runner is timed so it cannot
 idle-contend for CPU. `build` and `test` are `sleep 1`, so the numbers
 isolate the runner's own overhead from compilation.
 
-`build test --all`, the tasks' own ideal schedule being 3m 38s:
+`build test --all`, total time:
 
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
-| vx        | **3m 40s** (+0:02) | **393ms**    | **17.27s**     |
-| Turborepo | 4m 59s (+1:21, vx 1.3× faster) | 463ms (vx 1.1× faster) | 21.04s (vx 1.2× faster) |
-| Nx        | 3m 49s (+0:11, vx 1.03× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
-| Vite Task | 4m 49s (+1:11, vx 1.3× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 1.4× slower) |
+| vx        | **3m 40s** | **393ms**    | **17.27s**     |
+| Turborepo | 4m 59s (vx 1.36× faster) | 463ms (vx 1.18× faster) | 21.04s (vx 1.22× faster) |
+| Nx        | 3m 49s (vx 1.04× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
+| Vite Task | 4m 49s (vx 1.31× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 1.39× slower) |
 
 vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
 
