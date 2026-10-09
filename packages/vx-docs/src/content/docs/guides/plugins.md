@@ -468,6 +468,8 @@ export default defineWorkspace({ plugins: [mcp()] })
 | `whyDidThisRerun`  | Why did `pkg#test` re-run instead of hitting?                    |
 | `getFailures`      | Why did the run fail: each task's output and the files it names  |
 | `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
+| `runTasks`         | Run these tasks: the exit code and the run summary               |
 
-Nothing it exposes can run a task or write the cache. The server speaks
+Only `runTasks` runs anything, and it runs `vx run --format json`
+itself, so the CLI's selection, refusals and sandbox apply. The server speaks
 MCP in about 230 lines, with no dependencies.

@@ -551,6 +551,7 @@ export interface CollectInfoOptions {
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
+  readonly vx: readonly string[]
 }
 == type ConfigEvalStore (src/workspace/config-cache.ts)
 export interface ConfigEvalStore {

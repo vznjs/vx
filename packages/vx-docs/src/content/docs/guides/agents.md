@@ -61,8 +61,8 @@ the files it names (`locations`).
 
 ## Ask the workspace over MCP
 
-`@vzn/vx-mcp` adds `vx mcp`, a read-only MCP server over the
-workspace's tasks, cache and run history. Claude Code, Cursor,
+`@vzn/vx-mcp` adds `vx mcp`, an MCP server over the workspace's
+tasks, cache and run history. Claude Code, Cursor,
 Continue.dev and Copilot can call it.
 
 ```sh
@@ -84,7 +84,8 @@ claude mcp add vx -- vx mcp
 ```
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures` and
-`getWorkspaceInfo`. None of
-them runs a task or writes the cache. See
+`explainCacheKey`, `whyDidThisRerun`, `getFailures`,
+`getWorkspaceInfo` and `runTasks`. `runTasks` runs
+`vx run <tasks> --format json` and returns the exit code and the run
+summary; the others only read. See
 [vx mcp](../plugins/#vx-mcp) for each one.

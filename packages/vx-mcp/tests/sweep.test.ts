@@ -9,7 +9,7 @@ import { handleMessage, serve } from '../src/server.js'
 import { handleToolCall } from '../src/tools.js'
 
 let root: string
-let ctx: { cacheDir: string; workspaceRoot: string }
+let ctx: { cacheDir: string; workspaceRoot: string; vx: readonly string[] }
 
 async function pkg(name: string, config: string): Promise<void> {
   const dir = path.join(root, 'packages', name)
@@ -35,7 +35,7 @@ const run = (over: Partial<RunRecord> & { task: string; runId: string }): RunRec
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-sweep-'))
-  ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root }
+  ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root, vx: [] }
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await pkg(
@@ -168,7 +168,7 @@ describe('the server, exactly', () => {
         method: 'tools/call',
         params: { name: 'getCacheStats', arguments: {} },
       }),
-      { cacheDir: broken, workspaceRoot: root },
+      { cacheDir: broken, workspaceRoot: root, vx: [] },
     )) as { result: { content: Array<{ text: string }>; isError: boolean } }
     expect(r.result.isError).toBe(true)
     expect(r.result.content[0]!.text).toBe(
