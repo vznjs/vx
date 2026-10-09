@@ -157,6 +157,21 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'pruneCache',
+    description:
+      'Evict cache entries as `vx cache prune --format json` does: by age (`olderThan`, e.g. 30d) and/or ' +
+      'total size (`maxSize`, e.g. 1G). `dryRun` defaults to true here and reports what would go; pass ' +
+      'false to evict. Evicted entries rebuild on the next run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        olderThan: { type: 'string', description: 'a duration like 30d, 24h or 60m' },
+        maxSize: { type: 'string', description: 'a size like 500M or 1G' },
+        dryRun: { type: 'boolean', description: 'default true: report only' },
+      },
+    },
+  },
+  {
     name: 'checkLock',
     description:
       'The config lock audit, as `vx lock --check --format json` prints it: `upToDate`, how many projects ' +
@@ -295,6 +310,8 @@ export async function handleToolCall(
       return getTaskLog(args, ctx)
     case 'getConfig':
       return getConfig(args, ctx)
+    case 'pruneCache':
+      return pruneCache(args, ctx)
     case 'checkLock':
       return vxJson(['lock', '--check', '--format', 'json'], 'lock', ctx)
     case 'getFailures':
@@ -627,6 +644,33 @@ async function whyDidThisRerun(
   }
 }
 
+function pruneCache(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  // The cache the read tools inspect, not one the child would resolve anew.
+  const argv = ['cache', 'prune', '--format', 'json', '--cache-dir', ctx.cacheDir]
+  for (const [key, flag] of [
+    ['olderThan', '--older-than'],
+    ['maxSize', '--max-size'],
+  ] as const) {
+    const v = args[key]
+    if (v === undefined) continue
+    // A leading dash would reach the CLI as a flag; the CLI judges the rest.
+    if (typeof v !== 'string' || v.startsWith('-'))
+      throw new UserError(
+        `pruneCache: ${key} must be a string like ${key === 'olderThan' ? '30d' : '1G'}`,
+      )
+    argv.push(`${flag}=${v}`)
+  }
+  const dryRun = args['dryRun']
+  if (dryRun !== undefined && typeof dryRun !== 'boolean')
+    throw new UserError('pruneCache: dryRun must be a boolean')
+  // An agent that names no mode only looks: evicting is the explicit act.
+  if (dryRun !== false) argv.push('--dry-run')
+  return vxJson(argv, 'prune', ctx)
+}
+
 function getConfig(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -786,7 +830,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock',
+  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

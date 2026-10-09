@@ -114,9 +114,10 @@ claude mcp add vx -- vx mcp
 ```
 
 Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`,
+`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`, `pruneCache`,
 `getWorkspaceInfo`, `runTasks` and `planTasks`. `runTasks` runs
 `vx run <tasks> --format json` and returns the exit code and the run
 summary; `planTasks` returns the `vx run <tasks> --dry=json` plan
-without running anything; the others only read. See
+without running anything; `pruneCache` evicts only with `dryRun:
+false`; the others only read. See
 [vx mcp](../plugins/#vx-mcp) for each one.

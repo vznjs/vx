@@ -252,6 +252,34 @@
       "exitCode"
     ]
   },
+  "pruneCache": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "olderThan": {
+          "type": "string",
+          "description": "a duration like 30d, 24h or 60m"
+        },
+        "maxSize": {
+          "type": "string",
+          "description": "a size like 500M or 1G"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "default true: report only"
+        }
+      }
+    },
+    "answer": [
+      "exitCode",
+      "prune",
+      "prune.bytesFreed",
+      "prune.dryRun",
+      "prune.evicted",
+      "prune.orphanBytes",
+      "prune.orphans"
+    ]
+  },
   "checkLock": {
     "inputSchema": {
       "type": "object",

@@ -43,6 +43,7 @@ does.
 | `explainCacheKey` | What is the cache identity of `pkg#build`? The latest entry's hash, command, exit code, duration, size.   |
 | `whyDidThisRerun` | Why did `pkg#test` re-execute instead of hitting? The run's key against the previous run's.               |
 | `getTaskLog`      | What did this task print? A failure's output or the cached log, as `vx last --log` reads it.              |
+| `pruneCache`      | Free cache space by age or size; a dry run unless the call says `dryRun: false`.                          |
 | `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a `--frozen` run.                     |
 | `getConfig`       | What does this task declare? Its resolved inputs, outputs, env and sandbox, as `vx show` prints them.     |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
