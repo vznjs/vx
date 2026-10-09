@@ -14,9 +14,11 @@ import { MORE } from './more.js'
 export type CategoryId =
   | 'speed'
   | 'cache'
+  | 'safety'
   | 'run'
   | 'output'
   | 'insight'
+  | 'config'
   | 'daily'
   | 'ci'
   | 'adoption'
@@ -36,6 +38,11 @@ export const CATEGORIES: readonly Category[] = [
     line: 'A hit replays exactly what a run would have made.',
   },
   {
+    id: 'safety',
+    title: 'Correct by default',
+    line: 'Nothing leaks in, nothing wrong comes back.',
+  },
+  {
     id: 'run',
     title: 'Run what you mean',
     line: 'Pick tasks precisely, and stop the ones that hang.',
@@ -46,6 +53,7 @@ export const CATEGORIES: readonly Category[] = [
     line: 'As much as you want to read, where you read it.',
   },
   { id: 'insight', title: 'See inside a run', line: 'Every key, plan and past run, on request.' },
+  { id: 'config', title: 'Config', line: 'TypeScript you can read, with errors that point.' },
   { id: 'daily', title: 'Everyday use', line: 'The small things you meet every day.' },
   { id: 'ci', title: 'CI', line: 'Run less, and read the result where you work.' },
   { id: 'adoption', title: 'Adoption', line: 'From install to cached in minutes.' },
