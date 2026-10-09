@@ -21,8 +21,8 @@ config key or an environment variable is missing here.
 - **Failure policy** (`--continue`) — never, deps-ok (default: dependents skip) or always. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
 - **Every skip names its blocker** — a skipped task says which failure blocked it. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
 - **Retries** (`--retry`, `exec.retries`) — re-run a failed task; a pass after a failure marks it flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim only declared inputs can back](https://vznjs.github.io/vx/blog/flaky-tasks/)
-- **Timeouts** (`--timeout`, `exec.timeout`, `timeout`, `VX_TASK_TIMEOUT`) — kill and fail a runaway task. no post
-- **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. no post
+- **Timeouts** (`--timeout`, `exec.timeout`, `timeout`, `VX_TASK_TIMEOUT`) — kill and fail a runaway task. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
+- **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · post: [Flags you already know](https://vznjs.github.io/vx/blog/flags-you-already-know/)
@@ -36,7 +36,7 @@ config key or an environment variable is missing here.
 - **Tag filters** (`--filter tag:<pattern>`) — select projects by their config `tags`. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Directory and root filters** (`./<dir>`, `{<dir>}`, `.`, `//`) — select projects by path, or the root project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Executor pools** (executor `capacity`) — a remote pool is admitted against its own width, not the laptop's cores. no post
-- **Runs take turns** — two vx runs on one workspace wait on a lock and name who they wait for. no post
+- **Runs take turns** — two vx runs on one workspace wait on a lock and name who they wait for. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 
 ## Output
 
@@ -54,7 +54,7 @@ config key or an environment variable is missing here.
 - **Cache-aware glyphs** — each task line's glyph shows ran, fresh, restored locally or remotely, failed, skipped or persistent. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. no post
 - **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env. no post
-- **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. no post
+- **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Plain output off a TTY** — no live region, and a missing task lists tasks instead of opening the picker. no post
 
 ## Plan and explain
@@ -114,7 +114,7 @@ config key or an environment variable is missing here.
 
 - **Watch mode** (`vx watch`, `VX_WATCH_POLL`) — re-run what a change affects, on content, not events. [page](https://vznjs.github.io/vx/features/watch/) · post: [Watch: a content gate](https://vznjs.github.io/vx/blog/watch-mode/)
 - **Dev servers in the graph** (`exec.persistent`, `readyWhen`, `VX_READY_NOTICE_MS`) — a server is a node; dependents start when it is ready. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
-- **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. no post
+- **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **vx upgrade** (`vx upgrade`) — replace the binary with a release. [page](https://vznjs.github.io/vx/features/upgrade/) · no post
 - **Help and version** (`vx help`, `vx version`) — every verb's reference. no post
@@ -127,10 +127,10 @@ config key or an environment variable is missing here.
 - **Tasks** (`tasks`, `exec.command`, `dependsOn`, `description`, `tags`) — one command per task; the shell is the API. post: [One command per task](https://vznjs.github.io/vx/blog/one-command-per-task/)
 - **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. no post
 - **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT_MS`) — bound a config's evaluation. no post
-- **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. no post
+- **No nested runs** (`VX_RUN_TASK`, `VX_RUN_WORKSPACE`) — set on every task; a `vx run` inside a task of the same workspace is refused. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Typed config helpers** (`defineProject`) — autocomplete for task names in `dependsOn`, errors while you edit. no post
 - **Presets** — a TypeScript function returning a task config, shared across projects. no post
-- **Clean config errors** — a bad config fails at load naming the key, with no stack trace. no post
+- **Clean config errors** — a bad config fails at load naming the key, with no stack trace. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 
 ## CI
 
