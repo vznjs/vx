@@ -7,6 +7,7 @@ package.json
 schemas/cache.json
 schemas/error.json
 schemas/info.json
+schemas/init.json
 schemas/last.json
 schemas/lock.json
 schemas/plan.json

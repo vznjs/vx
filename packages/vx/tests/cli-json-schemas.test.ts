@@ -10,7 +10,8 @@
 
 import { Database } from 'bun:sqlite'
 import { readFileSync, readdirSync } from 'node:fs'
-import { rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type {
@@ -114,6 +115,7 @@ const KITCHEN = `export default {
 
 let root: string
 const outputs: Record<string, unknown[]> = {
+  init: [],
   lock: [],
   show: [],
   info: [],
@@ -309,13 +311,40 @@ beforeAll(async () => {
   outputs['lock']!.push(JSON.parse(noLock.out))
   expect(vx(['lock']).code).toBe(0)
   json('lock', ['--check'])
+  // The init plan: a script with a TODO, and the Turbo `--keep` file.
+  const fresh = await mkdtemp(path.join(tmpdir(), 'vx-init-json-'))
+  try {
+    await mkdir(path.join(fresh, 'packages', 'a'), { recursive: true })
+    await writeFile(
+      path.join(fresh, 'package.json'),
+      '{"name":"r","private":true,"workspaces":["packages/*"]}',
+    )
+    await writeFile(
+      path.join(fresh, 'packages', 'a', 'package.json'),
+      '{"name":"a","scripts":{"build":"tsc"}}',
+    )
+    const plan = (...extra: string[]): unknown => {
+      const p = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'init', '--dry', '--format', 'json', ...extra],
+        cwd: fresh,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) throw new Error(`vx init: ${p.exitCode}\n${p.stderr.toString()}`)
+      return JSON.parse(p.stdout.toString())
+    }
+    outputs['init']!.push(plan())
+    await writeFile(path.join(fresh, 'turbo.json'), '{"tasks":{"build":{}}}')
+    outputs['init']!.push(plan('--keep'))
+  } finally {
+    await rm(fresh, { recursive: true, force: true })
+  }
 }, TIMEOUT)
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'plan', 'summary', 'error']
+const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'init', 'plan', 'summary', 'error']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {

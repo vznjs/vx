@@ -164,3 +164,10 @@ and log output reads better. Each must cost the warm path nothing.
   releases daily. vx never loosens that setting itself; the migrate
   guide says the same. Rows: `adopt.test.ts` "names
   minimumReleaseAgeExclude when pnpm ran and refused".
+
+- **DX-27** The init plan as data (roadmap DX #3):
+  `vx init --dry --format json` (and vx-migrate's, which a Turbo or Nx
+  repo hands to) prints `schemas/init.json`: each file with its text,
+  `kept`, `replaced`, `todos`, `notes`, `next`. MCP `planInit` returns
+  it. Rows: `cli-json-schemas.test.ts`, `adopt.test.ts` "--dry --format
+  json prints the plan", `vx-mcp/tests/plan-init.test.ts`.

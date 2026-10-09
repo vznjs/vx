@@ -32,6 +32,7 @@ const ARGS: Record<string, unknown> = {
   getConfig: { target: 'a#build' },
   checkLock: {},
   pruneCache: { maxSize: '1G' },
+  planInit: {},
   getFailures: {},
   runTasks: { tasks: ['build'], all: true },
   planTasks: { tasks: ['build'], all: true },

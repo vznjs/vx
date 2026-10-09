@@ -451,6 +451,40 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     },
     TIMEOUT,
   )
+  it(
+    '--dry --format json prints the plan as one document, native and keep',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        const native = await migrate(root, env, ['--native', '--dry', '--format', 'json'])
+        const keep = await migrate(root, env, ['--keep', '--dry', '--format=json'])
+        const wet = await migrate(root, env, ['--format', 'json'])
+        const plan = JSON.parse(native.out) as {
+          source: string
+          files: { path: string }[]
+          notes: string[]
+        }
+        const kept = JSON.parse(keep.out) as { source: string; files: { path: string }[] }
+        expect([native.code, keep.code, wet.code, await calls(root)]).toEqual([0, 0, 1, ''])
+        expect([plan.source, plan.files.some((f) => f.path === 'vx.workspace.ts')]).toEqual([
+          'turbo.json',
+          true,
+        ])
+        expect(plan.notes).toContain(
+          'would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
+        )
+        expect([kept.source, kept.files.map((f) => f.path)]).toEqual([
+          'turbo.json',
+          ['vx.workspace.ts'],
+        ])
+        expect(keep.err).toContain('vx-migrate: would install')
+        expect(wet.err).toBe('vx-migrate: --format json prints the plan, so it needs --dry\n')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 // nartc/mapper, 2026-10-07: every executor target is an `nx-exec` line,

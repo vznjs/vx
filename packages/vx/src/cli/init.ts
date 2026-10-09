@@ -1,4 +1,4 @@
-// `vx init [--dry] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere:
+// `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere:
 // one vx.config.ts per package from its package.json scripts, and the
 // workspace file every run needs. In a Turbo or Nx repo it hands over to
 // `@vzn/vx-migrate` (`migrate`), which asks a terminal whether to write
@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
@@ -34,6 +34,8 @@ interface InitArgs {
   plugin?: string
   /** `--native` / `--keep` in a Turbo or Nx repo; unset, vx-migrate asks a terminal. */
   mode?: 'native' | 'keep'
+  /** `--format json` (with `--dry`): the plan as one JSON document. */
+  json?: boolean
   error?: string
 }
 
@@ -51,6 +53,10 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
         }
       }
       out.plugin = seam
+    } else if (a === '--format' || a.startsWith('--format=')) {
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'init')
+      if (typeof fv === 'object') return { ...out, error: fv.error }
+      out.json = fv === 'json'
     } else if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
     else if (a === '--mjs') out.mjs = true
@@ -81,9 +87,15 @@ export function parseInitArgs(args: readonly string[]): InitArgs {
 
 export async function initCmd(args: readonly string[]): Promise<number> {
   const parsed = parseInitArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vx init: ${parsed.error}\n`)
-    return 1
+  if (parsed.error) return refuse('init', args, parsed.error, 'VX_E_USAGE')
+  // In the verb, not the parser: completion asks the parser one flag at a time.
+  if (parsed.json === true && (!parsed.dry || parsed.plugin !== undefined)) {
+    return refuse(
+      'init',
+      args,
+      `--format json prints the workspace plan, so it needs --dry and no --plugin${seeHelp('init')}`,
+      'VX_E_USAGE',
+    )
   }
   if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, parsed)
   const reads: LoadReads = new Map()
@@ -163,6 +175,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     notes: [...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped],
     unmapped: unmapped.length > 0,
     dry: parsed.dry,
+    json: parsed.json === true,
     force: parsed.force,
     init: true,
     format: parsed.mjs ? 'mjs' : 'ts',
@@ -211,6 +224,7 @@ async function migrate(root: string, args: InitArgs): Promise<number> {
     args.force && '--force',
     args.mjs && '--mjs',
     args.mode === 'native' && '--native',
+    args.json === true && '--format=json',
   ].filter((f): f is string => typeof f === 'string')
   return Bun.spawn(migrateCommand(root, flags), {
     cwd: root,
@@ -257,7 +271,7 @@ async function adopt(
       )
     }
   } else if (args.dry) {
-    process.stdout.write(`── ${name} ──\n${text}\n`)
+    if (args.json !== true) process.stdout.write(`── ${name} ──\n${text}\n`)
   } else {
     if (existing !== undefined && existing !== name) await unlink(path.join(root, existing))
     await Bun.write(path.join(root, name), text)
@@ -278,6 +292,21 @@ async function adopt(
         : kept
           ? ''
           : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
+  if (args.json === true) {
+    process.stdout.write(
+      `${JSON.stringify({
+        dry: true,
+        source,
+        files: kept ? [] : [{ path: name, contents: text }],
+        kept: kept ? [existing] : [],
+        replaced: !kept && existing !== undefined && existing !== name ? [existing] : [],
+        todos: [],
+        notes: cacheLine === '' ? [] : [cacheLine.trimEnd()],
+        next: adoptionNext(root, runner, source),
+      })}\n`,
+    )
+    return 0
+  }
   process.stdout.write(
     `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
       `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,

@@ -22,6 +22,7 @@
     "init": [
       "--dry",
       "--force",
+      "--format",
       "--help",
       "--keep",
       "--mjs",
@@ -132,6 +133,10 @@
       "*"
     ],
     "info --format": [
+      "json",
+      "pretty"
+    ],
+    "init --format": [
       "json",
       "pretty"
     ],
