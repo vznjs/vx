@@ -1,6 +1,8 @@
 # @vzn/vx-schedule-history
 
-History-based scheduling for [`@vzn/vx`](https://github.com/vznjs/vx): a `schedule` plugin that orders ready tasks by their expected REMAINING critical-path duration — a task's own p50 plus the longest chain of dependents behind it — learned from the workspace's local run history. Zero dependencies.
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-schedule-history/> · source: <https://github.com/vznjs/vx>
+
+History-based scheduling for [`@vzn/vx`](https://vznjs.github.io/vx/): a `schedule` plugin that orders ready tasks by their expected REMAINING critical-path duration — a task's own p50 plus the longest chain of dependents behind it — learned from the workspace's local run history. Zero dependencies.
 
 ## Usage
 

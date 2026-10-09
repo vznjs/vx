@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>The fastest task runner for JS monorepos.</strong><br>
-  Measured against Turborepo and Nx, each in its own native config.
+  Measured against Turborepo and Nx, each in its own native config.<br>
+  <a href="https://vznjs.github.io/vx/"><strong>vznjs.github.io/vx</strong></a>
 </p>
 
 <p align="center">

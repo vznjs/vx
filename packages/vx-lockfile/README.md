@@ -1,6 +1,8 @@
 # @vzn/vx-lockfile
 
-Lockfile plugins for [`@vzn/vx`](https://github.com/vznjs/vx): `pnpm()`, `bun()`, `npm()` and `yarn()`. Each keys every task on its **own project's resolved dependency closure** from the package manager's lockfile, not on the whole file. `pnpm update foo` (or `bun add`, `npm install`, `yarn up`) re-keys exactly the projects that reach `foo` — through their dependencies, transitively, and through workspace links — and `vx run … --affected` selects the same projects. Zero dependencies: Bun's own YAML and JSONC parsers, and a classic-yarn reader.
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-lockfile/> · source: <https://github.com/vznjs/vx>
+
+Lockfile plugins for [`@vzn/vx`](https://vznjs.github.io/vx/): `pnpm()`, `bun()`, `npm()` and `yarn()`. Each keys every task on its **own project's resolved dependency closure** from the package manager's lockfile, not on the whole file. `pnpm update foo` (or `bun add`, `npm install`, `yarn up`) re-keys exactly the projects that reach `foo` — through their dependencies, transitively, and through workspace links — and `vx run … --affected` selects the same projects. Zero dependencies: Bun's own YAML and JSONC parsers, and a classic-yarn reader.
 
 Without a plugin, core folds the whole lockfile into the workspace fingerprint that every cache key sees, so one install invalidates every task in the workspace.
 

@@ -569,6 +569,23 @@ tasks, 10 workers. The best possible run is 218 s.
 
 Recorded time runs 1 to 3 take 220.6 s, 220.5 s and 220.5 s.
 
+## Time to first task, cold (2026-10-09)
+
+From `vx run` to the first task starting, cold, `--frozen` from a
+`vx lock`, on the 1,090-package bench, min of interleaved runs, linux
+x64, 4 cores, vx from source, Turborepo 2.11.7:
+
+| vx at                                             | First task |
+| ------------------------------------------------- | ---------- |
+| Before #3378                                      | ~380 ms    |
+| #3378: a lock `vx lock` wrote is not re-validated | ~330 ms    |
+| #3382: an empty cache skips the up-front probe    | 225–232 ms |
+| Turborepo 2.11.7                                  | 276 ms     |
+
+vx now starts its first task about 20% sooner than Turborepo. The cold
+build's wall time is unchanged (4.61 / 4.74 / 4.73 s against 4.62 /
+4.74 / 4.83 s). History: `docs/history/ws-x.md` X-212, X-216.
+
 ## Real repos
 
 Public repos, each moved to native vx config with `vx init --native`

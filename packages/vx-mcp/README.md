@@ -1,7 +1,9 @@
 # @vzn/vx-mcp
 
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-mcp/> · source: <https://github.com/vznjs/vx>
+
 A [Model Context Protocol](https://modelcontextprotocol.io/) server for
-[`@vzn/vx`](https://github.com/vznjs/vx), as a plugin. Declaring it adds
+[`@vzn/vx`](https://vznjs.github.io/vx/), as a plugin. Declaring it adds
 `vx mcp`: a stdio JSON-RPC surface over your workspace's tasks, cache
 and run history that Claude Code, Cursor, Continue.dev, GitHub Copilot and
 any other MCP client can call.

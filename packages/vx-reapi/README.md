@@ -1,5 +1,7 @@
 # `@vzn/vx-reapi`
 
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-reapi/> · source: <https://github.com/vznjs/vx>
+
 A vx **remote cache** backed by any server speaking Bazel's
 [Remote Execution API](https://github.com/bazelbuild/remote-apis) — NativeLink,
 BuildBuddy, Buildbarn, bazel-remote: mature server implementations, none of

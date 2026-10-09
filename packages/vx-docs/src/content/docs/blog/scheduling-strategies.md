@@ -184,6 +184,10 @@ shows the cache step.
 
 ## Turn it on
 
+For the first run, before there is any history, you can also
+[pick the rule vx guesses with](../schedule-strategy/) in
+`vx.workspace.ts`. The default stays most transitive dependents.
+
 ```sh
 npm install -D @vzn/vx-schedule-history
 ```

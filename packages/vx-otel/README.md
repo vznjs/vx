@@ -1,6 +1,8 @@
 # @vzn/vx-otel
 
-The OpenTelemetry exporter plugin for [`@vzn/vx`](https://github.com/vznjs/vx).
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-otel/> · source: <https://github.com/vznjs/vx>
+
+The OpenTelemetry exporter plugin for [`@vzn/vx`](https://vznjs.github.io/vx/).
 Maps each `vx run` to **OTLP traces, metrics and logs** over HTTP/JSON — no
 OpenTelemetry SDK dependency (it speaks the OTLP wire protocol directly, so the
 package stays zero-dependency and version-drift-free).

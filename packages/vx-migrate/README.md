@@ -1,6 +1,8 @@
 # @vzn/vx-migrate
 
-Everything for adopting [`@vzn/vx`](https://github.com/vznjs/vx) from Turborepo, Nx or Vite Task, in one package with zero dependencies:
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-migrate/> · source: <https://github.com/vznjs/vx>
+
+Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo, Nx or Vite Task, in one package with zero dependencies:
 
 - **`turbo()`** — a temporary start for a Turbo repository: the plugin fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts until the migrator writes native config.
 - **`nx()`** — the same temporary start for an Nx repository, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.

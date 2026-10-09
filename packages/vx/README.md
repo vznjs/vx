@@ -1,5 +1,7 @@
 # @vzn/vx
 
+Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
+
 The Vite of task orchestration: a Bun-native task runner and
 content-addressed build cache for JavaScript monorepos, built as a
 pipeline with a plugin hook at every stage.
