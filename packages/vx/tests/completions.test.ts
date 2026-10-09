@@ -252,7 +252,7 @@ describe('the bash script, run', () => {
   })
 
   it("after a flag with a value set: that set, in the verb's spellings", async () => {
-    const full = completionScript('bash', ['run', 'last', 'lock'])
+    const full = completionScript('bash', ['run', 'last', 'upgrade'])
     expect(
       await offers(full, { words: ['vx', 'run', 'build', '--output-logs', ''], cword: 4 }),
     ).toEqual(['full', 'errors-only', 'hash-only', 'none'])
@@ -268,9 +268,8 @@ describe('the bash script, run', () => {
       'pretty',
     ])
     // A verb without the flag falls through to its own words.
-    expect(await offers(full, { words: ['vx', 'lock', '--format', ''], cword: 3 })).toEqual([
+    expect(await offers(full, { words: ['vx', 'upgrade', '--format', ''], cword: 3 })).toEqual([
       '--help',
-      '--check',
     ])
   })
 

@@ -114,6 +114,7 @@ const KITCHEN = `export default {
 
 let root: string
 const outputs: Record<string, unknown[]> = {
+  lock: [],
   show: [],
   info: [],
   why: [],
@@ -301,13 +302,20 @@ beforeAll(async () => {
   const refused = vx(['run', 'nope', '--all', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx run nope: ${refused.code}\n${refused.err}`)
   outputs['error']!.push(JSON.parse(refused.out))
+  // The lock audit: no lock is a problem; a fresh one is up to date.
+  await rm(path.join(root, 'packages', 'broken'), { recursive: true })
+  const noLock = vx(['lock', '--check', '--format', 'json'])
+  if (noLock.code !== 1) throw new Error(`vx lock --check: ${noLock.code}\n${noLock.err}`)
+  outputs['lock']!.push(JSON.parse(noLock.out))
+  expect(vx(['lock']).code).toBe(0)
+  json('lock', ['--check'])
 }, TIMEOUT)
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan', 'summary', 'error']
+const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'plan', 'summary', 'error']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {

@@ -38,6 +38,7 @@
     ],
     "lock": [
       "--check",
+      "--format",
       "--help"
     ],
     "run": [
@@ -159,6 +160,10 @@
     ],
     "last --log": [
       "*"
+    ],
+    "lock --format": [
+      "json",
+      "pretty"
     ],
     "run --affected": [
       "*"

@@ -3,7 +3,7 @@
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
 import type { ProjectConfig } from '../config.js'
-import { flagHint, refusedWord, seeHelp } from './help.js'
+import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { relPosix, secretMask, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
@@ -22,16 +22,22 @@ import { discoverCliProjects } from './workspace-config.js'
 
 interface LockArgs {
   check: boolean
+  format: 'pretty' | 'json'
   error?: string
 }
 
 export function parseLockArgs(args: readonly string[]): LockArgs {
-  const out: LockArgs = { check: false }
-  for (const a of args) {
+  const out: LockArgs = { check: false, format: 'pretty' }
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!
     if (a === '--check') out.check = true
-    else
+    else if (a === '--format' || a.startsWith('--format=')) {
+      const fv = formatValue(a === '--format' ? args[++i] : a.slice(9), 'lock')
+      if (typeof fv === 'object') return { ...out, ...fv }
+      out.format = fv
+    } else
       return {
-        check: false,
+        ...out,
         error: `${refusedWord(a)}: ${a}${flagHint('lock', a)}${seeHelp('lock')}`,
       }
   }
@@ -42,10 +48,15 @@ type ConfiguredMeta = ProjectMeta & { configPath: string }
 
 export async function lockCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLockArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vx lock: ${parsed.error}\n`)
-    return 1
-  }
+  if (parsed.error) return refuse('lock', args, parsed.error, 'VX_E_USAGE')
+  // Writing the lock prints one line; only the audit has an answer to shape.
+  if (parsed.format === 'json' && !parsed.check)
+    return refuse(
+      'lock',
+      args,
+      `--format json answers --check only${seeHelp('lock')}`,
+      'VX_E_USAGE',
+    )
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd(), reads)
   const workspace = await loadWorkspace(root, reads)
@@ -62,7 +73,7 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   // count above leaves out — `locked 0 project configs` on a turbo() repo
   // read like an audit of something (2026-09-16).
   const bare = all.length - metas.length
-  if (parsed.check) return await checkLock(root, metas, bare)
+  if (parsed.check) return await checkLock(root, metas, bare, parsed.format === 'json')
   return await writeLock(root, metas, bare)
 }
 
@@ -154,13 +165,29 @@ function secretsIn(projects: Record<string, LockfileEntry>): Array<{ at: string;
  *      catches eval-time env-var drift that file hashes cannot see —
  *      file bytes unchanged, resolved value changed.
  */
-async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
+async function checkLock(
+  root: string,
+  metas: ConfiguredMeta[],
+  bare: number,
+  json: boolean,
+): Promise<number> {
+  const answer = (problems: string[]): number => {
+    if (json) {
+      const out = {
+        upToDate: problems.length === 0,
+        audited: metas.length,
+        notAudited: bare,
+        problems,
+      }
+      process.stdout.write(`${JSON.stringify(out)}\n`)
+    }
+    return problems.length === 0 ? 0 : 1
+  }
   const lock = await readLockfile(root)
   if (!lock) {
-    process.stderr.write(
-      `vx lock --check: no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first\n`,
-    )
-    return 1
+    const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
+    if (!json) process.stderr.write(`vx lock --check: ${problem}\n`)
+    return answer([problem])
   }
   const results = await Promise.all(
     metas.map(async (m): Promise<string | null> => {
@@ -200,6 +227,7 @@ async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): P
       )
     }
   }
+  if (json) return answer(failures)
   if (failures.length > 0) {
     for (const f of failures) process.stderr.write(`vx lock --check: ${f}\n`)
     return 1

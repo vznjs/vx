@@ -157,6 +157,14 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'checkLock',
+    description:
+      'The config lock audit, as `vx lock --check --format json` prints it: `upToDate`, how many projects ' +
+      'were audited, and each drift in `problems` (a changed config file, a re-evaluation that differs in ' +
+      'this environment, a missing lock). Read before a `--frozen` run.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'getFailures',
     description:
       'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column). `runId` defaults to the latest failed run.',
@@ -287,6 +295,8 @@ export async function handleToolCall(
       return getTaskLog(args, ctx)
     case 'getConfig':
       return getConfig(args, ctx)
+    case 'checkLock':
+      return vxJson(['lock', '--check', '--format', 'json'], 'lock', ctx)
     case 'getFailures':
       return getFailures(args, ctx)
     case 'runTasks':
@@ -776,7 +786,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects' | 'config',
+  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

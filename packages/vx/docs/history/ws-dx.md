@@ -140,3 +140,8 @@ and log output reads better. Each must cost the warm path nothing.
   JSON answer through MCP, so an agent reads what a task
   declares (inputs, outputs, env, sandbox) before changing it. Rows:
   `vx-mcp/tests/config.test.ts`.
+
+- **DX-23** `vx lock --check --format json` and MCP `checkLock` (roadmap
+  DX #3): the audit as `{upToDate, audited, notAudited, problems}`, exit
+  code unchanged, schema `schemas/lock.json`. Rows: `cli-json-schemas`,
+  `vx-mcp/tests/check-lock.test.ts`.
