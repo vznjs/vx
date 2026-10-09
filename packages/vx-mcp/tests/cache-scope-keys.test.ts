@@ -10,7 +10,7 @@ const root = mkdtempSync(path.join(tmpdir(), 'vx-mcp-scope-'))
 writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-const ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root }
+const ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root, vx: [] }
 const said = (scope: unknown): Promise<string> =>
   handleToolCall('getCacheStats', { scope }, ctx).then(
     (r) => JSON.stringify(r['scope']),

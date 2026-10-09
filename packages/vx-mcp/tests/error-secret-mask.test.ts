@@ -39,7 +39,7 @@ const call = (name: string) =>
 
 it("a config's own throw reaches the agent masked", async () => {
   await project('app', `${THROW}\n`)
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache') }
+  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), vx: [] }
   expect(await handleMessage(call('listTasks'), ctx)).toEqual({
     jsonrpc: '2.0',
     id: 1,
@@ -49,7 +49,7 @@ it("a config's own throw reaches the agent masked", async () => {
 
 it("a config refusal quoting the config's own string reaches the agent masked", async () => {
   await project('app', "export default { tasks: { t: 'deploy ' + process.env.API_TOKEN } }\n")
-  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache') }
+  const ctx = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), vx: [] }
   expect(await handleMessage(call('listTasks'), ctx)).toEqual({
     jsonrpc: '2.0',
     id: 1,
@@ -68,6 +68,7 @@ it("a config refusal quoting the config's own string reaches the agent masked", 
 it("a tool's crash reaches the agent masked", async () => {
   const crashing = {
     workspaceRoot: root,
+    vx: [],
     get cacheDir(): string {
       throw new Error(`reply token=${SECRET} id=plainrequest42`)
     },

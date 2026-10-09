@@ -44,6 +44,7 @@ does.
 | `whyDidThisRerun` | Why did `pkg#test` re-execute instead of hitting? The run's key against the previous run's.               |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
 | `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `vx-lock.json` exists — the facts a bug report needs. |
+| `runTasks` | Run these tasks. The exit code and the run summary, from `vx run --format json`. |
 
 The history tools read the same local `cache.db` tables that `vx why`,
 `vx last` and `vx info` read. `getRunHistory` calls a task flaky only
@@ -51,7 +52,8 @@ on a real nondeterminism signal, a within-run retry or one key that
 both failed and succeeded, so an agent does not learn to shrug at
 repeated failures on changing inputs.
 
-Nothing exposed can run a task or write the cache. The transport is
+Only `runTasks` runs anything, through `vx run --format json` itself,
+so the CLI's selection, refusals and sandbox apply. The transport is
 stdio, which is process-private, so there is no port, no auth and no
 attack surface beyond the process the agent already spawned.
 

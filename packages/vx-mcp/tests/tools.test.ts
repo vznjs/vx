@@ -218,6 +218,7 @@ async function call(root: string, tool: string, args: unknown): Promise<Record<s
   return await handleToolCall(tool, args, {
     cacheDir: path.join(root, '.vx', 'cache'),
     workspaceRoot: root,
+    vx: [],
   })
 }
 
@@ -322,24 +323,12 @@ describe('the tool listing and the dispatcher describe the same set', () => {
     }
   })
 
-  // FINDING — the file header advertised a tool that does not exist (then
-  // `src/cli/mcp.ts:13`, now this package's `src/index.ts`).
-  //
-  // The file header lists `runTasks(tasks: string[], cwd?: string)` under
-  // "Tools exposed:", but no such entry exists in TOOLS and no such `case`
-  // exists in the dispatcher. It is the ONE tool in that list that would let an
-  // agent change the user's machine, so a reader (or a model given this file as
-  // context) concludes `vx mcp` can execute builds when it can only read them.
-  //
-  // The assertion below encodes the WRONG-BUT-CURRENT state: the comment is a
-  // strict superset, and `runTasks` is the extra. Deleting the stale line — the
-  // fix — will fail this test; update the expectation and drop this note then.
+  // FINDING: the file header once advertised a `runTasks` that did not
+  // exist yet, a hand-kept copy of the tool list that had drifted.
   it('the header does not restate the tool list, so it cannot drift again', () => {
     // This began as a FINDING: the header carried a hand-maintained copy of the
-    // tool list, and the copy had drifted into advertising
-    // `runTasks(tasks, cwd)` — a tool that does not exist, and the ONLY one in
-    // that list which would have mutated the machine. A reader, or an agent
-    // reading the source, concluded `vx mcp` can execute builds.
+    // tool list, and the copy had drifted into advertising a `runTasks`
+    // that did not exist then.
     //
     // The repair is not a corrected copy — a second copy drifts again. The
     // list is gone, and this asserts it stays gone. A comment enumerating what
@@ -352,8 +341,6 @@ describe('the tool listing and the dispatcher describe the same set', () => {
     // The header must still point at where the truth lives, or removing the
     // list just makes the surface undiscoverable.
     expect(MCP_SRC).toContain('listTools')
-    // And no tool named runTasks exists, which is the claim that misled.
-    expect(listTools().map((t) => t.name)).not.toContain('runTasks')
   })
 
   it('the header states no tool COUNT either — the copy that drifted next', () => {
@@ -1567,7 +1554,7 @@ describe('the tools, as their second sweep found them unheld', () => {
       const info = (await handleToolCall(
         'getWorkspaceInfo',
         {},
-        { cacheDir, workspaceRoot: root },
+        { cacheDir, workspaceRoot: root, vx: [] },
       )) as {
         cacheDir: string
       }

@@ -4,7 +4,13 @@ import { expect, it, spyOn } from 'bun:test'
 import { cacheDirVerb } from './commands.ts'
 
 const verb = cacheDirVerb().commands!['cache-dir']!
-const ctx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn() {}, concurrency: 1 }
+const ctx = {
+  workspaceRoot: '/ws',
+  cacheDir: '/ws/.vx/cache',
+  warn() {},
+  concurrency: 1,
+  vx: ['vx'],
+}
 
 it('prints the cache directory; an argument is exit 2', async () => {
   const out = spyOn(console, 'log').mockImplementation(() => {})

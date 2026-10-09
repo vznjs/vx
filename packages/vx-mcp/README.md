@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server for
 [`@vzn/vx`](https://github.com/vznjs/vx), as a plugin. Declaring it adds
-`vx mcp`: a read-only, stdio JSON-RPC surface over your workspace's cache
+`vx mcp`: a stdio JSON-RPC surface over your workspace's tasks, cache
 and run history that Claude Code, Cursor, Continue.dev, GitHub Copilot and
 any other MCP client can call.
 
@@ -41,6 +41,7 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 | `explainCacheKey`  | "What's the cache identity of `pkg#build`?" (`taskId`) — the latest entry's hash, command, exit code, duration, size.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `whyDidThisRerun`  | "Why did `pkg#test` re-execute in run X?" (`taskId`, `runId`) — the run's key against the previous run's, and whether it changed (`runId` optional: the task's latest run; whole or the unique prefix `vx last --list` prints; runs recorded before run ids answer the task's latest cache entry, as `vx why` does).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `getFailures`      | "Why did run X fail?" (`runId`) — each failed task's `taskId`, `exitCode`, `timedOut`, its `output` (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the `locations` it names (`{ file, line?, col? }`, file absolute) — no terminal scraping (`runId` optional: the latest failed run; whole or a unique prefix).                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `runTasks`         | "Run these tasks and tell me how it went." (`tasks`, `all`, `filter`, `affected`, `force`) — runs `vx run <tasks> --format json` here, with this workspace's cache and sandbox, and returns `exitCode` and the run `summary` (the `--summarize` document: `ok`, each task's status, hits, durations). `filter` is the `--filter` values, `affected` is `true` or a git ref. A refusal before the run (an unknown task) returns no summary and the CLI's message, secrets masked, as `error`; a failed task's output is `getFailures`.                                                                                                                                                                                                                                                                        |
 | `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json`: versions, the git status cache, projects and tasks (and the configs that did not load), plugins and their seams, the worker count and memory budget with their sources, cache versions and state, flaky tasks, the sandbox runtime's verdict for this host and how many tasks declare one, the lock.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Arguments are checked, never coerced: `arguments` that is not an object
@@ -51,9 +52,11 @@ missing a half (`#build`, `app#`) or an empty run id, or a `limit` that is not a
 finite number is refused with a line naming it, rather than answered
 for a question the agent did not ask.
 
-Every tool is **read-only**. Nothing here runs a task or writes the
-cache (`listTasks` opens it only to serve cached config evaluations); the plugin declares only a CLI verb, no executor and no cache
-layer, so it cannot. The four cache tools open the index as `vx last`
+Every tool but `runTasks` is **read-only**: none runs a task or writes
+the cache (`listTasks` opens it only to serve cached config evaluations).
+`runTasks` writes only what `vx run` writes, through the CLI itself, as a
+child process; the plugin declares only a CLI verb, no executor and no
+cache layer. The four cache tools open the index as `vx last`
 does: where there is none they answer from an empty one and make nothing
 on disk, an index from an earlier vx is refused by name and left for the
 next `vx run` to reset, and old run history is never pruned by a read.

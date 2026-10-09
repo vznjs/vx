@@ -11,7 +11,7 @@ const root = mkdtempSync(path.join(tmpdir(), 'vx-mcp-args-'))
 writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-const ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root }
+const ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root, vx: [] }
 const refusal = (tool: string, args: unknown): Promise<string> =>
   handleToolCall(tool, args, ctx).then(
     () => 'answered',

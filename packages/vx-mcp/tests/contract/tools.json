@@ -194,6 +194,86 @@
       "tasks[].taskId"
     ]
   },
+  "runTasks": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "all": {
+          "type": "boolean",
+          "description": "--all: every project"
+        },
+        "filter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "--filter values (a project, a glob, ...pkg, [ref])"
+        },
+        "affected": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "--affected: true for the default ref, or a git ref"
+        },
+        "force": {
+          "type": "boolean",
+          "description": "--force: run past the cache"
+        }
+      },
+      "required": [
+        "tasks"
+      ]
+    },
+    "answer": [
+      "exitCode",
+      "summary",
+      "summary.aborted",
+      "summary.endedAt",
+      "summary.exitCode",
+      "summary.ok",
+      "summary.runId",
+      "summary.savedMs",
+      "summary.startedAt",
+      "summary.summary",
+      "summary.summary.aborted",
+      "summary.summary.cachedLocal",
+      "summary.summary.cachedRemote",
+      "summary.summary.failed",
+      "summary.summary.restoredLocal",
+      "summary.summary.restoredRemote",
+      "summary.summary.skipped",
+      "summary.summary.successful",
+      "summary.summary.total",
+      "summary.summary.upToDate",
+      "summary.tasks",
+      "summary.tasks[]",
+      "summary.tasks[].durationMs",
+      "summary.tasks[].exitCode",
+      "summary.tasks[].hash",
+      "summary.tasks[].id",
+      "summary.tasks[].project",
+      "summary.tasks[].restored",
+      "summary.tasks[].status",
+      "summary.tasks[].storedCpuMs",
+      "summary.tasks[].storedDurationMs",
+      "summary.tasks[].task",
+      "summary.tasks[].wallclockEndNs",
+      "summary.tasks[].wallclockStartNs",
+      "summary.totalMs"
+    ]
+  },
   "getWorkspaceInfo": {
     "inputSchema": {
       "type": "object",
