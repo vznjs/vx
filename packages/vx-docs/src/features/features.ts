@@ -1,7 +1,7 @@
 // Every feature the site gives a page of its own (`/features/<slug>/`), in
 // the order the hub lists them. The copy is the 38-day campaign's, rewritten
 // as page copy and checked against core's source and docs (cli.md,
-// schema.md). Links are under the site's base (`guides/ci/`) or absolute
+// schema.md), then the rest of features.md (more.ts). Links are under the site's base (`guides/ci/`) or absolute
 // (`https://…`). `image` names a file in src/assets/features/; the four
 // small things one post showed share its image.
 //
@@ -9,7 +9,18 @@
 // update-site.ts does not rewrite this file, so a new results.json run
 // must be carried here too.
 
-export type CategoryId = 'speed' | 'cache' | 'insight' | 'daily' | 'ci' | 'adoption' | 'plugins'
+import { MORE } from './more.js'
+
+export type CategoryId =
+  | 'speed'
+  | 'cache'
+  | 'run'
+  | 'output'
+  | 'insight'
+  | 'daily'
+  | 'ci'
+  | 'adoption'
+  | 'plugins'
 
 export interface Category {
   id: CategoryId
@@ -23,6 +34,16 @@ export const CATEGORIES: readonly Category[] = [
     id: 'cache',
     title: 'Cache you can trust',
     line: 'A hit replays exactly what a run would have made.',
+  },
+  {
+    id: 'run',
+    title: 'Run what you mean',
+    line: 'Pick tasks precisely, and stop the ones that hang.',
+  },
+  {
+    id: 'output',
+    title: 'Output that fits',
+    line: 'As much as you want to read, where you read it.',
   },
   { id: 'insight', title: 'See inside a run', line: 'Every key, plan and past run, on request.' },
   { id: 'daily', title: 'Everyday use', line: 'The small things you meet every day.' },
@@ -59,7 +80,7 @@ export default defineWorkspace({
   plugins: [${call}],
 })`
 
-export const FEATURES: readonly Feature[] = [
+const FIRST: readonly Feature[] = [
   // ---- Speed ----
   {
     slug: 'fastest',
@@ -739,6 +760,11 @@ export default defineWorkspace({
     },
   },
 ]
+
+const rank = (f: Feature): number => CATEGORIES.findIndex((c) => c.id === f.category)
+
+/** Every feature, grouped by category in the hub's order. */
+export const FEATURES: readonly Feature[] = [...FIRST, ...MORE].sort((a, b) => rank(a) - rank(b))
 
 /** A feature's category. */
 export const categoryOf = (f: Feature): Category => CATEGORIES.find((c) => c.id === f.category)!
