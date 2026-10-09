@@ -69,8 +69,9 @@ describe('benchmarks.md: every vx multiple is the two figures its row shows', ()
         })
       }
     }
-    // Five tables: 46 packages twice, 476 twice, 3,270 on Linux.
-    expect(checked).toBe(36)
+    // Five tables: 46 packages twice, 476 twice, 3,270 on Linux; their
+    // cold total columns went 2026-10-09 (owner: overhead only).
+    expect(checked).toBe(26)
     expect(wrong).toEqual([])
   })
 })

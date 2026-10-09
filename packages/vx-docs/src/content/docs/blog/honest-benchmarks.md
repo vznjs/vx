@@ -15,10 +15,9 @@ Here is the method, then the numbers.
 One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take three minutes on their own.
 What does the tool add on top? On the 3,270-task workspace below the
-tasks alone take 3m 38s under an ideal schedule. vx finishes the cold
-build in 3m 40s: **two seconds of overhead**. Nx finishes in 3m 49s,
-**eleven seconds**. Vite Task finishes in 4m 49s, **over a minute**.
-Turborepo finishes in 4m 59s, **a minute and a half**.
+tasks alone take 3m 38s under an ideal schedule. On a cold build vx adds
+**2.33s**. Nx adds **10.98s**, Vite Task **1m 11s** and Turborepo
+**1m 21s**.
 Every warm number on
 this page is a consequence of the same discipline, but this is the one
 you feel on every uncached build.
@@ -54,16 +53,17 @@ time, each daemon stopped before the next runner is timed so it cannot
 idle-contend for CPU. `build` and `test` are `sleep 1`, so the numbers
 isolate the runner's own overhead from compilation.
 
-`build test --all`, total time:
+`build test --all`, the runner's overhead (a cold build's time over the
+3m 38s ideal schedule; a fully cached run is all overhead):
 
-| Runner    | Cold build         | Fully cached | Cold build CPU |
+| Runner    | Cold build overhead | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
-| vx        | **3m 40s** | **393ms**    | **17.27s**     |
-| Turborepo | 4m 59s (vx 36% faster) | 463ms (vx 18% faster) | 21.04s (vx 22% faster) |
-| Nx        | 3m 49s (vx 4% faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
-| Vite Task | 4m 49s (vx 31% faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
+| vx        | **2.33s** | **393ms**    | **17.27s**     |
+| Turborepo | 1m 21s (vx 35× faster) | 463ms (vx 18% faster) | 21.04s (vx 22% faster) |
+| Nx        | 10.98s (vx 4.7× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
+| Vite Task | 1m 11s (vx 31× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
 
-vx N% faster: that tool takes N% longer than vx; N× faster: N times as long; slower: vx takes that much longer.
+vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx; slower: vx adds that much more.
 
 Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.

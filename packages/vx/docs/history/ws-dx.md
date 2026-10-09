@@ -204,3 +204,29 @@ directions; the link;`vx docs VX_E_USAGE` alone).
   values it uses instead of importing the root `vx-preset`: withastro/astro's
   `scripts/` build failed on that import (TS6059, TS6307; Growth, 0.0.633).
   Rows: `vx-migrate/tests/migrate-turbo-sealed-tsconfig.test.ts`.
+- **DX-35** vx-migrate's preset inlining (DX-34) asks every `tsconfig*.json`
+  from the config's directory up to the root, `include` / `exclude` /
+  `files` and `${configDir}` as `extends` resolves them: astro's
+  `packages/astro/tsconfig.test.json` takes in the nested
+  `performance/vx.config.mjs`, and 0.0.634 still failed there (Engineering).
+  astro dry run: 564 preset imports before, 562 after; `performance/` and
+  `scripts/` declare the values. Rows: `migrate-turbo-sealed-tsconfig.test.ts`.
+- **DX-36** Trial-2 lows: `affected.kind` gets its own `cli.md` heading
+  so `vx docs affected kind input` returns it first (it was buried in
+  "Planning mode"); `--graph` gets one too. `why.json` now says `cached`
+  means "declares a cache", as `last.json` already did. Left as is: a
+  rename of `cached` (breaks the JSON contract for a wording issue) and
+  one JSON indentation across verbs (mixed already; compact saves tokens).
+- **DX-37** Trial-2 row 9: `getFailures` and `vx last --failed --format
+json` replayed a failure already fixed with no word of it. A failed
+  task now carries `fixedIn`, the first later run where it passed (ran
+  or hit). Rows: `run-output.test.ts` (another task passing is no fix),
+  vx-mcp `tools.test.ts`, `cli-json-schemas.test.ts`.
+- **DX-38** Trial-2 row 4: bun test heads a failure with a bare
+  `app.test.js:` and gives the line only in the stack, so `locations`
+  led with a lineless entry. A file also named with a line now drops
+  its bare mention. Row: `run-output.test.ts` (with a bare-only control).
+- **DX-39** Trial-2 row 8: the agents guide and vx-mcp README showed
+  `defineWorkspace({...})` while `vx init` and vx-migrate write
+  `{...} satisfies WorkspaceConfig`; both snippets now match the
+  generated file, and the guide says to add `mcp()` to an existing one.

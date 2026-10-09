@@ -170,7 +170,7 @@
         },
         "locations": {
           "type": "array",
-          "description": "on a failed row: the existing files its output names, in order of first appearance",
+          "description": "on a failed row: the existing files its output names, in order of first appearance; a file it also names with a line drops its bare mention",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -181,6 +181,10 @@
               "col": { "type": "integer" }
             }
           }
+        },
+        "fixedIn": {
+          "type": "string",
+          "description": "on a failed row: the first later run where this task passed (ran or hit); absent while it has not"
         }
       }
     }

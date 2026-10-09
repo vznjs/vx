@@ -957,8 +957,10 @@ readable. Its `criticalPath` names the would-run tasks with history on
 the chain `wallMs` measures, dependencies first: the tasks to speed up
 to shorten the run.
 
-**Why a task is affected.** Under `--affected`, each requested task the
-diff kept gets a line, and its JSON object an `affected` reason:
+### Why a task is affected (`affected.kind`)
+
+Under `--affected`, each requested task the diff kept gets a line, and
+its JSON object an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
@@ -980,6 +982,8 @@ none. The reasons are gathered only for a plan; a run pays nothing.
 against: a bare `--affected` guesses it (`origin/HEAD`, a trunk branch,
 else `HEAD~1`), so a reason that names no file may come from a commit
 the base reaches, a root `package.json` edit among them.
+
+### Task graph (`--graph`)
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):
@@ -2807,8 +2811,10 @@ failed runs. `--format json`
 emits `{ invocation, tasks }` for scripting; a failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
-`{ file, line?, col? }`, file absolute), so an agent reads why without
-the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
+`{ file, line?, col? }`, file absolute; a file also named with a line
+drops its bare mention, such as bun test's `app.test.js:` header), so an
+agent reads why without the terminal. `fixedIn` names the first later run where that task
+passed, so a replayed failure that is already fixed says so. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that

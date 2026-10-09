@@ -9,11 +9,12 @@ tags:
 excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
-The headline number is the one you pay on every uncached build: the
-total cold build. On a synthetic workspace of 1,090 packages and 3,270
-tasks of equal duration in deep dependency chains, vx finishes the cold build in 3m 40s, Nx in 3m 49s (vx 4%
-faster), Vite Task in 4m 49s (vx 31% faster) and Turborepo in 4m 59s
-(vx 36% faster).
+The headline number is the runner's overhead: the time it adds on top
+of the tasks themselves. On a synthetic workspace of 1,090 packages and
+3,270 tasks of equal duration in deep dependency chains, whose ideal
+schedule is 3m 38s, vx adds 2.33s to a cold build, Nx 10.98s (vx 4.7×
+faster), Vite Task 1m 11s (vx 31× faster) and Turborepo 1m 21s (vx 35×
+faster).
 Warm, a fully cached `vx run build test --all` finishes in 393ms,
 Turborepo in 463ms (vx 18% faster), Nx in 6.45s (vx 16× faster) and
 Vite Task in 2.49s (vx 6.3× faster). The cold build burns 17 s of CPU

@@ -35,7 +35,9 @@ export function linkPaths(text: string, dir: string, isFile: (abs: string) => bo
 
 /**
  * The files `text` names that exist (resolved against `dir`), each with the
- * line and column it gave, unique, in order of first appearance.
+ * line and column it gave, unique, in order of first appearance. A file also
+ * named with a line drops its bare mention: bun test heads a failure with
+ * `app.test.js:` and gives the line only in the stack below it.
  */
 export function fileLocations(
   text: string,
@@ -56,9 +58,9 @@ export function fileLocations(
       ...(line !== undefined ? { line: Number(line) } : {}),
       ...(col !== undefined ? { col: Number(col) } : {}),
     })
-    if (out.length === LOCATIONS_CAP) break
   }
-  return out
+  const lined = new Set(out.filter((l) => l.line !== undefined).map((l) => l.file))
+  return out.filter((l) => l.line !== undefined || !lined.has(l.file)).slice(0, LOCATIONS_CAP)
 }
 
 /** A file test that asks the file system once per path. */

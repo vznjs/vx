@@ -176,6 +176,10 @@ beforeAll(async () => {
   json('last', ['--list'])
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
+  // The flaky task passes again: the replayed failure names that run (`fixedIn`).
+  await writeFile(path.join(root, 'flag'), '')
+  expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
+  json('last', ['--failed'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
   outputs['plan']!.push(JSON.parse(dry.out))
@@ -488,7 +492,7 @@ describe('each schema object is its source type', () => {
       keys<TaskLog>({ runId: true, taskId: true, status: true, source: true, output: true }),
     )
     expect(def('last', 'task')).toEqual(
-      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations'>>({
+      keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations' | 'fixedIn'>>({
         runId: true,
         project: true,
         task: true,
@@ -512,6 +516,7 @@ describe('each schema object is its source type', () => {
         forwarded: true,
         output: true,
         locations: true,
+        fixedIn: true,
       }),
     )
   })

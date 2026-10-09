@@ -370,9 +370,10 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
       '3m 38s',
-      '3m 40s',
-      '4m 59s',
-      '3m 49s',
+      '2.33s',
+      '10.98s',
+      '1m 11s',
+      '1m 21s',
       '10 ms per',
       '1,090 packages',
       '100 dependency layers',
@@ -582,7 +583,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['3m 40s', '4m 59s', '4m 49s', '3m 49s', '393ms', '463ms', '6.45s']) {
+    for (const figure of ['2.33s', '1m 21s', '1m 11s', '10.98s', '393ms', '463ms', '6.45s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -764,9 +765,9 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '3m 38s',
-      '3m 40s',
-      '4m 59s',
-      '3m 49s',
+      '2.33s',
+      '1m 21s',
+      '10.98s',
       '393ms',
       '463ms',
       '6.45s',
@@ -2437,7 +2438,7 @@ describe('the headline Nx column runs nx:run-commands', () => {
       'nx:run-commands',
     ])
     expect(bench).toContain('(`nx:run-commands` targets,')
-    expect(bench).toContain('6m 59s (vx 90% faster)')
+    expect(bench).toContain('20m 55s (vx 78× faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })

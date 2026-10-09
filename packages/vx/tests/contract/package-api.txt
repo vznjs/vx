@@ -1547,6 +1547,7 @@ export interface TaskFailure {
   timedOut?: true
   output: string
   locations: OutputLocation[]
+  fixedIn?: string
 }
 == type TaskHistory (src/orchestrator/history.ts)
 export interface TaskHistory {
