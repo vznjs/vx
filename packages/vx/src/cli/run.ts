@@ -668,10 +668,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         shown.length === 0
           ? 'vx run <task>, e.g. vx run build'
           : `tasks here: ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
-      process.stderr.write(
-        `vx run: missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}\n`,
+      return refuse(
+        'run',
+        args,
+        `missing task name (stdin is not a TTY, so no picker; ${tasksHere})${seeHelp('run')}`,
+        'VX_E_USAGE',
       )
-      return 1
     }
     // Every run needs git: refused here, not after the user has chosen.
     const refusal = gitRefusal(await findWorkspaceRoot(cwd))
