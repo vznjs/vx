@@ -796,7 +796,8 @@ Always applied to every glob pass (regardless of what you wrote):
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `.git/**`, `.vx/**`, `*.tsbuildinfo`,
   `vx-lock.json`, `*.bun-build`, and Bun's cross-compile extraction
-  directory `.<16 hex>-<8 hex>.tmp/**`, at any depth.
+  directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
+  `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
   not). A file git TRACKS there, such as a committed test fixture, is an
   input like any other.
@@ -849,7 +850,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/**`,
-`*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`),
+`*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).

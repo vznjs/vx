@@ -109,7 +109,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
