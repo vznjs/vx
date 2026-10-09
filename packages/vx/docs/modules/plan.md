@@ -32,6 +32,7 @@ export interface PlanPrediction {
   wallMs: number // critical path over the would-run tasks' p50s
   workMs: number // their sum
   unknownCount: number // would-run tasks with no history
+  criticalPath: string[] // would-run tasks with history on the wallMs chain
 }
 
 export interface RunPlan {

@@ -59,13 +59,18 @@
     "predicted": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["wallMs", "workMs", "unknownCount"],
+      "required": ["wallMs", "workMs", "unknownCount", "criticalPath"],
       "properties": {
         "wallMs": { "type": "number" },
         "workMs": { "type": "number" },
         "unknownCount": {
           "type": "integer",
           "description": "would-run tasks with no history; the times are lower bounds when above 0"
+        },
+        "criticalPath": {
+          "type": "array",
+          "description": "the would-run task ids with history along the chain wallMs measures, dependencies first",
+          "items": { "type": "string" }
         }
       }
     },

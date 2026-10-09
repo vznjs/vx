@@ -46,7 +46,7 @@ config key or an environment variable is missing here.
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. no post
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. no post
-- **Run JSON** (`--summarize`) — per-run JSON for scripts. no post
+- **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · no post
 - **Run tags** (`--tag`) — label a run; recorded in history. no post
 - **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. no post
@@ -59,7 +59,7 @@ config key or an environment variable is missing here.
 
 ## Plan and explain
 
-- **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON, nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
+- **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
 - **Graph** (`--graph`) — the task graph as Graphviz DOT. no post
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)

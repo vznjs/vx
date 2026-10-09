@@ -1008,6 +1008,7 @@ export interface PlanPrediction {
   wallMs: number
   workMs: number
   unknownCount: number
+  criticalPath: string[]
 }
 == type Plugin (src/config.ts)
 export interface Plugin {
@@ -1355,6 +1356,7 @@ export interface RunSummaryJson {
   startedAt: string
   endedAt: string
   totalMs: number
+  savedMs: number
   tasks: SummaryTaskJson[]
   aborted: SummaryTaskJson[]
   summary: Tally
@@ -1445,6 +1447,7 @@ export interface SummaryTaskJson {
   flaky?: { passes: number; failures: number; attempts: number }
   cpuMs?: number
   peakRssBytes?: number
+  storedDurationMs?: number
   storedCpuMs?: number
   storedPeakRssBytes?: number
   admissionHeldMs?: number

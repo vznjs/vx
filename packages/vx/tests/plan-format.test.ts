@@ -133,7 +133,7 @@ describe('formatPlanText — time prediction', () => {
         task('a#build', 'miss', 'bbbbbbbb22222222', [], undefined, 1200),
         task('a#dev', 'no-cache', 'cccccccc33333333', [], undefined, 300),
       ],
-      predicted: { wallMs: 1500, workMs: 1500, unknownCount: 0 },
+      predicted: { wallMs: 1500, workMs: 1500, unknownCount: 0, criticalPath: [] },
     }
     const out = formatPlanText(plan)
     expect(out).toContain('~1.20s')
@@ -153,7 +153,7 @@ describe('formatPlanText — time prediction', () => {
         task('a#build', 'miss', 'bbbbbbbb22222222', [], undefined, 1200),
         task('a#fresh', 'miss', 'dddddddd44444444'),
       ],
-      predicted: { wallMs: 1200, workMs: 1200, unknownCount: 1 },
+      predicted: { wallMs: 1200, workMs: 1200, unknownCount: 1, criticalPath: [] },
     }
     const out = formatPlanText(plan)
     expect(out).toContain('predicted: ~1.20s wall')
@@ -163,7 +163,7 @@ describe('formatPlanText — time prediction', () => {
   it('omits the footer when EVERY would-run task is unknown (nothing to say)', () => {
     const plan: RunPlan = {
       tasks: [task('a#build', 'miss', 'bbbbbbbb22222222')],
-      predicted: { wallMs: 0, workMs: 0, unknownCount: 1 },
+      predicted: { wallMs: 0, workMs: 0, unknownCount: 1, criticalPath: [] },
     }
     expect(formatPlanText(plan)).not.toContain('predicted:')
   })
@@ -171,7 +171,7 @@ describe('formatPlanText — time prediction', () => {
   it('omits the footer on an all-hit plan (nothing would run)', () => {
     const plan: RunPlan = {
       tasks: [task('a#lint', 'hit-local', 'aaaaaaaa11111111', [], undefined, 900)],
-      predicted: { wallMs: 0, workMs: 0, unknownCount: 0 },
+      predicted: { wallMs: 0, workMs: 0, unknownCount: 0, criticalPath: [] },
     }
     expect(formatPlanText(plan)).not.toContain('predicted:')
   })
@@ -203,14 +203,19 @@ describe('formatPlanJson', () => {
   it('carries p50Ms per task + the predicted object when present', () => {
     const plan: RunPlan = {
       tasks: [task('a#test', 'miss', 'bbbbbbbb', [], undefined, 450)],
-      predicted: { wallMs: 450, workMs: 450, unknownCount: 0 },
+      predicted: { wallMs: 450, workMs: 450, unknownCount: 0, criticalPath: ['a#build'] },
     }
     const parsed = JSON.parse(formatPlanJson(plan)) as {
       tasks: Array<Record<string, unknown>>
       predicted?: Record<string, unknown>
     }
     expect(parsed.tasks[0]?.['p50Ms']).toBe(450)
-    expect(parsed.predicted).toEqual({ wallMs: 450, workMs: 450, unknownCount: 0 })
+    expect(parsed.predicted).toEqual({
+      wallMs: 450,
+      workMs: 450,
+      unknownCount: 0,
+      criticalPath: ['a#build'],
+    })
   })
 })
 
@@ -363,7 +368,7 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
           '@vzn/vx#test',
         ]),
       ],
-      predicted: { wallMs: 4200, workMs: 4200, unknownCount: 1 },
+      predicted: { wallMs: 4200, workMs: 4200, unknownCount: 1, criticalPath: [] },
     }
     expect(texts[0]!.body).toBe(formatPlanText(plan))
   })

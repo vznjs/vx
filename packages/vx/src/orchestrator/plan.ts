@@ -71,6 +71,9 @@ export interface PlanPrediction {
   /** Would-run tasks with NO history — their cost is unknown and counted as
    *  0, so wallMs/workMs are lower bounds when this is > 0. */
   unknownCount: number
+  /** The would-run tasks with history along the chain `wallMs` measures,
+   *  dependencies first; empty when nothing with history would run. */
+  criticalPath: string[]
 }
 
 export interface RunPlan {
@@ -274,19 +277,27 @@ function predictPlan(tasks: PlannedTask[]): PlanPrediction {
   const dist = new Map<string, number>()
   const queue: string[] = []
   for (const [id, n] of indeg) if (n === 0) queue.push(id)
+  const via = new Map<string, string>()
   let head = 0
   let wallMs = 0
+  let end: string | undefined
   while (head < queue.length) {
     const id = queue[head++]!
     const t = byId.get(id)!
     let best = 0
     for (const d of t.deps) {
       const v = dist.get(d)
-      if (v !== undefined && v > best) best = v
+      if (v !== undefined && v > best) {
+        best = v
+        via.set(id, d)
+      }
     }
     const v = best + cost(t)
     dist.set(id, v)
-    if (v > wallMs) wallMs = v
+    if (v > wallMs) {
+      wallMs = v
+      end = id
+    }
     for (const dep of dependents.get(id) ?? []) {
       const n = indeg.get(dep)! - 1
       indeg.set(dep, n)
@@ -300,5 +311,8 @@ function predictPlan(tasks: PlannedTask[]): PlanPrediction {
     if (t.p50Ms === undefined) unknownCount++
     else workMs += t.p50Ms
   }
-  return { wallMs, workMs, unknownCount }
+  const criticalPath: string[] = []
+  for (let id = end; id !== undefined; id = via.get(id))
+    if (cost(byId.get(id)!) > 0) criticalPath.push(id)
+  return { wallMs, workMs, unknownCount, criticalPath: criticalPath.reverse() }
 }
