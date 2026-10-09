@@ -6,7 +6,8 @@
 // creates each one as a draft and the last upload (darwin's, after its
 // binaries are proven) publishes it. An asset already attached is skipped,
 // so a re-run completes the set. An upload that stalls is cut and retried:
-// v0.0.575 stayed a draft when its second darwin upload hung six minutes.
+// v0.0.575 stayed a draft when its darwin-x64 upload's response hung six
+// minutes, though the asset itself had landed.
 //
 //   GH_TOKEN=… GITHUB_REPOSITORY=owner/repo VX_RELEASE_VERSION=v1.2.3 bun scripts/release-assets.ts <linux|darwin> [--publish]
 
@@ -93,10 +94,16 @@ async function main(): Promise<void> {
   )) as Release[]
   let release = releaseFor(releases, tag)
   const api = `https://api.github.com/repos/${repo}/releases`
-  const dropPartial = async (name: string): Promise<void> => {
+  // A cut upload can still land server-side (v0.0.575's did): re-read before
+  // each try, keep a finished asset, delete a partial one.
+  const attached = async (name: string): Promise<boolean> => {
     release = (await call(`${api}/${release.id}`)) as Release
-    for (const a of release.assets)
-      if (a.name === name && isPartial(a)) await call(`${api}/assets/${a.id}`, { method: 'DELETE' })
+    for (const a of release.assets) {
+      if (a.name !== name) continue
+      if (!isPartial(a)) return true
+      await call(`${api}/assets/${a.id}`, { method: 'DELETE' })
+    }
+    return false
   }
   for (const name of assetsToUpload(os, readdirSync(DIST), release)) {
     const file = Bun.file(
@@ -104,7 +111,7 @@ async function main(): Promise<void> {
     )
     for (let attempt = 1; ; attempt++) {
       try {
-        await dropPartial(name)
+        if (await attached(name)) break
         await call(
           `https://uploads.github.com/repos/${repo}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`,
           {
