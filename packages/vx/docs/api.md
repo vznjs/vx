@@ -409,6 +409,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
+  readonly vx: readonly string[]
 }
 ```
 

@@ -23,8 +23,8 @@ config key or an environment variable is missing here.
 - **Retries** (`--retry`, `exec.retries`) — re-run a failed task; a pass after a failure marks it flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim only declared inputs can back](https://vznjs.github.io/vx/blog/flaky-tasks/)
 - **Timeouts** (`--timeout`, `exec.timeout`, `timeout`, `VX_TASK_TIMEOUT`) — kill and fail a runaway task. no post
 - **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. no post
-- **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · no post
-- **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · no post
+- **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
+- **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · post: [Flags you already know](https://vznjs.github.io/vx/blog/flags-you-already-know/)
 - **Ctrl-C leaves nothing running** (`VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`) — the whole process tree stops, then teardown runs. [page](https://vznjs.github.io/vx/features/ctrl-c/) · post: [Ctrl-C leaves nothing running](https://vznjs.github.io/vx/blog/ctrl-c/)
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
@@ -64,7 +64,7 @@ config key or an environment variable is missing here.
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`) — replay a recorded run's summary, or list recent runs. [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
-- **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. no post
+- **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. no post
 - **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
@@ -86,7 +86,7 @@ config key or an environment variable is missing here.
 - **Cache controls** (`--no-cache`, `--force`, `--cache`) — off, refresh, or per-layer read/write. no post
 - **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. no post
 - **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. no post
-- **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. no post
+- **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **Remote outputs** (`--download`) — all, top-level only, or none. no post
 - **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. no post
 - **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. no post
@@ -114,11 +114,11 @@ config key or an environment variable is missing here.
 - **Watch mode** (`vx watch`, `VX_WATCH_POLL`) — re-run what a change affects, on content, not events. [page](https://vznjs.github.io/vx/features/watch/) · post: [Watch: a content gate](https://vznjs.github.io/vx/blog/watch-mode/)
 - **Dev servers in the graph** (`exec.persistent`, `readyWhen`, `VX_READY_NOTICE_MS`) — a server is a node; dependents start when it is ready. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
 - **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. no post
-- **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · no post
+- **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **vx upgrade** (`vx upgrade`) — replace the binary with a release. [page](https://vznjs.github.io/vx/features/upgrade/) · no post
 - **Help and version** (`vx help`, `vx version`) — every verb's reference. no post
-- **Did-you-mean** — a mistyped flag or verb gets the nearest valid spelling. no post
-- **Task typed as a verb** — `vx build app` answers with the exact `vx run` command that does it. no post
+- **Did-you-mean** — a mistyped flag or verb gets the nearest valid spelling. post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
+- **Task typed as a verb** — `vx build app` answers with the exact `vx run` command that does it. post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 
 ## Config
 
@@ -157,7 +157,7 @@ config key or an environment variable is missing here.
 - **The local floor** — running and caching here are core's, not plugins. post: [The local floor](https://vznjs.github.io/vx/blog/the-local-floor/)
 - **Remote cache and execution** (`@vzn/vx-reapi`, `exec.remote`) — Bazel REAPI cache and workers; the scheduler stays here. [page](https://vznjs.github.io/vx/features/remote-execution/) · post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)
 - **OpenTelemetry** (`@vzn/vx-otel`) — each run exported to your OpenTelemetry backend, never breaking it. [page](https://vznjs.github.io/vx/features/opentelemetry/) · post: [Observability that cannot break a run](https://vznjs.github.io/vx/blog/telemetry-never-breaks-a-run/)
-- **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats, run history and `vx why`'s full answer for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
+- **vx mcp** (`@vzn/vx-mcp`, `vx mcp`) — cache stats, run history, `vx why`'s full answer and a run tool for coding agents. [page](https://vznjs.github.io/vx/features/mcp/) · post: [Give your coding agent the build's memory](https://vznjs.github.io/vx/blog/agents-and-mcp/)
 - **vx prune** (`@vzn/vx-lockfile`, `vx prune`) — copy projects and their deps, lockfile pruned, for a Docker build. no post
 - **vx history** (`@vzn/vx-schedule-history`, `vx history`) — what the scheduler learned per task. no post
 - **Setup and teardown hooks** (`setup`, `teardown`) — plugin code around the run, bounded by a timeout. no post

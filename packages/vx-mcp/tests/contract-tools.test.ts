@@ -29,6 +29,7 @@ const ARGS: Record<string, unknown> = {
   explainCacheKey: { taskId: 'a#build' },
   whyDidThisRerun: { taskId: 'a#build' },
   getFailures: {},
+  runTasks: { tasks: ['build'], all: true },
   getWorkspaceInfo: {},
 }
 
@@ -97,7 +98,11 @@ afterAll(async () => {
 })
 
 it('each tool agrees with tests/contract/tools.json', async () => {
-  const ctx = { cacheDir: path.join(root, '.vx', 'cache'), workspaceRoot: root }
+  const ctx = {
+    cacheDir: path.join(root, '.vx', 'cache'),
+    workspaceRoot: root,
+    vx: [process.execPath, CORE_BIN],
+  }
   const live: Record<string, unknown> = {}
   for (const tool of listTools()) {
     expect(Object.keys(ARGS)).toContain(tool.name)

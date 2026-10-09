@@ -145,7 +145,7 @@ Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
 | [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
 | [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                |
 | [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
-| [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: a read-only MCP server for AI coding agents                         |
+| [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: an MCP server for AI coding agents that also runs tasks             |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 
 Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·

@@ -251,6 +251,13 @@ export interface CommandContext extends BaseContext {
    * `machineParallelism()` said 4 cores beside `concurrency: 1` (item 1068).
    */
   readonly concurrency: number
+  /**
+   * The argv that runs this vx again: the binary alone when compiled, the
+   * runtime and its entry script from source. A verb that runs tasks
+   * (`vx mcp`'s `runTasks`) spawns `[...vx, 'run', …]` rather than guess
+   * which `vx` a PATH holds.
+   */
+  readonly vx: readonly string[]
 }
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */

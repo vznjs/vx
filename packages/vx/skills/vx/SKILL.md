@@ -61,8 +61,10 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 ## MCP
 
 When `@vzn/vx-mcp` is a plugin in `vx.workspace.ts`, `vx mcp` serves the
-same facts read-only: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getWorkspaceInfo`.
+same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
+`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`,
+`getWorkspaceInfo`, `runTasks`. `runTasks` answers what
+`vx run <tasks> --format json` prints; the others only read.
 
 ## Rules
 

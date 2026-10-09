@@ -7,7 +7,11 @@ import os from 'node:os'
 import { describe, expect, it } from 'bun:test'
 import { handleMessage, serve } from '../src/server.js'
 
-const ctx = { cacheDir: path.join(os.tmpdir(), 'vx-mcp-edges-none'), workspaceRoot: os.tmpdir() }
+const ctx = {
+  cacheDir: path.join(os.tmpdir(), 'vx-mcp-edges-none'),
+  workspaceRoot: os.tmpdir(),
+  vx: [],
+}
 
 async function* chunks(bytes: Uint8Array, size = 64 * 1024): AsyncGenerator<Uint8Array> {
   for (let i = 0; i < bytes.length; i += size) yield bytes.subarray(i, i + size)
