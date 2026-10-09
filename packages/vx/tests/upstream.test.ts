@@ -325,3 +325,60 @@ describe('keyUpstream', () => {
     TIMEOUT,
   )
 })
+
+// A filter selects among the task's own dependencies. A pattern that reached
+// a group's member only through the group selected nothing, and the key
+// stopped moving with that member: a stale hit. The run refuses it.
+describe('cache.inputs.tasks through a group', () => {
+  const runWith = async (filter: string[], dependsOn = ['build']) => {
+    const fixture = await makeWorkspace('vx-filter-group-')
+    try {
+      await addProject(fixture.root, '@x/a', {
+        files: { 'src/a.js': '1\n' },
+        config: `const cache = { inputs: { files: ['src/**'] }, outputs: { files: [] } }
+          export default { tasks: {
+            'build.a': { exec: { command: 'true' }, cache },
+            'build.b': { exec: { command: 'true' }, cache },
+            build: { dependsOn: ['build.*'] },
+            test: {
+              exec: { command: 'true' },
+              dependsOn: ${JSON.stringify(dependsOn)},
+              cache: { ...cache, inputs: { ...cache.inputs, tasks: ${JSON.stringify(filter)} } },
+            },
+          } }`,
+      })
+      return await run({
+        cwd: fixture.root,
+        tasks: ['@x/a#test'],
+        log: silentLogger(fixture),
+      }).then(
+        (r) => (r.ok ? 'ok' : 'failed'),
+        (e: Error) => e.message,
+      )
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  }
+
+  it(
+    'a pattern that matches only a member is refused, naming the member and the group',
+    async () => {
+      expect(await runWith(['build.*'])).toBe(
+        "@x/a#test: cache.inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+      )
+      expect(await runWith(['*.b'])).toContain("'*.b' matches @x/a#build.b only through")
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROLS: the group, a direct edge, a negation and a pattern matching nothing run',
+    async () => {
+      expect(await runWith(['build'])).toBe('ok')
+      expect(await runWith(['build.*'], ['build', 'build.a'])).toBe('ok')
+      expect(await runWith(['*', '!build.a'])).toBe('ok')
+      expect(await runWith(['lint.*'])).toBe('ok')
+    },
+    TIMEOUT,
+  )
+})

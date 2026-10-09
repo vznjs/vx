@@ -1021,6 +1021,14 @@ hit waiting for the next upstream change. Patterns, wildcards and
 negations stay silent (a preset-spread pattern legitimately matches
 nothing in some projects); `[]` is the explicit way to decouple.
 
+A filter selects among the task's own dependencies, never through a
+group: over `dependsOn: ['build']`, where `build` is a group of
+`build.a` and `build.b`, the filter sees `build`, not its members. A
+pattern that matches no dependency but does match a group's member
+(`'build.*'` there) is refused when the run plans: it would select
+nothing and stop the key moving with that member. Name the group, or
+depend on the member directly.
+
 Examples:
 
 ```ts
@@ -1968,6 +1976,7 @@ a user meets most:
 | `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                       | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
+| `<task>: cache.inputs.tasks: '<pattern>' matches <member> only through the group <group>`                                             | A pattern matches a group's member, no dependency (at plan).                                                                                                                                                                   |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
