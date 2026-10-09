@@ -1408,3 +1408,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `workspace:` links; classic walks the stripped manifests). A name
   another field also holds stays. The copy installs frozen under bun,
   pnpm, npm and yarn 1 (`tests/prune.test.ts`).
+- **X-211.** End-to-end pin of X-120: with `a` ↔ `b` both on the
+  default `build` and `a#test` on `build`, an edit in `b` re-runs
+  `a#test` (the open "two default builds on one cycle never fold each
+  other's files" finding was this, already fixed). Disabling `goPast`
+  reddens it. The default build's exemption from `rules.upfrontKeys`
+  costs at most one extra miss (its `**` key moves when a sibling's
+  outputs land), never a stale hit. Row: `default-build-cycle-key.test.ts`.
