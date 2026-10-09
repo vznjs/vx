@@ -13,7 +13,7 @@
 // deno upgrade — "update" is what package managers do to indexes.
 
 import { constants } from 'node:fs'
-import { access, chmod, chown, link, rename, rm, stat } from 'node:fs/promises'
+import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { UserError } from '../util/index.js'
@@ -247,8 +247,20 @@ export async function replaceBinary(
       `vx upgrade: the download did not match the release's SHA-256 (expected ${sha256}, got ${got}) — nothing replaced; try again, and if it repeats the asset is not the one the release published`,
     )
   }
-  const tmp = `${dest}.upgrade-${process.pid}`
-  const old = `${dest}.previous-${process.pid}`
+  // A fresh directory beside the binary, not a name built from the pid:
+  // anyone who can write the install directory could plant a link at a
+  // predictable name, and a `sudo vx upgrade` wrote through it as root.
+  let stage: string
+  try {
+    stage = await mkdtemp(path.join(dir, '.vx-upgrade-'))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new UserError(
+      `vx upgrade: could not stage the new binary in ${dir} (${msg}) — nothing replaced; check the permissions of ${dir}`,
+    )
+  }
+  const tmp = path.join(stage, 'new')
+  const old = path.join(stage, 'previous')
   let kept = false
   try {
     const was = await stat(dest).catch(() => null)
@@ -265,18 +277,18 @@ export async function replaceBinary(
     }
     await rename(tmp, dest)
   } catch (err) {
-    await rm(tmp, { force: true })
-    if (kept) await rm(old, { force: true })
+    await rm(stage, { recursive: true, force: true })
     const msg = err instanceof Error ? err.message : String(err)
     throw new UserError(
       `vx upgrade: could not replace ${dest} (${msg}) — nothing replaced; check the permissions of ${dest} and its directory`,
     )
   }
   if (starts === undefined || starts(dest)) {
-    if (kept) await rm(old, { force: true })
+    await rm(stage, { recursive: true, force: true })
     return
   }
   if (kept) await rename(old, dest)
+  await rm(stage, { recursive: true, force: true })
   throw new UserError(
     `vx upgrade: the new binary did not start on this machine (\`${dest} --version\` failed)${kept ? ' — the previous vx is back in place' : ''}. Nothing else changed; report it with this os/arch`,
   )

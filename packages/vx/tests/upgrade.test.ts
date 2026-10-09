@@ -2,7 +2,17 @@
 // against a local server; the CLI path pins the source-mode refusal
 // (the compiled-binary path needs a real release and stays manual).
 
-import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -75,6 +85,34 @@ describe('replaceBinary', () => {
     )
   })
 
+  it('stages in a fresh directory: a link planted at a guessable name is never written through', async () => {
+    // Whoever can write the install directory could plant `vx.upgrade-<pid>`
+    // pointing at a root-owned file, and `sudo vx upgrade` wrote the release
+    // through it. The names a pid predicts now hold only the planted links.
+    const victim = path.join(dir, 'victim')
+    await writeFile(victim, 'untouched')
+    const dest = path.join(dir, 'vx-plant')
+    await writeFile(dest, 'old')
+    for (const name of [`vx-plant.upgrade-${process.pid}`, `vx-plant.previous-${process.pid}`]) {
+      await symlink(victim, path.join(dir, name))
+    }
+    await withFetch(
+      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
+      async () => {
+        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, () => true)
+      },
+    )
+    // CONTROL: the upgrade went through, so the victim held because nothing
+    // wrote through the links, not because nothing was written.
+    expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+    expect(await readFile(victim, 'utf8')).toBe('untouched')
+    expect(
+      await Array.fromAsync(
+        new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+      ),
+    ).toEqual([])
+  })
+
   it('a host it cannot reach is one line naming the host, never a stack', async () => {
     // Bun's fetch rejects with its own TypeError when there is no route;
     // the CLI printed it as an internal error (item 247).
@@ -130,7 +168,11 @@ describe('replaceBinary', () => {
           replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA),
         ).rejects.toThrow(/did not match the release's SHA-256/)
         expect(await readFile(dest, 'utf8')).toBe('old')
-        expect(await Array.fromAsync(new Bun.Glob('vx3.upgrade-*').scan({ cwd: dir }))).toEqual([])
+        expect(
+          await Array.fromAsync(
+            new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+          ),
+        ).toEqual([])
       },
     )
   })
@@ -166,7 +208,11 @@ describe('replaceBinary', () => {
         'vx upgrade: could not download the release asset from github.com (The socket connection was closed unexpectedly.) — nothing replaced; check the network or the proxy and re-run',
       )
       expect(await readFile(dest, 'utf8')).toBe('old')
-      expect(await Array.fromAsync(new Bun.Glob('vx7.upgrade-*').scan({ cwd: dir }))).toEqual([])
+      expect(
+        await Array.fromAsync(
+          new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+        ),
+      ).toEqual([])
     })
   })
 
@@ -278,7 +324,11 @@ describe('replaceBinary', () => {
             `) — nothing replaced; check the permissions of ${dest} and its directory`,
           ),
         ).toBe(true)
-        expect(await Array.fromAsync(new Bun.Glob('vx6.upgrade-*').scan({ cwd: dir }))).toEqual([])
+        expect(
+          await Array.fromAsync(
+            new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+          ),
+        ).toEqual([])
         expect(await readdir(dest)).toEqual(['inside'])
       },
     )
