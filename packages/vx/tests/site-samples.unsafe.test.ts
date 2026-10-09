@@ -2434,11 +2434,10 @@ describe('the headline Nx column runs nx:run-commands', () => {
     const bench = readFileSync(path.join(root, 'packages', 'vx', 'docs', 'benchmarks.md'), 'utf8')
     const harness = readFileSync(path.join(root, 'packages', 'vx-bench', 'compare.ts'), 'utf8')
     expect([...harness.matchAll(/executor: '(nx:[\w-]+)'/g)].map((m) => m[1])).toEqual([
-      'nx:run-commands',
       'nx:noop',
       'nx:run-commands',
     ])
-    expect(bench).toContain('every Nx task an `nx:run-commands` target')
+    expect(bench).toContain('(`nx:run-commands` targets,')
     expect(bench).toContain('20m 55s (vx 78× faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })

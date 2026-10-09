@@ -636,10 +636,19 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     expect(wrong).toEqual([])
   })
 
+  // honest-benchmarks quotes the 2026-10-04 run (1,090 packages), archived beside results.json.
   it('the transposed 3,270-task rows are the recorded run, figure by figure', () => {
     const results = JSON.parse(
       readFileSync(
-        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
+        path.resolve(
+          import.meta.dir,
+          '..',
+          '..',
+          '..',
+          'packages',
+          'vx-bench',
+          'results-2026-10-04.json',
+        ),
         'utf8',
       ),
     ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
@@ -703,7 +712,15 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
   it("the cold column is overhead, never the run's total", () => {
     const results = JSON.parse(
       readFileSync(
-        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
+        path.resolve(
+          import.meta.dir,
+          '..',
+          '..',
+          '..',
+          'packages',
+          'vx-bench',
+          'results-2026-10-04.json',
+        ),
         'utf8',
       ),
     ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }

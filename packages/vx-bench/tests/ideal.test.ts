@@ -45,7 +45,7 @@ describe('listSchedule', () => {
   })
 
   it('the benchmark graph takes 3m 38s ranked and 4m 58s in ready order (Turborepo, 4m 59s)', () => {
-    // compare.ts's shape at its defaults: 100 layers of 11 packages (one at
+    // The 2026-10-04 benchmark shape: 100 layers of 11 packages (one at
     // the top), each depending on every package below it (30 deps > 11),
     // build and test 1 s, installDeps a zero-cost gate on the layer below.
     // In ready order each layer's tests run before the next layer's

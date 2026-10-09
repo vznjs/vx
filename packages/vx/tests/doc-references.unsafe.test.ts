@@ -507,58 +507,52 @@ describe('CLAUDE.md names Bun APIs core actually calls', () => {
 })
 
 /**
- * The 3,270-task table is the only table in the docs backed by a committed
- * data file (`packages/vx-bench/results.json`), and the page re-derives
- * every ratio and overhead from it BY HAND: five rows × three runners,
- * ten `(N×)` ratios, a baseline row and three measured floors. Nothing
- * held any of it, and README and patterns.md quote onward from here.
+ * The head-to-head table is the only table in the docs backed by a committed
+ * data file (`packages/vx-bench/results.json`): every cell is a runner's time
+ * over the ideal run, and README and the compare pages quote onward from it.
  *
  * Numbers, not spellings: each displayed figure is parsed back to
  * milliseconds and compared against the file within the granularity the
  * page chose to print. Re-implementing the formatter here would only
  * restate its assumptions (CLAUDE.md § Rules: a platform unit is measured,
  * never asserted) — this asks what the page CLAIMS, not how it writes it.
- * Read 2026-09-19 (item 391): every figure already agreed.
  */
 describe('benchmarks.md quotes the run results.json recorded', () => {
-  /** `3m 46s`, `34.61s`, `1.17s`, `510ms` → ms, with the step it was printed to. */
+  /** `4 min 16 s`, `18.38 s`, `891 ms` → ms, with the step it was printed to. */
   const parse = (raw: string): { ms: number; step: number } | null => {
-    let m = /^(\d+)m (\d+)s$/.exec(raw)
+    let m = /^(\d+) min (\d+) s$/.exec(raw)
     if (m !== null) return { ms: (Number(m[1]) * 60 + Number(m[2])) * 1000, step: 1000 }
-    m = /^(\d+(?:\.\d+)?)s$/.exec(raw)
+    m = /^(\d+(?:\.\d+)?) s$/.exec(raw)
     if (m !== null) {
       const decimals = (m[1]!.split('.')[1] ?? '').length
       return { ms: Number(m[1]) * 1000, step: 1000 / 10 ** decimals }
     }
-    m = /^(\d+)ms$/.exec(raw)
+    m = /^(\d+) ms$/.exec(raw)
     return m === null ? null : { ms: Number(m[1]), step: 1 }
   }
 
-  const FIELD: Record<string, string> = {
-    Cold: 'fresh',
-    'Warm**, nothing to rebuild': 'warmNoRestore',
-    'Warm**, restore outputs': 'warmRestore',
-    'CPU burned**, cold': 'freshCpu',
-    'CPU burned**, warm': 'warmNoRestoreCpu',
+  type Row = Record<string, number | string>
+  const FIELD: Record<string, (r: Row, b: Record<string, number>) => number> = {
+    'Nothing changed**': (r, b) => (r['warmNoRestore'] as number) - b['warmNoRestore']!,
+    'Nothing changed, outputs restored': (r, b) => (r['warmRestore'] as number) - b['warmRestore']!,
+    'One leaf library edited': (r, b) => (r['leafEdited'] as number) - b['leafEdited']!,
+    'One core library edited': (r, b) => (r['coreEdited'] as number) - b['coreEdited']!,
+    'Cold build**': (r, b) => (r['fresh'] as number) - b['fresh']!,
+    'Cold build: CPU the runner burns': (r, b) => (r['freshCpu'] as number) - b['freshCpu']!,
   }
 
-  it('every figure and every ratio in the 3,270-task table is the recorded one', () => {
+  it('every figure in the head-to-head table is the recorded overhead', () => {
     const doc = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
     const results = JSON.parse(
       readFileSync(path.join(repo, 'packages', 'vx-bench', 'results.json'), 'utf8'),
-    ) as {
-      packages: number
-      baseline: Record<string, number>
-      rows: Array<Record<string, number | string>>
-    }
-    const by = (name: string): Record<string, number | string> =>
-      results.rows.find((r) => r['runner'] === name) as Record<string, number | string>
-    // The table's four columns, left to right.
-    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx'] as const
+    ) as { tasks: number; baseline: Record<string, number>; rows: Row[] }
+    const by = (name: string): Row => results.rows.find((r) => r['runner'] === name)!
+    // The table's five columns, left to right.
+    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx', 'vite-task'] as const
 
-    const start = doc.indexOf('## A real monorepo: 3,270 tasks')
+    const start = doc.indexOf(`## Head to head: ${results.tasks.toLocaleString('en-US')} tasks`)
     expect(start).toBeGreaterThan(0)
-    const table = doc.slice(start, doc.indexOf('**Baseline** is the theoretical best', start))
+    const table = doc.slice(start, doc.indexOf('**The ideal run** is', start))
     const wrong: string[] = []
     let rowsChecked = 0
 
@@ -569,16 +563,10 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
         .replace(/^\||\|$/g, '')
         .split('|')
         .map((c) => c.trim())
-      const label = Object.keys(FIELD).find((k) => cells[0]!.includes(k))
+      const label = Object.keys(FIELD).find((k) => cells[0]! === `**${k.replace(/\*\*$/, '')}**`)
       if (label === undefined) continue
-      const field = FIELD[label]!
       rowsChecked += 1
-      // The cold row is the runner's overhead over the ideal schedule, never
-      // the build's total (owner, 2026-10-09 17:54).
-      const value = (runner: string): number =>
-        (by(runner)[field] as number) - (field === 'fresh' ? results.baseline['fresh']! : 0)
-      const vxMs = value('vx')
-      cells.slice(1, 5).forEach((cell, i) => {
+      cells.slice(1, 6).forEach((cell, i) => {
         const runner = runners[i]!
         const shown = parse(
           cell
@@ -586,61 +574,17 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
             .replace(/\s*\(.*$/, '')
             .trim(),
         )
-        const actual = value(runner)
+        const actual = Math.max(0, FIELD[label]!(by(runner), results.baseline))
         if (shown === null) {
-          wrong.push(`${field}/${runner}: unreadable ${cell}`)
+          wrong.push(`${label}/${runner}: unreadable ${cell}`)
           return
         }
-        // The page must show what ROUNDING the measurement to that precision
-        // gives, not merely land within one step of it: a one-step tolerance
-        // let 510ms become 511ms and still pass (item 395 caught that on this
-        // pin's sibling over the blog's copy of the same table).
         if (shown.ms !== Math.round(actual / shown.step) * shown.step) {
-          wrong.push(`${field}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
-        }
-        const ratio = /\(([\d.]+)×\)/.exec(cell)
-        if (ratio === null) return
-        const want = actual / vxMs
-        if (Math.abs(Number(ratio[1]) - want) > 0.05) {
-          wrong.push(`${field}/${runner}: page ${ratio[1]}×, file ${want.toFixed(2)}×`)
+          wrong.push(`${label}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
         }
       })
     }
-    expect(rowsChecked).toBe(5)
+    expect(rowsChecked).toBe(6)
     expect(wrong).toEqual([])
-  })
-
-  it('the baseline row and the measured floors are the recorded ones', () => {
-    const doc = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
-    const { baseline, rows, packages } = JSON.parse(
-      readFileSync(path.join(repo, 'packages', 'vx-bench', 'results.json'), 'utf8'),
-    ) as {
-      packages: number
-      baseline: Record<string, number>
-      rows: Array<Record<string, number | string>>
-    }
-    const secs = (ms: number): string => {
-      const s = Math.round(ms / 1000)
-      return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
-    }
-    // `3m 38s cold` is workBoundMs; the floors are the baseline's own warm,
-    // restore and task-shell CPU numbers.
-    expect(doc).toContain(`${secs(baseline['workBoundMs']!).replace('m 0', 'm ')} cold`)
-    expect(doc).toContain(`critical path ${secs(baseline['criticalPathMs']!).replace('m 0', 'm ')}`)
-    expect(doc).toContain(`git walk ${Math.round(baseline['warmNoRestore']!)}ms`)
-    expect(doc).toContain(`raw copy ${Math.round(baseline['warmRestore']!)}ms`)
-    expect(doc).toContain(`task shells ${(baseline['freshCpu']! / 1000).toFixed(2)}s`)
-
-    // The per-package overhead sentence: each runner's cold time over the
-    // ideal schedule, and that difference divided by the package count.
-    const overhead = (runner: string): number =>
-      (rows.find((r) => r['runner'] === runner)!['fresh'] as number) - baseline['workBoundMs']!
-    expect(doc).toContain(`is\n${(overhead('vx') / 1000).toFixed(2)}s on 3,270 tasks`)
-    expect(doc).toContain(`(${Math.round(overhead('vx') / packages)} ms per package)`)
-    expect(doc).toContain(`${(overhead('vx (no lock)') / 1000).toFixed(2)}s\nwith no lock`)
-    expect(doc).toContain(`(${Math.round(overhead('turbo') / packages)} ms per package)`)
-    expect(doc).toContain(
-      `(${Math.round(overhead('nx') / packages).toLocaleString('en-US')} ms per package)`,
-    )
   })
 })
