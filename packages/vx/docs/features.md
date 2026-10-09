@@ -133,7 +133,7 @@ config key or an environment variable is missing here.
 
 ## CI
 
-- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · no post
+- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. no post
 - **Cache scope from the ref** (`github({ cacheScope })`) — main writes trusted keys; a PR writes only its own scope. no post
 
