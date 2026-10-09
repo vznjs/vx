@@ -4,11 +4,11 @@
 //
 // Paid only when a telemetry sink exists, and only on a miss: one scan of
 // `entries` for the newest entry per task, the first time a miss asks, then
-// one primary-key read of that entry's `entry_inputs` per miss.
+// one primary-key read of that entry's `entry_inputs` row per miss.
 
 import type { Database } from 'bun:sqlite'
 import type { InputChanges } from '../graph/index.js'
-import { diffKeyComponents } from './metrics.js'
+import { diffKeyComponents, loadEntryInputs } from './metrics.js'
 import type { TaskInputComponent } from './task-hash.js'
 
 /** How many changed components a miss names; `count` says how many there were. */
@@ -37,9 +37,7 @@ export function createMissExplainer(db: Database): MissExplainer {
       )
       const prev = newest.get(taskId)
       if (prev === undefined) return undefined
-      const before = db
-        .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ?')
-        .all(prev) as TaskInputComponent[]
+      const before = loadEntryInputs(db, prev)
       // Pruned, or saved before fingerprints were kept: nothing to compare.
       if (before.length === 0) return undefined
       const { entries } = diffKeyComponents(before, components)

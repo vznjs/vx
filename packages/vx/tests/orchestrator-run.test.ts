@@ -1458,8 +1458,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         // keyed by the entry hash — reachable via runs.hash for this task.
         const rows = db
           .query(
-            `SELECT ei.kind, ei.name FROM entry_inputs ei
-             JOIN runs r ON r.hash = ei.entry_hash
+            `SELECT j.value->>0 AS kind, j.value->>1 AS name FROM entry_inputs ei
+             JOIN runs r ON r.hash = ei.entry_hash, json_each(ei.components) j
              WHERE r.project = ? AND r.task = ?`,
           )
           .all('app-rec', 'build') as Array<{ kind: string; name: string }>

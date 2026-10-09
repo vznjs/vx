@@ -254,7 +254,31 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        store's `artifacts` table, written in its rows' transaction, and
 //        every entry read joins it. The artifact bytes and the cache KEY are
 //        unchanged (CACHE_VERSION not bumped).
-export const SCHEMA_VERSION = 'v33'
+//   v34: entry_inputs holds one row per entry, its key components as one
+//        JSON array, not a row per component. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v34'
+
+/**
+ * An entry's key components as its one `entry_inputs` row (v34): JSON
+ * `[kind, name, hash]` triples in (kind, name) code-unit order, the first
+ * of a repeated (kind, name) kept, as the per-component primary key did.
+ */
+function encodeEntryInputs(
+  components: readonly Pick<TaskInputRow, 'kind' | 'name' | 'hash'>[],
+): string {
+  const byId = new Map<string, Pick<TaskInputRow, 'kind' | 'name' | 'hash'>>()
+  for (const c of components) {
+    const id = `${c.kind}\0${c.name}`
+    if (!byId.has(id)) byId.set(id, c)
+  }
+  const ids = [...byId.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  return JSON.stringify(
+    ids.map((id) => {
+      const c = byId.get(id)!
+      return [c.kind, c.name, c.hash]
+    }),
+  )
+}
 
 /** The tables a store holds: dropped from a workspace index that held them itself. */
 const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
@@ -1077,8 +1101,8 @@ export class Cache implements CacheLayer {
     this.insertEntryInput = lazyStatement(
       this.db,
       `
-      INSERT OR IGNORE INTO entry_inputs(entry_hash, kind, name, hash)
-      VALUES (?, ?, ?, ?)
+      INSERT OR IGNORE INTO entry_inputs(entry_hash, components)
+      VALUES (?, ?)
     `,
     )
     // The slices: each owns its statements over this handle and its table(s);
@@ -2400,11 +2424,9 @@ export class Cache implements CacheLayer {
         )
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
-      // re-save's rows are identical — keep the first set, skip the rest.
-      if (inputComponents !== undefined) {
-        for (const c of inputComponents) {
-          insertEntryInput.run(hash, c.kind, c.name, c.hash)
-        }
+      // re-save's row is identical — keep the first, skip the rest.
+      if (inputComponents !== undefined && inputComponents.length > 0) {
+        insertEntryInput.run(hash, encodeEntryInputs(inputComponents))
       }
     })
     const endTx = span('save: index tx')

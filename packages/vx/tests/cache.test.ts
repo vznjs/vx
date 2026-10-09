@@ -21,6 +21,9 @@ import { run } from '../src/orchestrator/index.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
+/** How many key components `entry_inputs` holds (one row per entry, v34). */
+const COMPONENT_COUNT = 'SELECT COUNT(*) AS n FROM entry_inputs, json_each(entry_inputs.components)'
+
 /** How long a hit may leave `accessed_at` unrenewed (cache.ts `ACCESS_REFRESH_MS`). */
 const REFRESH = 60 * 60 * 1000
 
@@ -3004,10 +3007,38 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       ])
       const db = cache.dbHandle()
       const rows = db
-        .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ? ORDER BY kind')
-        .all('h-save') as Array<{ kind: string; name: string; hash: string }>
-      expect(rows).toHaveLength(4)
-      expect(rows.map((r) => r.kind).sort()).toEqual(['config', 'env', 'file', 'upstream'])
+        .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
+        .all('h-save') as Array<{ components: string }>
+      // One row per entry, its components in (kind, name) order (v34).
+      expect(rows.map((r) => JSON.parse(r.components))).toEqual([
+        [
+          ['config', 'config', 'cfg-a'],
+          ['env', 'MODE', 'prod'],
+          ['file', 'src/a.ts', 'oid-a'],
+          ['upstream', 'pkg-a#build', 'up-a'],
+        ],
+      ])
+    } finally {
+      cache.close()
+    }
+  })
+
+  it('a repeated component keeps its first hash, as the per-component key did', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      await saveWithInputs(cache, 'h-dup', [
+        { kind: 'file', name: 'b.ts', hash: 'first' },
+        { kind: 'file', name: 'a.ts', hash: 'oid-a' },
+        { kind: 'file', name: 'b.ts', hash: 'second' },
+      ])
+      const row = cache
+        .dbHandle()
+        .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
+        .get('h-dup') as { components: string }
+      expect(JSON.parse(row.components)).toEqual([
+        ['file', 'a.ts', 'oid-a'],
+        ['file', 'b.ts', 'first'],
+      ])
     } finally {
       cache.close()
     }
@@ -3022,7 +3053,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'config', name: 'config', hash: 'cfg' },
         { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
       ])
-      const after1 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after1 = (db.query(COMPONENT_COUNT).get() as { n: number }).n
       expect(after1).toBe(2)
 
       // Warm: a cache hit never calls save, so it writes nothing. We
@@ -3044,7 +3075,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         ],
         invocation: invocation('warm-run'),
       })
-      const after2 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after2 = (db.query(COMPONENT_COUNT).get() as { n: number }).n
       expect(after2).toBe(after1)
 
       // And even a defensive re-save of the same hash (INSERT OR IGNORE)
@@ -3053,7 +3084,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         { kind: 'config', name: 'config', hash: 'cfg' },
         { kind: 'file', name: 'src/x.ts', hash: 'oid-x' },
       ])
-      const after3 = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number }).n
+      const after3 = (db.query(COMPONENT_COUNT).get() as { n: number }).n
       expect(after3).toBe(after1)
     } finally {
       cache.close()
@@ -3087,10 +3118,9 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
 
     const c2 = new Cache(cacheDir)
     try {
-      const n = c2
-        .dbHandle()
-        .query('SELECT COUNT(*) AS n FROM entry_inputs WHERE entry_hash = ?')
-        .get('h-persist') as { n: number }
+      const n = c2.dbHandle().query(`${COMPONENT_COUNT} WHERE entry_hash = ?`).get('h-persist') as {
+        n: number
+      }
       expect(n.n).toBe(1)
       const inv = c2.dbHandle().query('SELECT command FROM invocations WHERE run_id = ?').get(runId)
       expect(inv).not.toBeNull()

@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v33",
+    "version": "v34",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -64,11 +64,8 @@
       ")",
       "",
       "CREATE TABLE entry_inputs (",
-      "entry_hash TEXT NOT NULL,",
-      "kind       TEXT NOT NULL,",
-      "name       TEXT NOT NULL,",
-      "hash       TEXT NOT NULL,",
-      "PRIMARY KEY (entry_hash, kind, name),",
+      "entry_hash TEXT PRIMARY KEY,",
+      "components TEXT NOT NULL,",
       "FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE",
       ")",
       "",

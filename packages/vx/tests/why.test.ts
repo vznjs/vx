@@ -581,7 +581,10 @@ describe('vx why (e2e) — the exact lines', () => {
           )
           .get() as { hash: string }
       ).hash
-      db.run("INSERT INTO entry_inputs VALUES (?, 'legacy', 'x', 'ab')", [latest])
+      db.run(
+        `UPDATE entry_inputs SET components = json_insert(components, '$[#]', json_array('legacy', 'x', 'ab')) WHERE entry_hash = ?`,
+        [latest],
+      )
       db.close()
       try {
         const r = await vx(root, ['why', 'app#build'])
@@ -593,7 +596,9 @@ describe('vx why (e2e) — the exact lines', () => {
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
-        back.run("DELETE FROM entry_inputs WHERE kind = 'legacy'")
+        back.run(
+          `UPDATE entry_inputs SET components = (SELECT json_group_array(json(j.value)) FROM json_each(components) j WHERE j.value->>0 != 'legacy')`,
+        )
         back.close()
       }
     },
@@ -613,9 +618,16 @@ describe('vx why (e2e) — the exact lines', () => {
           )
           .get() as { hash: string }
       ).hash
+      const format = (
+        db
+          .query(
+            "SELECT j.value->>2 AS hash FROM entry_inputs, json_each(components) j WHERE entry_hash = ? AND j.value->>0 = 'format'",
+          )
+          .get(prev) as { hash: string }
+      ).hash
       db.run(
-        "UPDATE entry_inputs SET hash = 'vx-cache-v0' WHERE entry_hash = ? AND kind = 'format'",
-        [prev],
+        'UPDATE entry_inputs SET components = replace(components, ?, ?) WHERE entry_hash = ?',
+        [JSON.stringify(format), '"vx-cache-v0"', prev],
       )
       db.close()
       try {
@@ -628,9 +640,10 @@ describe('vx why (e2e) — the exact lines', () => {
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
-        back.run(
-          "UPDATE entry_inputs SET hash = (SELECT hash FROM entry_inputs WHERE kind = 'format' AND hash != 'vx-cache-v0' LIMIT 1) WHERE kind = 'format'",
-        )
+        back.run('UPDATE entry_inputs SET components = replace(components, ?, ?)', [
+          '"vx-cache-v0"',
+          JSON.stringify(format),
+        ])
         back.close()
       }
     },

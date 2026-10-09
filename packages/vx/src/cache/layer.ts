@@ -267,7 +267,7 @@ export interface InvocationRecord {
 }
 
 /**
- * One cache-key component row for the `entry_inputs` table — keyed by
+ * One cache-key component of an `entry_inputs` row (v34: one row per entry) — keyed by
  * the cache-entry HASH it belongs to, not a run. Written inside the
  * entry-save transaction (`writeArtifactAndIndex`) on a miss/save; a
  * cache HIT does not save, so it persists nothing (warm runs are free).

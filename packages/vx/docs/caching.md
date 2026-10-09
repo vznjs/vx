@@ -651,7 +651,7 @@ is on):
    bytes into `artifacts` (v33), or renames a large one into place and
    deletes the key's inline bytes, and upserts the `entries` row (taskId, command, exit code,
    duration, size, stdout, timestamps), the `output_files` fingerprint
-   rows, and the `entry_inputs` component rows (`INSERT OR IGNORE`).
+   rows, and the entry's one `entry_inputs` row (`INSERT OR IGNORE`).
    Concurrent readers see either no entry or a complete entry — never a
    partial one — and bytes and rows go live together: the rename waits
    for the write lock, so no other writer's rows land beside it, and a
@@ -1435,7 +1435,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v33', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v34', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs
 -- and store_meta live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1656,17 +1656,19 @@ CREATE INDEX invocations_ci      ON invocations(ci);
 -- id). Written INSIDE the entry-save transaction — only on a cache
 -- MISS, never on a hit — via INSERT OR IGNORE. A warm all-cache-hit
 -- run writes nothing here. The "why did this re-run?" diff resolves a
--- run to its task hash (runs.hash), then anti-joins two entries'
--- (kind,name,hash) rows in SQL, no app-side recompute. ON DELETE
--- CASCADE sweeps the rows when a prune drops the entry.
+-- run to its task hash (runs.hash), then joins two entries' components
+-- over (kind, name), no recompute. v34: one row per entry, the
+-- components one JSON array (a row per component cost a b-tree insert
+-- each: ~0.5 ms a save at 50 input files). ON DELETE CASCADE sweeps the
+-- row when a prune drops the entry.
 CREATE TABLE entry_inputs (
-  entry_hash TEXT NOT NULL,          -- == entries.hash / runs.hash
-  kind       TEXT NOT NULL,          -- file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin|format
-  name       TEXT NOT NULL,          -- file: workspace-rel path; env: var name; upstream: task id; …
-  hash       TEXT NOT NULL,          -- env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
-  PRIMARY KEY (entry_hash, kind, name),
+  entry_hash TEXT PRIMARY KEY,       -- == entries.hash / runs.hash
+  components TEXT NOT NULL,          -- JSON [[kind, name, hash], …] in (kind, name) code-unit order
   FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
 );
+-- kind: file|env|runtime|ws-runtime|upstream|package|config|forward|workspace|plugin|format
+-- name: file: workspace-rel path; env: var name; upstream: task id; …
+-- hash: env|runtime|ws-runtime|forward|plugin: xxh3hex(salt + value); an unset env var: 'unset'
 
 -- v32: what belongs to the entries, not to one workspace: 'value_salt',
 -- the salt entry_inputs digests are taken under, so they compare with

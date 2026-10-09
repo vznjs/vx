@@ -610,10 +610,17 @@ export interface CacheKeyDiff {
   note: string
 }
 
-function loadEntryInputs(db: Database, entryHash: string): TaskInputComponent[] {
-  return db
-    .query('SELECT kind, name, hash FROM entry_inputs WHERE entry_hash = ?')
-    .all(entryHash) as TaskInputComponent[]
+/** An entry's key components, from its one `entry_inputs` row (v34); none when it has none. */
+export function loadEntryInputs(db: Database, entryHash: string): TaskInputComponent[] {
+  const row = db
+    .query('SELECT components FROM entry_inputs WHERE entry_hash = ?')
+    .get(entryHash) as { components: string } | null
+  if (row === null) return []
+  return (JSON.parse(row.components) as [string, string, string][]).map(([kind, name, hash]) => ({
+    kind,
+    name,
+    hash,
+  }))
 }
 
 /**

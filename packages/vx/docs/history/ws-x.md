@@ -1369,3 +1369,21 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   ~900 → ~186 (the before arm drifted 474–954 run to run, the after arm
   stayed 169–216). Deferred: `auto_vacuum` (design, Out of scope);
   deleting the store's db file now loses its inline artifacts.
+
+- **X-206.** Cache-save step 4 (group commit) refuted: saves rarely
+  share an event-loop tick (275 batches of 1, 29 of 2, 1 of 3 in a real
+  run), so batching bought ~2% of save CPU against ~30 µs a save for the
+  extra turn. No code. Only an explicit batch-save API would change it.
+
+- **X-207.** `entry_inputs` holds one row per entry: its key components
+  as one JSON array of `[kind, name, hash]` in (kind, name) code-unit
+  order, the first of a repeated (kind, name) kept, as the per-component
+  primary key kept it. A row per component cost a b-tree insert each,
+  and a task with 50 input files spent ~0.3 ms a save on them; every
+  reader (`vx why`, the miss explainer) loads the whole set by entry
+  hash and diffs it app-side already. `SCHEMA_VERSION` v33 → v34. Micro
+  (Bun 1.4.2, 1,000 saves of 54 components, min of 5, three interleaved
+  pairs, before = origin/main): 498–535 → 313–379 µs a save; with no
+  components both arms ~215 µs. A cold 1,000-package run with 51 input
+  files a task: entry_inputs inserts + their commit ~1.0 s → ~0.35 s of
+  main-thread CPU (profile).

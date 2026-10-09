@@ -30,7 +30,7 @@ function keyedFiles(task: string): string[] {
     const rows = c
       .dbHandle()
       .query(
-        "SELECT i.name FROM entry_inputs i JOIN entries e ON e.hash = i.entry_hash WHERE e.project = ? AND i.kind = 'file'",
+        "SELECT j.value->>1 AS name FROM entry_inputs i JOIN entries e ON e.hash = i.entry_hash, json_each(i.components) j WHERE e.project = ? AND j.value->>0 = 'file'",
       )
       .all(task) as Array<{ name: string }>
     return rows.map((r) => r.name).sort()
