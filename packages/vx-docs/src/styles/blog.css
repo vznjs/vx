@@ -371,6 +371,14 @@
   border-color: var(--vx-accent);
 }
 
+.vx-title-in-cover {
+  /* Read by a screen reader, drawn by the cover; the link's ::after still
+     covers the card. */
+  font-size: 0 !important;
+  line-height: 0 !important;
+  margin: 0 !important;
+}
+
 .vx-card h3 {
   margin: 0.75rem 0 0;
   font: 600 1.3rem / 1.25 var(--vx-font-display);

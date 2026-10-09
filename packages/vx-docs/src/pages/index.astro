@@ -19,7 +19,7 @@ import '../styles/charts.css'
 import '../styles/features.css'
 import '../styles/blog.css'
 import { parseDuration, renderBars } from '../plugins/data-charts.ts'
-import { formatDate, posts } from '../blog/posts.js'
+import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
 import Cover from '../components/blog/Cover.astro'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
@@ -341,7 +341,7 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
                   <a class="ship-post" href={p.href}>
                     <Cover post={p} sizes="(min-width: 1100px) 300px, 100vw" />
                     <span class="ship-date">{formatDate(p.date)}</span>
-                    <span class="ship-title">{p.title}</span>
+                    <span class:list={['ship-title', { 'vx-title-in-cover': coverShowsTitle(p) }]}>{p.title}</span>
                   </a>
                 ))
               }
