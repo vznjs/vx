@@ -108,13 +108,16 @@ npm install -D @vzn/vx-mcp
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
+import type { WorkspaceConfig } from '@vzn/vx/config'
 import { mcp } from '@vzn/vx-mcp'
 
-export default defineWorkspace({
+export default {
   plugins: [mcp()],
-})
+} satisfies WorkspaceConfig
 ```
+
+If `vx init` or vx-migrate already wrote `vx.workspace.ts`, add `mcp()` to
+its `plugins` list (the same style as above).
 
 ```sh
 claude mcp add vx -- vx mcp
