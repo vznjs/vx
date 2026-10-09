@@ -1,72 +1,74 @@
 #!/usr/bin/env bun
 /**
  * Head-to-head benchmark: vx vs Turborepo vs Nx vs Vite Task (`vp run`,
- * from vite-plus) on ONE shared synthetic
- * monorepo. Writes a committed results file (bench/RESULTS.md +
- * bench/results.json) so the numbers in the docs are reproducible and can
- * be referenced from a commit.
+ * from vite-plus) on ONE shared synthetic monorepo, every runner
+ * configured identically. Writes packages/vx-bench/RESULTS.md and
+ * results.json, which the site is generated from (update-site.ts).
  *
- *   bun packages/vx-bench/compare.ts [layers=100] [perLayer=11] [reps=2]
- *   DEPS_PER_PKG=30 BUILD_SLEEP=1 CONCURRENCY=10 bun packages/vx-bench/compare.ts
+ *   bun packages/vx-bench/compare.ts [reps=3]
+ *   CONCURRENCY=10 COLD_REPS=1 CORE_REPS=1 RUNNERS=vx,turbo bun packages/vx-bench/compare.ts
  *
- * Workspace shape (matches the project owner's benchmark generator):
- * `layers` dependency layers. The last one IS `@bench/top`, a single package
- * depending on the whole layer below it, so the count is
- * `(layers - 1) * perLayer + 1` — not `layers * perLayer + 1`. Each non-bottom
- * package depends on DEPS_PER_PKG packages from the layer below
- * (deterministic, seeded). At the defaults that's 1090 packages × 3 tasks =
- * 3270 graph nodes, and `10 5 1` is 46.
+ * The workspace is shape.ts (owner's spec, 2026-10-09): 29 levels of 50
+ * libs and 100 apps, 50 terminal libs at level 15, one `e2e`
+ * project on every edge, cross-level edges and five core libs most
+ * projects use. Tasks: `installDeps` (no command, ^build), `build`, `lint`
+ * and `test` (installDeps), `publish` (build), `typecheck` (^build). Every
+ * task sleeps (build BENCH_BUILD_MS, lint ¼, test ½, publish ⅒, typecheck ½);
+ * `build` also writes 200 KB of seeded incompressible bytes and concatenates the project's
+ * 20 source files into dist/index.js. `installDeps` is the owner's
+ * `install`: a package.json `install` script would run on `bun install`.
  *
- * Three tasks per package, IDENTICAL commands across every runner:
- *   build       — `sleep N && mkdir -p dist && touch dist/index.js`  (caches dist/**)
- *   installDeps — no command, dependsOn ^build  (carries the cross-layer ordering;
- *                 vx's group task, Nx's `nx:noop`, a Turbo task with no script;
- *                 Vite Task has no command-less task, so its build and test
- *                 depend on the dependencies' builds directly)
- *   test        — `sleep N`, dependsOn installDeps  (no outputs)
- * `sleep N` (BUILD_SLEEP, default 1s) simulates real work so a warm cache
- * hit visibly skips it; set BUILD_SLEEP=0 for pure-overhead runs.
- *
- * For each runner we measure three cache states over the whole repo
- * (`build` + `test`), median of `reps`, every runner pinned to the SAME
- * concurrency and measured strictly one-at-a-time (no resource fight):
- *   fresh        — cache and outputs cleared, cold run (key derivation + exec + save)
- *   warm-no-restore — second run, cache hit, outputs intact (skip path)
- *   warm-restore — outputs deleted, cache hit, outputs restored
- *
- * Every runner runs as it would in CI (`CI=1`, so Nx's daemon is off;
- * Turbo uses none for `turbo run`), telemetry/cloud disabled;
- * vx runs as its compiled binary (the artifact users install) from a
- * `vx lock` snapshot (`--frozen`, no per-run config eval), taken once before
- * the reps; `vx (no lock)` evaluates every config per run, so the cost of
- * config eval stays visible.
+ * States, one runner at a time, every runner at the same concurrency, as in
+ * CI (`CI=1`, so Nx's daemon is off; telemetry and cloud off):
+ *   fresh         — cache and outputs cleared (COLD_REPS, default 1)
+ *   warm          — everything cached, outputs intact
+ *   restore       — every dist/ deleted, restored from cache
+ *   leaf edited   — one source file of a lib only `e2e` uses changed
+ *   core edited   — one source file of the most used core lib changed (CORE_REPS)
+ * The headline is OVERHEAD: each state minus its ideal (the tasks' own
+ * durations list-scheduled on the same workers, plus the floor of asking
+ * git what changed). vx runs as its compiled binary from a `vx lock`
+ * snapshot (`--frozen`); `vx (no lock)` evaluates every config per run.
  */
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
 import { summarize } from './ab.js'
 import { benchEnv } from './bench-env.js'
+import { listSchedule } from './ideal.js'
 import { deleteDist, missingDist } from './outputs.js'
 import { regressions } from './regress.js'
-import { prng } from './schedule-policy.js'
-import { listSchedule, type GraphNode } from './ideal.js'
-import path from 'node:path'
+import {
+  APPS,
+  BUILD_MS,
+  CORE_EDIT,
+  DEPENDS_ON,
+  LEAF_EDIT,
+  LEVELS,
+  PER_LEVEL,
+  RUN_TASKS,
+  SOURCE_FILES,
+  TERMINALS,
+  affectedBy,
+  command,
+  idealOf,
+  source,
+  workspace,
+  type TaskName,
+} from './shape.js'
 
-const LAYERS = Number(process.argv[2] ?? 100)
-const PER_LAYER = Number(process.argv[3] ?? 11)
-const REPS = Number(process.argv[4] ?? 2)
-const DEPS_PER_PKG = Number(process.env.DEPS_PER_PKG ?? 30)
+const REPS = Number(process.argv[2] ?? 3)
+const COLD_REPS = Number(process.env.COLD_REPS ?? 1)
+const CORE_REPS = Number(process.env.CORE_REPS ?? 1)
 // Every runner is pinned to the SAME max concurrency so no tool is
 // advantaged by a different default (vx defaults to CPU cores, Turbo to
-// 10, Nx to 3). Override with CONCURRENCY=<n>.
+// 10, Nx to 3).
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 10)
+const OUT = process.env.OUT ?? import.meta.dir
 const vxRoot = path.resolve(import.meta.dir, '..', '..')
-const PACKAGES = (LAYERS - 1) * PER_LAYER + 1
-
-// `sleep N` simulates real per-task work; BUILD_SLEEP=0 drops it.
-const BUILD_SLEEP = process.env.BUILD_SLEEP ?? '1'
-const sleepPrefix = BUILD_SLEEP === '0' ? '' : `sleep ${BUILD_SLEEP} && `
-const BUILD_CMD = `${sleepPrefix}mkdir -p dist && touch dist/index.js`
-const TEST_CMD = BUILD_SLEEP === '0' ? 'true' : `sleep ${BUILD_SLEEP}`
+const PROJECTS = workspace()
+const BUILT = PROJECTS.filter((p) => 'build' in p.tasks).map((p) => `packages/${p.dir}`)
+const TASKS = PROJECTS.reduce((n, p) => n + Object.keys(p.tasks).length, 0)
 
 const RUNNER_ENV = benchEnv({
   NO_COLOR: '1',
@@ -101,26 +103,13 @@ async function sh(
 
 // ---- scaffolding ----
 
-const pkgName = (layer: number, idx: number) =>
-  layer === LAYERS ? '@bench/top' : `@bench/l${layer}-${idx}`
-const pkgDirName = (layer: number, idx: number) => (layer === LAYERS ? 'top' : `l${layer}-${idx}`)
-
-function depsFor(layer: number, idx: number): Record<string, string> {
-  const deps: Record<string, string> = {}
-  if (layer <= 1) return deps
-  if (layer === LAYERS) {
-    for (let i = 1; i <= PER_LAYER; i++) deps[pkgName(LAYERS - 1, i)] = 'workspace:*'
-    return deps
-  }
-  // Seeded so dependency picks are stable across runs.
-  const rand = prng(layer * 1000 + idx)
-  const pool = Array.from({ length: PER_LAYER }, (_, i) => i + 1)
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j]!, pool[i]!]
-  }
-  for (const i of pool.slice(0, DEPS_PER_PKG)) deps[pkgName(layer - 1, i)] = 'workspace:*'
-  return deps
+const VP: Record<TaskName, string> = {
+  installDeps: 'vp-install',
+  build: 'vp-build',
+  lint: 'vp-lint',
+  test: 'vp-test',
+  publish: 'vp-publish',
+  typecheck: 'vp-typecheck',
 }
 
 async function generate(dir: string): Promise<void> {
@@ -133,151 +122,138 @@ async function generate(dir: string): Promise<void> {
     ['node_modules', 'dist', '.vx', '.turbo', '.nx', '.vx-runner', '*.tsbuildinfo'].join('\n') +
       '\n',
   )
-  // Root: a workspace Turbo, Nx, and vx all discover. `packageManager` +
-  // the install-written lockfile satisfy Turbo.
   await json('package.json', {
     name: 'bench-root',
     version: '0.0.0',
     private: true,
-    packageManager: 'bun@1.3.11',
+    packageManager: 'bun@1.4.2',
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  // NO DEFAULTS: a workspace declares its executor and cache. By absolute
-  // path into this checkout, since the tmp dir has no `@vzn/vx` in
-  // node_modules; the plugin files' own `@vzn/vx` import resolves through
-  // the checkout's node_modules (the self-link), for the binary as well.
-  // Core's fallbacks only — the arms compare runners, not plugin stacks.
+  // Core's fallbacks only: the arms compare runners, not plugin stacks.
   await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  const turboTask = (t: TaskName) => ({
+    dependsOn: [...DEPENDS_ON[t]],
+    inputs: t === 'installDeps' ? [] : ['src/**'],
+    outputs: t === 'build' ? ['dist/**'] : [],
+  })
   await json('turbo.json', {
     $schema: 'https://turborepo.com/schema.json',
-    tasks: { build: {}, installDeps: {}, test: {} },
+    tasks: Object.fromEntries(
+      (Object.keys(DEPENDS_ON) as TaskName[]).map((t) => [t, turboTask(t)]),
+    ),
   })
   await json('nx.json', {
     $schema: './node_modules/nx/schemas/nx-schema.json',
     parallel: CONCURRENCY,
-    namedInputs: { default: ['{projectRoot}/**/*'], production: ['default'] },
+    // `src` with `^src`: Nx does not fold a dependency's change into a
+    // task's hash on its own, so an edit reaches the dependents only through
+    // the `^` input (vx and Turborepo fold upstream keys).
+    namedInputs: {
+      default: ['{projectRoot}/**/*'],
+      production: ['default'],
+      src: ['{projectRoot}/src/**'],
+    },
     analytics: false,
   })
 
-  for (let layer = 1; layer <= LAYERS; layer++) {
-    const count = layer === LAYERS ? 1 : PER_LAYER
-    for (let idx = 1; idx <= count; idx++) {
-      const name = pkgName(layer, idx)
-      const rel = path.join('packages', pkgDirName(layer, idx))
-      const dirAbs = path.join(dir, rel)
-      await mkdir(path.join(dirAbs, 'src'), { recursive: true })
-      const deps = depsFor(layer, idx)
-
-      await json(path.join(rel, 'package.json'), {
-        name,
-        version: '0.0.0',
-        private: true,
-        main: 'dist/index.js',
-        scripts: { build: BUILD_CMD, test: TEST_CMD },
-        dependencies: deps,
-      })
-      // Turbo: per-package config; build/test hash everything, installDeps
-      // carries the cross-layer edge (^build).
-      await json(path.join(rel, 'turbo.json'), {
-        extends: ['//'],
-        tasks: {
-          build: { dependsOn: ['installDeps'], inputs: ['src/**'], outputs: ['dist/**'] },
-          installDeps: { dependsOn: ['^build'] },
-          test: { dependsOn: ['installDeps'], inputs: ['src/**'], outputs: [] },
-        },
-      })
-      // Nx: build and test as `nx:run-commands`, the command vx runs. Nx
-      // runs it from its own process; `nx:run-script` forks a Node per
-      // task that loads Nx first (~270 ms of CPU each, item 735).
-      // installDeps is `nx:noop`, which Nx finishes without a process, and
-      // cached: an uncached one held the 3,270-task warm run at 16.6 s
-      // against 5.9 s cached (no executor at all read the same as uncached).
-      await json(path.join(rel, 'project.json'), {
-        name,
-        $schema: '../../node_modules/nx/schemas/project-schema.json',
-        sourceRoot: `${rel}/src`,
-        projectType: 'library',
-        targets: {
-          build: {
-            executor: 'nx:run-commands',
-            options: { command: BUILD_CMD, cwd: '{projectRoot}' },
-            dependsOn: ['installDeps'],
-            inputs: ['{projectRoot}/src/**'],
-            outputs: ['{projectRoot}/dist'],
-            cache: true,
-          },
-          installDeps: {
-            executor: 'nx:noop',
-            dependsOn: ['^build'],
-            inputs: [],
-            outputs: [],
-            cache: true,
-          },
-          test: {
-            executor: 'nx:run-commands',
-            options: { command: TEST_CMD, cwd: '{projectRoot}' },
-            dependsOn: ['installDeps'],
-            inputs: ['{projectRoot}/src/**'],
-            outputs: [],
-            cache: true,
-          },
-        },
-      })
-      // Vite Task: the same commands in `vite.config.ts`, explicit inputs and
-      // outputs (no automatic file tracking). Its task names cannot repeat a
-      // package.json script (Turbo's), and `vp run` takes one task, so
-      // `vp-all` (no command) gathers both.
-      const fromDeps = { task: 'vp-build', from: 'dependencies' }
-      await writeFile(
-        path.join(dirAbs, 'vite.config.ts'),
-        `export default ${JSON.stringify(
-          {
-            run: {
-              tasks: {
-                'vp-build': {
-                  command: BUILD_CMD,
-                  dependsOn: [fromDeps],
-                  cache: { input: ['src/**'], output: ['dist/**'] },
-                },
-                'vp-test': {
-                  command: TEST_CMD,
-                  dependsOn: [fromDeps],
-                  cache: { input: ['src/**'], output: [] },
-                },
-                'vp-all': { command: [], dependsOn: ['vp-build', 'vp-test'] },
+  for (const p of PROJECTS) {
+    const rel = path.join('packages', p.dir)
+    const abs = path.join(dir, rel)
+    await mkdir(path.join(abs, 'src'), { recursive: true })
+    const tasks = Object.keys(p.tasks) as TaskName[]
+    const run = tasks.filter((t) => t !== 'installDeps')
+    const cmd = (t: TaskName) => command(p, t)
+    await json(path.join(rel, 'package.json'), {
+      name: p.name,
+      version: '0.0.0',
+      private: true,
+      main: 'dist/index.js',
+      scripts: Object.fromEntries(run.map((t) => [t, cmd(t)])),
+      dependencies: Object.fromEntries(p.deps.map((d) => [d, 'workspace:*'])),
+    })
+    // Nx: `nx:run-commands`, the command vx runs, from Nx's own process
+    // (`nx:run-script` forks a Node per task, item 735). installDeps is a
+    // cached `nx:noop`: an uncached one held the warm run at 16.6 s
+    // against 5.9 s cached.
+    await json(path.join(rel, 'project.json'), {
+      name: p.name,
+      $schema: '../../node_modules/nx/schemas/project-schema.json',
+      sourceRoot: `${rel}/src`,
+      projectType: p.kind === 'app' ? 'application' : 'library',
+      targets: Object.fromEntries(
+        tasks.map((t) => [
+          t,
+          t === 'installDeps'
+            ? { executor: 'nx:noop', dependsOn: ['^build'], inputs: [], outputs: [], cache: true }
+            : {
+                executor: 'nx:run-commands',
+                options: { command: cmd(t), cwd: '{projectRoot}' },
+                dependsOn: [...DEPENDS_ON[t]],
+                inputs: ['src', '^src'],
+                outputs: t === 'build' ? ['{projectRoot}/dist'] : [],
+                cache: true,
               },
+        ]),
+      ),
+    })
+    // Vite Task: no command-less task with a dependency of its own, so
+    // `installDeps`'s ^build moves onto the tasks that wait for it. Task
+    // names cannot repeat a package.json script, and `vp run` takes one
+    // task, so `vp-all` (no command) gathers the rest.
+    const fromDeps = { task: VP.build, from: 'dependencies' }
+    // Vite Task keys a task on its inputs alone, so they name the direct
+    // dependencies' outputs: each build output folds its dependencies' in,
+    // so an edit reaches every dependent.
+    const vpInput = [
+      'src/**',
+      ...p.deps.map((d) => ({
+        pattern: `packages/${d.slice('@bench/'.length)}/dist/index.js`,
+        base: 'workspace',
+      })),
+    ]
+    const vpDeps = (t: TaskName): unknown[] =>
+      DEPENDS_ON[t].map((s): unknown =>
+        s === '^build' || s === 'installDeps' ? fromDeps : VP[s as TaskName],
+      )
+    await writeFile(
+      path.join(abs, 'vite.config.ts'),
+      `export default ${JSON.stringify(
+        {
+          run: {
+            tasks: {
+              ...Object.fromEntries(
+                run.map((t) => [
+                  VP[t],
+                  {
+                    command: cmd(t),
+                    dependsOn: vpDeps(t),
+                    cache: { input: vpInput, output: t === 'build' ? ['dist/**'] : [] },
+                  },
+                ]),
+              ),
+              'vp-all': { command: [], dependsOn: run.map((t) => VP[t]) },
             },
           },
-          null,
-          2,
-        )}\n`,
-      )
-      // vx: same graph. installDeps is a group task (no exec) carrying ^build.
-      await writeFile(
-        path.join(dirAbs, 'vx.config.ts'),
-        `export default {
-  tasks: {
-    build: {
-      exec: { command: ${JSON.stringify(BUILD_CMD)} },
-      dependsOn: ['installDeps'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-    },
-    installDeps: { dependsOn: ['^build'] },
-    test: {
-      exec: { command: ${JSON.stringify(TEST_CMD)} },
-      dependsOn: ['installDeps'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
-    },
-  },
-}
-`,
-      )
-      await writeFile(
-        path.join(dirAbs, 'src', 'index.js'),
-        `module.exports = ${JSON.stringify(name)}\n`,
-      )
-    }
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    const vxTask = (t: TaskName): string =>
+      t === 'installDeps'
+        ? `    installDeps: { dependsOn: ['^build'] },`
+        : `    ${t}: {
+      exec: { command: ${JSON.stringify(cmd(t))} },
+      dependsOn: ${JSON.stringify(DEPENDS_ON[t])},
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ${t === 'build' ? "['dist/**']" : '[]'} } },
+    },`
+    await writeFile(
+      path.join(abs, 'vx.config.ts'),
+      `export default {\n  tasks: {\n${tasks.map(vxTask).join('\n')}\n  },\n}\n`,
+    )
+    for (let n = 0; n < SOURCE_FILES; n++)
+      await writeFile(path.join(abs, 'src', `f${String(n).padStart(2, '0')}.js`), source(p.name, n))
   }
 }
 
@@ -363,13 +339,13 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   runners.push({
     name: `vx${suffix}`,
     version: vxVer,
-    run: [...vxRun, 'run', 'build', 'test', '--all', ...conc, '--frozen'],
+    run: [...vxRun, 'run', ...RUN_TASKS, '--all', ...conc, '--frozen'],
     clear: clearVx,
   })
   runners.push({
     name: `vx (no lock)${suffix}`,
     version: vxVer,
-    run: [...vxRun, 'run', 'build', 'test', '--all', ...conc],
+    run: [...vxRun, 'run', ...RUN_TASKS, '--all', ...conc],
     clear: clearVx,
   })
 
@@ -380,7 +356,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     runners.push({
       name: 'turbo',
       version: turboV.out.trim(),
-      run: [bin('turbo'), 'run', 'build', 'test', `--concurrency=${CONCURRENCY}`],
+      run: [bin('turbo'), 'run', ...RUN_TASKS, `--concurrency=${CONCURRENCY}`],
       clear: async () => {
         await sh([bin('turbo'), 'daemon', 'stop'], dir)
         await rm(path.join(dir, '.turbo'), { recursive: true, force: true })
@@ -396,7 +372,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     runners.push({
       name: 'nx',
       version: (nxV.out.match(/Local:\s*v?([\d.]+)/)?.[1] ?? nxV.out.trim()).slice(0, 12),
-      run: [bin('nx'), 'run-many', '-t', 'build', 'test', `--parallel=${CONCURRENCY}`],
+      run: [bin('nx'), 'run-many', '-t', ...RUN_TASKS, `--parallel=${CONCURRENCY}`],
       clear: () => sh([bin('nx'), 'reset'], dir).then(() => undefined),
     })
   }
@@ -430,74 +406,164 @@ type Row = {
   fresh: number
   warmNoRestore: number
   warmRestore: number
-  /** CPU (user + system) of the invocation and the children it waited for, per state. */
+  leafEdited: number
+  coreEdited: number
+  /** CPU (user + system) of the invocation and the children it waited for. */
   freshCpu: number
   warmNoRestoreCpu: number
   warmRestoreCpu: number
-  /** One edit to the top package's source, the rest warm; absent in rows measured before it. */
-  topEdited?: number
 }
 
 // Unique per edit across every runner, so each edit is a real change.
 let edits = 0
-async function editTop(dir: string): Promise<void> {
-  await writeFile(
-    path.join(dir, 'packages', pkgDirName(LAYERS, 1), 'src', 'index.js'),
-    `module.exports = ${++edits}\n`,
-  )
+async function edit(dir: string, name: string): Promise<void> {
+  const p = PROJECTS.find((x) => x.name === name)!
+  await writeFile(path.join(dir, 'packages', p.dir, 'src', 'f00.js'), source(p.name, 0, ++edits))
+}
+
+async function timed(
+  r: Runner,
+  dir: string,
+  label: string,
+): Promise<{ ms: number; cpuMs: number }> {
+  const res = await sh(r.run, dir)
+  if (!res.ok) throw new Error(`${r.name} failed ${label}:\n${res.out.slice(-2000)}`)
+  return res
+}
+
+async function checkDist(r: Runner, dir: string, label: string): Promise<void> {
+  const missing = (await missingDist(dir)).filter((m) => BUILT.includes(m))
+  if (missing.length > 0)
+    throw new Error(`${r.name} left ${missing.length} dist/ missing ${label}, e.g. ${missing[0]}`)
 }
 
 async function measure(r: Runner, dir: string): Promise<Row> {
   const fresh: number[] = []
   const freshCpu: number[] = []
-  for (let i = 0; i < REPS; i++) {
+  for (let i = 0; i < COLD_REPS; i++) {
     await r.clear()
     await deleteDist(dir)
-    const res = await sh(r.run, dir)
-    if (!res.ok) throw new Error(`${r.name} failed:\n${res.out.slice(-2000)}`)
-    const missing = await missingDist(dir)
-    if (missing.length > 0)
-      throw new Error(`${r.name} built ${missing.length} dist/ short, e.g. ${missing[0]}`)
+    const res = await timed(r, dir, 'cold')
+    await checkDist(r, dir, 'cold')
     fresh.push(res.ms)
     freshCpu.push(res.cpuMs)
   }
-  const warmNoRestore: number[] = []
-  const warmNoRestoreCpu: number[] = []
+  const warm: number[] = []
+  const warmCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
-    const res = await sh(r.run, dir)
-    if (!res.ok) throw new Error(`${r.name} failed warm:\n${res.out.slice(-2000)}`)
-    warmNoRestore.push(res.ms)
-    warmNoRestoreCpu.push(res.cpuMs)
+    const res = await timed(r, dir, 'warm')
+    warm.push(res.ms)
+    warmCpu.push(res.cpuMs)
   }
-  const warmRestore: number[] = []
-  const warmRestoreCpu: number[] = []
+  const restore: number[] = []
+  const restoreCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     await deleteDist(dir)
-    const res = await sh(r.run, dir)
-    if (!res.ok) throw new Error(`${r.name} failed restoring:\n${res.out.slice(-2000)}`)
-    const missing = await missingDist(dir)
-    if (missing.length > 0)
-      throw new Error(`${r.name} left ${missing.length} dist/ unrestored, e.g. ${missing[0]}`)
-    warmRestore.push(res.ms)
-    warmRestoreCpu.push(res.cpuMs)
+    const res = await timed(r, dir, 'restoring')
+    await checkDist(r, dir, 'restoring')
+    restore.push(res.ms)
+    restoreCpu.push(res.cpuMs)
   }
-  const topEdited: number[] = []
+  const leaf: number[] = []
   for (let i = 0; i < REPS; i++) {
-    await editTop(dir)
-    const res = await sh(r.run, dir)
-    if (!res.ok) throw new Error(`${r.name} failed after an edit:\n${res.out.slice(-2000)}`)
-    topEdited.push(res.ms)
+    await edit(dir, LEAF_EDIT)
+    leaf.push((await timed(r, dir, 'after a leaf edit')).ms)
   }
+  const core: number[] = []
+  for (let i = 0; i < CORE_REPS; i++) {
+    await edit(dir, CORE_EDIT)
+    core.push((await timed(r, dir, 'after a core edit')).ms)
+  }
+  const med = (xs: number[]) => summarize(xs).median
   return {
     runner: r.name,
     version: r.version,
-    fresh: summarize(fresh).median,
-    warmNoRestore: summarize(warmNoRestore).median,
-    warmRestore: summarize(warmRestore).median,
-    freshCpu: summarize(freshCpu).median,
-    warmNoRestoreCpu: summarize(warmNoRestoreCpu).median,
-    warmRestoreCpu: summarize(warmRestoreCpu).median,
-    topEdited: summarize(topEdited).median,
+    fresh: med(fresh),
+    warmNoRestore: med(warm),
+    warmRestore: med(restore),
+    leafEdited: med(leaf),
+    coreEdited: med(core),
+    freshCpu: med(freshCpu),
+    warmNoRestoreCpu: med(warmCpu),
+    warmRestoreCpu: med(restoreCpu),
+  }
+}
+
+// ---- baseline: the theoretical best case, so every row shows its overhead ----
+//
+// Cold: the tasks' own durations list-scheduled (critical path first) on
+// CONCURRENCY workers along the exact graph. Warm: ONE
+// `git status --porcelain -uall` walk, the floor of asking what changed.
+// Restore: that walk plus a raw copy of every output file. An edit: the
+// walk plus the ideal schedule of the tasks the edit re-runs. CPU: the
+// tasks' own commands with the sleeps taken out, under `xargs -P`.
+type Baseline = {
+  fresh: number
+  warmNoRestore: number
+  warmRestore: number
+  leafEdited: number
+  coreEdited: number
+  freshCpu: number
+  warmNoRestoreCpu: number
+  criticalPathMs: number
+  workBoundMs: number
+  leafTasks: number
+  coreTasks: number
+}
+
+async function measureBaseline(dir: string): Promise<Baseline> {
+  const all = listSchedule(idealOf(PROJECTS), CONCURRENCY)
+  const leafSet = affectedBy(PROJECTS, LEAF_EDIT)
+  const coreSet = affectedBy(PROJECTS, CORE_EDIT)
+  const leaf = listSchedule(idealOf(PROJECTS, leafSet), CONCURRENCY)
+  const core = listSchedule(idealOf(PROJECTS, coreSet), CONCURRENCY)
+  const status = ['git', 'status', '--porcelain', '-z', '-uall']
+  const walks: Array<{ ms: number; cpuMs: number }> = []
+  for (let i = 0; i < 5; i++) walks.push(await sh(status, dir))
+  const walk = walks.sort((a, b) => a.ms - b.ms)[0]!
+  // Every output, copied back from a pristine snapshot, best of 3.
+  const snapshot = path.join(dir, '.baseline-outputs')
+  await rm(snapshot, { recursive: true, force: true })
+  for (const b of BUILT)
+    await cp(path.join(dir, b, 'dist'), path.join(snapshot, b), { recursive: true })
+  const copies: number[] = []
+  for (let i = 0; i < 3; i++) {
+    await deleteDist(dir)
+    const t0 = Bun.nanoseconds()
+    await Promise.all(
+      BUILT.map((b) => cp(path.join(snapshot, b), path.join(dir, b, 'dist'), { recursive: true })),
+    )
+    copies.push((Bun.nanoseconds() - t0) / 1e6)
+  }
+  await rm(snapshot, { recursive: true, force: true })
+  const cmds: string[] = []
+  for (const p of PROJECTS)
+    for (const t of RUN_TASKS) {
+      if (!(t in p.tasks)) continue
+      const bare = command(p, t).replace(/^sleep [\d.]+( && )?/, '') || 'true'
+      cmds.push(`cd ${path.join(dir, 'packages', p.dir)} && ${bare}`)
+    }
+  const list = path.join(dir, '.baseline-cmds.txt')
+  await writeFile(list, cmds.join('\n') + '\n')
+  const xargsCpu: number[] = []
+  for (let i = 0; i < 2; i++) {
+    const xargs = await sh(['sh', '-c', `xargs -P ${CONCURRENCY} -I{} sh -c '{}' < ${list}`], dir)
+    if (!xargs.ok) throw new Error(`baseline xargs failed:\n${xargs.out.slice(-500)}`)
+    xargsCpu.push(xargs.cpuMs)
+  }
+  await rm(list, { force: true })
+  return {
+    fresh: all.makespan,
+    warmNoRestore: walk.ms,
+    warmRestore: walk.ms + Math.min(...copies),
+    leafEdited: walk.ms + leaf.makespan,
+    coreEdited: walk.ms + core.makespan,
+    freshCpu: Math.min(...xargsCpu) + walk.cpuMs,
+    warmNoRestoreCpu: walk.cpuMs,
+    criticalPathMs: all.critical,
+    workBoundMs: all.work / CONCURRENCY,
+    leafTasks: leafSet.size,
+    coreTasks: coreSet.size,
   }
 }
 
@@ -509,253 +575,97 @@ function fmt(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`
 }
 
-function markdown(rows: Row[], baseline: Baseline): string {
-  const vx = rows.find((r) => r.runner === 'vx')
-  const speed = (
-    row: Row,
-    key: 'fresh' | 'warmNoRestore' | 'warmRestore' | 'freshCpu' | 'warmNoRestoreCpu' | 'topEdited',
-  ) => {
-    const v = vx?.[key] ?? NaN
-    const x = row[key] ?? NaN
-    if (row.runner === 'vx' || v === 0 || Number.isNaN(v) || Number.isNaN(x)) return ''
-    return ` (${(x / v).toFixed(1)}× vx)`
-  }
-  const head = `# Benchmark results — vx vs Turborepo vs Nx
+const STATES = ['warmNoRestore', 'warmRestore', 'leafEdited', 'coreEdited', 'fresh'] as const
+const LABEL: Record<(typeof STATES)[number], string> = {
+  warmNoRestore: 'Warm',
+  warmRestore: 'Restore',
+  leafEdited: 'Leaf edited',
+  coreEdited: 'Core edited',
+  fresh: 'Cold',
+}
+
+function markdown(rows: Row[], b: Baseline): string {
+  const over = (r: Row, k: (typeof STATES)[number]) => fmt(r[k] - b[k])
+  const head = `| Runner | Version | ${STATES.map((k) => `${LABEL[k]} overhead`).join(' | ')} |`
+  const rule = `| ${['---', '---', ...STATES.map(() => '---')].join(' | ')} |`
+  const overhead = rows.map(
+    (r) => `| ${r.runner} | ${r.version} | ${STATES.map((k) => over(r, k)).join(' | ')} |`,
+  )
+  // No cold totals (owner, 2026-10-09 17:54): cold shows only as overhead.
+  const WALL = STATES.filter((k) => k !== 'fresh')
+  const totals = [
+    `| Runner | ${WALL.map((k) => LABEL[k]).join(' | ')} | CPU, cold | CPU, warm |`,
+    `| ${['---', ...WALL.map(() => '---'), '---', '---'].join(' | ')} |`,
+    `| ideal | ${WALL.map((k) => fmt(b[k])).join(' | ')} | ${fmt(b.freshCpu)} | ${fmt(b.warmNoRestoreCpu)} |`,
+    ...rows.map(
+      (r) =>
+        `| ${r.runner} | ${WALL.map((k) => fmt(r[k])).join(' | ')} | ${fmt(r.freshCpu)} | ${fmt(r.warmNoRestoreCpu)} |`,
+    ),
+  ]
+  return `# Benchmark results — vx vs Turborepo vs Nx vs Vite Task
 
 <!-- Generated by \`bun packages/vx-bench/compare.ts\`. Do not edit by hand. -->
 
-- **Workspace:** ${PACKAGES} packages, ${LAYERS} layers × ${PER_LAYER}, ~${DEPS_PER_PKG} deps/package, 3 tasks (build + installDeps + test) = ${PACKAGES * 3} graph nodes.
-- **Tasks:** \`build\` = \`${BUILD_CMD}\`; \`test\` = \`${TEST_CMD}\`; \`installDeps\` runs nothing (vx's group task, Nx's \`nx:noop\`, a Turbo task with no script) — identical across all runners.
-- **Concurrency:** ${CONCURRENCY} (pinned identically for every runner).
-- **Measured:** whole-repo \`build\`+\`test\`, median of ${REPS}, one runner at a time, wall-clock of the CLI invocation.
-- **vx:** runs from a \`vx lock\` snapshot (\`--frozen\`), taken once before the reps; \`vx (no lock)\` evaluates every config on every run.
+- **Workspace:** ${PROJECTS.length.toLocaleString('en-US')} projects, ${TASKS.toLocaleString('en-US')} tasks: ${LEVELS - 1} levels × ${PER_LEVEL} libs and ${APPS} apps, ${TERMINALS} terminal libs at level 15, one \`e2e\` on every edge, five core libs ~400 projects each use (packages/vx-bench/shape.ts).
+- **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
+- **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, core edit ${CORE_REPS}, the rest median of ${REPS}.
+- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
-| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | Top edited | CPU, cold | CPU, warm |
-| ------ | ------- | ------------ | ----------------- | -------------- | ---------- | --------- | --------- |
-| baseline (ideal) | — | ${fmt(baseline.fresh)} | ${fmt(baseline.warmNoRestore)} | ${fmt(baseline.warmRestore)} | — | ${fmt(baseline.freshCpu)} | ${fmt(baseline.warmNoRestoreCpu)} |
-`
-  const body = rows
-    .map(
-      (r) =>
-        `| ${r.runner} | ${r.version} | ${fmt(r.fresh)}${speed(r, 'fresh')} | ${fmt(r.warmNoRestore)}${speed(r, 'warmNoRestore')} | ${fmt(r.warmRestore)}${speed(r, 'warmRestore')} | ${fmt(r.topEdited ?? NaN)}${speed(r, 'topEdited')} | ${fmt(r.freshCpu)}${speed(r, 'freshCpu')} | ${fmt(r.warmNoRestoreCpu)}${speed(r, 'warmNoRestoreCpu')} |`,
-    )
-    .join('\n')
-  return `${head}${body}
+## Overhead (measured minus ideal)
 
-**Cache states.** *Fresh* clears the runner's cache and every \`dist/\`, then runs cold (key
-derivation + execution + save). *Warm, no restore* re-runs with the cache
-warm and outputs intact (the steady-state dev loop). *Warm, restore*
-deletes every \`dist/\` first, so the runner restores outputs from cache.
-*Top edited* changes the top package's source once per rep with the rest
-warm: two tasks run (its \`build\` and \`test\`), every other task is a hit.
+${head}
+${rule}
+${overhead.join('\n')}
 
-**Baseline** is the theoretical best case, so each row shows its overhead:
-cold is the tasks' own durations list-scheduled on ${CONCURRENCY} workers along the
-exact dependency graph (critical path ${fmt(baseline.criticalPathMs)}, total work ÷ workers
-${fmt(baseline.workBoundMs)}); warm is ONE \`git status -uall\` walk — the floor of asking
-what changed; restore adds a raw copy of every output file; CPU is the tasks'
-own shells (one measured spawn × the task count) plus that walk.
+## Wall time (warm, restore, edits)
 
-**CPU** is user + system time of the invocation and every child it waited
-for (the tasks themselves are \`sleep\`, so this is the runner's own
-work). A daemon that outlives the invocation (Turbo's, Nx's) is not
-counted, so their CPU is a floor.
+${totals.join('\n')}
 
-Reproduce: \`bun packages/vx-bench/compare.ts ${LAYERS} ${PER_LAYER} ${REPS}\`.
+**Ideal** is the theoretical best case: cold is the tasks' own durations
+list-scheduled critical-path first on ${CONCURRENCY} workers (critical path
+${fmt(b.criticalPathMs)}, work ÷ workers ${fmt(b.workBoundMs)}); warm is one
+\`git status -uall\` walk, the floor of asking what changed; restore adds a raw
+copy of every output; an edit is that walk plus the ideal schedule of the
+tasks it re-runs (leaf: ${b.leafTasks} tasks, core: ${b.coreTasks.toLocaleString('en-US')}).
+CPU is user + system of the invocation and the children it waited for; a
+daemon that outlives the invocation (Turbo's, Nx's) is not counted.
+
+Reproduce: \`bun packages/vx-bench/compare.ts ${REPS}\`.
 `
 }
 
 // ---- main ----
 
-// ---- baseline: the theoretical best case, so every bar shows its overhead ----
-//
-// Cold: the tasks' own durations list-scheduled on CONCURRENCY workers along
-// the exact dependency graph (a greedy schedule; with uniform durations it
-// is within one task of optimal and never below the true lower bound
-// max(critical path, total work / workers)). Warm: nothing executes, but a
-// correct cached runner must still ask git what changed — ONE
-// `git status --porcelain -uall` walk is the floor, measured. Restore: that
-// walk plus a raw copy of every output file back into place, measured. CPU:
-// the tasks' own shells (one measured spawn × the task count) plus the walk.
-type Baseline = {
-  fresh: number
-  warmNoRestore: number
-  warmRestore: number
-  freshCpu: number
-  warmNoRestoreCpu: number
-  criticalPathMs: number
-  workBoundMs: number
-}
-
-function idealMakespanMs(sleepMs: number): { makespan: number; critical: number; work: number } {
-  // Nodes: per package build (sleep), installDeps (0), test (sleep).
-  // build → installDeps → ^build (deps' builds); test → installDeps.
-  const nodes: GraphNode[] = []
-  const idOf = new Map<string, number>()
-  const add = (id: string, dur: number): void => {
-    idOf.set(id, nodes.length)
-    nodes.push({ id, dur, deps: [] })
-  }
-  for (let layer = 1; layer <= LAYERS; layer++) {
-    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
-      const name = pkgName(layer, idx)
-      add(`${name}#installDeps`, 0)
-      add(`${name}#build`, sleepMs)
-      add(`${name}#test`, sleepMs)
-    }
-  }
-  const link = (from: string, to: string): void => {
-    nodes[idOf.get(to)!]!.deps.push(idOf.get(from)!)
-  }
-  for (let layer = 1; layer <= LAYERS; layer++) {
-    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
-      const name = pkgName(layer, idx)
-      link(`${name}#installDeps`, `${name}#build`)
-      link(`${name}#installDeps`, `${name}#test`)
-      for (const dep of Object.keys(depsFor(layer, idx)))
-        link(`${dep}#build`, `${name}#installDeps`)
-    }
-  }
-  return listSchedule(nodes, CONCURRENCY)
-}
-
-async function measureBaseline(dir: string): Promise<Baseline> {
-  const sleepMs = Number(BUILD_SLEEP) * 1000
-  const ideal = idealMakespanMs(sleepMs)
-  // The floor of "did anything change": one untracked walk, best of 5.
-  const status = ['git', 'status', '--porcelain', '-z', '-uall']
-  const walks: Array<{ ms: number; cpuMs: number }> = []
-  for (let i = 0; i < 5; i++) walks.push(await sh(status, dir))
-  const walk = walks.sort((a, b) => a.ms - b.ms)[0]!
-  // The floor of restoring: every output file written back from a pristine
-  // copy, best of 3 (the outputs are exactly what `build` produces).
-  const snapshot = path.join(dir, '.baseline-outputs')
-  await rm(snapshot, { recursive: true, force: true })
-  await mkdir(snapshot, { recursive: true })
-  const pkgDirs: string[] = []
-  for (let layer = 1; layer <= LAYERS; layer++) {
-    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
-      pkgDirs.push(pkgDirName(layer, idx))
-    }
-  }
-  for (const d of pkgDirs) {
-    await mkdir(path.join(snapshot, d, 'dist'), { recursive: true })
-    await writeFile(path.join(snapshot, d, 'dist', 'index.js'), '')
-  }
-  const copies: number[] = []
-  for (let i = 0; i < 3; i++) {
-    await deleteDist(dir)
-    const t0 = Bun.nanoseconds()
-    await Promise.all(
-      pkgDirs.map(async (d) => {
-        await mkdir(path.join(dir, 'packages', d, 'dist'), { recursive: true })
-        await Bun.write(
-          path.join(dir, 'packages', d, 'dist', 'index.js'),
-          Bun.file(path.join(snapshot, d, 'dist', 'index.js')),
-        )
-      }),
-    )
-    copies.push((Bun.nanoseconds() - t0) / 1e6)
-  }
-  await rm(snapshot, { recursive: true, force: true })
-  const copy = Math.min(...copies)
-  // The tasks' own CPU: the exact commands under the thinnest runner there
-  // is — `xargs -P CONCURRENCY sh -c` — in one resource-usage reading.
-  // Sampling one spawn at a time over-counted process creation (it read
-  // above vx's whole cold run); xargs's own CPU is noise, and this is the
-  // floor every runner's "CPU, cold" is measured against.
-  const cmds: string[] = []
-  for (const d of pkgDirs) {
-    const cwd = path.join(dir, 'packages', d)
-    cmds.push(`cd ${cwd} && ${BUILD_CMD}`, `cd ${cwd} && ${TEST_CMD}`)
-  }
-  const list = path.join(dir, '.baseline-cmds.txt')
-  await writeFile(list, cmds.join('\n') + '\n')
-  // Best of two: the same 3,270 shells read 33.5 s and 34.9 s back to back
-  // (2026-09-03), so one reading has ±1 s of noise — the size of a good
-  // runner's entire overhead.
-  const xargsCpu: number[] = []
-  for (let i = 0; i < 2; i++) {
-    const xargs = await sh(['sh', '-c', `xargs -P ${CONCURRENCY} -I{} sh -c '{}' < ${list}`], dir)
-    if (!xargs.ok) throw new Error(`baseline xargs failed:\n${xargs.out.slice(-500)}`)
-    xargsCpu.push(xargs.cpuMs)
-    await deleteDist(dir)
-  }
-  await rm(list, { force: true })
-  const tasksCpu = Math.min(...xargsCpu)
-  return {
-    fresh: ideal.makespan,
-    warmNoRestore: walk.ms,
-    warmRestore: walk.ms + copy,
-    freshCpu: tasksCpu + walk.cpuMs,
-    warmNoRestoreCpu: walk.cpuMs,
-    criticalPathMs: ideal.critical,
-    workBoundMs: ideal.work / CONCURRENCY,
-  }
-}
-
-const BASELINE_ONLY = process.env['BASELINE_ONLY'] === '1'
-
-// The committed run, read before this one overwrites it: a row slower than
-// its committed twin on the same workspace shape is a regression to see.
-const committed = JSON.parse(await Bun.file(path.join(import.meta.dir, 'results.json')).text()) as {
-  layers: number
-  perLayer: number
-  depsPerPkg: number
+const committed = (await Bun.file(path.join(import.meta.dir, 'results.json')).json()) as {
+  shape?: string
   concurrency: number
-  buildSleep: string
   rows: Row[]
 }
-const sameShape =
-  committed.layers === LAYERS &&
-  committed.perLayer === PER_LAYER &&
-  committed.depsPerPkg === DEPS_PER_PKG &&
-  committed.concurrency === CONCURRENCY &&
-  committed.buildSleep === BUILD_SLEEP
+const sameShape = committed.shape === 'levels-2026-10' && committed.concurrency === CONCURRENCY
 
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
-
-console.error(`scaffolding ${PACKAGES} packages × ${LAYERS} layers in ${ws} …`)
+console.error(`scaffolding ${PROJECTS.length} projects, ${TASKS} tasks in ${ws} …`)
 await generate(ws)
-
+console.error('installing turbo + nx + vite-plus into the workspace …')
+const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus', '--no-save'], ws).catch(
+  () => null,
+)
+if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus'], ws)
+let runners = await buildRunners(ws)
 let rows: Row[] = []
-let runners: Runner[] = []
-if (BASELINE_ONLY) {
-  // Recompute only the baseline against the committed rows (the full
-  // comparison is ~50 minutes; the floors take one).
-  const prior = JSON.parse(await Bun.file(path.join(import.meta.dir, 'results.json')).text()) as {
-    rows: Row[]
-  }
-  rows = prior.rows
-  await gitInit(ws)
-} else {
-  console.error('installing turbo + nx + vite-plus into the workspace …')
-  const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus', '--no-save'], ws).catch(
-    () => null,
-  )
-  if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx', 'vite-plus'], ws)
-  runners = await buildRunners(ws)
-  // RUNNERS=vx,turbo re-measures a subset and keeps the committed rows of
-  // the rest (a vx-only refresh is ~5 minutes; Nx alone is ~40).
-  const only = process.env['RUNNERS']
-    ?.split(',')
-    .map((n) => n.trim())
-    .filter(Boolean)
-  if (only && only.length > 0) {
-    runners = runners.filter((r) => only.includes(r.name))
-    const prior = JSON.parse(await Bun.file(path.join(import.meta.dir, 'results.json')).text()) as {
-      rows: Row[]
-    }
-    rows = prior.rows.filter((r) => !only.includes(r.runner))
-  }
-  await gitInit(ws)
-  console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
+const only = process.env['RUNNERS']
+  ?.split(',')
+  .map((n) => n.trim())
+  .filter(Boolean)
+if (only && only.length > 0) {
+  runners = runners.filter((r) => only.includes(r.name))
+  if (sameShape) rows = committed.rows.filter((r) => !only.includes(r.runner))
 }
+await gitInit(ws)
+console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
 
-// Runners are measured ONE AT A TIME (never concurrently) so they don't
-// fight over CPU/disk and skew each other's timings.
 for (const r of runners) {
   await quiesce(ws)
   console.error(`measuring ${r.name} …`)
@@ -770,6 +680,8 @@ for (const r of runners) {
       fresh: NaN,
       warmNoRestore: NaN,
       warmRestore: NaN,
+      leafEdited: NaN,
+      coreEdited: NaN,
       freshCpu: NaN,
       warmNoRestoreCpu: NaN,
       warmRestoreCpu: NaN,
@@ -782,18 +694,22 @@ rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
 console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
 const baseline = await measureBaseline(ws)
 const md = markdown(rows, baseline)
-await writeFile(path.join(import.meta.dir, 'RESULTS.md'), md)
+await writeFile(path.join(OUT, 'RESULTS.md'), md)
 await writeFile(
-  path.join(import.meta.dir, 'results.json'),
+  path.join(OUT, 'results.json'),
   JSON.stringify(
     {
-      layers: LAYERS,
-      perLayer: PER_LAYER,
-      packages: PACKAGES,
-      depsPerPkg: DEPS_PER_PKG,
+      shape: 'levels-2026-10',
+      levels: LEVELS,
+      perLevel: PER_LEVEL,
+      terminals: TERMINALS,
+      packages: PROJECTS.length,
+      tasks: TASKS,
+      buildMs: BUILD_MS,
       concurrency: CONCURRENCY,
       reps: REPS,
-      buildSleep: BUILD_SLEEP,
+      coldReps: COLD_REPS,
+      coreReps: CORE_REPS,
       date: new Date().toISOString(),
       machine: `${os.platform()} ${os.arch()}, ${os.cpus().length} cores`,
       rows,
@@ -803,9 +719,7 @@ await writeFile(
     2,
   ) + '\n',
 )
-
 console.error('\n' + md)
-console.error('\nwrote bench/RESULTS.md + bench/results.json')
 if (sameShape) {
   const measured = new Set(runners.map((r) => r.name))
   const slower = regressions(

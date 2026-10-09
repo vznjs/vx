@@ -280,22 +280,23 @@ describe('the landing page', () => {
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Fastest cold build and cached run.')
+    expect(text(bench)).toContain('Fastest cached run.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
     expect(bench).not.toContain('<table')
     const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
       (m) => m[1]!,
     )
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
-      'Cold build: total time',
-      'Cold build: CPU burned',
-      'Fully cached run (restored)',
-      'Fully cached run (up-to-date)',
-      'Secondary: time the runner adds to a cold build',
+      'Nothing changed',
+      'Nothing changed, outputs restored',
+      'One leaf library edited',
+      'One core library edited',
+      'Cold build',
+      'Cold build: CPU the runner burns',
     ])
-    // Total cold time leads; the time a runner adds is a labelled last row
-    // with no multiple (owner, 2026-10-09: it read 34× where the build is 1.36×).
-    for (const [i, f] of figures.entries()) {
+    // Every chart is the time a runner adds over the ideal run, never a
+    // total (owner, 2026-10-09: "the overhead is what matters").
+    for (const f of figures) {
       const bars = [
         ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
       ]
@@ -306,22 +307,18 @@ describe('the landing page', () => {
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
-      if (i === figures.length - 1) {
-        expect(notes).toEqual([undefined, undefined, undefined, undefined])
-        continue
-      }
       expect(
         notes.slice(1).filter((n) => !/^vx (?:[\d.]+×|\d+%) (?:faster|slower)$/.test(n ?? '')),
       ).toEqual([])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'vx N% or N× faster: that tool takes N% longer or N times as long as vx.',
+      'Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.',
     )
     // The workload sits under every bench chart (owner, 2026-10-09).
     expect(
       text(/<p class="bench-formula bench-workload">([\s\S]*?)<\/p>/.exec(bench)![1]!),
     ).toMatch(
-      /^Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks .* real repos with uneven task times will differ\.$/,
+      /^Benchmark workload: a synthetic monorepo of [\d,]+ projects and [\d,]+ tasks .* real repos with uneven task times will differ\.$/,
     )
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
@@ -338,16 +335,17 @@ describe('the landing page', () => {
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
-      'faster cold build than Turborepo',
-      'less CPU burned on a cold build than Turborepo',
-      'faster fully cached run than Nx',
+      'faster cached run than Nx',
+      'less cold build overhead than Turborepo',
+      'less CPU burned than Turborepo',
     ])
     const bench = section(html, 'bench')
     const notes = [
       ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
     ].map((m) => m[1]!)
-    // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[9]!])
+    // The "faster" notes in chart order; the leaf row's Turborepo note and the
+    // core, cold and CPU rows' Vite Task notes read "slower".
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[1]!, notes[10]!, notes[12]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.

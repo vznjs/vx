@@ -254,7 +254,7 @@ under the old harness read Nx at 27.21 s cold and 1m 2s of CPU.
 
 The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
-point — the committed `packages/vx-bench/RESULTS.md` is the 3,270-task run below):
+point — the committed `packages/vx-bench/RESULTS.md` is § Head to head):
 
 | Runner      | Fresh (cold)          | Warm (no restore)       | Warm (restore)          |
 | ----------- | --------------------- | ----------------------- | ----------------------- |
@@ -334,8 +334,8 @@ The npm share grows with the graph. At 1,090 packages (3,270 tasks,
 `compare.ts 100 11`, same box, one cold run each) Nx took 20m 39s and
 76 min of CPU with npm, and 7m 22s and 23 min of CPU with bun: npm was
 two thirds of the old harness's Nx number there, which is the run the
-site quoted (34m 44s cold, on the macOS machine). § A real monorepo
-is now this box's run with `nx:run-commands`. The whole 3,270-task shape
+site quoted (34m 44s cold, on the macOS machine). § Earlier shape
+is this box's run with `nx:run-commands`. The whole 3,270-task shape
 on this box with `nx:run-script` and bun (2026-09-25, after items 744, 753 and
 754, median of 1; ideal schedule 3m 38s):
 
@@ -377,7 +377,69 @@ measured 4m 59s and 3m 38s ranked (`packages/vx-bench/tests/ideal.test.ts`).
 No `turbo.json` key changes the order. vx ranks ready tasks by remaining
 critical path, Nx by how many tasks wait on each.
 
-## A real monorepo: 3,270 tasks, 100 layers (2026-10-04)
+## Head to head: 9,603 tasks, 30 levels (2026-10-09)
+
+The shape (owner's spec, 2026-10-09): 29 levels of 50 libraries and a
+last level of 100 apps; 50 more libraries at level 15 that nothing depends on;
+one `e2e` project depending on every app and on those 50. Every project depends
+on 2–5 others in the five levels below, and five core libraries at level 1 are
+each used by about a quarter of the projects. 1,601 projects, 20 source files each.
+Tasks: `installDeps` (no command, after the dependencies' `build`), `build`,
+`lint` and `test` (after `installDeps`), `publish` (after `build`) and
+`typecheck` (after the dependencies' `build`); `e2e` has `lint` and `test`.
+9,603 task nodes. Each sleeps in the same ratios: build 1 s, test and
+typecheck 0.5 s, lint 0.25 s, publish 0.1 s, long enough that the tasks, not
+any tool's own per-task work, set the pace. `build` writes 200 KB of seeded
+incompressible bytes plus a file that folds its dependencies' outputs, so an
+edit reaches every output downstream in every tool.
+
+Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
+config: Turborepo 2.11.7 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
+`^` inputs), Vite Task (`vp run`, vite-plus 1.1.0, tasks in each `vite.config.ts`).
+vx runs from a `vx lock` snapshot (`--frozen`), as a CI pipeline runs it;
+_vx, no lock_ evaluates every config per run. This machine: linux x64, 4 cores.
+`bun packages/vx-bench/compare.ts 3`; the committed
+`packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
+
+**Time each tool adds over the ideal run:**
+
+|                                       | vx          | vx, no lock | Turborepo                  | Nx                          | Vite Task                |
+| ------------------------------------- | ----------- | ----------- | -------------------------- | --------------------------- | ------------------------ |
+| **Nothing changed**                   | **958 ms**  | 982 ms      | 1.05 s (vx 10% faster)     | 25.96 s (vx 27× faster)     | 12.24 s (vx 13× faster)  |
+| **Nothing changed, outputs restored** | **1.70 s**  | 1.78 s      | 1.76 s (vx 4% faster)      | 25.21 s (vx 15× faster)     | 11.97 s (vx 7.1× faster) |
+| **One leaf library edited**           | **899 ms**  | 1.06 s      | 777 ms (vx 16% slower)     | 27.00 s (vx 30× faster)     | 10.63 s (vx 12× faster)  |
+| **One core library edited**           | **7.53 s**  | 7.59 s      | 8.64 s (vx 15% faster)     | 1 min 16 s (vx 10× faster)  | 6.01 s (vx 25% slower)   |
+| **Cold build**                        | **8.99 s**  | 8.38 s      | 10.06 s (vx 12% faster)    | 1 min 13 s (vx 8.1× faster) | 4.50 s (vx 100% slower)  |
+| **Cold build: CPU the runner burns**  | **46.70 s** | 46.18 s     | 1 min 11 s (vx 51% faster) | 6 min 13 s (vx 8× faster)   | 30.60 s (vx 53% slower)  |
+
+Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.
+
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+
+**The ideal run** is the theoretical best case, so every row is overhead.
+Nothing changed: one `git status -uall` walk (59 ms), the floor of asking what changed.
+Outputs restored: that walk plus a raw copy of every output (408 ms).
+An edit: the walk plus the tasks it re-runs, list-scheduled on 10 workers
+(leaf: 8 tasks, 1.56 s; core: 8,912 tasks, 5 min 50 s).
+Cold: every task list-scheduled critical-path first (critical path
+30.50 s, work ÷ workers 6 min 16 s).
+**CPU** is user + system of the invocation and the children it waited for,
+less what the task commands themselves burn under `xargs -P 10`
+(27.74 s); a daemon that outlives the invocation (Turborepo's, Nx's)
+is not counted, so theirs is a floor.
+
+> Methodology note: a synthetic graph with `sleep`-based tasks isolates
+> _runner_ overhead from real compilation. All four runners are
+> configured **identically**: same commands, the same `src/**` inputs and
+> `dist/**` outputs, the same concurrency, and each sees a dependency's
+> change (Turborepo and vx fold upstream keys; Nx through `^` inputs;
+> Vite Task through each dependency's output as an input).
+
+## Earlier shape: 3,270 tasks, 100 layers (2026-10-04)
+
+The head-to-head before the 2026-10-09 shape, kept because older posts quote it;
+its data is `packages/vx-bench/results-2026-10-04.json`. The harness that made it
+is gone with that shape.
 
 The shape that actually stresses a task runner: **100 dependency layers**,
 ~11 packages per layer, ~30 deps per package, three tasks each
@@ -389,7 +451,6 @@ Vite Task (`vp run`, vite-plus 1.0.0), its tasks in each package's `vite.config.
 vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
 as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
 config per run.
-The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
 
 |                                 | vx                                                       | vx, no lock | Turborepo              | Nx                     | Vite Task              |
 | ------------------------------- | -------------------------------------------------------- | ----------- | ---------------------- | ---------------------- | ---------------------- |
@@ -438,28 +499,25 @@ is a floor.
 > cold wall time depends on how many cores the runners' overhead competes
 > with the tasks for, which is why the CPU row is the one that travels.
 
-## Reproducible head-to-head (vx vs Turborepo vs Nx)
+## Reproducible head-to-head (vx vs Turborepo vs Nx vs Vite Task)
 
-`packages/vx-bench/compare.ts` scaffolds **one** shared monorepo matching the shape
-above — `layers` × `perLayer` packages, ~30 deps each, three tasks
-(`build` + `installDeps` + `test`) with the **identical** shell command,
-`src/**` inputs, and `dist/**` outputs for every runner — then runs vx,
-Turbo, and Nx across three cache states, then times one edit to the top
-package (its `build` and `test` run, every other task hits). Fairness is deliberate: vx runs
+`packages/vx-bench/compare.ts` scaffolds **one** shared monorepo, the shape in
+§ Head to head (`packages/vx-bench/shape.ts`), with the **identical** shell
+commands, `src/**` inputs and `dist/**` outputs for every runner, then times
+each runner through five states: cold, nothing changed, outputs restored, one
+leaf library edited and one core library edited. Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
 `vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
 **every runner is pinned to the same concurrency**; and runners are
 measured **strictly one at a time**, daemons stopped between them, so they
-never fight for CPU. `build`/`test` `sleep 1 s` so a warm hit visibly
-skips the work.
+never fight for CPU.
 
 ```bash
-bun packages/vx-bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
-bun packages/vx-bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
-BASELINE_ONLY=1 bun packages/vx-bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
-bun packages/vx-bench/update-site.ts             # rewrite the landing page, the README's bench sentence and chart, and this doc's stress section from results.json (--check to verify)
-BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure framework overhead
+bun packages/vx-bench/compare.ts                 # the full matrix, 3 reps (slow)
+BENCH_BUILD_MS=0 bun packages/vx-bench/compare.ts 1   # zero-length tasks: each tool's own cost per task
+RUNNERS=vx,turbo bun packages/vx-bench/compare.ts     # a subset of runners
+bun packages/vx-bench/update-site.ts             # rewrite the landing page, README, compare pages and this doc's head-to-head section from results.json (--check to verify)
 ```
 
 It writes [`packages/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/packages/vx-bench/RESULTS.md)

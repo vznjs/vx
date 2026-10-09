@@ -1480,3 +1480,12 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   (bound 10.5). On vx's own CI job one 194 s suite is the wall, so the
   file changed nothing there (194.07 vs 194.60 s). Numbers in the
   `ci-timings-file` post.
+- **X-220** New head-to-head shape (owner's spec, 2026-10-09):
+  `packages/vx-bench/shape.ts`, 1,601 projects and 9,603 tasks in 30
+  levels, five core libs, a leaf and a core edit, build 1 s and owner's
+  ratios. The site shows only time over the ideal run (no cold totals).
+  Nx needs `^` inputs and Vite Task each dependency's output as an input,
+  or a core edit re-ran nothing downstream there. vx wins every row vs
+  Nx and all but the leaf edit vs Turborepo (899 vs 777 ms); Vite Task
+  adds less cold (4.50 vs 8.99 s), on a core edit and in CPU. The
+  2026-10-04 run is archived as `results-2026-10-04.json`.
