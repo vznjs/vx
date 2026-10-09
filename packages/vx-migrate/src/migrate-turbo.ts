@@ -23,6 +23,7 @@ import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './t
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 import { spelledNames } from './spelled-env.js'
+import { sealsConfig } from './sealed-tsconfig.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
 const MANIFEST_IMPORT = "import pkg from './package.json' with { type: 'json' }"
@@ -67,6 +68,11 @@ export async function migrateTurbo(
 
   const shared = hoistTaskEnv(mapping.projects)
   const probes = nameProbes(mapping.projects)
+  const { inputs, env, pass } = mapping.globals
+  const decls = presetDeclarations(inputs, env, pass, shared.lists, probes.named)
+  // Written unless every config that uses it declares its values itself.
+  let imported = false
+  let anySealed = false
   const projects: GeneratedProject[] = mapping.projects.map((p) => {
     const used = new Set<string>([
       ...(shared.usedBy.get(p.name) ?? []),
@@ -74,29 +80,27 @@ export async function migrateTurbo(
     ])
     for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
+    const sealed = used.size > 0 && sealsConfig(path.resolve(root, p.dir), `vx.config.${format}`)
+    if (used.size > 0 && !sealed) imported = true
+    if (sealed) anySealed = true
     return {
       name: p.name,
       dir: p.dir,
       importLines: [
         ...(readsManifest ? [MANIFEST_IMPORT] : []),
-        ...presetImportLines(used, root, p.dir, format),
+        ...(sealed
+          ? decls.filter(([name]) => used.has(name)).map(([, line]) => line)
+          : presetImportLines(used, root, p.dir, format)),
       ],
       tasks: p.tasks.map(({ name, todos, task }) => ({ name, todos, task })),
     }
   })
 
-  const { inputs, env, pass } = mapping.globals
   const extraFiles: MigrationPlan['extraFiles'] = []
-  if (
-    inputs.length > 0 ||
-    env.length > 0 ||
-    pass.length > 0 ||
-    shared.lists.length > 0 ||
-    probes.named.length > 0
-  ) {
+  if (decls.length > 0 && (imported || !anySealed)) {
     extraFiles.push({
       relPath: presetFile(format),
-      contents: renderPreset(inputs, env, pass, shared.lists, probes.named),
+      contents: [...decls.map(([, line]) => `export ${line}`), ''].join('\n'),
     })
   }
 
@@ -303,23 +307,24 @@ function nameProbes(projects: readonly TurboMappedProject[]): {
   return { named: named.sort((a, b) => order.indexOf(a) - order.indexOf(b)), usedBy }
 }
 
-function renderPreset(
+/** Each preset value as `[name, 'const name = …']`, in the preset's order. */
+function presetDeclarations(
   inputs: string[],
   env: string[],
   pass: string[],
   shared: readonly SharedList[],
   probes: readonly Probe[],
-): string {
+): [string, string][] {
   // Escape each entry via the shared `quote()` — a turbo.json global (a file
   // glob, or an env name a user hand-wrote) may contain a `'`/`\`/newline that
   // would otherwise splice into a malformed, unloadable `vx-preset.ts`.
   const arr = (xs: string[]): string => `[${xs.map(quote).join(', ')}]`
-  const lines: string[] = []
-  if (inputs.length > 0) lines.push(`export const globalInputs = ${arr(inputs)}`)
-  if (env.length > 0) lines.push(`export const globalEnvInputs = ${arr(env)}`)
-  if (pass.length > 0) lines.push(`export const globalPassThroughEnv = ${arr(pass)}`)
-  for (const l of shared) lines.push(`export const ${l.name} = ${arr([...l.values])}`)
-  for (const probe of probes) lines.push(`export const ${probe.name} = ${quote(probe.command)}`)
-  lines.push('')
-  return lines.join('\n')
+  const out: [string, string][] = []
+  const add = (name: string, value: string) => out.push([name, `const ${name} = ${value}`])
+  if (inputs.length > 0) add('globalInputs', arr(inputs))
+  if (env.length > 0) add('globalEnvInputs', arr(env))
+  if (pass.length > 0) add('globalPassThroughEnv', arr(pass))
+  for (const l of shared) add(l.name, arr([...l.values]))
+  for (const probe of probes) add(probe.name, quote(probe.command))
+  return out
 }

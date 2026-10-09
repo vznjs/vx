@@ -199,3 +199,8 @@ directions; the link;`vx docs VX_E_USAGE` alone).
   the diff was taken against: trial 2's bare `--affected` guessed
   `HEAD~1`, whose commit edited the root `package.json`, and a reason
   with no file read as wrong. Rows: `tests/affected-dry-reasons.test.ts`.
+- **DX-34** vx-migrate: a package whose `tsconfig.json` is a composite
+  project (or sets `rootDir`) and takes in its config declares the preset
+  values it uses instead of importing the root `vx-preset`: withastro/astro's
+  `scripts/` build failed on that import (TS6059, TS6307; Growth, 0.0.633).
+  Rows: `vx-migrate/tests/migrate-turbo-sealed-tsconfig.test.ts`.
