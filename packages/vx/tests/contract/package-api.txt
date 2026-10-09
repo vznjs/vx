@@ -204,6 +204,8 @@ export function buildPackageGraph(
   projects: ProjectMeta[],
   taskEdges?: ReadonlyMap<string, readonly string[]>,
 ): PackageGraph
+== function cacheKeyDiff (src/orchestrator/metrics.ts)
+export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff
 == function clampInt (src/util/num.ts)
 export function clampInt(n: number, min: number, max: number): number
 == function collectInfo (src/orchestrator/doctor.ts)
@@ -320,6 +322,13 @@ export function refuseUnknownOptions<T>(
 ): void
 == function resolveRunId (src/orchestrator/run-id.ts)
 export function resolveRunId(db: Database, raw: string, verb: string): string | null
+== function rootCauses (src/orchestrator/metrics.ts)
+export function rootCauses(
+  db: Database,
+  runId: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+): RootCause[]
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
 == function runFailures (src/orchestrator/run-failures.ts)
@@ -414,6 +423,16 @@ export interface CacheInputs {
   tasks?: readonly string[]
   runtime?: readonly string[]
   workspaceRuntime?: readonly string[]
+}
+== type CacheKeyDiff (src/orchestrator/metrics.ts)
+export interface CacheKeyDiff {
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  entries: InputDiffEntry[]
+  unchangedCount: number
+  note: string
 }
 == type CacheKeyInput (src/cache/layer.ts)
 export interface CacheKeyInput {
@@ -789,6 +808,14 @@ export interface IngestMeta {
 export interface InputChanges {
   count: number
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
+}
+== type InputDiffEntry (src/orchestrator/metrics.ts)
+export interface InputDiffEntry {
+  kind: string
+  name: string
+  change: 'added' | 'removed' | 'changed'
+  before: string | null
+  after: string | null
 }
 == type InputFile (src/exec/executor.ts)
 export interface InputFile {
@@ -1177,6 +1204,11 @@ export interface ResolvedSandboxConfig {
     systemInfo?: readonly string[]
     network?: readonly string[]
   }
+}
+== type RootCause (src/orchestrator/metrics.ts)
+export interface RootCause {
+  chain: string[]
+  entries: CacheKeyDiff['entries']
 }
 == type RunContext (src/orchestrator/summary.ts)
 export interface RunContext {

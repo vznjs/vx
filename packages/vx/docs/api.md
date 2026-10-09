@@ -212,6 +212,46 @@ export interface CacheInputs {
 }
 ```
 
+## `cacheKeyDiff`
+
+function · `src/orchestrator/metrics.ts`
+
+The moat: name the exact cache-key components (files / env / runtime /
+upstream …) that differ between this run of a task and its immediately-
+previous run. Resolves each run to its task hash via `runs.hash`, then
+full-outer-joins the two runs' `entry_inputs` rows (keyed by the entry
+hash) over `(kind, name)`:
+
+- present in both with a different hash → `changed`
+- only in this run → `added`
+- only in the previous run → `removed`
+- equal → counted as unchanged
+
+Pure SQL + an app-side set join (`diffKeyComponents`) — no config
+re-evaluation, no re-hash.
+Always returns a value (never throws); `found:false` when the run/task pair
+has no row, `entries:[]` for the first run of a task.
+
+```ts
+export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff
+```
+
+## `CacheKeyDiff`
+
+type · `src/orchestrator/metrics.ts`
+
+```ts
+export interface CacheKeyDiff {
+  runId: string
+  taskId: string
+  found: boolean
+  previousRunId: string | null
+  entries: InputDiffEntry[]
+  unchangedCount: number
+  note: string
+}
+```
+
 ## `CacheLayer`
 
 type · `src/cache/layer.ts`
@@ -1812,6 +1852,34 @@ is refused with those runs, since picking one would replay the wrong run.
 
 ```ts
 export function resolveRunId(db: Database, raw: string, verb: string): string | null
+```
+
+## `RootCause`
+
+type · `src/orchestrator/metrics.ts`
+
+```ts
+export interface RootCause {
+  chain: string[]
+  entries: CacheKeyDiff['entries']
+}
+```
+
+## `rootCauses`
+
+function · `src/orchestrator/metrics.ts`
+
+The tasks under `taskId`'s moved upstreams whose OWN key components
+moved in the same run, each with the chain that carried it up. A task
+visited once is not walked again (a diamond names its root once).
+
+```ts
+export function rootCauses(
+  db: Database,
+  runId: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+): RootCause[]
 ```
 
 ## `run`

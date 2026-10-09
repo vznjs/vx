@@ -92,3 +92,8 @@ and log output reads better. Each must cost the warm path nothing.
   `predicted` gains `criticalPath`, the would-run tasks with history
   on the `wallMs` chain. Rows: `run-artifacts.test.ts` › a hit's
   stored usage; `plan-predict.test.ts` › time prediction.
+- **DX-14.** MCP `whyDidThisRerun` answers what `vx why --format json`
+  does: `diff` and `roots` beside the verdict. `rootCauses` moved from
+  `cli/why.ts` to `orchestrator/metrics.ts` so both read one walk;
+  the façade gains `cacheKeyDiff` and `rootCauses`. Row:
+  vx-mcp `why-parity.test.ts`.

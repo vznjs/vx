@@ -128,6 +128,7 @@ describe('package boundaries', () => {
       'VERSION',
       'applyMigration',
       'buildPackageGraph',
+      'cacheKeyDiff',
       'clampInt',
       'collectInfo',
       'definePlugin',
@@ -175,6 +176,7 @@ describe('package boundaries', () => {
       // refuses an unknown config field.
       'refuseUnknownOptions',
       'resolveRunId',
+      'rootCauses',
       'run',
       'runFailures',
       'splitTaskId',

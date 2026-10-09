@@ -157,6 +157,7 @@ export {
   latestRunId,
   listInvocations,
   listRuns,
+  rootCauses,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
 export { runFailures, type RunFailures, type TaskFailure } from './run-failures.js'
@@ -165,6 +166,7 @@ export { resolveRunId, shortRunId } from './run-id.js'
 export type {
   CacheEntryRow,
   CacheKeyDiff,
+  RootCause,
   CacheKeyExplanation,
   InputDiffEntry,
   InvocationDetail,

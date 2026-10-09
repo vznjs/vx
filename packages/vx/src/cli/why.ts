@@ -9,12 +9,11 @@ import path from 'node:path'
 import { Cache } from '../cache/index.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
-import type { Database } from 'bun:sqlite'
 import {
-  type CacheKeyDiff,
   cacheKeyDiff,
   explainCacheKeyQuery as explainCacheKey,
   latestRunId,
+  rootCauses,
   whyDidThisRerunQuery as whyDidThisRerun,
   resolveRunId,
 } from '../orchestrator/index.js'
@@ -344,38 +343,3 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 }
 
 const ROOTS_SHOWN = 5
-
-interface RootCause {
-  /** From the asked task down to the one whose own inputs moved. */
-  chain: string[]
-  entries: CacheKeyDiff['entries']
-}
-
-/**
- * The tasks under `taskId`'s moved upstreams whose OWN key components
- * moved in the same run, each with the chain that carried it up. A task
- * visited once is not walked again (a diamond names its root once).
- */
-function rootCauses(
-  db: Database,
-  runId: string,
-  taskId: string,
-  entries: CacheKeyDiff['entries'],
-): RootCause[] {
-  const roots: RootCause[] = []
-  const seen = new Set([taskId])
-  const walk = (chain: string[], moved: CacheKeyDiff['entries']): void => {
-    for (const e of moved) {
-      if (e.kind !== 'upstream' || seen.has(e.name)) continue
-      seen.add(e.name)
-      const next = [...chain, e.name]
-      const d = cacheKeyDiff(db, runId, e.name)
-      if (!d.found) continue
-      const own = d.entries.filter((x) => x.kind !== 'upstream')
-      if (own.length > 0) roots.push({ chain: next, entries: own })
-      walk(next, d.entries)
-    }
-  }
-  walk([taskId], entries)
-  return roots
-}
