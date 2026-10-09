@@ -198,7 +198,7 @@ secret values: a name-based match would refuse public `*_KEY` values too.
 
 Release binaries carry a build-provenance attestation
 (`gh attestation verify vx-<target> --repo vznjs/vx`); `vx upgrade`
-checks each download's SHA-256 before it replaces anything, which proves
+checks each download's SHA-256 before it replaces anything and stages it in a fresh directory, never a name another user could plant a link at, which proves
 the bytes arrived intact, not who built them: the digest comes from the
 release that serves the asset, and no signature is checked (owner,
 2026-10-03: no release signing key for now); npm packages
