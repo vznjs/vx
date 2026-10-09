@@ -76,3 +76,9 @@ and log output reads better. Each must cost the warm path nothing.
   `package`, `named`, `selected`. Gathered only when `planRun` asks
   (`AffectedExplain`), so a run pays nothing. Rows:
   `affected-dry-reasons.test.ts`.
+- **DX-11.** An agent skill ships in `@vzn/vx`: `skills/vx/SKILL.md`
+  teaches run, `--affected --dry=json` reasons, `vx last --failed
+--format json`, `vx why`, `vx info` and the `vx mcp` tools. The
+  agents guide says how to install it (copy into `.claude/skills/vx/`).
+  `agent-skill.unsafe.test.ts` holds its commands to the verbs and
+  flags vx accepts and its MCP list to `@vzn/vx-mcp`'s tools.

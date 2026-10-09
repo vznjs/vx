@@ -4,6 +4,14 @@ config/index.ts
 index.ts
 launcher.cjs
 package.json
+schemas/cache.json
+schemas/info.json
+schemas/last.json
+schemas/plan.json
+schemas/show.json
+schemas/summary.json
+schemas/why.json
+skills/vx/SKILL.md
 src/bin.ts
 src/cache/archive.ts
 src/cache/cache.ts
