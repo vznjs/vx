@@ -341,9 +341,9 @@ describe('the landing page', () => {
     const notes = [
       ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
     ].map((m) => m[1]!)
-    // The "faster" notes in chart order; the cold and CPU rows' Vite Task
-    // notes read "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[1]!, notes[6]!, notes[8]!])
+    // The "faster" notes in chart order; Turborepo's two cached rows and
+    // Vite Task's CPU row read "slower".
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[4]!, notes[7]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.
