@@ -135,3 +135,8 @@ and log output reads better. Each must cost the warm path nothing.
   change. It now diffs against the last run that saved an entry and
   names the file the fix touched. Row: `metrics.test.ts` "diffs against
   the last run that saved an entry".
+
+- **DX-22** MCP `getConfig` (roadmap DX #3, MCP parity): `vx show`'s
+  JSON answer through MCP, so an agent reads what a task
+  declares (inputs, outputs, env, sandbox) before changing it. Rows:
+  `vx-mcp/tests/config.test.ts`.
