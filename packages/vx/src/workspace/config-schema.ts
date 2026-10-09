@@ -56,8 +56,17 @@ const WORKSPACE_FIELDS = new Set([
   'affectedBase',
   'cacheScope',
   'rules',
+  'schedule',
   'plugins',
 ])
+
+type Schedule = NonNullable<WorkspaceConfig['schedule']>
+const SCHEDULES = {
+  'most-work': true,
+  'critical-path': true,
+  'direct-dependents': true,
+  'ready-order': true,
+} satisfies Record<Schedule, true>
 
 const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
 
@@ -184,6 +193,13 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
   if (config.rules !== undefined) validateRules(config.rules, configPath)
+  if (config.schedule !== undefined && !Object.hasOwn(SCHEDULES, config.schedule)) {
+    throw new UserError(
+      `${configPath}: \`schedule\` must be one of ${Object.keys(SCHEDULES)
+        .map((k) => `'${k}'`)
+        .join(', ')}`,
+    )
+  }
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)

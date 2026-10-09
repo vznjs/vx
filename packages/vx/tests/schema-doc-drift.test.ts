@@ -667,7 +667,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
     expect(message).toContain(
-      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, plugins, rules, timeout)',
+      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, plugins, rules, schedule, timeout)',
     )
   })
 })

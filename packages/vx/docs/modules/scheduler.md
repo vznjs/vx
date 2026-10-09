@@ -87,6 +87,8 @@ export interface ScheduleOptions {
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
+  /** The baseline ranking under `priorities`: `schedule` in vx.workspace.ts. */
+  strategy?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
   /** Pool for tasks placed on an executor with its own capacity; undefined = the local pool. */

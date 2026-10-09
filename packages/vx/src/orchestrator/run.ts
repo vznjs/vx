@@ -1165,6 +1165,10 @@ async function runOnBus(
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),
+      // The baseline under them; `most-work` when the workspace names none.
+      ...(prepared.workspaceConfig?.schedule !== undefined
+        ? { strategy: prepared.workspaceConfig.schedule }
+        : {}),
       // Local short-circuit: confirmed stable local hits the scheduler
       // runs ahead of their deps as low-priority worker-slot backfill.
       // Empty when the short-circuit didn't fire → byte-identical.

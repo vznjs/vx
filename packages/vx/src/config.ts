@@ -47,6 +47,15 @@ export interface WorkspaceConfig {
    */
   cacheScope?: string
   /**
+   * Which ready task starts first when there are more than workers, with no
+   * timings: `most-work` (the default) the one the most work waits on at
+   * any depth, `critical-path` the head of the longest chain of tasks,
+   * `direct-dependents` the one the most tasks wait on directly (Nx's
+   * rule), `ready-order` the one that became ready first (Turbo's). A
+   * `schedule` plugin's weights still come first; this breaks their ties.
+   */
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  /**
    * Graph rules a run checks before it schedules anything. Each is on unless
    * set to `false`; turning one off allows a shape vx handles correctly but
    * more slowly. Never folded into a cache key.
