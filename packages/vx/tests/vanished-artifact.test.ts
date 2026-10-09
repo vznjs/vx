@@ -17,6 +17,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
+import { removeStoredArtifact, replaceStoredArtifact } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 30_000
 
@@ -53,7 +54,7 @@ function vanishOnRestore(): { restored: string[]; restore: () => void } {
     workspaceRoot?: string,
   ) {
     restored.push(hash)
-    await rm(this.outputsPath(hash))
+    removeStoredArtifact(this, hash)
     return original.call(this, hash, projectDir, workspaceRoot)
   })
   return { restored, restore: () => spy.mockRestore() }
@@ -283,9 +284,8 @@ describe('a local cache artifact whose bytes are corrupt', () => {
       const cold = await run({ cwd: root, tasks: ['build'], log: quiet() })
       const hash = cold.outcomes[0]!.hash!
       const cache = new Cache(path.join(root, '.vx', 'cache'))
-      const artifact = cache.outputsPath(hash)
+      replaceStoredArtifact(cache, hash, new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
       cache.close()
-      await Bun.write(artifact, new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
       await rm(path.join(dir, 'dist'), { recursive: true, force: true })
 
       const seen: Seen = { status: [], complete: [], started: [] }

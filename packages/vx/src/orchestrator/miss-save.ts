@@ -191,11 +191,12 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     endSave()
     if (a.measure === true) {
       facts.saveMs = Math.round(performance.now() - saveStart)
-      try {
-        facts.artifactBytes = statSync(cache.outputsPath(a.hash)).size
-      } catch {
-        // No local artifact (local writes off): no size to say.
-      }
+      // No local artifact (local writes off): no size to say.
+      const size =
+        cache.artifactSize !== undefined
+          ? cache.artifactSize(a.hash)
+          : statSync(cache.outputsPath(a.hash), { throwIfNoEntry: false })?.size
+      if (size !== undefined) facts.artifactBytes = size
     }
     // The files the task just wrote are the entry's bytes: stamp them,
     // so the next hit can tell them from another entry's with the same

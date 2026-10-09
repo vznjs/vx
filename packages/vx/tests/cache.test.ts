@@ -19,6 +19,7 @@ import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from '../src/orchestrator/index.js'
 import { withSum } from './helpers/artifact-sum.js'
+import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
 /** How long a hit may leave `accessed_at` unrenewed (cache.ts `ACCESS_REFRESH_MS`). */
 const REFRESH = 60 * 60 * 1000
@@ -662,10 +663,11 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Filesystem layout v17: single zstd-compressed tar archive per
-    // entry. The artifact carries stdout + outputs/ — entry metadata
-    // (command, exitCode, durationMs) lives in the SQLite entries row.
-    expect(existsSync(path.join(cacheDir, 'h1.tar.zst'))).toBe(true)
+    // Layout v17: single zstd-compressed tar archive per entry, inline in
+    // the index when small (v33). The artifact carries stdout + outputs/ —
+    // entry metadata (command, exitCode, durationMs) lives in the SQLite
+    // entries row.
+    expect(isInline(cache, 'h1')).toBe(true)
     // No legacy <hash>/ directory layout.
     expect(existsSync(path.join(cacheDir, 'h1'))).toBe(false)
     expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(false)
@@ -972,7 +974,7 @@ describe('Cache storage (v10)', () => {
     })
 
     // Simulate someone deleting the cached artifact without touching the DB.
-    await rm(path.join(cacheDir, 'h-orphan.tar.zst'), { force: true })
+    removeStoredArtifact(cache, 'h-orphan')
     expect(await cache.get('h-orphan')).toBeNull()
   })
 
@@ -1005,7 +1007,7 @@ describe('Cache storage (v10)', () => {
     const otherDir = path.join(workspaceRoot, 'other-cache')
     const other = new Cache(otherDir)
     try {
-      const bytes = await Bun.file(path.join(cacheDir, 'h-usage.tar.zst')).bytes()
+      const bytes = storedArtifact(cache, 'h-usage')!
       await other.ingest('h-usage', new Blob([bytes]), {
         taskId: 'pkg#build',
         command: 'tsc',
@@ -1454,7 +1456,7 @@ describe('Cache storage (v10)', () => {
     // `<hash>.tar.zst`, so deleting prune's whole artifact unlink left the
     // suite green and the evicted bytes stayed on disk until some LATER
     // prune's orphan sweep found them, a grace window later.
-    expect(existsSync(cache.outputsPath('h-old'))).toBe(true)
+    expect(storedArtifact(cache, 'h-old')).not.toBeNull()
 
     const result = await cache.prune({ olderThanMs: Date.now() + REFRESH })
     expect(result.evicted).toBe(1)
@@ -1462,7 +1464,7 @@ describe('Cache storage (v10)', () => {
 
     // DB row gone, and the artifact with it.
     expect(await cache.get('h-old')).toBeNull()
-    expect(existsSync(cache.outputsPath('h-old'))).toBe(false)
+    expect(storedArtifact(cache, 'h-old')).toBeNull()
   })
 
   it('prune() with maxBytes evicts LRU until under the cap', async () => {
@@ -1501,9 +1503,8 @@ describe('Cache storage (v10)', () => {
     // reps of this fixture). A cap below h2 + h3 makes evicting h2 correct,
     // which is the reading this row exists to exclude; under the full file
     // that drew `evicted: 2` from unmutated code (item 491).
-    const { statSync } = await import('node:fs')
     const survivors =
-      statSync(cache.outputsPath('h2')).size + statSync(cache.outputsPath('h3')).size
+      storedArtifact(cache, 'h2')!.byteLength + storedArtifact(cache, 'h3')!.byteLength
     const result = await cache.prune({ maxBytes: survivors })
     // Item 491. `>= 1` and the two endpoints cannot tell "evicted exactly
     // enough" from "evicted one too many": h2 was unasserted, so an
@@ -1887,7 +1888,7 @@ describe('Cache storage (v10)', () => {
       bytesFreed: 0,
     })
     expect(rows()).toEqual(['h-fresh', 'h-real'])
-    expect(existsSync(cache.outputsPath('h-real'))).toBe(true)
+    expect(storedArtifact(cache, 'h-real')).not.toBeNull()
   })
 
   it('a prune during an adopt leaves the artifact it is indexing', async () => {
@@ -1896,7 +1897,8 @@ describe('Cache storage (v10)', () => {
     // row-less artifact as hour-old orphans.
     await mkdir(projectDir, { recursive: true })
     const f = path.join(projectDir, 'out.txt')
-    await writeFile(f, 'adopted')
+    // Incompressible and past INLINE_MAX: the artifact is a file.
+    await writeFile(f, crypto.getRandomValues(new Uint8Array(48 * 1024)))
     const hash = 'aaaaaaaaaaaaaaaa'
     const ctx = { taskId: 'pkg#build', command: 'noop' }
     await cache.save({
@@ -1932,7 +1934,8 @@ describe('Cache storage (v10)', () => {
     const { mkdir } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
     const f = path.join(projectDir, 'keep.txt')
-    await writeFile(f, 'keep')
+    // A file artifact, so its own file time can be aged below.
+    await writeFile(f, crypto.getRandomValues(new Uint8Array(48 * 1024)))
     await cache.save({
       hash: 'h-indexed',
       projectDir,
@@ -2460,7 +2463,7 @@ describe('Cache schema/version recovery', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('a SCHEMA_VERSION reset leaves NO row behind but its own version', async () => {
+  it('a SCHEMA_VERSION reset leaves NO row behind but its own version and the inline artifacts', async () => {
     // Item 504. The row below names two tables; this one quantifies over
     // every table the schema creates, because the hazard is a table ADDED
     // later and left out of the DROP list — stale rows under a new schema,
@@ -2476,6 +2479,9 @@ describe('Cache schema/version recovery', () => {
     //                    reset also renews its SHAPE (the row below).
     //   schema_meta      holds the sentinel the gate just wrote; dropping
     //                    it would lose the version it is recording.
+    //   artifacts        the inline artifacts (v33) and their layout
+    //   artifacts_meta   sentinel: the record, which a reset keeps as it
+    //                    keeps artifact files, each indexed again on a hit.
     //
     // The first probe of this said nothing survived, because it planted
     // `created_at = 1` and the config TTL sweep removes anything that old —
@@ -2524,7 +2530,9 @@ describe('Cache schema/version recovery', () => {
     )
     // `schema_meta` holds the schema version, the cache format (item 671),
     // the `file_hashes` sweep's clock (item 1082) and the config sweep's.
-    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, t === 'schema_meta' ? 4 : 1])))
+    // `artifacts_meta` holds the layout row beside the planted one.
+    const seeded: Record<string, number> = { schema_meta: 4, artifacts_meta: 2 }
+    expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, seeded[t] ?? 1])))
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
@@ -2537,7 +2545,7 @@ describe('Cache schema/version recovery', () => {
       .filter((t) => (after.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
       .sort()
     after.close()
-    expect(survivors).toEqual(['schema_meta'])
+    expect(survivors).toEqual(['artifacts', 'artifacts_meta', 'schema_meta'])
   })
 
   it("a SCHEMA_VERSION reset renews every table's columns, not only its rows", async () => {
@@ -2567,9 +2575,12 @@ describe('Cache schema/version recovery', () => {
     const raw = new Database(dbPath)
     const fresh = columns(raw)
     for (const t of Object.keys(fresh)) {
-      if (t === 'schema_meta') continue
+      // The inline artifacts' table outlives a reset; its own layout
+      // sentinel, in a table whose shape never changes, renews it.
+      if (t === 'schema_meta' || t === 'artifacts_meta') continue
       raw.exec(`DROP TABLE ${t}; CREATE TABLE ${t} (old_shape TEXT)`)
     }
+    raw.query("UPDATE artifacts_meta SET value = 'a0' WHERE key = 'layout'").run()
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
     new Cache(cacheDir).close()
@@ -2657,17 +2668,18 @@ describe('Cache schema/version recovery', () => {
         endedAt: Date.now() + 1,
       })
       expect(c2.stats().runCountLast24h).toBe(1)
-      // The drop orphaned round 1's artifact: no row knows it, so a
-      // lookup misses, and prune's sweep is what reclaims the bytes
-      // once the file is past the in-flight grace window.
-      const orphan = c2.outputsPath('00000000000000ee')
-      expect(await c2.get('00000000000000ee')).toBeNull()
-      expect(existsSync(orphan)).toBe(true)
-      const aged = (Date.now() - 2 * 60 * 60 * 1000) / 1000
-      await utimes(orphan, aged, aged)
+      // The drop orphaned round 1's artifact, inline: no row knows it, so
+      // a lookup with no task to adopt it for misses, and prune's sweep is
+      // what reclaims the bytes once it is past the in-flight grace window.
+      const orphan = '00000000000000ee'
+      expect(await c2.get(orphan)).toBeNull()
+      expect(storedArtifact(c2, orphan)).not.toBeNull()
+      c2.dbHandle()
+        .query('UPDATE artifacts SET at = ? WHERE hash = ?')
+        .run(Date.now() - 2 * 60 * 60 * 1000, orphan)
       const pruned = await c2.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
       expect(pruned.orphans).toBe(1)
-      expect(existsSync(orphan)).toBe(false)
+      expect(storedArtifact(c2, orphan)).toBeNull()
     } finally {
       c2.close()
     }
@@ -3173,7 +3185,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 
     // Re-ingested under its own key (an artifact records it, item 943),
     // so the rows below are the ingest path's.
-    const bytes = await Bun.file(cache.outputsPath('ms3-remote')).bytes()
+    const bytes = storedArtifact(cache, 'ms3-remote')!
     await cache.ingest('ms3-remote', new Blob([bytes]), {
       taskId: 'pkg#build',
       command: 'b',
@@ -3263,6 +3275,9 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 describe('an artifact on disk with no index row, through a run', () => {
   it('is indexed from its bytes and hits, restoring its outputs', async () => {
     const root = await makeWorkspace({ prefix: 'vx-rowless-' })
+    // Past INLINE_MAX compressed, so the artifact is a file and outlives
+    // the deleted index (an inline one is in it).
+    const built = `${Buffer.from(crypto.getRandomValues(new Uint8Array(64 * 1024))).toString('base64')}\n`
     try {
       await addProject(root, 'app', {
         config: `
@@ -3275,7 +3290,7 @@ describe('an artifact on disk with no index row, through a run', () => {
             },
           }
         `,
-        files: { 'src/a.txt': 'a1\n' },
+        files: { 'src/a.txt': built },
       })
       const lines: string[] = []
       const log = {
@@ -3304,7 +3319,7 @@ describe('an artifact on disk with no index row, through a run', () => {
       // Notices, not the summary block every run prints.
       expect(lines.filter((l) => /^\[?vx[\]:]/.test(l))).toEqual([])
       expect(await readFile(path.join(root, 'packages', 'app', 'dist', 'out.txt'), 'utf8')).toBe(
-        'a1\n',
+        built,
       )
       expect(await artifacts()).toEqual([artifact!])
       expect(await once()).toEqual({ ok: true, statuses: ['cache-hit'] })

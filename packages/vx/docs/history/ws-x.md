@@ -1350,3 +1350,21 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   Small: pack was not where the save's CPU goes; step 3 (inline
   artifacts) is. A row holds the sync pack byte-equal to the streamed
   one on every name shape.
+
+- **X-205.** Cache-save step 3: an artifact of at most `INLINE_MAX`
+  (32 KiB) compressed is a row of the store's new `artifacts` table,
+  written in the transaction that writes its entry rows: no temp file,
+  no rename, no stat on a hit. A larger one stays a file and its blob
+  row is deleted in that transaction, so readers prefer the blob and
+  never pair one writer's rows with another's bytes; the restore reads
+  rows and blob in one read snapshot. Adopt, ingest, pin, prune, the
+  orphan sweep (a row-less blob is judged by its `at`) and `vx info`
+  cover both kinds; `CacheLayer.artifactSize?` replaces a stat of
+  `outputsPath`. `artifacts` sits outside the schema reset, guarded by
+  its own layout sentinel (`a1`), so a reset keeps the bytes and the
+  next hit adopts them. `SCHEMA_VERSION` v32 → v33. Micro (Bun 1.4.2,
+  1,000 one-file saves, CPU ms, min of 5 per process, 10 interleaved
+  process pairs, before = origin/main): 474 → 169; per-pair medians
+  ~900 → ~186 (the before arm drifted 474–954 run to run, the after arm
+  stayed 169–216). Deferred: `auto_vacuum` (design, Out of scope);
+  deleting the store's db file now loses its inline artifacts.

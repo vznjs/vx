@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { scanArtifact } from '../src/cache/archive.js'
 import { Cache } from '../src/cache/cache.js'
 import { decodedTar } from '../src/cache/zstd.js'
+import { storedArtifact } from './helpers/stored-artifact.js'
 
 let root: string
 let cache: Cache
@@ -79,7 +80,7 @@ describe('a save and an ingest of the same bytes index the same rows', () => {
     ])
 
     // The scan of the bytes the save wrote says the same.
-    const bytes = await Bun.file(cache.outputsPath('h-plan')).bytes()
+    const bytes = storedArtifact(cache, 'h-plan')!
     const scanned = await scanArtifact(await decodedTar(bytes, 'h-plan'))
     const fromScan = scanned.entries
       .filter((e) => e.name.startsWith('outputs/'))
@@ -135,7 +136,7 @@ describe('a save and an ingest of the same bytes index the same rows', () => {
     })
     const other = new Cache(path.join(root, 'other-empty'))
     try {
-      const bytes = await Bun.file(cache.outputsPath('h-empty')).bytes()
+      const bytes = storedArtifact(cache, 'h-empty')!
       await other.ingest('h-empty', new Blob([bytes]), {
         taskId: 'pkg#lint',
         command: 'lint',

@@ -529,6 +529,10 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputsPath(hash)
   }
 
+  artifactSize(hash: string): number | undefined {
+    return this.local.artifactSize(hash)
+  }
+
   hashFile(filePath: string): Promise<string> {
     return this.local.hashFile(filePath)
   }

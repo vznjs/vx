@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: store small artifacts inline in the store index
+
+SCHEMA_VERSION v32 -> v33; the index is reset on first open, and artifacts are kept and indexed again on their next hit.
+
 ## vx-reapi: connect a bare endpoint with TLS, as Bazel does
 
 a vx-reapi endpoint with no scheme now uses TLS; a plaintext server needs grpc:// or tls: false.

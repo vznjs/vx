@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { storedKeys } from './helpers/stored-artifact.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { acquireRunLock, runLockPath } from '../src/orchestrator/run-lock.js'
 
@@ -152,8 +153,7 @@ describe('two runs on one workspace', () => {
       git('commit', '-q', '-m', 'init')
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
       const cacheDir = path.join(root, '.vx', 'cache')
-      const artifacts = (): string[] =>
-        Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+      const artifacts = (): string[] => storedKeys(cacheDir)
       expect(artifacts()).toHaveLength(1)
       // A use within the last hour counts as now (ACCESS_REFRESH_MS), so
       // the entry is aged by its row, not by a wait.

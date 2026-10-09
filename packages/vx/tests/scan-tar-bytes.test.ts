@@ -24,6 +24,7 @@ import { decodeOutputLog, encodeOutputLog } from '../src/orchestrator/output-log
 import { withSum } from './helpers/artifact-sum.js'
 import { rng } from './helpers/rng.js'
 import { scanBoth, type ScanOutcome } from './helpers/scan-parity.js'
+import { storedArtifact } from './helpers/stored-artifact.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-scanbytes-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -343,7 +344,7 @@ describe("a save's index rows are the rows a restore reads", () => {
         outputFiles: rels.map((r) => path.join(proj, r)),
         entry: { taskId: 'p#build', command: 'make', durationMs: 1, stdout: 'ok\n' },
       })
-      const bytes = await Bun.file(saved.outputsPath('h-rows')).bytes()
+      const bytes = storedArtifact(saved, 'h-rows')!
       await ingested.ingest('h-rows', new Blob([bytes]), {
         taskId: 'p#build',
         command: 'make',

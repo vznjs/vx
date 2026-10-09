@@ -13,6 +13,7 @@ import {
 } from '../src/cache/index.js'
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
 import { testPlugin } from './helpers/plugin.js'
+import { storedArtifact } from './helpers/stored-artifact.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {
@@ -411,7 +412,7 @@ describe('ChainedCache — layers sharing one local handle', () => {
     const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
     try {
       await saveEntry(src.cache, 'h-prov', proj)
-      const artifact = await Bun.file(src.cache.outputsPath('h-prov')).bytes()
+      const artifact = storedArtifact(src.cache, 'h-prov')!
       const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
       const first: RemoteCacheLayer = {
         has: async () => false,
@@ -455,7 +456,7 @@ describe('ChainedCache — layers sharing one local handle', () => {
     try {
       // A real artifact for B's remote to serve.
       await saveEntry(src.cache, 'h-poison', proj)
-      const artifact = await Bun.file(src.cache.outputsPath('h-poison')).bytes()
+      const artifact = storedArtifact(src.cache, 'h-poison')!
       const remoteA: RemoteCacheLayer = {
         has: async () => false,
         get: async () => null,

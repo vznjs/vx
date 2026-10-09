@@ -7,14 +7,14 @@
 // these would classify tasks the lazy path then refuses, or let prune evict
 // entries a warm run just used.
 
-import { existsSync } from 'node:fs'
-import { rm, mkdir, mkdtemp, unlink, writeFile } from 'node:fs/promises'
+import { rm, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { CacheGetContext } from '../src/cache/cache.js'
 import { Cache } from '../src/cache/index.js'
+import { removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
 describe('Cache.getMany agrees with Cache.get', () => {
   let cacheDir: string
@@ -48,7 +48,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa', 'bb', 'cc'])
-      await unlink(path.join(cacheDir, 'bb.tar.zst')) // index row survives, bytes do not
+      removeStoredArtifact(cache, 'bb') // index row survives, bytes do not
       const many = await cache.getMany(['aa', 'bb', 'cc', 'zz'])
       expect([...many.keys()].sort()).toEqual(['aa', 'cc'])
       for (const hash of ['aa', 'bb', 'cc', 'zz']) {
@@ -152,7 +152,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     const cache = new Cache(cacheDir)
     try {
       await seed(cache, ['aa', 'bb'])
-      await unlink(path.join(cacheDir, 'bb.tar.zst'))
+      removeStoredArtifact(cache, 'bb')
       expect([await cache.has('aa'), await cache.has('bb')]).toEqual(['local', null])
     } finally {
       cache.close()
@@ -168,10 +168,7 @@ describe('Cache.getMany agrees with Cache.get', () => {
     }
     const cache = new Cache(cacheDir)
     try {
-      expect([await cache.get('aa'), existsSync(path.join(cacheDir, 'aa.tar.zst'))]).toEqual([
-        null,
-        false,
-      ])
+      expect([await cache.get('aa'), storedArtifact(cache, 'aa')]).toEqual([null, null])
     } finally {
       cache.close()
     }
