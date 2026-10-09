@@ -1515,6 +1515,9 @@ export default defineWorkspace({
   cacheDir: 'build/.vx-cache',
   timeout: 600_000,
   cacheRetention: { olderThan: '30d', maxSize: '10G' },
+  affectedBase: 'origin/main',
+  cacheScope: 'trusted',
+  rules: { exclusiveOutputs: true, upfrontKeys: true },
   plugins: [otel()],
 })
 ```
@@ -1808,6 +1811,53 @@ export default defineProject({
     ci: {
       description: 'format-check + lint + test',
       dependsOn: ['format-check', 'lint', 'test'],
+    },
+  },
+})
+```
+
+The rest of the task fields, in one config:
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    // Prompts on the terminal, so it runs alone and is never cached.
+    'db:push': { exec: { command: 'drizzle-kit push', interactive: true } },
+    // Talks to this machine's Docker daemon: never sent to a remote executor.
+    'docker:build': { exec: { command: 'docker build -t app .', remote: false } },
+    e2e: {
+      exec: {
+        command: 'playwright test',
+        env: {
+          define: { BASE_URL: 'http://localhost:3000' },
+          passThrough: ['E2E_TOKEN'],
+          secret: ['E2E_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['.'],
+            write: ['test-results/'],
+            localBinding: [3000],
+            unixSockets: true,
+            pty: true,
+            gitConfig: false,
+            systemInfo: ['hw.memsize'],
+            machLookup: ['com.apple.SecurityServer'],
+          },
+          weakerNetworkIsolation: false,
+          weakerWhenNested: false,
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['e2e/**'],
+          runtime: ['npx playwright --version'],
+          workspaceRuntime: ['node -v'],
+        },
+        outputs: { files: ['test-results/**'] },
+      },
     },
   },
 })

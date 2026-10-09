@@ -37,7 +37,7 @@ vx run test --affected=origin/main
 Outside a terminal vx prints plain lines, with no live status region.
 A run that is missing its task name does not open the picker without a
 TTY; it fails and lists the tasks it found. The exit code is the
-verdict: `0` when every task passed.
+verdict: `0` when every task passed ([exit codes](#branch-on-exit-codes-and-error-codes)).
 
 ## Read answers as JSON
 
@@ -58,6 +58,36 @@ Under `--affected`, `--dry=json` gives each kept task an `affected`
 reason: the changed input, or the `dependsOn` chain that reached it.
 A failed row of `vx last --format json` carries the task's `output` and
 the files it names (`locations`).
+
+## Branch on exit codes and error codes
+
+The exit code says whether `vx run` worked:
+
+| Exit                  | Means                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| `0`                   | Every task passed or was a cache hit, or nothing was affected.         |
+| `1`                   | A task failed or was skipped, or vx refused the command (see below).   |
+| `130` / `143` / `129` | Interrupted by SIGINT / SIGTERM / SIGHUP; vx stopped every task first. |
+
+When vx refuses a command asked for JSON, stdout carries one line with
+a stable code, and the exit code stays `1`. Branch on the code, not the
+message:
+
+```sh frame="terminal"
+$ vx run biuld --all --format json
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?"}}
+```
+
+| Code                | What to do                                             |
+| ------------------- | ------------------------------------------------------ |
+| `VX_E_UNKNOWN_TASK` | Read the task names from `vx show --format json`.      |
+| `VX_E_USAGE`        | Fix the flag or argument; `vx help <verb>` lists them. |
+| `VX_E_CONFIG`       | Fix the config file named in the message.              |
+| `VX_E_NO_HISTORY`   | Run the task first; `vx why` and `vx last` need a run. |
+| `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
+
+Every code is in the [CLI reference](../../cli/#error-codes), and
+`node_modules/@vzn/vx/schemas/error.json` describes the line.
 
 ## Ask the workspace over MCP
 
