@@ -283,6 +283,63 @@
       "summary.totalMs"
     ]
   },
+  "planTasks": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "all": {
+          "type": "boolean",
+          "description": "--all: every project"
+        },
+        "filter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "--filter values (a project, a glob, ...pkg, [ref])"
+        },
+        "affected": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "--affected: true for the default ref, or a git ref"
+        }
+      },
+      "required": [
+        "tasks"
+      ]
+    },
+    "answer": [
+      "exitCode",
+      "plan",
+      "plan.predicted",
+      "plan.predicted.criticalPath",
+      "plan.predicted.unknownCount",
+      "plan.predicted.wallMs",
+      "plan.predicted.workMs",
+      "plan.tasks",
+      "plan.tasks[]",
+      "plan.tasks[].cacheStatus",
+      "plan.tasks[].deps",
+      "plan.tasks[].hash",
+      "plan.tasks[].id",
+      "plan.tasks[].p50Ms",
+      "plan.tasks[].project",
+      "plan.tasks[].task"
+    ]
+  },
   "getWorkspaceInfo": {
     "inputSchema": {
       "type": "object",

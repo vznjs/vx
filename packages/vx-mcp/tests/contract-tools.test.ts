@@ -30,6 +30,7 @@ const ARGS: Record<string, unknown> = {
   whyDidThisRerun: { taskId: 'a#build' },
   getFailures: {},
   runTasks: { tasks: ['build'], all: true },
+  planTasks: { tasks: ['build'], all: true },
   getWorkspaceInfo: {},
 }
 

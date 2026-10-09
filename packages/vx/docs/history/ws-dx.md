@@ -97,3 +97,7 @@ and log output reads better. Each must cost the warm path nothing.
   `cli/why.ts` to `orchestrator/metrics.ts` so both read one walk;
   the façade gains `cacheKeyDiff` and `rootCauses`. Row:
   vx-mcp `why-parity.test.ts`.
+- **DX-15.** MCP `planTasks`: `vx run <tasks> --dry=json` through the
+  CLI as a child, as `runTasks` runs `--format json`; one argv builder
+  and one spawn serve both. Rows: vx-mcp `plan-tasks.test.ts` (equal
+  to the CLI's plan, nothing ran; a refusal carries no plan).
