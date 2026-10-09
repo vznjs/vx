@@ -2,11 +2,12 @@
 // line on stdout, `{ ok: false, error: { code, message } }`, so an agent
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { errorCode, UserError, wantsJson } from '../src/util/index.js'
+import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -58,8 +59,12 @@ async function vx(args: string[], cwd = root) {
 async function refusal(args: string[], cwd?: string): Promise<string> {
   const r = await vx(args, cwd)
   expect(r.code).toBe(1)
-  const doc = JSON.parse(r.stdout) as { ok: boolean; error: { code: string; message: string } }
+  const doc = JSON.parse(r.stdout) as {
+    ok: boolean
+    error: { code: string; message: string; docs?: string }
+  }
   expect(doc.ok).toBe(false)
+  expect(doc.error.docs).toBe(`https://vznjs.github.io/vx/cli/#${doc.error.code.toLowerCase()}`)
   expect(r.stderr).toStartWith('vx')
   expect(doc.error.message.length).toBeGreaterThan(0)
   return doc.error.code
@@ -157,5 +162,45 @@ describe('errorCode', () => {
       wantsJson(['run', 'b', '--format', 'pretty']),
       wantsJson(['run', 'b', '--', '--format=json']),
     ]).toEqual([true, true, true, false, false])
+  })
+})
+
+// Each code leads to its fix: a section of cli.md titled by the code, which
+// the error document links and `vx docs <code>` prints alone.
+describe('every core code has a section that says what to do', () => {
+  const SRC = path.resolve(import.meta.dir, '..', 'src')
+  const CLI_MD = path.resolve(import.meta.dir, '..', 'docs', 'cli.md')
+  const thrown = new Set<string>()
+  for (const f of readdirSync(SRC, { recursive: true }) as string[]) {
+    if (!f.endsWith('.ts')) continue
+    for (const m of readFileSync(path.join(SRC, f), 'utf8').matchAll(/'(VX_E_[A-Z_]+)'/g))
+      thrown.add(m[1]!)
+  }
+  const md = readFileSync(CLI_MD, 'utf8')
+  const headed = [...md.matchAll(/^#### `(VX_E_[A-Z_]+)`$/gm)].map((m) => m[1]!)
+
+  it('a heading per code the source names, and none it does not', () => {
+    expect(thrown.size).toBeGreaterThan(10)
+    expect(headed.toSorted()).toEqual([...thrown].toSorted())
+  })
+
+  it('the error document links the section; a plugin code links nothing', () => {
+    expect([
+      JSON.parse(errorDocument('VX_E_CYCLE', 'm')).error,
+      JSON.parse(errorDocument('MY_CODE', 'm')).error,
+    ]).toEqual([
+      { code: 'VX_E_CYCLE', message: 'm', docs: 'https://vznjs.github.io/vx/cli/#vx_e_cycle' },
+      { code: 'MY_CODE', message: 'm' },
+    ])
+  })
+
+  it('`vx docs <code>` prints that section alone, at the linked URL', async () => {
+    // VX_E_USAGE: three more sections of cli.md name it.
+    const r = await vx(['docs', 'VX_E_USAGE', '--format', 'json'])
+    expect(r.code).toBe(0)
+    const { hits } = JSON.parse(r.stdout) as { hits: { heading: string; url: string }[] }
+    expect(hits.map((h) => [h.heading, h.url])).toEqual([
+      ['VX_E_USAGE', JSON.parse(errorDocument('VX_E_USAGE', 'm')).error.docs],
+    ])
   })
 })

@@ -89,8 +89,12 @@ describe('runTasks', () => {
 
   it('a refusal before the run answers the CLI message, not a summary', async () => {
     const r = await handleToolCall('runTasks', { tasks: ['nope'], all: true }, ctx)
-    expect(Object.keys(r).sort()).toEqual(['code', 'error', 'exitCode'])
-    expect([r['exitCode'], r['code']]).toEqual([1, 'VX_E_UNKNOWN_TASK'])
+    expect(Object.keys(r).sort()).toEqual(['code', 'docs', 'error', 'exitCode'])
+    expect([r['exitCode'], r['code'], r['docs']]).toEqual([
+      1,
+      'VX_E_UNKNOWN_TASK',
+      'https://vznjs.github.io/vx/cli/#vx_e_unknown_task',
+    ])
     expect(r['error']).toContain('no projects declare task(s): nope')
   })
 

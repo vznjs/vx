@@ -48,7 +48,7 @@ export interface DocsHit {
 }
 
 function words(s: string): string[] {
-  return s.toLowerCase().match(/[a-z0-9][a-z0-9._-]*/g) ?? []
+  return s.toLowerCase().match(/[a-z0-9][a-z0-9_.-]*/g) ?? []
 }
 
 /** GitHub's heading anchor, which Starlight shares: lowercase, punctuation dropped, spaces to `-`. */
@@ -99,7 +99,11 @@ function count(hay: string, term: string): number {
   return n
 }
 
-/** The sections holding every term, best first: a term in the heading outweighs any count in the text. */
+/**
+ * The sections holding every term, best first: a term in the heading
+ * outweighs any count in the text. A section titled by the one word asked
+ * (an error code) is the answer alone.
+ */
 export function searchDocs(
   pages: Readonly<Record<string, string>>,
   terms: readonly string[],
@@ -123,7 +127,9 @@ export function searchDocs(
     }
   }
   scored.sort((a, b) => b.score - a.score || a.order - b.order)
-  return scored.slice(0, limit).map(({ s }) => ({
+  const exact =
+    terms.length === 1 ? scored.filter(({ s }) => words(s.heading).join(' ') === terms[0]) : []
+  return (exact.length > 0 ? exact : scored).slice(0, limit).map(({ s }) => ({
     page: s.page,
     heading: s.heading,
     url: s.heading === '' ? pageUrl(s.page) : `${pageUrl(s.page)}#${anchor(s.heading)}`,

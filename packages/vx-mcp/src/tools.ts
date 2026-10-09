@@ -230,7 +230,8 @@ const TOOLS: readonly ToolDef[] = [
       '(ok, per-task status, cache hits, durations; the `--summarize` document). The tasks run here, ' +
       'with this workspace’s cache and sandbox. `all`, `filter`, `affected` and `force` are the CLI ' +
       'flags. A refusal before the run (an unknown task, a bad filter) returns no summary, the CLI’s ' +
-      'message as `error` and its stable `code` (VX_E_UNKNOWN_TASK, VX_E_USAGE, …); a failed task’s ' +
+      'message as `error`, its stable `code` (VX_E_UNKNOWN_TASK, VX_E_USAGE, …) and `docs`, the ' +
+      'link that says what to do; a failed task’s ' +
       'output is getFailures.',
     inputSchema: {
       type: 'object',
@@ -889,7 +890,7 @@ async function planTasks(
   return vxJson(runArgv(args, 'planTasks'), 'plan', ctx)
 }
 
-/** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
+/** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, docs?, error }`. */
 async function vxJson(
   argv: string[],
   key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune' | 'init' | 'docs',
@@ -916,12 +917,13 @@ async function vxJson(
   }
   // A refusal's stdout is its error document (core's cli.md § Error codes):
   // its stable code rides along with the CLI's prose.
-  const refusal = (answer as { error?: { code?: unknown } } | undefined)?.error
+  const refusal = (answer as { error?: { code?: unknown; docs?: unknown } } | undefined)?.error
   if (answer !== undefined && refusal === undefined) return { exitCode, [key]: answer }
   const tail = err.length > ERROR_TAIL_BYTES ? err.slice(-ERROR_TAIL_BYTES) : err
   return {
     exitCode,
     ...(typeof refusal?.code === 'string' ? { code: refusal.code } : {}),
+    ...(typeof refusal?.docs === 'string' ? { docs: refusal.docs } : {}),
     error: tail
       .trimEnd()
       .split('\n')

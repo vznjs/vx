@@ -684,17 +684,17 @@ export const MORE: readonly Feature[] = [
     hook: 'Under `--format json`, a refusal is a JSON line with a stable code.',
     body: [
       'An agent that has to match the wording of an error message breaks when the message improves. vx gives every refusal a code that stays the same.',
-      'Unknown task, bad config, a graph cycle, no workspace: each has its own code, and the message still says what to do.',
+      'Unknown task, bad config, a graph cycle, no workspace: each has its own code, and a `docs` link to the fix. Offline, `vx docs <code>` prints the same fix.',
     ],
     example: {
       lang: 'text',
-      code: '$ vx run biuld --all --format json\n{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?"}}',
+      code: '$ vx run biuld --all --format json\n{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}',
     },
     image: 'error-codes.png',
     imageAlt: 'A refusal as a JSON line with a stable code.',
     docs: {
-      label: 'Machine-readable output',
-      href: 'cli/#machine-readable-output',
+      label: 'Error codes',
+      href: 'cli/#error-codes',
     },
     deepDive: {
       label: 'A refusal an agent can read',

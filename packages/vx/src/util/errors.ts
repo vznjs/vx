@@ -62,9 +62,16 @@ export function wantsJson(argv: readonly string[]): boolean {
   return false
 }
 
-/** The JSON a verb that answers JSON prints for a refusal: one line. */
+/**
+ * The JSON a verb that answers JSON prints for a refusal: one line. A
+ * core code (`VX_E_…`) links its section of cli.md, which says the fix;
+ * `vx docs <code>` prints the same section offline. A plugin's code has none.
+ */
 export function errorDocument(code: string, message: string): string {
-  return `${JSON.stringify({ ok: false, error: { code, message } })}\n`
+  const docs = code.startsWith('VX_E_')
+    ? { docs: `https://vznjs.github.io/vx/cli/#${code.toLowerCase()}` }
+    : {}
+  return `${JSON.stringify({ ok: false, error: { code, message, ...docs } })}\n`
 }
 
 /**

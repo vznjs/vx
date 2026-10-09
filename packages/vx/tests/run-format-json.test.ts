@@ -85,7 +85,14 @@ describe('vx run --format json', () => {
         const [code, out, err] = vx('run', 'build', '--all', '--format', 'json', ...extra)
         expect([code, JSON.parse(out)]).toEqual([
           1,
-          { ok: false, error: { code: 'VX_E_USAGE', message: expect.stringContaining(message) } },
+          {
+            ok: false,
+            error: {
+              code: 'VX_E_USAGE',
+              message: expect.stringContaining(message),
+              docs: 'https://vznjs.github.io/vx/cli/#vx_e_usage',
+            },
+          },
         ])
         expect(err).toContain(message)
       }

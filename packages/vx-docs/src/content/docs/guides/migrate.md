@@ -103,6 +103,11 @@ files written:
 next: bunx vx run build --all
 ```
 
+The first run after it misses every task once: the lockfile plugin it
+declared, and the install, change each key (`vx why <task>` names both).
+The run after that hits. The example below keeps its own
+`vx.workspace.ts` and installs nothing, so it hits at once.
+
 `packages/lib/vx.config.ts`, as written:
 
 ```ts

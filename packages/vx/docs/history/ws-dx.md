@@ -183,3 +183,12 @@ and log output reads better. Each must cost the warm path nothing.
   so an agent on MCP finds the reference offline too. A query that
   would read as a flag is refused before the CLI sees it. Rows:
   `vx-mcp/tests/search-docs.test.ts`.
+- **DX-30** the migrate guide says the first run after `vx-migrate` misses
+  every task once (agent trial row 4): migrate declares the lockfile
+  plugin and installs it, and `vx why` names both as the changed key
+  parts; the example hits at once only because it keeps its own
+  workspace file and installs nothing.
+- **DX-31** error codes lead to fixes: each core code is its own
+  `#### \`VX_E_…\``section of cli.md saying what to do, the`--format json`refusal carries its URL as`docs`(MCP passes it on),
+and`vx docs <code>`prints that section alone. Rows:`tests/error-codes.test.ts`(a section per code the source throws, both
+directions; the link;`vx docs VX_E_USAGE` alone).
