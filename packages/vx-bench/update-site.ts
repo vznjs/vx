@@ -87,7 +87,10 @@ const span = (ms: number): string => {
   return `${Math.round(s / 60)} min`
 }
 // [label, the number compared, how a cell shows it]
+// Total wall leads: the added-time ratio divides by a small number, so a
+// runner whose whole build is 1.4× as long reads 34× there (PR #3286).
 const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => string]> = [
+  ['Cold build: total time', (r) => Number(r.fresh), (r) => span(Number(r.fresh))],
   [
     'Cold build: time the runner adds',
     (r) => Number(r.fresh) - B.fresh,

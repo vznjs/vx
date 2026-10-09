@@ -287,6 +287,7 @@ describe('the landing page', () => {
       (m) => m[1]!,
     )
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
+      'Cold build: total time',
       'Cold build: time the runner adds',
       'Cold build: CPU burned',
       'Fully cached run (restored)',
