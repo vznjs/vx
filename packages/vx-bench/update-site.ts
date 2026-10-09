@@ -16,7 +16,7 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dir, '../..')
 const CHECK = process.argv.includes('--check')
 
-const STATES = ['warmNoRestore', 'warmRestore', 'leafEdited', 'coreEdited', 'fresh'] as const
+const STATES = ['warmNoRestore', 'warmRestore', 'fresh'] as const
 type State = (typeof STATES)[number]
 type Row = Record<State, number> & {
   runner: string
@@ -37,8 +37,6 @@ type Results = {
     freshCpu: number
     criticalPathMs: number
     workBoundMs: number
-    leafTasks: number
-    coreTasks: number
   }
 }
 
@@ -76,8 +74,6 @@ const cpu = (r: Row): number => Math.max(0, r.freshCpu - B.freshCpu)
 const table: ReadonlyArray<readonly [string, (r: Row) => number]> = [
   ['Nothing changed', (r) => over(r, 'warmNoRestore')],
   ['Nothing changed, outputs restored', (r) => over(r, 'warmRestore')],
-  ['One leaf library edited', (r) => over(r, 'leafEdited')],
-  ['One core library edited', (r) => over(r, 'coreEdited')],
   ['Cold build', (r) => over(r, 'fresh')],
   ['Cold build: CPU the runner burns', cpu],
 ]
@@ -206,8 +202,10 @@ Tasks: \`installDeps\` (no command, after the dependencies' \`build\`), \`build\
 ${n(d.tasks)} task nodes. Each sleeps in the same ratios: build ${s(d.buildMs)}, test and
 typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs / 10)}, long enough that the tasks, not
 any tool's own per-task work, set the pace. \`build\` writes 200 KB of seeded
-incompressible bytes plus a file that folds its dependencies' outputs, so an
-edit reaches every output downstream in every tool.
+incompressible bytes plus a file that folds its dependencies' outputs.
+The bench times what CI runs: a cold build, a run with nothing changed, and a
+restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
+does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency ${d.concurrency}, each in its own native
 config: Turborepo ${turbo.version} (\`turbo.json\`), Nx ${nx.version} (\`nx:run-commands\` targets,
@@ -230,8 +228,6 @@ ${WORKLOAD}
 **The ideal run** is the theoretical best case, so every row is overhead.
 Nothing changed: one \`git status -uall\` walk (${disp(B.warmNoRestore)}), the floor of asking what changed.
 Outputs restored: that walk plus a raw copy of every output (${disp(B.warmRestore)}).
-An edit: the walk plus the tasks it re-runs, list-scheduled on ${d.concurrency} workers
-(leaf: ${n(B.leafTasks)} tasks, ${disp(B.leafEdited)}; core: ${n(B.coreTasks)} tasks, ${disp(B.coreEdited)}).
 Cold: every task list-scheduled critical-path first (critical path
 ${disp(B.criticalPathMs)}, work ÷ workers ${disp(B.workBoundMs)}).
 **CPU** is user + system of the invocation and the children it waited for,

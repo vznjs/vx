@@ -535,8 +535,6 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
   const FIELD: Record<string, (r: Row, b: Record<string, number>) => number> = {
     'Nothing changed**': (r, b) => (r['warmNoRestore'] as number) - b['warmNoRestore']!,
     'Nothing changed, outputs restored': (r, b) => (r['warmRestore'] as number) - b['warmRestore']!,
-    'One leaf library edited': (r, b) => (r['leafEdited'] as number) - b['leafEdited']!,
-    'One core library edited': (r, b) => (r['coreEdited'] as number) - b['coreEdited']!,
     'Cold build**': (r, b) => (r['fresh'] as number) - b['fresh']!,
     'Cold build: CPU the runner burns': (r, b) => (r['freshCpu'] as number) - b['freshCpu']!,
   }
@@ -584,7 +582,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
         }
       })
     }
-    expect(rowsChecked).toBe(6)
+    expect(rowsChecked).toBe(4)
     expect(wrong).toEqual([])
   })
 })

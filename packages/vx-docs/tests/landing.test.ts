@@ -289,8 +289,6 @@ describe('the landing page', () => {
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
       'Nothing changed',
       'Nothing changed, outputs restored',
-      'One leaf library edited',
-      'One core library edited',
       'Cold build',
       'Cold build: CPU the runner burns',
     ])
@@ -343,9 +341,9 @@ describe('the landing page', () => {
     const notes = [
       ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
     ].map((m) => m[1]!)
-    // The "faster" notes in chart order; the leaf row's Turborepo note and the
-    // core, cold and CPU rows' Vite Task notes read "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[1]!, notes[10]!, notes[12]!])
+    // The "faster" notes in chart order; the cold and CPU rows' Vite Task
+    // notes read "slower".
+    expect(wins.map((m) => text(m[1]!))).toEqual([notes[1]!, notes[6]!, notes[8]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.

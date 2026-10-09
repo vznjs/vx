@@ -1489,3 +1489,11 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   Nx and all but the leaf edit vs Turborepo (899 vs 777 ms); Vite Task
   adds less cold (4.50 vs 8.99 s), on a core edit and in CPU. The
   2026-10-04 run is archived as `results-2026-10-04.json`.
+- **X-221** Scheduler: an admit policy no longer scans a full exec
+  lane. With one active (the history plugin's), every tick popped and
+  re-parked the whole ready queue, O(R²) per run: the bench's cold run
+  took 131.5 s with `scheduleHistoryPlugin` vs 120.7 s without. Fixed:
+  120.6 s. Row in `scheduler.test.ts` counts looks (20,101 → under 600).
+- **X-222** Bench times CI states only (owner, 2026-10-09: Nx needs its
+  daemon for edits): leaf and core edit rows dropped from the bench,
+  results and site.

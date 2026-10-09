@@ -393,8 +393,10 @@ Tasks: `installDeps` (no command, after the dependencies' `build`), `build`,
 9,603 task nodes. Each sleeps in the same ratios: build 1 s, test and
 typecheck 0.5 s, lint 0.25 s, publish 0.1 s, long enough that the tasks, not
 any tool's own per-task work, set the pace. `build` writes 200 KB of seeded
-incompressible bytes plus a file that folds its dependencies' outputs, so an
-edit reaches every output downstream in every tool.
+incompressible bytes plus a file that folds its dependencies' outputs.
+The bench times what CI runs: a cold build, a run with nothing changed, and a
+restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
+does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
 config: Turborepo 2.11.7 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
@@ -410,8 +412,6 @@ _vx, no lock_ evaluates every config per run. This machine: linux x64, 4 cores.
 | ------------------------------------- | ----------- | ----------- | -------------------------- | --------------------------- | ------------------------ |
 | **Nothing changed**                   | **958 ms**  | 982 ms      | 1.05 s (vx 10% faster)     | 25.96 s (vx 27× faster)     | 12.24 s (vx 13× faster)  |
 | **Nothing changed, outputs restored** | **1.70 s**  | 1.78 s      | 1.76 s (vx 4% faster)      | 25.21 s (vx 15× faster)     | 11.97 s (vx 7.1× faster) |
-| **One leaf library edited**           | **899 ms**  | 1.06 s      | 777 ms (vx 16% slower)     | 27.00 s (vx 30× faster)     | 10.63 s (vx 12× faster)  |
-| **One core library edited**           | **7.53 s**  | 7.59 s      | 8.64 s (vx 15% faster)     | 1 min 16 s (vx 10× faster)  | 6.01 s (vx 25% slower)   |
 | **Cold build**                        | **8.99 s**  | 8.38 s      | 10.06 s (vx 12% faster)    | 1 min 13 s (vx 8.1× faster) | 4.50 s (vx 100% slower)  |
 | **Cold build: CPU the runner burns**  | **46.70 s** | 46.18 s     | 1 min 11 s (vx 51% faster) | 6 min 13 s (vx 8× faster)   | 30.60 s (vx 53% slower)  |
 
@@ -422,8 +422,6 @@ Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30
 **The ideal run** is the theoretical best case, so every row is overhead.
 Nothing changed: one `git status -uall` walk (59 ms), the floor of asking what changed.
 Outputs restored: that walk plus a raw copy of every output (408 ms).
-An edit: the walk plus the tasks it re-runs, list-scheduled on 10 workers
-(leaf: 8 tasks, 1.56 s; core: 8,912 tasks, 5 min 50 s).
 Cold: every task list-scheduled critical-path first (critical path
 30.50 s, work ÷ workers 6 min 16 s).
 **CPU** is user + system of the invocation and the children it waited for,
@@ -443,8 +441,8 @@ is not counted, so theirs is a floor.
 `packages/vx-bench/compare.ts` scaffolds **one** shared monorepo, the shape in
 § Head to head (`packages/vx-bench/shape.ts`), with the **identical** shell
 commands, `src/**` inputs and `dist/**` outputs for every runner, then times
-each runner through five states: cold, nothing changed, outputs restored, one
-leaf library edited and one core library edited. Fairness is deliberate: vx runs
+each runner through the three states CI sees: cold, nothing changed and
+outputs restored. Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
 `vx lock` taken once before the reps (`--frozen`, as CI runs it); the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;

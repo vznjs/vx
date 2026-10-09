@@ -16,8 +16,6 @@ are on [vx, Turborepo, Nx, Bazel](../).
 | ---------------------------------------------------------- | ----------- | -------------------------- |
 | Nothing changed                                            | **958 ms**  | 1.05 s (vx 10% faster)     |
 | Nothing changed, outputs restored                          | **1.70 s**  | 1.76 s (vx 4% faster)      |
-| One leaf library edited                                    | **899 ms**  | 777 ms (vx 16% slower)     |
-| One core library edited                                    | **7.53 s**  | 8.64 s (vx 15% faster)     |
 | Cold build                                                 | **8.99 s**  | 10.06 s (vx 12% faster)    |
 | Cold build: CPU the runner burns                           | **46.70 s** | 1 min 11 s (vx 51% faster) |
 

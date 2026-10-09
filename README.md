@@ -23,8 +23,6 @@
 | ---------------------------------------------------------- | ----------- | -------------------------- | --------------------------- | ------------------------ |
 | Nothing changed                                            | **958 ms**  | 1.05 s (vx 10% faster)     | 25.96 s (vx 27× faster)     | 12.24 s (vx 13× faster)  |
 | Nothing changed, outputs restored                          | **1.70 s**  | 1.76 s (vx 4% faster)      | 25.21 s (vx 15× faster)     | 11.97 s (vx 7.1× faster) |
-| One leaf library edited                                    | **899 ms**  | 777 ms (vx 16% slower)     | 27.00 s (vx 30× faster)     | 10.63 s (vx 12× faster)  |
-| One core library edited                                    | **7.53 s**  | 8.64 s (vx 15% faster)     | 1 min 16 s (vx 10× faster)  | 6.01 s (vx 25% slower)   |
 | Cold build                                                 | **8.99 s**  | 10.06 s (vx 12% faster)    | 1 min 13 s (vx 8.1× faster) | 4.50 s (vx 100% slower)  |
 | Cold build: CPU the runner burns                           | **46.70 s** | 1 min 11 s (vx 51% faster) | 6 min 13 s (vx 8× faster)   | 30.60 s (vx 53% slower)  |
 

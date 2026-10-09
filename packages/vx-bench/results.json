@@ -9,7 +9,6 @@
   "concurrency": 10,
   "reps": 3,
   "coldReps": 1,
-  "coreReps": 1,
   "date": "2026-10-09T19:59:06.801Z",
   "machine": "linux x64, 4 cores",
   "rows": [
@@ -19,8 +18,6 @@
       "fresh": 385091.251117,
       "warmNoRestore": 1016.89295,
       "warmRestore": 2104.300287,
-      "leafEdited": 2457.222596,
-      "coreEdited": 357492.364939,
       "freshCpu": 74440.899,
       "warmNoRestoreCpu": 1953.624,
       "warmRestoreCpu": 4910.816
@@ -31,8 +28,6 @@
       "fresh": 384481.012264,
       "warmNoRestore": 1040.826162,
       "warmRestore": 2186.620152,
-      "leafEdited": 2616.954702,
-      "coreEdited": 357551.351796,
       "freshCpu": 73923.136,
       "warmNoRestoreCpu": 1975.619,
       "warmRestoreCpu": 5190.53
@@ -43,8 +38,6 @@
       "fresh": 386155.136063,
       "warmNoRestore": 1108.038334,
       "warmRestore": 2166.904218,
-      "leafEdited": 2335.749246,
-      "coreEdited": 358597.873037,
       "freshCpu": 98342.063,
       "warmNoRestoreCpu": 2373.817,
       "warmRestoreCpu": 5245.076
@@ -55,8 +48,6 @@
       "fresh": 449176.722949,
       "warmNoRestore": 26022.755298,
       "warmRestore": 25616.609348,
-      "leafEdited": 28558.33784,
-      "coreEdited": 425837.756656,
       "freshCpu": 401052.887,
       "warmNoRestoreCpu": 32749.463,
       "warmRestoreCpu": 32051.571
@@ -67,8 +58,6 @@
       "fresh": 380599.069298,
       "warmNoRestore": 12299.300517,
       "warmRestore": 12378.031041,
-      "leafEdited": 12184.484954,
-      "coreEdited": 355965.658669,
       "freshCpu": 58342.751,
       "warmNoRestoreCpu": 12181.325,
       "warmRestoreCpu": 12232.796
@@ -78,13 +67,9 @@
     "fresh": 376100,
     "warmNoRestore": 58.554152,
     "warmRestore": 407.718532,
-    "leafEdited": 1558.554152,
-    "coreEdited": 349958.554152,
     "freshCpu": 27740.573,
     "warmNoRestoreCpu": 96.957,
     "criticalPathMs": 30500,
-    "workBoundMs": 376075,
-    "leafTasks": 8,
-    "coreTasks": 8912
+    "workBoundMs": 376075
   }
 }

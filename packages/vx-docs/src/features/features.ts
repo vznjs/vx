@@ -153,7 +153,7 @@ const FIRST: readonly Feature[] = [
       'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency. Every number is the time a tool adds over the ideal run.',
       'With nothing changed, vx adds 958 ms, Turborepo 1.05 s, Vite Task 12.24 s and Nx 25.96 s. On a cold build vx adds 8.99 s: 12% faster than Turborepo and 8.1× faster than Nx.',
       'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.',
-      'The benchmarks page shows every row, including the ones vx loses: Vite Task adds less on a cold build and a core edit, and Turborepo less on a leaf edit. The harness lives in the repo, so you can run it yourself.',
+      'The benchmarks page shows every row, including the ones vx loses: Vite Task adds less on a cold build and burns less CPU. The harness lives in the repo, so you can run it yourself.',
     ],
     example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx vx run build --all' },
     image: 'fastest.png',

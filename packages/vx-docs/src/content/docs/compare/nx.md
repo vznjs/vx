@@ -16,8 +16,6 @@ says when Nx is the better choice. The design choices behind both are on
 | ---------------------------------------------------------- | ----------- | --------------------------- |
 | Nothing changed                                            | **958 ms**  | 25.96 s (vx 27× faster)     |
 | Nothing changed, outputs restored                          | **1.70 s**  | 25.21 s (vx 15× faster)     |
-| One leaf library edited                                    | **899 ms**  | 27.00 s (vx 30× faster)     |
-| One core library edited                                    | **7.53 s**  | 1 min 16 s (vx 10× faster)  |
 | Cold build                                                 | **8.99 s**  | 1 min 13 s (vx 8.1× faster) |
 | Cold build: CPU the runner burns                           | **46.70 s** | 6 min 13 s (vx 8× faster)   |
 

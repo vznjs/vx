@@ -1,19 +1,9 @@
 // shape.ts is the headline benchmark's workspace (owner's spec, 2026-10-09).
 // A wrong count is a wrong workload note on every bench table, and a wrong
-// edge set makes an edit scenario re-run too little in one tool and not in
-// another, so the graph is held here.
+// edge set changes what every runner is timed on, so the graph is held here.
 
 import { describe, expect, it } from 'bun:test'
-import {
-  affectedBy,
-  command,
-  CORE_EDIT,
-  idealOf,
-  LEAF_EDIT,
-  LEVELS,
-  workspace,
-  type Project,
-} from '../shape.js'
+import { command, idealOf, LEVELS, workspace, type Project } from '../shape.js'
 
 const projects = workspace()
 const byName = new Map(projects.map((p) => [p.name, p]))
@@ -58,23 +48,11 @@ describe('the benchmark workspace', () => {
     }
   })
 
-  it('re-runs 8 tasks for a leaf edit and most of the graph for a core edit', () => {
-    expect([...affectedBy(projects, LEAF_EDIT)].sort()).toEqual(
-      [
-        ...['build', 'lint', 'publish', 'test', 'typecheck'].map((t) => `${LEAF_EDIT}#${t}`),
-        '@bench/e2e#installDeps',
-        '@bench/e2e#lint',
-        '@bench/e2e#test',
-      ].sort(),
-    )
-    expect(affectedBy(projects, CORE_EDIT).size).toBeGreaterThan(8000)
-  })
-
   it("folds every dependency's output into a build, so an edit reaches every output downstream", () => {
     const p = byName.get('@bench/app-1')!
     const cmd = command(p, 'build')
     for (const d of p.deps) expect(cmd).toContain(`../${d.slice('@bench/'.length)}/dist/index.js`)
     expect(cmd).toContain('head -c 204800 > dist/blob.bin')
-    expect(command(byName.get(CORE_EDIT)!, 'build')).not.toContain('cksum')
+    expect(command(byName.get('@bench/l1-1')!, 'build')).not.toContain('cksum')
   })
 })
