@@ -13,6 +13,10 @@ export class UserError extends Error {
    * does not. `VX_E_REFUSED` is any refusal without a code of its own.
    */
   readonly code: string
+  // Two signatures, not an optional parameter: the package-api record
+  // keeps the one-argument form every plugin already calls.
+  constructor(message: string)
+  constructor(message: string, code: string)
   constructor(message: string, code = 'VX_E_REFUSED') {
     super(message)
     this.name = 'UserError'

@@ -96,7 +96,7 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
   )
 
   it(
-    'a reading verb refuses an older index on stderr, stdout empty',
+    'a reading verb refuses an older index on stderr, and on stdout only as its error code',
     () => {
       for (const args of [
         ['info', '--format', 'json'],
@@ -105,10 +105,16 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
       ]) {
         aged()
         const [code, out, err] = vx(...args)
-        expect({ args, code, out, refused: err.includes('from another vx version') }).toEqual({
+        const doc = JSON.parse(out) as { ok: boolean; error: { code: string } }
+        expect({
+          args,
+          code,
+          out: [doc.ok, doc.error.code],
+          refused: err.includes('from another vx version'),
+        }).toEqual({
           args,
           code: 1,
-          out: '',
+          out: [false, 'VX_E_CACHE_VERSION'],
           refused: true,
         })
       }

@@ -83,7 +83,10 @@ describe('vx run --format json', () => {
       ]
       for (const [extra, message] of cases) {
         const [code, out, err] = vx('run', 'build', '--all', '--format', 'json', ...extra)
-        expect([code, out]).toEqual([1, ''])
+        expect([code, JSON.parse(out)]).toEqual([
+          1,
+          { ok: false, error: { code: 'VX_E_USAGE', message: expect.stringContaining(message) } },
+        ])
         expect(err).toContain(message)
       }
       const [code, , err] = vx('run', 'build', '--all', '--format', 'yaml')
