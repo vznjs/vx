@@ -258,7 +258,6 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        JSON array, not a row per component. The cache KEY is unchanged.
 export const SCHEMA_VERSION = 'v34'
 
-/** The tables a store holds: dropped from a workspace index that held them itself. */
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
  * `[kind, name, hash]` triples in (kind, name) code-unit order, the first
@@ -281,6 +280,7 @@ function encodeEntryInputs(
   )
 }
 
+/** The tables a store holds: dropped from a workspace index that held them itself. */
 const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
 
 /**
