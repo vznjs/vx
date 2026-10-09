@@ -17,7 +17,13 @@ beforeAll(async () => {
 })
 afterAll(() => rm(dir, { recursive: true, force: true }))
 
-const ACTIONS_KEYS = ['GITHUB_ACTIONS', 'GITHUB_REF', 'GITHUB_REF_NAME', 'GITHUB_EVENT_PATH']
+const ACTIONS_KEYS = [
+  'GITHUB_ACTIONS',
+  'GITHUB_REF',
+  'GITHUB_REF_NAME',
+  'GITHUB_EVENT_PATH',
+  'GITHUB_EVENT_NAME',
+]
 
 async function scopeOf(
   env: Record<string, string>,
@@ -57,6 +63,36 @@ it('another branch or tag writes to its own scope', async () => {
   expect(await scopeOf(actions('refs/heads/feat/x', 'feat/x'))).toBe('ref-feat/x')
   expect(await scopeOf(actions('refs/tags/v1.0', 'v1.0'))).toBe('ref-v1.0')
   expect(await scopeOf(actions('refs/heads/a+b', 'a+b'))).toBe('ref-a_b')
+})
+
+// These events run with the default branch's ref on a PR's behalf; a
+// workflow that checks out the PR's head there wrote the trusted keys.
+it("an event that runs in main's context for a pull request is the PR's", async () => {
+  const on = async (name: string, payload: unknown): Promise<string | undefined> => {
+    const file = path.join(dir, `${name}-${Math.random()}.json`)
+    await writeFile(
+      file,
+      JSON.stringify({ repository: { default_branch: 'main' }, ...(payload as object) }),
+    )
+    return scopeOf({
+      ...actions('refs/heads/main', 'main'),
+      GITHUB_EVENT_PATH: file,
+      GITHUB_EVENT_NAME: name,
+    })
+  }
+  expect([
+    await on('pull_request_target', { pull_request: { number: 7 } }),
+    await on('pull_request_target', {}),
+    await on('issue_comment', { issue: { number: 9, pull_request: { url: 'x' } } }),
+    await on('workflow_run', {
+      workflow_run: { event: 'pull_request', pull_requests: [{ number: 5 }] },
+    }),
+    await on('workflow_run', { workflow_run: { event: 'pull_request', pull_requests: [] } }),
+    // CONTROLS: the same events with no PR behind them stay trusted.
+    await on('issue_comment', { issue: { number: 9 } }),
+    await on('workflow_run', { workflow_run: { event: 'push', pull_requests: [] } }),
+    await on('push', {}),
+  ]).toEqual(['pr-7', 'pr-target', 'pr-9', 'pr-5', 'pr-target', undefined, undefined, undefined])
 })
 
 it('an unknown default branch is not trusted', async () => {

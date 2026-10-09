@@ -1,5 +1,6 @@
 @vzn/vx-ci GITHUB_ACTIONS
 @vzn/vx-ci GITHUB_API_URL
+@vzn/vx-ci GITHUB_EVENT_NAME
 @vzn/vx-ci GITHUB_EVENT_PATH
 @vzn/vx-ci GITHUB_REF
 @vzn/vx-ci GITHUB_REF_NAME
