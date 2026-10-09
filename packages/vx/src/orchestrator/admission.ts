@@ -32,11 +32,21 @@ export interface TaintTracker {
    * bytes nothing vouches for. Its order-only deps count too.
    */
   judge: (node: TaskNode, upstream: TaskOutcome[]) => boolean
+  /**
+   * For a task `judge` called tainted: the task at the root of it, a
+   * failed one or a dependency `--exclude-dependencies` dropped. Its run
+   * row names it (`blocked_by`), so no reader counts the row on its key.
+   */
+  cause: (node: TaskNode, upstream: TaskOutcome[]) => string
   /** Every settled outcome, the scheduler's `onFinish`. */
   settled: (outcome: TaskOutcome) => void
 }
 
-const UNTAINTED: TaintTracker = { judge: () => false, settled: () => {} }
+const UNTAINTED: TaintTracker = {
+  judge: () => false,
+  cause: (node) => node.id,
+  settled: () => {},
+}
 
 /**
  * Records which tasks ran behind a failure, or on the key of a dependency
@@ -61,6 +71,7 @@ export function taintTracker(
   if (!continueAlways && seeds.size === 0) return UNTAINTED
   const outcomes = new Map<string, TaskOutcome>()
   const memo = new Map<string, boolean>()
+  const causes = new Map<string, string>()
   const failed = (u: TaskOutcome): boolean =>
     continueAlways && (u.status === 'failed' || u.status === 'aborted' || u.status === 'skipped')
   const through = (u: TaskOutcome | undefined): boolean =>
@@ -113,6 +124,23 @@ export function taintTracker(
       seeds.has(node.id) ||
       upstream.some(through) ||
       node.orderOnly?.some((d) => through(outcomes.get(d))) === true,
+    cause: (node, upstream) => {
+      // A restore-tier task's upstream holds holes (see `judge`).
+      const deps = upstream.filter((u) => u !== undefined)
+      for (const d of node.orderOnly ?? []) {
+        const u = outcomes.get(d)
+        if (u !== undefined) deps.push(u)
+      }
+      const root =
+        deps.find(failed) ?? deps.find((u) => taintOf(u.node.id)) ?? node.excludedUpstream?.[0]
+      let c: string
+      if (root === undefined) c = node.id
+      else if (failed(root))
+        c = root.status === 'skipped' ? (root.blockedBy ?? root.node.id) : root.node.id
+      else c = causes.get(root.node.id) ?? root.node.id
+      causes.set(node.id, c)
+      return c
+    },
     settled: (outcome) => {
       outcomes.set(outcome.node.id, outcome)
     },

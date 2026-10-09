@@ -1,5 +1,6 @@
 // release.yml's uploads, the `release.upload.<os>` tasks: attach the
-// `vx-<os>-*` binaries to the release VX_RELEASE_VERSION names, and with
+// `vx-<os>-*` binaries to the release VX_RELEASE_VERSION names (linux's also
+// THIRD_PARTY_NOTICES.txt, the licenses the binaries embed), and with
 // `--publish` take it out of draft. This repo's releases are immutable, and
 // GitHub takes assets only before a release is published, so release.auto
 // creates each one as a draft and the last upload (darwin's, after its
@@ -14,6 +15,7 @@ import { env } from './env.ts'
 import { releaseVersion } from './release.ts'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
+const NOTICES_ASSET = 'THIRD_PARTY_NOTICES.txt'
 
 export interface Release {
   id: number
@@ -34,14 +36,19 @@ export function releaseFor(releases: readonly Release[], tag: string): Release {
   return release
 }
 
-/** The binaries for `os` under `files` that `release` does not carry yet. */
+/**
+ * The binaries for `os` under `files` that `release` does not carry yet, and
+ * on linux, the first upload, the notices every binary must travel with.
+ */
 export function assetsToUpload(
   os: 'linux' | 'darwin',
   files: readonly string[],
   release: Release,
 ): string[] {
   const have = new Set(release.assets.map((a) => a.name))
-  return files.filter((f) => f.startsWith(`vx-${os}-`) && !have.has(f)).sort()
+  const want = files.filter((f) => f.startsWith(`vx-${os}-`))
+  if (os === 'linux') want.push(NOTICES_ASSET)
+  return want.filter((f) => !have.has(f)).sort()
 }
 
 async function main(): Promise<void> {
@@ -72,7 +79,9 @@ async function main(): Promise<void> {
   )) as Release[]
   const release = releaseFor(releases, tag)
   for (const name of assetsToUpload(os, readdirSync(DIST), release)) {
-    const file = Bun.file(path.join(DIST, name))
+    const file = Bun.file(
+      name === NOTICES_ASSET ? path.join(DIST, '..', name) : path.join(DIST, name),
+    )
     await call(
       `https://uploads.github.com/repos/${repo}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`,
       {

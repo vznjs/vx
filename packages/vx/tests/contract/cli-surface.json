@@ -23,7 +23,9 @@
       "--dry",
       "--force",
       "--help",
+      "--keep",
       "--mjs",
+      "--native",
       "--plugin"
     ],
     "last": [
@@ -49,6 +51,7 @@
       "--exclude-dependencies",
       "--filter",
       "--force",
+      "--format",
       "--frozen",
       "--graph",
       "--help",
@@ -196,6 +199,10 @@
     "run --force": [
       "false",
       "true"
+    ],
+    "run --format": [
+      "json",
+      "pretty"
     ],
     "run --graph": [
       "*"

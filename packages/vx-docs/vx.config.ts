@@ -18,6 +18,7 @@ const PROOFS = [
 // so a page missing here vanishes from the site on a hit. Pinned to the
 // .gitignore manifest by tests/sidebar-coverage.test.ts.
 const IMPORTED = [
+  'src/content/docs/all-features.md',
   'src/content/docs/api.md',
   'src/content/docs/architecture.md',
   'src/content/docs/benchmarks.md',
@@ -56,16 +57,18 @@ export default defineProject({
     // `bun test` and astro's build only transpile, so a type error in the
     // playground, a widget's model or a test failed nothing. The directories
     // are named, not `.`: a type-checker pointed at a directory holding a
-    // symlinked node_modules walks it. `src/content/` is left out, being
-    // Markdown and a `content.config.ts` whose `astro:content` types exist
-    // only after astro generates them. The check follows the playground's
+    // symlinked node_modules walks it. `src/content/`, `src/llms/` and
+    // `src/blog/` are left out: they import `astro:content`, whose types
+    // exist only after astro generates them; src/env.d.ts gives the rest of
+    // astro's types. They are inputs all the same, as the files checked
+    // import them. The check follows the playground's
     // imports across the boundary into core's source (a devDependency, its
     // key through `install`).
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/nav src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/playground src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../vx/src/**'],
@@ -79,7 +82,11 @@ export default defineProject({
           files: [
             'astro.config.mjs',
             'scripts/**',
+            'src/env.d.ts',
+            'src/blog/**',
             'src/components/**',
+            'src/features/**',
+            'src/llms/**',
             'src/nav/**',
             'src/pages/**',
             'src/playground/**',
@@ -193,6 +200,10 @@ export default defineProject({
             // reads the kit's styles, the widgets' and the theme's tokens, and
             // with landing.test.ts the landing's picture.
             'src/nav/**',
+            // features.test.ts holds the feature data's copy, commands and
+            // config examples, and its images on disk.
+            'src/features/**',
+            'src/assets/features/**',
             'src/components/guide/**',
             'src/components/landing/**',
             'src/components/Demo.astro',

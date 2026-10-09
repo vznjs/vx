@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="650" height="70" viewBox="0 0 650 70">
+  <rect width="650" height="70" fill="#090c0c"/>
+  <text x="0" y="21" fill="#aeb6af" font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="19">Example cache-hit latency varies by workspace and machine.</text>
+  <text x="0" y="43" fill="#aeb6af" font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="18">No general timing guarantee; see measured synthetic cases:</text>
+  <text x="0" y="65" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="17">/benchmarks/#synthetic-scheduling-counterexample</text>
+</svg>

@@ -94,6 +94,7 @@ src/orchestrator/miss-reason.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/output-log.ts
+src/orchestrator/path-links.ts
 src/orchestrator/persistent.ts
 src/orchestrator/placement.ts
 src/orchestrator/plain-output.ts
@@ -105,6 +106,7 @@ src/orchestrator/projects.ts
 src/orchestrator/remote-prefetch.ts
 src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
+src/orchestrator/run-failures.ts
 src/orchestrator/run-id.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts

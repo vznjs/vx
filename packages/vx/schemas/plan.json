@@ -33,7 +33,26 @@
             "const": "deferred",
             "description": "outputs would stay remote (--download)"
           },
-          "description": { "type": "string" }
+          "description": { "type": "string" },
+          "affected": {
+            "type": "object",
+            "description": "why --affected kept this requested task; absent on a dependency it pulled in",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "enum": ["input", "project", "package", "named", "selected"],
+                "description": "input: a changed file is a declared input; project: its project changed and the task reads it whole; package: a ^ edge passes a changed package; named: asked as pkg#task; selected: another filter selected its project"
+              },
+              "file": { "type": "string", "description": "the changed file, workspace-relative" },
+              "project": { "type": "string", "description": "the changed package (kind package)" },
+              "via": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "the dependsOn chain, nearest first, to the task the change reached"
+              }
+            }
+          }
         }
       }
     },

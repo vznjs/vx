@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1456" height="70" viewBox="0 0 1456 70">
+  <rect width="1456" height="70" fill="#090c0c"/>
+  <text x="0" y="24" fill="#aeb6af" font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="21">Warm-cycle latency varies by workspace and machine; the timing above is not a general guarantee.</text>
+  <text x="0" y="58" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20">Measured synthetic cases: /benchmarks/#synthetic-scheduling-counterexample</text>
+</svg>

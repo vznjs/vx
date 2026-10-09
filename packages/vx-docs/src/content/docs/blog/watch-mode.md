@@ -75,7 +75,7 @@ reach.
 - Ctrl-C prints `vx watch: stopped`, tears down the in-flight cycle's
   children and exits 0 only once they are gone.
 - Flags that describe one run (`--dry`, `--graph`, `--summarize`,
-  `--profile`, `--report`, `--report-file`, `--verbosity` above 0) are
+  `--profile`, `--report`, `--report-file`, `--verbosity` above 0, `--format`) are
   rejected up front, because a loop has no single run.
 - A persistent task starts once and stays up across cycles; each cycle
   re-runs what it depends on, as the keys decide. It restarts only when

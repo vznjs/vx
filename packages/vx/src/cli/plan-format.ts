@@ -1,6 +1,6 @@
 // Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
 
-import type { CacheStatus, RunPlan } from '../orchestrator/index.js'
+import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
 import { formatElapsed, maskedCommand } from '../util/index.js'
 
 /**
@@ -51,6 +51,9 @@ export function formatPlanText(plan: RunPlan): string {
     const taskDesc = shownDescription(t)
     if (taskDesc) {
       lines.push(`     ${' '.repeat(idWidth)}  ${taskDesc}`)
+    }
+    if (t.affected !== undefined) {
+      lines.push(`     ${' '.repeat(idWidth)}  affected: ${describeReason(t.affected)}`)
     }
     if (skipped) noop++
     else if (t.cacheStatus === 'hit-local') local++
@@ -104,6 +107,23 @@ export function formatPlanText(plan: RunPlan): string {
   return lines.join('\n') + '\n'
 }
 
+/** One `--affected --dry` reason line: the cause, then the edge chain that carried it. */
+function describeReason(r: AffectedReason): string {
+  const cause =
+    r.kind === 'named'
+      ? 'named on the command line'
+      : r.kind === 'selected'
+        ? 'its project is selected outright'
+        : r.kind === 'package'
+          ? `a ^ edge passes changed package ${r.project}`
+          : r.kind === 'input'
+            ? `${r.file} changed (an input)`
+            : r.file !== undefined
+              ? `${r.file} changed (in its project)`
+              : 'its project changed as a whole'
+  return r.via === undefined ? cause : `${cause}, via ${r.via.join(' ← ')}`
+}
+
 /** A TS config may build the description from `process.env` (L-11). */
 function shownDescription(t: RunPlan['tasks'][number]): string | undefined {
   const { description, exec } = t.node.config
@@ -122,6 +142,7 @@ export interface PlanTaskJson {
   executor?: string
   download?: 'deferred'
   description?: string
+  affected?: AffectedReason
 }
 
 export function formatPlanJson(plan: RunPlan): string {
@@ -141,6 +162,7 @@ export function formatPlanJson(plan: RunPlan): string {
             ...(t.executor !== undefined ? { executor: t.executor } : {}),
             ...(t.download !== undefined ? { download: t.download } : {}),
             ...(description !== undefined ? { description } : {}),
+            ...(t.affected !== undefined ? { affected: t.affected } : {}),
           }
         }),
         ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),

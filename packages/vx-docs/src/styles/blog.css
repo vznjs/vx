@@ -1,0 +1,600 @@
+/* The blog in the landing's look (src/components/blog/): a listing that runs
+   wide (masthead, the newest post large, filter chips, a grid of cover
+   cards) and posts that read in one centred column under a hero. Blog pages
+   are told apart by what they hold: a listing's masthead or a post's hero.
+   Starlight's own panel rules sit in a cascade layer, so these unlayered
+   ones win without !important. */
+
+:root:has(:is(.vx-masthead, .vx-post-hero)) {
+  overflow-x: clip;
+}
+
+:root:has(:is(.vx-masthead, .vx-post-hero)) header.header {
+  /* Opaque, not a backdrop blur: the blur re-filtered the covers under it
+     on every scrolled frame. */
+  background: var(--vx-bg);
+}
+
+:root:has(:is(.vx-masthead, .vx-post-hero)) .content-panel + .content-panel {
+  border-top: 0;
+}
+
+:root:has(:is(.vx-masthead, .vx-post-hero)) .sl-container {
+  margin-inline: auto;
+}
+
+:root:has(.vx-masthead) .sl-container {
+  max-width: 76rem;
+}
+
+:root:has(.vx-post-hero) .sl-container {
+  max-width: 46rem;
+}
+
+/* ─────────────────────────  Byline and chips  ───────────────────────── */
+
+.vx-byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  font: 500 0.78rem / 1.4 var(--vx-mono);
+  color: var(--vx-muted);
+}
+
+.vx-chip {
+  padding: 0.18rem 0.6rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 999px;
+  color: var(--vx-text);
+  white-space: nowrap;
+}
+
+.vx-chip-version {
+  border-color: color-mix(in srgb, var(--vx-accent) 45%, transparent);
+  background: var(--vx-accent-soft);
+  color: var(--vx-accent);
+  font-weight: 600;
+}
+
+.vx-byline .vx-author-name {
+  color: var(--vx-text);
+}
+
+.vx-byline > :not(.vx-chip) + ::before {
+  content: '·';
+  margin-right: 0.75rem;
+  color: var(--vx-muted);
+}
+
+.vx-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+}
+
+.vx-author::before {
+  display: none;
+}
+
+.vx-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--vx-accent);
+  color: var(--vx-on-accent);
+  font: 700 0.85rem / 1 var(--vx-font-display);
+  text-transform: uppercase;
+}
+
+.vx-author .vx-author-title {
+  margin-left: 0.4rem;
+  color: var(--vx-muted);
+  font-weight: 400;
+}
+
+/* ─────────────────────────────  Covers  ───────────────────────────── */
+
+.vx-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  border: 1px solid var(--vx-border);
+  border-radius: 12px;
+  background: #0a0b0d;
+}
+
+/* An essay's cover, always dark like the rendered release covers. */
+.vx-cover-drawn {
+  container-type: inline-size;
+  position: relative;
+  overflow: hidden;
+  border-color: #21262d;
+  /* A grid tile over a glow bitmap per tone (Cover.astro): as gradients
+     they cost the index 3× to 4× the raster time while scrolling. */
+  background-color: #0a0b0d;
+  background-position:
+    0 0,
+    center;
+  background-size:
+    28px 28px,
+    cover;
+  background-repeat: repeat, no-repeat;
+}
+
+.vx-cover-in {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6cqw 6.5cqw;
+}
+
+.vx-cover-top {
+  display: flex;
+  align-items: center;
+  gap: 2.4cqw;
+}
+
+.vx-cover-top img {
+  width: 5.4cqw;
+  height: auto;
+}
+
+.vx-cover-label {
+  padding: 0.7cqw 1.9cqw;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  color: var(--tone);
+  font: 600 2.7cqw / 1.2 var(--vx-mono);
+}
+
+.vx-cover-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  max-width: 88%;
+  margin: 0;
+  color: #f2f5ef;
+  font: 700 6.6cqw / 1.08 var(--vx-font-display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.vx-cover-title::before {
+  content: '';
+  display: block;
+  width: 9cqw;
+  height: 0.8cqw;
+  margin-bottom: 3cqw;
+  border-radius: 1cqw;
+  background: var(--tone);
+  box-shadow: 0 0 3cqw color-mix(in srgb, var(--tone) 60%, transparent);
+}
+
+/* Under a post's own headline the cover is a banner: the label, set large. */
+.vx-cover-word {
+  position: absolute;
+  right: -1cqw;
+  bottom: -5.5cqw;
+  margin: 0;
+  color: transparent;
+  font: 700 19cqw / 1 var(--vx-font-display);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+  -webkit-text-stroke: 1px color-mix(in srgb, var(--tone) 55%, transparent);
+}
+
+/* ─────────────────────────────  Listing  ───────────────────────────── */
+
+.vx-masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding: 2.5rem 0 0.5rem;
+}
+
+.vx-kicker {
+  margin: 0 0 0.75rem;
+  font: 500 0.75rem / 1.25 var(--vx-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vx-accent);
+}
+
+.vx-masthead h1 {
+  margin: 0;
+  color: var(--vx-fg);
+  font: 700 clamp(2.5rem, 1.6rem + 3vw, 4rem) / 1 var(--vx-font-display);
+  letter-spacing: -0.045em;
+}
+
+.vx-masthead-lede {
+  margin: 0.85rem 0 0;
+  color: var(--vx-muted);
+  font-size: 1.125rem;
+}
+
+.vx-rss {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 999px;
+  color: var(--vx-text);
+  font: 500 0.8rem / 1 var(--vx-mono);
+  text-decoration: none;
+}
+
+.vx-rss:hover {
+  border-color: var(--vx-accent);
+  color: var(--vx-accent);
+}
+
+.vx-feature {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 3.5rem;
+  padding-bottom: 3.5rem;
+  border-bottom: 1px solid var(--vx-border);
+}
+
+.vx-feature-cover .vx-cover {
+  border-radius: 16px;
+  box-shadow: 0 30px 80px -40px color-mix(in srgb, var(--vx-accent) 35%, transparent);
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s;
+}
+
+.vx-feature:hover .vx-cover {
+  transform: translateY(-3px);
+  border-color: var(--vx-accent);
+}
+
+.vx-feature h2 {
+  margin: 1rem 0 0;
+  font: 700 clamp(2rem, 1.1rem + 2.5vw, 3.25rem) / 1.04 var(--vx-font-display);
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.vx-feature h2 a {
+  color: var(--vx-fg);
+  text-decoration: none;
+}
+
+.vx-feature h2 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.vx-feature-excerpt {
+  margin: 1.1rem 0 0;
+  color: var(--vx-text);
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+.vx-read {
+  display: inline-block;
+  margin-top: 1.5rem;
+  color: var(--vx-accent);
+  font: 600 0.85rem / 1 var(--vx-mono);
+  text-decoration: none;
+}
+
+.vx-feature:hover .vx-read span {
+  margin-left: 0.25rem;
+}
+
+.vx-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin: 2.5rem 0 2.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.vx-filters a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid var(--vx-border);
+  border-radius: 999px;
+  color: var(--vx-text);
+  font: 500 0.8rem / 1 var(--vx-mono);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.vx-filters a:hover {
+  border-color: var(--vx-accent);
+}
+
+.vx-filters a[aria-current='page'] {
+  border-color: var(--vx-fg);
+  background: var(--vx-fg);
+  color: var(--vx-bg);
+}
+
+.vx-filters .n {
+  color: var(--vx-muted);
+  font-size: 0.72rem;
+}
+
+.vx-filters a[aria-current='page'] .n {
+  color: inherit;
+  opacity: 0.6;
+}
+
+.vx-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3rem 2rem;
+}
+
+.vx-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.vx-card .vx-cover {
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.2s;
+}
+
+.vx-card:hover .vx-cover {
+  transform: translateY(-3px);
+  border-color: var(--vx-accent);
+}
+
+.vx-card h3 {
+  margin: 0.75rem 0 0;
+  font: 600 1.3rem / 1.25 var(--vx-font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.vx-card h3 a {
+  color: var(--vx-fg);
+  text-decoration: none;
+}
+
+.vx-card h3 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.vx-card:hover h3 a {
+  color: var(--vx-accent);
+}
+
+.vx-card-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0.5rem 0 0;
+  color: var(--vx-muted);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+/* ──────────────────────────────  Post  ────────────────────────────── */
+
+.vx-post-hero {
+  padding-top: 2rem;
+}
+
+.vx-back {
+  display: inline-block;
+  margin-bottom: 2rem;
+  color: var(--vx-muted);
+  font: 500 0.8rem / 1 var(--vx-mono);
+  text-decoration: none;
+}
+
+.vx-back:hover {
+  color: var(--vx-accent);
+}
+
+.vx-post-hero h1 {
+  margin: 1.25rem 0 0;
+  color: var(--vx-fg);
+  font: 700 clamp(2.25rem, 1.3rem + 3.4vw, 3.75rem) / 1.05 var(--vx-font-display);
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.vx-dek {
+  margin: 1.25rem 0 0;
+  color: var(--vx-text);
+  font-size: clamp(1.1rem, 1rem + 0.4vw, 1.3rem);
+  line-height: 1.55;
+}
+
+/* The cover, the related cards, and the body's charts and diagrams run
+   wider than the column, centred on it, as far as the viewport allows. */
+.vx-post-cover,
+.vx-related,
+:root:has(.vx-post-hero) .sl-markdown-content :is(.vx-charts, pre.mermaid) {
+  --wide: min(66rem, 100vw - 2 * var(--sl-content-pad-x));
+  width: var(--wide);
+  margin-inline: calc((100% - var(--wide)) / 2);
+}
+
+:root:has(.vx-post-hero) .sl-markdown-content :is(.vx-charts, pre.mermaid) {
+  --wide: min(56rem, 100vw - 2 * var(--sl-content-pad-x));
+}
+
+.vx-post-cover {
+  margin-top: 2.75rem;
+}
+
+.vx-post-cover .vx-cover {
+  border-radius: 18px;
+}
+
+.vx-post-band .vx-cover {
+  aspect-ratio: 1200 / 340;
+}
+
+.vx-post-band .vx-cover-in {
+  padding: 3.2cqw 3.6cqw;
+}
+
+.vx-post-band .vx-cover-top img {
+  width: 3.4cqw;
+}
+
+.vx-post-band .vx-cover-label {
+  font-size: 1.6cqw;
+}
+
+:root:has(.vx-post-hero) .sl-markdown-content {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+
+:root:has(.vx-post-hero) .sl-markdown-content h2 {
+  margin-top: 3.25rem;
+  font-size: clamp(1.5rem, 1.25rem + 0.9vw, 1.9rem);
+  line-height: 1.2;
+}
+
+:root:has(.vx-post-hero) .sl-markdown-content img {
+  border-radius: 12px;
+}
+
+/* A release's "In this release": its label and links as one compact box. */
+:root:has(.vx-post-hero[data-release]) .sl-markdown-content p:has(> strong:only-child):has(+ ul) {
+  margin-top: 2rem;
+  padding: 1rem 1.25rem 0;
+  border: 1px solid var(--vx-border);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--vx-surface);
+  font: 600 0.72rem / 1.2 var(--vx-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vx-accent);
+}
+
+:root:has(.vx-post-hero[data-release]) .sl-markdown-content p:has(> strong:only-child) + ul {
+  margin-top: 0;
+  padding: 0.6rem 1.25rem 1rem;
+  border: 1px solid var(--vx-border);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: var(--vx-surface);
+  columns: 2;
+  column-gap: 1.5rem;
+  list-style: none;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+:root:has(.vx-post-hero[data-release]) .sl-markdown-content p:has(> strong:only-child) + ul li {
+  margin: 0;
+  padding: 0.3rem 0;
+  break-inside: avoid;
+}
+
+:root:has(.vx-post-hero[data-release]) .sl-markdown-content p:has(> strong:only-child) + ul a {
+  color: var(--vx-fg);
+  text-decoration: none;
+}
+
+:root:has(.vx-post-hero[data-release])
+  .sl-markdown-content
+  p:has(> strong:only-child)
+  + ul
+  a:hover {
+  color: var(--vx-accent);
+}
+
+.vx-post-end {
+  margin-top: 4rem;
+}
+
+.vx-post-tags {
+  flex-wrap: wrap;
+  margin: 0 0 4rem;
+}
+
+.vx-related {
+  padding-top: 3rem;
+  border-top: 1px solid var(--vx-border);
+}
+
+.vx-related h2 {
+  margin: 0 0 1.75rem;
+  color: var(--vx-fg);
+  font: 700 1.6rem / 1.2 var(--vx-font-display);
+  letter-spacing: -0.03em;
+}
+
+/* ─────────────────────────────  Narrow  ───────────────────────────── */
+
+@media (max-width: 68rem) {
+  .vx-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vx-feature {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.75rem;
+  }
+}
+
+@media (max-width: 40rem) {
+  .vx-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+
+  .vx-masthead {
+    padding-top: 1rem;
+  }
+
+  .vx-feature {
+    padding-bottom: 2.5rem;
+  }
+
+  .vx-filters {
+    margin-inline: calc(-1 * var(--sl-content-pad-x));
+    padding-inline: var(--sl-content-pad-x);
+  }
+
+  .vx-post-cover .vx-cover {
+    border-radius: 12px;
+  }
+
+  :root:has(.vx-post-hero[data-release]) .sl-markdown-content p:has(> strong:only-child) + ul {
+    columns: 1;
+  }
+}

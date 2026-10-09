@@ -97,7 +97,7 @@ export function drainOrAbort(streams: Promise<unknown>, ac: AbortController): Pr
 export function spawnFailureText(err: unknown, cwd: string, what?: string): string
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
-export function droppedOutputLine(dropped: number): string
+export function droppedOutputLine(dropped: number, headChars?: number, tailChars?: number): string
 export function maskCaptured(text: string, secrets: SecretMask): string // the pieces a cut left masked too
 export interface CapturedChunk {
   text: string
@@ -105,6 +105,7 @@ export interface CapturedChunk {
 }
 // The head-and-tail bound over chunks of either stream, in arrival order.
 export class BoundedCapture {
+  constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
@@ -232,8 +233,9 @@ full byte size in heap for the task's whole life:
 
 - Neither stream is retained by the runner. The entry's output is kept
   by `execute-task.ts` from the live callbacks, both streams in arrival
-  order in one `BoundedCapture`, and only when the task **will write a
-  cache entry**.
+  order in one `BoundedCapture`: entry-sized when the task **will write
+  a cache entry**, else 8 KiB head and 56 KiB tail, kept only for a
+  failure's `failedOutput` (what `vx last` and `getFailures` read).
 - What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
   the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
   counted and named where it was (`droppedOutputLine`). The live

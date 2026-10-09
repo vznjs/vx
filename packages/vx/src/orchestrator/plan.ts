@@ -15,6 +15,7 @@ import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
 import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
 import { ranNoCache } from './events.js'
 import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
+import type { AffectedReason } from './affected-tasks.js'
 import type { HistoryProvider } from './history.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
 import { keyedOutcome, keyUpstream } from './upstream.js'
@@ -53,6 +54,8 @@ export interface PlannedTask {
    * eager task is the default and saying so on every line says nothing.
    */
   download?: 'deferred'
+  /** Why `--affected` kept this requested task; absent without `--affected` and on a dependency it pulled in. */
+  affected?: AffectedReason
 }
 
 /**

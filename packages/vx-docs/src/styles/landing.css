@@ -213,9 +213,9 @@ body:has(.vx-landing) {
   padding: 0 var(--gutter);
   height: 64px;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--ink-900) 78%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Opaque, not a backdrop blur: the blur re-filtered the page under it
+     on every scrolled frame. */
+  background: var(--ink-900);
 }
 .nav-left {
   display: flex;
@@ -245,6 +245,80 @@ body:has(.vx-landing) {
 }
 .nav-links a:hover {
   color: var(--text-hi);
+}
+/* The places' panels: open on hover or keyboard focus, no script. */
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 64px;
+}
+.nav-item > a[aria-current='page'] {
+  color: var(--text-hi);
+}
+.nav-panel {
+  position: absolute;
+  top: 56px;
+  left: -18px;
+  width: 340px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--ink-850);
+  box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.7);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.14s,
+    transform 0.14s,
+    visibility 0s 0.14s;
+}
+.nav-panel-wide {
+  width: 560px;
+}
+.nav-panel-wide ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.nav-item:hover > .nav-panel,
+.nav-item:focus-within > .nav-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.14s,
+    transform 0.14s;
+}
+.nav-panel ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nav-links .nav-mi {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font: var(--fw-semibold) 14px/1.25 var(--font-display);
+  color: var(--text-hi);
+  letter-spacing: -0.01em;
+}
+.nav-links .nav-mi:hover {
+  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
+}
+.nav-mi-line {
+  font: 400 12.5px/1.35 var(--font-body);
+  color: var(--text-mut);
+}
+.nav-links .nav-mi-all {
+  display: block;
+  margin-top: 6px;
+  padding: 10px 12px 4px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--phosphor);
 }
 .nav-right {
   display: flex;
@@ -456,6 +530,28 @@ body:has(.vx-landing) {
   max-width: 100%;
   height: auto;
   margin-top: 40px;
+}
+/* Wide screens: the words on the left, the run beside them. */
+@media (min-width: 1200px) {
+  .hero .container {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    column-gap: 56px;
+    align-items: start;
+  }
+  .hero .container > * {
+    grid-column: 1;
+    justify-self: start;
+  }
+  .hero .container > .demo {
+    grid-column: 2;
+    grid-row: 1 / span 7;
+    align-self: center;
+    margin-top: 0;
+  }
+  .hero h1 {
+    font-size: clamp(48px, 4.6vw, 76px);
+  }
 }
 
 /* ---- the one picture and its six lines ----
@@ -834,5 +930,169 @@ body:has(.vx-landing) {
   }
   .bench-panel {
     padding: 16px 16px 4px;
+  }
+}
+
+/* ============================================================
+   Live strip: the newest release over the hero, agents, shipping
+   ============================================================ */
+.announce {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  padding: 6px 14px 6px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--ink-850);
+  font: var(--fw-medium) 13px/1 var(--font-mono);
+  color: var(--text-mut);
+  text-decoration: none;
+}
+.announce:hover {
+  border-color: var(--phosphor);
+  color: var(--text-hi);
+}
+.announce-tag {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--phosphor);
+  color: var(--ink-900);
+  font-weight: var(--fw-bold);
+}
+.announce-ver {
+  color: var(--phosphor);
+}
+.announce-title {
+  color: var(--text-hi);
+  font-family: var(--font-body);
+}
+.agents-grid,
+.ship-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink-850);
+}
+.agent-card h3 {
+  margin: 0;
+  font: var(--fw-bold) 22px/1.1 var(--font-mono);
+  color: var(--phosphor);
+}
+.agent-card h3 code {
+  font: inherit;
+}
+.agent-card p {
+  margin: 0;
+  font: var(--fw-regular) 16px/1.5 var(--font-body);
+  color: var(--text-mut);
+}
+.agent-card .section-link {
+  margin-top: auto;
+  font-size: 14px;
+}
+.tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tool-chips code {
+  display: block;
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  font: var(--fw-medium) 12.5px/1 var(--font-mono);
+  color: var(--text-hi);
+}
+.agent-term {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 10px;
+  background: var(--ink-900);
+  font: 12px/1.6 var(--font-mono);
+  color: var(--text);
+}
+.ship-releases {
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink-850);
+}
+.ship-releases h3 {
+  margin: 0 0 12px;
+  font: var(--fw-bold) 14px/1 var(--font-mono);
+  color: var(--text-mut);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.ship-releases ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ship-releases li a {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+}
+.ship-releases li a:hover .ship-title {
+  color: var(--phosphor);
+}
+.ship-ver {
+  font: var(--fw-semibold) 12px/1 var(--font-mono);
+  color: var(--phosphor);
+}
+.ship-title {
+  font: var(--fw-semibold) 17px/1.3 var(--font-display);
+  color: var(--text-hi);
+}
+.ship-date {
+  font: 12px/1 var(--font-mono);
+  color: var(--text-mut);
+}
+.ship-releases .section-link {
+  margin-top: 18px;
+  font-size: 14px;
+}
+.ship-posts {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.ship-post {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+}
+.ship-post:hover .ship-title {
+  color: var(--phosphor);
+}
+@media (max-width: 900px) {
+  .agents-grid,
+  .ship-grid,
+  .ship-posts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ship-posts {
+    grid-column: auto;
+  }
+  .announce-title {
+    display: none;
   }
 }

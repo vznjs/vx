@@ -70,6 +70,7 @@ import {
   type ExecUsage,
   extractArtifactStream,
   scanArtifact,
+  scanTarBytes,
   packArtifactBytes,
   packArtifactStream,
   planArtifact,
@@ -100,7 +101,6 @@ import {
   bytesOf,
   decodedTar,
   MAX_DECOMPRESSED_ARTIFACT_BYTES,
-  oneChunk,
   STREAM_DECODE_FROM,
   zstdCompress,
   zstdEncoder,
@@ -121,6 +121,16 @@ import { CACHE_VERSION, foldKey } from './key-fold.js'
  * the policy reads the file time plus this as the last use.
  */
 const ORPHAN_GRACE_MS = 60 * 60 * 1000
+
+/**
+ * A hit renews an entry's `accessed_at` only once it is older than this:
+ * renewing every hit rewrote 2,180 rows at a warm 1,090-package run's
+ * close, ~30 ms of it. So `accessed_at` trails the last use by at most
+ * this much, and the retention policy reads it plus this as the last use:
+ * an entry used within the limit is never pruned, and one may stay up to
+ * this long past it (owner, 2026-10-08).
+ */
+const ACCESS_REFRESH_MS = 60 * 60 * 1000
 
 /**
  * The only names the orphan sweep may unlink: an artifact under a key
@@ -298,11 +308,12 @@ function pickVictims(
   const kept: Array<{ at: number; size: number; row?: string; file?: RowlessFile }> = []
   let remaining = 0
   for (const r of rows) {
-    if (olderThanMs !== undefined && r.accessed_at < olderThanMs) {
+    const at = r.accessed_at + ACCESS_REFRESH_MS
+    if (olderThanMs !== undefined && at < olderThanMs) {
       hashes.add(r.hash)
       bytesFreed += r.size_bytes
     } else {
-      kept.push({ at: r.accessed_at, size: r.size_bytes, row: r.hash })
+      kept.push({ at, size: r.size_bytes, row: r.hash })
       remaining += r.size_bytes
     }
   }
@@ -536,6 +547,7 @@ function ensurePrivateDir(dir: string): string | null {
 // enumeration on the bench workspace before its generator ignored `.vx`. An
 // ignored directory is skipped by the walk entirely. Only written when
 // absent, so a user's own file wins.
+const utf8 = new TextEncoder()
 const IGNORE_ALL = '*\n'
 
 /**
@@ -966,7 +978,7 @@ export class Cache implements CacheLayer {
     )
     this.upsertStdout = lazyStatement(
       this.db,
-      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
+      'INSERT INTO entry_stdout(hash, stdout) VALUES (?, CAST(? AS TEXT)) ON CONFLICT(hash) DO UPDATE SET stdout = excluded.stdout',
     )
     this.deleteStdout = lazyStatement(this.db, 'DELETE FROM entry_stdout WHERE hash = ?')
     this.selectEntry = lazyStatement(this.db, `${SELECT_ENTRY} WHERE e.hash = ?`)
@@ -1347,7 +1359,7 @@ export class Cache implements CacheLayer {
     // full-cache run. Hashes are collected and flushed as ONE batched
     // UPDATE by flushAccessed() (called from prune/stats/close), which
     // is when accessed_at is actually read.
-    this.touched.add(hash)
+    if (row.accessed_at < Date.now() - ACCESS_REFRESH_MS) this.touched.add(hash)
 
     // Pure SQL: outputFiles come from the output_files rows and
     // stdout from the entries row. The artifact is NOT touched here —
@@ -1392,6 +1404,7 @@ export class Cache implements CacheLayer {
     const rows = this.db.query(`${SELECT_ENTRY} WHERE e.hash ${test}`).all(...params) as EntryRow[]
     if (rows.length === 0) return out
     const graceStart = Date.now() - ORPHAN_GRACE_MS
+    const refreshStart = Date.now() - ACCESS_REFRESH_MS
     const live = rows.filter((r) => {
       const st = statSync(this.tarPath(r.hash), { throwIfNoEntry: false })
       if (st !== undefined && st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
@@ -1402,7 +1415,7 @@ export class Cache implements CacheLayer {
     this.outputs.hold(fileRows)
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
-      this.touched.add(row.hash)
+      if (row.accessed_at < refreshStart) this.touched.add(row.hash)
       const entry = entryOf(row, fileRows.get(row.hash) ?? [])
       entry.outputDirRows = dirRows.get(row.hash) ?? []
       out.set(row.hash, entry)
@@ -1990,17 +2003,20 @@ export class Cache implements CacheLayer {
     }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
-      // ingest() is the UNTRUSTED boundary — its temp holds bytes just
-      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
-      // can expand into memory.
-      const source =
-        compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
-          ? compressed
-          : Bun.file(tmpPath)
       const endScan = span('save: scan')
-      scanned = await scanArtifact(
-        tar !== undefined ? oneChunk(tar) : await decodedTar(source, hash, this.artifactCeiling),
-      )
+      if (tar !== undefined) {
+        // Our own tar, in memory: read in place, on this thread.
+        scanned = scanTarBytes(tar)
+      } else {
+        // ingest() is the UNTRUSTED boundary — its temp holds bytes just
+        // pulled from a remote. Refuse a bomb (declared or sizeless) before it
+        // can expand into memory.
+        const source =
+          compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
+            ? compressed
+            : Bun.file(tmpPath)
+        scanned = await scanArtifact(await decodedTar(source, hash, this.artifactCeiling))
+      }
       endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.
@@ -2118,7 +2134,13 @@ export class Cache implements CacheLayer {
         scanned.exec?.peakRssBytes ?? null,
       )
       if (stdoutText === '') deleteStdout.run(hash)
-      else upsertStdout.run(hash, stdoutText)
+      // bun:sqlite drops a leading U+FEFF from a bound string; its UTF-8
+      // bytes, cast to TEXT, keep it.
+      else
+        upsertStdout.run(
+          hash,
+          stdoutText.startsWith('\uFEFF') ? utf8.encode(stdoutText) : stdoutText,
+        )
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a
       // re-save's rows are identical — keep the first set, skip the rest.
@@ -2143,7 +2165,8 @@ export class Cache implements CacheLayer {
 
   /** Apply the deferred accessed_at bumps in one statement. */
   private flushAccessed(): void {
-    if (this.touched.size === 0) return
+    // Apart: a hit whose row is fresh still renews an old file time.
+    if (this.touched.size === 0 && this.staleTimes.size === 0) return
     const hashes = [...this.touched]
     this.touched.clear()
     const now = Date.now()
@@ -2158,6 +2181,7 @@ export class Cache implements CacheLayer {
       }
     }
     this.staleTimes.clear()
+    if (hashes.length === 0) return
     // LRU bookkeeping: on a full disk the bumps are dropped, never the prune
     // or the stats that asked for them (A-14).
     try {
@@ -2260,7 +2284,8 @@ export class Cache implements CacheLayer {
         'SELECT MIN(accessed_at) AS oldest, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries',
       )
       .get() as { oldest: number | null; bytes: number }
-    const ageDue = olderThanMs !== undefined && oldest !== null && oldest < olderThanMs
+    const ageDue =
+      olderThanMs !== undefined && oldest !== null && oldest + ACCESS_REFRESH_MS < olderThanMs
     const sizeDue = policy.maxBytes !== undefined && bytes > policy.maxBytes
     if (ageDue || sizeDue) {
       return this.prune({

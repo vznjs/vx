@@ -4,6 +4,7 @@
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
 export { prepareRun, type PreparedRun } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
+export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,
   gitOfDiscovery,
@@ -158,6 +159,8 @@ export {
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
+export { runFailures, type RunFailures, type TaskFailure } from './run-failures.js'
+export type { OutputLocation } from './path-links.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export type {
   CacheEntryRow,

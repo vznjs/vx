@@ -153,12 +153,11 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 
 ## Coming from Turbo or Nx
 
-`bunx @vzn/vx-migrate` writes a `vx.config.ts` per package from
-`turbo.json` or the Nx graph; you keep those and delete the old config.
-Beside `turbo.json` or `nx.json`, `vx init` writes only a
-`vx.workspace.ts` that maps the old config until then: a temporary
-start, not a way to run the repo. The numbers above are native vx
-config.
+Beside `turbo.json` or `nx.json`, `npx vx init` runs `@vzn/vx-migrate`:
+it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
+and you keep those and delete the old config. `vx init --keep` writes only
+a `vx.workspace.ts` that maps the old config instead: a temporary start,
+not a way to run the repo. The numbers above are native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
 ## How vx reduces runner work
@@ -187,7 +186,7 @@ config.
 | Output ownership   | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
 | Clean-tree hashing | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
 | Daemon             | **None**                                  | None for `turbo run`           | On by default    |
-| Per-task sandbox   | **Yes**: kernel-level, opt-in             | No                             | No               |
+| Per-task sandbox   | **Yes**: kernel-level, opt-in, local      | No                             | On Nx Cloud only |
 | Plugin API         | **Yes**: every pipeline stage             | No                             | Yes (TS-tied)    |
 | Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
 

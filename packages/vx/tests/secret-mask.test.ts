@@ -37,6 +37,29 @@ describe('secretMask', () => {
     expect(m.maskCut('plain', 'words')).toEqual(['plain', 'words'])
   })
 
+  it("a URL's password is masked whatever the variable is named", () => {
+    const m = secretMask([
+      {
+        DATABASE_URL: 'postgres://app:pw-l11-sekret@db:5432/app',
+        MIRROR: 'see https://u:mirror-l11-sekret@a.example and ftp://v:second-l11-sekret@b/',
+      },
+    ])!
+    expect(m.mask('connect postgres://app:pw-l11-sekret@db:5432/app')).toBe(
+      `connect postgres://app:${MASKED}@db:5432/app`,
+    )
+    expect(m.mask('mirror-l11-sekret second-l11-sekret')).toBe(`${MASKED} ${MASKED}`)
+    // CONTROL: a URL with no password, an email, and a short password mask nothing.
+    expect(
+      secretMask([
+        {
+          HOME_URL: 'https://user@example.com/x',
+          AUTHOR: 'dev@example.com',
+          SHORT_URL: 'redis://:pw@cache',
+        },
+      ]),
+    ).toBeNull()
+  })
+
   it('a held tail is emitted once no chunk follows it', async () => {
     const got: string[] = []
     const e = maskedEmitter(secretMask([{ API_TOKEN: SECRET }])!, (t) => void got.push(t), 20)

@@ -58,10 +58,25 @@ export function defaultLogger(
     forceFloorMs?: number
     coalesce?: boolean
     tty?: boolean
-    env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4; default process.env
+    env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4 / 8; default process.env
     forwardArgs?: readonly string[]
   },
 ): DefaultLogger
+
+// path-links.ts: the path pattern both share
+export function linkPaths(text: string, dir: string, isFile: (abs: string) => boolean): string
+export interface OutputLocation {
+  file: string // absolute
+  line?: number
+  col?: number
+}
+// the existing files a text names, { file (absolute), line?, col? }, unique, first 50
+export function fileLocations(
+  text: string,
+  dir: string,
+  isFile: (abs: string) => boolean,
+): OutputLocation[]
+export function fileMemo(): (abs: string) => boolean
 ```
 
 ## View resolution (priority order)

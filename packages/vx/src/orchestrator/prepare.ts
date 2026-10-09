@@ -549,10 +549,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (options.affected !== undefined) {
       const before = hooksFirst ? new Set(nodes.keys()) : null
       if (hooksFirst) await graphStage()
-      const kept = keptByAffected(nodes, requested, options.affected, projects, packageGraph, {
-        named: new Set(tasks.filter((t) => t.includes('#'))),
-        outright: new Set(options.selectedOutright),
-      })
+      const kept = keptByAffected(
+        nodes,
+        requested,
+        options.affected,
+        projects,
+        packageGraph,
+        {
+          named: new Set(tasks.filter((t) => t.includes('#'))),
+          outright: new Set(options.selectedOutright),
+        },
+        options.affectedReasons && { workspaceRoot, reasons: options.affectedReasons },
+      )
       if (kept.length === 0) return emptyRun('none-affected')
       if (before !== null) {
         const asked = new Set(requested.map((r) => `${r.project}#${r.task}`))

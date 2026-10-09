@@ -32,6 +32,7 @@ export function formatTaskBlock(
   colors?: ColorSupport,
   forceCommand?: boolean, // `$ cmd` even on a hit: a focused requested task's frame
   forwardArgs?: readonly string[], // the args after `--`, on a requested task's `$` line
+  links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
 // ` ⇢ <time> success local <id>` — quiet cache hit

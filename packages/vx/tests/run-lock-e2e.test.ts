@@ -2,6 +2,7 @@
 // for the first, says so after a second, and both finish green with the
 // tree intact — the race of item 215 (both cleaning and restoring one
 // `dist/`) cannot start.
+import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -154,7 +155,11 @@ describe('two runs on one workspace', () => {
       const artifacts = (): string[] =>
         Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
       expect(artifacts()).toHaveLength(1)
-      await new Promise((r) => setTimeout(r, 1100))
+      // A use within the last hour counts as now (ACCESS_REFRESH_MS), so
+      // the entry is aged by its row, not by a wait.
+      const db = new Database(path.join(cacheDir, 'cache.db'))
+      db.run('UPDATE entries SET accessed_at = 0')
+      db.close()
 
       const release = await acquireRunLock(root, { log: () => {} })
       let released = false

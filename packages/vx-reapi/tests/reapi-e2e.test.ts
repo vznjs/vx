@@ -2,7 +2,7 @@
 //
 //   docker run -d -p 19092:9092 buchgr/bazel-remote-cache:latest \
 //     --dir /data --max_size 1 --grpc_address 0.0.0.0:9092 --http_address 0.0.0.0:8080
-//   VX_REAPI_TEST_ENDPOINT=127.0.0.1:19092 bun test
+//   VX_REAPI_TEST_ENDPOINT=grpc://127.0.0.1:19092 bun test
 //
 // GATING, per the project rule that a skip is a silent PASS: without an
 // endpoint these skip locally, but `VX_REQUIRE_REAPI=1` (which CI sets once a

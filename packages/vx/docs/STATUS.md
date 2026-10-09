@@ -261,9 +261,8 @@ later (K README and site, L security findings, M CI reliability, N adoption
 paths, O Windows, stopped: Windows is WSL, and its workflow and native
 code paths went 2026-10-02); each stream's record and leads are
 its own `docs/history/ws-<id>.md`, fifteen files by 2026-10-01. Every
-green commit on `main` releases (`ci.yml` finishes `main`'s run and drops
-only queued ones; `auto-release.yml` releases any commit the last tag is
-behind): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
+green commit on `main` released until 2026-10-08 (now on demand,
+`auto-release.yml`): v0.0.299 by 2026-10-01. Since 2026-09-30 one worker session
 at a time (W12, W13, …) takes a queue from the coordinator and records
 its items in the stream file of their area (adoption in `ws-g.md`) or
 its own `ws-W<n>.md`.
@@ -281,10 +280,18 @@ longer evaluate on every run, check-attr overlaps git status, the
 telemetry context reads files instead of spawning git, and a literal
 file output no longer walks its glob on each hit.
 
+**Cache save CPU (2026-10-08, `docs/design/cache-save-cpu-2026-10.md`).**
+A cold save costs ~3.8 s of vx's ~8.6 s own CPU on the 1,090-package
+row. Five PR steps; step 1 (a save scans its own tar in memory,
+synchronously) is X-191. Next: step 2, a small artifact packed
+synchronously, with an A/B that splits plan, pack and the unaccounted
+~1.3 s.
+
 **Positioning (2026-10-08; prior record `docs/history/ws-r.md`).** Native-config
 benchmarks are scoped to their synthetic workloads, not a universal "fastest" claim.
-Each multiple names its metric; cold baseline-subtracted excess is not whole-build speedup.
-Never say vx works in, runs
+Competitor cells retain `(vx N× faster|slower)` (owner, 2026-10-04: "say how many X",
+replacing the percentage), with each multiple naming its metric; cold baseline-subtracted
+excess is not whole-build speedup. Never say vx works in, runs
 or speeds up a Turbo or Nx repo: `@vzn/vx-migrate` / `vx init` is a
 temporary start toward native config. The real-repo rows measured
 `turbo()` / `nx()` and are off the README and site; they need a rerun
@@ -307,13 +314,22 @@ or pooled; formatting preserved every JSON value and journal byte.
 `vx-bench/update-site.ts` validates native provenance, traces, all ten zero-hit
 samples and summary math before publishing both cases. README, landing, benchmark
 reference, copied claims and metadata distinguish total from excess and scope the
-workload. Original dated measurements remain; no scheduler code changed.
+workload. Original dated measurements remain; no scheduler code changed in the benchmark
+publication work.
 
-Verification: 140 publication-focused tests and 251 follow-up checks passed. After
+Pre-merge verification: 140 publication-focused tests and 251 follow-up checks passed. After
 fixing stale claim pins, staging new test consumers, isolating package-manager HOME
 and supplying standalone Yarn, `vx run ci --all --concurrency=4` passed all 57 tasks
 on pinned Bun 1.4.2. The default 14-worker attempt had process-lifecycle and local
 package-manager failures; those tests passed unchanged on the verified rerun.
+
+Merge handoff (2026-10-08): upstream `d4e268d42e4e3fb694e634d41f33d2f07dba608f`
+adds the shared site navigation/footer, release announcement, agents/shipping sections
+and feature strip. The resolved landing retains them alongside both qualified benchmark
+cases and their generated data. Raw primary/preliminary evidence still records the measured
+`b8238866` source, not the incoming core changes. The 57/57 result above is pre-merge;
+new-lock installation, focused site checks and the full post-merge gate remain with the
+coordinator. Conflict resolution ran no data generation or runtime tests.
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate
 under Bun 1.4.2 is the only gate: the 2026-09-19 container shipped
@@ -334,8 +350,10 @@ by 2026-09-10 (`docs/history/2026-09-status-next-log.md`); the fifth,
 macOS violation reporting being lossy under load, is a recorded decision
 since item 586 (Decisions below), not an open item.
 
-**Releases.** Every green merge to main releases itself (item 1018,
-`auto-release.yml`). The first two ran on 2026-09-27: v0.0.22 (74814d28)
+**Releases.** On demand since 2026-10-08 (owner): Claude dispatches
+`auto-release.yml` at least daily when main has changes, with a blog
+post and a Bluesky share (`.claude/skills/release/SKILL.md`); before
+that every green merge released itself (item 1018). The first two ran on 2026-09-27: v0.0.22 (74814d28)
 and v0.0.23 (f7096cea) were tagged, released with generated notes, their
 four binaries attached by the dispatched `release.yml`, and `@vzn/vx`
 with its four platform packages published by the dispatched `npm.yml`.

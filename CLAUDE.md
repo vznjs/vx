@@ -148,6 +148,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   commits to it (`tests/conventional-commits.unsafe.test.ts`). One coherent
   change per commit. Commit early; assume interruption.
 - A feature is not done until its docs land in the same commit.
+- A user-facing feature (verb, flag, config key, env var, plugin) also
+  updates `packages/vx/docs/features.md` and gets a short visual blog
+  post in the same PR; the release note links the post (owner,
+  2026-10-08). `tests/features-inventory.unsafe.test.ts` holds the file
+  to the CLI and config contracts.
 
 ## Conventions
 

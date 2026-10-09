@@ -3,7 +3,7 @@ import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
-import { flagHint, seeHelp } from './help.js'
+import { flagHint, formatValue, seeHelp } from './help.js'
 import {
   planRun,
   formatRunReportMarkdown,
@@ -69,6 +69,8 @@ export interface RunArgs {
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
+  /** `--format json`: the run's result document on stdout, every other line on stderr. */
+  format: 'pretty' | 'json'
   graph: string | undefined
   summarize: string | undefined
   profile: string | undefined
@@ -132,6 +134,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
+    format: 'pretty',
     graph: undefined,
     summarize: undefined,
     profile: undefined,
@@ -342,6 +345,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
+    } else if (a === '--format' || a?.startsWith('--format=')) {
+      const f = formatValue(a === '--format' ? before[++i] : a.slice('--format='.length), verb)
+      if (typeof f !== 'string') return { ...out, error: f.error }
+      out.format = f
     } else if (a === '--graph') {
       out.graph = ''
     } else if (a?.startsWith('--graph=')) {
@@ -428,6 +435,21 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   }
   if (out.graph !== undefined && needsRun) {
     return { ...out, error: `--graph skips execution; ${runOnly}` }
+  }
+  if (out.format === 'json') {
+    // Each of these prints something else on stdout, which the document owns.
+    if (out.dry !== undefined)
+      return { ...out, error: '--format json runs the tasks; --dry=json prints the plan' }
+    if (out.graph === '')
+      return {
+        ...out,
+        error: '--format json and --graph both print on stdout; give --graph a file',
+      }
+    if (out.report === 'markdown')
+      return {
+        ...out,
+        error: '--format json and --report=markdown both print on stdout; use --report-file',
+      }
   }
   return out
 }
@@ -614,6 +636,7 @@ export async function resolveRunOptions(
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
+  if (parsed.format === 'json') opts.json = true
   if (parsed.profile !== undefined) opts.profile = parsed.profile
   if (Object.keys(parsed.tags).length > 0) opts.tags = parsed.tags
 
@@ -816,5 +839,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
     }
   }
+  if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json, null, 2)}\n`)
   return summary.ok ? 0 : 1
 }

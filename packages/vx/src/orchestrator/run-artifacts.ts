@@ -130,6 +130,14 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
     args.target === ''
       ? path.join(args.cacheDir, 'runs', `${args.runId}.json`)
       : path.resolve(args.cwd, args.target)
+  await Bun.write(outPath, JSON.stringify(runSummaryJson(args), null, 2))
+  return outPath
+}
+
+/** The `--summarize` document, which `vx run --format json` prints. */
+export function runSummaryJson(
+  args: Omit<SummarizeArgs, 'target' | 'cacheDir' | 'cwd'>,
+): RunSummaryJson {
   // `tasks` and `summary` must describe the same population, or one artifact
   // contradicts itself (a group task listed in `tasks` but absent from
   // `summary.total`). `tallyOutcomes` owns the rule; mirror its filter here.
@@ -158,8 +166,7 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
     // it — but `summary.aborted` is only non-zero if it sees them.
     summary: tallyOutcomes(args.outcomes),
   }
-  await Bun.write(outPath, JSON.stringify(payload, null, 2))
-  return outPath
+  return payload
 }
 
 export interface ProfileArgs {

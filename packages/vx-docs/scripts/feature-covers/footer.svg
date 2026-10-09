@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="610" height="64" viewBox="0 0 610 64">
+  <rect width="610" height="64" fill="#090c0c"/>
+  <text x="3" y="38" fill="#919a94" font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif" font-size="21">A task runner and build cache for JS monorepos.</text>
+</svg>

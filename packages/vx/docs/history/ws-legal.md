@@ -12,3 +12,7 @@
   joins the binary or Bun moves until the file is regenerated. Proven:
   a stale version line and a platform `files` without the two each fail
   a row.
+- **LEGAL-2.** The GitHub release assets (what `vx upgrade` and a
+  direct download fetch) were bare binaries. `release.upload.linux` now
+  attaches `THIRD_PARTY_NOTICES.txt` too; a re-run skips it once
+  attached. Proven: `tests/release.test.ts` names it in linux's set.

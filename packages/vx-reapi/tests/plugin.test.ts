@@ -52,7 +52,7 @@ describe('reapi(): the decline path costs nothing', () => {
       // separately, since the decline test above would also pass if the env
       // path were broken and everything simply declined.
       await withoutReapiEnv(async () => {
-        Bun.env['VX_REAPI_ENDPOINT'] = '127.0.0.1:1'
+        Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
         const warns: string[] = []
         const p = reapi()
         expect(p.cache?.(ctx(warns))).toBeDefined()
@@ -65,7 +65,7 @@ describe('reapi(): the decline path costs nothing', () => {
     // Remote execution changes where a build runs; configuring a CACHE must
     // not switch it on. Declining here needs no connection, so no server.
     await withoutReapiEnv(async () => {
-      Bun.env['VX_REAPI_ENDPOINT'] = '127.0.0.1:1'
+      Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
       const warns: string[] = []
       const p = reapi()
       expect(await p.executor?.(ctx(warns))).toBeUndefined()
@@ -80,7 +80,7 @@ describe('reapi(): lifecycle and failure messages', () => {
     // only the local handle, so if the plugin does not release this, nothing
     // does. Spied on the prototype because the client is created internally.
     await withoutReapiEnv(async () => {
-      Bun.env['VX_REAPI_ENDPOINT'] = '127.0.0.1:1'
+      Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
       const original = ReapiRemoteCache.prototype.close
       let closed = 0
       ReapiRemoteCache.prototype.close = function patched(this: ReapiRemoteCache) {
@@ -107,7 +107,7 @@ describe('reapi(): lifecycle and failure messages', () => {
       // raw gRPC "14 UNAVAILABLE … Resolution note:" named neither the setting
       // nor a remedy.
       await withoutReapiEnv(async () => {
-        const p = reapi({ endpoint: '127.0.0.1:59999', execute: true })
+        const p = reapi({ endpoint: 'grpc://127.0.0.1:59999', execute: true })
         expect(p.executor).toBeDefined() // precondition, not an assumption
         let err: unknown
         try {
@@ -117,7 +117,7 @@ describe('reapi(): lifecycle and failure messages', () => {
         }
         expect(err).toBeInstanceOf(Error)
         const msg = (err as Error).message
-        expect(msg).toContain('127.0.0.1:59999')
+        expect(msg).toContain('grpc://127.0.0.1:59999')
         expect(msg).toMatch(/check the endpoint/)
         expect(msg).toMatch(/UNAVAILABLE|ECONNREFUSED/) // the cause survives
         await p.teardown?.()
@@ -136,7 +136,7 @@ describe('reapi(): lifecycle and failure messages', () => {
       await withoutReapiEnv(async () => {
         const warns: string[] = []
         const local = { has: async () => null, close: () => {} }
-        const p = reapi({ endpoint: '127.0.0.1:1', callTimeoutMs: 300 })
+        const p = reapi({ endpoint: 'grpc://127.0.0.1:1', callTimeoutMs: 300 })
         const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
         const layer = (await p.cache?.({
           warn: (m: string) => warns.push(m),
@@ -150,7 +150,7 @@ describe('reapi(): lifecycle and failure messages', () => {
         const cause = warns[0]?.split(' failed: ')[1] ?? ''
         expect(cause).toMatch(/^\d+ [A-Z_]+: /)
         expect(warns).toEqual([
-          `vx/reapi: probe h1 at 127.0.0.1:1 failed: ${cause}`,
+          `vx/reapi: probe h1 at grpc://127.0.0.1:1 failed: ${cause}`,
           `vx/reapi: 1 more request failed the same way: ${cause}`,
         ])
       })
@@ -184,10 +184,10 @@ describe('reapi(): the endpoint is checked where it is set', () => {
       outcome(undefined, 'cache.test:99999'),
       outcome(undefined, 'a b:1'),
     ]).toEqual([
-      'vx/reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
-      'vx/reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
-      'vx/reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. cache.example.com:443 or grpcs://cache.example.com)',
+      'vx/reapi: `reapi({ endpoint })` is "http://", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx/reapi: `reapi({ endpoint })` is "127.0.0.1:notaport", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx/reapi: VX_REAPI_ENDPOINT is "cache.test:99999", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
+      'vx/reapi: VX_REAPI_ENDPOINT is "a b:1", which is not host[:port] (e.g. grpcs://cache.example.com:443)',
     ])
   })
 

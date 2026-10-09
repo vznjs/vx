@@ -48,13 +48,14 @@ import {
   machineParallelism,
   teardownTimeoutMs,
   secretMask,
+  isFsRefusal,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import type { ExecuteArgs } from './execute-task.js'
+import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
@@ -70,6 +71,7 @@ import { formatPersistentList } from './framed-output.js'
 import { createForecast } from './forecast.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
+import type { AffectedReason } from './affected-tasks.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import {
@@ -103,6 +105,7 @@ import {
 } from './local-shortcircuit.js'
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
+import { writeRunFailures } from './run-failures.js'
 import { assembleRunRecords } from './run-records.js'
 import {
   hasEnded,
@@ -111,7 +114,12 @@ import {
   shutdownPersistent,
   takeHeldServers,
 } from './persistent.js'
-import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
+import {
+  runSummaryJson,
+  writeRunProfile,
+  writeRunSummary,
+  type RunSummaryJson,
+} from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
@@ -316,11 +324,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // See docs/design/event-stream-2026-06.md.
   const terminal =
     options.log === undefined
-      ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
-          coalesce: true,
-          ...(options.tty === true ? { tty: true } : {}),
-          ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
-        })
+      ? defaultLogger(
+          colors,
+          resolveOutputView(options),
+          options.json === true ? process.stderr : process.stdout,
+          {
+            coalesce: true,
+            ...(options.tty === true ? { tty: true } : {}),
+            ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+          },
+        )
       : null
   const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
@@ -970,7 +983,8 @@ async function runOnBus(
     // dispatch, and the tracker carries it to what is built on it.
     const taintSeeds = new Set(excluded.seeds)
     const taint = taintTracker(options.continueMode === 'always', taintSeeds, nodes)
-    const taintedRan = new Set<string>()
+    // Each task that ran tainted, and the task at the root of it.
+    const taintedRan = new Map<string, string>()
     const dependedOn = new Set<string>()
     for (const n of nodes.values()) for (const d of n.deps) dependedOn.add(d)
 
@@ -995,13 +1009,16 @@ async function runOnBus(
       const probe = reuseProbe ? shortCircuit.preProbed.get(node.id) : undefined
       const upfrontKey = shortCircuit.uncachedKeys.get(node.id)
       const upfrontGroupKey = shortCircuit.groupKeys.get(node.id)
-      if (
-        options.continueMode === 'always' &&
-        node.deps.some((d) => deadServerBehind(nodes, serverDied, d) !== undefined)
-      )
-        taintSeeds.add(node.id)
+      let deadServer: string | undefined
+      if (options.continueMode === 'always') {
+        for (const d of node.deps) {
+          deadServer = deadServerBehind(nodes, serverDied, d)
+          if (deadServer !== undefined) break
+        }
+        if (deadServer !== undefined) taintSeeds.add(node.id)
+      }
       const tainted = taint.judge(node, upstream)
-      if (tainted) taintedRan.add(node.id)
+      if (tainted) taintedRan.set(node.id, deadServer ?? taint.cause(node, upstream))
       const a: ExecuteArgs = {
         node,
         upstream,
@@ -1130,6 +1147,21 @@ async function runOnBus(
           ? Promise.resolve(kept)
           : executeWithDedup(node, keyUpstream(node, upstream))
       },
+      // An unkeyed group runs nothing: settled in place, unless a taint
+      // may ride it, which `buildExecuteArgs` records on dispatch.
+      ...(options.continueMode !== 'always' && taintSeeds.size === 0
+        ? {
+            settleNow: (node: TaskNode, upstream: TaskOutcome[]) =>
+              isGroupTask(node) && node.config.cache === undefined
+                ? unkeyedGroupOutcome(
+                    node,
+                    keyUpstream(node, upstream),
+                    shortCircuit.groupKeys.get(node.id),
+                    runStartHrTimeNs,
+                  )
+                : undefined,
+          }
+        : {}),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),
@@ -1232,7 +1264,20 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
+    let json: RunSummaryJson | undefined
     const summarize = async (runOk: boolean, final = list): Promise<void> => {
+      if (options.json === true) {
+        json = runSummaryJson({
+          runId,
+          startedAtMs: endedAtMsAtStart,
+          endedAtMs,
+          totalMs,
+          ok: runOk,
+          ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
+          outcomes: final,
+          flaky,
+        })
+      }
       if (options.summarize === undefined) return
       // The rewrite after the keep-alive wait says nothing: the footer is
       // the run's last word.
@@ -1319,8 +1364,21 @@ async function runOnBus(
     // cache closes: its history is written once the wait has decided, or it
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stoppedBy === undefined
-    if (stoppedBy === undefined && !historyAfterWait)
+    // A failed task's output, for `vx last` and an agent: files beside the
+    // index, so a refused write (a full disk, a read-only cache dir) costs
+    // only that output.
+    const recordFailures = (final: readonly TaskOutcome[]): void => {
+      try {
+        writeRunFailures(prepared.cacheDir, runId, final)
+      } catch (err) {
+        if (!isFsRefusal(err)) throw err
+        log.status(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
+      }
+    }
+    if (stoppedBy === undefined && !historyAfterWait) {
       recordHistory(() => cache.recordRunBundle(records))
+      recordFailures(list)
+    }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
@@ -1533,11 +1591,12 @@ async function runOnBus(
             local.close()
           }
         })
+        recordFailures(final)
       }
-      return { ok: ok && first.code === 0, outcomes: final }
+      return { ok: ok && first.code === 0, outcomes: final, ...(json && { json }) }
     }
 
-    return { ok, outcomes: list }
+    return { ok, outcomes: list, ...(json && { json }) }
   } finally {
     // Idempotent. The status-line ticker starts in runStart, and every
     // call between it and the success path's runEnd is crash-isolated
@@ -1627,7 +1686,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   // The plan is the product and goes to stdout (`--dry=json` is parsed):
   // what a stage says on the way goes to stderr (C-6).
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
-  const prepared = await prepareRun(options, log)
+  const reasons = new Map<string, AffectedReason>()
+  const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
   try {
     if (prepared.unresolvedTasks.length > 0) {
       return {
@@ -1675,6 +1735,10 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
+    for (const t of planned.tasks) {
+      const why = reasons.get(t.node.id)
+      if (why !== undefined) t.affected = why
+    }
     return planned
   } finally {
     // The plan called the cache and executor factories; teardown releases
@@ -1861,7 +1925,7 @@ export function projectNamed(
 /** The executed, keyed outcomes of a run — what flakiness is judged on. */
 function flakyCandidates(
   outcomes: readonly TaskOutcome[],
-  tainted: ReadonlySet<string>,
+  tainted: ReadonlyMap<string, string>,
 ): FlakyCandidate[] {
   const out: FlakyCandidate[] = []
   for (const o of outcomes) {
@@ -1871,9 +1935,10 @@ function flakyCandidates(
     // and runs every time, so one bad network day would read as a flake for
     // thirty days. Groups do no work.
     if (o.hash === undefined || o.node.config.cache === undefined || isGroupTask(o.node)) continue
-    // Behind a failed dependency the failure is the dependency's: the key it
-    // had passed on read as a flake for thirty days.
-    if (o.status === 'failed' && tainted.has(o.node.id)) continue
+    // Behind a failed dependency the outcome is not the key's: a failure is
+    // the dependency's, and a pass built on bytes the key never named, so a
+    // later failure relapsed from it and read as a flake for thirty days.
+    if (tainted.has(o.node.id)) continue
     out.push({
       project: o.node.projectName,
       task: o.node.taskName,

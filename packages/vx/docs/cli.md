@@ -31,7 +31,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check]
-vx init [--dry] [--force] [--mjs] [--plugin <seam>]
+vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
@@ -483,6 +483,7 @@ than run with the args unheard.
 | `--verbosity <n>`                  | int (0+)       | `0`                                       | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--dry[=text\|json]`               | optional value | off                                       | Print the task graph + predicted cache hit/miss; skip execution. `VX_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--graph[=<path>]`                 | optional value | off                                       | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--format <fmt>`                   | value          | `pretty`                                  | `json` prints the `--summarize` document on stdout when the run ends and moves every other line to stderr ([Machine-readable output](#machine-readable-output)). `--format=<fmt>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--summarize[=<path>]`             | optional value | off                                       | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--profile[=<path>]`               | optional value | off (`profile.json` when set)             | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--tag <k=v>`                      | repeatable     | (none)                                    | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -764,6 +765,14 @@ The terminal is named by `TERM_PROGRAM` (or `WT_SESSION`,
 `ConEmuPID`); any other, tmux included, gets neither, since there
 OSC 9 may itself be a notification.
 
+In a terminal known to open OSC 8 links (Ghostty, iTerm2 3.1+, WezTerm,
+VS Code, Windows Terminal, kitty, Konsole, VTE terminals; never inside
+tmux or screen), a failed task's frame links each path that names a
+file in the task's project, `src/a.ts:12:5` or `src/a.ts(12,5)`, to
+that file, so a click from the workspace root opens the right one. The
+text is the task's output unchanged; a successful task's frame is never
+linked.
+
 The region is redrawn in place (cursor-up + clear; not a TUI — no
 alternate screen) and erased before the final summary prints. In the
 focused flow it only lives while dependencies run; it disappears for
@@ -941,6 +950,26 @@ Every task with history carries `p50Ms`, hits included (only the text
 view's `~p50` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
 readable.
+
+**Why a task is affected.** Under `--affected`, each requested task the
+diff kept gets a line, and its JSON object an `affected` reason:
+
+```
+$ vx run build lint --affected=main --dry
+  ▶  app#build  cache miss — would exec  …
+                affected: packages/lib/src/a.ts changed (an input), via lib#build
+  ·  lib#lint   no-cache                 …
+                affected: packages/lib/src/a.ts changed (in its project)
+```
+
+`kind` is `input` (a changed `file` is a declared input), `project` (its
+project changed and the task reads it whole: an uncached task, or no
+single `file` for a lockfile claim, a manifest edge or a config import),
+`package` (a `^` edge passes a changed `project` with no such task),
+`named` (`pkg#task` beside a bare task) or `selected` (another filter
+selected its project). `via` is the `dependsOn` chain, nearest first, to
+the task the change reached. A dependency the kept tasks pull in carries
+none. The reasons are gathered only for a plan; a run pays nothing.
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):
@@ -1453,7 +1482,7 @@ run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
 - `--summarize` / `--profile` — would overwrite their target per cycle.
-- `--report` / `--report-file` / `--verbosity <n>` (n > 0) — all
+- `--report` / `--report-file` / `--verbosity <n>` (n > 0) / `--format json` — all
   format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
@@ -1513,7 +1542,7 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx last --list`) rather than printing a bare "unknown subcommand".
 
 ```
-vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
+vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
 vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
@@ -1680,8 +1709,12 @@ Exit codes:
 
 ## Releasing (maintainers)
 
-Every green merge releases itself. When CI finishes green on a push to
-`main`, `auto-release.yml` tags that commit with the next version and
+Releases are on demand. Dispatching `auto-release.yml` releases a
+commit on `main` whose CI went green: the `sha` input, or by default the
+newest such commit; one CI did not pass on is refused. Claude dispatches
+it at least once a day when `main` has changes, after merging that
+release's blog post (`.claude/skills/release/SKILL.md`), and shares the
+post on Bluesky. The workflow tags the commit with the next version and
 creates the GitHub release, both from the Conventional Commits since the
 last tag (`scripts/release-notes.ts`, run by the `release.auto` task,
 `scripts/auto-release.ts`). The release is created as a draft: this
@@ -1695,11 +1728,9 @@ breaking change is a major. The notes: breaking changes first, then
 dispatches `release.yml` (with `tag`) and
 `npm.yml` (with `version` and `ref`). A release made with the workflow
 token fires no `release` event in other workflows, which is why the two
-are dispatched rather than triggered. A green commit is released only
-when the last release is its ancestor, so an older tree never gets a
-higher version; `main`'s CI runs one at a time and drops the queued
-runs between, so a burst of merges yields one release per finished
-run. A commit that already carries a `v*` tag is skipped.
+are dispatched rather than triggered. A commit is released only when the
+last release is its ancestor, so an older tree never gets a higher
+version, and one that already carries a `v*` tag is a no-op.
 
 A version can still be cut by hand: push its tag (say `v1.0.0`),
 create a draft release for it, and dispatch `release.yml` (`tag`) and
@@ -1762,6 +1793,7 @@ workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
 the binary embeds Bun and npm code whose licenses must travel with it.
+The GitHub release carries the same file as an asset beside the binaries.
 After a dependency or Bun bump, `bun packages/vx/scripts/third-party-notices.ts`
 regenerates the notices; `tests/third-party-notices.unsafe.test.ts`
 fails until it does.
@@ -1829,10 +1861,18 @@ a binary that does not start.
 ## `vx init`
 
 In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
-the root) it writes `vx.workspace.ts` declaring `turbo()` or `nx()`
+the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
+(owner, 2026-10-08): the installed one, else this vx's version through
+`bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
+terminal native (a `vx.config.ts` per package, the default) or keep;
+`--native` or `--keep` answer it, and without a terminal it is native.
+`--dry`, `--force` and `--mjs` pass through.
+
+`vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
 config live, so no task is copied — a temporary start until
-`bunx @vzn/vx-migrate` writes native config. The `next:` line is one command:
+`vx init --native` writes native config. `--native` or `--keep` in any
+other repo is refused. The `next:` line is one command:
 install what the file imports and is missing, with the manager the
 lockfile names (at the workspace root: pnpm's `-w`, Yarn 1's `-W`,
 which Yarn Berry lacks), then run the config's `build` (else its first task).
@@ -2153,7 +2193,7 @@ copy to the source.
 | turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                                    |
 | turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                                       |
 | turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                |
-| turbo  | `--json`                                          | refuse  | use `--dry=json` for the plan, `--summarize[=<path>]` for the run's JSON record                                                                   |
+| turbo  | `--json`                                          | refuse  | use `--format json` for the run's result on stdout, `--dry=json` for the plan                                                                     |
 | turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                                              |
 | turbo  | `--preflight`                                     | refuse  | set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`                                                                                      |
 | turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                                                   |
@@ -2209,12 +2249,21 @@ schemas: each `{ … }` a verb's section shows is an object its schema
 closes with those keys, each object the verb prints whole is shown, and
 `vx info`'s field list is its schema's top level.
 
+`vx run --format json` prints, when the run ends, the `--summarize`
+document (`schemas/summary.json`: `runId`, `ok`, `exitCode`, one row per
+task with its status, exit code and key). Everything else the run writes,
+the frame and the tasks' output with it, goes to stderr, so
+`vx run build --all --format json | jq .ok` reads only the result. It
+refuses `--dry` (use `--dry=json`), a bare `--graph` and
+`--report=markdown`, which print on stdout too.
+
 **Streams.** A verb whose stdout is a product (a `--format json`
 document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
 script) writes that product alone there; a notice or warning it meets
 on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
-the tasks' output it carries. `tests/cli-streams.test.ts` holds each
+the tasks' output it carries, except under `--format json`, where that
+moves to stderr. `tests/cli-streams.test.ts` holds each
 product verb to it under a notice.
 
 ## `vx show`
@@ -2403,8 +2452,8 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   replayed one), and a pass that took a retry counts too, its failed
   attempts counted as failures. A task with no cache block keys on its
   config alone, so its key says nothing about its inputs: it is never
-  listed. A failure behind a failed dependency, in a run that continues
-  past failures, is that dependency's and counts on no key. `none` when
+  listed. A pass or a failure behind a failed dependency, in a run that
+  continues past failures, is not its key's and counts on no key. `none` when
   no key did.
 - `task runs (24h)` counts task runs, executed and replayed alike, so
   the hits are a share of it: three `vx run` of two tasks are six. An
@@ -2625,7 +2674,13 @@ specific one, and the two do not combine (a word beside `--list` no run
 id could be is refused as an unexpected argument). `--failed` replays the latest
 run that failed, past any green one since, and with `--list` lists only
 failed runs. `--format json`
-emits `{ invocation, tasks }` for scripting, and `--list --format json`
+emits `{ invocation, tasks }` for scripting; a failed task's row adds
+`output` (its output as plain text, the first 8 KiB and last 56 KiB,
+secrets masked) and `locations` (the existing files it names,
+`{ file, line?, col? }`, file absolute), so an agent reads why without
+the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
+newest 50 failed runs; past those, or when the write was refused, a
+failed row reads `output: ''` and `locations: []`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`

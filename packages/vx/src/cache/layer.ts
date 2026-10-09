@@ -215,7 +215,8 @@ export interface RunRecord {
   /**
    * Why the task failed or was skipped, as the run's own footer said it
    * (v27 columns; NULL on older rows and where the reason does not apply):
-   * a skip's root blocker, vx's own timeout, the sandbox's violation count,
+   * a skip's root blocker (or the one a task that ran behind a failure ran
+   * behind), vx's own timeout, the sandbox's violation count,
    * and why a persistent task never became ready.
    */
   blockedBy?: string

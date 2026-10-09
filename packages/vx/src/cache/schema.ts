@@ -95,7 +95,8 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       -- time by design; NULL on rows older than the column.
       cached              INTEGER,
       -- v27: why a task failed or was skipped, as the run's own footer
-      -- said it (items 267–270): a skip's root blocker (a task id), vx's
+      -- said it (items 267–270): a skip's root blocker (a task id), or
+      -- the one a task that ran behind a failure ran behind (X-183), vx's
       -- own timeout (1), the sandbox's violation count, and why a
       -- persistent task never became ready ('timeout' | 'exited' |
       -- 'spawn'). NULL where the reason does not apply.

@@ -1,0 +1,25 @@
+---
+// One page per tag: the blog's listing narrowed to it.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import Listing from '../../../components/blog/Listing.astro'
+import { filters } from '../../../blog/posts.js'
+
+export async function getStaticPaths() {
+  return (await filters()).map((f) => ({ params: { tag: f.id }, props: { label: f.label } }))
+}
+
+const { tag } = Astro.params
+const { label } = Astro.props
+---
+
+<StarlightPage
+  frontmatter={{
+    title: label,
+    description: `Posts tagged ${tag}.`,
+    template: 'splash',
+    pagefind: false,
+  }}
+  hasSidebar={false}
+>
+  <Listing filter={tag} />
+</StarlightPage>

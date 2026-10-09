@@ -1,12 +1,22 @@
 ---
-// Standalone landing: two independent synthetic workloads, not a universal speed claim.
+// Standalone landing: the newest release, agent tools, two scoped benchmark workloads,
+// what shipped lately, the one-run picture, pillars and feature pages; no universal speed claim.
+// Shared navigation/footer, static content and one script for the install copy button.
 // update-site.ts validates both datasets before writing the generated measurements;
 // check.site guards their regions and landing.test.ts holds the built presentation.
 import Diagram from '../components/guide/diagram/Diagram.astro'
+import FeatureCard from '../components/features/FeatureCard.astro'
+import Footer from '../components/landing/Footer.astro'
+import Nav from '../components/landing/Nav.astro'
+import { FEATURES } from '../features/features.js'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
 import '../styles/charts.css'
+import '../styles/features.css'
+import '../styles/blog.css'
 import { parseDuration, renderBars, type BarGroup } from '../plugins/data-charts.ts'
+import { formatDate, posts } from '../blog/posts.js'
+import Cover from '../components/blog/Cover.astro'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
@@ -156,35 +166,34 @@ const reasons = [
   { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
 ]
 
+// The feature strip: eight of the feature pages, the rest one click away.
+const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers', 'watch', 'remote-execution', 'mcp']
+const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
+
 // Start: four commands, native config from the first one.
+// The live strip: what shipped last, newest first, read from the posts.
+const releases = (await posts('releases')).slice(0, 4)
+const essays = (await posts('blog')).slice(0, 3)
+const latest = releases[0]!
+const MCP_TOOLS = [
+  'listTasks',
+  'getRunHistory',
+  'getFailures',
+  'whyDidThisRerun',
+  'explainCacheKey',
+  'getCacheStats',
+  'getWorkspaceInfo',
+]
+const whyRun = `$ vx why @demo/web#build
+  verdict    cache key changed: upstream @demo/ui#build
+  root cause:
+    @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts`
+
 const startCommands = `npm install -D @vzn/vx
 npx vx init                 # a vx.config.ts per package; add the cache block each TODO shows
 npx vx run build --all      # builds in dependency order; stores what is cached
 npx vx run build --all      # again: the cached tasks are up-to-date`
 
-const footCols = {
-  docs: [
-    { t: 'Quickstart', h: href('quickstart/') },
-    { t: 'Configure', h: href('guides/configure/') },
-    { t: 'Sandboxing', h: href('guides/sandboxing/') },
-    { t: 'CI and remote', h: href('guides/ci/') },
-    { t: 'Migrate', h: href('guides/migrate/') },
-    { t: 'Plugins', h: href('guides/plugins/') },
-    { t: 'Try it', h: href('playground/') },
-  ],
-  reference: [
-    { t: 'CLI', h: href('cli/') },
-    { t: 'Config', h: href('schema/') },
-    { t: 'Benchmarks', h: href('benchmarks/') },
-    { t: 'vx, Turborepo, Nx, Bazel', h: href('compare/') },
-    { t: 'Turbo / Nx parity map', h: href('parity/') },
-    { t: 'Glossary', h: href('glossary/') },
-  ],
-  community: [
-    { t: 'GitHub', h: GH },
-    { t: 'Blog', h: href('blog/') },
-  ],
-}
 ---
 
 <!doctype html>
@@ -221,32 +230,16 @@ const footCols = {
   </head>
   <body>
     <div class="vx-landing">
-      <header class="nav">
-        <div class="nav-left">
-          <a class="brand" href={base}>
-            <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
-            <span class="word">vx</span>
-          </a>
-          <nav class="nav-links">
-            <a href={href('quickstart/')}>docs</a>
-            <a href={href('cli/')}>reference</a>
-            <a href={href('blog/')}>blog</a>
-          </nav>
-        </div>
-        <div class="nav-right">
-          <a class="btn-github" href={GH}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"
-              ><path
-                d="M8 0C3.58 0 0 3.58 0 8a8 8 0 005.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.49-2.7-1.07-2.7-1.07-.36-.93-.89-1.18-.89-1.18-.73-.5.05-.49.05-.49.81.06 1.24.83 1.24.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.01.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.11.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0016 8c0-4.42-3.58-8-8-8z"
-              ></path></svg
-            >
-            GitHub
-          </a>
-        </div>
-      </header>
+      <Nav />
 
       <section class="hero">
         <div class="container">
+          <a class="announce" href={latest.href}>
+            <span class="announce-tag">New</span>
+            <span class="announce-ver">{latest.version}</span>
+            <span class="announce-title">{latest.title}</span>
+            <span aria-hidden="true">→</span>
+          </a>
           <h1>A task runner and <span class="phosphor">build cache</span> for JS monorepos.</h1>
           <p class="lede">Native-config benchmarks show different scheduling trade-offs, not a universal speed ranking.</p>
           <p class="bench-scope">The following multiples describe only the synthetic layered stress graph with a single repetition; cold excess is not whole-build speedup.</p>
@@ -284,6 +277,41 @@ const footCols = {
             width="760"
             alt="vx run ci --all on the starter: cold, three tasks run; again, three up-to-date."
           />
+        </div>
+      </section>
+
+      <section class="section" id="agents">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// ai first</p>
+            <h2>The build your agents can run.</h2>
+          </div>
+          <div class="agents-grid">
+            <article class="agent-card">
+              <h3><code>vx mcp</code></h3>
+              <p>Any MCP client reads your tasks, run history, cache and failures, read-only.</p>
+              <ul class="tool-chips">{MCP_TOOLS.map((t) => <li><code>{t}</code></li>)}</ul>
+              <a class="section-link" href={href('guides/agents/')}>AI agents guide →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>vx why</code></h3>
+              <p>A re-run names its cause, down to the file that changed.</p>
+              <pre class="agent-term"><code>{whyRun}</code></pre>
+              <a class="section-link" href={href('features/vx-why/')}>How vx why works →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>--format json</code></h3>
+              <p>Every report verb prints JSON with a published schema, and failures keep their full log.</p>
+              <ul class="tool-chips">
+                <li><code>vx show</code></li>
+                <li><code>vx info</code></li>
+                <li><code>vx last</code></li>
+                <li><code>vx why</code></li>
+                <li><code>--dry=json</code></li>
+              </ul>
+              <a class="section-link" href={href('cli/')}>Every command →</a>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -333,6 +361,46 @@ const footCols = {
             <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
             <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
           </div>
+        </div>
+      </section>
+
+      <section class="section" id="shipping">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// shipping every day</p>
+            <h2>New in vx.</h2>
+          </div>
+          <div class="ship-grid">
+            <div class="ship-releases">
+              <h3>Releases</h3>
+              <ol>
+                {
+                  releases.map((r) => (
+                    <li>
+                      <a href={r.href}>
+                        <span class="ship-ver">{r.version}</span>
+                        <span class="ship-title">{r.title}</span>
+                        <span class="ship-date">{formatDate(r.date)}</span>
+                      </a>
+                    </li>
+                  ))
+                }
+              </ol>
+              <a class="section-link" href={href('releases/')}>Every release →</a>
+            </div>
+            <div class="ship-posts">
+              {
+                essays.map((p) => (
+                  <a class="ship-post" href={p.href}>
+                    <Cover post={p} sizes="(min-width: 1100px) 300px, 100vw" />
+                    <span class="ship-date">{formatDate(p.date)}</span>
+                    <span class="ship-title">{p.title}</span>
+                  </a>
+                ))
+              }
+            </div>
+          </div>
+          <a class="section-link" href={href('blog/')}>The blog →</a>
         </div>
       </section>
 
@@ -443,33 +511,22 @@ const footCols = {
         </div>
       </section>
 
-      <footer class="footer">
-        <div class="foot-grid container">
-          <div class="foot-brand">
-            <div class="row">
-              <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
-              <span class="word">vx</span>
-            </div>
-            <p>One binary · MIT licensed · no account.</p>
+      <section class="section" id="features">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// {FEATURES.length} features, a page each</p>
+            <h2>And everything else.</h2>
           </div>
-          {
-            Object.entries(footCols).map(([title, links]) => (
-              <div class="foot-col">
-                <p class="title">{title}</p>
-                <div class="links">
-                  {links.map((l) => (
-                    <a href={l.h}>{l.t}</a>
-                  ))}
-                </div>
-              </div>
-            ))
-          }
+          <div class="fgrid">
+            {strip.map((f) => <FeatureCard feature={f} />)}
+          </div>
+          <div class="section-links">
+            <a class="section-link" href={href('features/')}>All features <span class="arr">→</span></a>
+          </div>
         </div>
-        <div class="foot-bottom container">
-          <span>© 2026 vx contributors</span>
-          <span>MIT licensed · @vzn/vx</span>
-        </div>
-      </footer>
+      </section>
+
+      <Footer />
     </div>
 
     <script>

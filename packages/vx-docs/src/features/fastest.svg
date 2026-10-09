@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">Measured scheduling trade-offs</title>
+  <desc id="description">Retained synthetic layered run: 2026-10-04, one repetition per runner/state. Baseline-subtracted cold excess is vx 2 s, Turborepo 1 min 21 s, Nx 11 s and Vite Task 1 min 11 s. Total wall time and excess are different metrics; this is not a universal speed ranking. Read the separate scheduling counterexample alongside it.</desc>
+  <metadata>From the repository root: rsvg-convert --output packages/vx-docs/src/assets/features/fastest.png packages/vx-docs/src/features/fastest.svg</metadata>
+  <!-- Keep the dated measurements, scope and metric labels together. -->
+  <defs>
+    <radialGradient id="wash">
+      <stop offset="0" stop-color="#c6f84e" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#c6f84e" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="14" cy="14" r="0.7" fill="#91988e" opacity="0.16"/>
+    </pattern>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="#090c0c"/>
+  <ellipse cx="100" cy="30" rx="620" ry="480" fill="url(#wash)"/>
+  <rect width="1600" height="900" fill="url(#dots)"/>
+  <g font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif">
+    <rect x="72" y="243" width="12" height="12" rx="3" fill="#c6f84e" filter="url(#glow)"/>
+    <rect x="72" y="243" width="12" height="12" rx="3" fill="#c6f84e"/>
+    <text x="98" y="257" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="19" font-weight="600" letter-spacing="2">SYNTHETIC · RETAINED 2026-10-04</text>
+    <text x="72" y="333" fill="#f2f4f0" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="59" font-weight="700">Measured scheduling</text>
+    <text x="72" y="411" fill="#c6f84e" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="76" font-weight="700">trade-offs.</text>
+    <text fill="#c5ccc5" font-size="27">
+      <tspan x="72" y="472">Uniform sleep tasks · one repetition.</tspan>
+      <tspan x="72" y="513">Cold wall time includes scheduling delay.</tspan>
+      <tspan x="72" y="554">Not a real build or a universal ranking.</tspan>
+    </text>
+    <text x="72" y="618" fill="#f2f4f0" font-size="25">Total wall time: <tspan fill="#c6f84e" font-weight="700">1.3555×</tspan> Turborepo/vx</text>
+    <text x="72" y="657" fill="#f2f4f0" font-size="25">Excess above ideal: <tspan fill="#c6f84e" font-weight="700">34.609×</tspan> Turborepo/vx</text>
+    <rect x="768" y="190" width="760" height="478" rx="20" fill="#0d1113" stroke="#303b3e"/>
+    <text x="808" y="239" fill="#919a94" font-family="'IBM Plex Mono', Menlo, monospace" font-size="22" font-weight="600" letter-spacing="1">BASELINE-SUBTRACTED EXCESS</text>
+    <text x="808" y="273" fill="#aeb6af" font-size="19">Rounded values · not pure hashing or total wall time</text>
+    <g font-size="26" font-weight="700" fill="#f2f4f0">
+      <text x="808" y="332">Turborepo</text>
+      <text x="808" y="404">Vite Task</text>
+      <text x="808" y="476">Nx</text>
+      <text x="808" y="548">vx</text>
+    </g>
+    <rect x="997" y="300" width="333" height="48" rx="9" fill="#d84b87"/>
+    <rect x="997" y="372" width="292" height="48" rx="9" fill="#987ad8"/>
+    <rect x="997" y="444" width="45" height="48" rx="9" fill="#5b91d8"/>
+    <rect x="997" y="516" width="8" height="48" rx="4" fill="#c6f84e"/>
+    <g font-family="'IBM Plex Mono', Menlo, monospace" font-size="25" font-weight="600" fill="#f2f4f0">
+      <text x="1346" y="332">1 min 21 s</text>
+      <text x="1305" y="404">1 min 11 s</text>
+      <text x="1060" y="476">11 s</text>
+      <text x="1022" y="548" fill="#c6f84e">2 s</text>
+    </g>
+    <text x="808" y="604" fill="#919a94" font-size="19">1,090 packages · 3,270 nodes · 2,180 executable tasks</text>
+    <text x="808" y="636" fill="#919a94" font-size="19">1,090 groups · 10 workers · ideal schedule: 3m 38s</text>
+    <text x="72" y="720" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20">Separate dataset: /benchmarks/#synthetic-scheduling-counterexample</text>
+    <text x="72" y="752" fill="#919a94" font-size="19">Primary and preliminary cases stay separate, with every recorded attempt retained.</text>
+    <path d="M72 778 H1528" stroke="#283031"/>
+    <g transform="translate(72 818) scale(1.4)">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="#090c0c" stroke="#c6f84e" stroke-width="1.5"/>
+      <path d="M6 9.5 L11.5 22 L13.8 22 L8.3 9.5 Z M19 9.5 L25.8 9.5 L18 22 L15.7 22 L23 9.5 Z M18.4 9.5 L26 22 L23.7 22 L16.1 9.5 Z" fill="#c6f84e"/>
+    </g>
+    <text x="134" y="851" fill="#f2f4f0" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="32" font-weight="700">vx</text>
+    <text x="193" y="850" fill="#919a94" font-size="21">A task runner and build cache for JS monorepos.</text>
+    <text x="1037" y="850" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="21" font-weight="600">npm i -D @vzn/vx</text>
+    <text x="1255" y="850" fill="#919a94" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20">· github.com/vznjs/vx</text>
+  </g>
+</svg>

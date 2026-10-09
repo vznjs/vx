@@ -230,6 +230,7 @@ describe('the gating', () => {
       .filter(([name, j]) => name !== 'changes' && (j.if !== undefined || j.needs !== undefined))
       .map(([name, j]) => [name, j.needs, j.if])
     expect(gated).toEqual([
+      ['gate', ['ci', 'shards'], 'always()'],
       [
         'packages',
         'changes',
@@ -241,6 +242,12 @@ describe('the gating', () => {
         'changes',
         "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}",
       ],
+      [
+        'darwin-shards',
+        'changes',
+        "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}",
+      ],
+      ['darwin-gate', ['core-darwin', 'darwin-shards'], 'always()'],
     ])
   })
 

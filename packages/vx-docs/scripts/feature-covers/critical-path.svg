@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">Optional history-based task order</title>
+  <desc id="description">The explicitly declared schedule-history plugin can rank ready tasks by learned remaining critical-path duration. Default vx counts unique transitive dependents, not durations. The retained two-worker illustration shows wall 100% versus wall 60%, not measured CLI timings or an optimality guarantee.</desc>
+  <metadata>Regenerate with bun packages/vx-docs/scripts/scope-feature-covers.ts</metadata>
+  <defs>
+    <radialGradient id="wash"><stop offset="0" stop-color="#c6f84e" stop-opacity="0.08"/><stop offset="1" stop-color="#c6f84e" stop-opacity="0"/></radialGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="14" cy="14" r="0.7" fill="#91988e" opacity="0.16"/></pattern>
+  </defs>
+  <rect width="1600" height="900" fill="#090c0c"/>
+  <ellipse cx="100" cy="30" rx="620" ry="480" fill="url(#wash)"/>
+  <rect width="1600" height="900" fill="url(#dots)"/>
+  <g font-family="'Hanken Grotesk', Helvetica, Arial, sans-serif">
+    <rect x="72" y="243" width="12" height="12" rx="3" fill="#c6f84e"/>
+    <text x="98" y="257" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="18" font-weight="600">@VZN/VX-SCHEDULE-HISTORY · OPT-IN</text>
+    <text x="72" y="333" fill="#f2f4f0" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="54" font-weight="700">Optional history-based</text>
+    <text x="72" y="411" fill="#c6f84e" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="72" font-weight="700">task order.</text>
+    <text fill="#c5ccc5" font-size="25">
+      <tspan x="72" y="472">The plugin learns durations from past runs.</tspan>
+      <tspan x="72" y="513">It can rank the longest remaining chain first.</tspan>
+      <tspan x="72" y="554">Core default: unique transitive-dependent count,</tspan>
+      <tspan x="72" y="595">not task duration; no optimality guarantee.</tspan>
+    </text>
+    <rect x="768" y="225" width="760" height="390" rx="20" fill="#0d1113" stroke="#303b3e"/>
+    <g fill="#919a94" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20" font-weight="600">
+      <text x="800" y="282">ILLUSTRATED ORDER A · WALL 100%</text>
+      <text x="800" y="394">ILLUSTRATED ORDER B · WALL 60%</text>
+    </g>
+    <rect x="803" y="303" width="135" height="48" rx="6" fill="#8e959d"/>
+    <rect x="942" y="303" width="135" height="48" rx="6" fill="#8e959d"/>
+    <rect x="1081" y="303" width="412" height="48" rx="6" fill="#f6529c"/>
+    <rect x="803" y="416" width="412" height="48" rx="6" fill="#c6f84e"/>
+    <rect x="803" y="476" width="135" height="48" rx="6" fill="#a0d529"/>
+    <rect x="942" y="476" width="135" height="48" rx="6" fill="#a0d529"/>
+    <g fill="#151e11" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20" font-weight="600">
+      <text x="815" y="336">lint</text><text x="954" y="336">types</text>
+      <text x="1093" y="336">docs#build (long)</text>
+      <text x="815" y="449">docs#build (long)</text>
+      <text x="815" y="509">lint</text><text x="954" y="509">types</text>
+    </g>
+    <text x="800" y="571" fill="#919a94" font-size="20">Illustration · 2 workers · not measured CLI timings</text>
+    <text x="72" y="706" fill="#aeb6af" font-size="21">A fresh runner can declare assumed durations; neither policy guarantees the shortest schedule.</text>
+    <text x="72" y="744" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20">Default-policy counterexample: /benchmarks/#synthetic-scheduling-counterexample</text>
+    <path d="M72 778 H1528" stroke="#283031"/>
+    <g transform="translate(72 818) scale(1.4)">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="#090c0c" stroke="#c6f84e" stroke-width="1.5"/>
+      <path d="M6 9.5 L11.5 22 L13.8 22 L8.3 9.5 Z M19 9.5 L25.8 9.5 L18 22 L15.7 22 L23 9.5 Z M18.4 9.5 L26 22 L23.7 22 L16.1 9.5 Z" fill="#c6f84e"/>
+    </g>
+    <text x="134" y="851" fill="#f2f4f0" font-family="'Space Grotesk', Helvetica, Arial, sans-serif" font-size="32" font-weight="700">vx</text>
+    <text x="1037" y="850" fill="#c6f84e" font-family="'IBM Plex Mono', Menlo, monospace" font-size="21" font-weight="600">npm i -D @vzn/vx</text>
+    <text x="1255" y="850" fill="#919a94" font-family="'IBM Plex Mono', Menlo, monospace" font-size="20">· github.com/vznjs/vx</text>
+  </g>
+</svg>

@@ -32,7 +32,7 @@
 // which is why they are driven end-to-end against a real `vx mcp` subprocess
 // as well as against `handleMessage`.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -1629,6 +1629,111 @@ describe('listTasks masks a declared secret in a command', () => {
         else process.env[k] = v
       }
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getFailures
+// ---------------------------------------------------------------------------
+
+describe('getFailures', () => {
+  const now = Date.now()
+  let root = ''
+  beforeAll(() => {
+    root = makeWorkspace('failures')
+    const runs: [string, boolean][] = [
+      ['0199cccc-1111', false],
+      ['0199cccc-2222', false],
+      ['0199dddd-3333', true],
+    ]
+    const failures = path.join(root, '.vx', 'cache', 'failures')
+    seed(root, (cache) => {
+      mkdirSync(failures, { recursive: true })
+      runs.forEach(([runId, ok], i) => {
+        cache.recordRuns([
+          mkRun({
+            project: 'p',
+            task: 'test',
+            runId,
+            status: ok ? 'success' : 'failed',
+            exitCode: ok ? 0 : 2,
+            startedAt: now - 3000 + i,
+          }),
+        ])
+        if (!ok) {
+          const task = {
+            taskId: 'p#test',
+            project: 'p',
+            task: 'test',
+            exitCode: 2,
+            output: `boom ${i}\n`,
+            locations: [{ file: '/p/a.ts', line: i + 1, col: 4 }],
+          }
+          writeFileSync(
+            path.join(failures, `${runId}.json`),
+            JSON.stringify({ runId, tasks: [task] }),
+          )
+        }
+        cache
+          .dbHandle()
+          .query(
+            `INSERT INTO invocations(run_id, command, requested_tasks, cache_policy, concurrency,
+               started_at, ended_at, total_duration_ms, task_count, failed_count, hit_count,
+               hit_local_count, hit_remote_count, exit_ok, ci, vx_version)
+             VALUES (?, 'vx run test', '[]', '', 1, ?, ?, 0, 1, ?, 0, 0, 0, ?, 0, '0')`,
+          )
+          .run(runId, now, now, ok ? 0 : 1, ok ? 1 : 0)
+      })
+    })
+  })
+  afterAll(() => rmSync(root, { recursive: true, force: true }))
+
+  it('answers the latest failed run, past a green one since, with output and locations', async () => {
+    expect(await call(root, 'getFailures', {})).toEqual({
+      runId: '0199cccc-2222',
+      tasks: [
+        {
+          taskId: 'p#test',
+          exitCode: 2,
+          output: 'boom 1\n',
+          locations: [{ file: '/p/a.ts', line: 2, col: 4 }],
+        },
+      ],
+    })
+  })
+
+  it('takes a run id by unique prefix and names an unknown one', async () => {
+    expect(await call(root, 'getFailures', { runId: '0199cccc-1' })).toEqual({
+      runId: '0199cccc-1111',
+      tasks: [
+        {
+          taskId: 'p#test',
+          exitCode: 2,
+          output: 'boom 0\n',
+          locations: [{ file: '/p/a.ts', line: 1, col: 4 }],
+        },
+      ],
+    })
+    expect(await call(root, 'getFailures', { runId: '0199dddd' })).toEqual({
+      runId: '0199dddd-3333',
+      tasks: [],
+    })
+    expect(await callError(root, 'getFailures', { runId: 'ffff' })).toBe(
+      'getFailures: no recorded run ffff',
+    )
+    expect(await callError(root, 'getFailures', { runId: 7 })).toBe(
+      'getFailures: runId, when given, must be a string',
+    )
+  })
+
+  it('says so when no recorded run failed', async () => {
+    const green = makeWorkspace('no-failures')
+    try {
+      seed(green, () => {})
+      expect(await callError(green, 'getFailures', {})).toBe('getFailures: no recorded run failed')
+    } finally {
+      rmSync(green, { recursive: true, force: true })
     }
   })
 })
