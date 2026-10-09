@@ -143,6 +143,20 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'getConfig',
+    description:
+      'A resolved config as `vx show <target> --format json` prints it (secrets masked): a project, ' +
+      'one task (`project#task`: its inputs, outputs, env, sandbox, dependsOn), or a task name in every ' +
+      'project declaring it. Read it before changing what a task declares.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'a project, project#task, or a task name' },
+      },
+      required: ['target'],
+    },
+  },
+  {
     name: 'getFailures',
     description:
       'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column). `runId` defaults to the latest failed run.',
@@ -271,6 +285,8 @@ export async function handleToolCall(
       return whyDidThisRerun(args, ctx)
     case 'getTaskLog':
       return getTaskLog(args, ctx)
+    case 'getConfig':
+      return getConfig(args, ctx)
     case 'getFailures':
       return getFailures(args, ctx)
     case 'runTasks':
@@ -601,6 +617,18 @@ async function whyDidThisRerun(
   }
 }
 
+function getConfig(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const target = args['target']
+  // A leading dash would reach the CLI as a flag.
+  if (typeof target !== 'string' || target === '' || target.startsWith('-')) {
+    throw new UserError('getConfig: target must be a project, project#task, or task name')
+  }
+  return vxJson(['show', target, '--format', 'json'], 'config', ctx)
+}
+
 async function getTaskLog(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -748,7 +776,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects',
+  key: 'summary' | 'plan' | 'projects' | 'config',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to
