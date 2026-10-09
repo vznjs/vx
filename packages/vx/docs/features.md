@@ -64,7 +64,7 @@ config key or an environment variable is missing here.
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`) — replay a recorded run's summary, or list recent runs. [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
-- **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. no post
+- **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. no post
 - **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
@@ -86,7 +86,7 @@ config key or an environment variable is missing here.
 - **Cache controls** (`--no-cache`, `--force`, `--cache`) — off, refresh, or per-layer read/write. no post
 - **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. no post
 - **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. no post
-- **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. no post
+- **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **Remote outputs** (`--download`) — all, top-level only, or none. no post
 - **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. no post
 - **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. no post
