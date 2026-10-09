@@ -61,7 +61,8 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   `cover: { image: ../../../assets/blog/vx-0-0-<N+1>.png, alt }`. Look
   at the PNG before committing it.
   The cover is the page's og:image (the link-preview banner); a new
-  essay's is `public/blog/covers/<slug>.png` at 1200×630.
+  essay's is `public/blog/covers/<slug>.png` at 1200×630
+  (`node /mnt/project-files/org/docs-site/og-cover.mjs <repo> <slug>`).
   `tests/og-image.test.ts` fails the gate when a post or release has none.
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
