@@ -109,6 +109,22 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
   `weakerWhenNested` in a container, a task that itself sandboxes on
   macOS. `vx info` says what the host supports.
 
+## Agents (`vx mcp`)
+
+An agent connected to `vx mcp` can do what `vx run` can do, nothing more.
+Every tool but `runTasks` only reads. `runTasks` runs `vx run --format json`
+as a child process: the agent names tasks and sets `all`, `force`,
+`filter` and `affected`, and nothing else. A task name that starts with
+`-` is refused, a filter goes as one `--filter=` value, and a ref reaches
+git after `--end-of-options`, so no argument becomes a flag. The commands
+that run are the ones your configs declare, from the workspace root, with
+the environment `vx mcp` started with, filtered by each task's `exec.env`
+and held by its `exec.sandbox`. `force` costs a rerun, not a wrong entry:
+the key stays the same. What reaches the agent (summaries, refusals,
+`getFailures` output) is masked as described under Secrets. An agent that
+can edit `vx.config.ts` can run anything, as you can, because configs are
+code vx trusts.
+
 ## Secrets
 
 The value, of 6 characters or more, of a variable whose name holds
