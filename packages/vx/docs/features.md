@@ -84,12 +84,12 @@ config key or an environment variable is missing here.
 - **Cascade through inputs** — a task's key folds its upstream input keys, never outputs. post: [Cascade through dependencies](https://vznjs.github.io/vx/blog/cascade-through-inputs/)
 - **Lockfile-aware keys** (`@vzn/vx-lockfile`: `pnpm()`, `bun()`, `npm()`, `yarn()`) — a bump re-keys only the projects whose closure changed. [page](https://vznjs.github.io/vx/features/lockfile-keys/) · post: [A lockfile bump should re-key two tasks](https://vznjs.github.io/vx/blog/lockfile-aware-keys/)
 - **Upfront keys** (`upfrontKeys`) — refuses an input glob a same-project task's outputs could match, so every key is known before anything runs. no post
-- **Cache controls** (`--no-cache`, `--force`, `--cache`) — off, refresh, or per-layer read/write. no post
-- **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. no post
-- **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. no post
+- **Cache controls** (`--no-cache`, `--force`, `--cache`) — off, refresh, or per-layer read/write. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
+- **Cache location** (`--cache-dir`, `cacheDir`, `VX_CACHE_DIR`) — where the cache lives. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
+- **Cache scope** (`cacheScope`, `VX_CACHE_SCOPE`) — trusted CI writes the remote cache; a laptop reads it. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache pruning** (`vx cache prune`, `--older-than`, `--max-size`, `--dry-run`, `cacheRetention`, `maxSize`, `olderThan`) — evict by age or size, LRU. post: [One command to know your workspace](https://vznjs.github.io/vx/blog/know-your-workspace/)
 - **Remote outputs** (`--download`) — all, top-level only, or none. no post
-- **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. no post
+- **One store for every checkout** (`~/.vx/<id>/cache`) — clones and worktrees of a repo share cache entries. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Warm hits restore nothing** — when outputs on disk already match, a hit costs a few stats. no post
 - **Hits replay both streams** — stdout and stderr come back in the order the run printed them. no post
 - **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. no post
@@ -136,7 +136,7 @@ config key or an environment variable is missing here.
 
 - **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. no post
-- **Cache scope from the ref** (`github({ cacheScope })`) — main writes trusted keys; a PR writes only its own scope. no post
+- **Cache scope from the ref** (`github({ cacheScope })`) — main writes trusted keys; a PR writes only its own scope. post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 
 ## Adoption
 
