@@ -1965,6 +1965,9 @@ install its dependencies. `--mjs` writes the same objects as `vx.config.mjs` and
 own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
 into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 `.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
+A file it writes that `.gitignore` drops (vueuse ignores
+`packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
+line that keeps it, since a commit would leave it behind unnoticed.
 
 Each script becomes a task with its command verbatim. `build` gets
 `dependsOn: ['^build']` (a `build` that only delegates, `pnpm run

@@ -230,3 +230,7 @@ json` replayed a failure already fixed with no word of it. A failed
   `defineWorkspace({...})` while `vx init` and vx-migrate write
   `{...} satisfies WorkspaceConfig`; both snippets now match the
   generated file, and the guide says to add `mcp()` to an existing one.
+- **DX-40** `vx init` / vx-migrate note the files they write that
+  `.gitignore` drops (`git check-ignore`), with the `!name` line that
+  keeps them: on vueuse `--mjs` wrote configs `packages/**/*.mjs` hid
+  from every commit (Growth). Row: `init.test.ts` (none, dropped, fixed).

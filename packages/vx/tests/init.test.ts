@@ -1277,6 +1277,29 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('names the files .gitignore would drop, and the line that keeps them', async () => {
+    // vueuse ignores `packages/**/*.mjs`: `--mjs` wrote configs a commit
+    // silently left behind (Growth, 2026-10-09).
+    const root = await makeScriptsWorkspace()
+    try {
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      const note = async (): Promise<string[]> =>
+        (await vx(root, ['init', '--mjs', '--dry'])).out
+          .split('\n')
+          .filter((l) => l.startsWith('note: .gitignore'))
+      expect(await note()).toEqual([])
+      await writeFile(path.join(root, '.gitignore'), 'packages/**/*.mjs\n')
+      expect(await note()).toEqual([
+        'note: .gitignore drops 2 files this would write (packages/app/vx.config.mjs, packages/lib/vx.config.mjs): add !vx.config.mjs to .gitignore, or commit them with git add -f',
+      ])
+      // The advice works: with the line added, nothing is dropped.
+      await writeFile(path.join(root, '.gitignore'), 'packages/**/*.mjs\n!vx.config.mjs\n')
+      expect(await note()).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('--mjs writes vx.config.mjs and vx.workspace.mjs, untyped, and they load', async () => {
     // A package whose own `tsc --build` includes every `.ts` under it
     // compiles a generated vx.config.ts into its dist (TanStack/query,
