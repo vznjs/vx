@@ -4,7 +4,15 @@
 import { VERSION } from '../version.js'
 import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
-import { isUserError, MOVED_VERBS, nearest, UserError } from '../util/index.js'
+import {
+  errorDocument,
+  isUserError,
+  maskedLine,
+  MOVED_VERBS,
+  nearest,
+  UserError,
+  wantsJson,
+} from '../util/index.js'
 
 // Every verb is imported when invoked, `run` included, and so is the
 // plugin-verb lookup: each pulls in the orchestrator and the workspace
@@ -151,6 +159,14 @@ export async function run(argv: readonly string[]): Promise<number> {
       // both things: the verb is unknown HERE, and why the lookup could not
       // finish — a typo still reads as a typo, and a real plugin verb still
       // points at the file that broke it.
+      // Every answer below is "no such verb here": under --format json the
+      // agent reads it as one code, as a verb's own refusal gives one.
+      const unknown = (text: string, code = 'VX_E_UNKNOWN_COMMAND'): number => {
+        process.stderr.write(text)
+        if (wantsJson(rest))
+          process.stdout.write(errorDocument(code, maskedLine(text.split('\n')[0]!)))
+        return 1
+      }
       const loadNote =
         resolved !== null && 'loadError' in resolved
           ? `\n  (plugin verbs could not be looked up: vx.workspace failed to load: ${resolved.loadError})`
@@ -160,8 +176,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       // workspace that declares a plugin verb of that name keeps it.
       const moved = MOVED_VERBS[command] ?? FOREIGN_VERBS[command]
       if (moved !== undefined) {
-        process.stderr.write(`${moved}${loadNote}\n`)
-        return 1
+        return unknown(`${moved}${loadNote}\n`)
       }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.
@@ -176,8 +191,7 @@ export async function run(argv: readonly string[]): Promise<number> {
             ).taskVerbHint(command, rest, process.cwd(), guess === '' && !command.startsWith('-'))
           : null
       if (task !== null) {
-        process.stderr.write(`vx: ${task}\n`)
-        return 1
+        return unknown(`vx: ${task}\n`)
       }
       if (command === 'serve' || command === 'dev') {
         // vx core is only a task runner — it has no service layer of its
@@ -186,13 +200,12 @@ export async function run(argv: readonly string[]): Promise<number> {
         // We keep this neutral hint for the common muscle-memory verbs, but
         // core names no specific plugin package: any package can provide
         // these.
-        process.stderr.write(
+        return unknown(
           `vx: '${command}' is not a vx core command.\n` +
             `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
             `  distributed execution come from plugins — not core. See the plugin\n` +
             `  guide: https://vznjs.github.io/vx/guides/plugins/\n`,
         )
-        return 1
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full
       // help after a typo was a hundred lines past the hint that mattered.
@@ -208,16 +221,15 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (command.startsWith('-')) {
         // `-v` / `-V` is another tool's version flag, far from both names.
         const flag = /^-v$/i.test(command) ? '--version' : nearest(command, ['--help', '--version'])
-        process.stderr.write(
+        return unknown(
           `vx: unknown flag: ${command}${flag === undefined ? '' : ` (did you mean ${flag}?)`}; a verb's flags follow the verb (see \`vx help\`)\n`,
+          'VX_E_USAGE',
         )
-        return 1
       }
-      process.stderr.write(
+      return unknown(
         `vx: unknown command: ${command}${guess}${loadNote} (see \`vx help\`)\n` +
           (guess === '' && loadNote === '' ? verbSourceNote(resolved, declaredVerbs) : ''),
       )
-      return 1
     }
   }
 }

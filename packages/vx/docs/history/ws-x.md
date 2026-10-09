@@ -1335,3 +1335,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `VX_E_UNKNOWN_TASK`, `VX_E_NO_HISTORY`, `VX_E_AMBIGUOUS`,
   `VX_E_NO_WORKSPACE`). One `refuse()` in `cli/help.ts` prints a
   refusal a verb returns rather than throws.
+
+- **X-203.** An unknown verb answers `--format json` with
+  `VX_E_UNKNOWN_COMMAND` (a stray top-level flag with `VX_E_USAGE`), and
+  `vx cache` without a known subcommand and `vx run` with no task off a
+  TTY with `VX_E_USAGE`. Every refusal that can be asked for JSON now
+  carries a code; `watch`, `lock`, `init` and `upgrade` take no
+  `--format`.
