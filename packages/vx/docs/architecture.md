@@ -384,7 +384,7 @@ never branches on layering.
       cacheable task's key is derived up front and the remote GETs
       fire in the background so network latency overlaps execution.
    5. **Local short-circuit** (local-only cache, local reads on, ≥1
-      task): derive stable keys + probe local ONCE → `preProbed`
+      task, the cache holds an artifact): derive stable keys + probe local ONCE → `preProbed`
       map (probe reuse) + `restoreTier` set (confirmed hits the
       scheduler may restore ahead of their deps).
    6. `runGraph({ nodes, concurrency, execute, priorities,

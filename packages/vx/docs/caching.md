@@ -465,7 +465,10 @@ fold, and runtime probes after a writer still leave a key preliminary.
 The
 short-circuit never runs under a `LayeredCache` (remote prefetch owns
 those runs — an up-front `get` there would put remote GETs on the
-critical path), never fires with local reads off, and never throws —
+critical path), never fires with local reads off or on a local cache
+that holds no artifact (`Cache.holdsNothing`: every probe would miss,
+and a cold 1,090-package run started its first task ~90 ms sooner
+without it), and never throws —
 any error degrades to the normal lazy schedule. Measured: −6.6% on a
 mixed slow-upstream/warm-downstream workload; parity on all-hit warm
 runs.

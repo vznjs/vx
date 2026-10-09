@@ -6,18 +6,18 @@
         "hash xxh3": 1899,
         "spawn git": 5,
         "spawn sh": 51,
-        "sqlite statement": 697
+        "sqlite statement": 747
       },
       "up-to-date run @25": {
         "hash blob update": 50,
         "hash xxh3": 990,
         "spawn git": 3,
-        "sqlite statement": 49
+        "sqlite statement": 50
       },
       "restore run @25": {
         "hash xxh3": 990,
         "spawn git": 3,
-        "sqlite statement": 75
+        "sqlite statement": 76
       },
       "plan @25": {
         "hash xxh3": 989,
@@ -29,25 +29,25 @@
         "hash xxh3": 1308,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 194
+        "sqlite statement": 195
       },
       "cold run @100": {
         "hash blob update": 200,
         "hash xxh3": 7673,
         "spawn git": 5,
         "spawn sh": 200,
-        "sqlite statement": 2650
+        "sqlite statement": 2850
       },
       "up-to-date run @100": {
         "hash blob update": 200,
         "hash xxh3": 3990,
         "spawn git": 3,
-        "sqlite statement": 127
+        "sqlite statement": 128
       },
       "restore run @100": {
         "hash xxh3": 3990,
         "spawn git": 3,
-        "sqlite statement": 228
+        "sqlite statement": 229
       },
       "plan @100": {
         "hash xxh3": 3989,
@@ -59,23 +59,23 @@
         "hash xxh3": 5208,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 647
+        "sqlite statement": 648
       },
       "cold run --frozen @25": {
         "hash xxh3": 1825,
         "spawn git": 5,
         "spawn sh": 50,
-        "sqlite statement": 645
+        "sqlite statement": 695
       },
       "up-to-date run --frozen @25": {
         "hash xxh3": 942,
         "spawn git": 3,
-        "sqlite statement": 21
+        "sqlite statement": 22
       },
       "restore run --frozen @25": {
         "hash xxh3": 942,
         "spawn git": 3,
-        "sqlite statement": 72
+        "sqlite statement": 73
       },
       "plan --frozen @25": {
         "hash xxh3": 941,
@@ -87,23 +87,23 @@
         "hash xxh3": 1260,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 191
+        "sqlite statement": 192
       },
       "cold run --frozen @100": {
         "hash xxh3": 7375,
         "spawn git": 5,
         "spawn sh": 200,
-        "sqlite statement": 2448
+        "sqlite statement": 2648
       },
       "up-to-date run --frozen @100": {
         "hash xxh3": 3792,
         "spawn git": 3,
-        "sqlite statement": 24
+        "sqlite statement": 25
       },
       "restore run --frozen @100": {
         "hash xxh3": 3792,
         "spawn git": 3,
-        "sqlite statement": 225
+        "sqlite statement": 226
       },
       "plan --frozen @100": {
         "hash xxh3": 3791,
@@ -115,16 +115,16 @@
         "hash xxh3": 5010,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 644
+        "sqlite statement": 645
       }
     },
     "time": {
-      "plan --frozen @100": 1.119,
-      "plan @100": 1.212,
-      "restore run --frozen @100": 4.35,
-      "restore run @100": 4.103,
-      "up-to-date run --frozen @100": 1.795,
-      "up-to-date run @100": 2.183
+      "plan --frozen @100": 0.997,
+      "plan @100": 1.046,
+      "restore run --frozen @100": 3.639,
+      "restore run @100": 4.193,
+      "up-to-date run --frozen @100": 1.435,
+      "up-to-date run @100": 1.797
     }
   }
 }

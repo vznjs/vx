@@ -1596,6 +1596,27 @@ export class Cache implements CacheLayer {
   }
 
   /**
+   * Whether no lookup here can hit: no artifact, inline or file. Every
+   * entry has one, and a row-less one is still a hit (`adopt`). The listing
+   * is kept for `adopt`.
+   */
+  holdsNothing(): boolean {
+    if (!this.read) return true
+    if (this.guard(() => this.db.query('SELECT 1 FROM artifacts LIMIT 1').get()) != null) {
+      return false
+    }
+    let names: string[]
+    try {
+      names = readdirSync(this.artifactDir)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return false
+      names = []
+    }
+    this.artifactNames ??= new Set(names)
+    return !names.some((n) => n.endsWith('.tar.zst'))
+  }
+
+  /**
    * `get` for many hashes at once: one `entries` query and one
    * `output_files` query per chunk instead of two per hash, with the
    * artifact-existence stats in flight together. Same answers as N calls

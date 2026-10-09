@@ -945,7 +945,15 @@ async function runOnBus(
     // shouldShortCircuit (local reads on, no remote layer); when off, both
     // maps are empty and the run is byte-identical.
     let shortCircuit: ShortCircuit = emptyShortCircuit()
-    if (shouldShortCircuit(nodes, policy, cache)) {
+    // An empty local cache answers every probe with a miss: each task
+    // derives its key as it starts instead (~100 ms before a cold 1,090-
+    // package run's first spawn), and every sandboxed task runs.
+    const coldLocal =
+      cache === prepared.localCache &&
+      shouldShortCircuit(nodes, policy, cache) &&
+      prepared.localCache.holdsNothing()
+    if (coldLocal) prewarm()
+    else if (shouldShortCircuit(nodes, policy, cache)) {
       shortCircuit = await startLocalShortCircuit({
         nodes,
         cache,

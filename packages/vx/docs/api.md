@@ -127,6 +127,7 @@ export class Cache implements CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
+  holdsNothing(): boolean
   async getMany(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,
