@@ -166,5 +166,5 @@ config key or an environment variable is missing here.
 - **REAPI execution records** — a repeat remote execution skips the worker and replays outputs and stdout. no post
 - **REAPI verified downloads and deadlines** — a corrupt blob or a wedged server degrades to a miss, never a hang. no post
 - **Install as a remote action** (`exec.remote: 'only'`) — `node_modules` is built by an action, so stateless workers have it. no post
-- **OTel live export** (`otel({ live })`) — spans and metrics stream as tasks end, so a dashboard follows a CI run live. no post
+- **OTel live export** (`otel({ live })`) — spans and metrics stream as tasks end, so a dashboard follows a CI run live. post: [Watch a CI run while it runs](https://vznjs.github.io/vx/blog/otel-live/)
 - **Memory-aware admission** (`@vzn/vx-schedule-history`) — tasks are packed by the peak memory learned from past runs. no post
