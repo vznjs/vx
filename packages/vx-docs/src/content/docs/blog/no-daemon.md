@@ -65,9 +65,11 @@ stopped mattering:
   what the tree should contain.
 
 The result is a fully cached run of 3,270 tasks in 393ms with no
-process left behind, against Turborepo's 463ms (vx 1.1× faster) and
+process left behind, against Turborepo's 463ms (vx 18% faster) and
 Nx's 6.45s (vx 16× faster). vx has
 no daemon to turn on.
+
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 
 ## The invariant, stated plainly
 

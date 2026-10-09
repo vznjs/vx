@@ -54,16 +54,19 @@ time, each daemon stopped before the next runner is timed so it cannot
 idle-contend for CPU. `build` and `test` are `sleep 1`, so the numbers
 isolate the runner's own overhead from compilation.
 
-`build test --all`, the tasks' own ideal schedule being 3m 38s:
+`build test --all`, total time:
 
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
-| vx        | **3m 40s** (+0:02) | **393ms**    | **17.27s**     |
-| Turborepo | 4m 59s (+1:21, vx 1.3× faster) | 463ms (vx 1.1× faster) | 21.04s (vx 1.2× faster) |
-| Nx        | 3m 49s (+0:11, vx 1.03× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
-| Vite Task | 4m 49s (+1:11, vx 1.3× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 1.4× slower) |
+| vx        | **3m 40s** | **393ms**    | **17.27s**     |
+| Turborepo | 4m 59s (vx 36% faster) | 463ms (vx 18% faster) | 21.04s (vx 22% faster) |
+| Nx        | 3m 49s (vx 4% faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
+| Vite Task | 4m 49s (vx 31% faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
 
-vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
+vx N% faster: that tool takes N% longer than vx; N× faster: N times as long; slower: vx takes that much longer.
+
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for), because on a

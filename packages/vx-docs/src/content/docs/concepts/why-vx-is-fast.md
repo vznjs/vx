@@ -12,14 +12,14 @@ the raw numbers in [Benchmarks](../../benchmarks/).
 
 These are reproducible on your own machine, not marketing figures:
 
-- **The runner's overhead on a cold build**, the number to read first.
-  On the 3,270-task workspace the tasks alone take 3m 38s under an ideal
-  schedule; vx finishes in 3m 40s (+0:02), Turborepo in 4m 59s (+1:21,
-  vx 1.3× faster), Nx in 3m 49s (+0:11, vx 1.03× faster) — one unit for
-  every runner. A runner that adds seconds to a three-minute build is a
-  different tool from one that adds a minute and a half, and the
-  per-package figure (2 ms, 74 ms and 10 ms per package) is how each
-  grows with the codebase.
+- **The total cold build**, the number to read first. On the
+  synthetic 1,090-package, 3,270-task workspace (tasks of equal duration,
+  deep dependency chains) vx finishes in 3m 40s, Nx in 3m 49s (vx 4%
+  faster), Vite Task in 4m 49s (vx 31% faster) and Turborepo in
+  4m 59s (vx 36% faster). Secondary: the time each runner adds over
+  the tasks' ideal schedule of 3m 38s, per package (2 ms for vx, 10 ms per
+  package for Nx and 74 ms for Turborepo), is how each grows with the codebase.
+  Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot

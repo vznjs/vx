@@ -696,7 +696,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     expect(checked).toBe(9)
   })
 
-  it("the cold column's overheads are the run's, over the ideal schedule", () => {
+  it("the cold column's totals are the run's", () => {
     const results = JSON.parse(
       readFileSync(
         path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
@@ -704,24 +704,23 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       ),
     ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
     const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
-    const mmss = (ms: number): string => {
+    const minsec = (ms: number): string => {
       const s = Math.round(ms / 1000)
-      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+      return `${Math.floor(s / 60)}m ${s % 60}s`
     }
     let checked = 0
     // The post quotes the headline row, `vx` (the frozen lock), as the
-    // README does (2026-10-03).
+    // README does (2026-10-03); the cold column is total time (owner,
+    // 2026-10-09: the time a runner adds is never the headline).
     for (const [runner, label] of [
       ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {
       const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
-      const over = mmss(fresh - results.baseline['workBoundMs']!)
-      // `(+1:35)`, or `(+1:35, vx 1.3× faster)` since every cell names vx's multiple.
-      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})[,)]`).exec(post)
+      const row = new RegExp(`\\| ${label} +\\| (?:\\*\\*)?([0-9]+m [0-9]+s)`).exec(post)
       expect(row).not.toBeNull()
-      expect({ runner, over: row![1] }).toEqual({ runner, over })
+      expect({ runner, cold: row![1] }).toEqual({ runner, cold: minsec(fresh) })
       checked += 1
     }
     expect(checked).toBe(3)

@@ -280,7 +280,7 @@ describe('the landing page', () => {
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Least time added, cold and cached.')
+    expect(text(bench)).toContain('Fastest cold build and cached run.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
     expect(bench).not.toContain('<table')
     const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
@@ -288,12 +288,14 @@ describe('the landing page', () => {
     )
     expect(figures.map((f) => text(/<figcaption>([\s\S]*?)<\/figcaption>/.exec(f)![1]!))).toEqual([
       'Cold build: total time',
-      'Cold build: time the runner adds',
       'Cold build: CPU burned',
       'Fully cached run (restored)',
       'Fully cached run (up-to-date)',
+      'Secondary: time the runner adds to a cold build',
     ])
-    for (const f of figures) {
+    // Total cold time leads; the time a runner adds is a labelled last row
+    // with no multiple (owner, 2026-10-09: it read 34× where the build is 1.36×).
+    for (const [i, f] of figures.entries()) {
       const bars = [
         ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
       ]
@@ -304,12 +306,22 @@ describe('the landing page', () => {
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
       expect(notes[0]).toBeUndefined()
-      expect(notes.slice(1).filter((n) => !/^vx [\d.]+× (?:faster|slower)$/.test(n ?? ''))).toEqual(
-        [],
-      )
+      if (i === figures.length - 1) {
+        expect(notes).toEqual([undefined, undefined, undefined, undefined])
+        continue
+      }
+      expect(
+        notes.slice(1).filter((n) => !/^vx (?:[\d.]+×|\d+%) (?:faster|slower)$/.test(n ?? '')),
+      ).toEqual([])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).',
+      'vx N% or N× faster: that tool takes N% longer or N times as long as vx.',
+    )
+    // The workload sits under every bench chart (owner, 2026-10-09).
+    expect(
+      text(/<p class="bench-formula bench-workload">([\s\S]*?)<\/p>/.exec(bench)![1]!),
+    ).toMatch(
+      /^Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks .* real repos with uneven task times will differ\.$/,
     )
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
@@ -326,14 +338,14 @@ describe('the landing page', () => {
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
-      'less time added to a cold build than Turborepo',
+      'faster cold build than Turborepo',
       'less CPU burned on a cold build than Turborepo',
       'faster fully cached run than Nx',
     ])
     const bench = section(html, 'bench')
-    const notes = [...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+)× faster<\/span>/g)].map(
-      (m) => `${m[1]}×`,
-    )
+    const notes = [
+      ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
+    ].map((m) => m[1]!)
     // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
     expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[9]!])
   })

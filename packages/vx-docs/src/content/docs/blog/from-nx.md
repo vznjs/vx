@@ -119,6 +119,7 @@ so a shared input list is an import.
   benchmark, on native config, a fully cached run is 393ms to Nx's
   6.45s (vx 16× faster), and the cold run burns 17.27s of CPU to Nx's
   52.19s (vx 3× faster).
+  Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
   There is no first-party service and there will not be one.

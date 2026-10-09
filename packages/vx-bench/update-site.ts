@@ -66,12 +66,9 @@ function disp(ms: number): string {
   if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`
   return `${Math.round(ms)}ms`
 }
-// The number the site leads with (owner, 2026-09-10): what the runner ADDS
-// to a cold build over the ideal schedule of the tasks themselves, as time,
-// never a percentage for one and a multiple for another (a percentage of a
-// big example reads as "this scales"; seconds against minutes reads as what
-// it is). `perPkg` is the same overhead per package, in ms, the number that
-// says how the runner grows with the codebase.
+// What the runner adds to a cold build over the tasks' own ideal schedule,
+// per package, in ms: how the runner grows with the codebase. A secondary
+// number; total cold time leads (owner, 2026-10-09).
 const perPkg = (r: Row): number => Math.round((Number(r.fresh) - B.fresh) / d.packages)
 
 // ---- the table the README and the landing lead with ----
@@ -86,63 +83,74 @@ const span = (ms: number): string => {
   if (s < 600) return `${Math.floor(s / 60)} min ${s % 60} s`
   return `${Math.round(s / 60)} min`
 }
-// [label, the number compared, how a cell shows it]
-// Total wall leads: the added-time ratio divides by a small number, so a
-// runner whose whole build is 1.4× as long reads 34× there (PR #3286).
-const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => string]> = [
-  ['Cold build: total time', (r) => Number(r.fresh), (r) => span(Number(r.fresh))],
-  [
-    'Cold build: time the runner adds',
-    (r) => Number(r.fresh) - B.fresh,
-    (r) => span(Number(r.fresh) - B.fresh),
-  ],
-  ['Cold build: CPU burned', (r) => r.freshCpu, (r) => span(r.freshCpu)],
+// [label, the number compared, how a cell shows it, whether it shows a multiple]
+// Total cold time leads (owner, 2026-10-09). The time a runner adds is a
+// labelled secondary row with no multiple: it divides by a small number, so
+// a runner whose whole build is 1.36× as long read 34× there (PR #3286).
+const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => string, boolean]> = [
+  ['Cold build: total time', (r) => Number(r.fresh), (r) => span(Number(r.fresh)), true],
+  ['Cold build: CPU burned', (r) => r.freshCpu, (r) => span(r.freshCpu), true],
   [
     'Fully cached run (restored)',
     (r) => r.warmRestore,
     (r) => disp(r.warmRestore).replace(/(\d)(ms|s)$/, '$1 $2'),
+    true,
   ],
   [
     'Fully cached run (up-to-date)',
     (r) => r.warmNoRestore,
     (r) => disp(r.warmNoRestore).replace(/(\d)(ms|s)$/, '$1 $2'),
+    true,
+  ],
+  [
+    'Secondary: time the runner adds to a cold build',
+    (r) => Number(r.fresh) - B.fresh,
+    (r) => span(Number(r.fresh) - B.fresh),
+    false,
   ],
 ]
 // Every competitor cell says how vx compares, as how many times as long the
 // slower runner takes (owner, 2026-10-04: "say how many X", replacing the
-// 2026-10-02 percentage). Rounded against vx: down when vx is faster, up
-// when it is slower; whole from 10×, one decimal under it, two under
-// 1.1× so a small win never reads as a tie.
+// 2026-10-02 percentage). Under 2× it is a percentage again, the bigger
+// number to the eye (owner, 2026-10-09: "30% is bigger than 1.3"). Rounded
+// to nearest: whole from 10×, one decimal from 2×.
 function versus(ours: number, theirs: number): string {
   const faster = ours < theirs
   const r = faster ? theirs / ours : ours / theirs
-  const round = faster ? Math.floor : Math.ceil
-  if (r === 1) return 'vx same'
-  const at = (k: number) => round(r * k) / k
-  const n = r >= 10 ? round(r) : at(10) > 1 ? at(10) : at(100)
+  if (r < 2) {
+    const pct = Math.round((r - 1) * 100)
+    return pct === 0 ? 'vx same' : `vx ${pct}% ${faster ? 'faster' : 'slower'}`
+  }
+  const n = r >= 10 ? Math.round(r) : Math.round(r * 10) / 10
   return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
-const FORMULA =
-  'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
-const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string): string =>
-  `${f(r)} (${versus(n(vx), n(r))})`
+const FORMULA = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+// Under every bench table: when, where and which versions (owner, 2026-10-09).
+const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx from source, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
+// Beside every bench number (owner, 2026-10-09), true to compare.ts's shape.
+const WORKLOAD =
+  'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
+const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string, ratio: boolean): string =>
+  ratio ? `${f(r)} (${versus(n(vx), n(r))})` : f(r)
 const tableBlock =
   'const benchTable = [\n' +
   table
     .map(
-      ([label, n, f]) =>
-        `  { label: '${label}', vx: '${f(vx)}', turbo: '${vs(turbo, n, f)}', nx: '${vs(nx, n, f)}', vt: '${vs(vt, n, f)}' },`,
+      ([label, n, f, ratio]) =>
+        `  { label: '${label}', vx: '${f(vx)}', turbo: '${vs(turbo, n, f, ratio)}', nx: '${vs(nx, n, f, ratio)}', vt: '${vs(vt, n, f, ratio)}' },`,
     )
     .join('\n') +
   '\n]\n' +
-  `const benchFormula = '${FORMULA}'\n`
+  `const benchFormula = '${FORMULA}'\n` +
+  `const benchWorkload = '${WORKLOAD}'\n` +
+  `const benchRun = '${RUN}'\n`
 
 // ---- landing page ----
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
 landing = rewrite(
   landing,
-  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n(?:const benchNote = "[^"\n]*"\n)?/,
+  /const benchTable = \[\n[\s\S]*?\n\]\nconst benchFormula = '[^'\n]*'\n(?:const benchWorkload = '[^'\n]*'\n)?(?:const benchRun = '[^'\n]*'\n)?/,
   tableBlock,
   'the benchTable block',
 )
@@ -168,11 +176,14 @@ const readmeBlock = `<!-- bench:start — generated by packages/vx-bench/update-
 
 | ${d.packages.toLocaleString('en-US')} packages, ${nodes.toLocaleString('en-US')} tasks | vx | Turborepo | Nx | Vite Task |
 | --- | --- | --- | --- | --- |
-${table.map(([label, n, f]) => `| ${label} | **${f(vx)}** | ${vs(turbo, n, f)} | ${vs(nx, n, f)} | ${vs(vt, n, f)} |`).join('\n')}
+${table.map(([label, n, f, ratio]) => `| ${label} | **${f(vx)}** | ${vs(turbo, n, f, ratio)} | ${vs(nx, n, f, ratio)} | ${vs(vt, n, f, ratio)} |`).join('\n')}
 
 ${FORMULA}
 
-Time added is the wall time over the tasks' own ideal schedule (${span(B.fresh)}).
+${WORKLOAD}
+${RUN}
+
+The secondary row is the wall time over the tasks' own ideal schedule (${span(B.fresh)}).
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).
 
 <!-- bench:end -->`
@@ -210,19 +221,20 @@ The committed \`packages/vx-bench/RESULTS.md\` / \`packages/vx-bench/results.jso
 
 ${FORMULA}
 
+${WORKLOAD}
+
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
 exact dependency graph (critical path ${disp(B.criticalPathMs)}, total work ÷
 workers ${disp(B.workBoundMs)}); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
-the runner. vx's cold overhead over the ideal schedule is
+the runner. The cold row's total time is the headline. Secondary, the cold
+overhead over the ideal schedule: vx's is
 ${disp(vx.fresh - B.fresh)} on ${nodes.toLocaleString('en-US')} tasks (${perPkg(vx)} ms per package), ${disp(noLock.fresh - B.fresh)}
 with no lock; Turborepo's is
 ${disp(turbo.fresh - B.fresh)} (${perPkg(turbo)} ms per package), Nx's ${disp(nx.fresh - B.fresh)}
 (${perPkg(nx).toLocaleString('en-US')} ms per package) and Vite Task's ${disp(vt.fresh - B.fresh)}
-(${perPkg(vt).toLocaleString('en-US')} ms per package) — the number to read first, in one unit for every
-runner: a runner that adds seconds to a three-minute build is a
-different tool from one that adds a minute and a half. For context, the
+(${perPkg(vt).toLocaleString('en-US')} ms per package), in one unit for every runner. For context, the
 **measured floors** row gives what the cheapest possible implementation
 of each step costs on this machine: one \`git status -uall\` walk (the
 cost of asking what changed), that walk plus a raw copy of every output
