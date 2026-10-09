@@ -610,11 +610,11 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
           )
           .filter((c) => FIGURE.test(c))
         if (figures.length === 0) continue
-        // The 3,270-task table is TRANSPOSED in the post — runner rows where
+        // The 9,603-task table is TRANSPOSED in the post — runner rows where
         // benchmarks.md has runner columns — so its figures cannot sit on one
         // row there by construction. The arm below pins those to results.json
         // instead, which is where they come from.
-        if (/^\| (vx|Turborepo|Nx) /.test(line)) continue
+        if (/^\| (vx|Turborepo|Nx|Vite Task) /.test(line)) continue
         checked += 1
         const together = rows.some((r) => {
           const cells = r.map((c) =>
@@ -636,28 +636,20 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     expect(wrong).toEqual([])
   })
 
-  // honest-benchmarks quotes the 2026-10-04 run (1,090 packages), archived beside results.json.
-  it('the transposed 3,270-task rows are the recorded run, figure by figure', () => {
+  // honest-benchmarks quotes the 2026-10-09 run (9,603 tasks), results.json.
+  it('the transposed 9,603-task rows are the recorded run, figure by figure', () => {
     const results = JSON.parse(
       readFileSync(
-        path.resolve(
-          import.meta.dir,
-          '..',
-          '..',
-          '..',
-          'packages',
-          'vx-bench',
-          'results-2026-10-04.json',
-        ),
+        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
         'utf8',
       ),
     ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
     const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
     // Same parse-to-granularity as item 391: hold the CLAIM, not the spelling.
     const parse = (raw: string): { ms: number; step: number } | null => {
-      let m = /^(\d+)m (\d+)s$/.exec(raw)
+      let m = /^(\d+) min (\d+) s$/.exec(raw)
       if (m !== null) return { ms: (Number(m[1]) * 60 + Number(m[2])) * 1000, step: 1000 }
-      m = /^(\d+(?:\.\d+)?)s$/.exec(raw)
+      m = /^(\d+(?:\.\d+)?) s$/.exec(raw)
       if (m !== null) {
         const decimals = (m[1]!.split('.')[1] ?? '').length
         return { ms: Number(m[1]) * 1000, step: 1000 / 10 ** decimals }
@@ -673,6 +665,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
+      ['vite-task', 'Vite Task'],
     ] as const) {
       const row = new RegExp(`^\\| ${label} +\\|(.*)$`, 'm').exec(post)
       expect(row).not.toBeNull()
@@ -691,8 +684,8 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
         const shown = parse(cell)
         expect({ runner, cell, readable: shown !== null }).toEqual({ runner, cell, readable: true })
         const measured = results.rows.find((r) => r['runner'] === runner)![FIELDS[i]!] as number
-        // The cold column is the runner's overhead over the ideal schedule.
-        const actual = FIELDS[i] === 'fresh' ? measured - results.baseline['fresh']! : measured
+        // Every column is the runner's overhead over the ideal run.
+        const actual = measured - results.baseline[FIELDS[i]!]!
         // The page must show what ROUNDING the measurement to that precision
         // gives — not merely land within one step of it. A tolerance of one
         // step let `510ms` become `511ms` and still pass (510.34 is inside
@@ -706,28 +699,20 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
         checked += 1
       })
     }
-    expect(checked).toBe(9)
+    expect(checked).toBe(12)
   })
 
   it("the cold column is overhead, never the run's total", () => {
     const results = JSON.parse(
       readFileSync(
-        path.resolve(
-          import.meta.dir,
-          '..',
-          '..',
-          '..',
-          'packages',
-          'vx-bench',
-          'results-2026-10-04.json',
-        ),
+        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
         'utf8',
       ),
     ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
     const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
     const minsec = (ms: number): string => {
       const s = Math.round(ms / 1000)
-      return `${Math.floor(s / 60)}m ${s % 60}s`
+      return `${Math.floor(s / 60)} min ${s % 60} s`
     }
     let checked = 0
     // The post quotes the headline row, `vx` (the frozen lock), as the
@@ -740,9 +725,9 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       ['nx', 'Nx'],
     ] as const) {
       const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
-      const row = new RegExp(`^\\| ${label} +\\| (?:\\*\\*)?([^ |*]+(?: [0-9]+s)?)`, 'm').exec(post)
+      const row = new RegExp(`^\\| ${label} +\\| (?:\\*\\*)?([^|*(]+)`, 'm').exec(post)
       expect(row).not.toBeNull()
-      expect({ runner, cold: row![1] }).not.toEqual({ runner, cold: minsec(fresh) })
+      expect({ runner, cold: row![1]!.trim() }).not.toEqual({ runner, cold: minsec(fresh) })
       checked += 1
     }
     expect(checked).toBe(3)

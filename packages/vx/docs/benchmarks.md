@@ -336,8 +336,7 @@ The npm share grows with the graph. At 1,090 packages (3,270 tasks,
 `compare.ts 100 11`, same box, one cold run each) Nx burned 76 min of
 CPU with npm and 23 min with bun: npm was two thirds of the old
 harness's Nx number there, which is the run the site once quoted (on the
-macOS machine). § Earlier shape
-is this box's run with `nx:run-commands`. The whole 3,270-task shape
+macOS machine). The whole 3,270-task shape
 on this box with `nx:run-script` and bun (2026-09-25, after items 744, 753 and
 754, median of 1):
 
@@ -365,10 +364,11 @@ probes each forked task runs cost ~8 ms of it. These tables used to say
 Nx's daemon was on; `CI=1` had always turned it off, and the harness
 keeps it off on purpose: it simulates CI.
 
-### Why Turborepo is slower cold
+### Why Turborepo was slower cold on 100 layers (2026-10-04)
 
-The order it starts ready tasks in, not its CPU (21 s cold against vx's
-17 s at 3,270 tasks). Turborepo has no ranking: its walker hands out
+On the earlier 1,090-package, 100-layer shape: the order it starts
+ready tasks in, not its CPU (21 s cold against vx's 17 s at 3,270
+tasks). Turborepo has no ranking: its walker hands out
 tasks as they become ready and each waits for a semaphore slot
 (`crates/turborepo-engine/src/execute.rs`). When a layer's builds finish,
 the next layer's builds become ready together with that layer's tests,
@@ -377,7 +377,8 @@ critical path waits about a second. `listSchedule(nodes, 10, 'fifo')`
 replays that order on the benchmark's graph: 1m 20s over the ideal
 schedule, against Turborepo's measured 1m 21s and nothing ranked (`packages/vx-bench/tests/ideal.test.ts`).
 No `turbo.json` key changes the order. vx ranks ready tasks by remaining
-critical path, Nx by how many tasks wait on each.
+critical path, Nx by how many tasks wait on each. On the 30-level shape
+above, Turborepo's cold overhead is 12% over vx's.
 
 ## Head to head: 9,603 tasks, 30 levels (2026-10-09)
 
@@ -436,71 +437,6 @@ is not counted, so theirs is a floor.
 > `dist/**` outputs, the same concurrency, and each sees a dependency's
 > change (Turborepo and vx fold upstream keys; Nx through `^` inputs;
 > Vite Task through each dependency's output as an input).
-
-## Earlier shape: 3,270 tasks, 100 layers (2026-10-04)
-
-The head-to-head before the 2026-10-09 shape, kept because older posts quote it;
-its data is `packages/vx-bench/results-2026-10-04.json`. The harness that made it
-is gone with that shape.
-
-The shape that actually stresses a task runner: **100 dependency layers**,
-~11 packages per layer, ~30 deps per package, three tasks each
-(`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
-task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
-every runner pinned to concurrency 10. `bun packages/vx-bench/compare.ts 100 11 1`,
-this machine (linux x64, 4 cores), Turbo 2.11.7, Nx 23.2.1, every Nx task an `nx:run-commands` target,
-Vite Task (`vp run`, vite-plus 1.0.0), its tasks in each package's `vite.config.ts`.
-vx runs from a `vx lock` snapshot (`--frozen`), taken once before the reps,
-as a CI pipeline runs it; _vx, no lock_ is the same run evaluating every
-config per run.
-
-|                                             | vx                                                       | vx, no lock | Turborepo              | Nx                      | Vite Task              |
-| ------------------------------------------- | -------------------------------------------------------- | ----------- | ---------------------- | ----------------------- | ---------------------- |
-| **Cold overhead** (over the ideal schedule) | **2.33s**                                                | 2.52s       | 1m 21s (vx 35× faster) | 10.98s (vx 4.7× faster) | 1m 11s (vx 31× faster) |
-| **Warm**, nothing to rebuild                | **393ms**                                                | 473ms       | 463ms (vx 18% faster)  | 6.45s (vx 16× faster)   | 2.49s (vx 6.3× faster) |
-| **Warm**, restore outputs                   | **650ms**                                                | 780ms       | 997ms (vx 53% faster)  | 6.25s (vx 9.6× faster)  | 2.64s (vx 4.1× faster) |
-| **CPU burned**, cold (user+sys)             | **17.27s**                                               | 18.79s      | 21.04s (vx 22% faster) | 52.19s (vx 3× faster)   | 12.46s (vx 39% slower) |
-| **CPU burned**, warm (user+sys)             | **745ms**                                                | 894ms       | 897ms (vx 21% faster)  | 7.52s (vx 10× faster)   | 2.48s (vx 3.3× faster) |
-| _Baseline_ (theoretical best)               | 3m 38s cold; 0 warm, restore, CPU                        | —           | —                      | —                       | —                      |
-| _Measured floors_ (context)                 | git walk 24ms · walk + raw copy 93ms · task shells 9.09s | —           | —                      | —                       | —                      |
-
-vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.
-
-Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
-
-**Baseline** is the theoretical best case, so each row shows its overhead:
-cold is the tasks' own durations list-scheduled on 10 workers along the
-exact dependency graph (critical path 1m 40s, total work ÷
-workers 3m 38s); a cached run, a restore and the CPU a
-runner burns are 0 in theory, so every measured number in those rows is
-the runner, and the cold row is the wall time over the ideal schedule.
-Every row is overhead; a cold build's total time is not compared
-(owner, 2026-10-09). vx's cold overhead is
-2.33s on 3,270 tasks (2 ms per package), 2.52s
-with no lock; Turborepo's is
-1m 21s (74 ms per package), Nx's 10.98s
-(10 ms per package) and Vite Task's 1m 11s
-(65 ms per package), in one unit for every runner. For context, the
-**measured floors** row gives what the cheapest possible implementation
-of each step costs on this machine: one `git status -uall` walk (the
-cost of asking what changed), that walk plus a raw copy of every output
-file, and the task shells themselves under `xargs -P 10` (which vary by
-about two seconds between runs).
-
-**CPU** is user + system time of the invocation and every child it
-waited for. The tasks are `sleep`, so this is the runner's own work; a
-daemon that outlives the invocation (Nx's) is not counted, so Nx's CPU
-is a floor.
-
-> Methodology note: a synthetic graph with `sleep`-based tasks isolates
-> _runner_ overhead from real compilation. All four runners are
-> configured **identically** — same commands, the same `src/**` inputs and
-> `dist/**` outputs, the same concurrency. (Hashing `**/*` instead would
-> include each task's own output in its inputs and break caching for
-> everyone.) An earlier run of this shape (June 2026, a 4-core Linux box)
-> read CPU 22.7 s / 1,250 s / 2,038 s; cold overhead depends on how many
-> cores the runners' work competes with the tasks for, which is why the
-> CPU row is the one that travels.
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx vs Vite Task)
 

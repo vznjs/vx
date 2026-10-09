@@ -13,13 +13,13 @@ the raw numbers in [Benchmarks](../../benchmarks/).
 These are reproducible on your own machine, not marketing figures:
 
 - **Runner overhead**, the number to read first: the time a runner adds
-  on top of the tasks' ideal schedule of 3m 38s. On the synthetic
-  1,090-package, 3,270-task workspace vx adds 2.33s to a cold build, Nx
-  10.98s (vx 4.7× faster), Vite Task 1m 11s (vx 31× faster) and
-  Turborepo 1m 21s (vx 35× faster). Per package that is 2 ms for vx,
-  10 ms per package for Nx and 74 ms for Turborepo: how each grows with
-  the codebase.
-  Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ. Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.
+  on top of the ideal run. On the synthetic 9,603-task workspace, with
+  nothing changed, vx adds 958 ms, Turborepo 1.05 s (vx 10% faster),
+  Vite Task 12.24 s (vx 13× faster) and Nx 25.96 s (vx 27× faster). On a
+  cold build over its 6 min 16 s ideal schedule, vx adds 8.99 s,
+  Turborepo 10.06 s (vx 12% faster) and Nx 1 min 13 s (vx 8.1× faster);
+  Vite Task adds less, 4.50 s (vx 100% slower).
+  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ. Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
@@ -29,10 +29,10 @@ These are reproducible on your own machine, not marketing figures:
   container reads 271 ms at 1,000 projects. Its restore row deletes the outputs first and extracts
   every artifact, so it costs more than the untouched tree; the
   current floors are in [Benchmarks](../../benchmarks/).
-- **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
-  one repo (1,090 packages, 100 dependency layers, a `build`,
-  `installDeps` and `test` task each: 3,270 tasks) and runs all three runners across the same three cache states.
-  vx leads on the warm paths; the committed results live in
+- **Head-to-head vs Turborepo, Nx and Vite Task** — `bun packages/vx-bench/compare.ts` scaffolds
+  one repo (1,601 projects, 30 dependency levels, 9,603 tasks) and runs every runner cold,
+  with nothing changed, with outputs restored and after a leaf and a core edit.
+  The committed results live in
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
   a command away.
 

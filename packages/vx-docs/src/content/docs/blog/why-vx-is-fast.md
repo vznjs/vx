@@ -6,23 +6,20 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 958 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
 The headline number is the runner's overhead: the time it adds on top
-of the tasks themselves. On a synthetic workspace of 1,090 packages and
-3,270 tasks of equal duration in deep dependency chains, whose ideal
-schedule is 3m 38s, vx adds 2.33s to a cold build, Nx 10.98s (vx 4.7×
-faster), Vite Task 1m 11s (vx 31× faster) and Turborepo 1m 21s (vx 35×
-faster).
-Warm, a fully cached `vx run build test --all` finishes in 393ms,
-Turborepo in 463ms (vx 18% faster), Nx in 6.45s (vx 16× faster) and
-Vite Task in 2.49s (vx 6.3× faster). The cold build burns 17 s of CPU
-in vx, 21 s in Turborepo (vx 22% faster), 52 s in Nx (vx 3× faster)
-and 12 s in Vite Task (vx 39% slower), each runner in its own native
+of the tasks themselves. On a synthetic workspace of 1,601 projects and
+9,603 tasks, with nothing changed, vx adds 958 ms over one git walk,
+Turborepo 1.05 s (vx 10% faster), Vite Task 12.24 s (vx 13× faster) and
+Nx 25.96 s (vx 27× faster). On a cold build vx adds 8.99 s, Turborepo
+10.06 s (vx 12% faster) and Nx 1 min 13 s (vx 8.1× faster); Vite Task
+adds less, 4.50 s (vx 100% slower). Each runner runs in its own native
 config.
 
-Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache

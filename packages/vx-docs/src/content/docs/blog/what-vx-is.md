@@ -89,8 +89,8 @@ repository's memory file so nobody re-proposes it by accident:
 
 - **No cloud, no account, no dashboard.** vx does not know your
   organisation exists.
-- **No daemon.** Every run pays its own discovery and still answers a
-  fully cached 3,270-task graph in about half a second.
+- **No daemon.** Every run pays its own discovery and still adds under
+  a second to a 9,603-task graph where nothing changed.
 - **No auto-inferred inputs.** A traced read set describes what a task
   read once, on one machine, after the fact. A key is needed before the
   task runs. You declare inputs, and the sandbox lets you enforce the
