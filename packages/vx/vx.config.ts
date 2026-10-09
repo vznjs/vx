@@ -64,6 +64,7 @@ const OTHER_OUTPUTS = [
   ].map((page) => `vx-docs/src/content/docs/${page}.md`),
   'vx-docs/src/content/docs/modules/**',
   'vx-docs/src/content/docs/design/**',
+  'vx-docs/src/content/docs/plugins/**',
 ].map((g) => `!packages/${g}`)
 const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
 const shardTask = (i: number) => ({

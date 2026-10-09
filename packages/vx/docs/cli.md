@@ -2673,7 +2673,7 @@ task, a `--run` with no row for it, or a parse error.
 ## `vx prune`
 
 ```
-vx prune <project...> [--out-dir <dir>] [--docker]
+vx prune <project...> [--out-dir <dir>] [--docker] [--production]
 ```
 
 A plugin verb of `@vzn/vx-lockfile`: declaring `pnpm()`, `bun()`,
@@ -2682,7 +2682,9 @@ transitive workspace dependencies, the root manifests (workspace lists
 rewritten to the subset), the vx configs and each lockfile pruned to what
 the subset installs into `--out-dir` (default `out/`), so a Docker build
 installs it with a frozen lockfile; `--docker` splits `json/` (the
-install layer) from `full/`. `turbo prune`. Reference:
+install layer) from `full/`; `--production` leaves out a workspace
+package only a dev dependency reaches and strikes it from the kept
+manifests and lockfiles. `turbo prune`. Reference:
 `packages/vx-lockfile/README.md` § `vx prune`. Without the plugin, typing
 `vx prune` says where it comes from and exits 1. History: core verb
 2026-08-25, `@vzn/vx-prune` 2026-09-10, removed 2026-09-11 (it copied the

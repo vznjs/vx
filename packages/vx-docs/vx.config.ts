@@ -37,6 +37,7 @@ const IMPORTED = [
   'src/content/docs/upstream-ledger.md',
   'src/content/docs/modules/**',
   'src/content/docs/design/**',
+  'src/content/docs/plugins/**',
 ]
 // A key reads no other task's outputs (`rules.upfrontKeys`, X-54): each
 // arrives through that task's key and `dependsOn`. All three are gitignored,
@@ -132,13 +133,13 @@ export default defineProject({
     // generated set by name — a hit restores exactly them and never wipes
     // a tracked page.
     import: {
-      description: 'generate src/content/docs from packages/vx/docs',
+      description: 'generate src/content/docs from packages/vx/docs and the plugin READMEs',
       dependsOn: ['install'],
       exec: {
         command: 'bun scripts/import-docs.ts',
         sandbox: {
           allow: {
-            read: ['**/*', '../vx/docs/**'],
+            read: ['**/*', '../vx/docs/**', '../vx-*/README.md', '../vx-*/package.json'],
             write: ['src/content/docs/**'],
             systemInfo: ['vfs.disk-space'],
           },
@@ -147,7 +148,11 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['scripts/import-docs.ts'],
-          workspaceFiles: ['packages/vx/docs/**'],
+          workspaceFiles: [
+            'packages/vx/docs/**',
+            'packages/vx-*/README.md',
+            'packages/vx-*/package.json',
+          ],
         },
         outputs: { files: IMPORTED },
       },

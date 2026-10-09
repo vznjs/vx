@@ -293,7 +293,12 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
  * skipped).
  */
 export function pruneLockfile(text: string, scope: PruneScope): string {
-  const { dirs, members, manifests } = scope
+  const { dirs, members, manifests, dropped } = scope
+  // Berry merges a workspace's dev dependencies into its entry's
+  // `dependencies`, so a struck name is told by its link: a dropped
+  // workspace package is reached through a `workspace:` range.
+  const isDropped = (name: string, range: string): boolean =>
+    dropped.has(name) && range.startsWith('workspace:')
   const lock = parseLockfile(text)
   const reached = new Set<string>()
   const visit = (id: string | undefined): void => {
@@ -304,13 +309,23 @@ export function pruneLockfile(text: string, scope: PruneScope): string {
       throw new Error(`yarn.lock: ${id} is a workspace the subset leaves out`)
     }
     reached.add(id)
+    const kept = dir !== undefined && dirs.has(dir)
     for (const [name, range] of lock.entries.get(id)!.installs) {
+      if (kept && isDropped(name, range)) continue
       for (const target of resolveDescriptor(lock, id, name, range)) visit(target)
     }
   }
   const berry = lock.generation === 'berry'
+  // Berry records a workspace's dev dependencies in its entry's
+  // `dependencies`; classic records no workspace, and its manifests are
+  // already stripped.
+  const keptWorkspaces = new Set<string>()
   if (berry) {
-    for (const [dir, id] of lock.workspaces) if (dirs.has(dir)) visit(id)
+    for (const [dir, id] of lock.workspaces) {
+      if (!dirs.has(dir)) continue
+      keptWorkspaces.add(id)
+      visit(id)
+    }
   } else {
     for (const [dir, deps] of manifests) {
       if (!dirs.has(dir)) continue
@@ -329,9 +344,28 @@ export function pruneLockfile(text: string, scope: PruneScope): string {
     berry
       ? yamlKey(line).split(',')[0]!.trimStart()
       : unquote(line.replace(/:\s*$/, '').split(',')[0]!.trim())
-  return pruneEntries(lines, 0, lines.length, 0, (line) => {
+  const pruned = pruneEntries(lines, 0, lines.length, 0, (line) => {
     if (line.startsWith('__metadata:')) return true
     const id = lock.descriptors.get(first(line))
     return id !== undefined && reached.has(id)
-  }).join('\n')
+  })
+  if (!berry || dropped.size === 0) return pruned.join('\n')
+  const out: string[] = []
+  let inKept = false
+  for (let i = 0; i < pruned.length; i++) {
+    const line = pruned[i]!
+    if (/^\S/.test(line)) inKept = keptWorkspaces.has(lock.descriptors.get(first(line)) ?? '')
+    if (!inKept || line !== '  dependencies:') {
+      out.push(line)
+      continue
+    }
+    const deps: string[] = []
+    while (i + 1 < pruned.length && pruned[i + 1]!.startsWith('    ')) deps.push(pruned[++i]!)
+    const kept = deps.filter((l) => {
+      const [name, range] = Object.entries(record(Bun.YAML.parse(l.trim())) ?? {})[0] ?? []
+      return name === undefined || !isDropped(name, String(range))
+    })
+    if (kept.length > 0) out.push(line, ...kept)
+  }
+  return out.join('\n')
 }
