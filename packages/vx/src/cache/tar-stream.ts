@@ -488,6 +488,48 @@ export function tarSize(inputs: readonly TarInput[]): number {
   return size
 }
 
+/** An entry's blocks before its body: a pax `path` record when needed, then the ustar header. */
+function entryHead(input: TarInput): Uint8Array[] {
+  const mode = input.mode ?? 0o644
+  const mtime = input.mtime ?? 0
+  if (!needsPax(input.name)) return [header(input.name, input.size, '0', mode, mtime)]
+  // Under a pax record the ustar name is a courtesy for readers that
+  // ignore pax: its first 100 BYTES, never characters — a multibyte
+  // name sliced by characters can be over 100 bytes again.
+  const pax = paxRecord('path', input.name)
+  return [
+    header('PaxHeaders/entry', pax.byteLength, 'x', 0o644, mtime),
+    pax,
+    padding(pax.byteLength),
+    header(encoder.encode(input.name).subarray(0, 100), input.size, '0', mode, mtime),
+  ]
+}
+
+/**
+ * `tarPack` of in-memory bodies, written into one buffer on this thread:
+ * the same bytes, without a generator hop per block (the small-artifact
+ * save, `packArtifactBytes`). Returns the bytes written.
+ */
+export function tarPackInto(
+  inputs: readonly (TarInput & { body: Uint8Array | string })[],
+  out: Uint8Array,
+): number {
+  let off = 0
+  for (const input of inputs) {
+    for (const block of entryHead(input)) {
+      out.set(block, off)
+      off += block.byteLength
+    }
+    const bytes = typeof input.body === 'string' ? encoder.encode(input.body) : input.body
+    if (bytes.byteLength !== input.size)
+      throw new TarFormatError(`${input.name}: ${bytes.byteLength} bytes, ${input.size} declared`)
+    out.set(bytes, off)
+    // `out` is zeroed: padding and the end marker are a skip.
+    off += padded(input.size)
+  }
+  return off + BLOCK * 2
+}
+
 /**
  * Pack regular files as a tar stream: ustar with the name/prefix split,
  * a pax `path` record when a name fits neither field — exactly the
@@ -498,20 +540,7 @@ export async function* tarPack(
   inputs: AsyncIterable<TarInput> | Iterable<TarInput>,
 ): AsyncGenerator<Uint8Array> {
   for await (const input of inputs) {
-    const mode = input.mode ?? 0o644
-    const mtime = input.mtime ?? 0
-    // Under a pax record the ustar name is a courtesy for readers that
-    // ignore pax: its first 100 BYTES, never characters — a multibyte
-    // name sliced by characters can be over 100 bytes again.
-    let headerName: string | Uint8Array = input.name
-    if (needsPax(input.name)) {
-      const pax = paxRecord('path', input.name)
-      yield header('PaxHeaders/entry', pax.byteLength, 'x', 0o644, mtime)
-      yield pax
-      yield padding(pax.byteLength)
-      headerName = encoder.encode(input.name).subarray(0, 100)
-    }
-    yield header(headerName, input.size, '0', mode, mtime)
+    yield* entryHead(input)
     if (input.body instanceof Blob || isChunks(input.body)) {
       let n = 0
       const chunks = input.body instanceof Blob ? input.body.stream() : input.body

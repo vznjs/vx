@@ -56,6 +56,7 @@ import {
   tarEntries,
   tarEntriesSync,
   tarPack,
+  tarPackInto,
   tarSize,
 } from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
@@ -395,16 +396,12 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
  * otherwise (measured 2026-09-03: 238 → 293 ms per 1 000 saves).
  */
 export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array> {
-  // A small artifact's files are read on this thread (`ON_THREAD_MAX`).
-  const onThread = plan.size <= ON_THREAD_MAX
+  // A small artifact is read and packed on this thread (`ON_THREAD_MAX`):
+  // no promise or generator hop per file or block.
+  if (plan.size <= ON_THREAD_MAX) return packSmall(plan)
   const inputs = await Promise.all(
     plan.inputs.map(async (i) =>
-      i.body instanceof Blob
-        ? {
-            ...i,
-            body: onThread ? readFileSync((i.body as Bun.BunFile).name!) : await i.body.bytes(),
-          }
-        : i,
+      i.body instanceof Blob ? { ...i, body: await i.body.bytes() } : i,
     ),
   )
   const out = new Uint8Array(plan.size)
@@ -414,6 +411,28 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
     off += chunk.byteLength
   }
   if (off !== plan.size) throw new TarFormatError(`packed ${off} bytes, planned ${plan.size}`)
+  return out
+}
+
+/** `summed` + `tarPack` for a plan whose bodies fit in memory, synchronously. */
+function packSmall(plan: ArtifactPlan): Uint8Array {
+  const sum = new EntrySum()
+  const inputs: (TarInput & { body: Uint8Array | string })[] = []
+  for (const i of plan.inputs) {
+    const body =
+      i.body instanceof Blob
+        ? readFileSync((i.body as Bun.BunFile).name!)
+        : typeof i.body === 'string'
+          ? new TextEncoder().encode(i.body)
+          : (i.body as Uint8Array)
+    sum.entry(i.name)
+    sum.add(body)
+    inputs.push({ ...i, body })
+  }
+  inputs.push({ name: SUM_ENTRY, size: SUM_SIZE, body: sum.hex() })
+  const out = new Uint8Array(plan.size)
+  const n = tarPackInto(inputs, out)
+  if (n !== plan.size) throw new TarFormatError(`packed ${n} bytes, planned ${plan.size}`)
   return out
 }
 
