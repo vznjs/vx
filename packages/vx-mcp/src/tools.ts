@@ -586,8 +586,10 @@ async function getWorkspaceInfo(ctx: ToolContext): Promise<Record<string, unknow
   return { ...facts }
 }
 
-/** The argv after `vx`: each argument checked, so no value can pass as a flag. */
-/** `vx run`'s argv for runTasks, or for planTasks with `--dry=json`. */
+/**
+ * The argv after `vx` for runTasks, or for planTasks with `--dry=json`:
+ * each argument checked, so no value can pass as a flag.
+ */
 function runArgv(args: Record<string, unknown>, tool: 'runTasks' | 'planTasks'): string[] {
   const tasks = args['tasks']
   if (

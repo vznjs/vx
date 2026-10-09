@@ -469,6 +469,7 @@ export default defineWorkspace({ plugins: [mcp()] })
 | `getFailures`      | Why did the run fail: each task's output and the files it names  |
 | `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
 | `runTasks`         | Run these tasks: the exit code and the run summary               |
+| `planTasks`        | What would run and why: the `vx run --dry=json` plan, nothing run |
 
 Only `runTasks` runs anything, and it runs `vx run --format json`
 itself, so the CLI's selection, refusals and sandbox apply. The server speaks
