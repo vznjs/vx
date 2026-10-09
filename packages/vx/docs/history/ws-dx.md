@@ -153,3 +153,7 @@ and log output reads better. Each must cost the warm path nothing.
   it (`npm_execpath`), and names the spawn error. PATH stays first: the
   try-it rows' npm stand-in caught an execpath-first draft bypassing it.
   Rows: `adopt.test.ts` "install when PATH holds an unrunnable manager".
+
+- **DX-25** MCP `pruneCache` (roadmap DX #3): `vx cache prune`'s JSON
+  answer on the cache the other tools read; a dry run unless the call
+  says `dryRun: false`. Rows: `vx-mcp/tests/prune-cache.test.ts`.
