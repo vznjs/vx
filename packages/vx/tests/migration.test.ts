@@ -185,7 +185,8 @@ describe('applyMigration', () => {
   })
 
   it('says a cache block makes the second run hit when no task caches', async () => {
-    const hint = 'no task caches yet: add the cache block a TODO shows, and a second run hits'
+    const hint =
+      'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits'
     mkdirSync(path.join(root, 'app'))
     await apply(plan([['app', [task('build', exec('next build'), [cacheTodo('next build')])]]]))
     expect(stdout.split('\n')).toContain(hint)
@@ -200,6 +201,28 @@ describe('applyMigration', () => {
     )
     expect(stdout).toContain('1 task migrated clean, 1 TODO:')
     expect(stdout.split('\n')).not.toContain(hint)
+  })
+
+  it('puts the suggested cache block in the task, commented', async () => {
+    mkdirSync(path.join(root, 'app'))
+    const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
+    await apply(
+      plan([
+        [
+          'app',
+          [
+            task('build', exec('next build'), [cacheTodo('next build')]),
+            task('pack', built, [cacheTodo('x')]),
+          ],
+        ],
+      ]),
+    )
+    const lines = readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8').split('\n')
+    const suggested = lines.filter((l) => l.startsWith('      // cache: '))
+    expect(suggested).toEqual([
+      "      // cache: { inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] } },",
+    ])
+    expect(lines[lines.indexOf(suggested[0]!) - 1]).toBe('    build: {')
   })
 
   it('no TODOs is plural and takes no colon', async () => {

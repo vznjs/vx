@@ -2051,7 +2051,7 @@ describe('vx init (package.json scripts)', () => {
       expect(text).toContain('} satisfies ProjectConfig')
       expect(r.out).toContain('next: vx run build --all')
       expect(r.out).toContain(
-        'no task caches yet: add the cache block a TODO shows, and a second run hits',
+        'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits',
       )
       expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
       // Nothing depends on `dev`, so no readiness note.
