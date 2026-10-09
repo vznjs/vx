@@ -14,10 +14,10 @@ config key or an environment variable is missing here.
 
 - **Run a task** (`vx run`) — run a task in the cwd's project, `pkg#task` directly, or several at once. [page](https://vznjs.github.io/vx/features/quickstart/) · no post
 - **Every project** (`--all`) — run the task in every project that declares it. [page](https://vznjs.github.io/vx/features/quickstart/) · no post
-- **pnpm-style filters** (`--filter`) — select projects by name, glob, path, dependents (`foo...`), dependencies (`...foo`), negation or a git range. [page](https://vznjs.github.io/vx/features/affected/) · no post
+- **pnpm-style filters** (`--filter`) — select projects by name, glob, path, dependencies (`foo...`), dependents (`...foo`), negation or a git range. [page](https://vznjs.github.io/vx/features/affected/) · post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Affected only** (`--affected`, `affectedBase`) — run what a change reaches, following task edges from a git base. [page](https://vznjs.github.io/vx/features/affected/) · post: [Run only what a change reaches](https://vznjs.github.io/vx/blog/affected/)
 - **Concurrency** (`--concurrency`, `concurrency`) — a count or a share of the CPUs this process may use (`50%`). [page](https://vznjs.github.io/vx/features/concurrency/) · no post
-- **Skip dependencies** (`--exclude-dependencies`) — skip all `dependsOn` edges, or named ones. no post
+- **Skip dependencies** (`--exclude-dependencies`) — skip all `dependsOn` edges, or named ones. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Failure policy** (`--continue`) — never, deps-ok (default: dependents skip) or always. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
 - **Every skip names its blocker** — a skipped task says which failure blocked it. [page](https://vznjs.github.io/vx/features/skipped-blockers/) · no post
 - **Retries** (`--retry`, `exec.retries`) — re-run a failed task; a pass after a failure marks it flaky. [page](https://vznjs.github.io/vx/features/flaky-detection/) · post: [Flaky is a claim only declared inputs can back](https://vznjs.github.io/vx/blog/flaky-tasks/)
@@ -29,12 +29,12 @@ config key or an environment variable is missing here.
 - **Ctrl-C leaves nothing running** (`VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`) — the whole process tree stops, then teardown runs. [page](https://vznjs.github.io/vx/features/ctrl-c/) · post: [Ctrl-C leaves nothing running](https://vznjs.github.io/vx/blog/ctrl-c/)
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
 - **No daemon** — every run starts cold and still answers in milliseconds. [page](https://vznjs.github.io/vx/features/no-daemon/) · post: [No daemon, on purpose](https://vznjs.github.io/vx/blog/no-daemon/)
-- **Group tasks** (`dependsOn` with no `exec`) — a task that only runs its dependencies; `dependsOn: []` is a named no-op. no post
+- **Group tasks** (`dependsOn` with no `exec`) — a task that only runs its dependencies; `dependsOn: []` is a named no-op. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Implicit keyed `build`** — a project with no `build` gets a `^build` group keyed on its files, so source-only packages still move their dependants' keys. no post
-- **dependsOn syntax** (`^name`, `pkg#name`, `name.*`, `^name.*`) — upstream, cross-project and pattern edges. no post
-- **Every name must resolve** — `vx run lint test typecheck` refuses to start if one name matches no project. no post
-- **Tag filters** (`--filter tag:<pattern>`) — select projects by their config `tags`. no post
-- **Directory and root filters** (`./<dir>`, `{<dir>}`, `.`, `//`) — select projects by path, or the root project. no post
+- **dependsOn syntax** (`^name`, `pkg#name`, `name.*`, `^name.*`) — upstream, cross-project and pattern edges. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
+- **Every name must resolve** — `vx run lint test typecheck` refuses to start if one name matches no project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
+- **Tag filters** (`--filter tag:<pattern>`) — select projects by their config `tags`. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
+- **Directory and root filters** (`./<dir>`, `{<dir>}`, `.`, `//`) — select projects by path, or the root project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Executor pools** (executor `capacity`) — a remote pool is admitted against its own width, not the laptop's cores. no post
 - **Runs take turns** — two vx runs on one workspace wait on a lock and name who they wait for. no post
 
