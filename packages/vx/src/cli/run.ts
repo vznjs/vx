@@ -521,6 +521,8 @@ export async function resolveRunOptions(
   cwd: string,
   tasks: readonly string[],
   verb: 'run' | 'watch' = 'run',
+  /** Given, it learns the ref `--affected` diffed from (`--dry=json` states it). */
+  scopeOut?: { affectedBase?: string },
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
@@ -536,6 +538,9 @@ export async function resolveRunOptions(
   const scope = await scopeFilters(parsed, cwd)
   if ('error' in scope) return scope
   const { filterStrings, affectedFilter } = scope
+  // `...[<base>]`: the base alone.
+  if (scopeOut !== undefined && affectedFilter !== undefined)
+    scopeOut.affectedBase = affectedFilter.slice(4, -1)
 
   // Project scope applies to bare task names only. Anchored entries
   // (pkg#task) resolve directly to their own project regardless.
@@ -709,7 +714,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     tasks = [picked]
   }
 
-  const resolved = await resolveRunOptions(parsed, cwd, tasks)
+  const scopeOut: { affectedBase?: string } = {}
+  const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
   if ('error' in resolved) return refuse('run', args, resolved.error, 'VX_E_USAGE')
   if ('nothingSelected' in resolved) {
     process.stderr.write(`vx run: ${resolved.nothingSelected}\n`)
@@ -769,7 +775,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         }
       }
     } else if (parsed.dry === 'json') {
-      process.stdout.write(formatPlanJson(plan))
+      process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
     } else {
       process.stdout.write(formatPlanText(plan))
     }

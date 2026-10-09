@@ -46,8 +46,11 @@ function dry(...args: string[]): string {
 describe('vx run --affected --dry says why each requested task was kept', () => {
   it('json: the changed input, the project read whole, the edge chain', () => {
     const plan = JSON.parse(dry('build', 'lint', '--dry=json')) as {
+      affectedBase?: string
       tasks: Array<{ id: string; affected?: unknown }>
     }
+    // The ref the diff was against, so a reason naming no file can be traced.
+    expect(plan.affectedBase).toBe('HEAD')
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
       'lib#build': { kind: 'input', file: 'packages/lib/src/a.js' },
       'lib#lint': { kind: 'project', file: 'packages/lib/src/a.js' },
@@ -63,6 +66,15 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       'lib#lint': { kind: 'project', file: 'packages/lib/src/a.js' },
       'other#build': { kind: 'named' },
     })
+  })
+
+  it('CONTROL: a plan without --affected states no base', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--all', '--dry=json'],
+      cwd: root,
+    })
+    expect(p.exitCode).toBe(0)
+    expect(Object.keys(JSON.parse(p.stdout.toString()) as object)).not.toContain('affectedBase')
   })
 
   it('text: one reason line under each kept task', () => {

@@ -145,10 +145,12 @@ export interface PlanTaskJson {
   affected?: AffectedReason
 }
 
-export function formatPlanJson(plan: RunPlan): string {
+/** `affectedBase`: the ref a bare `--affected` guessed (or was given), so a reader knows what the diff was against. */
+export function formatPlanJson(plan: RunPlan, affectedBase?: string): string {
   return (
     JSON.stringify(
       {
+        ...(affectedBase !== undefined ? { affectedBase } : {}),
         tasks: plan.tasks.map((t): PlanTaskJson => {
           const description = shownDescription(t)
           return {

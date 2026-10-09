@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": ["tasks"],
   "properties": {
+    "affectedBase": {
+      "type": "string",
+      "description": "under --affected: the ref the diff was taken against (a bare --affected guesses it: origin/HEAD, a trunk branch, else HEAD~1)"
+    },
     "tasks": {
       "type": "array",
       "items": {

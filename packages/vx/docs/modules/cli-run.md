@@ -68,6 +68,7 @@ export async function resolveRunOptions(
   cwd: string,
   tasks: readonly string[],
   verb: 'run' | 'watch' = 'run',
+  scopeOut?: { affectedBase?: string }, // learns the ref --affected diffed from
 ): Promise<RunOptions | { error: string } | { nothingSelected: string }>
 ```
 
@@ -139,7 +140,7 @@ If `--dry` or `--graph` is set:
 1. `planRun(opts)` — same setup as `run` but stops before the
    scheduler.
 2. Pick a formatter from `cli/plan-format.ts`:
-   - `--dry=json` → `formatPlanJson(plan)` → stdout.
+   - `--dry=json` → `formatPlanJson(plan, affectedBase)` → stdout.
    - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
    - `--graph=''` → `formatGraphDot(plan)` → stdout.
    - `--graph=<path>` → `formatGraphDot(plan)` → `Bun.write(path, ...)`.

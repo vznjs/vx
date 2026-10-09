@@ -192,3 +192,10 @@ and log output reads better. Each must cost the warm path nothing.
   `#### \`VX_E_…\``section of cli.md saying what to do, the`--format json`refusal carries its URL as`docs`(MCP passes it on),
 and`vx docs <code>`prints that section alone. Rows:`tests/error-codes.test.ts`(a section per code the source throws, both
 directions; the link;`vx docs VX_E_USAGE` alone).
+- **DX-32** `vx init`'s `next:` line pins what it installs to the running
+  vx's version (`@vzn/vx-migrate@0.0.633`): agent trial 2 got `latest`
+  beside an older vx. Row: `tests/init.test.ts` (the next step).
+- **DX-33** `vx run --affected --dry=json` states `affectedBase`, the ref
+  the diff was taken against: trial 2's bare `--affected` guessed
+  `HEAD~1`, whose commit edited the root `package.json`, and a reason
+  with no file read as wrong. Rows: `tests/affected-dry-reasons.test.ts`.
