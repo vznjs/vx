@@ -1473,3 +1473,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   release first: a finished asset is kept, a partial one deleted and
   re-sent. Re-dispatched release.yml published v0.0.575 with all four
   binaries. Rows: `release.test.ts`.
+- **X-219** Timings file measured on real runs
+  (`packages/vx-bench/timings-file-bench.ts`, EA ask): 24 chained 0.5 s
+  tasks and three 10 s leaves, 4 workers, min of 3. Cold with no file
+  12.09 s, cold with the file 10.68 s, full local history 10.64 s
+  (bound 10.5). On vx's own CI job one 194 s suite is the wall, so the
+  file changed nothing there (194.07 vs 194.60 s). Numbers in the
+  `ci-timings-file` post.

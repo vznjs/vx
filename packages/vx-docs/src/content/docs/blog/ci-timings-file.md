@@ -55,6 +55,30 @@ last one learned:
 | The file | `assume` |
 | `assume` | nothing |
 
+## What it saves
+
+A graph where order matters: eight packages whose `build`, `check` and
+`pack` chain unlocks more work (0.5 s each), and three slow `e2e` tasks
+(10 s each) that nothing depends on. Every task runs; only the order
+changes.
+
+| Runner | Wall time (min of 3) |
+| --- | --- |
+| Cold, no file | 12.09 s |
+| Cold, with the file | 10.68 s |
+| Full local history | 10.64 s |
+
+With no times, the slow tasks start last. The file starts them first,
+cutting 12% off the wall time and matching a machine with its full
+history. The lower bound here is 10.5 s.
+
+Setup: linux x64, 4 cores, 4 workers, `sleep` tasks, vx 0.0.634. Run it
+yourself with `bun packages/vx-bench/timings-file-bench.ts`.
+
+When one task is the whole wall time, order cannot help. vx's own CI job
+is like that: one 194 s test suite set its time with and without the
+file (194.07 s and 194.60 s).
+
 A run that executed nothing and restored only tasks the file already
 times leaves the file alone, so an all-cached CI run pays no extra history
 read. Runs that use no history plugin do no extra work.

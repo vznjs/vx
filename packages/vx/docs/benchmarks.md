@@ -586,6 +586,23 @@ vx now starts its first task about 20% sooner than Turborepo. The cold
 build's wall time is unchanged (4.61 / 4.74 / 4.73 s against 4.62 /
 4.74 / 4.83 s). History: `docs/history/ws-x.md` X-212, X-216.
 
+## CI timings file (2026-10-09)
+
+A fresh runner with no run history, with the history plugin's `file`
+carried from the last run, and with this machine's full history.
+`bun packages/vx-bench/timings-file-bench.ts`: eight packages whose
+`build`, `check` and `pack` chain (0.5 s each) unlocks more work, three
+10 s `e2e` tasks nothing depends on, 4 workers, every task an uncached
+`sleep`, min of 3, linux x64, 4 cores, Bun 1.4.2, vx from source at
+`main` d790970. The lower bound is 10.5 s. The post:
+[Carry the scheduler's memory between CI runners](https://vznjs.github.io/vx/blog/ci-timings-file/).
+
+| Runner              | Wall time |
+| ------------------- | --------- |
+| Cold, no file       | 12.09 s   |
+| Cold, with the file | 10.68 s   |
+| Full local history  | 10.64 s   |
+
 ## Real repos
 
 Public repos, each moved to native vx config with `vx init --native`
