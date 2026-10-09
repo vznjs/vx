@@ -60,6 +60,9 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   `node render.mjs /home/user/vx <N+1>` there, and set the post's
   `cover: { image: ../../../assets/blog/vx-0-0-<N+1>.png, alt }`. Look
   at the PNG before committing it.
+  The cover is the page's og:image (the link-preview banner); a new
+  essay's is `public/blog/covers/<slug>.png` at 1200×630.
+  `tests/og-image.test.ts` fails the gate when a post or release has none.
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
 open a PR `docs(vx-docs): release post for v0.0.<N+1>` and squash-merge
