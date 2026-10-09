@@ -14,6 +14,7 @@ export const CORE_VERBS = [
   'info',
   'why',
   'last',
+  'docs',
   'completions',
   'help',
   'version',

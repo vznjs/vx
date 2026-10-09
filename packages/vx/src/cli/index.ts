@@ -109,6 +109,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await (await import('./cache.js')).cacheCmd(rest)
     case 'lock':
       return await (await import('./lock.js')).lockCmd(rest)
+    case 'docs':
+      return await (await import('./docs.js')).docsCmd(rest)
     case 'init':
       return await (await import('./init.js')).initCmd(rest)
     case 'upgrade':

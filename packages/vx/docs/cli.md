@@ -37,6 +37,7 @@ vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG]      # self-update a compiled binary
+vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
 
 # Meta
@@ -2776,6 +2777,23 @@ ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache prune`
 Exit codes: `0` the run (or the list) printed, `--list` with no runs
 included; `1` no recorded run yet, a run id it has no record of, or a
 parse error.
+
+## `vx docs`
+
+`vx docs <query>` searches vx's reference with no network: `cli`,
+`schema`, `caching`, `execution`, `patterns`, `security` and `features`,
+which ship inside the package and the compiled binary. Each page is cut
+at its headings; a section that holds every word of the query matches,
+and a word in its heading ranks it above any count in its text. The best
+`--limit` sections (default 3) print whole, each under its page,
+heading and URL on the site. `--format json` prints
+`{query, hits: [{page, heading, url, text}]}` (`schemas/docs.json`).
+The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
+indexes them.
+
+Exit codes: `0` the search ran, a search with no match included (it
+names the pages searched); `1` a missing query or a bad flag
+(`VX_E_USAGE`).
 
 ## `vx completions`
 

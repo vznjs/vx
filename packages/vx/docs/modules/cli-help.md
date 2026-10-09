@@ -86,6 +86,7 @@ gap before its description.
 - `Introspection` — `vx show`, `vx info`, `vx why`, `vx last`.
 - `Migration` — `vx init` and the pointer to `bunx @vzn/vx-migrate`.
 - `Shell completions` — `vx completions bash|zsh|fish`.
+- `Docs` — `vx docs <query>`.
 - `Config lock` — `vx lock`.
 
 A trailing `Plugin commands:` section follows, only when the

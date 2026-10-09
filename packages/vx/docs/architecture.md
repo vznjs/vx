@@ -332,7 +332,7 @@ never branches on layering.
    after the binary name to the cli module's `run`.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info`, `why`, `last`,
-   `completions`, `help`, `version`; any other
+   `docs`, `completions`, `help`, `version`; any other
    verb is asked of the workspace's plugins (`commands` seam — `vx mcp`
    is one).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
