@@ -96,7 +96,8 @@ const FORMULA =
   'Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.'
 const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
 const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
-const s = (ms: number): string => `${+(ms / 1000).toFixed(2)} s`
+const s = (ms: number): string =>
+  ms < 1000 ? `${Math.round(ms)} ms` : `${+(ms / 1000).toFixed(2)} s`
 const WORKLOAD = `Benchmark workload: a synthetic monorepo of ${n(d.packages)} projects and ${n(d.tasks)} tasks in ${d.levels} dependency levels, five core libraries a quarter of the projects use; build ${s(d.buildMs)}, test and typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs / 10)}; real repos with uneven task times will differ.`
 const vs = (r: Row, f: (r: Row) => number): string => `${disp(f(r))} (${versus(f(vx), f(r))})`
 const tableBlock =
@@ -211,7 +212,9 @@ Same repo, same hardware, same commands, every tool at concurrency ${d.concurren
 config: Turborepo ${turbo.version} (\`turbo.json\`), Nx ${nx.version} (\`nx:run-commands\` targets,
 \`^\` inputs), Vite Task (\`vp run\`, vite-plus ${vt.version}, tasks in each \`vite.config.ts\`).
 vx runs from a \`vx lock\` snapshot (\`--frozen\`), as a CI pipeline runs it;
-*vx, no lock* evaluates every config per run. This machine: ${d.machine}.
+*vx, no lock* evaluates every config per run. Both order tasks with
+\`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, from timings an earlier
+run recorded; cache wipes keep that file, as CI caches it. This machine: ${d.machine}.
 \`bun packages/vx-bench/compare.ts 3\`; the committed
 \`packages/vx-bench/RESULTS.md\` / \`packages/vx-bench/results.json\` are this run.
 

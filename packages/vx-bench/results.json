@@ -5,71 +5,71 @@
   "terminals": 50,
   "packages": 1601,
   "tasks": 9603,
-  "buildMs": 1000,
+  "buildMs": 300,
   "concurrency": 10,
   "reps": 3,
-  "coldReps": 1,
-  "date": "2026-10-09T19:59:06.801Z",
+  "coldReps": 3,
+  "date": "2026-10-09T22:32:42.812Z",
   "machine": "linux x64, 4 cores",
   "rows": [
     {
       "runner": "vx",
-      "version": "vx 0.0.0 @ 34f0c35b9",
-      "fresh": 385091.251117,
-      "warmNoRestore": 1016.89295,
-      "warmRestore": 2104.300287,
-      "freshCpu": 74440.899,
-      "warmNoRestoreCpu": 1953.624,
-      "warmRestoreCpu": 4910.816
+      "version": "vx 0.0.0 @ 3d48a981d",
+      "fresh": 119897.94068,
+      "warmNoRestore": 1134.132939,
+      "warmRestore": 2400.712017,
+      "freshCpu": 62122.43,
+      "warmNoRestoreCpu": 2028.866,
+      "warmRestoreCpu": 5814.438
     },
     {
       "runner": "vx (no lock)",
-      "version": "vx 0.0.0 @ 34f0c35b9",
-      "fresh": 384481.012264,
-      "warmNoRestore": 1040.826162,
-      "warmRestore": 2186.620152,
-      "freshCpu": 73923.136,
-      "warmNoRestoreCpu": 1975.619,
-      "warmRestoreCpu": 5190.53
+      "version": "vx 0.0.0 @ 3d48a981d",
+      "fresh": 120551.693655,
+      "warmNoRestore": 1114.301569,
+      "warmRestore": 2324.648791,
+      "freshCpu": 65092.175,
+      "warmNoRestoreCpu": 2014.533,
+      "warmRestoreCpu": 4937.342
     },
     {
       "runner": "turbo",
       "version": "2.11.7",
-      "fresh": 386155.136063,
-      "warmNoRestore": 1108.038334,
-      "warmRestore": 2166.904218,
-      "freshCpu": 98342.063,
-      "warmNoRestoreCpu": 2373.817,
-      "warmRestoreCpu": 5245.076
+      "fresh": 121975.898747,
+      "warmNoRestore": 959.519577,
+      "warmRestore": 1972.367995,
+      "freshCpu": 92622.213,
+      "warmNoRestoreCpu": 2168.81,
+      "warmRestoreCpu": 4992.797
     },
     {
       "runner": "nx",
       "version": "23.3.0",
-      "fresh": 449176.722949,
-      "warmNoRestore": 26022.755298,
-      "warmRestore": 25616.609348,
-      "freshCpu": 401052.887,
-      "warmNoRestoreCpu": 32749.463,
-      "warmRestoreCpu": 32051.571
+      "fresh": 340926.051627,
+      "warmNoRestore": 25513.675051,
+      "warmRestore": 24943.327232,
+      "freshCpu": 396019.129,
+      "warmNoRestoreCpu": 31221.831,
+      "warmRestoreCpu": 31723.755
     },
     {
       "runner": "vite-task",
       "version": "1.1.0",
-      "fresh": 380599.069298,
-      "warmNoRestore": 12299.300517,
-      "warmRestore": 12378.031041,
-      "freshCpu": 58342.751,
-      "warmNoRestoreCpu": 12181.325,
-      "warmRestoreCpu": 12232.796
+      "fresh": 120990.037712,
+      "warmNoRestore": 11814.660434,
+      "warmRestore": 12959.710061,
+      "freshCpu": 54657.217,
+      "warmNoRestoreCpu": 11700.695,
+      "warmRestoreCpu": 12827.5
     }
   ],
   "baseline": {
-    "fresh": 376100,
-    "warmNoRestore": 58.554152,
-    "warmRestore": 407.718532,
-    "freshCpu": 27740.573,
-    "warmNoRestoreCpu": 96.957,
-    "criticalPathMs": 30500,
-    "workBoundMs": 376075
+    "fresh": 112830,
+    "warmNoRestore": 61.108539,
+    "warmRestore": 1128.082905,
+    "freshCpu": 29838.704999999998,
+    "warmNoRestoreCpu": 97.708,
+    "criticalPathMs": 9150,
+    "workBoundMs": 112822.5
   }
 }

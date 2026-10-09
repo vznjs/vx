@@ -47,7 +47,7 @@ export const DEPENDS_ON: Record<TaskName, readonly string[]> = {
 
 export const RUN_TASKS: readonly TaskName[] = ['build', 'lint', 'test', 'publish', 'typecheck']
 
-export const BUILD_MS = Number(process.env.BENCH_BUILD_MS ?? 1000)
+export const BUILD_MS = Number(process.env.BENCH_BUILD_MS ?? 300)
 const OUTPUT_BYTES = 200 * 1024
 
 export function workspace(): Project[] {

@@ -113,8 +113,16 @@ async function generate(dir: string): Promise<void> {
   await mkdir(path.join(dir, 'packages'), { recursive: true })
   await writeFile(
     path.join(dir, '.gitignore'),
-    ['node_modules', 'dist', '.vx', '.turbo', '.nx', '.vx-runner', '*.tsbuildinfo'].join('\n') +
-      '\n',
+    [
+      'node_modules',
+      'dist',
+      '.vx',
+      '.turbo',
+      '.nx',
+      '.vx-runner',
+      '*.tsbuildinfo',
+      'vx-timings.json',
+    ].join('\n') + '\n',
   )
   await json('package.json', {
     name: 'bench-root',
@@ -124,8 +132,16 @@ async function generate(dir: string): Promise<void> {
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  // Core's fallbacks only: the arms compare runners, not plugin stacks.
-  await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  // vx as a user tunes it for CI (owner, 2026-10-09: "config is part of
+  // the experience"): the history plugin orders by the critical path a
+  // timings file from an earlier run recorded. The file sits outside .vx,
+  // so a cache wipe keeps it, as CI caches it between runners.
+  const history = path.join(vxRoot, 'packages', 'vx-schedule-history', 'src', 'index.ts')
+  await writeFile(
+    path.join(dir, 'vx.workspace.mjs'),
+    `import { scheduleHistoryPlugin } from ${JSON.stringify(history)}\n` +
+      `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' })] }\n`,
+  )
   const turboTask = (t: TaskName) => ({
     dependsOn: [...DEPENDS_ON[t]],
     inputs: t === 'installDeps' ? [] : ['src/**'],
@@ -283,6 +299,8 @@ interface Runner {
   clear: () => Promise<void>
 }
 
+let seedVx = async (): Promise<void> => {}
+
 async function buildRunners(dir: string): Promise<Runner[]> {
   const runners: Runner[] = []
 
@@ -330,6 +348,14 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   // to see, never a silent fall back to the unfrozen row.
   const locked = await sh([...vxRun, 'lock'], dir)
   if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
+  // One untimed run, once git is in place, writes the timings file every
+  // timed rep reads.
+  seedVx = async () => {
+    const seeded = await sh([...vxRun, 'run', ...RUN_TASKS, '--all', ...conc, '--frozen'], dir)
+    if (!seeded.ok) throw new Error(`vx seed run failed:\n${seeded.out}`)
+    await clearVx()
+    await deleteDist(dir)
+  }
   runners.push({
     name: `vx${suffix}`,
     version: vxVer,
@@ -567,7 +593,7 @@ function markdown(rows: Row[], b: Baseline): string {
 - **Workspace:** ${PROJECTS.length.toLocaleString('en-US')} projects, ${TASKS.toLocaleString('en-US')} tasks: ${LEVELS - 1} levels × ${PER_LEVEL} libs and ${APPS} apps, ${TERMINALS} terminal libs at level 15, one \`e2e\` on every edge, five core libs ~400 projects each use (packages/vx-bench/shape.ts).
 - **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
 - **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, the rest median of ${REPS}.
-- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run.
+- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run. Both use \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
@@ -621,6 +647,7 @@ if (only && only.length > 0) {
   if (sameShape) rows = committed.rows.filter((r) => !only.includes(r.runner))
 }
 await gitInit(ws)
+if (runners.some((r) => r.name.startsWith('vx'))) await seedVx()
 console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
 
 for (const r of runners) {

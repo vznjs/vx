@@ -6,19 +6,19 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 958 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 1.07 s to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
 The headline number is the runner's overhead: the time it adds on top
 of the tasks themselves. On a synthetic workspace of 1,601 projects and
-9,603 tasks, with nothing changed, vx adds 958 ms over one git walk,
-Turborepo 1.05 s (vx 10% faster), Vite Task 12.24 s (vx 13× faster) and
-Nx 25.96 s (vx 27× faster). On a cold build vx adds 8.99 s, Turborepo
-10.06 s (vx 12% faster) and Nx 1 min 13 s (vx 8.1× faster); Vite Task
-adds less, 4.50 s (vx 100% slower). Each runner runs in its own native
+9,603 tasks, with nothing changed, vx adds 1.07 s over one git walk,
+Turborepo 898 ms (vx 19% slower), Vite Task 11.75 s (vx 11× faster) and
+Nx 25.45 s (vx 24× faster). On a cold build vx adds 7.07 s, Turborepo
+9.15 s (vx 29% faster) and Nx 3 min 48 s (vx 32× faster); Vite Task
+8.16 s (vx 15% faster). Each runner runs in its own native
 config.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 None of that comes from a microbenchmark trick. It comes from five
