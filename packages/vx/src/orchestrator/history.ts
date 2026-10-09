@@ -21,7 +21,8 @@ const DEFAULT_RECENT = 50
 
 // A hit is recorded as `cache-hit` / `cache-hit-remote` and replays a
 // success; the list is derived so a new status cannot miss it.
-const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
+/** The pass set as SQL, `(…)`: one definition, `isPassStatus`. */
+export const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
   .map((s) => `'${s}'`)
   .join(', ')})`
 

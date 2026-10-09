@@ -9,6 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
+import { PASS_STATUSES } from './history.js'
 import { splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 
@@ -114,7 +115,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
     .query(
       `SELECT r.project, r.task, r.exit_code AS exitCode, r.timed_out AS timedOut,
          (SELECT s.run_id FROM runs s WHERE s.project = r.project AND s.task = r.task
-            AND s.id > r.id AND s.status IN ('success', 'cache-hit', 'cache-hit-remote')
+            AND s.id > r.id AND s.status IN ${PASS_STATUSES}
           ORDER BY s.id LIMIT 1) AS fixedIn
        FROM runs r WHERE r.run_id = ? AND r.status = 'failed' ORDER BY r.id`,
     )
