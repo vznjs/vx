@@ -77,7 +77,10 @@
               "type": ["boolean", "null"],
               "description": "on a hit: true when outputs were restored, false when up-to-date"
             },
-            "cached": { "type": ["boolean", "null"] },
+            "cached": {
+              "type": ["boolean", "null"],
+              "description": "whether the task declares a cache; not whether this run hit it"
+            },
             "startedAt": { "type": "integer", "description": "epoch ms" }
           }
         },
