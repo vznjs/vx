@@ -144,10 +144,11 @@ async function makeTurboWorkspace(): Promise<string> {
 
 // The from-turborepo post said the migrator "emits a task only where the
 // script exists"; since G-117 a package a `^` edge reaches without the
-// script gets a key-only `true` (J-97). The README states it.
+// script gets a key-only task (J-97), a keyed group that spawns nothing.
+// The README states it.
 describe("vx migrate (turbo): a package without a ^ task's script", () => {
   it(
-    'gets a cached `true` with no outputs, as the README says; `build` is left to core',
+    'gets a keyed group with no outputs, as the README says; `build` is left to core',
     async () => {
       const root = await makeRoot('vx-migrate-noop-')
       try {
@@ -167,10 +168,7 @@ describe("vx migrate (turbo): a package without a ^ task's script", () => {
         const tasks = ui.tasks as Record<string, TaskConfig>
         // Core gives a project with no `build` this node itself (projects.ts).
         expect(Object.keys(tasks)).toEqual(['types'])
-        expect([tasks.types!.exec?.command, tasks.types!.cache?.outputs?.files]).toEqual([
-          'true',
-          [],
-        ])
+        expect([tasks.types!.exec, tasks.types!.cache?.outputs?.files]).toEqual([undefined, []])
         const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
         expect(readme).toContain(
           'A package without the script of a `^` task others run gets the same key-only task',

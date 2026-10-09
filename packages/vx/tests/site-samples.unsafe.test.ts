@@ -582,7 +582,7 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['3m 38s', '3m 40s', '4m 59s', '3m 49s', '393ms', '463ms', '6.45s']) {
+    for (const figure of ['3m 40s', '4m 59s', '4m 49s', '3m 49s', '393ms', '463ms', '6.45s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2162,7 +2162,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
     expect(post('no-choice-on-the-market.md')).toContain(
-      "(vx 16× and 1.1× faster), Nx's daemon off as in CI.",
+      "(vx 16× and 18% faster), Nx's daemon off as in CI.",
     )
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
@@ -2438,7 +2438,7 @@ describe('the headline Nx column runs nx:run-commands', () => {
       'nx:run-commands',
     ])
     expect(bench).toContain('every Nx task an `nx:run-commands` target')
-    expect(bench).toContain('6m 59s (vx 1.9× faster)')
+    expect(bench).toContain('6m 59s (vx 90% faster)')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })

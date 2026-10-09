@@ -79,7 +79,7 @@ probing the local cache once, up front:
 - **Misses** own the worker pool from the first tick.
 
 The up-front probe is not extra work: the execution path consumes the
-same result instead of probing again. Measured 1.07× faster on a mixed
+same result instead of probing again. Measured 7% faster on a mixed
 slow-upstream, warm-downstream workload and at parity on all-hit runs.
 
 A task whose key is only *preliminary*, because an upstream may write

@@ -1140,8 +1140,8 @@ export async function mapTurboWorkspace(
   // `test: { dependsOn: ["transit"] }` (or `["^transit"]`). Turbo hashes the no-op per package,
   // over its files, so `test` keys on its dependencies' sources. Dropped,
   // vx keyed `test` on its own files alone: a dependency's edit was a hit.
-  // Each package runs it as a key-only task, `true` and cached, as nx()'s
-  // `nx-input:*` twins do.
+  // Each package has it as a key-only task, a keyed group, as nx()'s
+  // `nx-input:*` twins are.
   const withScript = new Set<string>()
   for (const set of runnable.values()) for (const name of set) withScript.add(name)
   const sameRefs = new Set<string>()
@@ -1307,7 +1307,7 @@ export async function mapTurboWorkspace(
       const noop = keyOnly.get(meta.name)?.has(name) === true
       // Core gives a project with no `build` this very node (a group behind
       // `^build`, keyed on the project's files), so writing it is noise:
-      // solid's three script-less packages each got a `build` running `true`.
+      // solid's three script-less packages each got a key-only `build`.
       const noopEdges = defFor(name)!.dependsOn ?? []
       if (
         noop &&
@@ -1322,23 +1322,25 @@ export async function mapTurboWorkspace(
         ((transit.has(name) && own.has(name)) || noop)
       ) {
         tasks.push(
-          buildTask(
-            literals,
-            name,
-            noop ? { ...defFor(name)!, outputs: [] } : defFor(name)!,
-            'true',
-            own,
-            defFor,
-            emitted,
-            emittedAnywhere,
-            globals,
-            opts,
-            relPosix(root, meta.dir),
-            rootDotenv,
-            rootMeta?.name,
-            { name: meta.name, persistentAt, withOf },
-            inferredOf.get(meta.name) ?? [],
-            spelledOf.get(meta.name),
+          keyOnlyGroup(
+            buildTask(
+              literals,
+              name,
+              noop ? { ...defFor(name)!, outputs: [] } : defFor(name)!,
+              'true',
+              own,
+              defFor,
+              emitted,
+              emittedAnywhere,
+              globals,
+              opts,
+              relPosix(root, meta.dir),
+              rootDotenv,
+              rootMeta?.name,
+              { name: meta.name, persistentAt, withOf },
+              inferredOf.get(meta.name) ?? [],
+              spelledOf.get(meta.name),
+            ),
           ),
         )
         continue
@@ -1721,6 +1723,29 @@ function entryEdges(deps: readonly string[], pkg: string, rootName: string | und
     const owner = d.slice(0, at) === ROOT ? (rootName ?? ROOT) : d.slice(0, at)
     return owner === pkg ? [d.slice(at + 1)] : []
   })
+}
+
+/**
+ * A no-op `true` task as a keyed group: dependants fold the same key and
+ * nothing spawns. Kept a task when it writes outputs, stays up or takes a
+ * terminal, and when it has neither a key nor an edge (a group needs one).
+ */
+function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
+  const task = t.task
+  if (task === null) return t
+  const exec = task['exec'] as Record<string, unknown>
+  if (exec['persistent'] !== undefined || exec['interactive'] !== undefined) return t
+  const cache = task['cache'] as
+    | { outputs: { files: unknown[]; workspaceFiles?: unknown[] } }
+    | undefined
+  if (cache === undefined && task['dependsOn'] === undefined) return t
+  if (
+    cache !== undefined &&
+    (cache.outputs.files.length > 0 || cache.outputs.workspaceFiles !== undefined)
+  )
+    return t
+  const { exec: _exec, ...group } = task
+  return { ...t, task: group }
 }
 
 function buildTask(

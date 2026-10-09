@@ -1412,7 +1412,6 @@ describe('turbo-map: `with`', () => {
     expect(task(m, 'billing', 'build').task).toEqual({
       cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
       dependsOn: ['^build', '^db:generate'],
-      exec: { command: 'true' },
     })
   })
 
@@ -1597,7 +1596,7 @@ describe('turbo-map: a transit node', () => {
     expect([
       names('lib'),
       names('cfg'),
-      (transit.task!['exec'] as { command: string }).command,
+      transit.task?.['exec'],
       transit.task?.['dependsOn'],
       transit.task?.['cache'] !== undefined,
       // cfg's `build` is core's default, not a written one. Nothing depends
@@ -1606,7 +1605,7 @@ describe('turbo-map: a transit node', () => {
     ]).toEqual([
       ['build', 'lone', 'test', 'transit'],
       ['lone', 'test', 'transit'],
-      'true',
+      undefined,
       ['^transit'],
       true,
       { dependsOn: ['^lone'] },

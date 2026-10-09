@@ -38,7 +38,7 @@ export const CATEGORIES: readonly Category[] = [
   {
     id: 'speed',
     title: 'Speed',
-    line: 'Less time added to every run, cold or cached.',
+    line: 'Faster on every run, cold or cached.',
     intro:
       'vx adds as little as it can around your commands. Keys come from git’s own index, and nothing stays running between runs.',
   },
@@ -148,15 +148,17 @@ const FIRST: readonly Feature[] = [
     slug: 'fastest',
     title: 'The fastest task runner',
     category: 'speed',
-    hook: '34× less time added to a cold build than Turborepo.',
+    hook: 'A cold build 36% faster than Turborepo, 4% faster than Nx.',
     body: [
-      'vx is measured on a generated workspace of 1,090 packages and 3,270 tasks, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency.',
-      'On a cold build vx adds 2 s on top of the tasks’ own ideal schedule. Turborepo adds 1 min 21 s and Nx 11 s. With nothing changed, the fully cached run takes 393 ms: 16× faster than Nx.',
+      'vx is measured on a synthetic workspace of 1,090 packages and 3,270 tasks of equal duration in deep dependency chains, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency.',
+      'A cold build of all 3,270 tasks takes 3 min 40 s in vx, 3 min 49 s in Nx, 4 min 49 s in Vite Task and 4 min 59 s in Turborepo. With nothing changed, the fully cached run takes 393 ms: 16× faster than Nx.',
+      'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.',
       'The benchmarks page shows every column, including the one vx loses: Vite Task burns less CPU on a cold build. The harness lives in the repo, so you can run it yourself.',
     ],
     example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx vx run build --all' },
     image: 'fastest.png',
-    imageAlt: 'Time each runner adds to a cold build of 3,270 tasks: vx 2 s, Turborepo 1 min 21 s.',
+    imageAlt:
+      'Total cold build of 3,270 tasks: vx 3 min 40 s, Nx 3 min 49 s, Vite Task 4 min 49 s, Turborepo 4 min 59 s.',
     docs: { label: 'The numbers', href: 'benchmarks/' },
     deepDive: { label: 'Honest benchmarks', href: 'blog/honest-benchmarks/' },
   },

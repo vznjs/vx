@@ -94,14 +94,14 @@ interface TaskConfig {
   description?: string // one-line blurb for the picker / --dry view
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
-  cache?: CacheConfig // caching is opt-in; requires `exec`
+  cache?: CacheConfig // caching is opt-in; on a group, a key with no outputs
 }
 ```
 
 A task either has an `exec` (it does work) or omits `exec` and declares
-`dependsOn` (it's a **group task**, a pure aggregator). The loader
-rejects a task that has neither — a no-op standalone task is almost
-always a config mistake. `dependsOn: []` is the deliberate form: an
+`dependsOn` or `cache` (it's a **group task**: an aggregator, or a key).
+The loader rejects a task that has none of them — a no-op standalone
+task is almost always a config mistake. `dependsOn: []` is the deliberate form: an
 explicit empty group, for a package that wants a task by that name to
 exist and do nothing.
 
@@ -110,7 +110,7 @@ A project whose config and plugins declare no `build` gets one (owner,
 the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
-It is the one keyed group; a config cannot declare `cache` on one. A
+A config can declare a keyed group too (Group tasks, below). A
 bare `vx run build` does not select it: run where no selected project
 declares `build`, it is refused as any undeclared name is, while
 `lib#build` names it and a dependant's `^build` reaches it. `vx show`
@@ -1463,6 +1463,21 @@ nothing else happens (no spawn, no I/O, no cache read/write). An empty
 dependant's `^build`, by `vx run build --all` — and runs nothing. A
 project with no `build` gets a keyed one (above), which a bare name
 does not select.
+
+A group with `cache` is a **keyed group**: its `cache.inputs` are a key
+and nothing runs. A task that depends on it folds that key, so an edit
+to those inputs re-runs the dependant, and `--affected` reaches it. Its
+`cache.outputs` must be `{ files: [] }` (a group writes nothing), and it
+needs no `dependsOn`. It spawns nothing, writes no cache entry, and the
+run summary does not count it. `@vzn/vx-migrate` writes one for each
+Nx `^production`-style input and each Turbo transit node.
+
+```ts
+// `test` re-runs when a file under fixtures/ changes; nothing spawns for it
+fixtures: { cache: { inputs: { files: ['fixtures/**'] }, outputs: { files: [] } } },
+test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: { /* … */ } },
+```
+
 Bare `--exclude-dependencies` keeps a group's edges for the same reason:
 `vx run ci --exclude-dependencies` runs `ci`'s members without their own
 dependencies. A name list (`--exclude-dependencies=lint.oxfmt`) drops a
@@ -1497,8 +1512,8 @@ Group tasks:
 
 The loader rejects:
 
-- A task with no `exec` AND no `dependsOn` (literal no-op).
-- A `cache` block on a group (nothing to cache).
+- A task with no `exec`, no `dependsOn` and no `cache` (literal no-op).
+- A group whose `cache.outputs` names a file (a group writes nothing).
 
 ## Workspace config (`vx.workspace.ts`)
 
@@ -2017,7 +2032,7 @@ a user meets most:
 | `sandbox is not allowed on an interactive task`                                                                                       | interactive + sandbox combined.                                                                                                                                                                                                |
 | `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                 |
 | `a task with no exec must declare dependsOn`                                                                                          | Group task with no edges.                                                                                                                                                                                                      |
-| `cache requires exec`                                                                                                                 | Group task with `cache`.                                                                                                                                                                                                       |
+| `a task with no exec writes nothing`                                                                                                  | Group task with `cache.outputs` that names a file.                                                                                                                                                                             |
 | `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs is required when cache is set`                                                                                          | Forgot `inputs`.                                                                                                                                                                                                               |
 | `cache.inputs must be an object`                                                                                                      | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |

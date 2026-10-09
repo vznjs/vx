@@ -60,6 +60,9 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   `node render.mjs /home/user/vx <N+1>` there, and set the post's
   `cover: { image: ../../../assets/blog/vx-0-0-<N+1>.png, alt }`. Look
   at the PNG before committing it.
+  The cover is the page's og:image (the link-preview banner); a new
+  essay's is `public/blog/covers/<slug>.png` at 1200×630.
+  `tests/og-image.test.ts` fails the gate when a post or release has none.
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
 open a PR `docs(vx-docs): release post for v0.0.<N+1>` and squash-merge
@@ -82,16 +85,17 @@ main).
 ## 4. Share on Bluesky
 
 The @vzn-vx.bsky.social account and its scripts live in the project's
-shared folder, `/mnt/project-files/x-posts/_source/`, owned by the
+shared folder, `/mnt/project-files/org/marketing/x-posts/_source/`, owned by the
 Marketing thread (its README § Posting to Bluesky). One release post a
 day at most, plain and factual: what changed in one line, no hype words,
-speed as "N× faster", under 300 graphemes. The link goes in the card,
+speed as "N× faster" from 2× up and as a percentage below 2×, under 300 graphemes. The link goes in the card,
 not the text. The site is out of the proxy's reach, so pass the card's
-title and description (the post's title and excerpt):
+title and description (the post's title and excerpt) and the cover as
+the card image, or the card shows no picture:
 
 ```sh
-cd /mnt/project-files/x-posts/_source
-NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --dry
+cd /mnt/project-files/org/marketing/x-posts/_source
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --thumb <repo>/packages/vx-docs/src/assets/blog/vx-0-0-<N+1>.png --dry
 ```
 
 Read the `--dry` record, then run it again without `--dry`. It logs to

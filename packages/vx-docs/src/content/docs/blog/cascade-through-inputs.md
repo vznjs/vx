@@ -48,7 +48,7 @@ almost everything else in vx is built on:
 - **The restore tier** of the scheduler classifies every stable task as
   a hit or a miss up front, makes the hits ready immediately at low
   priority, and lets misses own the worker pool while restores backfill
-  idle capacity. Measured 1.07× faster on a mixed workload. It needs
+  idle capacity. Measured 7% faster on a mixed workload. It needs
   the keys first.
 - **Remote execution** ships a task to a worker as one self-contained
   action whose inputs are exactly what the key declares. The action

@@ -1387,3 +1387,10 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   components both arms ~215 µs. A cold 1,000-package run with 51 input
   files a task: entry_inputs inserts + their commit ~1.0 s → ~0.35 s of
   main-thread CPU (profile).
+- **X-208.** A config may key a group: `cache` on a task with no `exec`
+  (no `dependsOn` needed; `outputs` must name nothing). Core already ran
+  one, the default `build`; the loader refused any other. `@vzn/vx-migrate`
+  writes Nx's `nx-input:<name>` twins and Turbo's key-only (transit)
+  tasks as keyed groups instead of `true` tasks: same keys, no spawn, no
+  history row, not counted. Growth's TanStack/query trial (0.0.632) counted
+  36 tasks under `vx run build` where Nx ran 25, 10 of them twins.

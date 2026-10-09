@@ -36,7 +36,7 @@ $ vx run build test --all
   result    8 tasks · all cached · 2.06s saved · 26ms
 ```
 
-The second run is 34× faster, because every key matched and every output
+The second run takes 26ms instead of 879ms, because every key matched and every output
 was already on disk. A cold run spends its time in your tools, not in the
 runner.
 
