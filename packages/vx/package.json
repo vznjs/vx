@@ -39,6 +39,7 @@
     "config",
     "src",
     "schemas",
+    "skills",
     "README.md"
   ],
   "engines": {
