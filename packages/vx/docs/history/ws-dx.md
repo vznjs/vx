@@ -145,3 +145,9 @@ and log output reads better. Each must cost the warm path nothing.
   DX #3): the audit as `{upToDate, audited, notAudited, problems}`, exit
   code unchanged, schema `schemas/lock.json`. Rows: `cli-json-schemas`,
   `vx-mcp/tests/check-lock.test.ts`.
+
+- **DX-24** `pnpm exec vx init` failed with "installing vx failed (…
+  exited -1)" (Growth's trpc trial): PATH held pnpm's placeholder with
+  no shebang (ENOEXEC) and the spawn error was dropped. vx-migrate now
+  runs the manager that launched it (`npm_execpath`) and names the
+  spawn error. Rows: `adopt.test.ts` "managerArgv".

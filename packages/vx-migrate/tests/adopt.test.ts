@@ -9,6 +9,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   installArgv,
+  managerArgv,
   missingPackages,
   packageManagerOf,
   parseModeAnswer,
@@ -550,4 +551,23 @@ describe('vx init in a Turbo repo', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('managerArgv', () => {
+  const argv = ['pnpm', 'add', '-D', '-w', '@vzn/vx']
+  it('runs the manager that launched us, not the name PATH finds', () => {
+    expect([
+      managerArgv(argv, { npm_execpath: '/opt/pnpm/bin/pnpm' }),
+      managerArgv(argv, { npm_execpath: '/opt/pnpm/dist/pnpm.cjs' }),
+    ]).toEqual([
+      ['/opt/pnpm/bin/pnpm', 'add', '-D', '-w', '@vzn/vx'],
+      ['node', '/opt/pnpm/dist/pnpm.cjs', 'add', '-D', '-w', '@vzn/vx'],
+    ])
+  })
+  it('keeps the name when another manager, or none, launched us (control)', () => {
+    expect([
+      managerArgv(argv, { npm_execpath: '/usr/lib/node_modules/npm/bin/npm-cli.js' }),
+      managerArgv(argv, {}),
+    ]).toEqual([argv, argv])
+  })
 })
