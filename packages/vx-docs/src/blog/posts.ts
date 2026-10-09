@@ -139,6 +139,12 @@ export async function related(self: Post): Promise<Post[]> {
     .map((x) => x.p)
 }
 
+/** Whether the cover prints the title: a drawn cover and a release's PNG
+ *  do, so a card shows it once (owner, 2026-10-09); a picture does not. */
+export function coverShowsTitle(p: Post): boolean {
+  return p.entry.data.cover === undefined || p.kind === 'releases'
+}
+
 /** A drawn cover's hue (src/blog/tones.ts). */
 export function tone(p: Post): string {
   for (const t of p.tags) for (const [tags, c] of TONES) if (tags.includes(t)) return c

@@ -46,7 +46,7 @@ npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) ·
 
 A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and arm64; no Bun needed. The
 [release](https://github.com/vznjs/vx/releases) binary needs no Node either.
-Windows: use WSL.
+Windows: run vx inside WSL2.
 
 ## Quick start
 
@@ -171,4 +171,4 @@ scripts. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## License
 
-[MIT](LICENSE)
+vx is [MIT](LICENSE) licensed. The prebuilt binaries embed Bun and a few npm packages under permissive licenses; their notices ship as [THIRD_PARTY_NOTICES.txt](packages/vx/THIRD_PARTY_NOTICES.txt) in each platform package and GitHub release.

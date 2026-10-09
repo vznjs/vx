@@ -1,9 +1,10 @@
 ---
-// The feature hub: every feature in src/features/features.ts as a card,
-// grouped by category, each linking its own page ([slug].astro). Static;
-// the chips are anchors to the sections, and the last one is the Reference's
+// The feature hub: the categories only, as a bento of tiles, each linking
+// its own page (features/<id>/, [category].astro) where the features are.
+// A tile shows its category's lead feature image, its promise, its count
+// and the first few feature names; the chip row ends with the Reference's
 // one-line list of every feature (all-features).
-import FeatureCard from '../../components/features/FeatureCard.astro'
+import FeatureImage from '../../components/features/FeatureImage.astro'
 import FeaturesPage from '../../components/features/FeaturesPage.astro'
 import { CATEGORIES, FEATURES } from '../../features/features.js'
 import { inventory } from '../../features/inventory.js'
@@ -15,25 +16,27 @@ const groups = CATEGORIES.map((c) => ({
 const base = import.meta.env.BASE_URL
 const all = await inventory(base)
 const total = all.reduce((n, g) => n + g.items.length, 0)
+const big = groups.slice(0, 2)
+const rest = groups.slice(2)
 ---
 
 <FeaturesPage
   title="Features"
-  description={`Everything vx does: ${total} features, from the cache and the sandbox to watch mode and plugins.`}
+  description={`Everything vx does, in ${CATEGORIES.length} areas: ${total} features, from the cache and the sandbox to watch mode and plugins.`}
 >
   <section class="fhub-hero">
     <div class="container">
-      <p class="vx-kicker">// {total} features and counting</p>
+      <p class="vx-kicker">// {total} features in {CATEGORIES.length} areas</p>
       <h1>Everything <span class="phosphor">vx</span> does.</h1>
       <p class="lede">
-        A fast runner, a cache you can trust, and the small things you meet every day. Each one
-        has a page that shows what it does for you.
+        A fast runner, a cache you can trust, and the small things you meet every day. Pick an
+        area to see what it does for you.
       </p>
-      <ul class="chips" aria-label="Categories">
+      <ul class="chips" aria-label="Areas">
         {
           groups.map((g) => (
             <li>
-              <a href={`#${g.id}`}>
+              <a href={`${base}features/${g.id}/`}>
                 {g.title} <span class="count">{g.features.length}</span>
               </a>
             </li>
@@ -48,22 +51,60 @@ const total = all.reduce((n, g) => n + g.items.length, 0)
     </div>
   </section>
 
-  {
-    groups.map((g) => (
-      <section class="fcat" id={g.id}>
-        <div class="container">
-          <div class="fcat-head">
-            <h2>{g.title}</h2>
-            <p>{g.line}</p>
-          </div>
-          <div class="fgrid">
-            {g.features.map((f) => (
-              <FeatureCard feature={f} showCategory={false} />
-            ))}
-          </div>
-        </div>
-      </section>
-    ))
-  }
-
+  <section class="fhub">
+    <div class="container">
+      <div class="fhub-grid">
+        {
+          big.map((g, i) => (
+            <a class="fhub-tile fhub-big" href={`${base}features/${g.id}/`} data-category={g.id}>
+              <span class="fhub-img">
+                <FeatureImage
+                  file={g.features[0]!.image}
+                  alt=""
+                  widths={[640, 960, 1280]}
+                  sizes="(max-width: 900px) 100vw, 620px"
+                  eager={i === 0}
+                />
+              </span>
+              <span class="fhub-body">
+                <span class="fhub-count">{g.features.length} features</span>
+                <span class="fhub-title">{g.title}</span>
+                <span class="fhub-line">{g.line}</span>
+                <span class="fhub-names">
+                  {g.features.slice(0, 4).map((f) => (
+                    <span>{f.title}</span>
+                  ))}
+                </span>
+              </span>
+            </a>
+          ))
+        }
+      </div>
+      <p class="fband">
+        Fast and correct come first. Then everything around a run: what you pick, what you see,
+        and how it fits your CI, your repo and your tools.
+      </p>
+      <div class="fhub-grid">
+        {
+          rest.map((g) => (
+            <a class="fhub-tile" href={`${base}features/${g.id}/`} data-category={g.id}>
+              <span class="fhub-img">
+                <FeatureImage
+                  file={g.features[0]!.image}
+                  alt=""
+                  widths={[400, 640, 960]}
+                  sizes="(max-width: 620px) 100vw, (max-width: 900px) 50vw, 400px"
+                />
+              </span>
+              <span class="fhub-body">
+                <span class="fhub-count">{g.features.length} features</span>
+                <span class="fhub-title">{g.title}</span>
+                <span class="fhub-line">{g.line}</span>
+              </span>
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </section>
 </FeaturesPage>

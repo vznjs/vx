@@ -6,7 +6,7 @@
 import Byline from './Byline.astro'
 import Card from './Card.astro'
 import Cover from './Cover.astro'
-import { blogHref, FILTERS, matches, posts, type Kind } from '../../blog/posts.js'
+import { blogHref, coverShowsTitle, FILTERS, matches, posts, type Kind } from '../../blog/posts.js'
 
 type Props = { filter?: string; kind?: Kind }
 const { filter, kind = 'blog' } = Astro.props
@@ -37,7 +37,7 @@ const chips = kind === 'releases' ? [] : [
         </a>
         <div class="vx-feature-text">
           <Byline post={lead} />
-          <h2>
+          <h2 class:list={{ 'vx-title-in-cover': coverShowsTitle(lead) }}>
             <a href={lead.href}>{lead.title}</a>
           </h2>
           <p class="vx-feature-excerpt">{lead.excerpt}</p>

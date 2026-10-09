@@ -156,28 +156,208 @@
 .chips .count {
   color: var(--text-faint);
 }
-.fcat {
-  padding: 56px var(--gutter);
+
+/* ---- the hub's area tiles and a category's bento ---- */
+.fhub,
+.fbento {
+  padding: 48px var(--gutter) 72px;
   border-top: 1px solid var(--line-faint);
-  scroll-margin-top: 64px;
 }
-.fcat-head {
+.fhub-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+}
+.fhub-tile,
+.ftile {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 24px;
-  margin-bottom: 24px;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    transform 0.15s var(--ease-out);
 }
-.vx-landing .fcat-head h2 {
-  font: var(--fw-bold) clamp(26px, 3vw, 36px) / 1.1 var(--font-display);
+.fhub-tile:hover,
+.ftile:hover {
+  border-color: color-mix(in srgb, var(--phosphor) 55%, transparent);
+  transform: translateY(-2px);
+}
+.fhub-tile:focus-visible,
+.ftile:focus-visible {
+  outline: 2px solid var(--phosphor);
+  outline-offset: 2px;
+}
+.fhub-tile {
+  grid-column: span 2;
+}
+.fhub-big {
+  grid-column: span 3;
+}
+.fhub-img,
+.ftile-img {
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--ink-850);
+  border-bottom: 1px solid var(--line);
+}
+.fhub-img img,
+.ftile-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fhub-body,
+.ftile-body {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 18px 20px 22px;
+  flex: 1;
+}
+.fhub-count {
+  font: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--accent-text);
+}
+.fhub-title {
+  font: var(--fw-bold) 24px / 1.15 var(--font-display);
   letter-spacing: var(--ls-tight);
-  margin: 0;
+  color: var(--text-hi);
 }
-.fcat-head p {
-  font: var(--fw-regular) 16px / 1.5 var(--font-body);
+.fhub-big .fhub-title {
+  font-size: clamp(28px, 3vw, 38px);
+}
+.fhub-line {
+  font: var(--fw-regular) 15.5px / 1.5 var(--font-body);
   color: var(--text-mut);
-  margin: 0;
+}
+.fhub-big .fhub-line {
+  font-size: 18px;
+}
+.fhub-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fhub-names span {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: var(--fw-medium) 12.5px / 1.3 var(--font-mono);
+  color: var(--text);
+}
+.fband {
+  margin: 48px auto 24px;
+  max-width: 36em;
+  text-align: center;
+  font: var(--fw-medium) clamp(18px, 2vw, 22px) / 1.45 var(--font-display);
+  color: var(--text-hi);
+}
+
+.fcat-hero {
+  padding: 56px var(--gutter) 40px;
+  background:
+    radial-gradient(
+      ellipse 60% 60% at 15% 0%,
+      color-mix(in srgb, var(--phosphor) 9%, transparent),
+      transparent 70%
+    ),
+    var(--bg-page);
+}
+.fcat-hero h1 {
+  margin-top: 18px;
+}
+.fcat-hero .lede {
+  font: var(--fw-medium) 22px / 1.4 var(--font-display);
+  color: var(--text-hi);
+  margin: 14px 0 0;
+  max-width: 34em;
+}
+.fcat-intro {
+  font: var(--fw-regular) 17.5px / 1.6 var(--font-body);
+  color: var(--text-mut);
+  margin: 14px 0 0;
+  max-width: 44em;
+}
+.fcat-intro code {
+  font: 0.88em var(--font-mono);
+  color: var(--text-hi);
+}
+.fcat-count {
+  margin: 20px 0 0;
+  font: var(--type-label);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--accent-text);
+}
+.fbento {
+  padding-top: 40px;
+}
+.fbento .fhub-grid,
+.fbento-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+}
+.ftile-lead {
+  grid-column: span 3;
+}
+.ftile-mid {
+  grid-column: span 2;
+}
+.ftile-small {
+  grid-column: span 2;
+}
+.ftile-title {
+  font: var(--fw-semibold) 18px / 1.3 var(--font-display);
+  color: var(--text-hi);
+}
+.ftile-lead .ftile-title {
+  font: var(--fw-bold) clamp(24px, 2.4vw, 30px) / 1.15 var(--font-display);
+  letter-spacing: var(--ls-tight);
+}
+.ftile-hook,
+.ftile-more {
+  font: var(--fw-regular) 15px / 1.55 var(--font-body);
+  color: var(--text-mut);
+}
+.ftile-lead .ftile-hook {
+  font-size: 17px;
+  color: var(--text);
+}
+.ftile-hook code,
+.ftile-more code {
+  font: 0.88em var(--font-mono);
+  color: var(--text-hi);
+  padding: 0.08em 0.35em;
+  border-radius: var(--radius-xs);
+  background: var(--ink-700);
+}
+.ftile-go {
+  margin-top: 4px;
+  font: var(--fw-medium) 13px / 1 var(--font-mono);
+  color: var(--accent-text);
+}
+.ftile-small .ftile-body {
+  padding: 16px 18px 18px;
+  gap: 6px;
+}
+.ftile-small .ftile-title {
+  font-size: 16px;
+}
+.ftile-small .ftile-hook {
+  font-size: 14px;
+}
+.ftile-small .ftile-go {
+  display: none;
 }
 
 /* ---- a feature's page ---- */
@@ -332,6 +512,19 @@
   }
 }
 @media (max-width: 900px) {
+  .fhub-grid,
+  .fbento-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fhub-tile,
+  .ftile-mid,
+  .ftile-small {
+    grid-column: span 1;
+  }
+  .fhub-big,
+  .ftile-lead {
+    grid-column: span 2;
+  }
   .fgrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -347,6 +540,67 @@
   }
 }
 @media (max-width: 620px) {
+  .fhub-grid,
+  .fbento-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .fhub-tile,
+  .fhub-big,
+  .ftile-lead,
+  .ftile-mid,
+  .ftile-small {
+    grid-column: auto;
+  }
+  .fhub,
+  .fbento {
+    padding: 32px var(--gutter) 48px;
+  }
+  /* A row each on a phone: the image beside the words, as the cards do. */
+  .fhub-tile:not(.fhub-big),
+  .ftile-mid {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: start;
+  }
+  .fhub-tile:not(.fhub-big) .fhub-img,
+  .ftile-mid .ftile-img {
+    margin: 14px 0 14px 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+  }
+  .fhub-tile:not(.fhub-big) .fhub-body,
+  .ftile-mid .ftile-body {
+    padding: 12px 14px;
+    gap: 4px;
+  }
+  .fhub-title {
+    font-size: 19px;
+  }
+  .fhub-big .fhub-title {
+    font-size: 26px;
+  }
+  .fhub-line,
+  .fhub-big .fhub-line {
+    font-size: 14.5px;
+  }
+  .ftile-mid .ftile-go {
+    display: none;
+  }
+  .fband {
+    margin: 32px 0 16px;
+    text-align: left;
+  }
+  .fcat-hero {
+    padding-top: 40px;
+  }
+  .fcat-hero .lede {
+    font-size: 19px;
+  }
+  .fcat-intro {
+    font-size: 16px;
+  }
   .fgrid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
@@ -372,9 +626,6 @@
   }
   .fcard-hook {
     font-size: 13.5px;
-  }
-  .fcat {
-    padding: 40px var(--gutter);
   }
   .fhub-hero .lede,
   .fhero .lede {

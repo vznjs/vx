@@ -385,8 +385,8 @@ deliberate design pass.
 - **Non-JS executor plugins.** Rust / .NET / Gradle projects use their
   own runners. vx is a JS-monorepo runner.
 - **Native Windows.** vx spawns POSIX shell. Binaries are built for
-  linux/darwin × x64/arm64, and Windows runs the Linux one under WSL; a
-  native port is not on the matrix.
+  linux/darwin × x64/arm64, and Windows runs the Linux one under WSL2;
+  there is no native Windows build, by decision (owner, 2026-10-09).
 
 ## Where vx is ahead
 

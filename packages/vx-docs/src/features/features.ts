@@ -14,42 +14,104 @@ import { MORE } from './more.js'
 export type CategoryId =
   | 'speed'
   | 'cache'
+  | 'safety'
   | 'run'
   | 'output'
   | 'insight'
+  | 'config'
   | 'daily'
   | 'ci'
   | 'adoption'
-  | 'plugins'
+  | 'extend'
 
 export interface Category {
   id: CategoryId
   title: string
   line: string
+  /** Two or three sentences: the category page's opening. */
+  intro: string
 }
 
+// A category's page (features/<id>/) leads with its first two features in
+// FEATURES order as large tiles, so that order is also the emphasis.
 export const CATEGORIES: readonly Category[] = [
-  { id: 'speed', title: 'Speed', line: 'Less time added to every run, cold or cached.' },
+  {
+    id: 'speed',
+    title: 'Speed',
+    line: 'Less time added to every run, cold or cached.',
+    intro:
+      'vx adds as little as it can around your commands. Keys come from git’s own index, and nothing stays running between runs.',
+  },
   {
     id: 'cache',
     title: 'Cache you can trust',
     line: 'A hit replays exactly what a run would have made.',
+    intro:
+      'A cache is only worth having if a hit is the same as a run. vx keys every task on what it reads, restores exactly what it wrote, and treats anything it cannot vouch for as a miss.',
+  },
+  {
+    id: 'safety',
+    title: 'Correct by default',
+    line: 'Nothing leaks in, nothing wrong comes back.',
+    intro:
+      'The worst build is a green one with the wrong bytes. vx keeps each task to the environment and the files it names, and checks what it stores and what it ships.',
   },
   {
     id: 'run',
     title: 'Run what you mean',
     line: 'Pick tasks precisely, and stop the ones that hang.',
+    intro:
+      'Say which tasks to run, by name, tag or folder, and vx runs exactly those and what they need. A typo is caught before anything starts, and a task that hangs is stopped.',
   },
   {
     id: 'output',
     title: 'Output that fits',
     line: 'As much as you want to read, where you read it.',
+    intro:
+      'A run prints what you need and keeps the rest. Pick how much you see, get a table, a report for your pull request or plain JSON, and find a failure again later.',
   },
-  { id: 'insight', title: 'See inside a run', line: 'Every key, plan and past run, on request.' },
-  { id: 'daily', title: 'Everyday use', line: 'The small things you meet every day.' },
-  { id: 'ci', title: 'CI', line: 'Run less, and read the result where you work.' },
-  { id: 'adoption', title: 'Adoption', line: 'From install to cached in minutes.' },
-  { id: 'plugins', title: 'Plugins', line: 'Seams for where tasks run, cache and report.' },
+  {
+    id: 'insight',
+    title: 'See inside a run',
+    line: 'Every key, plan and past run, on request.',
+    intro:
+      'Ask vx why a task ran, what a run would do, or where the time went, and get an answer you can read or a JSON value an agent can use.',
+  },
+  {
+    id: 'config',
+    title: 'Config',
+    line: 'TypeScript you can read, with errors that point.',
+    intro:
+      'Config is TypeScript: one command per task, helpers you can import, and rules that catch a slow setup. When it is wrong, the error points at the line.',
+  },
+  {
+    id: 'daily',
+    title: 'Everyday use',
+    line: 'The small things you meet every day.',
+    intro:
+      'The parts you touch every day: a picker when you forget a name, a summary you read at a glance, watch mode, dev servers, and Ctrl-C that leaves nothing behind.',
+  },
+  {
+    id: 'ci',
+    title: 'CI',
+    line: 'Run less, and read the result where you work.',
+    intro:
+      'In CI, vx runs only what a change reaches, pins the plan with a lock, flags flaky tasks, and puts the result on the pull request.',
+  },
+  {
+    id: 'adoption',
+    title: 'Adoption',
+    line: 'From install to cached in minutes.',
+    intro:
+      'Start from one binary or one npm package. `vx init` reads a Turborepo or Nx repo and writes the config, and your remote cache keeps working.',
+  },
+  {
+    id: 'extend',
+    title: 'Plugins',
+    line: 'Seams for where tasks run, cache and report.',
+    intro:
+      'vx is a pipeline with seams. A plugin decides where a task runs, where its outputs live and who hears about it, from remote execution to OpenTelemetry and MCP.',
+  },
 ]
 
 export interface Link {
@@ -668,7 +730,7 @@ export default defineProject({
   {
     slug: 'plugins',
     title: 'A pipeline with seams',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Fourteen seams, and core applies no plugin by default.',
     body: [
       'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, setup, teardown and commands. Each is a seam a plugin can fill.',
@@ -693,7 +755,7 @@ export default defineWorkspace({
   {
     slug: 'remote-execution',
     title: 'Remote cache and execution',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Distributed builds over Bazel’s open Remote Execution API.',
     body: [
       'Distributed builds usually arrive as a platform: a service, agents, a dashboard, a bill. In vx they are a plugin.',
@@ -711,7 +773,7 @@ export default defineWorkspace({
   {
     slug: 'opentelemetry',
     title: 'OpenTelemetry',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Every run as OTLP traces, metrics and logs, with no SDK.',
     body: [
       '`@vzn/vx-otel` exports each `vx run` to any OpenTelemetry backend over OTLP. It speaks the wire protocol directly and has no dependencies.',
@@ -726,7 +788,7 @@ export default defineWorkspace({
   {
     slug: 'mcp',
     title: 'vx mcp for coding agents',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Give your agent the build’s memory over MCP.',
     body: [
       'Coding agents spend tokens working out your build: reading configs, guessing tasks, re-running to check the cache. vx already knows.',
@@ -741,7 +803,7 @@ export default defineWorkspace({
   {
     slug: 'critical-path',
     title: 'Longest chain first',
-    category: 'plugins',
+    category: 'extend',
     hook: 'The slow task stops starting last.',
     body: [
       '`@vzn/vx-schedule-history` learns task durations from your local run history and starts the longest remaining chain first. Short tasks fill the gaps.',

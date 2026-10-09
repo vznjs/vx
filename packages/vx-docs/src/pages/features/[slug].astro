@@ -50,7 +50,7 @@ const og = await getImage({
       <div class="crumbs">
         <a href={`${base}features/`}>Features</a>
         <span aria-hidden="true">/</span>
-        <a class="pill" href={`${base}features/#${category.id}`}>{category.title}</a>
+        <a class="pill" href={`${base}features/${category.id}/`}>{category.title}</a>
       </div>
       <h1>{f.title}</h1>
       <p class="lede" set:html={inlineHtml(f.hook)} />

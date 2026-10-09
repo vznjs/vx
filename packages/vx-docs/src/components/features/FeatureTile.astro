@@ -1,0 +1,37 @@
+---
+// One feature as a bento tile on its category's page. `lead` tiles are
+// large, with the image and the first paragraph; `mid` tiles carry the
+// image and the hook; `small` tiles are words only, so no tile shows an
+// empty image box.
+import { inlineHtml, type Feature } from '../../features/features.js'
+import FeatureImage from './FeatureImage.astro'
+
+interface Props {
+  feature: Feature
+  size: 'lead' | 'mid' | 'small'
+  eager?: boolean
+}
+const { feature: f, size, eager = false } = Astro.props
+const base = import.meta.env.BASE_URL
+const sizes = {
+  lead: '(max-width: 900px) 100vw, 640px',
+  mid: '(max-width: 900px) 100vw, 420px',
+  small: '',
+}[size]
+---
+
+<a class={`ftile ftile-${size}`} href={`${base}features/${f.slug}/`}>
+  {
+    size !== 'small' && (
+      <span class="ftile-img">
+        <FeatureImage file={f.image} alt="" widths={[640, 960, 1280]} sizes={sizes} eager={eager} />
+      </span>
+    )
+  }
+  <span class="ftile-body">
+    <span class="ftile-title">{f.title}</span>
+    <span class="ftile-hook" set:html={inlineHtml(f.hook)} />
+    {size === 'lead' && <span class="ftile-more" set:html={inlineHtml(f.body[0]!)} />}
+    <span class="ftile-go" aria-hidden="true">Read more →</span>
+  </span>
+</a>

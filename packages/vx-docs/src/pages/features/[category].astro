@@ -1,0 +1,88 @@
+---
+// One page per category (features/<id>/): the intro, then its features as a
+// bento. The first two lead as large tiles, up to three more follow with
+// their images, and the rest are compact, with a text band between groups.
+import FeatureTile from '../../components/features/FeatureTile.astro'
+import FeaturesPage from '../../components/features/FeaturesPage.astro'
+import { CATEGORIES, FEATURES, inlineHtml, type Category } from '../../features/features.js'
+
+export function getStaticPaths() {
+  return CATEGORIES.map((category, i) => ({
+    params: { category: category.id },
+    props: { category, prev: CATEGORIES[i - 1], next: CATEGORIES[i + 1] },
+  }))
+}
+
+interface Props {
+  category: Category
+  prev: Category | undefined
+  next: Category | undefined
+}
+const { category: c, prev, next } = Astro.props
+const base = import.meta.env.BASE_URL
+const all = FEATURES.filter((f) => f.category === c.id)
+const lead = all.slice(0, 2)
+const mid = all.slice(2, 5)
+const small = all.slice(5)
+---
+
+<FeaturesPage title={`${c.title} · Features`} description={`${c.line} ${all.length} features.`}>
+  <section class="fcat-hero">
+    <div class="container">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href={`${base}features/`}>Features</a>
+        <span aria-hidden="true">/</span>
+        <span>{c.title}</span>
+      </nav>
+      <h1>{c.title}</h1>
+      <p class="lede">{c.line}</p>
+      <p class="fcat-intro" set:html={inlineHtml(c.intro)} />
+      <p class="fcat-count">{all.length} features</p>
+    </div>
+  </section>
+
+  <section class="fbento" data-category={c.id}>
+    <div class="container">
+      <div class="fbento-grid">
+        {lead.map((f, i) => <FeatureTile feature={f} size="lead" eager={i === 0} />)}
+      </div>
+      {
+        mid.length > 0 && (
+          <>
+            <p class="fband">Each one has a page that shows it working.</p>
+            <div class="fbento-grid">
+              {mid.map((f) => (
+                <FeatureTile feature={f} size="mid" />
+              ))}
+            </div>
+          </>
+        )
+      }
+      {
+        small.length > 0 && (
+          <>
+            <p class="fband">And {small.length} smaller things that add up.</p>
+            <div class="fbento-grid">
+              {small.map((f) => (
+                <FeatureTile feature={f} size="small" />
+              ))}
+            </div>
+          </>
+        )
+      }
+    </div>
+  </section>
+
+  <div class="fpager">
+    <nav class="pager container" aria-label="Previous and next category">
+      <a class="prev" href={`${base}features/${prev?.id ?? ''}${prev ? '/' : ''}`}>
+        <span class="dir">← {prev ? 'Previous' : 'Back'}</span>
+        <span class="name">{prev?.title ?? 'All categories'}</span>
+      </a>
+      <a class="next" href={next ? `${base}features/${next.id}/` : `${base}all-features/`}>
+        <span class="dir">Next →</span>
+        <span class="name">{next?.title ?? 'The one-line list'}</span>
+      </a>
+    </nav>
+  </div>
+</FeaturesPage>

@@ -6,7 +6,7 @@ description: Install vx, describe one task, and run it from the cache the second
 Run your first cached task in five minutes.
 
 You need a git repository on Linux with glibc (not Alpine's musl) or macOS
-(on Windows, use WSL). vx is
+(Windows: run vx inside WSL2). vx is
 one prebuilt binary. The release binary alone needs neither Node nor Bun;
 installed from npm, the `vx` command is a small Node script that runs
 that binary.
@@ -107,7 +107,7 @@ once the configs exist.
 - The Linux sandbox needs `bubblewrap`, `socat` and `ripgrep`, and no root
   in a container, or set `exec.sandbox.weakerWhenNested: true` on each
   sandboxed task ([Sandboxing](../guides/sandboxing/#requirements--platform-support)).
-- No native Windows build: use WSL.
+- Windows: run vx inside WSL2.
 - On macOS the sandbox's report can miss records under load. Enforcement
   holds.
 - A cache hit replays the first and last 8 MiB of a task's output.
