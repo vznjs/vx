@@ -32,6 +32,7 @@ import type {
   InvocationDetail,
   RunSummaryRow,
   TaskFailure,
+  TaskLog,
   WhyDidThisRerun,
   PlanPrediction,
   RunPlan,
@@ -170,6 +171,7 @@ beforeAll(async () => {
   json('last', [])
   json('last', ['--list'])
   json('last', ['--failed'])
+  json('last', ['--log', 'app#fail'])
   const dry = vx(['run', 'build', '--filter', 'app...', '--dry=json'])
   expect(dry.code).toBe(0)
   outputs['plan']!.push(JSON.parse(dry.out))
@@ -427,6 +429,9 @@ describe('each schema object is its source type', () => {
         vxVersion: true,
         tags: true,
       }),
+    )
+    expect(def('last', 'log')).toEqual(
+      keys<TaskLog>({ runId: true, taskId: true, status: true, source: true, output: true }),
     )
     expect(def('last', 'task')).toEqual(
       keys<RunSummaryRow & Pick<TaskFailure, 'output' | 'locations'>>({

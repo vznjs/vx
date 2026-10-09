@@ -757,6 +757,36 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const cur = loadEntryInputs(db, this_.hash)
   const old = loadEntryInputs(db, prev.hash)
 
+  // A failed previous run kept no fingerprints; the last run that saved an
+  // entry still names what moved since then (the edit an agent made to fix
+  // the failure, or the one that broke it).
+  if (cur.length > 0 && old.length === 0 && !isPassStatus(prev.status)) {
+    const saved = db
+      .query(
+        `SELECT run_id AS runId, hash FROM runs
+         WHERE project = ? AND task = ? AND id < ? AND ${KEYED_RUNS_SQL}
+           AND hash IN (SELECT entry_hash FROM entry_inputs)
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(project, task, this_.id) as { runId: string | null; hash: string } | undefined
+    if (saved) {
+      const { entries, unchangedCount } = diffKeyComponents(loadEntryInputs(db, saved.hash), cur)
+      const since = `run ${saved.runId}, the last that saved an entry (the previous run ended ${prev.status})`
+      return {
+        runId,
+        taskId,
+        found: true,
+        previousRunId: saved.runId,
+        entries,
+        unchangedCount,
+        note:
+          entries.length > 0
+            ? `${entries.length} cache-key component(s) changed since ${since}`
+            : `cache key matches ${since}`,
+      }
+    }
+  }
+
   // Input fingerprints are pruned with their entry (ON DELETE CASCADE); if
   // either side's rows are gone, we can name the hash change but not the
   // component-level diff.

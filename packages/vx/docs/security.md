@@ -48,6 +48,47 @@ landing where main reads; it is not a boundary, since the PR's own
 config decides it and any run holding a write credential can write any
 key.
 
+A boundary the server holds, with bazel-remote and `@vzn/vx-reapi`: reads
+are open, writes need a password, and only main's push job has it.
+
+```sh
+htpasswd -cB /etc/bazel-remote/htpasswd ci   # the write credential
+bazel-remote --dir /data --max_size 50 --grpc_address 0.0.0.0:9092 \
+  --htpasswd_file /etc/bazel-remote/htpasswd --allow_unauthenticated_reads
+```
+
+```ts
+// vx.workspace.ts: the header only where the secret is set
+reapi({
+  endpoint: 'grpcs://cache.example.com:9092',
+  headers: process.env.CACHE_AUTH ? { authorization: `Basic ${process.env.CACHE_AUTH}` } : {},
+})
+```
+
+```yaml
+# .github/workflows/ci.yml: CACHE_AUTH (base64 of ci:<password>) is a
+# secret of the `cache-write` environment, whose only deployment branch
+# is main, so no other branch's workflow can read it
+jobs:
+  build:
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
+    steps:
+      - run: vx run build --all
+  build-main:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: cache-write
+    env:
+      CACHE_AUTH: ${{ secrets.CACHE_AUTH }}
+    steps:
+      - run: vx run build --all
+```
+
+A pull request's job has no `CACHE_AUTH`, so the server refuses its
+writes whatever its config says. Never give the write secret to a
+`pull_request_target`, `issue_comment` or `workflow_run` job that checks
+out a pull request's code: it runs with main's ref and secrets, and
+`github()` scopes it `pr-<n>` only on the client side.
+
 ## What vx checks on bytes it did not write
 
 Every artifact that arrives from a remote, and every one read back from
@@ -59,9 +100,9 @@ the local store:
   refused under another (a local read-back is not re-checked);
 - on arrival, carries only the files the task declares as outputs;
 - lands each file under the task's project or declared workspace path:
-  traversal and names that escape are refused before anything lands, a
-  refused archive leaves nothing behind, and links and devices are
-  never written;
+  traversal (`..`, `.`, absolute names) is refused before anything
+  lands, a refused archive leaves nothing behind, and links and devices
+  are never written; a seeded fuzz of hostile archives holds this;
 - is bounded: a decompression bomb, an oversized header or body, and a
   remote answer larger than asked for are refused as they are read.
 
@@ -121,7 +162,9 @@ that run are the ones your configs declare, from the workspace root, with
 the environment `vx mcp` started with, filtered by each task's `exec.env`
 and held by its `exec.sandbox`. `force` costs a rerun, not a wrong entry:
 the key stays the same. What reaches the agent (summaries, refusals,
-`getFailures` output) is masked as described under Secrets. An agent that
+`getFailures` output) is masked as described under Secrets.
+`mcp({ run: false })` takes `runTasks` away, and `mcp({ run: ['test'] })`
+limits it to those task names. An agent that
 can edit `vx.config.ts` can run anything, as you can, because configs are
 code vx trusts.
 

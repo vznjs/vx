@@ -94,13 +94,15 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
           capabilities: { tools: {} },
           serverInfo: { name: 'vx', version: VERSION },
           instructions:
-            'Read-only view of this workspace’s vx cache and run history. Nothing here runs a task.',
+            ctx.run === false
+              ? 'Read-only view of this workspace’s vx cache and run history. Nothing here runs a task.'
+              : 'This workspace’s vx tasks, cache and run history. runTasks runs tasks; every other tool only reads.',
         })
       }
       case 'ping':
         return reply({})
       case 'tools/list':
-        return reply({ tools: listTools() })
+        return reply({ tools: listTools(ctx) })
       case 'tools/call': {
         const name = msg.params?.['name']
         if (typeof name !== 'string') return fail(-32602, 'tools/call: name must be a string')
@@ -108,7 +110,7 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
         // unknown tool as -32602, and `arguments` is an object or absent. A
         // string or an array was read as no arguments and answered the full
         // unfiltered history (item 1067).
-        if (!listTools().some((t) => t.name === name)) {
+        if (!listTools(ctx).some((t) => t.name === name)) {
           return fail(-32602, `tools/call: unknown tool: ${name}`)
         }
         const args = msg.params?.['arguments']

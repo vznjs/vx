@@ -63,12 +63,26 @@ FAILED 2026-10-08T22:38:50.209Z  01a11dab-5561  8 tasks · 2 hits (2 up-to-date,
 ok     2026-10-08T22:38:41.669Z  01a11dab-3405  8 tasks · 2 hits (2 up-to-date, 0 restored)                     912ms  $ vx run test --all
 ```
 
+## One task's output
+
+```sh frame="terminal"
+$ vx last --log app#test
+FAIL src/sum.test.ts > adds
+  expected 4, received 5
+```
+
+`--log` prints what one task printed in the last run that ran it. A
+failure's output is kept, and a cached task's log is its cache entry,
+so a task that passed reads too. Agents get the same through
+`vx mcp`'s `getTaskLog`.
+
 ```mermaid
 flowchart LR
   RUN["vx run"] --> DB[("cache.db: runs")]
   DB --> LAST["vx last"]
   DB --> FAILED["vx last --failed"]
   DB --> LIST["vx last --list"]
+  DB --> LOG["vx last --log"]
   style FAILED stroke:#c6f84e,stroke-width:2px
 ```
 

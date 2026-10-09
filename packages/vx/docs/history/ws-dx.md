@@ -105,3 +105,38 @@ and log output reads better. Each must cost the warm path nothing.
   `vx show --format json` makes the selection, then the resolved list
   narrows to it; `project` beside either is refused. Rows: vx-mcp
   `list-tasks-scope.test.ts`.
+- **DX-17.** Failed-task logs an agent can fetch (roadmap #2), beyond
+  #3273's failure output: `vx last --log <task>` and vx-mcp's
+  `getTaskLog` read one task's output from history, a failure's kept
+  output or a cached task's entry log, so a passing task's log reads
+  too. Core `taskLog` (run-failures.ts) serves both. Rows: core
+  `last-log.test.ts`, vx-mcp `task-log.test.ts`.
+- **DX-18.** `vx init` first run, walked on a fresh Turbo and a fresh
+  Nx repo without a TTY: both migrate native with no prompt and end on
+  `next: … vx run build --all`. The one rough edge was a second
+  `vx init`: it fetched vx-migrate, which refused to overwrite its own
+  configs, exit 1. It now says vx is set up, with the next step, exit 0. Row: `init.test.ts` "a second vx init after the native migration".
+- **DX-19.** DX #2, no TTY-only path for agents: `vx run` with no task
+  under `--format json` or `--dry=json` refused only without a TTY, so
+  an agent on a pty waited at the picker. It now refuses there too,
+  `VX_E_USAGE` on stdout. The other prompt, vx-migrate's native/keep,
+  already answers native without a TTY. Row: `run-exit-codes.test.ts`
+  "a JSON answer never opens the picker".
+
+- **DX-20** Agent-trial fixes the docs could make (org/devex/agent-trial.md
+  rows 1, 2, 9, 11). The skill names raw-markdown page paths for when
+  github.io is unreachable and says adoption does not add `vx mcp`; the
+  quickstart and migrate guide carry a `bun add -d` line; `vx last`'s
+  schema says `cached` is "declares a cache", not "hit". Rows 3, 5–8, 12
+  were already fixed on main and wait for a release.
+
+- **DX-21** `vx why` after a failed run (agent-trial row 10). The failed
+  run saved no fingerprints, so the next run's why named only the key
+  change. It now diffs against the last run that saved an entry and
+  names the file the fix touched. Row: `metrics.test.ts` "diffs against
+  the last run that saved an entry".
+
+- **DX-22** MCP `getConfig` (roadmap DX #3, MCP parity): `vx show`'s
+  JSON answer through MCP, so an agent reads what a task
+  declares (inputs, outputs, env, sandbox) before changing it. Rows:
+  `vx-mcp/tests/config.test.ts`.

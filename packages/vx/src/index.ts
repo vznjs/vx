@@ -240,7 +240,7 @@ export type {
 export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
 
 // The run-history queries a reader outside the CLI takes today: `vx why`'s
-// answer and a run's failures, which `@vzn/vx-mcp` serves. The event bus /
+// answer, a run's failures and a task's log, which `@vzn/vx-mcp` serves. The event bus /
 // wire form and the other history readers (`listRuns`, `getRun`, …) left the
 // façade 2026-09-10 with no consumer; the telemetry seam above is the
 // canonical export path.
@@ -250,6 +250,7 @@ export {
   resolveRunId,
   rootCauses,
   runFailures,
+  taskLog,
   whyDidThisRerunQuery,
 } from './orchestrator/index.js'
 export type {
@@ -258,4 +259,5 @@ export type {
   RootCause,
   RunFailures,
   TaskFailure,
+  TaskLog,
 } from './orchestrator/index.js'

@@ -38,6 +38,7 @@ in the index:
 ```ts
 writeRunFailures(cacheDir, runId, outcomes): void // at run end; only when an outcome carries failedOutput; newest 50 kept
 runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run
+taskLog(cacheDir, db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
 
 export interface RunFailures {
   runId: string
@@ -50,7 +51,19 @@ export interface TaskFailure {
   output: string // '' when the run kept none
   locations: OutputLocation[]
 }
+export interface TaskLog {
+  runId: string
+  taskId: string
+  status: string
+  source: 'failure' | 'cache' | null // the kept failure output, the cache entry's log, or none kept
+  output: string // '' when source is null
+}
 ```
+
+`taskLog` reads one task's output: a failed task's from the file, any
+other from the cache entry its key names (the log a hit replays, masked
+as it was), and nothing for an uncached pass or a skip. `vx last --log`
+and `@vzn/vx-mcp`'s `getTaskLog` answer from it.
 
 `runFailures` lists the run's failed `runs` rows and fills each from the
 file; `vx last --format json` and `@vzn/vx-mcp`'s `getFailures` both

@@ -35,7 +35,7 @@ vx init [--dry] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG]      # self-update a compiled binary
 vx completions bash|zsh|fish
 
@@ -121,6 +121,9 @@ If no task name is given:
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
   naming the cwd project's tasks, else every project's (twelve, then
   `and N more`); outside a workspace it reads `vx run <task>, e.g. vx run build`.
+- **Under `--format json` or `--dry=json`**, on a terminal too — the
+  same refusal (`a JSON answer opens no picker; …`), with the
+  `VX_E_USAGE` error document on stdout: a program cannot pick.
 
 Exit codes:
 
@@ -1871,6 +1874,10 @@ the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
 terminal native (a `vx.config.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
 `--dry`, `--force` and `--mjs` pass through.
+Run again after the native migration (a workspace file that declares
+neither `turbo()` nor `nx()`, and project configs), it says vx is already
+set up and prints the next step, exit 0, without starting
+`@vzn/vx-migrate`; `--force` regenerates the files.
 
 `vx init --keep` writes `vx.workspace.ts` declaring `turbo()` or `nx()`
 from `@vzn/vx-migrate` and nothing else: those read the repo's own
@@ -2634,7 +2641,9 @@ upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
-names the hash change and says the component diff is unavailable. A
+names the hash change and says the component diff is unavailable. When
+only the previous run failed, the diff is taken against the last run
+that saved an entry instead, and the detail line names that run. A
 task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
@@ -2679,7 +2688,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -2717,7 +2726,16 @@ secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute), so an agent reads why without
 the terminal. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
-failed row reads `output: ''` and `locations: []`. `--list --format json`
+failed row reads `output: ''` and `locations: []`. `--log <task>`
+prints one task's output instead of the summary: in the latest run that
+recorded the task, or in RUNID's. A failed task's is the kept failure
+output; any other task's is its cache entry's log (the one a hit
+replays, masked as it was), so a passing task's log reads too, on a hit
+or in the run that saved it. An uncached task that passed, or a skip,
+kept none: stdout is empty and stderr says so, exit 0. With
+`--format json` it is `{ runId, taskId, status, source, output }`,
+`source` `'failure'`, `'cache'` or `null`. A task no run recorded is
+refused, exit 1; `--log` does not combine with `--list` or `--failed`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`

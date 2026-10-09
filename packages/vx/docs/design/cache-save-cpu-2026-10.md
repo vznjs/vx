@@ -1,6 +1,6 @@
 # Cache save CPU — design
 
-> **Status:** proposal (2026-10-08). Step 1 shipped as X-191 (`docs/history/ws-x.md`).
+> **Status:** proposal (2026-10-08). Step 1 shipped as X-191, step 2 as X-204 (`docs/history/ws-x.md`).
 
 ## What we're solving
 

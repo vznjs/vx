@@ -197,6 +197,61 @@
       "thisRun.status"
     ]
   },
+  "getTaskLog": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "project#task"
+        },
+        "runId": {
+          "type": "string",
+          "description": "A run id, or a unique prefix of one; omitted = the latest run that ran the task"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "answer": [
+      "output",
+      "runId",
+      "source",
+      "status",
+      "taskId"
+    ]
+  },
+  "getConfig": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "a project, project#task, or a task name"
+        }
+      },
+      "required": [
+        "target"
+      ]
+    },
+    "answer": [
+      "config",
+      "config.config",
+      "config.config.cache",
+      "config.config.cache.inputs",
+      "config.config.cache.inputs.files",
+      "config.config.cache.inputs.files[]",
+      "config.config.cache.outputs",
+      "config.config.cache.outputs.files",
+      "config.config.exec",
+      "config.config.exec.command",
+      "config.dir",
+      "config.name",
+      "config.task",
+      "exitCode"
+    ]
+  },
   "getFailures": {
     "inputSchema": {
       "type": "object",

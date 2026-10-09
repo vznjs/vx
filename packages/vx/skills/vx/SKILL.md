@@ -40,6 +40,7 @@ is one of its inputs), `project`, `package`, `named` or `selected`, and
 
 ```sh
 vx last --failed --format json   # the last failed run; a failed row has output and locations
+vx last --log app#build          # one task's output: a failure's, or its cached log
 ```
 
 A failed row's `output` is the task's output as plain text (secrets masked)
@@ -61,8 +62,9 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 ## MCP
 
 When `@vzn/vx-mcp` is a plugin in `vx.workspace.ts`, `vx mcp` serves the
-same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
-`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`,
+same facts and runs tasks. Adoption does not add it: install
+`@vzn/vx-mcp` and put `mcp()` (from `'@vzn/vx-mcp'`) in `plugins`. Its tools: `listTasks`, `getCacheStats`,
+`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`,
 `getWorkspaceInfo`, `runTasks`, `planTasks`. `runTasks` answers what
 `vx run <tasks> --format json` prints, `planTasks` what
 `vx run <tasks> --dry=json` prints; the others only read.
@@ -70,8 +72,14 @@ same facts and runs tasks. Its tools: `listTasks`, `getCacheStats`,
 ## Rules
 
 - Never delete or edit the cache by hand; vx repairs it itself.
+- A sandboxed task that fails on a denied path: grant that one path in
+  `exec.sandbox.allow`. Never remove `sandbox` or widen it further.
 - A cached task declares its inputs (`cache.inputs.files`); if a change
   does not re-run a task, the file is not one of its inputs. Fix the
   config, do not force.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
-- Docs as markdown: https://vznjs.github.io/vx/llms.txt
+- Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
+  When that host is unreachable, the same pages are
+  `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:
+  `quickstart`, `guides/migrate`, `guides/configure`, `guides/agents`,
+  `guides/troubleshooting`, `guides/ci`, `guides/plugins`.

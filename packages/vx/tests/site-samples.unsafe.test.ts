@@ -571,7 +571,7 @@ describe('the agents-and-mcp post tabulates every tool the server offers', () =>
       'utf8',
     )
     const names = [...src.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
-    expect(names.length).toBe(9)
+    expect(names.length).toBe(11)
     const page = readFileSync(path.join(DOCS, 'blog', 'agents-and-mcp.md'), 'utf8')
     const rows = [...page.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...names].sort())

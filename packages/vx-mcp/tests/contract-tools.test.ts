@@ -28,6 +28,8 @@ const ARGS: Record<string, unknown> = {
   getRunHistory: {},
   explainCacheKey: { taskId: 'a#build' },
   whyDidThisRerun: { taskId: 'a#build' },
+  getTaskLog: { taskId: 'a#build' },
+  getConfig: { target: 'a#build' },
   getFailures: {},
   runTasks: { tasks: ['build'], all: true },
   planTasks: { tasks: ['build'], all: true },

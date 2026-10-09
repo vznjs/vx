@@ -22,6 +22,7 @@ import {
   resolveRunId,
   rootCauses,
   runFailures,
+  taskLog,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
@@ -37,6 +38,8 @@ export interface ToolContext {
   readonly workspaceRoot: string
   /** The argv that runs this vx (`CommandContext.vx`); `runTasks` spawns it. */
   readonly vx: readonly string[]
+  /** `mcp({ run })`: false takes `runTasks` away, a list limits it to those task names. */
+  readonly run?: boolean | readonly string[]
 }
 
 const TOOLS: readonly ToolDef[] = [
@@ -121,6 +124,39 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'getTaskLog',
+    description:
+      'One task’s output in a recorded run, as `vx last --log <taskId>` prints it: a failed task’s kept output, ' +
+      'any other task’s cache entry log (masked as a hit replays it), or none for an uncached pass or a skip ' +
+      '(`source` null). `runId` defaults to the latest run that recorded the task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'project#task' },
+        runId: {
+          type: 'string',
+          description:
+            'A run id, or a unique prefix of one; omitted = the latest run that ran the task',
+        },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'getConfig',
+    description:
+      'A resolved config as `vx show <target> --format json` prints it (secrets masked): a project, ' +
+      'one task (`project#task`: its inputs, outputs, env, sandbox, dependsOn), or a task name in every ' +
+      'project declaring it. Read it before changing what a task declares.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'a project, project#task, or a task name' },
+      },
+      required: ['target'],
+    },
+  },
+  {
     name: 'getFailures',
     description:
       'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column). `runId` defaults to the latest failed run.',
@@ -201,8 +237,8 @@ const TOOLS: readonly ToolDef[] = [
   },
 ]
 
-export function listTools(): readonly ToolDef[] {
-  return TOOLS
+export function listTools(ctx?: ToolContext): readonly ToolDef[] {
+  return ctx?.run === false ? TOOLS.filter((t) => t.name !== 'runTasks') : TOOLS
 }
 
 /** Dispatch a tool call by name. Returns a JSON-serializable result. */
@@ -247,6 +283,10 @@ export async function handleToolCall(
       return explainCacheKey(args, ctx)
     case 'whyDidThisRerun':
       return whyDidThisRerun(args, ctx)
+    case 'getTaskLog':
+      return getTaskLog(args, ctx)
+    case 'getConfig':
+      return getConfig(args, ctx)
     case 'getFailures':
       return getFailures(args, ctx)
     case 'runTasks':
@@ -577,6 +617,47 @@ async function whyDidThisRerun(
   }
 }
 
+function getConfig(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const target = args['target']
+  // A leading dash would reach the CLI as a flag.
+  if (typeof target !== 'string' || target === '' || target.startsWith('-')) {
+    throw new UserError('getConfig: target must be a project, project#task, or task name')
+  }
+  return vxJson(['show', target, '--format', 'json'], 'config', ctx)
+}
+
+async function getTaskLog(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const taskId = args['taskId']
+  if (typeof taskId !== 'string' || taskId.length === 0) {
+    throw new UserError('getTaskLog: taskId must be a non-empty string (project#task)')
+  }
+  const given = args['runId']
+  if (given !== undefined && (typeof given !== 'string' || given === '')) {
+    throw new UserError('getTaskLog: runId, when given, must be a non-empty string')
+  }
+  const cache = Cache.inspect(ctx.cacheDir)
+  try {
+    const db = cache.dbHandle()
+    const runId = given === undefined ? undefined : resolveRunId(db, given, 'getTaskLog')
+    if (runId === null) throw new UserError(`getTaskLog: no recorded run ${given}`)
+    const log = taskLog(ctx.cacheDir, db, taskId, runId)
+    if (log === null) {
+      throw new UserError(
+        `getTaskLog: no recorded run of ${taskId}${given === undefined ? '' : ` in run ${given}`}`,
+      )
+    }
+    return { ...log }
+  } finally {
+    cache.close()
+  }
+}
+
 async function getFailures(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -666,7 +747,23 @@ async function runTasks(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
-  return vxJson(runArgv(args, 'runTasks'), 'summary', ctx)
+  const argv = runArgv(args, 'runTasks')
+  if (ctx.run === false)
+    throw new UserError('runTasks: off in this workspace (mcp({ run: false }))')
+  if (Array.isArray(ctx.run)) {
+    // A task's `dependsOn` still runs: the list names what an agent may
+    // ask for, and a task's dependencies are part of that task.
+    const allowed = ctx.run as readonly string[]
+    const denied = (args['tasks'] as string[]).filter(
+      (t) => !allowed.includes(t.slice(t.lastIndexOf('#') + 1)),
+    )
+    if (denied.length > 0) {
+      throw new UserError(
+        `runTasks: ${denied.join(', ')} not allowed here — mcp({ run }) allows ${allowed.join(', ')}`,
+      )
+    }
+  }
+  return vxJson(argv, 'summary', ctx)
 }
 
 async function planTasks(
@@ -679,7 +776,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects',
+  key: 'summary' | 'plan' | 'projects' | 'config',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

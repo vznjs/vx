@@ -30,7 +30,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (52 runtime symbols, a deliberate
+through two seams: the public API (53 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -659,7 +659,7 @@ https://ui.perfetto.dev). See
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`; `@vzn/vx` exports
-`cacheKeyDiff`, `latestRunId`, `resolveRunId`, `rootCauses`, `runFailures` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
+`cacheKeyDiff`, `latestRunId`, `resolveRunId`, `rootCauses`, `runFailures`, `taskLog` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
 file is the API. Anything that wants a dashboard or an HTTP surface
 builds it on the `telemetry` capability, out of process; core never
 grows a server.
