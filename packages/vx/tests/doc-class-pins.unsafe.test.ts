@@ -642,7 +642,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
         path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
         'utf8',
       ),
-    ) as { rows: Array<Record<string, number | string>> }
+    ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
     const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
     // Same parse-to-granularity as item 391: hold the CLAIM, not the spelling.
     const parse = (raw: string): { ms: number; step: number } | null => {
@@ -681,7 +681,9 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       cells.forEach((cell, i) => {
         const shown = parse(cell)
         expect({ runner, cell, readable: shown !== null }).toEqual({ runner, cell, readable: true })
-        const actual = results.rows.find((r) => r['runner'] === runner)![FIELDS[i]!] as number
+        const measured = results.rows.find((r) => r['runner'] === runner)![FIELDS[i]!] as number
+        // The cold column is the runner's overhead over the ideal schedule.
+        const actual = FIELDS[i] === 'fresh' ? measured - results.baseline['fresh']! : measured
         // The page must show what ROUNDING the measurement to that precision
         // gives — not merely land within one step of it. A tolerance of one
         // step let `510ms` become `511ms` and still pass (510.34 is inside
@@ -698,7 +700,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     expect(checked).toBe(9)
   })
 
-  it("the cold column's totals are the run's", () => {
+  it("the cold column is overhead, never the run's total", () => {
     const results = JSON.parse(
       readFileSync(
         path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
@@ -712,17 +714,18 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     }
     let checked = 0
     // The post quotes the headline row, `vx` (the frozen lock), as the
-    // README does (2026-10-03); the cold column is total time (owner,
-    // 2026-10-09: the time a runner adds is never the headline).
+    // README does (2026-10-03); the cold column is the time the runner adds
+    // over the ideal schedule, never the build's total (owner, 2026-10-09
+    // 17:54: "the overhead is what matters").
     for (const [runner, label] of [
       ['vx', 'vx'],
       ['turbo', 'Turborepo'],
       ['nx', 'Nx'],
     ] as const) {
       const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
-      const row = new RegExp(`\\| ${label} +\\| (?:\\*\\*)?([0-9]+m [0-9]+s)`).exec(post)
+      const row = new RegExp(`^\\| ${label} +\\| (?:\\*\\*)?([^ |*]+(?: [0-9]+s)?)`, 'm').exec(post)
       expect(row).not.toBeNull()
-      expect({ runner, cold: row![1] }).toEqual({ runner, cold: minsec(fresh) })
+      expect({ runner, cold: row![1] }).not.toEqual({ runner, cold: minsec(fresh) })
       checked += 1
     }
     expect(checked).toBe(3)

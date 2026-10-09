@@ -573,7 +573,11 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       if (label === undefined) continue
       const field = FIELD[label]!
       rowsChecked += 1
-      const vxMs = by('vx')[field] as number
+      // The cold row is the runner's overhead over the ideal schedule, never
+      // the build's total (owner, 2026-10-09 17:54).
+      const value = (runner: string): number =>
+        (by(runner)[field] as number) - (field === 'fresh' ? results.baseline['fresh']! : 0)
+      const vxMs = value('vx')
       cells.slice(1, 5).forEach((cell, i) => {
         const runner = runners[i]!
         const shown = parse(
@@ -582,7 +586,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
             .replace(/\s*\(.*$/, '')
             .trim(),
         )
-        const actual = by(runner)[field] as number
+        const actual = value(runner)
         if (shown === null) {
           wrong.push(`${field}/${runner}: unreadable ${cell}`)
           return

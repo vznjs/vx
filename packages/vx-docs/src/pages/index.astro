@@ -74,13 +74,13 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: total time', vx: '3 min 40 s', turbo: '4 min 59 s (vx 36% faster)', nx: '3 min 49 s (vx 4% faster)', vt: '4 min 49 s (vx 31% faster)' },
-  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 22% faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 39% slower)' },
-  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 53% faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4.1× faster)' },
-  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 18% faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
-  { label: 'Secondary: time the runner adds to a cold build', vx: '2 s', turbo: '1 min 21 s', nx: '11 s', vt: '1 min 11 s' },
+  { label: 'Cold build: overhead the runner adds', vx: '2.33 s', turbo: '1 min 21 s (vx 35× faster)', nx: '10.98 s (vx 4.7× faster)', vt: '1 min 11 s (vx 31× faster)' },
+  { label: 'Cold build: CPU the runner burns', vx: '17 s', turbo: '21 s (vx 22% faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 39% slower)' },
+  { label: 'Fully cached run, restored: overhead', vx: '650 ms', turbo: '997 ms (vx 53% faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4.1× faster)' },
+  { label: 'Fully cached run, up-to-date: overhead', vx: '393 ms', turbo: '463 ms (vx 18% faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
 ]
-const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+const benchFormula = 'vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.'
+const benchOverhead = "Overhead: the time a runner adds on top of the tasks' own ideal schedule (3 min 38 s cold, 0 for a cached run)."
 const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
 const benchRun = 'Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.'
 
@@ -110,9 +110,9 @@ const benchBars = renderBars(
 const timesOf = (cell: string): string => /^vx ([\d.]+(?:×|%)) faster$/.exec(vsOf(cell)[1])![1]!
 const [coldRow, cpuRow, , cachedRow] = benchTable
 const wins = [
-  { n: timesOf(coldRow!.turbo), line: 'faster cold build than Turborepo' },
-  { n: timesOf(cpuRow!.turbo), line: 'less CPU burned on a cold build than Turborepo' },
-  { n: timesOf(cachedRow!.nx), line: 'faster fully cached run than Nx' },
+  { n: timesOf(coldRow!.turbo), line: 'less overhead on a cold build than Turborepo' },
+  { n: timesOf(cpuRow!.turbo), line: 'less CPU burned by the runner than Turborepo' },
+  { n: timesOf(cachedRow!.nx), line: 'less overhead on a fully cached run than Nx' },
 ]
 
 // Where vx differs from both, each cell as the choosing page's model says it
@@ -294,10 +294,11 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
         <div class="container">
           <div class="section-head">
             <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
-            <h2>Fastest cold build and cached run.</h2>
+            <h2>The least runner overhead, cold and cached.</h2>
           </div>
           <div class="bench-panel">
             <Fragment set:html={benchBars} />
+            <p class="bench-formula bench-overhead">{benchOverhead}</p>
             <p class="bench-formula">{benchFormula}</p>
             <p class="bench-formula bench-workload">{benchWorkload}</p>
             <p class="bench-formula bench-workload">{benchRun}</p>
