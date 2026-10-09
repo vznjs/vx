@@ -82,3 +82,8 @@ and log output reads better. Each must cost the warm path nothing.
   agents guide says how to install it (copy into `.claude/skills/vx/`).
   `agent-skill.unsafe.test.ts` holds its commands to the verbs and
   flags vx accepts and its MCP list to `@vzn/vx-mcp`'s tools.
+- **DX-12.** `vx info` reads the cache against `cacheRetention`:
+  `cache entries: 812 (3.0 GB of 10 GB, 30%)`, a `cache retention` row
+  saying what each run's end evicts, and paths under the home
+  directory as `~/…` (pretty only; the JSON stays absolute and gains
+  `cacheRetention`). Rows: `show-info.test.ts` › the rendered rows.

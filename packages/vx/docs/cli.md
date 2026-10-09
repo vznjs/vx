@@ -2463,6 +2463,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   store every workspace of this user shares (`docs/caching.md`), or
   `none: the cache dir holds the entries` when the workspace names its
   cache dir. Before a first run it is the store a run would open.
+- `cache entries` counts the entries and their size; with a
+  `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
+30%)`), and a `cache retention` row says what each run's end evicts.
+  Paths under the home directory print as `~/…`; the JSON keeps them
+  absolute.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -2483,8 +2488,9 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
   (null when the cache dir holds the entries), `cacheVersion`,
-  `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
-  (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
+  `schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheRetention`
+  (`{ olderThan?, maxSize?, maxBytes? }`, null when none is declared),
+  `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
   outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,

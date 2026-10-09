@@ -8,7 +8,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { Cache, CACHE_VERSION, SCHEMA_VERSION } from '../cache/index.js'
-import { PLUGIN_HOOKS } from '../config.js'
+import { PLUGIN_HOOKS, type WorkspaceConfig } from '../config.js'
 import {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,
@@ -17,6 +17,7 @@ import {
   machineMemoryBytes,
   machineParallelism,
   maskedLine,
+  parseSize,
   relPosix,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
@@ -93,6 +94,8 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
+  /** The workspace's `cacheRetention`, with `maxSize` in bytes; null when none is declared. */
+  cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
@@ -250,6 +253,7 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
+    cacheRetention: retentionFact(workspaceConfig?.cacheRetention),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache prune` reclaims (after an upgrade's
     // schema reset, most often).
@@ -406,4 +410,13 @@ async function countLoadableTasks(
   )
   errors.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   return { tasks, sandboxed, errors }
+}
+
+function retentionFact(r: WorkspaceConfig['cacheRetention']): InfoFacts['cacheRetention'] {
+  if (r === undefined) return null
+  return {
+    ...(r.olderThan !== undefined ? { olderThan: r.olderThan } : {}),
+    // Validated at load, so it parses.
+    ...(r.maxSize !== undefined ? { maxSize: r.maxSize, maxBytes: parseSize(r.maxSize)! } : {}),
+  }
 }

@@ -150,7 +150,7 @@ beforeAll(async () => {
   // A plugin, so \`vx info\` lists one.
   await writeFile(
     path.join(root, 'vx.workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}] }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}], cacheRetention: { olderThan: '3650d', maxSize: '10G' } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   await writeFile(path.join(root, 'packages/lib/src/a.txt'), 'changed')
@@ -368,6 +368,7 @@ describe('each schema object is its source type', () => {
         schemaVersion: true,
         cacheEntries: true,
         cacheBytes: true,
+        cacheRetention: true,
         orphans: true,
         runs24h: true,
         hits24h: true,
