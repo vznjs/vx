@@ -57,7 +57,7 @@ On Actions (`GITHUB_ACTIONS=true`), when `vx.workspace.ts` sets no `cacheScope`,
 the default branch from the `GITHUB_EVENT_PATH` payload): a push to the default branch stays
 trusted (reads and writes the task keys), a pull request becomes
 `pr-<n>` (so is a `pull_request_target`, `issue_comment` or `workflow_run`
-run on a PR's behalf, though its ref is main's) and any other branch or tag `ref-<name>`, which read their
+run on a PR's behalf, by `GITHUB_EVENT_NAME`, though its ref is main's) and any other branch or tag `ref-<name>`, which read their
 own keys, then the trusted ones, and write only their own. A PR never writes what main
 reads. `VX_CACHE_SCOPE` or a `cacheScope` in `vx.workspace.ts` overrides it. This is a client-side convention: the real boundary is a cache
 token the server limits, so give PR jobs one that cannot write the
