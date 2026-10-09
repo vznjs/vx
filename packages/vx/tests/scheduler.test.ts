@@ -1532,6 +1532,29 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     return peak
   }
 
+  it('a full exec lane is not scanned under a policy: each ready task is looked at O(1) times', async () => {
+    // Every pop asks `exclusive.has`, so its call count is the scan's
+    // cost. Scanning past a full lane re-popped the whole frontier per
+    // completion: R²/2 looks, 10 s on the bench's cold run.
+    const ids = Array.from({ length: 200 }, (_, i) => `p${i}#run`)
+    let looks = 0
+    const exclusive = new (class extends Set<string> {
+      override has(id: string): boolean {
+        looks++
+        return super.has(id)
+      }
+    })()
+    const out = await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 2,
+      admit: () => true,
+      exclusive,
+      execute: async (n) => success(n),
+    })
+    expect(out.size).toBe(ids.length)
+    expect(looks).toBeLessThan(ids.length * 3)
+  })
+
   it('two tasks the policy fits together run concurrently', async () => {
     const peak = await peakOf({
       ids: ['a#run', 'b#run'],

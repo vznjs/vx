@@ -804,14 +804,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // tasks are never asked, so they never park.
       const takeFitting = (): string | undefined => {
         if (holding) return undefined
-        // No pools, no policy and a full exec lane: nothing on the
-        // exec queue can be admitted, so it is not scanned — scanning it
+        // No pools and a full exec lane: nothing on the exec queue can be
+        // admitted, so it is not scanned — an admit policy only narrows
+        // the count gate, never widens it (scanning under one cost the
+        // history plugin's cold bench run 10 s, 2026-10-09) — scanning it
         // would pop and re-park every ready exec task on every tick, and
         // with a wide frontier that is O(R) per tick, O(R²) per run (the
         // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
         // first cut let the scan run past a full exec lane, 2026-09-10).
         // This is the legacy O(1) gate, kept per lane.
-        const execAdmissible = poolOf !== undefined || admitActive || execRoom()
+        const execAdmissible = poolOf !== undefined || execRoom()
         if (execAdmissible) {
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
