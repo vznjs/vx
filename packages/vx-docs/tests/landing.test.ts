@@ -312,7 +312,7 @@ describe('the landing page', () => {
       ).toEqual([])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.',
+      'Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.',
     )
     // The workload sits under every bench chart (owner, 2026-10-09).
     expect(

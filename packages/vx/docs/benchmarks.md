@@ -414,7 +414,7 @@ _vx, no lock_ evaluates every config per run. This machine: linux x64, 4 cores.
 | **Cold build**                        | **8.99 s**  | 8.38 s      | 10.06 s (vx 12% faster)    | 1 min 13 s (vx 8.1× faster) | 4.50 s (vx 100% slower)  |
 | **Cold build: CPU the runner burns**  | **46.70 s** | 46.18 s     | 1 min 11 s (vx 51% faster) | 6 min 13 s (vx 8× faster)   | 30.60 s (vx 53% slower)  |
 
-Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.
+Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
 

@@ -21,7 +21,7 @@ are on [vx, Turborepo, Nx, Bazel](../).
 | Cold build                                                 | **8.99 s**  | 10.06 s (vx 12% faster)    |
 | Cold build: CPU the runner burns                           | **46.70 s** | 1 min 11 s (vx 51% faster) |
 
-Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.
+Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores: vx at commit 34f0c35b9, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.

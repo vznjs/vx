@@ -97,7 +97,7 @@ function versus(ours: number, theirs: number): string {
   return `vx ${k}× ${faster ? 'faster' : 'slower'}`
 }
 const FORMULA =
-  'Time each tool adds over the ideal run. vx N% or N× faster: that tool adds N% more or N times as much as vx.'
+  'Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.'
 const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
 const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
 const s = (ms: number): string => `${+(ms / 1000).toFixed(2)} s`
