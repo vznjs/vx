@@ -25,7 +25,7 @@ config key or an environment variable is missing here.
 - **Argument forwarding** (`--`) — args after `--` reach the task's command and fold into its key. no post
 - **Task picker** — `vx run` with no task in a terminal lists tasks to pick. [page](https://vznjs.github.io/vx/features/task-picker/) · no post
 - **Typo hints** — an unknown task, project or filter suggests the nearest name. [page](https://vznjs.github.io/vx/features/filter-hints/) · no post
-- **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · no post
+- **Turbo and Nx spellings** (`-t`, `-p`, `--exclude`, `--parallel`, `--base`, `--dry-run`, `--skip-nx-cache`) — accepted, or refused naming the vx spelling. [page](https://vznjs.github.io/vx/features/turbo-nx-flags/) · post: [Flags you already know](https://vznjs.github.io/vx/blog/flags-you-already-know/)
 - **Ctrl-C leaves nothing running** (`VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`) — the whole process tree stops, then teardown runs. [page](https://vznjs.github.io/vx/features/ctrl-c/) · post: [Ctrl-C leaves nothing running](https://vznjs.github.io/vx/blog/ctrl-c/)
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
 - **No daemon** — every run starts cold and still answers in milliseconds. [page](https://vznjs.github.io/vx/features/no-daemon/) · post: [No daemon, on purpose](https://vznjs.github.io/vx/blog/no-daemon/)
@@ -46,7 +46,7 @@ config key or an environment variable is missing here.
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. no post
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. no post
 - **Markdown report** (`--report`, `--report-file`) — a run report for a PR or `$GITHUB_STEP_SUMMARY`. no post
-- **Run JSON** (`--summarize`) — per-run JSON for scripts. no post
+- **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). no post
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · no post
 - **Run tags** (`--tag`) — label a run; recorded in history. no post
 - **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. no post
@@ -59,12 +59,12 @@ config key or an environment variable is missing here.
 
 ## Plan and explain
 
-- **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON, nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
+- **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
 - **Graph** (`--graph`) — the task graph as Graphviz DOT. no post
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's live resolved config. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`) — replay a recorded run's summary, or list recent runs. [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
-- **vx info** (`vx info`) — workspace doctor: versions, projects, cache stats. no post
+- **vx info** (`vx info`) — workspace doctor: versions, projects, cache size against `cacheRetention.maxSize`. no post
 - **JSON everywhere** (`--format`) — `show`, `info`, `why`, `last` and `cache` print JSON for agents. no post
 - **Run analytics in SQLite** — every task's time, CPU, peak memory and cache result, queryable with `sqlite3`. no post
 - **Shipped JSON Schemas** (`@vzn/vx/schemas/`) — every `--format json` shape has a schema, and stdout always parses. no post
@@ -133,7 +133,7 @@ config key or an environment variable is missing here.
 
 ## CI
 
-- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · no post
+- **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. no post
 - **Cache scope from the ref** (`github({ cacheScope })`) — main writes trusted keys; a PR writes only its own scope. no post
 
@@ -143,7 +143,7 @@ config key or an environment variable is missing here.
 - **Migrate from Turborepo or Nx** (`vx init`, `--native`, `--keep`, `@vzn/vx-migrate`) — native config, or keep `turbo()` / `nx()` as a start. [page](https://vznjs.github.io/vx/features/migrate/) · posts: [From Turborepo](https://vznjs.github.io/vx/blog/from-turborepo/), [From Nx](https://vznjs.github.io/vx/blog/from-nx/)
 - **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. no post
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)
-- **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · no post
+- **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · post: [Try the planner in your browser](https://vznjs.github.io/vx/blog/the-playground/)
 - **Benchmarks you can re-run** (`@vzn/vx-bench`) — vx against Turborepo and Nx. [page](https://vznjs.github.io/vx/features/fastest/) · posts: [Benchmarks you can re-run](https://vznjs.github.io/vx/blog/honest-benchmarks/), [Why vx is fast](https://vznjs.github.io/vx/blog/why-vx-is-fast/)
 - **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. no post
 - **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. no post

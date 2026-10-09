@@ -4,6 +4,7 @@
 // from the orchestrator's `collectInfo` (doctor.ts), which `vx mcp` reads
 // too; this file parses the flags and renders the rows.
 
+import os from 'node:os'
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
 import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
@@ -75,7 +76,7 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['git', f.git ?? '(not found)'],
     ['git status cache', renderGitStatusCache(f.gitStatusCache)],
-    ['workspace root', f.workspaceRoot],
+    ['workspace root', tildePath(f.workspaceRoot)],
     ['projects', describeProjects(f)],
     // Only when a config did not load: the count above says "zero" for
     // it, and this row says which and why.
@@ -88,10 +89,16 @@ export function renderInfo(f: InfoFacts): string {
     ['plugins', describePlugins(f.plugins)],
     ['workers', describeWorkers(f.workers)],
     ['memory', describeMemory(f.memory)],
-    ['cache dir', f.cacheDir],
-    ['cache store', f.cacheStore ?? 'none: the cache dir holds the entries'],
+    ['cache dir', tildePath(f.cacheDir)],
+    [
+      'cache store',
+      f.cacheStore === null ? 'none: the cache dir holds the entries' : tildePath(f.cacheStore),
+    ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
-    ['cache entries', `${f.cacheEntries} (${formatBytes(f.cacheBytes)})`],
+    ['cache entries', describeEntries(f)],
+    ...(f.cacheRetention !== null
+      ? ([['cache retention', describeRetention(f.cacheRetention)]] as [string, string][])
+      : []),
     // Only when there is something to say.
     ...(f.orphans.artifacts > 0
       ? ([
@@ -116,6 +123,31 @@ export function renderInfo(f: InfoFacts): string {
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
+}
+
+/** `812 (1.2 GB)`, or against `cacheRetention.maxSize`: `812 (1.2 GB of 10 GB, 12%)`. */
+function describeEntries(f: InfoFacts): string {
+  const max = f.cacheRetention?.maxBytes
+  const size =
+    max === undefined
+      ? formatBytes(f.cacheBytes)
+      : `${formatBytes(f.cacheBytes)} of ${formatBytes(max)}, ${Math.round((f.cacheBytes / max) * 100)}%`
+  return `${f.cacheEntries} (${size})`
+}
+
+/** What a run's end evicts: `entries unused for 30d, and the oldest entries past 10G`. */
+function describeRetention(r: NonNullable<InfoFacts['cacheRetention']>): string {
+  const parts = [
+    ...(r.olderThan !== undefined ? [`entries unused for ${r.olderThan}`] : []),
+    ...(r.maxSize !== undefined ? [`the oldest entries past ${r.maxSize}`] : []),
+  ]
+  return `each run evicts ${parts.join(', and ')}`
+}
+
+/** A path under the home directory as `~/…`: shorter, and no user name in a pasted report. */
+function tildePath(p: string): string {
+  const home = os.homedir()
+  return p === home ? '~' : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p
 }
 
 /**

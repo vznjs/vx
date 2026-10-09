@@ -283,6 +283,7 @@
       "cacheBytes",
       "cacheDir",
       "cacheEntries",
+      "cacheRetention",
       "cacheStore",
       "cacheVersion",
       "configErrors",

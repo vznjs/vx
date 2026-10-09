@@ -1,6 +1,7 @@
 import {
   DependencySpecError,
   compileTaskPattern,
+  isGroupTask,
   isTaskPattern,
   parseDependencySpec,
   type DependencySpec,
@@ -77,6 +78,69 @@ export function filterUpstreamHashes(
 }
 
 /**
+ * A filter selects among the task's own dependencies, never through a
+ * group: `dependsOn: ['build']` over a group `build` of `build.a` and
+ * `build.b` offers the filter `build`, not its members. A pattern that
+ * matches only a member (`build.*`) therefore selected nothing, and the key stopped moving
+ * with that member's inputs: a stale hit under a green run. Such a spec
+ * is refused, once, over the graph every key site reads. One that matches
+ * nothing anywhere stays legal (a preset's pattern needn't match in every
+ * project). An exact name is refused earlier, at load, unless `dependsOn`
+ * names it (`assertFilterNamesDeclaredDeps`).
+ */
+export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void {
+  for (const node of nodes.values()) {
+    const filter = node.config.cache?.inputs?.tasks
+    if (filter === undefined || filter.length === 0) continue
+    const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
+    const groups = deps.filter(isGroupTask)
+    if (groups.length === 0) continue
+    for (const raw of filter) {
+      const spec = parseSpec(raw, node.id)
+      if (spec.negated) continue
+      const matches = specMatcher(spec)
+      const hit = (n: TaskNode): boolean => matches(n, n.projectName === node.projectName)
+      if (deps.some(hit)) continue
+      for (const group of groups) {
+        const member = groupMembers(group, nodes).find(hit)
+        if (member === undefined) continue
+        throw new UserError(
+          `${node.id}: cache.inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
+        )
+      }
+    }
+  }
+}
+
+function parseSpec(raw: string, selfTaskId: string): DependencySpec {
+  try {
+    return parseDependencySpec(raw)
+  } catch (err) {
+    if (err instanceof DependencySpecError) {
+      throw new UserError(`${selfTaskId}: cache.inputs.tasks: ${err.message}`)
+    }
+    throw err
+  }
+}
+
+/** Every task a group stands for, through nested groups, each once. */
+function groupMembers(group: TaskNode, nodes: ReadonlyMap<string, TaskNode>): TaskNode[] {
+  const out: TaskNode[] = []
+  const seen = new Set<string>([group.id])
+  const stack = group.deps.toReversed()
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const n = nodes.get(id)
+    if (n === undefined) continue
+    out.push(n)
+    if (isGroupTask(n)) stack.push(...n.deps.toReversed())
+  }
+  return out
+}
+
+/**
  * One dependency as the key fold sees it: the task, and the value the
  * fold dedups by — its hash on the hash path, a structural stand-in for
  * the hash on the graph (`foldUnit` in keyed-projects.ts).
@@ -123,16 +187,7 @@ export function selectFoldedDeps(
 ): FoldCandidate[] {
   if (filter === undefined) return [...deps]
 
-  const specs: DependencySpec[] = filter.map((raw) => {
-    try {
-      return parseDependencySpec(raw)
-    } catch (err) {
-      if (err instanceof DependencySpecError) {
-        throw new UserError(`${selfTaskId}: cache.inputs.tasks: ${err.message}`)
-      }
-      throw err
-    }
-  })
+  const specs: DependencySpec[] = filter.map((raw) => parseSpec(raw, selfTaskId))
 
   // Per-spec predicate, compiled once (exact compares + patterns).
   const matchers = specs.map((spec) => specMatcher(spec))

@@ -82,7 +82,12 @@ function fixturePlan(): Required<RunPlan> {
     affected: { kind: 'input', file: 'a/src/x.ts', project: 'a', via: ['a#gen'] },
   }
   const bare: PlannedTask = { node: node('a#gen'), hash: 'h0', cacheStatus: 'hit-local', deps: [] }
-  const predicted: Required<PlanPrediction> = { wallMs: 1, workMs: 2, unknownCount: 0 }
+  const predicted: Required<PlanPrediction> = {
+    wallMs: 1,
+    workMs: 2,
+    unknownCount: 0,
+    criticalPath: ['a#build'],
+  }
   const plan: Required<RunPlan> = {
     tasks: [bare, full],
     predicted,

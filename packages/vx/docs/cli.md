@@ -942,14 +942,16 @@ Schema, held like the read verbs' (see Machine-readable output):
       "p50Ms": 72640
     }
   ],
-  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0 }
+  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0, "criticalPath": [] }
 }
 ```
 
 Every task with history carries `p50Ms`, hits included (only the text
 view's `~p50` is limited to tasks that would run); `predicted` counts
 would-run tasks only and is present whenever local history was
-readable.
+readable. Its `criticalPath` names the would-run tasks with history on
+the chain `wallMs` measures, dependencies first: the tasks to speed up
+to shorten the run.
 
 **Why a task is affected.** Under `--affected`, each requested task the
 diff kept gets a line, and its JSON object an `affected` reason:
@@ -1001,6 +1003,7 @@ Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
   "startedAt": "2026-09-27T17:34:54.572Z",
   "endedAt": "2026-09-27T17:34:54.586Z",
   "totalMs": 14.123643,
+  "savedMs": 9,
   "tasks": [
     {
       "id": "a#build",
@@ -1010,6 +1013,7 @@ Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
       "exitCode": 0,
       "durationMs": 3,
       "hash": "48007ccadd42ed7d",
+      "storedDurationMs": 9,
       "storedCpuMs": 2.059,
       "wallclockStartNs": "9456491",
       "wallclockEndNs": "12902888"
@@ -1041,10 +1045,10 @@ reports neither, since what bwrap's pid namespace used never reaches vx);
 `restored` appears on a hit only: `true` when its outputs were restored,
 `false` when they were already up to date. A hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
-artifact and appears under its own keys, `storedCpuMs` /
-`storedPeakRssBytes` (the work the hit skipped, the split
-`storedDurationMs` draws in the event stream) — a remote worker's peak
-is never presented as this run's. `admissionHeldMs` appears on a row
+artifact and appears under its own keys, `storedDurationMs` /
+`storedCpuMs` / `storedPeakRssBytes` (the work the hit skipped) — a
+remote worker's peak is never presented as this run's. `savedMs` is
+their sum over the hits, the footer's `saved` as a number. `admissionHeldMs` appears on a row
 only when an `admit` policy (a plugin's — `@vzn/vx-schedule-history`
 packs learned reservations) refused the task while a worker was free:
 the wait from that first refusal to its dispatch, the plugin's hand on
@@ -2463,6 +2467,11 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   store every workspace of this user shares (`docs/caching.md`), or
   `none: the cache dir holds the entries` when the workspace names its
   cache dir. Before a first run it is the store a run would open.
+- `cache entries` counts the entries and their size; with a
+  `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
+30%)`), and a `cache retention` row says what each run's end evicts.
+  Paths under the home directory print as `~/…`; the JSON keeps them
+  absolute.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -2483,8 +2492,9 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
   (null when the cache dir holds the entries), `cacheVersion`,
-  `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
-  (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
+  `schemaVersion`, `cacheEntries`, `cacheBytes`, `cacheRetention`
+  (`{ olderThan, maxSize, maxBytes }`, each only when set, null when none is declared),
+  `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
   outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`, `sandbox` (`{ available, reason,

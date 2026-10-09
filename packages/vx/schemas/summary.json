@@ -11,6 +11,7 @@
     "startedAt",
     "endedAt",
     "totalMs",
+    "savedMs",
     "tasks",
     "aborted",
     "summary"
@@ -22,6 +23,10 @@
     "startedAt": { "type": "string", "description": "ISO 8601" },
     "endedAt": { "type": "string", "description": "ISO 8601" },
     "totalMs": { "type": "number" },
+    "savedMs": {
+      "type": "number",
+      "description": "what the cache hits skipped: the sum of their storedDurationMs"
+    },
     "tasks": {
       "type": "array",
       "description": "every counted task: not a group, not aborted",
@@ -97,6 +102,10 @@
         },
         "cpuMs": { "type": "number" },
         "peakRssBytes": { "type": "integer" },
+        "storedDurationMs": {
+          "type": "number",
+          "description": "a hit: how long the producing execution ran, what the hit skipped"
+        },
         "storedCpuMs": {
           "type": "number",
           "description": "a hit: what the producing execution used"

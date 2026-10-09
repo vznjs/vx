@@ -1315,3 +1315,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   code and the run summary, or the CLI's masked refusal as `error`. The
   argv comes from the new `CommandContext.vx` (the binary, or the runtime
   and entry from source). The other seven tools still only read.
+
+- **X-200.** A `cache.inputs.tasks` pattern that matches no dependency
+  but does match a group's member (`'build.*'` over `dependsOn: ['build']`,
+  a group of `build.a` and `build.b`) selected nothing and served stale
+  hits. The run now refuses it at plan, naming the member and the group
+  (`refuseFiltersThroughGroups`). Exact names were already refused at load.

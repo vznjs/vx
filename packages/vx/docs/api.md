@@ -804,6 +804,7 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
+  cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
