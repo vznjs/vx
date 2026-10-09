@@ -226,3 +226,7 @@ json` replayed a failure already fixed with no word of it. A failed
   `app.test.js:` and gives the line only in the stack, so `locations`
   led with a lineless entry. A file also named with a line now drops
   its bare mention. Row: `run-output.test.ts` (with a bare-only control).
+- **DX-39** Trial-2 row 8: the agents guide and vx-mcp README showed
+  `defineWorkspace({...})` while `vx init` and vx-migrate write
+  `{...} satisfies WorkspaceConfig`; both snippets now match the
+  generated file, and the guide says to add `mcp()` to an existing one.
