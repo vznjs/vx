@@ -66,6 +66,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--run': ['id'],
   '--list': [],
   '--failed': [],
+  '--log': ['a#build'],
 }
 
 describe('verbFlags is what each verb accepts', () => {
