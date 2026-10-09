@@ -120,6 +120,7 @@ const outputs: Record<string, unknown[]> = {
   cache: [],
   plan: [],
   summary: [],
+  error: [],
 }
 
 function vx(args: string[]): { code: number; out: string; err: string } {
@@ -294,13 +295,17 @@ beforeAll(async () => {
   json('info', [])
   json('cache', ['prune', '--max-size', '1K', '--dry-run'])
   json('cache', ['prune', '--max-size', '1K'])
+  // A refusal: exit 1, and the error document on stdout.
+  const refused = vx(['run', 'nope', '--all', '--format', 'json'])
+  if (refused.code !== 1) throw new Error(`vx run nope: ${refused.code}\n${refused.err}`)
+  outputs['error']!.push(JSON.parse(refused.out))
 }, TIMEOUT)
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan', 'summary']
+const VERBS = ['show', 'info', 'why', 'last', 'cache', 'plan', 'summary', 'error']
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {

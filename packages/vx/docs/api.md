@@ -2541,7 +2541,8 @@ class · `src/util/errors.ts`
 
 ```ts
 export class UserError extends Error {
-  constructor(message: string)
+  readonly code: string
+  constructor(message: string, code = 'VX_E_REFUSED')
 }
 ```
 

@@ -32,12 +32,15 @@ async function main(): Promise<void> {
   } catch (err) {
     const {
       configErrorFrame,
+      errorCode,
+      errorDocument,
       fsRefusalHint,
       isFsRefusal,
       isOutOfFds,
       isUserError,
       maskedLine,
       OUT_OF_FDS_HINT,
+      wantsJson,
     } = await import('./util/index.js')
     // A plugin's failure quotes what it was told (a remote's reply, a
     // header), and a config's own throw is its author's text: a secret in
@@ -63,6 +66,12 @@ async function main(): Promise<void> {
     } else {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
       say(`vx: ${message}\n`)
+    }
+    // A verb asked for JSON answers JSON on a refusal too: an agent reading
+    // stdout got nothing to parse, and only prose on stderr to branch on.
+    if (wantsJson(argv)) {
+      const message = err instanceof Error ? err.message : String(err)
+      process.stdout.write(errorDocument(errorCode(err), maskedLine(message)))
     }
     // Same reason as the success path above: a large stderr is truncated by
     // `process.exit` too, and an error message cut in half is the one a

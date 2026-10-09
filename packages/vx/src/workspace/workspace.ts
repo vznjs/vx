@@ -165,6 +165,7 @@ export async function findWorkspaceRoot(
     `Could not find a workspace root in any parent of ${start} ` +
       `(looked for pnpm-workspace.yaml or package.json): run vx inside a project, ` +
       `or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
+    'VX_E_NO_WORKSPACE',
   )
 }
 

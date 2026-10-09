@@ -168,7 +168,8 @@ export class TaskLogBuffer {
 }
 == class UserError (src/util/errors.ts)
 export class UserError extends Error {
-  constructor(message: string)
+  readonly code: string
+  constructor(message: string, code = 'VX_E_REFUSED')
 }
 == const LOG_WIRE_VERSION (src/orchestrator/task-log-buffer.ts)
 export const LOG_WIRE_VERSION = 1

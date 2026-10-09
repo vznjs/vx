@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "a refusal under --format json",
+  "description": "What a verb asked for JSON prints on stdout when it refuses (exit 1). stderr carries the same refusal in prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ok", "error"],
+  "properties": {
+    "ok": { "const": false },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable; branch on it. VX_E_USAGE, VX_E_UNKNOWN_TASK, VX_E_CONFIG, VX_E_CYCLE, VX_E_NO_WORKSPACE, VX_E_REFUSED, VX_E_FS, VX_E_FDS, VX_E_INTERNAL."
+        },
+        "message": { "type": "string", "description": "The refusal in prose; may change." }
+      }
+    }
+  }
+}

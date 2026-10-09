@@ -7,10 +7,60 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 
 export class UserError extends Error {
-  constructor(message: string) {
+  /**
+   * What an agent branches on: `VX_E_…`, printed by a verb that answers
+   * JSON (`errorDocument`). The message is prose and may change; a code
+   * does not. `VX_E_REFUSED` is any refusal without a code of its own.
+   */
+  readonly code: string
+  constructor(message: string, code = 'VX_E_REFUSED') {
     super(message)
     this.name = 'UserError'
+    this.code = code
   }
+}
+
+// A refusal that opens with the config that caused it: the schema's
+// `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
+const CONFIG_REFUSAL = /^\/\S*\/vx\.(?:config|workspace)\.[cm]?[jt]s\b/
+
+/**
+ * The stable code of anything `bin.ts` catches. A UserError's own, but
+ * `VX_E_CONFIG` for a codeless one that names its config file; then the
+ * environment's refusals; anything else is a defect, `VX_E_INTERNAL`. A
+ * UserError from another copy of core has no `code` when that copy
+ * predates it.
+ */
+export function errorCode(err: unknown): string {
+  if (isUserError(err)) {
+    const code = (err as { code?: unknown }).code
+    if (typeof code === 'string' && code !== 'VX_E_REFUSED') return code
+    return CONFIG_REFUSAL.test(err.message) ? 'VX_E_CONFIG' : 'VX_E_REFUSED'
+  }
+  if (isOutOfFds(err)) return 'VX_E_FDS'
+  if (isFsRefusal(err)) return 'VX_E_FS'
+  return 'VX_E_INTERNAL'
+}
+
+/**
+ * Does this argv ask for JSON (`--format json`, `--format=json`,
+ * `--dry=json`)? Then a refusal is a JSON document on stdout too, so a
+ * reader of stdout gets an answer, not nothing. Args after `--` are the
+ * task's, not vx's.
+ */
+export function wantsJson(argv: readonly string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a === '--') return false
+    if (a === '--format=json' || a === '--dry=json') return true
+    if (a === '--format' && argv[i + 1] === 'json') return true
+  }
+  return false
+}
+
+/** The JSON a verb that answers JSON prints for a refusal: one line. */
+export function errorDocument(code: string, message: string): string {
+  return `${JSON.stringify({ ok: false, error: { code, message } })}\n`
 }
 
 /**
