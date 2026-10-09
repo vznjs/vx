@@ -21,6 +21,8 @@ in vx, 21 s in Turborepo (vx 22% faster), 52 s in Nx (vx 3× faster)
 and 12 s in Vite Task (vx 39% slower), each runner in its own native
 config.
 
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache
 more, not less.

@@ -125,6 +125,8 @@ Nx 6.45s (vx 16× faster)
 ([benchmarks](../../benchmarks/); the key, part by part:
 [Caching in depth](../../caching/)).
 
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+
 ### Why did it re-run?
 
 ```bash

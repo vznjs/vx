@@ -19,6 +19,7 @@ These are reproducible on your own machine, not marketing figures:
   4m 59s (vx 36% faster). Secondary: the time each runner adds over
   the tasks' ideal schedule of 3m 38s, per package (2 ms for vx, 10 ms per
   package for Nx and 74 ms for Turborepo), is how each grows with the codebase.
+  Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot

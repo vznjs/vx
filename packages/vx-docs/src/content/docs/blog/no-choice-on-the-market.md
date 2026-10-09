@@ -61,6 +61,8 @@ vx's 393ms (vx 16× and 18% faster), Nx's daemon off as in CI. Its cold
 build burns 52 seconds of CPU where Turborepo burns 21 and vx 17 (vx
 3× and 22% faster).
 
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
+
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.
 

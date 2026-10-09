@@ -26,7 +26,9 @@
 | Fully cached run (up-to-date)                   | **393 ms**     | 463 ms (vx 18% faster)     | 6.45 s (vx 16× faster)    | 2.49 s (vx 6.3× faster)    |
 | Secondary: time the runner adds to a cold build | **2 s**        | 1 min 21 s                 | 11 s                      | 1 min 11 s                 |
 
-vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.
+vx N% or N× faster: that tool takes N% longer or N times as long as vx.
+
+Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 
 The secondary row is the wall time over the tasks' own ideal schedule (3 min 38 s).
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).

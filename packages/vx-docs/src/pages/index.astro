@@ -80,7 +80,8 @@ const benchTable = [
   { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 18% faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
   { label: 'Secondary: time the runner adds to a cold build', vx: '2 s', turbo: '1 min 21 s', nx: '11 s', vt: '1 min 11 s' },
 ]
-const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.'
+const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
 
 /** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {
@@ -295,6 +296,7 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
           <div class="bench-panel">
             <Fragment set:html={benchBars} />
             <p class="bench-formula">{benchFormula}</p>
+            <p class="bench-formula bench-workload">{benchWorkload}</p>
           </div>
           <ul class="reasons">
             {

@@ -315,7 +315,13 @@ describe('the landing page', () => {
       ).toEqual([])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.',
+      'vx N% or N× faster: that tool takes N% longer or N times as long as vx.',
+    )
+    // The workload sits under every bench chart (owner, 2026-10-09).
+    expect(
+      text(/<p class="bench-formula bench-workload">([\s\S]*?)<\/p>/.exec(bench)![1]!),
+    ).toMatch(
+      /^Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks .* real repos with uneven task times will differ\.$/,
     )
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
