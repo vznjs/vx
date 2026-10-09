@@ -1,5 +1,5 @@
 import type { ColorSupport, paint as Paint } from '../orchestrator/index.js'
-import { CORE_VERBS, nearest } from '../util/index.js'
+import { CORE_VERBS, errorDocument, maskedLine, nearest, wantsJson } from '../util/index.js'
 
 export async function printHelp(
   pluginCommands: readonly string[] = [],
@@ -387,3 +387,21 @@ export function acceptedFlags(verb: string): string[] {
 }
 
 export { CORE_VERBS } from '../util/index.js'
+
+/**
+ * A refusal a verb prints itself rather than throws: one line on stderr,
+ * exit 1, and under `--format json` / `--dry=json` the same as the error
+ * document on stdout that `bin.ts` prints for a thrown one (cli.md § Error
+ * codes), so an agent reads a code.
+ */
+export function refuse(
+  verb: string,
+  args: readonly string[],
+  message: string,
+  code: string,
+): number {
+  const line = `vx ${verb}: ${message}`
+  process.stderr.write(`${line}\n`)
+  if (wantsJson(args)) process.stdout.write(errorDocument(code, maskedLine(line)))
+  return 1
+}

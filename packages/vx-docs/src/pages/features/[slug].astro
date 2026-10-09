@@ -41,9 +41,8 @@ const og = await getImage({
 ---
 
 <FeaturesPage
-  title={`${f.title} — vx features`}
+  title={f.title}
   description={plain}
-  path={`features/${f.slug}/`}
   ogImage={new URL(og.src, Astro.site).href}
 >
   <section class="fhero">

@@ -300,7 +300,7 @@ export function formatRunList(
 
 export async function lastCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLastArgs(args)
-  if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
+  if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`, 'VX_E_USAGE')
 
   const root = await findWorkspaceRoot(process.cwd())
   const cacheDir = await cliCacheDir(root, parsed.cacheDir)
@@ -373,6 +373,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
             : parsed.failed === true
               ? 'vx last: no recorded run failed'
               : 'vx last: no recorded runs yet — run something first',
+        'VX_E_NO_HISTORY',
       )
     }
     const detail = getRun(db, inv.runId)

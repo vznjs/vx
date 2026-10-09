@@ -59,9 +59,9 @@ the local store:
   refused under another (a local read-back is not re-checked);
 - on arrival, carries only the files the task declares as outputs;
 - lands each file under the task's project or declared workspace path:
-  traversal and names that escape are refused before anything lands, a
-  refused archive leaves nothing behind, and links and devices are
-  never written;
+  traversal (`..`, `.`, absolute names) is refused before anything
+  lands, a refused archive leaves nothing behind, and links and devices
+  are never written; a seeded fuzz of hostile archives holds this;
 - is bounded: a decompression bomb, an oversized header or body, and a
   remote answer larger than asked for are refused as they are read.
 
@@ -108,6 +108,22 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 - **A weaker sandbox where the host cannot nest one**:
   `weakerWhenNested` in a container, a task that itself sandboxes on
   macOS. `vx info` says what the host supports.
+
+## Agents (`vx mcp`)
+
+An agent connected to `vx mcp` can do what `vx run` can do, nothing more.
+Every tool but `runTasks` only reads. `runTasks` runs `vx run --format json`
+as a child process: the agent names tasks and sets `all`, `force`,
+`filter` and `affected`, and nothing else. A task name that starts with
+`-` is refused, a filter goes as one `--filter=` value, and a ref reaches
+git after `--end-of-options`, so no argument becomes a flag. The commands
+that run are the ones your configs declare, from the workspace root, with
+the environment `vx mcp` started with, filtered by each task's `exec.env`
+and held by its `exec.sandbox`. `force` costs a rerun, not a wrong entry:
+the key stays the same. What reaches the agent (summaries, refusals,
+`getFailures` output) is masked as described under Secrets. An agent that
+can edit `vx.config.ts` can run anything, as you can, because configs are
+code vx trusts.
 
 ## Secrets
 

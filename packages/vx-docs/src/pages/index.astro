@@ -4,14 +4,14 @@
 // get, the benchmark chart and why it is faster, what shipped lately
 // (owner, 2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
 // and a strip of the feature pages.
-// Standalone (its own nav, footer and theme), static, one script for the
-// copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
+// In the site's one Starlight shell (header, search, theme, phone menu),
+// with its own footer; static, one script for the copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
 // kicker are written by packages/vx-bench/update-site.ts from results.json
 // (check.site guards them). tests/landing.test.ts holds the rest.
 import Diagram from '../components/guide/diagram/Diagram.astro'
 import FeatureCard from '../components/features/FeatureCard.astro'
 import Footer from '../components/landing/Footer.astro'
-import Nav from '../components/landing/Nav.astro'
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import { FEATURES } from '../features/features.js'
 import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
 import '../styles/landing.css'
@@ -28,8 +28,6 @@ const GH = 'https://github.com/vznjs/vx'
 const TITLE = 'vx — the fastest task runner for JS monorepos'
 const DESCRIPTION =
   'Less time added than Turborepo, Nx and Vite Task, cold and cached, each measured in its own native config. MIT, no account.'
-// Absolute, as a link preview fetches it from wherever the link was pasted.
-const siteUrl = new URL(base, Astro.site).href
 
 /** A callout's line, each backticked span as code. */
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -190,40 +188,20 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
 ---
 
 <!doctype html>
-<html lang="en" data-theme="dark">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{TITLE}</title>
-    <meta name="description" content={DESCRIPTION} />
-    <link rel="canonical" href={siteUrl} />
-    <link rel="sitemap" href={href('sitemap-index.xml')} />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content={siteUrl} />
-    <meta property="og:title" content={TITLE} />
-    <meta property="og:description" content={DESCRIPTION} />
-    <meta property="og:image" content={`${siteUrl}og.png`} />
-    <meta property="og:image:alt" content="vx: the fastest task runner for JS monorepos" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" href={href('logo-mark.svg')} />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap"
-    />
-    <style is:global>
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        margin: 0;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="vx-landing">
-      <Nav />
+<StarlightPage
+  frontmatter={{
+    title: TITLE,
+    description: DESCRIPTION,
+    template: 'splash',
+    // The whole title, not Starlight's `<title> | vx`.
+    head: [
+      { tag: 'title', content: TITLE },
+      { tag: 'meta', attrs: { property: 'og:title', content: TITLE } },
+    ],
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content vx-landing">
 
       <section class="hero">
         <div class="container">
@@ -496,7 +474,7 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
       </section>
 
       <Footer />
-    </div>
+  </div>
 
     <script>
       // The one interaction on the page: the install command copies itself.
@@ -512,5 +490,4 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
         }
       })
     </script>
-  </body>
-</html>
+</StarlightPage>

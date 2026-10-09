@@ -100,6 +100,9 @@ describe('the feature data', () => {
           .replace(/\s+#.*$/, '')
           .replace(/\)"$/, '')
           .replace(/\s>\s.*$/, '')
+          .replace(/\s\|\s.*$/, '')
+          // Past `--` the words are the task's own.
+          .replace(/\s--(?:\s.*)?$/, '')
         const m = /(?:^|\s|\$\()(?:npx )?vx ([a-z]+)(.*)$/.exec(line)
         if (m === null) continue
         seen++
@@ -136,9 +139,10 @@ describe('the feature data', () => {
       .join('\n')
     const names = new Set(
       FEATURES.flatMap((f) => [
-        ...`${f.example.code} ${f.body.join(' ')}`.matchAll(/\bVX_[A-Z_]+/g),
+        ...`${f.example.code} ${f.body.join(' ')}`.matchAll(/\bVX_(?!E_)[A-Z_]+/g),
       ]).map((m) => m[0]),
     )
+    // `VX_E_…` is an error code (cli.md), not a variable.
     expect(names.size).toBeGreaterThan(0)
     // `process.env['VX_X']` or `process.env.VX_X`: a read, not a mention.
     expect(
@@ -268,7 +272,8 @@ describe('the built feature pages', () => {
       for (const m of page(rel).matchAll(/<img\b[^>]*>/g)) {
         const tag = m[0]
         const src = /\ssrc="([^"]+)"/.exec(tag)?.[1] ?? ''
-        if (!src.includes('/_astro/')) continue
+        // The header's logo is an SVG, not a feature image.
+        if (!src.includes('/_astro/') || src.endsWith('.svg')) continue
         imgs++
         const srcset = /\ssrcset="([^"]+)"/.exec(tag)?.[1] ?? ''
         const urls = [src, ...srcset.split(',').map((s) => s.trim().split(' ')[0]!)]

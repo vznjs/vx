@@ -56,6 +56,7 @@ import {
   tarEntries,
   tarEntriesSync,
   tarPack,
+  tarPackInto,
   tarSize,
 } from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
@@ -395,16 +396,12 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
  * otherwise (measured 2026-09-03: 238 → 293 ms per 1 000 saves).
  */
 export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array> {
-  // A small artifact's files are read on this thread (`ON_THREAD_MAX`).
-  const onThread = plan.size <= ON_THREAD_MAX
+  // A small artifact is read and packed on this thread (`ON_THREAD_MAX`):
+  // no promise or generator hop per file or block.
+  if (plan.size <= ON_THREAD_MAX) return packSmall(plan)
   const inputs = await Promise.all(
     plan.inputs.map(async (i) =>
-      i.body instanceof Blob
-        ? {
-            ...i,
-            body: onThread ? readFileSync((i.body as Bun.BunFile).name!) : await i.body.bytes(),
-          }
-        : i,
+      i.body instanceof Blob ? { ...i, body: await i.body.bytes() } : i,
     ),
   )
   const out = new Uint8Array(plan.size)
@@ -414,6 +411,28 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
     off += chunk.byteLength
   }
   if (off !== plan.size) throw new TarFormatError(`packed ${off} bytes, planned ${plan.size}`)
+  return out
+}
+
+/** `summed` + `tarPack` for a plan whose bodies fit in memory, synchronously. */
+function packSmall(plan: ArtifactPlan): Uint8Array {
+  const sum = new EntrySum()
+  const inputs: (TarInput & { body: Uint8Array | string })[] = []
+  for (const i of plan.inputs) {
+    const body =
+      i.body instanceof Blob
+        ? readFileSync((i.body as Bun.BunFile).name!)
+        : typeof i.body === 'string'
+          ? new TextEncoder().encode(i.body)
+          : (i.body as Uint8Array)
+    sum.entry(i.name)
+    sum.add(body)
+    inputs.push({ ...i, body })
+  }
+  inputs.push({ name: SUM_ENTRY, size: SUM_SIZE, body: sum.hex() })
+  const out = new Uint8Array(plan.size)
+  const n = tarPackInto(inputs, out)
+  if (n !== plan.size) throw new TarFormatError(`packed ${n} bytes, planned ${plan.size}`)
   return out
 }
 
@@ -1085,6 +1104,12 @@ function assertSafeName(name: string): void {
   if (name.includes('//')) {
     throw new ArchiveSecurityError(`archive entry name has empty path component (unsafe): ${name}`)
   }
+  // vx never packs a `.` segment, and `outputs/.` names the anchor itself:
+  // ingest kept it, and every hit then failed renaming a file over the
+  // project directory, blamed on the user's tree.
+  if (hasDotSegment(name)) {
+    throw new ArchiveSecurityError(`archive entry name has a '.' segment (unsafe): ${name}`)
+  }
   // No backslash refusal: vx runs on Linux and macOS (Windows through WSL),
   // where it is a name character, and the save scans its own artifact with
   // these checks, so refusing one made `dist/back\slash` uncacheable.
@@ -1121,6 +1146,10 @@ const NAME_MAX = 255
 
 /** Bytes a path may hold, its terminating NUL included (limits.h). */
 const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
+
+function hasDotSegment(p: string): boolean {
+  return p === '.' || p.startsWith('./') || p.endsWith('/.') || p.includes('/./')
+}
 
 function hasParentSegment(p: string): boolean {
   if (p === '..' || p.startsWith('../') || p.endsWith('/..')) return true

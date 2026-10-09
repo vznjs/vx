@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { Cache } from '../cache/index.js'
-import { flagHint, formatValue, refusedWord, seeHelp } from './help.js'
-import { nearest, parseDuration, parseSize } from '../util/index.js'
+import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
+import { errorCode, nearest, parseDuration, parseSize } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -56,15 +56,19 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
       return await pruneCmd(rest)
     case undefined:
       // A bare `vx cache prune` refuses too: the hint names a whole command.
-      process.stderr.write(
-        `vx cache: missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}\n`,
+      return refuse(
+        'cache',
+        args,
+        `missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}`,
+        'VX_E_USAGE',
       )
-      return 1
     default:
-      process.stderr.write(
-        `vx cache: unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}\n`,
+      return refuse(
+        'cache',
+        args,
+        `unknown subcommand: ${sub}${cacheSubHint(sub)}${seeHelp('cache')}`,
+        'VX_E_USAGE',
       )
-      return 1
   }
 }
 
@@ -153,17 +157,13 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
 
 async function pruneCmd(args: readonly string[]): Promise<number> {
   const parsed = parsePruneArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`vx cache prune: ${parsed.error}\n`)
-    return 1
-  }
+  if (parsed.error) return refuse('cache prune', args, parsed.error, 'VX_E_USAGE')
   const cwd = process.cwd()
   let root: string
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    process.stderr.write(`vx cache prune: ${(err as Error).message}\n`)
-    return 1
+    return refuse('cache prune', args, (err as Error).message, errorCode(err))
   }
   // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a
   // `config` plugin's edit of it — `vx run` and `vx cache prune` must

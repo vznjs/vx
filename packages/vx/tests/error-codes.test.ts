@@ -82,6 +82,43 @@ describe('a refusal under --format json', () => {
     })
   })
 
+  it('every reading verb answers its refusals with a code too', async () => {
+    expect({
+      showUsage: await refusal(['show', '--bogus', '--format', 'json']),
+      showProject: await refusal(['show', 'nope#build', '--format', 'json']),
+      showTask: await refusal(['show', 'a#nope', '--format', 'json']),
+      infoUsage: await refusal(['info', '--bogus', '--format', 'json']),
+      whyUsage: await refusal(['why', '--format', 'json']),
+      whyHistory: await refusal(['why', 'a#build', '--format', 'json']),
+      lastHistory: await refusal(['last', '--format', 'json']),
+      pruneUsage: await refusal(['cache', 'prune', '--bogus', '--format', 'json']),
+      pruneWorkspace: await refusal(
+        ['cache', 'prune', '--max-size', '1G', '--format', 'json'],
+        bare,
+      ),
+      cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),
+      runNoTask: await refusal(['run', '--format', 'json']),
+      verb: await refusal(['bogus', '--format', 'json']),
+      taskAsVerb: await refusal(['build', '--format', 'json']),
+      topFlag: await refusal(['--bogus', '--format', 'json']),
+    }).toEqual({
+      showUsage: 'VX_E_USAGE',
+      showProject: 'VX_E_UNKNOWN_PROJECT',
+      showTask: 'VX_E_UNKNOWN_TASK',
+      infoUsage: 'VX_E_USAGE',
+      whyUsage: 'VX_E_USAGE',
+      whyHistory: 'VX_E_NO_HISTORY',
+      lastHistory: 'VX_E_NO_HISTORY',
+      pruneUsage: 'VX_E_USAGE',
+      pruneWorkspace: 'VX_E_NO_WORKSPACE',
+      cacheSub: 'VX_E_USAGE',
+      runNoTask: 'VX_E_USAGE',
+      verb: 'VX_E_UNKNOWN_COMMAND',
+      taskAsVerb: 'VX_E_UNKNOWN_COMMAND',
+      topFlag: 'VX_E_USAGE',
+    })
+  })
+
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--format', 'json'])

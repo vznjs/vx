@@ -1328,3 +1328,25 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `UserError` takes a `code`; first codes: `VX_E_USAGE`,
   `VX_E_UNKNOWN_TASK`, `VX_E_CONFIG`, `VX_E_CYCLE`, `VX_E_NO_WORKSPACE`,
   `VX_E_REFUSED`, `VX_E_FS`, `VX_E_FDS`, `VX_E_INTERNAL`.
+
+- **X-202.** Error codes for the reading verbs: `show`, `info`, `why`,
+  `last` and `cache prune` answer their refusals under `--format json`
+  with a code too (`VX_E_USAGE`, `VX_E_UNKNOWN_PROJECT`,
+  `VX_E_UNKNOWN_TASK`, `VX_E_NO_HISTORY`, `VX_E_AMBIGUOUS`,
+  `VX_E_NO_WORKSPACE`). One `refuse()` in `cli/help.ts` prints a
+  refusal a verb returns rather than throws.
+
+- **X-203.** An unknown verb answers `--format json` with
+  `VX_E_UNKNOWN_COMMAND` (a stray top-level flag with `VX_E_USAGE`), and
+  `vx cache` without a known subcommand and `vx run` with no task off a
+  TTY with `VX_E_USAGE`. Every refusal that can be asked for JSON now
+  carries a code; `watch`, `lock`, `init` and `upgrade` take no
+  `--format`.
+
+- **X-204.** Cache-save step 2: a small artifact (under `ON_THREAD_MAX`)
+  is read and packed on this thread, into one buffer (`tarPackInto`),
+  with no promise or generator hop per file or block. Pack CPU per 1,000
+  one-file saves: 23.1 → 18.9 ms (min of 15, two interleaved rounds).
+  Small: pack was not where the save's CPU goes; step 3 (inline
+  artifacts) is. A row holds the sync pack byte-equal to the streamed
+  one on every name shape.

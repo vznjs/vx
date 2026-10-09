@@ -188,25 +188,13 @@ describe('the sidebars', () => {
 })
 
 describe('the header', () => {
-  it('names the places, in order, on every docs page', () => {
+  it('names the places, in order, on every page', () => {
     const wrong: string[] = []
     for (const rel of pages()) {
-      if (rel === '' || rel.startsWith('features/')) continue
       const got = places(html(rel)).links
       if (JSON.stringify(got) !== JSON.stringify(PLACES))
         wrong.push(`${rel}: ${JSON.stringify(got)}`)
     }
     expect(wrong).toEqual([])
-  })
-
-  it('and the landing and the feature pages name the same ones', () => {
-    for (const rel of ['', 'features/', 'features/sandbox/']) {
-      const nav = /<nav class="nav-links[^"]*">([\s\S]*?)<\/nav>/.exec(html(rel))![1]!
-      const got = [...nav.matchAll(/<a href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => [
-        text(m[2]!),
-        m[1]!.slice(BASE.length),
-      ])
-      expect({ rel, got }).toEqual({ rel, got: PLACES.map(([l, h]) => [l.toLowerCase(), h]) })
-    }
   })
 })

@@ -11,7 +11,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { packArtifact } from '../src/cache/archive.js'
+import {
+  packArtifact,
+  packArtifactBytes,
+  packArtifactStream,
+  planArtifact,
+} from '../src/cache/archive.js'
 import { Cache } from '../src/cache/cache.js'
 import { tarPack, type TarInput } from '../src/cache/tar-stream.js'
 import type { CapturedChunk } from '../src/exec/index.js'
@@ -112,6 +117,21 @@ function joined(chunks: readonly CapturedChunk[]): CapturedChunk[] {
 }
 
 const kind = (o: ScanOutcome): string => ('ok' in o ? 'ok' : `${o.refused}: ${o.message}`)
+
+describe('a small artifact packed on this thread', () => {
+  // The save packs a plan under ON_THREAD_MAX synchronously (`tarPackInto`);
+  // the stream path packs the rest. Same plan, same bytes, every name shape.
+  it('is byte for byte the streamed pack', async () => {
+    for (let i = 0; i < 60; i++) {
+      const rnd = rng(0x9ac + i * 104_729)
+      const outputs = new Map(names(rnd, i).map((n) => [n, source(body(rnd))]))
+      const plan = await planArtifact({ key: `k-${i}`, stdout: `out ${i}\n`, outputs })
+      const streamed = new Uint8Array(await new Response(packArtifactStream(plan)).arrayBuffer())
+      expect(streamed.byteLength).toBe(plan.size)
+      expect(Bun.hash.xxHash3(await packArtifactBytes(plan))).toBe(Bun.hash.xxHash3(streamed))
+    }
+  })
+})
 
 describe('scanTarBytes reads what scanArtifact reads', () => {
   it('on every name shape, seeded: same entries, stdout, usage and key', async () => {
