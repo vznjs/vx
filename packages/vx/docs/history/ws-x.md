@@ -1425,3 +1425,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   one stat per miss; the reverse-dependency closure walks topo positions.
   Rows: `lockfile-boundary.test.ts` (stamp, with an edited-lock control),
   `cache-adopt-listing.test.ts`.
+
+- **X-213** `check.perf` holds M's rule that `--frozen` is never slower
+  than no lock: every phase also runs `--frozen` from a `vx lock`, and a
+  count above the same phase's with no lock fails. Measured on 1,090
+  packages: first task cold 320 vs 460 ms, warm 337 vs 365, restore 745
+  vs 761. Three extra hashes per entry on the frozen path tripped it.

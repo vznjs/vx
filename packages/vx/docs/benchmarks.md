@@ -184,10 +184,18 @@ run, restore run, plan, one-edit run. Two kinds of number, against
   that grows fails; one that shrinks passes. Statements gated by the
   50 ms racy-mtime windows (the directory snapshots) are left out; they
   move with load.
+- **`--frozen` never does more**: every phase also runs `--frozen` from
+  a `vx lock` (`<phase> --frozen @n`), and any count of it above the
+  same phase's with no lock fails, whatever the baseline says. Time is
+  not held, so the work is the pin of the rule that the lock is never
+  slower. Measured on the 1,090-package bench (2026-10-09): first task
+  cold 320 against 460 ms, warm 337 against 365, restore 745 against
+  761 (min of 5 to 15 interleaved).
 - **Time**, printed only: each timed phase's min over 7 reps at 100
   packages, divided by a calibration loop run between reps, flagged past
-  1.5× the baseline. It fails nothing: beside the test shards it read
-  1.97× on a PR that slowed no phase.
+  1.5× the baseline, and each `--frozen` phase's ratio to no lock. It
+  fails nothing: beside the test shards it read 1.97× on a PR that
+  slowed no phase.
 
 Each measure runs in a child with a hermetic environment, since vx
 hashes `BUN_OPTIONS`, a HOME bunfig and its parent run's variables.
