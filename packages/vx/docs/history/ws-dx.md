@@ -178,3 +178,8 @@ and log output reads better. Each must cost the warm path nothing.
   `docs-corpus.ts`). A section must hold every word, and a heading
   match ranks first. `--limit`, `--format json` (`schemas/docs.json`).
   Rows: `tests/docs.test.ts`.
+
+- **DX-29** MCP `searchDocs {query, limit?}`: `vx docs`'s JSON answer,
+  so an agent on MCP finds the reference offline too. A query that
+  would read as a flag is refused before the CLI sees it. Rows:
+  `vx-mcp/tests/search-docs.test.ts`.

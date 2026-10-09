@@ -311,6 +311,35 @@
       "init.todos"
     ]
   },
+  "searchDocs": {
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "words to look for, e.g. \"cache inputs\""
+        },
+        "limit": {
+          "type": "integer",
+          "description": "how many sections (default 3)"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "answer": [
+      "docs",
+      "docs.hits",
+      "docs.hits[]",
+      "docs.hits[].heading",
+      "docs.hits[].page",
+      "docs.hits[].text",
+      "docs.hits[].url",
+      "docs.query",
+      "exitCode"
+    ]
+  },
   "checkLock": {
     "inputSchema": {
       "type": "object",

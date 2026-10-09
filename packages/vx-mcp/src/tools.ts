@@ -186,6 +186,21 @@ const TOOLS: readonly ToolDef[] = [
     },
   },
   {
+    name: 'searchDocs',
+    description:
+      "Search vx's reference offline, as `vx docs <query> --format json` does: the sections of the CLI, " +
+      'config schema, caching, execution, patterns, security and features pages that hold every word of ' +
+      '`query`, best first, each whole with its URL. No network needed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'words to look for, e.g. "cache inputs"' },
+        limit: { type: 'integer', description: 'how many sections (default 3)' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'checkLock',
     description:
       'The config lock audit, as `vx lock --check --format json` prints it: `upToDate`, how many projects ' +
@@ -328,6 +343,8 @@ export async function handleToolCall(
       return pruneCache(args, ctx)
     case 'planInit':
       return planInit(args, ctx)
+    case 'searchDocs':
+      return searchDocs(args, ctx)
     case 'checkLock':
       return vxJson(['lock', '--check', '--format', 'json'], 'lock', ctx)
     case 'getFailures':
@@ -687,6 +704,23 @@ function pruneCache(
   return vxJson(argv, 'prune', ctx)
 }
 
+function searchDocs(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<Record<string, unknown>> {
+  const query = args['query']
+  if (typeof query !== 'string' || query.trim() === '' || query.trim().startsWith('-'))
+    throw new UserError('searchDocs: query must be words to look for, e.g. "cache inputs"')
+  const argv = ['docs', query, '--format', 'json']
+  const limit = args['limit']
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || (limit as number) < 1)
+      throw new UserError('searchDocs: limit must be a whole number above 0')
+    argv.push(`--limit=${limit as number}`)
+  }
+  return vxJson(argv, 'docs', ctx)
+}
+
 function planInit(
   args: Record<string, unknown>,
   ctx: ToolContext,
@@ -858,7 +892,7 @@ async function planTasks(
 /** The CLI's JSON answer as `{ exitCode, [key] }`, or its refusal as `{ exitCode, code?, error }`. */
 async function vxJson(
   argv: string[],
-  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune' | 'init',
+  key: 'summary' | 'plan' | 'projects' | 'config' | 'lock' | 'prune' | 'init' | 'docs',
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
   // stdout is the protocol's channel: the child's goes to a pipe, never to

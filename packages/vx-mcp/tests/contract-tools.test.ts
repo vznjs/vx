@@ -33,6 +33,7 @@ const ARGS: Record<string, unknown> = {
   checkLock: {},
   pruneCache: { maxSize: '1G' },
   planInit: {},
+  searchDocs: { query: 'cache inputs', limit: 1 },
   getFailures: {},
   runTasks: { tasks: ['build'], all: true },
   planTasks: { tasks: ['build'], all: true },
