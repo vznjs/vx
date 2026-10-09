@@ -62,7 +62,7 @@ does: where there is none they answer from an empty one and make nothing
 on disk, an index from an earlier vx is refused by name and left for the
 next `vx run` to reset, and old run history is never pruned by a read.
 
-`mcp({ run })` limits `runTasks`. With `run: false` the tool is not listed and
+`mcp({ run })` (`McpOptions`) limits `runTasks`. With `run: false` the tool is not listed and
 the server runs nothing. With `run: ['test', 'lint']` an agent may run only
 those task names, and any other is refused before anything runs. A task's
 `dependsOn` still runs. The default, `true`, runs any task.
