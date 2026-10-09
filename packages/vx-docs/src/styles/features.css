@@ -1,9 +1,9 @@
 /* The feature pages (src/pages/features/) and the landing's feature strip.
    They wear landing.css's tokens and primitives; this adds the card grid,
-   the per-feature page and a light theme. The landing stays dark only: the
-   light tokens apply under .vx-features, which the landing does not carry. */
+   the per-feature page and the light theme the landing and feature pages
+   share, picked from the header like every other page's. */
 
-:root[data-theme='light']:has(.vx-features) {
+:root[data-theme='light']:has(.vx-landing) {
   --ink-900: #fbfcf9;
   --ink-850: #f3f5ef;
   --ink-800: #ffffff;
@@ -26,7 +26,7 @@
   --text-glow: none;
   color-scheme: light;
 }
-:root[data-theme='light'] .vx-features {
+:root[data-theme='light'] .vx-landing {
   --vx-bg: #fbfcf9;
   --vx-fg: #14171b;
   --vx-text: #333b44;
@@ -36,36 +36,6 @@
   --vx-border: #cfd6c9;
   --vx-accent: #4d7a00;
   --vx-link: #0a7ea4;
-}
-
-/* ---- nav additions ---- */
-.vx-features .nav-links a[aria-current='page'] {
-  color: var(--text-hi);
-}
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-}
-.theme-toggle:hover {
-  color: var(--text-hi);
-}
-.theme-toggle .icon-moon {
-  display: none;
-}
-:root[data-theme='light'] .theme-toggle .icon-sun {
-  display: none;
-}
-:root[data-theme='light'] .theme-toggle .icon-moon {
-  display: block;
 }
 
 /* ---- the card ---- */
