@@ -605,8 +605,9 @@ Public repos, each moved to native vx config with `vx init --native`
 and timed against the tool it ships with, through
 `packages/vx-bench/real/nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo):
 both tools run the same tasks with the same worker count, three
-interleaved reps per case, best of three. `restore` wipes the outputs
-and keeps both caches; `noop` wipes nothing. Nx runs with
+interleaved reps per case, best of three. `cold` wipes the outputs and
+both caches; `restore` wipes the outputs and keeps both caches; `noop`
+wipes nothing. Nx runs with
 `NX_DAEMON=false` and no Nx Cloud.
 
 ### TanStack/query (2026-10-09)
@@ -617,11 +618,15 @@ tasks each, 5 workers. vx 0.0.633, Nx 23.2.1, pnpm 12.4.2, linux x64,
 
 | Case        | vx     | Nx     | vx is       |
 | ----------- | ------ | ------ | ----------- |
+| Cold build  | 34.6 s | 39.4 s | 14% faster  |
 | Restore     | 0.39 s | 1.26 s | 3.2× faster |
 | Nothing new | 0.22 s | 1.43 s | 6.5× faster |
 
-Both are runner overhead: every task is a cache hit. Cold build times
-are not compared (owner, 2026-10-09). Each rep in order: vx restore 0.39 / 0.50 / 0.50 s, Nx 1.26 / 1.49 / 1.57 s; vx
+Cold is the total wall time of the build: a real repo has no ideal
+schedule to subtract, so its total is shown (owner, 2026-10-09). Restore
+and nothing new are runner overhead: every task is a cache hit. Each
+rep in order: vx cold 40.16 / 34.99 / 34.61 s, Nx 40.95 / 39.38 /
+39.71 s; vx restore 0.39 / 0.50 / 0.50 s, Nx 1.26 / 1.49 / 1.57 s; vx
 noop 0.22 / 0.24 / 0.23 s, Nx 1.43 / 1.59 / 1.49 s. "N% faster" means
 the other tool takes N% longer.
 
@@ -639,13 +644,15 @@ Node 22.22, linux x64, 4 cores, 16 GB.
 
 | Repo            | Case        | vx      | Turbo   | vx is       |
 | --------------- | ----------- | ------- | ------- | ----------- |
+| create-t3-turbo | Cold build  | 6.23 s  | 7.14 s  | 15% faster  |
 | create-t3-turbo | Restore     | 0.087 s | 0.519 s | 6.0× faster |
 | create-t3-turbo | Nothing new | 0.081 s | 0.476 s | 5.9× faster |
+| react-email     | Cold build  | 30.21 s | 33.22 s | 10% faster  |
 | react-email     | Restore     | 0.283 s | 0.382 s | 35% faster  |
 | react-email     | Nothing new | 0.136 s | 0.252 s | 85% faster  |
 
-Both cases are runner overhead: every task is a cache hit. Cold build
-times are not compared (owner, 2026-10-09).
+Cold is the total wall time of the build, as on every real repo;
+restore and nothing new are runner overhead: every task is a cache hit.
 
 ## Performance history
 
