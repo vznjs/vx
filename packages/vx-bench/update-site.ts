@@ -111,18 +111,21 @@ const table: ReadonlyArray<readonly [string, (r: Row) => number, (r: Row) => str
 ]
 // Every competitor cell says how vx compares, as how many times as long the
 // slower runner takes (owner, 2026-10-04: "say how many X", replacing the
-// 2026-10-02 percentage). Rounded to nearest: whole from 10×, one decimal
-// from 2×, two under it, so the cold build reads 1.36× and 1.04× as the
-// owner states them (2026-10-09).
+// 2026-10-02 percentage). Under 2× it is a percentage again, the bigger
+// number to the eye (owner, 2026-10-09: "30% is bigger than 1.3"). Rounded
+// to nearest: whole from 10×, one decimal from 2×.
 function versus(ours: number, theirs: number): string {
   const faster = ours < theirs
   const r = faster ? theirs / ours : ours / theirs
-  if (r === 1) return 'vx same'
-  const n = r >= 10 ? Math.round(r) : r >= 2 ? Math.round(r * 10) / 10 : Math.round(r * 100) / 100
-  return n === 1 ? 'vx same' : `vx ${n}× ${faster ? 'faster' : 'slower'}`
+  if (r < 2) {
+    const pct = Math.round((r - 1) * 100)
+    return pct === 0 ? 'vx same' : `vx ${pct}% ${faster ? 'faster' : 'slower'}`
+  }
+  const n = r >= 10 ? Math.round(r) : Math.round(r * 10) / 10
+  return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
 const FORMULA =
-  'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
+  'vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.'
 const vs = (r: Row, n: (r: Row) => number, f: (r: Row) => string, ratio: boolean): string =>
   ratio ? `${f(r)} (${versus(n(vx), n(r))})` : f(r)
 const tableBlock =

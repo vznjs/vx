@@ -310,12 +310,12 @@ describe('the landing page', () => {
         expect(notes).toEqual([undefined, undefined, undefined, undefined])
         continue
       }
-      expect(notes.slice(1).filter((n) => !/^vx [\d.]+× (?:faster|slower)$/.test(n ?? ''))).toEqual(
-        [],
-      )
+      expect(
+        notes.slice(1).filter((n) => !/^vx (?:[\d.]+×|\d+%) (?:faster|slower)$/.test(n ?? '')),
+      ).toEqual([])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).',
+      'vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.',
     )
     const notes = [...bench.matchAll(/<p class="bench-formula">([\s\S]*?)<\/p>/g)].map((m) =>
       text(m[1]!),
@@ -337,9 +337,9 @@ describe('the landing page', () => {
       'faster fully cached run than Nx',
     ])
     const bench = section(html, 'bench')
-    const notes = [...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+)× faster<\/span>/g)].map(
-      (m) => `${m[1]}×`,
-    )
+    const notes = [
+      ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
+    ].map((m) => m[1]!)
     // The "faster" notes in chart order: Vite Task's cold-CPU note reads "slower".
     expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[3]!, notes[9]!])
   })

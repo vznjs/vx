@@ -148,9 +148,9 @@ const FIRST: readonly Feature[] = [
     slug: 'fastest',
     title: 'The fastest task runner',
     category: 'speed',
-    hook: 'A cold build 1.36× faster than Turborepo, 1.04× faster than Nx.',
+    hook: 'A cold build 36% faster than Turborepo, 4% faster than Nx.',
     body: [
-      'vx is measured on a generated workspace of 1,090 packages and 3,270 tasks, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency.',
+      'vx is measured on a synthetic workspace of 1,090 packages and 3,270 tasks of equal duration in deep dependency chains, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency.',
       'A cold build of all 3,270 tasks takes 3 min 40 s in vx, 3 min 49 s in Nx, 4 min 49 s in Vite Task and 4 min 59 s in Turborepo. With nothing changed, the fully cached run takes 393 ms: 16× faster than Nx.',
       'The benchmarks page shows every column, including the one vx loses: Vite Task burns less CPU on a cold build. The harness lives in the repo, so you can run it yourself.',
     ],

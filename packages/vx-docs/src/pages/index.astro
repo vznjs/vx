@@ -74,13 +74,13 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Cold build: total time', vx: '3 min 40 s', turbo: '4 min 59 s (vx 1.36× faster)', nx: '3 min 49 s (vx 1.04× faster)', vt: '4 min 49 s (vx 1.31× faster)' },
-  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 1.22× faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 1.39× slower)' },
-  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 1.53× faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4.1× faster)' },
-  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 1.18× faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
+  { label: 'Cold build: total time', vx: '3 min 40 s', turbo: '4 min 59 s (vx 36% faster)', nx: '3 min 49 s (vx 4% faster)', vt: '4 min 49 s (vx 31% faster)' },
+  { label: 'Cold build: CPU burned', vx: '17 s', turbo: '21 s (vx 22% faster)', nx: '52 s (vx 3× faster)', vt: '12 s (vx 39% slower)' },
+  { label: 'Fully cached run (restored)', vx: '650 ms', turbo: '997 ms (vx 53% faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4.1× faster)' },
+  { label: 'Fully cached run (up-to-date)', vx: '393 ms', turbo: '463 ms (vx 18% faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
   { label: 'Secondary: time the runner adds to a cold build', vx: '2 s', turbo: '1 min 21 s', nx: '11 s', vt: '1 min 11 s' },
 ]
-const benchFormula = 'vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).'
+const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx, on a synthetic 1,090-package workspace of equal-length tasks in deep dependency chains.'
 
 /** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {
@@ -105,7 +105,7 @@ const benchBars = renderBars(
 
 // The hero's three numbers, each the multiple a benchTable cell already
 // states, so a new run moves them with the chart.
-const timesOf = (cell: string): string => `${/^vx ([\d.]+)× faster$/.exec(vsOf(cell)[1])![1]}×`
+const timesOf = (cell: string): string => /^vx ([\d.]+(?:×|%)) faster$/.exec(vsOf(cell)[1])![1]!
 const [coldRow, cpuRow, , cachedRow] = benchTable
 const wins = [
   { n: timesOf(coldRow!.turbo), line: 'faster cold build than Turborepo' },

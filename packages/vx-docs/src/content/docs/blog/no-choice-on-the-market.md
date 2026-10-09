@@ -57,9 +57,9 @@ schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
 cached-run cost that is not in the same league: on the same 3,270-task
 workspace, a fully cached run takes 6.45s against Turborepo's 463ms and
-vx's 393ms (vx 16× and 1.18× faster), Nx's daemon off as in CI. Its cold
+vx's 393ms (vx 16× and 18% faster), Nx's daemon off as in CI. Its cold
 build burns 52 seconds of CPU where Turborepo burns 21 and vx 17 (vx
-3× and 1.22× faster).
+3× and 22% faster).
 
 Nx is the right tool if you want the platform. If you want the runner,
 you pay for the platform's weight and are steered toward its price.

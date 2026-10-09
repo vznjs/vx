@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test'
 const DOCS = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs')
 const BENCH = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
 const QUOTE =
-  /(\d+m \d+s|\d+(?:\.\d+)?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx [\d.]+× (?:faster|slower))\)/g
+  /(\d+m \d+s|\d+(?:\.\d+)?(?:ms|s))\s*\((?:\+[\d:]+, )?(vx (?:[\d.]+×|\d+%) (?:faster|slower))\)/g
 
 function pages(): string[] {
   const out: string[] = []

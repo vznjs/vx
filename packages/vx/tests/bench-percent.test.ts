@@ -2,7 +2,7 @@
 // give every competitor cell vx's multiple against the `vx` row of the same column.
 // update-site.ts --check holds only the generated table, so these are held
 // here: each multiple is recomputed from the two figures the row shows, with
-// update-site.ts's rounding (nearest; two decimals under 2×).
+// update-site.ts's rounding (nearest; under 2× a percentage).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -22,9 +22,12 @@ function ms(text: string): number {
 function versus(ours: number, theirs: number): string {
   const faster = ours < theirs
   const r = faster ? theirs / ours : ours / theirs
-  if (r === 1) return 'vx same'
-  const n = r >= 10 ? Math.round(r) : r >= 2 ? Math.round(r * 10) / 10 : Math.round(r * 100) / 100
-  return n === 1 ? 'vx same' : `vx ${n}× ${faster ? 'faster' : 'slower'}`
+  if (r < 2) {
+    const pct = Math.round((r - 1) * 100)
+    return pct === 0 ? 'vx same' : `vx ${pct}% ${faster ? 'faster' : 'slower'}`
+  }
+  const n = r >= 10 ? Math.round(r) : Math.round(r * 10) / 10
+  return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
 
 /** Each table whose first column names runners: its rows' cells, by runner. */
@@ -56,7 +59,7 @@ describe('benchmarks.md: every vx multiple is the two figures its row shows', ()
       const vx = rows.get('vx')!
       for (const runner of ['turbo', 'nx']) {
         rows.get(runner)?.forEach((cell, i) => {
-          const m = /^(.+?) \((vx (?:[\d.]+× (?:faster|slower)|same))\)$/.exec(
+          const m = /^(.+?) \((vx (?:(?:[\d.]+×|\d+%) (?:faster|slower)|same))\)$/.exec(
             cell.replaceAll('*', ''),
           )
           if (!m) return

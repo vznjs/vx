@@ -13,9 +13,10 @@ the raw numbers in [Benchmarks](../../benchmarks/).
 These are reproducible on your own machine, not marketing figures:
 
 - **The total cold build**, the number to read first. On the
-  3,270-task workspace vx finishes in 3m 40s, Nx in 3m 49s (vx 1.04×
-  faster), Vite Task in 4m 49s (vx 1.31× faster) and Turborepo in
-  4m 59s (vx 1.36× faster). Secondary: the time each runner adds over
+  synthetic 1,090-package, 3,270-task workspace (tasks of equal duration,
+  deep dependency chains) vx finishes in 3m 40s, Nx in 3m 49s (vx 4%
+  faster), Vite Task in 4m 49s (vx 31% faster) and Turborepo in
+  4m 59s (vx 36% faster). Secondary: the time each runner adds over
   the tasks' ideal schedule of 3m 38s, per package (2 ms for vx, 10 ms per
   package for Nx and 74 ms for Turborepo), is how each grows with the codebase.
 

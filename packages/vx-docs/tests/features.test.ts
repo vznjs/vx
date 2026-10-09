@@ -60,14 +60,16 @@ describe('the feature data', () => {
     expect(readdirSync(ASSETS).filter((f) => !used.has(f))).toEqual([])
   })
 
-  // The site's copy rules: plain words, speed as "N× faster", and Turbo or
-  // Nx only as the origin of a migration.
-  it('says nothing loud, no percentage, no “unchanged” Turbo or Nx repo', () => {
+  // The site's copy rules: plain words, speed as "N× faster" (a percentage
+  // under 2×, owner 2026-10-09), and Turbo or Nx only as the origin of a
+  // migration.
+  it('says nothing loud, no stray percentage, no “unchanged” Turbo or Nx repo', () => {
     const bad: string[] = []
     for (const f of FEATURES) {
       for (const s of copy(f)) {
         if (/!/.test(s)) bad.push(`${f.slug}: "!" in ${s}`)
-        if (/\d\s?%(?!\w)/.test(s) && !s.includes('--concurrency 50%'))
+        const stray = s.replace(/\b\d+% (?:faster|slower)\b/g, '')
+        if (/\d\s?%(?!\w)/.test(stray) && !s.includes('--concurrency 50%'))
           bad.push(`${f.slug}: a percentage in ${s}`)
         if (/\b(?:blazing|lightning|magic|seamless|revolutionary|game-?changing)/i.test(s))
           bad.push(`${f.slug}: ${s}`)

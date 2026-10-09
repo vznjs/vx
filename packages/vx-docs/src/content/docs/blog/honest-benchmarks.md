@@ -59,11 +59,11 @@ isolate the runner's own overhead from compilation.
 | Runner    | Cold build         | Fully cached | Cold build CPU |
 | --------- | ------------------ | ------------ | -------------- |
 | vx        | **3m 40s** | **393ms**    | **17.27s**     |
-| Turborepo | 4m 59s (vx 1.36× faster) | 463ms (vx 1.18× faster) | 21.04s (vx 1.22× faster) |
-| Nx        | 3m 49s (vx 1.04× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
-| Vite Task | 4m 49s (vx 1.31× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 1.39× slower) |
+| Turborepo | 4m 59s (vx 36% faster) | 463ms (vx 18% faster) | 21.04s (vx 22% faster) |
+| Nx        | 3m 49s (vx 4% faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
+| Vite Task | 4m 49s (vx 31% faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
 
-vx N× faster: that tool takes N times as long as vx (theirs ÷ vx); N× slower: vx takes N times as long (vx ÷ theirs).
+vx N% faster: that tool takes N% longer than vx; N× faster: N times as long; slower: vx takes that much longer.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for), because on a
