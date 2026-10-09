@@ -7,6 +7,8 @@ The benchmark on [vx vs Nx](../nx/) is a synthetic graph built to be
 fair to every tool. This page is the other half: real public repos, moved
 to vx with one command and timed against the tool they already use.
 
+Covered so far: TanStack/query (Nx). The list grows as runs finish.
+
 ## TanStack/query, against Nx
 
 [TanStack/query](https://github.com/TanStack/query) at commit `817bd02`,
