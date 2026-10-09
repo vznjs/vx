@@ -16,3 +16,8 @@
   direct download fetch) were bare binaries. `release.upload.linux` now
   attaches `THIRD_PARTY_NOTICES.txt` too; a re-run skips it once
   attached. Proven: `tests/release.test.ts` names it in linux's set.
+- **LEGAL-3.** Nothing stopped a copyleft or unlicensed package joining
+  a published package's dependency closure. `tests/dependency-licenses.unsafe.test.ts`
+  walks each closure from the installed tree and fails on any license
+  outside the permissive list. Proven: dropping Apache-2.0 from the list
+  fails it on vx-reapi's gRPC packages.
