@@ -12,6 +12,14 @@ excerpt: "Turborepo is fast and stops at the edge of a laptop. Nx scales and is 
 vx exists because of a gap, and the gap is easiest to describe by what
 sits on either side of it.
 
+```mermaid
+flowchart LR
+  T[Turborepo: fast, stops at run and cache] --> G{the gap}
+  N[Nx: scales, comes as a product] --> G
+  G --> V[vx: fast, open seams, nothing behind a paid cloud]
+  style V stroke:#c6f84e,stroke-width:2px
+```
+
 ## Turborepo: fast, and it stops
 
 Turborepo got the important thing right. One `turbo.json`, a

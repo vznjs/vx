@@ -11,7 +11,7 @@ first; its text is that footer: what changed and what to do.
 
 ## cache: store small artifacts inline in the store index
 
-SCHEMA_VERSION v32 -> v33; the index is reset on first open, and artifacts are kept and indexed again on their next hit.
+SCHEMA_VERSION v33. The first run drops the local index once; artifact files stay and are re-adopted on their next hit.
 
 ## vx-reapi: connect a bare endpoint with TLS, as Bazel does
 

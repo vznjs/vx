@@ -26,6 +26,16 @@ None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache
 more, not less.
 
+```mermaid
+flowchart LR
+  A[keys from git's index] --> F[fast warm run]
+  B[bitsets, not walks] --> F
+  C[strict output ownership] --> F
+  D[one artifact format] --> F
+  E[nothing runs when nothing is needed] --> F
+  style F stroke:#c6f84e,stroke-width:2px
+```
+
 ## 1. The cache key is already in git's index
 
 A content-addressed key needs a hash of every input file. Most tools
