@@ -957,8 +957,10 @@ readable. Its `criticalPath` names the would-run tasks with history on
 the chain `wallMs` measures, dependencies first: the tasks to speed up
 to shorten the run.
 
-**Why a task is affected.** Under `--affected`, each requested task the
-diff kept gets a line, and its JSON object an `affected` reason:
+### Why a task is affected (`affected.kind`)
+
+Under `--affected`, each requested task the diff kept gets a line, and
+its JSON object an `affected` reason:
 
 ```
 $ vx run build lint --affected=main --dry
@@ -980,6 +982,8 @@ none. The reasons are gathered only for a plan; a run pays nothing.
 against: a bare `--affected` guesses it (`origin/HEAD`, a trunk branch,
 else `HEAD~1`), so a reason that names no file may come from a commit
 the base reaches, a root `package.json` edit among them.
+
+### Task graph (`--graph`)
 
 `--graph` prints Graphviz DOT (stdout by default; `--graph=path`
 writes a file):

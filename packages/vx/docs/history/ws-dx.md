@@ -211,3 +211,9 @@ directions; the link;`vx docs VX_E_USAGE` alone).
   `performance/vx.config.mjs`, and 0.0.634 still failed there (Engineering).
   astro dry run: 564 preset imports before, 562 after; `performance/` and
   `scripts/` declare the values. Rows: `migrate-turbo-sealed-tsconfig.test.ts`.
+- **DX-36** Trial-2 lows: `affected.kind` gets its own `cli.md` heading
+  so `vx docs affected kind input` returns it first (it was buried in
+  "Planning mode"); `--graph` gets one too. `why.json` now says `cached`
+  means "declares a cache", as `last.json` already did. Left as is: a
+  rename of `cached` (breaks the JSON contract for a wording issue) and
+  one JSON indentation across verbs (mixed already; compact saves tokens).
