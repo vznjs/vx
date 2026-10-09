@@ -178,17 +178,48 @@ export function uninstall(root: string, packages: readonly string[]): Promise<st
   )
 }
 
+/**
+ * The command that runs `argv`'s manager when its name on PATH cannot be
+ * spawned: the one that launched us (`npm_execpath`), if it is that
+ * manager. Under `pnpm exec`, PATH can hold a pnpm placeholder with no
+ * shebang that exec refuses (ENOEXEC), while `npm_execpath` is the pnpm
+ * running now. PATH stays first: it is what the user's shell would run.
+ */
+export function managerArgv(
+  argv: readonly string[],
+  env: Record<string, string | undefined>,
+): string[] {
+  const exec = env['npm_execpath']
+  const manager = argv[0]!
+  if (exec === undefined || exec === '' || !path.basename(exec).startsWith(manager))
+    return [...argv]
+  // A JS entry (pnpm.cjs, npm-cli.js) runs under the Node that runs it.
+  return /\.[cm]?js$/.test(exec) ? ['node', exec, ...argv.slice(1)] : [exec, ...argv.slice(1)]
+}
+
 async function runManager(root: string, argv: string[], what: string): Promise<string> {
   const line = argv.join(' ')
   process.stdout.write(`vx-migrate: ${line}\n`)
+  const spawn = (cmd: string[]) =>
+    Bun.spawn(cmd, { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] }).exited
   let code: number
+  let why = ''
   try {
-    code = await Bun.spawn(argv, { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] }).exited
-  } catch {
-    code = -1
+    code = await spawn(argv)
+  } catch (e) {
+    const launcher = managerArgv(argv, process.env)
+    try {
+      if (launcher[0] === argv[0]) throw e
+      code = await spawn(launcher)
+    } catch (e2) {
+      code = -1
+      why = `: ${(e2 as Error).message}`
+    }
   }
   if (code !== 0) {
-    throw new UserError(`${what} failed (${line} exited ${code}); run it, then vx-migrate again`)
+    throw new UserError(
+      `${what} failed (${line} exited ${code}${why}); run it, then vx-migrate again`,
+    )
   }
   return line
 }
