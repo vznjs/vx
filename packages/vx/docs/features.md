@@ -143,7 +143,7 @@ config key or an environment variable is missing here.
 - **Migrate from Turborepo or Nx** (`vx init`, `--native`, `--keep`, `@vzn/vx-migrate`) — native config, or keep `turbo()` / `nx()` as a start. [page](https://vznjs.github.io/vx/features/migrate/) · posts: [From Turborepo](https://vznjs.github.io/vx/blog/from-turborepo/), [From Nx](https://vznjs.github.io/vx/blog/from-nx/)
 - **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. no post
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)
-- **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · no post
+- **The playground** — vx's planner in the browser. [page](https://vznjs.github.io/vx/features/playground/) · post: [Try the planner in your browser](https://vznjs.github.io/vx/blog/the-playground/)
 - **Benchmarks you can re-run** (`@vzn/vx-bench`) — vx against Turborepo and Nx. [page](https://vznjs.github.io/vx/features/fastest/) · posts: [Benchmarks you can re-run](https://vznjs.github.io/vx/blog/honest-benchmarks/), [Why vx is fast](https://vznjs.github.io/vx/blog/why-vx-is-fast/)
 - **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. no post
 - **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. no post
