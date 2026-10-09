@@ -2285,6 +2285,7 @@ export interface TaskFailure {
   timedOut?: true
   output: string
   locations: OutputLocation[]
+  fixedIn?: string
 }
 ```
 

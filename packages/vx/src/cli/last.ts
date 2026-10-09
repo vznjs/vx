@@ -384,7 +384,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       )
       const tasks = (detail?.tasks ?? []).map((t) => {
         const f = failures.get(`${t.project}#${t.task}`)
-        return f === undefined ? t : { ...t, output: f.output, locations: f.locations }
+        return f === undefined
+          ? t
+          : {
+              ...t,
+              output: f.output,
+              locations: f.locations,
+              ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
+            }
       })
       process.stdout.write(`${JSON.stringify({ invocation: inv, tasks })}\n`)
       return 0

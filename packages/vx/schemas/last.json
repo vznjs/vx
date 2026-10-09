@@ -181,6 +181,10 @@
               "col": { "type": "integer" }
             }
           }
+        },
+        "fixedIn": {
+          "type": "string",
+          "description": "on a failed row: the first later run where this task passed (ran or hit); absent while it has not"
         }
       }
     }

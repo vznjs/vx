@@ -1676,7 +1676,7 @@ describe('getFailures', () => {
   })
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-  it('answers the latest failed run, past a green one since, with output and locations', async () => {
+  it('answers the latest failed run, past a green one since, with output, locations and the run that fixed it', async () => {
     expect(await call(root, 'getFailures', {})).toEqual({
       runId: '0199cccc-2222',
       tasks: [
@@ -1685,6 +1685,7 @@ describe('getFailures', () => {
           exitCode: 2,
           output: 'boom 1\n',
           locations: [{ file: '/p/a.ts', line: 2, col: 4 }],
+          fixedIn: '0199dddd-3333',
         },
       ],
     })
@@ -1699,6 +1700,7 @@ describe('getFailures', () => {
           exitCode: 2,
           output: 'boom 0\n',
           locations: [{ file: '/p/a.ts', line: 1, col: 4 }],
+          fixedIn: '0199dddd-3333',
         },
       ],
     })

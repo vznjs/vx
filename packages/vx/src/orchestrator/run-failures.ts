@@ -9,6 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
+import { PASS_STATUSES } from './history.js'
 import { splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 
@@ -23,6 +24,8 @@ export interface TaskFailure {
   /** Plain text, bounded, secrets masked; '' when the run kept none. */
   output: string
   locations: OutputLocation[]
+  /** The first later run where this task passed (ran or hit): the failure is history. */
+  fixedIn?: string
 }
 
 export interface RunFailures {
@@ -110,10 +113,19 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
   }
   const rows = db
     .query(
-      `SELECT project, task, exit_code AS exitCode, timed_out AS timedOut FROM runs
-       WHERE run_id = ? AND status = 'failed' ORDER BY id`,
+      `SELECT r.project, r.task, r.exit_code AS exitCode, r.timed_out AS timedOut,
+         (SELECT s.run_id FROM runs s WHERE s.project = r.project AND s.task = r.task
+            AND s.id > r.id AND s.status IN ${PASS_STATUSES}
+          ORDER BY s.id LIMIT 1) AS fixedIn
+       FROM runs r WHERE r.run_id = ? AND r.status = 'failed' ORDER BY r.id`,
     )
-    .all(id) as { project: string; task: string; exitCode: number; timedOut: number | null }[]
+    .all(id) as {
+    project: string
+    task: string
+    exitCode: number
+    timedOut: number | null
+    fixedIn: string | null
+  }[]
   return {
     runId: id,
     tasks: rows.map((r) => {
@@ -125,6 +137,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         ...(r.timedOut === 1 ? { timedOut: true as const } : {}),
         output: k?.output ?? '',
         locations: k?.locations ?? [],
+        ...(r.fixedIn !== null ? { fixedIn: r.fixedIn } : {}),
       }
     }),
   }
