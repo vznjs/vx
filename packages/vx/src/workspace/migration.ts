@@ -377,6 +377,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // One reason, its tasks: on a Turbo template the same two-line cache TODO
   // printed five times and the persistent one eight (the first-five-minutes
   // walk, 2026-09-28), and the list read as noise.
+  // A file .gitignore drops is lost at the first commit, unnoticed: vueuse
+  // ignores `packages/**/*.mjs`, so `--mjs` wrote configs git never saw.
+  const ignored = gitIgnored(
+    root,
+    files.map((f) => f.relPath),
+  )
+  const ignoredNote =
+    ignored.length === 0
+      ? []
+      : [
+          `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, TODO_IDS_SHOWN).join(', ')}${ignored.length > TODO_IDS_SHOWN ? ', …' : ''}): add ${[...new Set(ignored.map((f) => `!${path.posix.basename(f)}`))].join(' and ')} to .gitignore, or commit them with git add -f`,
+        ]
   const todos = new Map<string, string[]>()
   let todoCount = 0
   let clean = 0
@@ -423,7 +435,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       args.unmapped === true
         ? `${verb}: no package.json scripts became tasks.`
         : `${verb}: no package.json scripts to turn into tasks.`,
-      ...[...noMembers, ...(args.notes ?? [])].map((n) => `note: ${n}`),
+      ...[...noMembers, ...(args.notes ?? []), ...ignoredNote].map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -438,7 +450,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
   } else {
     report.push(`${verb}: ${source} → ${configName}`)
-    for (const n of args.notes ?? []) report.push(`note: ${n}`)
+    for (const n of [...(args.notes ?? []), ...ignoredNote]) report.push(`note: ${n}`)
     for (const n of plan.headerNotes) report.push(`note: ${n}`)
     report.push(
       '',
@@ -495,6 +507,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
           ...(empty && unreached.length > 0 ? [unreachedHint(unreached, root)] : []),
           ...(empty ? noMembers : []),
           ...(args.notes ?? []),
+          ...ignoredNote,
           ...plan.headerNotes,
           ...plan.notes,
         ],
@@ -506,6 +519,28 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   report.push('', `next: ${next}`)
   process.stdout.write(`${report.join('\n')}\n`)
   return 0
+}
+
+/** The paths (root-relative) git's ignore rules drop; none outside a work tree. */
+function gitIgnored(root: string, relPaths: readonly string[]): string[] {
+  if (relPaths.length === 0) return []
+  try {
+    const r = Bun.spawnSync({
+      cmd: [executablePath('git'), 'check-ignore', '--stdin', '-z'],
+      cwd: root,
+      stdin: Buffer.from(relPaths.map((p) => `${p}\0`).join('')),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    // 0: some ignored; 1: none; anything else (no work tree): nothing to say.
+    if (r.exitCode !== 0) return []
+    return r.stdout
+      .toString()
+      .split('\0')
+      .filter((p) => p !== '')
+  } catch {
+    return []
+  }
 }
 
 function inGitWorkTree(root: string): boolean {
