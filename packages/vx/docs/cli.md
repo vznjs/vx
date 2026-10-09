@@ -2287,26 +2287,89 @@ refuses `--dry` (use `--dry=json`), a bare `--graph` and
 
 A verb asked for JSON (`--format json`, `--format=json`, `--dry=json`,
 before any `--`) answers a refusal on stdout too, as one line that
-`schemas/error.json` describes: `{"ok":false,"error":{"code","message"}}`.
-The exit code (1) and the prose on stderr do not change. Branch on the
-code; the message may change.
+`schemas/error.json` describes: `{"ok":false,"error":{"code","message","docs"}}`.
+`docs` links the code's section below, which says what to do;
+`vx docs <code>` prints that section offline. The exit code (1) and the
+prose on stderr do not change. Branch on the code; the message may change.
 
-| Code                   | When                                                                  |
-| ---------------------- | --------------------------------------------------------------------- |
-| `VX_E_USAGE`           | A flag, argument or selection the verb does not take.                 |
-| `VX_E_UNKNOWN_COMMAND` | No verb of that name here, core's or a declared plugin's.             |
-| `VX_E_UNKNOWN_TASK`    | No project in scope declares a requested task.                        |
-| `VX_E_UNKNOWN_PROJECT` | `vx show` names a project the workspace does not have.                |
-| `VX_E_NO_HISTORY`      | `vx why` / `vx last` find no recorded run for what they were asked.   |
-| `VX_E_AMBIGUOUS`       | `vx why <task>` matches the task in several projects; name one.       |
-| `VX_E_CONFIG`          | A `vx.config.*` or `vx.workspace.*` that does not load or is refused. |
-| `VX_E_CYCLE`           | The task graph has a cycle.                                           |
-| `VX_E_NO_WORKSPACE`    | No workspace root above the working directory.                        |
-| `VX_E_CACHE_VERSION`   | A reading verb met a cache index from another vx version.             |
-| `VX_E_REFUSED`         | Any other refusal (a plugin's, a check's) with no code of its own.    |
-| `VX_E_FS`              | The file system refused a write: permissions, a full disk.            |
-| `VX_E_FDS`             | Out of file descriptors.                                              |
-| `VX_E_INTERNAL`        | A defect in vx; stderr carries the stack.                             |
+#### `VX_E_USAGE`
+
+A flag, argument or selection the verb does not take. The message names
+it, and a close spelling the verb does take when there is one;
+`vx <verb> --help` lists every flag.
+
+#### `VX_E_UNKNOWN_COMMAND`
+
+No verb of that name here, core's or a declared plugin's. `vx --help`
+lists core's verbs. A plugin's verb exists once its plugin is in
+`vx.workspace.ts` `plugins`; a task runs as `vx run <task>`.
+
+#### `VX_E_UNKNOWN_TASK`
+
+No project in scope declares a requested task. The message lists the
+tasks it found; `vx show --format json` lists each project's. Check the
+spelling, and the scope: `--filter`, `--all`, or the project the working
+directory is in.
+
+#### `VX_E_UNKNOWN_PROJECT`
+
+`vx show` names a project the workspace does not have. A project is named
+by its `package.json` `name`; `vx show --format json` lists them.
+
+#### `VX_E_NO_HISTORY`
+
+`vx why` / `vx last` find no recorded run for what they were asked. Run
+the task once (`vx run <task>`); history is this checkout's own.
+
+#### `VX_E_AMBIGUOUS`
+
+`vx why <task>` matches the task in several projects. Name one:
+`vx why <project>#<task>`.
+
+#### `VX_E_CONFIG`
+
+A `vx.config.*` or `vx.workspace.*` that does not load or is refused. The
+message names the file and the field; fix that field
+(`vx docs <field>` prints its reference). `vx info --format json` lists
+every config error at once.
+
+#### `VX_E_CYCLE`
+
+The task graph has a cycle. The message names the loop; drop one of its
+`dependsOn` edges.
+
+#### `VX_E_NO_WORKSPACE`
+
+No workspace root above the working directory. Run vx inside the repo,
+or create a `package.json` and run `vx init`.
+
+#### `VX_E_CACHE_VERSION`
+
+A reading verb met a cache index from another vx version. It reads
+nothing from it and leaves it be; the next `vx run` resets it. Or run the
+vx version that wrote it.
+
+#### `VX_E_REFUSED`
+
+Any other refusal (a plugin's, a check's) with no code of its own. The
+message is that plugin's or check's: do what it says.
+`vx info --format json` lists the plugins.
+
+#### `VX_E_FS`
+
+The file system refused a write: permissions, a full disk. The message
+names the path. Free space (`vx cache prune --max-size <size>` trims the
+cache) or grant the write, then re-run.
+
+#### `VX_E_FDS`
+
+Out of file descriptors. Raise the limit (`ulimit -n 4096`), or run fewer
+tasks at once (`--concurrency`), then re-run.
+
+#### `VX_E_INTERNAL`
+
+A defect in vx; stderr carries the stack. Report it with that stack at
+https://github.com/vznjs/vx/issues.
 
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
 
@@ -2786,7 +2849,9 @@ parse error.
 `schema`, `caching`, `execution`, `patterns`, `security` and `features`,
 which ship inside the package and the compiled binary. Each page is cut
 at its headings; a section that holds every word of the query matches,
-and a word in its heading ranks it above any count in its text. The best
+and a word in its heading ranks it above any count in its text; a
+one-word query that titles a section, an error code
+(`vx docs VX_E_CYCLE`), prints that section alone. The best
 `--limit` sections (default 3) print whole, each under its page,
 heading and URL on the site. `--format json` prints
 `{query, hits: [{page, heading, url, text}]}` (`schemas/docs.json`).

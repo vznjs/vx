@@ -81,7 +81,7 @@ message:
 
 ```sh frame="terminal"
 $ vx run biuld --all --format json
-{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?"}}
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 
 | Code                | What to do                                             |
@@ -92,8 +92,9 @@ $ vx run biuld --all --format json
 | `VX_E_NO_HISTORY`   | Run the task first; `vx why` and `vx last` need a run. |
 | `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
 
-Every code is in the [CLI reference](../../cli/#error-codes), and
-`node_modules/@vzn/vx/schemas/error.json` describes the line.
+`docs` links the code's section of the [CLI reference](../../cli/#error-codes),
+which says what to do; offline, `vx docs VX_E_UNKNOWN_TASK` prints the same
+section. `node_modules/@vzn/vx/schemas/error.json` describes the line.
 
 ## Ask the workspace over MCP
 

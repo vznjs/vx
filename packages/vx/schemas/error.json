@@ -16,7 +16,11 @@
           "type": "string",
           "description": "Stable; branch on it. VX_E_USAGE, VX_E_UNKNOWN_COMMAND, VX_E_UNKNOWN_TASK, VX_E_UNKNOWN_PROJECT, VX_E_NO_HISTORY, VX_E_AMBIGUOUS, VX_E_CONFIG, VX_E_CYCLE, VX_E_NO_WORKSPACE, VX_E_CACHE_VERSION, VX_E_REFUSED, VX_E_FS, VX_E_FDS, VX_E_INTERNAL."
         },
-        "message": { "type": "string", "description": "The refusal in prose; may change." }
+        "message": { "type": "string", "description": "The refusal in prose; may change." },
+        "docs": {
+          "type": "string",
+          "description": "For a core code (VX_E_…): its section of the CLI reference, which says what to do. A plugin's code has none."
+        }
       }
     }
   }

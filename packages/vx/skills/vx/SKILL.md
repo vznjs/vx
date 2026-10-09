@@ -21,6 +21,9 @@ vx run build --all --format json    # the result as JSON on stdout; logs go to s
 The exit code is the verdict: `0` every task passed or hit the cache, `1` a
 task failed or was skipped, or the command was refused. `--format json`
 prints `schemas/summary.json` (`runId`, `ok`, `exitCode`, a row per task).
+A refusal under `--format json` is one line on stdout,
+`{"ok":false,"error":{"code","message","docs"}}`: branch on `code`;
+`docs` (or `vx docs <code>` offline) says what to do.
 Without a TTY a missing task name never prompts: vx exits 1 and lists the
 tasks it found.
 
