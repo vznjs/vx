@@ -34,6 +34,7 @@ src/remote-deadline.ts
 src/remote-retry.ts
 src/remote-token.ts
 src/script-command.ts
+src/sealed-tsconfig.ts
 src/shared-outputs.ts
 src/spelled-env.ts
 src/tracked-outputs.ts
