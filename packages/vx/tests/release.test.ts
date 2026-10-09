@@ -4,7 +4,7 @@
 // which order and what a re-run skips, which commit is released, and which
 // binaries a draft release still needs (scripts/release-assets.ts).
 import { describe, expect, it } from 'bun:test'
-import { assetsToUpload, releaseFor, type Release } from '../scripts/release-assets.js'
+import { assetsToUpload, isPartial, releaseFor, type Release } from '../scripts/release-assets.js'
 import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js'
 import {
   publishAll,
@@ -219,6 +219,20 @@ describe('release assets (scripts/release-assets.ts)', () => {
       assetsToUpload('linux', files, release('v1', true, ['THIRD_PARTY_NOTICES.txt'])),
     ).toEqual(['vx-linux-arm64', 'vx-linux-x64'])
     expect(assetsToUpload('darwin', files, release('v1', true, ['vx-darwin-arm64']))).toEqual([
+      'vx-darwin-x64',
+    ])
+  })
+
+  it('re-uploads an asset a cut upload left partial', () => {
+    const r: Release = {
+      ...release('v1', true),
+      assets: [
+        { id: 1, name: 'vx-darwin-arm64', state: 'uploaded' },
+        { id: 2, name: 'vx-darwin-x64', state: 'starter' },
+      ],
+    }
+    expect(r.assets.map(isPartial)).toEqual([false, true])
+    expect(assetsToUpload('darwin', ['vx-darwin-arm64', 'vx-darwin-x64'], r)).toEqual([
       'vx-darwin-x64',
     ])
   })

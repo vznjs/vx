@@ -1466,3 +1466,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   plugin, min of 10: main 1,125 ms, with `file` 1,137, without 1,229
   (noise); perf-guard counts unchanged. Rows:
   `timings-file.test.ts`. vx's own CI writes `.vx/timings.json`.
+- **X-218** Release uploads retry. v0.0.575 stayed a draft: its
+  `vx-darwin-x64` upload hung six minutes and timed out after arm64
+  attached, so the publish never ran. `release-assets.ts` now cuts an
+  upload at 120 s, deletes the partial asset it left, and tries up to
+  three times; a partial asset no longer counts as attached. Rows:
+  `release.test.ts`.
