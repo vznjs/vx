@@ -60,13 +60,13 @@ describe('flows.md names owners that exist', () => {
 // Its performance table is a COPY of one in benchmarks.md, and four other
 // pages that quote those numbers are pinned against that page while this one
 // — a contract doc — was not (item 383, 2026-09-19). Row-wise, not
-// figure-wise: the three cells after the runner's name must appear together
+// figure-wise: the cells after the runner's name must appear together
 // on a benchmarks.md row, so a figure cannot drift onto the wrong runner.
 describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
   it('each runner row is a row of the head-to-head table, cells and all', () => {
     const doc = readFileSync(path.join(pkg, 'docs', 'patterns.md'), 'utf8')
     const bench = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
-    const tableAt = doc.indexOf('| Runner | Fresh (cold)')
+    const tableAt = doc.indexOf('| Runner | Warm (no restore)')
     expect(tableAt).toBeGreaterThan(0)
     const leadIn = doc.slice(doc.indexOf('## Performance'), tableAt)
     const table = doc.slice(tableAt)
@@ -77,7 +77,7 @@ describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
       .map((line) =>
         line
           .split('|')
-          .slice(2, 5)
+          .slice(2, 4)
           // The figure, not its aside: patterns.md says `(vx 1.1× faster)`
           // where the dated benchmarks.md row says `(1.2×)` (owner,
           // 2026-10-04: every cell names vx's multiple).
@@ -85,7 +85,7 @@ describe('patterns.md quotes the benchmark rows benchmarks.md has', () => {
       )
     expect(rows.length).toBe(3)
     for (const cells of rows) {
-      expect(cells.length).toBe(3)
+      expect(cells.length).toBe(2)
       const row = new RegExp(
         `^\\|[^|]*\\|\\s*${cells.map((c) => c.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('(?:\\s*\\([^|)]*\\))?\\s*\\|\\s*')}(?:\\s*\\([^|)]*\\))?\\s*\\|`,
         'm',
