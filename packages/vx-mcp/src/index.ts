@@ -28,6 +28,8 @@ export interface McpOptions {
   run?: boolean | readonly string[]
 }
 
+export function mcp(): VxPlugin
+export function mcp(options: McpOptions): VxPlugin
 export function mcp(options: McpOptions = {}): VxPlugin {
   const run = options.run ?? true
   if (
