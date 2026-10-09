@@ -124,7 +124,7 @@ function versus(ours: number, theirs: number): string {
   const n = r >= 10 ? Math.round(r) : Math.round(r * 10) / 10
   return `vx ${n}× ${faster ? 'faster' : 'slower'}`
 }
-const FORMULA = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+const FORMULA = 'vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.'
 // Under every bench table: when, where and which versions (owner, 2026-10-09).
 const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
 const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`

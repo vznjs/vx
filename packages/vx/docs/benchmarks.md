@@ -403,7 +403,7 @@ The committed `packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` 
 | _Baseline_ (theoretical best)               | 3m 38s cold; 0 warm, restore, CPU                        | —           | —                      | —                       | —                      |
 | _Measured floors_ (context)                 | git walk 24ms · walk + raw copy 93ms · task shells 9.09s | —           | —                      | —                       | —                      |
 
-vx N% or N× faster: that tool takes N% longer or N times as long as vx.
+vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.
 
 Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 

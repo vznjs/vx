@@ -79,7 +79,7 @@ const benchTable = [
   { label: 'Fully cached run, restored: overhead', vx: '650 ms', turbo: '997 ms (vx 53% faster)', nx: '6.25 s (vx 9.6× faster)', vt: '2.64 s (vx 4.1× faster)' },
   { label: 'Fully cached run, up-to-date: overhead', vx: '393 ms', turbo: '463 ms (vx 18% faster)', nx: '6.45 s (vx 16× faster)', vt: '2.49 s (vx 6.3× faster)' },
 ]
-const benchFormula = 'vx N% or N× faster: that tool takes N% longer or N times as long as vx.'
+const benchFormula = 'vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.'
 const benchOverhead = "Overhead: the time a runner adds on top of the tasks' own ideal schedule (3 min 38 s cold, 0 for a cached run)."
 const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.'
 const benchRun = 'Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.'

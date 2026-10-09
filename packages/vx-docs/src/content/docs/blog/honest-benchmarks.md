@@ -63,7 +63,7 @@ isolate the runner's own overhead from compilation.
 | Nx        | 10.98s (vx 4.7× faster) | 6.45s (vx 16× faster) | 52.19s (vx 3× faster) |
 | Vite Task | 1m 11s (vx 31× faster) | 2.49s (vx 6.3× faster) | 12.46s (vx 39% slower) |
 
-vx N% faster: that tool takes N% longer than vx; N× faster: N times as long; slower: vx takes that much longer.
+vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx; slower: vx adds that much more.
 
 Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.

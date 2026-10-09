@@ -20,7 +20,7 @@ are on [vx, Turborepo, Nx, Bazel](../).
 | Fully cached run, up-to-date: overhead | **393 ms** | 463 ms (vx 18% faster)     |
 
 Overhead: the time a runner adds on top of the tasks' own ideal schedule (3 min 38 s cold, 0 for a cached run).
-vx N% or N× faster: that tool takes N% longer or N times as long as vx.
+vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx.
 
 Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270 tasks in 100 dependency layers, every build and test taking 1 s; real repos with uneven task times will differ.
 Run 2026-10-04 on linux x64, 4 cores: vx from source, Turborepo 2.11.7, Nx 23.2.1, Vite Task (vite-plus) 1.0.0.
