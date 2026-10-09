@@ -29,14 +29,9 @@ const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
 export interface TaskHistory {
   /** Total runs in the recent window. */
   runs: number
-  /**
-   * Wall-clock p50 (ms) of the window's executed successes: work actually
-   * done here. A task this machine has only restored in the window takes
-   * its hits' producing executions instead (a fresh runner behind a remote
-   * cache); an entry with no recorded duration (adopted) gives none.
-   */
+  /** Wall-clock p50 (ms). Cache-hit rows excluded so this reflects work actually done. */
   p50DurationMs: number | undefined
-  /** Wall-clock p99 (ms). Same rows. */
+  /** Wall-clock p99 (ms). Same exclusion. */
   p99DurationMs: number | undefined
   /** Success rate over the recent window ([0, 1]). */
   successRate: number
@@ -124,8 +119,6 @@ export class LocalHistoryProvider implements HistoryProvider {
         SUM(CASE WHEN r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
         GROUP_CONCAT(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                           THEN r.duration_ms END) AS ds,
-        GROUP_CONCAT(CASE WHEN r.cache_hit = 1 AND e.duration_ms > 0
-                          THEN e.duration_ms END) AS hds,
         MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                  THEN r.peak_rss_bytes
                  WHEN r.cache_hit = 1 THEN e.peak_rss_bytes END) AS rss,
@@ -154,7 +147,6 @@ export class LocalHistoryProvider implements HistoryProvider {
       failures: number
       retried: number
       ds: string | null
-      hds: string | null
       rss: number | null
       cpu: number | null
     }
@@ -179,8 +171,7 @@ export class LocalHistoryProvider implements HistoryProvider {
       const key = `${row.project}#${row.task}`
       const total = row.total
       const counts = { total, failures: row.failures, retried: row.retried }
-      const ds = row.ds ?? row.hds
-      const durations = ds === null ? undefined : ds.split(',').map(Number)
+      const durations = row.ds === null ? undefined : row.ds.split(',').map(Number)
       if (durations !== undefined) durations.sort((a, b) => a - b)
       out.set(key, {
         runs: total,
@@ -212,26 +203,12 @@ export class LocalHistoryProvider implements HistoryProvider {
       )
       .all(this.floor()) as Array<{ project: string; task: string; ds: string }>
     const wanted = new Set(taskIds)
-    const pick = (r: { project: string; task: string; ds: string }): void => {
-      const key = `${r.project}#${r.task}`
-      if (!wanted.has(key) || out.has(key)) return
-      const durations = r.ds.split(',').map(Number)
+    for (const row of rows) {
+      const key = `${row.project}#${row.task}`
+      if (!wanted.has(key)) continue
+      const durations = row.ds.split(',').map(Number)
       durations.sort((a, b) => a - b)
       out.set(key, pickPercentile(durations, 0.5))
-    }
-    for (const row of rows) pick(row)
-    // A task with no executed success takes its hits' producing executions,
-    // as `loadFor` does; asked only when one is missing.
-    if (out.size < wanted.size) {
-      const hits = this.db
-        .query(
-          `SELECT r.project, r.task, GROUP_CONCAT(e.duration_ms) AS ds FROM runs r
-           JOIN entries e ON e.hash = r.hash
-           WHERE r.id >= ? AND r.cache_hit = 1 AND e.duration_ms > 0 AND ${EXECUTED_RUNS_SQL}
-           GROUP BY r.project, r.task`,
-        )
-        .all(this.floor()) as Array<{ project: string; task: string; ds: string }>
-      for (const row of hits) pick(row)
     }
     return out
   }

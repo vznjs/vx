@@ -170,6 +170,10 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
+A CI runner starts with no history; `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
+keeps what it learned in one file your CI cache carries
+([post](../../blog/ci-timings-file/)).
+
 ## Setup and teardown
 
 `setup` runs once per run, before the first task; a throw stops the run.

@@ -1460,9 +1460,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   `scheduleHistoryPlugin({ file })` reads one timings JSON before
   ordering and rewrites it after a run that executed something or
   restored a task the file lacked; `--dry` writes nothing. A local p50
-  wins over the file, the file over `assume`. Core: a task with no
-  executed success in the window takes its hits' producing durations
-  (`entries.duration_ms`). Warm `--frozen` 1,090 packages with the
+  wins over the file, the file over `assume`. Feeding remote-hit
+  durations into history was built and dropped (EA: order matters for
+  misses). Warm `--frozen` 1,090 packages with the
   plugin, min of 10: main 1,125 ms, with `file` 1,137, without 1,229
   (noise); perf-guard counts unchanged. Rows:
-  `history-hit-durations.test.ts`, `timings-file.test.ts`.
+  `timings-file.test.ts`. vx's own CI writes `.vx/timings.json`.

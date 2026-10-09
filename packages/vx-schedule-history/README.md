@@ -54,10 +54,6 @@ sorted. A p50 recorded on this machine wins over it, and it wins over
 run did not see keeps its time. A file that is not one warns and is read
 as empty; `--dry` writes nothing.
 
-A task this machine has only restored from a cache takes the producing
-build's time, which its entry carries, so a runner behind a remote cache
-orders by real times even with no file.
-
 ## Reservations learned from history
 
 The same history answers what each task used: the runner records every

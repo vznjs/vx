@@ -6,7 +6,7 @@ authors:
 tags:
   - performance
   - ci
-excerpt: 'A fresh CI runner has no run history, so the history scheduler guessed. Now one JSON file carries the learned times, and a remote cache hit brings the time of the build that produced it.'
+excerpt: 'A fresh CI runner has no run history, so the history scheduler guessed. Now one JSON file carries the learned times from runner to runner.'
 ---
 
 `@vzn/vx-schedule-history` starts the longest chain first, using task
@@ -55,12 +55,6 @@ last one learned:
 | The file | `assume` |
 | `assume` | nothing |
 
-## A cache hit knows how long the build took
-
-A runner behind a remote cache restores most tasks and builds few. A
-restore takes milliseconds, so it never counted as a task's time, and
-such a runner learned almost nothing. Each cache entry already records
-how long the producing build ran. Now a task this machine has only
-restored takes that time, so the order is right even without the file.
-
-Runs that use no history plugin do no extra work.
+A run that executed nothing and restored only tasks the file already
+times leaves the file alone, so an all-cached CI run pays no extra history
+read. Runs that use no history plugin do no extra work.

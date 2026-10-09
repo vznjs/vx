@@ -166,6 +166,22 @@ plugin's `assume` option names its duration for runs with no history:
 scheduleHistoryPlugin({ assume: { 'app#typecheck': 60_000 } })
 ```
 
+## On CI
+
+A CI runner usually starts empty, so every run there is a first run.
+Give the plugin a file and cache it between runs:
+
+```ts
+scheduleHistoryPlugin({ file: '.vx-timings.json' })
+```
+
+The plugin reads the file before it orders the run and writes each
+task's median time back after. The next runner starts with real times
+instead of a guess. A time recorded on the machine itself still wins
+over the file, and the file wins over `assume`.
+[Carry the scheduler's memory between CI runners](../ci-timings-file/)
+shows the cache step.
+
 ## Turn it on
 
 ```sh
