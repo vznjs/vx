@@ -79,6 +79,9 @@ same facts and runs tasks. Adoption does not add it: install
   does not re-run a task, the file is not one of its inputs. Fix the
   config, do not force.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
+- Offline reference: `vx docs <words> --format json` searches the CLI, config
+  and cache pages that ship with vx; the sections holding every word print
+  whole.
 - Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
   When that host is unreachable, the same pages are
   `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:

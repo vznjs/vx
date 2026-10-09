@@ -116,6 +116,7 @@ const KITCHEN = `export default {
 let root: string
 const outputs: Record<string, unknown[]> = {
   init: [],
+  docs: [],
   lock: [],
   show: [],
   info: [],
@@ -338,13 +339,26 @@ beforeAll(async () => {
   } finally {
     await rm(fresh, { recursive: true, force: true })
   }
+  json('docs', ['cache', 'inputs', '--limit', '2'])
 }, TIMEOUT)
 
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const VERBS = ['show', 'info', 'why', 'last', 'cache', 'lock', 'init', 'plan', 'summary', 'error']
+const VERBS = [
+  'show',
+  'info',
+  'why',
+  'last',
+  'cache',
+  'lock',
+  'init',
+  'docs',
+  'plan',
+  'summary',
+  'error',
+]
 
 describe('read verbs hold their --format json to a checked-in schema', () => {
   it('ships one schema per read verb, and nothing else', () => {

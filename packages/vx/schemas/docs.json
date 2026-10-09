@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "vx docs <query> --format json",
+  "description": "The reference sections holding every word of the query, best first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["query", "hits"],
+  "properties": {
+    "query": { "type": "string", "description": "the query's words, lowercased" },
+    "hits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["page", "heading", "url", "text"],
+        "properties": {
+          "page": { "type": "string", "description": "the page: cli, schema, caching …" },
+          "heading": {
+            "type": "string",
+            "description": "the section's heading; empty for a page's opening"
+          },
+          "url": { "type": "string", "description": "the section on the site" },
+          "text": { "type": "string", "description": "the section's markdown, heading included" }
+        }
+      }
+    }
+  }
+}

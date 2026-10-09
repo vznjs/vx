@@ -154,6 +154,11 @@ export function coreEntries(exports: Readonly<Record<string, unknown>>): readonl
 
 const PACKAGE_DATA = ['schemas', 'skills'] as const
 
+async function docsPages(): Promise<string[]> {
+  const { PAGES } = await import('../src/cli/docs-corpus.ts')
+  return Object.keys(PAGES).map((p) => `docs/${p}.md`)
+}
+
 /**
  * Emit the primary `@vzn/vx` package — library source, the root shims, the
  * Node launcher and the manifest — into `<outDir>/vx`. Exported so the tree
@@ -183,6 +188,9 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   // Data the docs point installs at: the `--format json` schemas and the
   // agent skill (`node_modules/@vzn/vx/schemas/`, `…/skills/vx/SKILL.md`).
   for (const dir of PACKAGE_DATA) await cp(join(CORE, dir), join(mainDir, dir), { recursive: true })
+  // The reference `vx docs` searches, where docs-corpus.ts imports it from.
+  const docs = await docsPages()
+  for (const f of docs) await cp(join(CORE, f), join(mainDir, f))
   await cp(join(CORE, 'npm-launcher.cjs'), join(mainDir, 'launcher.cjs'))
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
@@ -204,7 +212,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
-    files: [...entries, ...PACKAGE_DATA, 'launcher.cjs', 'README.md', 'LICENSE'],
+    files: [...entries, ...PACKAGE_DATA, ...docs, 'launcher.cjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: corePkg.homepage,
     bugs: `${REPO_URL}/issues`,

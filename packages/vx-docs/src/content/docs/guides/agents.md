@@ -14,6 +14,11 @@ markdown. [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is every doc
 file. Any page is also served raw beside its HTML: add `.md` to its
 path, as in [quickstart.md](https://vznjs.github.io/vx/quickstart.md).
 
+Without network, `vx docs <query>` searches the reference that ships
+inside vx (CLI, config schema, caching, execution, patterns, security,
+features) and prints the matching sections whole; `--format json` gives
+`{query, hits}`.
+
 ## Install the vx skill
 
 `@vzn/vx` ships an agent skill: one `SKILL.md` that teaches an agent to

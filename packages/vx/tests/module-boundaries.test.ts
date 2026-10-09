@@ -81,6 +81,7 @@ async function collectEdges(): Promise<Edge[]> {
       if (!spec.startsWith('.')) continue // bare imports = packages, not modules
       if (spec.endsWith('.json')) continue // JSON is data (e.g. version.ts → package.json)
       if (spec.endsWith('.html')) continue // embedded asset (cli/ui-asset.ts), not a module
+      if (spec.endsWith('.md')) continue // embedded text (cli/docs-corpus.ts), not a module
       const resolved = path
         .normalize(path.join(path.dirname(norm), spec))
         .split(path.sep)

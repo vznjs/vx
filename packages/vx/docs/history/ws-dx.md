@@ -171,3 +171,10 @@ and log output reads better. Each must cost the warm path nothing.
   `kept`, `replaced`, `todos`, `notes`, `next`. MCP `planInit` returns
   it. Rows: `cli-json-schemas.test.ts`, `adopt.test.ts` "--dry --format
   json prints the plan", `vx-mcp/tests/plan-init.test.ts`.
+
+- **DX-28** `vx docs <query>` (roadmap DX #4, Turbo 2.8's `turbo docs`):
+  searches seven reference pages offline. They ship in the npm package
+  (`build-npm.ts`) and the compiled binary (text imports in
+  `docs-corpus.ts`). A section must hold every word, and a heading
+  match ranks first. `--limit`, `--format json` (`schemas/docs.json`).
+  Rows: `tests/docs.test.ts`.

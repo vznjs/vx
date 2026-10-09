@@ -11,6 +11,11 @@
     "completions": [
       "--help"
     ],
+    "docs": [
+      "--format",
+      "--help",
+      "--limit"
+    ],
     "help": [
       "--help"
     ],
