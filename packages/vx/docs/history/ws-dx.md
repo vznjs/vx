@@ -129,3 +129,9 @@ and log output reads better. Each must cost the warm path nothing.
   quickstart and migrate guide carry a `bun add -d` line; `vx last`'s
   schema says `cached` is "declares a cache", not "hit". Rows 3, 5–8, 12
   were already fixed on main and wait for a release.
+
+- **DX-21** `vx why` after a failed run (agent-trial row 10). The failed
+  run saved no fingerprints, so the next run's why named only the key
+  change. It now diffs against the last run that saved an entry and
+  names the file the fix touched. Row: `metrics.test.ts` "diffs against
+  the last run that saved an entry".

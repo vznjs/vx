@@ -688,6 +688,43 @@ describe('cacheKeyDiff', () => {
       'cache key changed but input fingerprints are unavailable — the previous run ended failed and saved no entry; only the key change is known',
     ])
   })
+
+  it('diffs against the last run that saved an entry when the previous one failed', () => {
+    // pass (hA) → fail (hB, no entry) → pass (hC): the fix is named against hA.
+    withCache((cache) => {
+      const run = (hash: string, runId: string, startedAt: number, failed = false) =>
+        cache.recordRun(
+          mkRun({
+            hash,
+            project: 'pkg',
+            task: 'test',
+            runId,
+            startedAt,
+            ...(failed ? { status: 'failed', exitCode: 1 } : {}),
+          }),
+        )
+      run('hA', 'r-1', 1000)
+      run('hB', 'r-2', 2000, true)
+      run('hC', 'r-3', 3000)
+      seedEntryInputs(cache, 'hA', [
+        { kind: 'file', name: 'a.test.ts', hash: 'x' },
+        { kind: 'file', name: 'b.ts', hash: 'y' },
+      ])
+      seedEntryInputs(cache, 'hC', [
+        { kind: 'file', name: 'a.test.ts', hash: 'z' },
+        { kind: 'file', name: 'b.ts', hash: 'y' },
+      ])
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test')
+      expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.unchangedCount]).toEqual([
+        'r-1',
+        ['a.test.ts'],
+        1,
+      ])
+      expect(diff.note).toBe(
+        '1 cache-key component(s) changed since run r-1, the last that saved an entry (the previous run ended failed)',
+      )
+    })
+  })
 })
 
 describe('getRun', () => {
