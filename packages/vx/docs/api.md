@@ -66,6 +66,7 @@ export interface ApplyMigrationArgs {
   notes?: readonly string[]
   unmapped?: boolean
   format?: MigrationFormat
+  json?: boolean
 }
 ```
 

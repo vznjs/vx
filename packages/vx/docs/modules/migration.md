@@ -49,6 +49,7 @@ export interface ApplyMigrationArgs {
   notes?: readonly string[]
   unmapped?: boolean // init: scripts exist, none became a task (M-59)
   format?: MigrationFormat // default 'ts'
+  json?: boolean // with dry: one JSON document (schemas/init.json) for files + report
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function quoteTsLiteral(s: string): string
