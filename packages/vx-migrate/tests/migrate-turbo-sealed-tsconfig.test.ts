@@ -71,7 +71,7 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       const dir = path.join(root, name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'tsconfig.json'), body)
-      return sealsConfig(dir, 'vx.config.mjs')
+      return sealsConfig(root, path.join(dir, 'vx.config.mjs'))
     }
     await writeFile(path.join(root, 'base.json'), '{"compilerOptions":{"composite":true}}')
     expect([
@@ -80,12 +80,55 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       await at('extended', '{"extends":"../base.json"}'),
       await at('extended-bare', '{"extends":"../base"}'),
       await at('included', '{"compilerOptions":{"composite":true},"include":["*.mjs"]}'),
+      await at('dir', '{"compilerOptions":{"composite":true},"include":["."]}'),
       await at('plain', '{"compilerOptions":{"strict":true}}'),
       await at('package', '{"extends":"@tsconfig/node20/tsconfig.json"}'),
       await at('elsewhere', '{"compilerOptions":{"composite":true},"include":["src/**"]}'),
+      await at('excluded', '{"compilerOptions":{"composite":true},"exclude":["*.mjs"]}'),
       await at('files', '{"compilerOptions":{"composite":true},"files":["index.ts"]}'),
+      await at('unsealed', '{"extends":"../base.json","compilerOptions":{"composite":false}}'),
       await at('broken', '{ not json'),
-    ]).toEqual([true, true, true, true, true, false, false, false, false, false])
-    expect(sealsConfig(path.join(root, 'none'), 'vx.config.mjs')).toBe(false)
+    ]).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ])
+    expect(sealsConfig(root, path.join(root, 'none', 'vx.config.mjs'))).toBe(false)
+  })
+
+  // withastro/astro 3cbd72c on 0.0.634: packages/astro/tsconfig.test.json
+  // takes in the nested project performance/, and its configDir-relative
+  // rootDir comes from the file it extends.
+  it('sealsConfig: a tsconfig*.json above a nested project, as astro’s', async () => {
+    await mkdir(path.join(root, 'configs'), { recursive: true })
+    await writeFile(
+      path.join(root, 'configs', 'tsconfig.test.json'),
+      '{ "compilerOptions": { "composite": true, "rootDir": "${configDir}" },\n' +
+        '  "include": ["${configDir}/test/**/*"] }\n',
+    )
+    const pkg = path.join(root, 'packages', 'astro')
+    await mkdir(path.join(pkg, 'performance', 'fixtures', 'md'), { recursive: true })
+    await writeFile(
+      path.join(pkg, 'tsconfig.test.json'),
+      '{ "extends": "../../configs/tsconfig.test.json",\n' +
+        '  "include": ["test/*.ts", "./performance/*.mjs"], "exclude": ["test/fixtures/**"] }\n',
+    )
+    await writeFile(path.join(pkg, 'tsconfig.json'), '{ "files": ["./bin/astro.mjs"] }')
+    const config = (...dir: string[]) => path.join(pkg, ...dir, 'vx.config.mjs')
+    expect([
+      sealsConfig(root, config('performance')),
+      sealsConfig(root, config('performance', 'fixtures', 'md')),
+      sealsConfig(root, config()),
+    ]).toEqual([true, false, false])
   })
 })

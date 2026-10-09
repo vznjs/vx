@@ -80,7 +80,9 @@ export async function migrateTurbo(
     ])
     for (const t of p.tasks) for (const kind of t.uses) used.add(PRESET_NAMES[kind])
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
-    const sealed = used.size > 0 && sealsConfig(path.resolve(root, p.dir), `vx.config.${format}`)
+    const sealed =
+      used.size > 0 &&
+      sealsConfig(root, path.join(path.resolve(root, p.dir), `vx.config.${format}`))
     if (used.size > 0 && !sealed) imported = true
     if (sealed) anySealed = true
     return {

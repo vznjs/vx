@@ -204,3 +204,10 @@ directions; the link;`vx docs VX_E_USAGE` alone).
   values it uses instead of importing the root `vx-preset`: withastro/astro's
   `scripts/` build failed on that import (TS6059, TS6307; Growth, 0.0.633).
   Rows: `vx-migrate/tests/migrate-turbo-sealed-tsconfig.test.ts`.
+- **DX-35** vx-migrate's preset inlining (DX-34) asks every `tsconfig*.json`
+  from the config's directory up to the root, `include` / `exclude` /
+  `files` and `${configDir}` as `extends` resolves them: astro's
+  `packages/astro/tsconfig.test.json` takes in the nested
+  `performance/vx.config.mjs`, and 0.0.634 still failed there (Engineering).
+  astro dry run: 564 preset imports before, 562 after; `performance/` and
+  `scripts/` declare the values. Rows: `migrate-turbo-sealed-tsconfig.test.ts`.
