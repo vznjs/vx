@@ -1,4 +1,4 @@
-# Turbo / Nx parity map
+# Parity map for Turbo and Nx users
 
 What a Turborepo or Nx user relies on, the vx spelling of it, and the
 test that proves it. Two end-to-end suites run the real CLI on one

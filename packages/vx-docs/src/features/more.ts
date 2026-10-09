@@ -1705,7 +1705,7 @@ export const MORE: readonly Feature[] = [
       href: 'guides/migrate/',
     },
     deepDive: {
-      label: 'From Nx: keep the graph, drop the platform',
+      label: 'Moving to vx from Nx: keep the graph, drop the platform',
       href: 'blog/from-nx/',
     },
   },
@@ -1777,7 +1777,7 @@ export const MORE: readonly Feature[] = [
       href: 'guides/migrate/',
     },
     deepDive: {
-      label: 'From Nx: keep the graph, drop the platform',
+      label: 'Moving to vx from Nx: keep the graph, drop the platform',
       href: 'blog/from-nx/',
     },
   },

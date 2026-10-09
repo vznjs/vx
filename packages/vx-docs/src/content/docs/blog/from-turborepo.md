@@ -1,5 +1,5 @@
 ---
-title: 'From Turborepo: a temporary start, then native config'
+title: 'Moving to vx from Turborepo: a temporary start, then native config'
 date: 2026-09-10T23:32:00Z
 authors:
   - vzn
