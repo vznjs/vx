@@ -12,8 +12,8 @@ config key or an environment variable is missing here.
 
 ## Run
 
-- **Run a task** (`vx run`) — run a task in the cwd's project, `pkg#task` directly, or several at once. [page](https://vznjs.github.io/vx/features/quickstart/) · no post
-- **Every project** (`--all`) — run the task in every project that declares it. [page](https://vznjs.github.io/vx/features/quickstart/) · no post
+- **Run a task** (`vx run`) — run a task in the cwd's project, `pkg#task` directly, or several at once. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
+- **Every project** (`--all`) — run the task in every project that declares it. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **pnpm-style filters** (`--filter`) — select projects by name, glob, path, dependencies (`foo...`), dependents (`...foo`), negation or a git range. [page](https://vznjs.github.io/vx/features/affected/) · post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Affected only** (`--affected`, `affectedBase`) — run what a change reaches, following task edges from a git base. [page](https://vznjs.github.io/vx/features/affected/) · post: [Run only what a change reaches](https://vznjs.github.io/vx/blog/affected/)
 - **Concurrency** (`--concurrency`, `concurrency`) — a count or a share of the CPUs this process may use (`50%`). [page](https://vznjs.github.io/vx/features/concurrency/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
@@ -30,7 +30,7 @@ config key or an environment variable is missing here.
 - **Longest chain first** — the scheduler starts the critical path first; `@vzn/vx-schedule-history` learns it from past runs. [page](https://vznjs.github.io/vx/features/critical-path/) · post: [Bitsets, popcount, and a scheduler tick](https://vznjs.github.io/vx/blog/bitsets-and-the-scheduler/)
 - **No daemon** — every run starts cold and still answers in milliseconds. [page](https://vznjs.github.io/vx/features/no-daemon/) · post: [No daemon, on purpose](https://vznjs.github.io/vx/blog/no-daemon/)
 - **Group tasks** (`dependsOn` with no `exec`) — a task that only runs its dependencies; `dependsOn: []` is a named no-op. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
-- **Implicit keyed `build`** — a project with no `build` gets a `^build` group keyed on its files, so source-only packages still move their dependants' keys. no post
+- **Implicit keyed `build`** — a project with no `build` gets a `^build` group keyed on its files, so source-only packages still move their dependants' keys. post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **dependsOn syntax** (`^name`, `pkg#name`, `name.*`, `^name.*`) — upstream, cross-project and pattern edges. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Every name must resolve** — `vx run lint test typecheck` refuses to start if one name matches no project. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
 - **Tag filters** (`--filter tag:<pattern>`) — select projects by their config `tags`. post: [Say exactly which tasks to run](https://vznjs.github.io/vx/blog/pick-your-tasks/)
@@ -52,10 +52,10 @@ config key or an environment variable is missing here.
 - **Stage timing** (`VX_TIMING`) — vx's own stage table, for performance work. post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **Output flows** — what is printed follows the run's intent (focused, broad or CI); a truthy `CI` wins. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Cache-aware glyphs** — each task line's glyph shows ran, fresh, restored locally or remotely, failed, skipped or persistent. post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
-- **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. no post
-- **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env. no post
+- **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
+- **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env. post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
-- **Plain output off a TTY** — no live region, and a missing task lists tasks instead of opening the picker. no post
+- **Plain output off a TTY** — no live region, and a missing task lists tasks instead of opening the picker. post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 
 ## Plan and explain
 
