@@ -1808,7 +1808,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'local-floor',
     title: 'This machine is always the floor',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Running and caching locally are built in, so a declined plugin hands work back, never drops it.',
     body: [
       'Plugins decide where a task runs and where its artifacts live. If a remote executor declines a task, or a remote cache is down, the work must still happen.',
@@ -1832,7 +1832,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'vx-prune',
     title: 'Ship one app, not the monorepo',
-    category: 'plugins',
+    category: 'extend',
     hook: '`vx prune` copies a project and its dependencies with a pruned lockfile, for a Docker build.',
     body: [
       'A Docker image for one app should not install the whole monorepo’s dependencies. `vx prune @demo/web --docker` writes just the projects it needs and a lockfile cut down to them.',
@@ -1856,7 +1856,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'vx-history',
     title: 'What the scheduler learned',
-    category: 'plugins',
+    category: 'extend',
     hook: '`vx history` shows each task’s typical time, peak memory and CPU from past runs.',
     body: [
       'The history plugin learns from every run. `vx history` shows what it knows: median time, peak memory, CPU use and how much memory it reserves for each task.',
@@ -1880,7 +1880,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'setup-teardown',
     title: 'Code around the run',
-    category: 'plugins',
+    category: 'extend',
     hook: 'A plugin can start something before the run and clean up after, within a deadline.',
     body: [
       'Some runs need a service up first: a database, a local registry, a proxy. A plugin’s `setup` runs before the first task and `teardown` after the last.',
@@ -1904,7 +1904,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'reapi-tls',
     title: 'Hosted remote servers, Bazel-style',
-    category: 'plugins',
+    category: 'extend',
     hook: 'TLS, mutual TLS and auth headers connect vx to servers such as BuildBuddy.',
     body: [
       'Hosted build servers want TLS and an API key. `@vzn/vx-reapi` speaks to them the way Bazel does: system roots or your CA, a client certificate for mutual TLS, and headers.',
@@ -1928,7 +1928,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'reapi-action-cache',
     title: 'Remote runs that never repeat',
-    category: 'plugins',
+    category: 'extend',
     hook: 'A remote action that already ran replays its outputs and log, without a worker.',
     body: [
       'Remote execution costs worker time. When the same action already ran, the server has its result.',
@@ -1952,7 +1952,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'reapi-safety',
     title: 'A wedged server is just a miss',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Downloads are verified and calls have deadlines, so a bad server never hangs a run.',
     body: [
       'A remote server can return a corrupt blob or stop answering. vx checks every download against its digest and gives every call a deadline.',
@@ -1976,7 +1976,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'remote-install',
     title: 'node_modules for stateless workers',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Run the install as a remote action, so every worker has `node_modules` without a shared disk.',
     body: [
       "Remote workers start empty. Mark the install task `remote: 'only'` and it runs as a remote action whose output is `node_modules`.",
@@ -2000,7 +2000,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'otel-live',
     title: 'Watch CI while it runs',
-    category: 'plugins',
+    category: 'extend',
     hook: 'Spans and metrics stream as tasks end, so a dashboard follows the run live.',
     body: [
       'A trace that arrives when the run is over cannot tell you what is slow right now. `@vzn/vx-otel` exports each task as it ends.',
@@ -2024,7 +2024,7 @@ export const MORE: readonly Feature[] = [
   {
     slug: 'memory-admission',
     title: 'Tasks packed by memory',
-    category: 'plugins',
+    category: 'extend',
     hook: 'The history plugin admits tasks by the peak memory they used before, so a run never runs out.',
     body: [
       'Eight test runners at 2 GB each will not fit on a 13 GB runner. Counting cores is not enough.',

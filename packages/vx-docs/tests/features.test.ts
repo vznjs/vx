@@ -44,6 +44,8 @@ describe('the feature data', () => {
     const seen = FEATURES.map((f) => order.indexOf(f.category))
     expect(seen).toEqual([...seen].sort((a, b) => a - b))
     expect(order.filter((c) => !FEATURES.some((f) => f.category === c))).toEqual([])
+    // A category's page is features/<id>/, beside the features' own.
+    expect(slugs.filter((s) => (order as string[]).includes(s))).toEqual([])
   })
 
   it('gives each a one-sentence hook, two to four paragraphs, an image on disk', () => {
@@ -229,16 +231,37 @@ describe('the feature data', () => {
 describe('the built feature pages', () => {
   const page = (rel: string): string => readFileSync(path.join(DIST, rel, 'index.html'), 'utf8')
 
-  it('the hub lists every feature under its category, in order', () => {
+  it('the hub shows every category as one tile, in order, linking its page', () => {
     const hub = page('features/')
-    const sections = [...hub.matchAll(/<section class="fcat" id="([a-z]+)">([\s\S]*?)<\/section>/g)]
-    expect(sections.map((m) => m[1])).toEqual(CATEGORIES.map((c) => c.id))
-    for (const [, id, body] of sections) {
-      const links = [...body!.matchAll(/<a class="fcard" href="([^"]+)"/g)].map((m) => m[1])
-      expect(links).toEqual(
-        FEATURES.filter((f) => f.category === id).map((f) => `${BASE}features/${f.slug}/`),
-      )
+    const tiles = [...hub.matchAll(/<a class="fhub-tile[^"]*" href="([^"]+)"/g)].map((m) => m[1])
+    expect(tiles).toEqual(CATEGORIES.map((c) => `${BASE}features/${c.id}/`))
+    expect(hub).not.toContain('class="ftile')
+  })
+
+  // Two lead tiles, up to three with an image, the rest words only: every
+  // tile that has an image box has an image in it.
+  it('each category page shows its features in order, as lead, mid and small tiles', () => {
+    const bad: string[] = []
+    for (const c of CATEGORIES) {
+      const html = page(`features/${c.id}/`)
+      const tiles = [
+        ...html.matchAll(/<a class="ftile ftile-([a-z]+)" href="([^"]+)">([\s\S]*?)<\/a>/g),
+      ]
+      const want = FEATURES.filter((f) => f.category === c.id)
+      const got = tiles.map((m) => m[2])
+      if (JSON.stringify(got) !== JSON.stringify(want.map((f) => `${BASE}features/${f.slug}/`)))
+        bad.push(`${c.id}: ${JSON.stringify(got)}`)
+      const sizes = tiles.map((m) => m[1])
+      const expected = want.map((_, i) => (i < 2 ? 'lead' : i < 5 ? 'mid' : 'small'))
+      if (JSON.stringify(sizes) !== JSON.stringify(expected))
+        bad.push(`${c.id}: sizes ${JSON.stringify(sizes)}`)
+      for (const m of tiles) {
+        const box = m[3]!.includes('class="ftile-img"')
+        if (box !== /<img\b/.test(m[3]!) || box === (m[1] === 'small'))
+          bad.push(`${c.id}: ${m[2]} image`)
+      }
     }
+    expect(bad).toEqual([])
   })
 
   it('each page shows its title, hook, docs link, and the rest of its category', () => {
@@ -265,7 +288,12 @@ describe('the built feature pages', () => {
 
   // The sources are 1600×900 PNGs; a page ships resized WebP only.
   it('ships every feature image as resized WebP, never the source PNG', () => {
-    const rels = ['', 'features/', ...FEATURES.map((f) => `features/${f.slug}/`)]
+    const rels = [
+      '',
+      'features/',
+      ...CATEGORIES.map((c) => `features/${c.id}/`),
+      ...FEATURES.map((f) => `features/${f.slug}/`),
+    ]
     const bad: string[] = []
     let imgs = 0
     for (const rel of rels) {

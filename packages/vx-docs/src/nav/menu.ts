@@ -9,7 +9,7 @@ export type MenuLink = { label: string; href: string; line?: string }
 
 export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
   features: [
-    ...CATEGORIES.map((c) => ({ label: c.title, href: `features/#${c.id}`, line: c.line })),
+    ...CATEGORIES.map((c) => ({ label: c.title, href: `features/${c.id}/`, line: c.line })),
     { label: 'Every feature, one line each', href: 'all-features/' },
   ],
   docs: [
