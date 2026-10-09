@@ -1517,6 +1517,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   const filesWriters: TaskNode[] = []
   let projectReaders = false
   let rootReaders = false
+  const memo: TakeBackMemo = { bySide: new Map(), byList: new Map() }
   const bucket = (name: string): Side[] => {
     let list = byProject.get(name)
     if (list === undefined) byProject.set(name, (list = []))
@@ -1557,7 +1558,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
         (s) => s.globs,
         (s) => s.reads,
       )) {
-        readsOutputs(sides[i]!, sides[j]!, 'files')
+        readsOutputs(memo, sides[i]!, sides[j]!, 'files')
       }
     }
   }
@@ -1575,7 +1576,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       (s) => s.globs,
       (s) => s.reads,
     )) {
-      readsOutputs(sides[i]!, sides[j]!, 'files')
+      readsOutputs(memo, sides[i]!, sides[j]!, 'files')
     }
   }
   if (!rootReaders) return
@@ -1593,26 +1594,63 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     (s) => s.globs,
     (s) => s.reads,
   )) {
-    readsOutputs(rooted[i]!, rooted[j]!, 'workspaceFiles')
+    readsOutputs(memo, rooted[i]!, rooted[j]!, 'workspaceFiles')
   }
 }
 
-function readsOutputs(x: Side, y: Side, field: 'files' | 'workspaceFiles'): void {
+/**
+ * Whether a reader's take-back list covers an output glob, asked once per
+ * list and glob: a Turbo-mapped repo gives two thousand readers one
+ * 400-entry list, and asking it per reader and writer pair was 2.7 s of an
+ * astro plan (2026-10-09). One per `detectInputOverlaps` call.
+ */
+interface TakeBack {
+  list: string[]
+  verdicts: Map<string, boolean>
+}
+type TakeBackMemo = { bySide: Map<Side, TakeBack>; byList: Map<string, TakeBack> }
+
+function takenBack(
+  memo: TakeBackMemo,
+  reader: Side,
+  field: 'files' | 'workspaceFiles',
+  go: string,
+): boolean {
+  let tb = memo.bySide.get(reader)
+  if (tb === undefined) {
+    const cache = reader.node.config.cache!
+    // A reader rebased to the root (X-135) speaks in its project's terms.
+    const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
+    // What the reader's key never reads: its `!` entries and its own outputs.
+    const list = [
+      ...splitNegations(
+        field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []),
+      ).negative,
+      ...splitNegations(
+        field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
+      ).positive,
+    ].map((g) => at + g)
+    const key = list.join('\0')
+    tb = memo.byList.get(key)
+    if (tb === undefined) memo.byList.set(key, (tb = { list, verdicts: new Map() }))
+    memo.bySide.set(reader, tb)
+  }
+  let verdict = tb.verdicts.get(go)
+  if (verdict === undefined) tb.verdicts.set(go, (verdict = outputTakenBack(go, tb.list)))
+  return verdict
+}
+
+function readsOutputs(
+  memo: TakeBackMemo,
+  x: Side,
+  y: Side,
+  field: 'files' | 'workspaceFiles',
+): void {
   if (x.reads === y.reads || x.node === y.node) return
   const [reader, writer] = x.reads ? [x, y] : [y, x]
-  const cache = reader.node.config.cache!
-  // A reader rebased to the root (X-135) speaks in its project's terms.
   const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
-  // What the reader's key never reads: its `!` entries and its own outputs.
-  const takeBack = [
-    ...splitNegations(field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []))
-      .negative,
-    ...splitNegations(
-      field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
-    ).positive,
-  ].map((g) => at + g)
   for (const go of writer.globs) {
-    if (outputTakenBack(go, takeBack)) continue
+    if (takenBack(memo, reader, field, go)) continue
     for (const gi of reader.globs) {
       if (!outputsOverlap(gi, go)) continue
       const shown =
