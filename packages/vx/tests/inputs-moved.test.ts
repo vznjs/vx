@@ -431,6 +431,12 @@ describe('an input the user edits during the run', () => {
     async () => {
       const { app, lib } = await gated({ 'src/b.ts': 'b\n' })
       commit()
+      // An empty cache keys each task as it starts, with no up-front key.
+      await writeFile(path.join(app, 'src', 'a.ts'), 'seed\n')
+      await writeFile(path.join(lib, 'go'), '')
+      await runTask('build')
+      await rm(path.join(lib, 'go'))
+      await rm(path.join(lib, 'started'))
       // Untracked: hashed by content, at the up-front key and again at the describe.
       await writeFile(path.join(app, 'src', 'a.ts'), 'X\n')
       const pending = runTask('build')

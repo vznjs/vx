@@ -60,9 +60,15 @@ describe('an uncached task key is derived once', () => {
           t2: { exec: { command: 'true' } },
           t3: { exec: { command: 'true' } },
           t4: { exec: { command: 'true' } },
+          seed: {
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
         } }
       `,
     )
+    // An empty cache keys each task as it starts, with no up-front pass.
+    await run(root, ['seed'])
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })

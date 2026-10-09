@@ -1448,3 +1448,11 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   ties. The default path is unchanged: perf-guard counts identical, warm
   `--frozen` 1,090 packages min 341 vs 336 ms, cold first task 298/330
   vs 305/343 (noise). Rows: `schedule-strategy.test.ts`.
+- **X-216** A run on a local cache that holds no artifact skips the
+  up-front key-and-probe pass (`Cache.holdsNothing`): every probe would
+  miss, so each task keys itself as it starts, the lazy path a remote run
+  takes. Cold `--frozen` 1,090 packages: first task min 299–329 ms →
+  225–232 (Turbo 2.11: 276); wall unchanged (4.61/4.74/4.73 vs
+  4.62/4.74/4.83 s). One more SQLite statement per run, two per task on a
+  cold one (baseline re-recorded). Rows: `cache-holds-nothing.test.ts`;
+  the up-front-key rows seed their cache.
