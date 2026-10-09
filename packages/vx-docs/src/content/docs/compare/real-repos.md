@@ -7,7 +7,8 @@ The benchmark on [vx vs Nx](../nx/) is a synthetic graph built to be
 fair to every tool. This page is the other half: real public repos, moved
 to vx with one command and timed against the tool they already use.
 
-Covered so far: TanStack/query (Nx). The list grows as runs finish.
+Covered so far: TanStack/query (Nx), create-t3-turbo and react-email
+(Turborepo). The list grows as runs finish.
 
 ## TanStack/query, against Nx
 
@@ -28,6 +29,32 @@ times as long.
 Run 2026-10-09 on linux x64, 4 cores: vx 0.0.633 configured by
 `vx init --native`, Nx 23.2.1 with the daemon off and no Nx Cloud, pnpm
 12.4.2. 5 workers each, best of three interleaved runs. Every run is in
+[the benchmarks](../../benchmarks/#real-repos).
+
+## create-t3-turbo and react-email, against Turborepo
+
+[t3-oss/create-t3-turbo](https://github.com/t3-oss/create-t3-turbo) at
+commit `8f945b7` (3 tasks) and
+[resend/react-email](https://github.com/resend/react-email) at commit
+`1531a39` (7 tasks), the `./packages/*` tasks, each against the
+Turborepo version the repo pins.
+
+| Runner overhead              | vx          | Turborepo | vx is       |
+| ---------------------------- | ----------- | --------- | ----------- |
+| create-t3-turbo, restore     | **0.087 s** | 0.519 s   | 6.0× faster |
+| create-t3-turbo, nothing new | **0.081 s** | 0.476 s   | 5.9× faster |
+| react-email, restore         | **0.283 s** | 0.382 s   | 35% faster  |
+| react-email, nothing new     | **0.136 s** | 0.252 s   | 85% faster  |
+
+Every task is a cache hit, so each row is the runner's overhead. "N%
+faster" means Turborepo takes N% longer.
+
+Run 2026-10-09 on linux x64, 4 cores: vx 0.0.634 configured by
+`vx init --native` plus the
+[history scheduler](../../plugins/vx-schedule-history/) reading task
+timings saved from one earlier run; Turborepo 2.5.8 (create-t3-turbo)
+and 2.9.14 (react-email) with the daemon off; pnpm 12.4.2. 10 workers
+each, best of three interleaved runs. Every run is in
 [the benchmarks](../../benchmarks/#real-repos).
 
 ## Try it on yours
