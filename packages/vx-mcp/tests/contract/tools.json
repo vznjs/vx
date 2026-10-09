@@ -5,6 +5,24 @@
       "properties": {
         "project": {
           "type": "string"
+        },
+        "filter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "--filter values (a project, a glob, ...pkg, [ref])"
+        },
+        "affected": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "--affected: true for the default ref, or a git ref"
         }
       }
     },
