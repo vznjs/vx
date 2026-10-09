@@ -160,6 +160,9 @@ export default defineConfig({
       expressiveCode: { defaultProps: { wrap: true } },
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
+        { icon: 'blueSky', label: 'Bluesky', href: 'https://bsky.app/profile/vzn-vx.bsky.social' },
+        // Starlight has no dev.to icon; a pen reads as "articles".
+        { icon: 'pen', label: 'dev.to', href: 'https://dev.to/vzn-vx' },
         { icon: 'rss', label: 'RSS', href: `${site}${root}blog/rss.xml` },
       ],
       // Hand-authored pages live here; imported pages carry their own
