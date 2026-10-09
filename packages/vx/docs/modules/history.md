@@ -52,7 +52,9 @@ export class LocalHistoryProvider implements HistoryProvider {
 - `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
   predicts the run's wall-clock, through `p50sFor` when the provider has
   it: the executed successes' durations alone, 4 ms against `loadFor`'s
-  38 at 27,000 rows (its rates and per-hit entry join read every row).
+  38 at 27,000 rows (its rates and per-hit entry join read every row);
+  a second query, for hit durations, runs only when an asked task has
+  no executed success.
 - `@vzn/vx-schedule-history` (opt-in): the `schedule` stage's
   priorities, over a 20-invocation window by default.
 - Nothing on the default `vx run` path.
@@ -81,6 +83,11 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   the window and by `mixedOutcomeKeyCount` over a task's whole history,
   so the two cannot disagree. The window's key-outcome pass runs only for
   pairs that failed without a retry already proving nondeterminism.
+- `p50DurationMs` / `p99DurationMs` are over the window's executed
+  successes. A task with none takes its hits' PRODUCING durations from
+  their `entries` rows instead (the same join as below), so a runner
+  that only restored a task behind a remote cache still orders it by
+  real time; an adopted entry recorded no duration (0) and gives none.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
 - `maxPeakRssBytes` and `maxCpuParallelism` (cpu time over wall time) are
