@@ -81,6 +81,7 @@ describe('the advice to drop the whole cache names the store', () => {
       .toString()
       .split('\n')
       .find((l) => l.startsWith('cache store:'))
-    expect(line?.replace(/^cache store:\s+/, '').startsWith(path.join(home, '.vx'))).toBe(true)
+    // HOME is the store's parent, so the row names it from `~`.
+    expect(line?.replace(/^cache store:\s+/, '').startsWith('~/.vx/')).toBe(true)
   })
 })

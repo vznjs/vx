@@ -22,6 +22,7 @@
     "schemaVersion",
     "cacheEntries",
     "cacheBytes",
+    "cacheRetention",
     "orphans",
     "runs24h",
     "hits24h",
@@ -92,6 +93,16 @@
     "schemaVersion": { "type": "string" },
     "cacheEntries": { "type": "integer" },
     "cacheBytes": { "type": "integer" },
+    "cacheRetention": {
+      "type": ["object", "null"],
+      "description": "the workspace's cacheRetention, maxSize also in bytes; null when none is declared",
+      "additionalProperties": false,
+      "properties": {
+        "olderThan": { "type": "string" },
+        "maxSize": { "type": "string" },
+        "maxBytes": { "type": "integer" }
+      }
+    },
     "orphans": {
       "type": "object",
       "additionalProperties": false,
