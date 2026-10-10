@@ -238,11 +238,15 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
  * input changed and changed BACK while the command ran matched its digest
  * again, and the entry saved the other content's output under the key (item
  * 1015). A write before it — an upstream's — is judged by content, as before.
+ * `writesByBytes` (CI, owner 2026-10-09) judges a write during the command
+ * by content too: no person edits mid-run there, so the same bytes are a
+ * task's identical rewrite (tsdown's package.json), not an edit undone.
  */
 export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
   commandFrom?: number,
+  writesByBytes = false,
 ): Promise<string | undefined> {
   const suspects: InputFact[] = []
   for (const f of facts) {
@@ -260,7 +264,9 @@ export async function movedInput(
     // an even one, FAT's tick), one during the command included
     // (`racyWindowMs`).
     if (commandFrom !== undefined && ctimeMs >= commandFrom - racyWindowMs(ctimeMs, 0)) {
-      return f.path
+      if (!writesByBytes) return f.path
+      suspects.push(f)
+      continue
     }
     if (ctimeMs >= f.since - racyWindowMs(ctimeMs, FILE_HASH_RACY_MS)) suspects.push(f)
   }

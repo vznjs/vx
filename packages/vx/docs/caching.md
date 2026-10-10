@@ -704,7 +704,13 @@ is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
 declare what it writes as an output, which the status line says when it
 names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). A file ADDED under an
+`routeTree.gen.ts`, rewritten by every build). On CI (`CI` set, not
+`0` or `false`) a write during the command is judged by its bytes
+instead, as an earlier write is: no person edits a file mid-run there,
+so the same bytes are the task's own identical rewrite (tsdown's
+`package.json`), and the entry is saved; different bytes still
+withhold it, and a task writing another task's files is the sandbox's
+to refuse (owner, 2026-10-09). A file ADDED under an
 input glob since the listing the key filtered (`addedInput`) withholds
 the save the same way, named on the same line: the listing's
 directories a glob reaches are `lstat`ed, one whose ctime moved since

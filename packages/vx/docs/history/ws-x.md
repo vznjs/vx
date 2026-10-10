@@ -1508,3 +1508,8 @@ info` listed it. X-131 covered only the failure, by dropping its key.
 - **X-224** `github()` returns `undefined` off Actions (owner): no option
   check, no hook, nothing loaded. Core skips an `undefined`, `null` or
   `false` `plugins` entry, as Vite does, so `cond && plugin()` works.
+- **X-225** On CI (`CI` set) an input written during the command is
+  judged by bytes: an identical rewrite (tsdown's `package.json`,
+  TanStack's `routeTree.gen.ts`) no longer withholds the save; locally
+  item 1015's strict check stays (owner). The same-project concurrency
+  gap is STATUS Next 28.
