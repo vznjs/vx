@@ -337,10 +337,6 @@ async function restoreOrMiss(
 }
 
 /**
- * The workspace fingerprint every key here folded has moved (a task
- * rewrote the lockfile), said once per run.
- */
-/**
  * On CI no person edits a file mid-run, so an input the command rewrote
  * to the same bytes counts as unchanged (`movedInput`'s `writesByBytes`).
  */
@@ -349,6 +345,10 @@ function onCi(): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
 }
 
+/**
+ * The workspace fingerprint every key here folded has moved (a task
+ * rewrote the lockfile), said once per run.
+ */
 function fingerprintMoved(args: ExecuteArgs): boolean {
   if (args.fingerprintWatch?.moved() === undefined) return false
   args.fingerprintWatch.say(args.log)
