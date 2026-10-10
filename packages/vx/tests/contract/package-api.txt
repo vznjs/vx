@@ -159,6 +159,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -1668,6 +1669,10 @@ export interface TaskPlacement {
   readonly pinnedLocal: boolean
   readonly cacheable: boolean
 }
+== type TaskResources (src/orchestrator/history.ts)
+export type TaskResources = Pick<
+  TaskHistory,
+  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
 == type TaskStatus (src/graph/scheduler.ts)
 export type TaskStatus =
   | 'success'

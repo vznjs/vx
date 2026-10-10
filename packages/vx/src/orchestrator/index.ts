@@ -56,6 +56,7 @@ export {
   type HistoryTable,
   LocalHistoryProvider,
   type TaskHistory,
+  type TaskResources,
 } from './history.js'
 export {
   detectFlaky,
