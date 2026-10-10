@@ -65,7 +65,12 @@ export { run, planRun, prepareRun } from './orchestrator/index.js'
 // (`@vzn/vx-schedule-history` does; a plugin package reaches core only
 // through this façade, which is what put these here).
 export { LocalHistoryProvider } from './orchestrator/index.js'
-export type { HistoryProvider, HistoryTable, TaskHistory } from './orchestrator/index.js'
+export type {
+  HistoryProvider,
+  HistoryTable,
+  TaskHistory,
+  TaskResources,
+} from './orchestrator/index.js'
 export type { PreparedRun } from './orchestrator/index.js'
 // `RunOptions.affected`: what `--affected`'s diff changed, per project.
 export type { AffectedChanges } from './workspace/index.js'

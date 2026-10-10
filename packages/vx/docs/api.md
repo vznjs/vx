@@ -1100,6 +1100,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 ```
 
@@ -2469,6 +2470,18 @@ export interface TaskPlacement {
   readonly pinnedLocal: boolean
   readonly cacheable: boolean
 }
+```
+
+## `TaskResources`
+
+type · `src/orchestrator/history.ts`
+
+What a scheduler learns from a task's history: its p50 and its resource maxima.
+
+```ts
+export type TaskResources = Pick<
+  TaskHistory,
+  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
 ```
 
 ## `TaskStatus`

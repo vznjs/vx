@@ -3,7 +3,7 @@
 // keys sorted so an unchanged history writes the same bytes.
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import type { HistoryTable } from '@vzn/vx'
+import type { TaskResources } from '@vzn/vx'
 
 const VERSION = 1
 
@@ -50,7 +50,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
 export function writeTimings(
   file: string,
   carried: Readonly<Record<string, number>>,
-  table: HistoryTable,
+  table: ReadonlyMap<string, TaskResources>,
 ): void {
   const merged: Record<string, number> = { ...carried }
   for (const [id, h] of table) {

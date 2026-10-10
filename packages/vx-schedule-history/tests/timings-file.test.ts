@@ -154,4 +154,39 @@ describe('the file between machines', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'an all-cached run through a group the file cannot time leaves it as it was',
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true }),
+      )
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } }, all: { dependsOn: ['build'] } } }\n",
+      )
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          "export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+      )
+      const opts = { cwd: root, tasks: ['all'], handleSignals: false }
+      const file = path.join(root, 'timings.json')
+      expect((await run({ ...opts, log: silent() })).ok).toBe(true)
+      expect(Object.keys(readTimings(file, () => {}))).toEqual(['a#build'])
+      const complete = '{"version":1,"tasks":{"a#build":777}}'
+      await writeFile(file, complete)
+      const summary = await run({ ...opts, log: silent() })
+      // A group runs nothing, so the file never times it (X-226).
+      expect(summary.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual([
+        'a#all success',
+        'a#build cache-hit',
+      ])
+      expect(await readFile(file, 'utf8')).toBe(complete)
+    },
+    TIMEOUT,
+  )
 })

@@ -18,6 +18,7 @@ import {
   Cache,
   type HistoryTable,
   type TaskNode,
+  type TaskResources,
   type VxPlugin,
   loadResolvedProjects,
   UserError,
@@ -26,7 +27,7 @@ import {
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
-import { criticalPathPriorities } from './critical-path.js'
+import { criticalPath } from './critical-path.js'
 import type { HistoryRow } from './history-view.js'
 
 export { criticalPathPriorities } from './critical-path.js'
@@ -157,17 +158,18 @@ const headroomOf = (options: ScheduleHistoryOptions): number => {
   return usable(h) ? h : DEFAULT_HEADROOM
 }
 
+// The schedule reads no rates (`resourcesFor`); `vx history` shows runs.
 const readHistory = (
   cache: Cache,
   ids: readonly string[],
   options: ScheduleHistoryOptions,
-): Promise<HistoryTable> =>
-  new LocalHistoryProvider(cache.dbHandle(), windowOf(options)).loadFor(ids)
+): Promise<ReadonlyMap<string, TaskResources>> =>
+  new LocalHistoryProvider(cache.dbHandle(), windowOf(options)).resourcesFor(ids)
 
 /** What each task reserves: learned from the history unless `resources: false`, a declared reservation over either. */
 const reservationsFor = (
   ids: Iterable<string>,
-  table: HistoryTable,
+  table: ReadonlyMap<string, TaskResources>,
   options: ScheduleHistoryOptions,
 ): ReadonlyMap<string, ResourceEstimate> =>
   withDeclared(
@@ -246,7 +248,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
       if (file !== undefined)
         scheduled = { file, carried, cache: ctx.localCache, ids: [...nodes.keys()] }
-      let table: HistoryTable
+      let table: ReadonlyMap<string, TaskResources>
       try {
         table = await readHistory(ctx.localCache, [...nodes.keys()], options)
       } catch (err) {
@@ -258,7 +260,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
-      return criticalPathPriorities([...nodes.values()], table, {
+      return criticalPath([...nodes.values()], table, {
         ...assumptions(options, ctx.warn),
         ...carried,
       })
@@ -278,6 +280,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       inRun = true
       changed = false
       ctx.on('onTaskComplete', (node, outcome) => {
+        // A group runs nothing and is never timed: counting it rewrote the
+        // file on every all-cached run that went through one.
+        if (node.config.exec?.command === undefined) return
         if (outcome.status === 'success' || !(node.id in (scheduled?.carried ?? {}))) {
           changed = true
         }
@@ -348,7 +353,7 @@ export function resourceEstimates(
 
 function estimatesFor(
   ids: Iterable<string>,
-  history: HistoryTable,
+  history: ReadonlyMap<string, TaskResources>,
   headroom: number,
 ): ReadonlyMap<string, ResourceEstimate> {
   const out = new Map<string, ResourceEstimate>()
@@ -457,7 +462,7 @@ async function historyCmd(
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
-    table = await readHistory(cache, ids, options)
+    table = await new LocalHistoryProvider(cache.dbHandle(), window).loadFor(ids)
   } finally {
     cache.close()
   }

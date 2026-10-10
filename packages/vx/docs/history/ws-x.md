@@ -1513,3 +1513,9 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   TanStack's `routeTree.gen.ts`) no longer withholds the save; locally
   item 1015's strict check stays (owner). The same-project concurrency
   gap is STATUS Next 28.
+- **X-226** schedule-history on a nothing-changed run (8,002 tasks, bench
+  host): the timings file was rewritten every all-cached run, since a
+  group's `success` counted as a change (close 376 → 17 ms); and its
+  history read is `resourcesFor` (p50 + resource maxima, no rates):
+  407 → 148 ms at 168,000 rows, the same numbers. Plugin stages
+  ~485 → ~225 ms.

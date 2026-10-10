@@ -21,6 +21,10 @@ export interface TaskHistory {
   maxCpuParallelism?: number
 }
 export type HistoryTable = ReadonlyMap<string, TaskHistory>
+export type TaskResources = Pick<
+  TaskHistory,
+  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
+>
 
 export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
@@ -44,6 +48,8 @@ export interface FlakyTask {
 export function flakyTasks(db: Database): FlakyTask[]
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(db: Database, recent?: number) // the window; defaults to 50 invocations
+  /** `loadFor`'s p50 and resource maxima, without its rates. */
+  resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 ```
 
@@ -54,7 +60,12 @@ export class LocalHistoryProvider implements HistoryProvider {
   it: the executed successes' durations alone, 4 ms against `loadFor`'s
   38 at 27,000 rows (its rates and per-hit entry join read every row).
 - `@vzn/vx-schedule-history` (opt-in): the `schedule` stage's
-  priorities, over a 20-invocation window by default.
+  priorities and reservations, over a 20-invocation window by default,
+  through `resourcesFor`: the executed successes grouped alone and the
+  hits as distinct keys, each joined to its entry once. 148 ms against
+  `loadFor`'s 407 at 168,000 rows (8,002 tasks), the same numbers
+  (`tests/history-p50s.test.ts`). `vx history` reads `loadFor` (it shows
+  runs).
 - Nothing on the default `vx run` path.
 
 ## The window is a rowid slice

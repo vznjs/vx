@@ -3,7 +3,7 @@
 // (through packages/vx-bench/schedule-policy.ts) bundles it for the browser
 // without the rest of `@vzn/vx`.
 
-import type { HistoryTable, TaskNode } from '@vzn/vx'
+import type { HistoryTable, TaskNode, TaskResources } from '@vzn/vx'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -18,6 +18,15 @@ export function criticalPathPriorities(
   nodes: readonly TaskNode[],
   history: HistoryTable,
   assume: Readonly<Record<string, number>> = {},
+): ReadonlyMap<string, number> {
+  return criticalPath(nodes, history, assume)
+}
+
+/** `criticalPathPriorities` over the p50s alone: the plugin reads no rates. */
+export function criticalPath(
+  nodes: readonly TaskNode[],
+  history: ReadonlyMap<string, TaskResources>,
+  assume: Readonly<Record<string, number>>,
 ): ReadonlyMap<string, number> {
   const p50s: number[] = []
   for (const h of history.values()) {
