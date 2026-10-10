@@ -1519,3 +1519,7 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   history read is `resourcesFor` (p50 + resource maxima, no rates):
   407 → 148 ms at 168,000 rows, the same numbers. Plugin stages
   ~485 → ~225 ms.
+- X-227: the bench runs git on its defaults (`GIT_CONFIG_GLOBAL=/dev/null`):
+  the host's `core.checkstat=minimal` made vx trust no index OID and hash
+  every input, 4.0 s against 2.0 s for the nothing-changed run. The setup
+  note says so.

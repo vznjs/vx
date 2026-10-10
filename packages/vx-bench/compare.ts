@@ -594,6 +594,7 @@ function markdown(rows: Row[], b: Baseline): string {
 - **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
 - **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, the rest median of ${REPS}.
 - **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run. Both use \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
+- **Git:** default config for every runner (\`GIT_CONFIG_GLOBAL=/dev/null\`, \`GIT_CONFIG_NOSYSTEM=1\`); the bench host's own sets \`core.checkstat=minimal\`, under which vx hashes every input from disk.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
