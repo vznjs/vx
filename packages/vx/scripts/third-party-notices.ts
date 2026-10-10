@@ -46,7 +46,7 @@ async function bundledPackages(): Promise<
   if (!r.success) throw new AggregateError(r.logs, 'bundling src/bin.ts failed')
   const dirs = new Set<string>()
   for (const input of Object.keys(r.metafile!.inputs)) {
-    const m = /^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(resolve(CORE, input))
+    const m = /^(.*\/node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(resolve(input))
     if (m) dirs.add(realpathSync(m[1]!))
   }
   const out = []

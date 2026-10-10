@@ -21,3 +21,8 @@
   walks each closure from the installed tree and fails on any license
   outside the permissive list. Proven: dropping Apache-2.0 from the list
   fails it on vx-reapi's gRPC packages.
+- **LEGAL-4.** `scripts/third-party-notices.ts` resolved the bundle's
+  metafile inputs against `packages/vx`, but Bun writes them relative to
+  the cwd, so the documented regenerate (`bun packages/vx/scripts/third-party-notices.ts`
+  from the repo root) threw ENOENT. It resolves against the cwd now; a
+  test renders from the root. Proven: the old resolve fails the row.
