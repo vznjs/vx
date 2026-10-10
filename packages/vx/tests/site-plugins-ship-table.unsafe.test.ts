@@ -38,7 +38,12 @@ describe('the plugins guide lists the hooks each shipped plugin fills', () => {
       >
       const hooks = new Set<string>()
       for (const n of names) {
+        // github() declines off Actions; the row is what it fills on Actions.
+        const was = process.env['GITHUB_ACTIONS']
+        process.env['GITHUB_ACTIONS'] = 'true'
         const plugin = mod[n]!()
+        if (was === undefined) delete process.env['GITHUB_ACTIONS']
+        else process.env['GITHUB_ACTIONS'] = was
         for (const [k, v] of Object.entries(plugin))
           if (v !== undefined && !LIFECYCLE.has(k)) hooks.add(k)
       }

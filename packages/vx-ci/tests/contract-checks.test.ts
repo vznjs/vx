@@ -97,7 +97,7 @@ it('the check run vx-ci posts is shaped as tests/contract/checks.txt records', a
         posts.push({ url, init: init as (typeof posts)[number]['init'] })
         return { ok: true, status: 201, text: async () => '' }
       },
-    }).telemetry!({
+    })!.telemetry!({
       workspaceRoot: '/w',
       cacheDir: '/c',
       warn: () => undefined,

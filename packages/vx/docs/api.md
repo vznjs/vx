@@ -2748,7 +2748,7 @@ export interface WorkspaceConfig {
   cacheScope?: string
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   rules?: WorkspaceRules
-  plugins?: readonly Plugin[]
+  plugins?: readonly (Plugin | undefined | null | false)[]
 }
 ```
 

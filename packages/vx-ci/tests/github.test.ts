@@ -189,7 +189,7 @@ describe('github() activation', () => {
     const prev = process.env['GITHUB_STEP_SUMMARY']
     delete process.env['GITHUB_STEP_SUMMARY']
     try {
-      expect(github().telemetry!(ctx)).toBeUndefined()
+      expect(github()!.telemetry!(ctx)).toBeUndefined()
     } finally {
       if (prev !== undefined) process.env['GITHUB_STEP_SUMMARY'] = prev
     }
@@ -201,7 +201,7 @@ describe('github() activation', () => {
       summaryFile: '/tmp/sumfile.md',
       checks: false,
       append: async (f, md) => void writes.push([f, md]),
-    }).telemetry!(ctx) as GithubSummarySink
+    })!.telemetry!(ctx) as GithubSummarySink
     expect(sink).toBeInstanceOf(GithubSummarySink)
     sink.onRunSummary!(summary([task({})]))
     expect(writes.length).toBe(0) // prompt-return contract: no I/O here
@@ -223,7 +223,7 @@ describe('github() activation', () => {
       summaryFile: '/tmp/sumfile.md',
       checks: false,
       append: async (_f, md) => void writes.push(md),
-    }).telemetry!(ctx) as GithubSummarySink
+    })!.telemetry!(ctx) as GithubSummarySink
     const many = Array.from({ length: 25_000 }, (_, i) =>
       task({ taskId: `project-with-a-long-name-${i}#build` }),
     )
@@ -248,7 +248,7 @@ describe('github() activation', () => {
         const file = path.join(dir, `summary-${already}.md`)
         await writeFile(file, 'x'.repeat(already))
         const warns: string[] = []
-        const sink = github({ summaryFile: file, checks: false }).telemetry!({
+        const sink = github({ summaryFile: file, checks: false })!.telemetry!({
           ...ctx,
           warn: (m: string) => warns.push(m),
         }) as GithubSummarySink
@@ -280,7 +280,7 @@ describe('github() activation', () => {
       const run = async (before: string): Promise<string> => {
         const file = path.join(dir, `s-${before.length}.md`)
         await writeFile(file, before)
-        const sink = github({ summaryFile: file, checks: false }).telemetry!(
+        const sink = github({ summaryFile: file, checks: false })!.telemetry!(
           ctx,
         ) as GithubSummarySink
         sink.onRunSummary!(summary([task({})]))
@@ -302,7 +302,7 @@ describe('github() activation', () => {
       summaryFile: '/tmp/sumfile.md',
       checks: false,
       append: async (_f, md) => void writes.push(md),
-    }).telemetry!(ctx) as GithubSummarySink
+    })!.telemetry!(ctx) as GithubSummarySink
     sink.onRunSummary!(summary([task({}), task({ taskId: 'b#build' })]))
     await sink.flush!()
     expect(writes[0]).not.toContain('truncated by @vzn/vx-ci')
@@ -315,7 +315,7 @@ describe('github() activation', () => {
       summaryFile: '/tmp/sumfile.md',
       checks: false,
       append: async (_f, md) => void writes.push(md),
-    }).telemetry!(ctx) as GithubSummarySink
+    })!.telemetry!(ctx) as GithubSummarySink
     await sink.flush!()
     expect(writes.length).toBe(0)
   })
@@ -403,7 +403,7 @@ describe('Checks API', () => {
           posted.push(url)
           return { ok: true, status: 201, text: async () => '' }
         },
-      }).telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
+      })!.telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
     } finally {
@@ -441,7 +441,7 @@ describe('Checks API', () => {
           posted.push(url)
           return { ok: true, status: 201, text: async () => '' }
         },
-      }).telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
+      })!.telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
     } finally {
@@ -569,7 +569,7 @@ describe('Checks API', () => {
           calls.push({ url, body: init.body, auth: init.headers['authorization'] })
           return { ok: true, status: 201, text: async () => '' }
         },
-      }).telemetry!(ctx) as GithubSummarySink
+      })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       expect(calls.length).toBe(0) // prompt-return contract
       await sink.flush!()
@@ -603,7 +603,7 @@ describe('Checks API', () => {
             if (init.signal?.aborted === true) reject(new Error('aborted'))
             init.signal?.addEventListener('abort', () => reject(new Error('aborted')))
           }),
-      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       const deadline = new AbortController()
       const flushed = sink.flush!(deadline.signal)
@@ -624,7 +624,7 @@ describe('Checks API', () => {
         summaryFile: '/tmp/sum.md',
         append: async () => undefined,
         fetchFn: async () => ({ ok: false, status: 403, text: async () => 'nope' }),
-      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!() // must resolve
       expect(warns.length).toBe(1)
@@ -643,10 +643,10 @@ describe('Checks API', () => {
     try {
       const warns: string[] = []
       const wctx = { ...ctx, warn: (m: string) => void warns.push(m) }
-      void github({ summaryFile: '/tmp/s.md', checks: true }).telemetry!(wctx)
+      void github({ summaryFile: '/tmp/s.md', checks: true })!.telemetry!(wctx)
       expect(warns.length).toBe(1)
       expect(warns[0]).toContain('no check-run will be created')
-      void github({ summaryFile: '/tmp/s.md' }).telemetry!(wctx)
+      void github({ summaryFile: '/tmp/s.md' })!.telemetry!(wctx)
       expect(warns.length).toBe(1) // default: silent skip
     } finally {
       restoreEnv(prev)
@@ -928,7 +928,7 @@ describe('every output the vx-ci sweep found unheld', () => {
     const prev = { ...process.env }
     process.env['GITHUB_STEP_SUMMARY'] = ''
     try {
-      expect(github().telemetry!(ctx)).toBeUndefined()
+      expect(github()!.telemetry!(ctx)).toBeUndefined()
     } finally {
       restoreEnv(prev)
     }
@@ -949,7 +949,7 @@ describe('every output the vx-ci sweep found unheld', () => {
         checks: false,
         append: async () => undefined,
         fetchFn,
-      }).telemetry!(ctx) as GithubSummarySink
+      })!.telemetry!(ctx) as GithubSummarySink
       off.onRunSummary!(summary([task({})]))
       await off.flush!()
       expect(bodies).toEqual([])
@@ -959,7 +959,7 @@ describe('every output the vx-ci sweep found unheld', () => {
         title: 'nightly',
         append: async (_f, md) => void writes.push(md),
         fetchFn,
-      }).telemetry!(ctx) as GithubSummarySink
+      })!.telemetry!(ctx) as GithubSummarySink
       named.onRunSummary!(summary([task({})]))
       await named.flush!()
       expect((JSON.parse(bodies[0]!) as { name: string }).name).toBe('vx / ci')
@@ -1017,7 +1017,7 @@ describe('what the F-6 sweep found unheld', () => {
       const sink = github({
         checks: false,
         append: async (f) => void writes.push(f),
-      }).telemetry!(ctx) as GithubSummarySink
+      })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
     } finally {
@@ -1049,7 +1049,7 @@ describe('what the F-6 sweep found unheld', () => {
         summaryFile: '/tmp/sum.md',
         append: async () => undefined,
         fetchFn,
-      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
     } finally {
@@ -1224,7 +1224,7 @@ describe('the summary, as its second sweep found it unheld', () => {
         summaryFile: '/tmp/from-option.md',
         checks: false,
         append: async (f) => void files.push(f),
-      }).telemetry!(ctx) as GithubSummarySink
+      })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
       expect(files).toEqual(['/tmp/from-option.md'])
@@ -1239,7 +1239,9 @@ describe('the summary, as its second sweep found it unheld', () => {
     try {
       const file = path.join(dir, 's.md')
       await writeFile(file, 'x')
-      const sink = github({ summaryFile: file, checks: false }).telemetry!(ctx) as GithubSummarySink
+      const sink = github({ summaryFile: file, checks: false })!.telemetry!(
+        ctx,
+      ) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
       expect((await readFile(file, 'utf8')).startsWith('x\n## ✅ vx run')).toBe(true)

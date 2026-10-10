@@ -80,7 +80,7 @@ export default defineProject({
       },
       dependsOn: ['install'],
       cache: {
-        inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+        inputs: { files: ['src/**', 'tests/**', 'package.json', 'bunfig.toml'] },
         outputs: { files: [] },
       },
     },

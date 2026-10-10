@@ -1,0 +1,3 @@
+[test]
+# `github()` is undefined off Actions; the suite tests the plugin as it runs there.
+preload = ["./tests/helpers/on-actions.ts"]

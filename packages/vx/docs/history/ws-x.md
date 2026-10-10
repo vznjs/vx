@@ -1505,3 +1505,6 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   Turborepo 898 ms (vx loses), restore vx 1.27 s vs 844 ms (loses); cold
   CPU Vite Task 24.82 vs 32.28 s (loses). Landing heading now "Fastest
   cold build."
+- **X-224** `github()` returns `undefined` off Actions (owner): no option
+  check, no hook, nothing loaded. Core skips an `undefined`, `null` or
+  `false` `plugins` entry, as Vite does, so `cond && plugin()` works.

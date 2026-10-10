@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
-import { validateProjectConfig, validateWorkspace } from './config-schema.js'
+import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import {
   beginEvalRound,
   builtinsChangedBy,
@@ -1163,6 +1163,8 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // config at all (D-6).
     assertDefaultObject(mod, 'Workspace', configPath)
     validateWorkspace(mod, configPath)
+    if (mod.plugins?.some(isSkippedPlugin) === true)
+      mod = { ...mod, plugins: mod.plugins.filter((p) => !isSkippedPlugin(p)) }
     // Set by a load that succeeded: a failed one may have left nothing in
     // the registry, and its fix must not be refused.
     if (since === undefined) workspaceLoadedAt.set(configPath, startedAt)

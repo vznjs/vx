@@ -65,9 +65,11 @@ export interface WorkspaceConfig {
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
    * below, and core's own executor and cache store sit at the tail of
-   * every list. See `docs/design/pipeline-2026-09.md`.
+   * every list. See `docs/design/pipeline-2026-09.md`. An `undefined`,
+   * `null` or `false` entry is skipped, so a factory that declines
+   * (`github()` off Actions) or `cond && plugin()` needs no filter.
    */
-  plugins?: readonly Plugin[]
+  plugins?: readonly (Plugin | undefined | null | false)[]
 }
 
 /** `WorkspaceConfig.rules`. */

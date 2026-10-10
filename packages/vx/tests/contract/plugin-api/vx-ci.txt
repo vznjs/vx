@@ -1,5 +1,5 @@
 == function github (src/plugin.ts)
-export function github(options: GithubPluginOptions = {}): VxPlugin
+export function github(options: GithubPluginOptions = {}): VxPlugin | undefined
 == function renderJobSummary (src/summary.ts)
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string
 == type FetchFn (src/checks.ts)

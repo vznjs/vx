@@ -1558,7 +1558,7 @@ interface WorkspaceConfig {
   /** Which ready task starts first with no timings: 'most-work' (default), 'critical-path', 'direct-dependents', 'ready-order'. */
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /** Run-level plugins (cache / executor / telemetry capabilities). */
-  plugins?: readonly Plugin[]
+  plugins?: readonly (Plugin | undefined | null | false)[]
 }
 
 interface WorkspaceRules {
@@ -1682,7 +1682,9 @@ false } in vx.workspace.ts to let it wait for its producer.` Such a key
   Declaration order is precedence: every `executor` is consulted in
   order per task (first to accept runs it; what all decline runs
   locally); every `cache` layer is chained (lookup walks, save reaches
-  all, the local store last). Each entry is a `VxPlugin` contributing
+  all, the local store last). An `undefined`, `null` or `false` entry
+  is skipped, as Vite skips one: a factory that declines (`github()` off
+  Actions) or `cond && plugin()` needs no filter. Each entry is a `VxPlugin` contributing
   any subset of the fourteen hooks, in pipeline order: `config` (edit
   the workspace config before anything derives from it), `discover`
   (name directories to make projects beyond the members), `project`
