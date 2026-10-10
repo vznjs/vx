@@ -39,12 +39,18 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
+// A write during the command is judged by bytes on CI: the rows run
+// local unless they set `CI` themselves (CI's runner sets it).
+const savedCi = process.env['CI']
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
+  delete process.env['CI']
 })
 
 afterEach(async () => {
+  if (savedCi === undefined) delete process.env['CI']
+  else process.env['CI'] = savedCi
   await rm(root, { recursive: true, force: true })
 })
 
@@ -130,6 +136,51 @@ describe('a task that rewrites its own input', () => {
         '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
       ])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('success')
+    },
+    TIMEOUT,
+  )
+})
+
+describe('on CI a write during the command is judged by bytes (owner, 2026-10-09)', () => {
+  const formatter = (from: string) => ({
+    config: `
+      export default {
+        tasks: {
+          format: {
+            exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
+            cache: { inputs: { files: ['a.ts'] }, outputs: { files: [] } },
+          },
+        },
+      }
+    `,
+    files: { 'a.ts': `const x = "${from}"\n` },
+  })
+
+  it(
+    'the same bytes rewritten: saved, and the next run is a hit',
+    async () => {
+      process.env['CI'] = 'true'
+      await addProject(root, 'app', formatter('formatted'))
+      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      commit()
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'different bytes: still withheld',
+    async () => {
+      process.env['CI'] = 'true'
+      await addProject(root, 'app', formatter('unformatted'))
+      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      commit()
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+      ])
     },
     TIMEOUT,
   )

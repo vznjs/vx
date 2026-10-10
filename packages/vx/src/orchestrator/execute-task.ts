@@ -337,6 +337,15 @@ async function restoreOrMiss(
 }
 
 /**
+ * On CI no person edits a file mid-run, so an input the command rewrote
+ * to the same bytes counts as unchanged (`movedInput`'s `writesByBytes`).
+ */
+function onCi(): boolean {
+  const v = process.env['CI']
+  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+}
+
+/**
  * The workspace fingerprint every key here folded has moved (a task
  * rewrote the lockfile), said once per run.
  */
@@ -1558,7 +1567,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    */
   async function movedSinceKey(): Promise<string | null | undefined> {
     if (described!.hash !== hash) return null
-    return (await movedInput(described!.facts, cache, described!.describedAt)) ?? described!.added()
+    return (
+      (await movedInput(described!.facts, cache, described!.describedAt, onCi())) ??
+      described!.added()
+    )
   }
 
   /**
