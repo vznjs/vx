@@ -34,7 +34,8 @@ async function scopeOf(
   for (const k of ACTIONS_KEYS) delete process.env[k]
   Object.assign(process.env, env)
   try {
-    await github(options).config!(workspace, { workspaceRoot: dir, warn: () => {} })
+    // Off Actions the factory is undefined: nothing to set the scope.
+    await github(options)?.config!(workspace, { workspaceRoot: dir, warn: () => {} })
     return workspace.cacheScope
   } finally {
     for (const [k, v] of saved) {

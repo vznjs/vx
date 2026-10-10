@@ -136,6 +136,11 @@ function validateRetention(retention: unknown, configPath: string): void {
   }
 }
 
+/** A `plugins` entry that stands for no plugin: `undefined`, `null` or `false`. */
+export function isSkippedPlugin(p: unknown): p is undefined | null | false {
+  return p === undefined || p === null || p === false
+}
+
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
   // No JSON-data rule here, unlike `validateProjectConfig`: `plugins` holds
   // objects of functions by design, the file is evaluated in-process on
@@ -206,7 +211,10 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     }
     const verbOwners = new Map<string, string>()
     const fileClaimants = new Map<string, { name: string; at: number }>()
-    for (const [i, p] of config.plugins.entries()) {
+    for (const [i, p] of (config.plugins as readonly unknown[]).entries()) {
+      // A factory that declines returns nothing, and `cond && plugin()` is
+      // false: both are skipped, as Vite skips them.
+      if (isSkippedPlugin(p)) continue
       if (p === null || typeof p !== 'object') {
         // Nx's nx.json lists plugins by module name (`'@nx/vite/plugin'`);
         // a vx plugin is the value its package's function returns.

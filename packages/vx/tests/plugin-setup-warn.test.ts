@@ -1,6 +1,7 @@
 // `PluginSetupContext` declares `warn`, as every other hook's context
 // does, but the context `setup()` received had none: a plugin that warned
-// from setup failed the run with "ctx.warn is not a function".
+// from setup failed the run with "ctx.warn is not a function". Also: a
+// skipped plugins entry (undefined, null, false) reaches no hook.
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -33,6 +34,32 @@ it("setup()'s ctx.warn reaches the run's status lines", async () => {
     taskComplete() {},
   }
   const r = await run({ cwd: root, tasks: ['t'], projects: ['app'], log, handleSignals: false })
+  expect({ ok: r.ok, warned: lines.filter((l) => l.includes('warned from setup')) }).toEqual({
+    ok: true,
+    warned: ['warned from setup'],
+  })
+})
+
+it('a declined factory (undefined) and `cond && plugin()` (false) are skipped by a run', async () => {
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([
+      'undefined',
+      'false',
+      'null',
+      pluginSource('org/warner', `{ setup(ctx) { ctx.warn('warned from setup') } }`),
+    ]),
+  )
+  await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
+  const lines: string[] = []
+  const log: Logger = {
+    status: (m) => void lines.push(m),
+    taskStdout() {},
+    taskStderr() {},
+    taskComplete() {},
+  }
+  const r = await run({ cwd: root, tasks: ['t'], projects: ['app'], log, handleSignals: false })
+  // The plugin after the skipped entries still runs: the list kept it.
   expect({ ok: r.ok, warned: lines.filter((l) => l.includes('warned from setup')) }).toEqual({
     ok: true,
     warned: ['warned from setup'],

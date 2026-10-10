@@ -31,8 +31,9 @@ that never became ready as `never ready (timed out)`, a sandboxed task's
 violation count, and the tasks each failure blocked. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.
-Anywhere else — laptops, other CI — the plugin **declines** and costs
-nothing, so declaring it unconditionally is safe.
+Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)
+`github()` returns `undefined`, which `plugins` skips: no option is
+checked and nothing loads, so declaring it unconditionally is safe.
 
 ## Options
 

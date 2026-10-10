@@ -156,7 +156,7 @@ config key or an environment variable is missing here.
 
 ## Plugins
 
-- **A pipeline with seams** (`plugins`, `definePlugin`; stages `config` `discover` `project` `graph` `key` `fingerprint` `schedule` `admit` `executor` `cache` `telemetry` `commands`) — every stage is a plugin seam. [page](https://vznjs.github.io/vx/features/plugins/) · post: [A pipeline with seams](https://vznjs.github.io/vx/blog/pipeline-with-seams/)
+- **A pipeline with seams** (`plugins`, `definePlugin`; stages `config` `discover` `project` `graph` `key` `fingerprint` `schedule` `admit` `executor` `cache` `telemetry` `commands`) — every stage is a plugin seam; an `undefined`, `null` or `false` entry is skipped. [page](https://vznjs.github.io/vx/features/plugins/) · post: [A pipeline with seams](https://vznjs.github.io/vx/blog/pipeline-with-seams/)
 - **Write a plugin** (`vx init --plugin`) — scaffold a runnable plugin for a seam. [page](https://vznjs.github.io/vx/features/plugins/) · post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 - **The local floor** — running and caching here are core's, not plugins. [page](https://vznjs.github.io/vx/features/local-floor/) · post: [The local floor](https://vznjs.github.io/vx/blog/the-local-floor/)
 - **Remote cache and execution** (`@vzn/vx-reapi`, `exec.remote`) — Bazel REAPI cache and workers; the scheduler stays here. [page](https://vznjs.github.io/vx/features/remote-execution/) · post: [Remote execution without moving the scheduler](https://vznjs.github.io/vx/blog/remote-execution/)

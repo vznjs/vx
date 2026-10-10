@@ -1,8 +1,8 @@
 // The `github()` telemetry plugin. Contributes one observe-only sink that
-// writes the run as a GitHub Actions job summary. Declines (returns
-// undefined) outside GitHub Actions — no `GITHUB_STEP_SUMMARY` file to write
-// and no cost — so declaring `github()` is safe in every environment, the
-// same decline pattern as `otel()`.
+// writes the run as a GitHub Actions job summary. Off Actions
+// (`GITHUB_ACTIONS` not 'true') the factory returns undefined, which
+// `plugins` skips: no option check, no hook, no load, so declaring
+// `github()` costs nothing on a laptop.
 import { appendFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import {
@@ -83,7 +83,8 @@ const GITHUB_PLUGIN_KEYS: PluginOptionKinds<GithubPluginOptions> = {
   sizeOf: 'function',
 }
 
-export function github(options: GithubPluginOptions = {}): VxPlugin {
+export function github(options: GithubPluginOptions = {}): VxPlugin | undefined {
+  if (process.env['GITHUB_ACTIONS'] !== 'true') return undefined
   refuseUnknownOptions('github()', options, GITHUB_PLUGIN_KEYS)
   // '' passes the kind check but reads wrong: `??` keeps it, so summaryFile
   // declined instead of using GITHUB_STEP_SUMMARY, checkName POSTed a name

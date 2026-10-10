@@ -748,6 +748,21 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     // CONTROL: any other non-object keeps the plain refusal.
     expect(refusal([42])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
   })
+
+  it('an undefined, null or false entry is skipped, as Vite skips it', () => {
+    const refusal = (plugins: unknown[]): string => {
+      try {
+        validateWorkspace({ plugins } as never, 'vx.workspace.ts')
+      } catch (err) {
+        return (err as Error).message
+      }
+      return ''
+    }
+    expect(refusal([undefined, null, false])).toBe('')
+    // CONTROL: the index past a skipped entry is still the entry's own.
+    expect(refusal([undefined, 0])).toBe('vx.workspace.ts: `plugins[1]` must be an object')
+    expect(refusal([true])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
+  })
 })
 
 describe("Turbo's and Nx's glob tokens (D-50)", () => {
