@@ -73,6 +73,7 @@ export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
   commandFrom?: number, // the describe's start, just before the command
+  writesByBytes = false, // on CI: a write during the command is judged by bytes
 ): Promise<string | undefined>
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 export interface UpfrontGroupKey {
@@ -108,8 +109,9 @@ export interface UpfrontGroupKey {
   has moved. So has one whose ctime is at or after `commandFrom`
   (less that widening for a whole-second stamp), whatever it holds now:
   an input changed and changed BACK while the command ran matches its
-  digest again (item 1015). Returns the first moved path; execute-task then withholds
-  the save.
+  digest again (item 1015). With `writesByBytes` (execute-task sets it
+  on CI) such a write is hashed and compared instead (X-225). Returns the
+  first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The
   default `build` (projects.ts), the one group with `cache`, is keyed as
