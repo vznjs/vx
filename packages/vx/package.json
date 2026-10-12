@@ -17,7 +17,6 @@
     "workspaces",
     "ci",
     "task-orchestration",
-    "turbo",
     "turborepo-alternative",
     "nx-alternative",
     "remote-cache",
