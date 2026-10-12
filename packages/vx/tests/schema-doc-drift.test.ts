@@ -287,6 +287,18 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] } } } } }),
   ],
   [
+    "cache.rewrittenInputs must be 'withhold' or 'compare'",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: { inputs: { files: [] }, outputs: { files: [] }, rewrittenInputs: 'bytes' },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs.files must be an array',
     () =>
       validated({
