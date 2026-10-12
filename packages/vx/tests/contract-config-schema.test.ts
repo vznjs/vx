@@ -62,8 +62,10 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       cacheScope: true,
       rules: true,
       schedule: true,
+      inputStability: true,
       plugins: true,
     }),
+    inputStability: keys<InputStability>({ strategy: true, severity: true }),
     cacheRetention: keys<NonNullable<WorkspaceConfig['cacheRetention']>>({
       olderThan: true,
       maxSize: true,
@@ -138,6 +140,7 @@ function workspaceSeed(): Record<string, unknown> {
     cacheScope: 'pr-1',
     rules: { exclusiveOutputs: true, upfrontKeys: true },
     schedule: 'critical-path',
+    inputStability: { strategy: 'mutable', severity: 'error' },
     plugins: [],
   }
 }

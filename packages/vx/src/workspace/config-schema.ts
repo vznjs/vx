@@ -65,10 +65,24 @@ function envOneOf<T extends string>(name: string, values: readonly T[]): T | und
   return raw as T
 }
 
+function validateInputStability(stability: unknown, at: string): void {
+  if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
+    throw new UserError(`${at} must be an object — \`inputStability: { strategy: 'mutable' }\``)
+  }
+  assertKnownFields(stability, INPUT_STABILITY_FIELDS, at)
+  const { strategy, severity } = stability as Record<string, unknown>
+  if (strategy !== undefined && !STRATEGIES.includes(strategy as never)) {
+    throw new UserError(`${at}.strategy ${oneOf(STRATEGIES)}`)
+  }
+  if (severity !== undefined && !SEVERITIES.includes(severity as never)) {
+    throw new UserError(`${at}.severity ${oneOf(SEVERITIES)}`)
+  }
+}
+
 /**
- * `VX_INPUT_STABILITY` and `VX_INPUT_STABILITY_SEVERITY`, the defaults of
- * `cache.inputStability`: each undefined when unset or empty, refused when
- * it names no value.
+ * `VX_INPUT_STABILITY` and `VX_INPUT_STABILITY_SEVERITY`, which override
+ * every task's `cache.inputStability` for the run: each undefined when
+ * unset or empty, refused when it names no value.
  */
 export function inputStabilityEnv(): InputStability {
   const strategy = envOneOf('VX_INPUT_STABILITY', STRATEGIES)
@@ -88,6 +102,7 @@ const WORKSPACE_FIELDS = new Set([
   'cacheScope',
   'rules',
   'schedule',
+  'inputStability',
   'plugins',
 ])
 
@@ -229,6 +244,9 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
   if (config.rules !== undefined) validateRules(config.rules, configPath)
+  if (config.inputStability !== undefined) {
+    validateInputStability(config.inputStability, `${configPath}: \`inputStability\``)
+  }
   if (config.schedule !== undefined && !Object.hasOwn(SCHEDULES, config.schedule)) {
     throw new UserError(
       `${configPath}: \`schedule\` must be one of ${Object.keys(SCHEDULES)
@@ -700,22 +718,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const stability = (cache as { inputStability?: unknown }).inputStability
-      if (stability !== undefined) {
-        const at = `${where}.cache.inputStability`
-        if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
-          throw new UserError(
-            `${at} must be an object — \`inputStability: { strategy: 'mutable' }\``,
-          )
-        }
-        assertKnownFields(stability, INPUT_STABILITY_FIELDS, at)
-        const { strategy, severity } = stability as Record<string, unknown>
-        if (strategy !== undefined && !STRATEGIES.includes(strategy as never)) {
-          throw new UserError(`${at}.strategy ${oneOf(STRATEGIES)}`)
-        }
-        if (severity !== undefined && !SEVERITIES.includes(severity as never)) {
-          throw new UserError(`${at}.severity ${oneOf(SEVERITIES)}`)
-        }
-      }
+      if (stability !== undefined)
+        validateInputStability(stability, `${where}.cache.inputStability`)
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
       // A present field of the wrong shape (`outputs: 'dist'`) was told it
@@ -992,6 +996,15 @@ export const REMOVED_FIELDS: ReadonlyMap<
         use:
           "`@vzn/vx-schedule-history`, which learns each task's reservation from its run " +
           "history (declare one by hand with its `reservations: { 'pkg#task': { cpus, memory } }`)",
+      },
+    },
+  ],
+  [
+    CACHE_FIELDS,
+    {
+      rewrittenInputs: {
+        removedIn: '0.0.636',
+        use: "`inputStability: { strategy: 'immutable' | 'mutable' }` ('withhold', 'compare')",
       },
     },
   ],

@@ -76,7 +76,6 @@ import {
 import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
-import { inputStabilityEnv } from '../workspace/index.js'
 import type { MissExplainer } from './miss-reason.js'
 import { shellVerdict } from './shell-verdict.js'
 import { sandboxFix } from './sandbox-fix.js'
@@ -176,6 +175,11 @@ export interface ExecuteArgs {
    * `exec.timeout` wins. Threaded as an option only — never hashed.
    */
   timeout?: number
+  /**
+   * The run's `inputStability` layers around the task's own: `run` from
+   * the env vars (above the task), `workspace` from `vx.workspace` (below).
+   */
+  inputStability?: { run: InputStability; workspace?: InputStability }
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -339,17 +343,20 @@ async function restoreOrMiss(
 }
 
 /**
- * What a write to an input during the command means: each field from the
- * task's `cache.inputStability`, else its env var, else `'immutable'` and
- * `'warn'`, so by default any such write withholds the save, on CI too,
- * since a concurrent task can change an input and put it back (owner,
- * 2026-10-12).
+ * What a write to an input during the command means, each field highest
+ * first: the env var (`layers.run`), the task's `cache.inputStability`,
+ * the workspace's, then `'immutable'` and `'warn'` (owner, 2026-10-12), so
+ * by default any such write withholds the save, on CI too, since a
+ * concurrent task can change an input and put it back.
  */
-function inputStabilityOf(cache: CacheConfig | undefined): Required<InputStability> {
-  const env = inputStabilityEnv()
+function inputStabilityOf(
+  cache: CacheConfig | undefined,
+  layers: ExecuteArgs['inputStability'],
+): Required<InputStability> {
+  const task = cache?.inputStability
   return {
-    strategy: cache?.inputStability?.strategy ?? env.strategy ?? 'immutable',
-    severity: cache?.inputStability?.severity ?? env.severity ?? 'warn',
+    strategy: layers?.run.strategy ?? task?.strategy ?? layers?.workspace?.strategy ?? 'immutable',
+    severity: layers?.run.severity ?? task?.severity ?? layers?.workspace?.severity ?? 'warn',
   }
 }
 
@@ -1466,7 +1473,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
-  const stability = inputStabilityOf(args.node.config.cache)
+  const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
   let movedFails = false
   let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {

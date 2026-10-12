@@ -2780,6 +2780,7 @@ export interface WorkspaceConfig {
   affectedBase?: string
   cacheScope?: string
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  inputStability?: InputStability
   rules?: WorkspaceRules
   plugins?: readonly (Plugin | undefined | null | false)[]
 }

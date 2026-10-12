@@ -90,6 +90,6 @@ filed on top of a state that was never verified.
 ## The trade
 
 A run whose inputs moved pays a rebuild next time. In exchange, an entry
-in the cache always means what its key says, and a hit can be trusted
+in the cache always means what its declared inputs say, and a hit can be trusted
 without re-reading your inputs. Details:
 [Caching](../../caching/).

@@ -732,10 +732,19 @@ happens: `'warn'` (the default) keeps the result, says why on the status
 line, and the run goes on; `'error'` fails the task, so the run fails.
 Either way, every task that ran over the task's outputs, down the graph,
 withholds its save too, and a task of any project that declares the
-moved file as an input withholds its own. `VX_INPUT_STABILITY`
-(`immutable`, `mutable`, `unchecked`) and `VX_INPUT_STABILITY_SEVERITY`
-(`warn`, `error`) set the defaults for every task that does not say;
-any other value is refused before a task runs.
+moved file as an input withholds its own.
+
+Each field is resolved on its own, highest first:
+
+1. `VX_INPUT_STABILITY` (`immutable`, `mutable`, `unchecked`) and
+   `VX_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
+   (a CI job that wants `error` sets it without editing configs); any
+   other value is refused before a task runs;
+2. the task's own `cache.inputStability`;
+3. the workspace's `inputStability` (`vx.workspace.ts`);
+4. the default, `'immutable'` and `'warn'`.
+
+Never folded into a cache key.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -1584,6 +1593,7 @@ export default defineWorkspace({
   cacheScope: 'trusted',
   rules: { exclusiveOutputs: true, upfrontKeys: true },
   schedule: 'most-work',
+  inputStability: { strategy: 'immutable', severity: 'warn' },
   plugins: [otel()],
 })
 ```
@@ -1606,6 +1616,8 @@ interface WorkspaceConfig {
   rules?: WorkspaceRules
   /** Which ready task starts first with no timings: 'most-work' (default), 'critical-path', 'direct-dependents', 'ready-order'. */
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  /** Every task's cache.inputStability default: { strategy, severity }. */
+  inputStability?: InputStability
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
@@ -1693,6 +1705,10 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   (`@vzn/vx-schedule-history`) still sort first, and the strategy breaks
   their ties. The default costs what it did; another strategy is
   computed only when named. Any other value is refused. Never folded
+  into a cache key.
+- **`inputStability`** — the `cache.inputStability` of every task that
+  does not set its own field, same shape (`{ strategy, severity }`, §
+  `cache`). The env vars still override it for the run. Never folded
   into a cache key.
 - **`rules`** — checks on the task graph, each on unless set to
   `false`. Turning one off allows a shape vx runs correctly but more

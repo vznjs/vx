@@ -30,7 +30,6 @@ import {
   computeWorkspaceFingerprints,
   findWorkspaceRoot,
   cacheScopeEnvError,
-  inputStabilityEnv,
   isCacheScope,
   type LoadReads,
   loadWorkspace,
@@ -293,8 +292,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // a CI job that knows its trust level says so without editing config.
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
-  // Refused before any task, as a bad scope is; each task reads it again.
-  inputStabilityEnv()
   const policy: CachePolicy = scopeCachePolicy(
     options.cache ?? FULL_CACHE_POLICY,
     envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,

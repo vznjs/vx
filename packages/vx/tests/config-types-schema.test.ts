@@ -11,6 +11,7 @@ import type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  InputStability,
   ExecConfig,
   ExecEnv,
   PersistentConfig,
@@ -37,6 +38,7 @@ const WORKSPACE = [
   'cacheRetention',
   'cacheScope',
   'concurrency',
+  'inputStability',
   'plugins',
   'rules',
   'schedule',
@@ -65,6 +67,7 @@ const CACHE = [
   'outputs',
   'inputStability',
 ] as const satisfies readonly Keys<CacheConfig>[]
+const STABILITY = ['severity', 'strategy'] as const satisfies readonly Keys<InputStability>[]
 const INPUTS = [
   'env',
   'files',
@@ -113,13 +116,14 @@ const exhaustive: [
   Exhaustive<CacheConfig, typeof CACHE>,
   Exhaustive<CacheInputs, typeof INPUTS>,
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
+  Exhaustive<InputStability, typeof STABILITY>,
   Exhaustive<NonNullable<WorkspaceConfig['cacheRetention']>, typeof RETENTION>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
 void exhaustive
 
 /** What the validator allows where the call puts a key it does not know. */
@@ -184,6 +188,18 @@ describe('the config types and the validator agree on every level (D-71)', () =>
           'p',
         ),
     ],
+    [
+      'cache.inputStability',
+      STABILITY,
+      () =>
+        validateProjectConfig(
+          task({
+            cache: { inputs: { files: [] }, outputs: { files: [] }, inputStability: X },
+          }) as never,
+          'p',
+        ),
+    ],
+    ['inputStability', STABILITY, () => validateWorkspace({ inputStability: X } as never, 'w')],
     [
       'cacheRetention',
       RETENTION,

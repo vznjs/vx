@@ -208,10 +208,28 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    "a task's 'immutable' wins over the env var",
+    "the env var wins over a task's own setting, for the run",
     async () => {
       process.env['VX_INPUT_STABILITY'] = 'mutable'
       await fixture('formatted', { strategy: 'immutable' })
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "the workspace's inputStability is the default; a task's own field wins over it",
+    async () => {
+      await fixture('formatted')
+      const ws = path.join(root, 'vx.workspace.mjs')
+      await writeFile(
+        ws,
+        "export default { plugins: [], inputStability: { strategy: 'mutable' } }\n",
+      )
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      await addProject(root, 'app', formatter('formatted', { strategy: 'immutable' }))
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
     },

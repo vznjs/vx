@@ -62,7 +62,7 @@ the values it takes and each refusal's exact words are recorded in
 | `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
 | `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
 | `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                  |
-| `tasks.<name>.cache`               | `inputs`, `outputs`, `inputStability`                                                                    |
+| `tasks.<name>.cache`               | `inputs`, `outputs`, `inputStability`                                                                     |
 | `tasks.<name>.cache.inputs`        | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
 | `tasks.<name>.cache.outputs`       | `files`, `workspaceFiles`                                                                                 |
 
