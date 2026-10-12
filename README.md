@@ -5,7 +5,7 @@
 <h1 align="center">vx</h1>
 
 <p align="center">
-  <strong>The task runner you own, for JS monorepos.</strong><br>
+  <strong>Task orchestration you own.</strong><br>
   Correct, sandboxed, extensible. No cloud, no account, no paywall.<br>
   <a href="https://vznjs.github.io/vx/"><strong>vznjs.github.io/vx</strong></a>
 </p>

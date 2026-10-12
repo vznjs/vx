@@ -229,9 +229,9 @@ describe('the landing page', () => {
   it('says what vx is in one line, then the sections in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('The task runner you own.')
+    expect(text(h1[0]![1]!)).toBe('Task orchestration you own.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'vx runs and caches your monorepo’s task graph correctly, and every stage after that is a seam you can fill.',
+      'vx runs and caches your task graph correctly, and every stage after that is a seam you can fill.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
@@ -532,12 +532,10 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual(['vx — the task runner you own, for JS monorepos'])
+    expect(meta(page(), 'og:title')).toEqual(['vx — task orchestration you own'])
     // The search result's and the card's headline says what vx is: the
     // cinematic landing's slogan outlived the page it headed.
-    expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
-      'vx — the task runner you own, for JS monorepos',
-    )
+    expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe('vx — task orchestration you own')
   })
 
   // The PNG is rendered from public/og.svg; the card said "a faster runner

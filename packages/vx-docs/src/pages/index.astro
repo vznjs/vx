@@ -25,9 +25,9 @@ import Cover from '../components/blog/Cover.astro'
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
-const TITLE = 'vx — the task runner you own, for JS monorepos'
+const TITLE = 'vx — task orchestration you own'
 const DESCRIPTION =
-  'A correct, sandboxed, extensible core for JS monorepos. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.'
+  'Correct, sandboxed, extensible task orchestration. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.'
 
 /** A callout's line, each backticked span as code. */
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -228,8 +228,8 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
             <span class="announce-title">{latest.title}</span>
             <span aria-hidden="true">→</span>
           </a>
-          <h1>The task runner you <span class="phosphor">own</span>.</h1>
-          <p class="lede">vx runs and caches your monorepo’s task graph correctly, and every stage after that is a seam you can fill.</p>
+          <h1>Task orchestration you <span class="phosphor">own</span>.</h1>
+          <p class="lede">vx runs and caches your task graph correctly, and every stage after that is a seam you can fill.</p>
           <ul class="wins">
             {
               wins.map((w) => (
