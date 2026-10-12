@@ -84,7 +84,7 @@ async function time(arm: Arm, args: readonly string[]): Promise<number> {
     // alone showed an astro run's `pnpm install` failure as nothing.
     stdout: 'pipe',
     stderr: 'pipe',
-    env: benchEnv({ NO_COLOR: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
+    env: benchEnv({ NO_COLOR: '1' }),
   })
   const [code, out, err] = await Promise.all([
     p.exited,
