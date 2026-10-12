@@ -51,6 +51,7 @@ export interface TaskFailure {
   timedOut?: true
   output: string // '' when the run kept none
   locations: OutputLocation[]
+  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']> // the grants that would have allowed its sandbox denials
   fixedIn?: string // the first later run where the task passed
 }
 export interface TaskLog {
