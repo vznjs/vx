@@ -89,11 +89,10 @@ Numbers come from `packages/vx-bench/` and are reproducible; the invariant behin
 each is recorded in [optimizations.md](./optimizations.md).
 
 - A fully-cached run on a 100-project workspace completes in **74 ms**
-  wall-clock; on 476 packages / 1,428 tasks in **297 ms**, where
-  Turborepo 2.10 takes 342 ms (vx 15% faster) and Nx 23 takes 1.38 s
-  (vx 4.6× faster) on the identical workspace — and restoring every
-  output, vx is 47% faster than Turbo
-  ([benchmarks.md](./benchmarks.md), 2026-09).
+  wall-clock. On the head-to-head (9,603 tasks, each tool in its native
+  config), Turborepo adds 29% more overhead than vx on a cold build and
+  Nx 32× as much; with nothing changed, Turborepo adds less than vx
+  (898 ms against 1.07 s). Every row: [benchmarks.md](./benchmarks.md).
 - At 15k input files, deriving every cache key costs **zero source-file reads**
   — hashes come from git's index for tracked, clean files.
 - No daemon. Nothing to keep warm, nothing to restart.
