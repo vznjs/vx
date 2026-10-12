@@ -28,7 +28,7 @@ const CFG = `export default { tasks: { build: {
 /** A remote that is a directory: what a bucket anyone can write looks like. */
 const DIR_REMOTE = `
 import { mkdirSync, existsSync } from 'node:fs'
-export function dirRemote(dir) {
+export default function dirRemote(dir) {
   mkdirSync(dir, { recursive: true })
   const at = (h) => dir + '/' + h
   return {
@@ -56,7 +56,7 @@ describe('a signing cache plugin needs no core change', () => {
         await writeFile(
           path.join(fx.root, 'vx.workspace.ts'),
           `import { signedCache } from './signed-cache.ts'
-import { dirRemote } from './dir-remote.mjs'
+import dirRemote from './dir-remote.mjs'
 export default { plugins: [signedCache(dirRemote(${JSON.stringify(store)}), ${JSON.stringify(pub)})] }
 `,
         )
