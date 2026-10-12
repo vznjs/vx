@@ -490,6 +490,16 @@ export interface CacheConfig {
   inputs: CacheInputs
   /** What this task produces. Captured for restore on a cache hit. */
   outputs: CacheOutputs
+  /**
+   * What a write to an input while the command runs means. `'withhold'`
+   * (the default): the entry is not saved, whatever the file holds after,
+   * since an edit undone mid-run cannot be told from no edit. `'compare'`:
+   * a file rewritten to the bytes the key folded counts as unchanged, for
+   * a task that rewrites its own input identically (tsdown's
+   * `package.json`). `VX_REWRITTEN_INPUTS=compare` sets the default for
+   * every task that does not say.
+   */
+  rewrittenInputs?: 'withhold' | 'compare'
 }
 
 export interface CacheOutputs {

@@ -5,9 +5,9 @@
       "exec=<absent>": "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `cache.inputs` (group tasks exist to chain dependencies or carry a key)"
     },
     "pairs": {
-      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.interactive=true": "$CONFIG: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds",
-      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
-      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}} + exec.remote=\"only\"": "ok",
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]},\"rewrittenInputs\":\"compare\"} + exec.interactive=true": "$CONFIG: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds",
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]},\"rewrittenInputs\":\"compare\"} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]},\"rewrittenInputs\":\"compare\"} + exec.remote=\"only\"": "ok",
       "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.interactive=true": "$CONFIG: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds",
       "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.persistent={\"readyWhen\":\"ready\"}": "$CONFIG: tasks.t: `cache` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache",
       "cache={\"inputs\":{\"files\":[]},\"outputs\":{\"files\":[]}} + exec.remote=\"only\"": "ok",
@@ -21,7 +21,7 @@
   },
   "group task": {
     "alone": {
-      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]}}": "$CONFIG: tasks.t.cache.outputs: a task with no `exec` writes nothing — `outputs: { files: [] }`"
+      "cache={\"inputs\":{\"files\":[\"src/**\"],\"workspaceFiles\":[\"tsconfig.json\"],\"env\":[\"A\"],\"tasks\":[],\"runtime\":[\"node -v\"],\"workspaceRuntime\":[\"bun -v\"]},\"outputs\":{\"files\":[\"dist/**\"],\"workspaceFiles\":[\"out/**\"]},\"rewrittenInputs\":\"compare\"}": "$CONFIG: tasks.t.cache.outputs: a task with no `exec` writes nothing — `outputs: { files: [] }`"
     },
     "pairs": {}
   }

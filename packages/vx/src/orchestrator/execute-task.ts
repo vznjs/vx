@@ -337,12 +337,15 @@ async function restoreOrMiss(
 }
 
 /**
- * On CI no person edits a file mid-run, so an input the command rewrote
- * to the same bytes counts as unchanged (`movedInput`'s `writesByBytes`).
+ * Does a write to an input during the command count as unchanged when it
+ * left the bytes the key folded (`movedInput`'s `writesByBytes`)? Only when
+ * the task says `compare`, or says nothing and `VX_REWRITTEN_INPUTS` is
+ * `compare`: by default any such write withholds the save, on CI too,
+ * since a concurrent task can change an input and put it back (owner,
+ * 2026-10-12).
  */
-function onCi(): boolean {
-  const v = process.env['CI']
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+function rewritesByBytes(cache: CacheConfig | undefined): boolean {
+  return (cache?.rewrittenInputs ?? process.env['VX_REWRITTEN_INPUTS']) === 'compare'
 }
 
 /**
@@ -1568,8 +1571,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   async function movedSinceKey(): Promise<string | null | undefined> {
     if (described!.hash !== hash) return null
     return (
-      (await movedInput(described!.facts, cache, described!.describedAt, onCi())) ??
-      described!.added()
+      (await movedInput(
+        described!.facts,
+        cache,
+        described!.describedAt,
+        rewritesByBytes(args.node.config.cache),
+      )) ?? described!.added()
     )
   }
 

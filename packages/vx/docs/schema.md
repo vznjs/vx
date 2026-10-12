@@ -704,7 +704,36 @@ Semantics:
 interface CacheConfig {
   inputs: CacheInputs // required when `cache` is provided
   outputs: CacheOutputs // required when `cache` is provided
+  rewrittenInputs?: 'withhold' | 'compare' // optional, default 'withhold'
 }
+```
+
+`rewrittenInputs` says what a write to an input while the command runs
+means. `'withhold'` (the default, on CI too): the result stands but the
+entry is not saved, since an edit undone mid-run, or another task
+changing the file and putting it back, cannot be told from no edit.
+`'compare'`: a file rewritten to the bytes the key folded counts as
+unchanged and the entry is saved, for a task that rewrites its own input
+identically (tsdown's `package.json`); different bytes still withhold
+it. `VX_REWRITTEN_INPUTS=compare` sets the default for every task that
+does not say (owner, 2026-10-12).
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      // tsdown rewrites package.json with the same bytes on every build.
+      exec: { command: 'tsdown' },
+      cache: {
+        inputs: { files: ['src/**', 'package.json'] },
+        outputs: { files: ['dist/**'] },
+        rewrittenInputs: 'compare',
+      },
+    },
+  },
+})
 ```
 
 **Caching is opt-in.** Omit `cache` and the task always runs (no read,
@@ -2059,6 +2088,7 @@ a user meets most:
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
+| `cache.rewrittenInputs must be 'withhold' or 'compare'`                                                                               | Any other value (`'bytes'`, `true`).                                                                                                                                                                                           |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |

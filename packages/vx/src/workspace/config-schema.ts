@@ -668,6 +668,10 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         )
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
+      const rewritten = (cache as { rewrittenInputs?: unknown }).rewrittenInputs
+      if (rewritten !== undefined && rewritten !== 'withhold' && rewritten !== 'compare') {
+        throw new UserError(`${where}.cache.rewrittenInputs must be 'withhold' or 'compare'`)
+      }
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
       // A present field of the wrong shape (`outputs: 'dist'`) was told it
@@ -904,7 +908,7 @@ const EXEC_FIELDS = new Set([
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
-const CACHE_FIELDS = new Set(['inputs', 'outputs'])
+const CACHE_FIELDS = new Set(['inputs', 'outputs', 'rewrittenInputs'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',
   'workspaceFiles',

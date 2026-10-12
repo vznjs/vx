@@ -112,7 +112,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       systemInfo: true,
     }),
     'tasks.*.exec.sandbox.deny': keys<SandboxDenials>({ network: true }),
-    'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true }),
+    'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true, rewrittenInputs: true }),
     'tasks.*.cache.inputs': keys<CacheInputs>({
       files: true,
       workspaceFiles: true,
@@ -198,6 +198,7 @@ function projectSeed(): Record<string, unknown> {
             workspaceRuntime: ['bun -v'],
           },
           outputs: { files: ['dist/**'], workspaceFiles: ['out/**'] },
+          rewrittenInputs: 'compare',
         },
       },
       g: { dependsOn: ['t'] },

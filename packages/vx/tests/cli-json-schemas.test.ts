@@ -105,6 +105,7 @@ const KITCHEN = `export default {
           workspaceRuntime: ['echo w'],
         },
         outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'] },
+        rewrittenInputs: 'compare',
       },
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
@@ -710,7 +711,9 @@ describe('each schema object is its source type', () => {
       keys<PersistentConfig>({ readyWhen: true }),
     )
     const cache = ['taskConfig', 'properties', 'cache'] as const
-    expect(def('show', ...cache)).toEqual(keys<CacheConfig>({ inputs: true, outputs: true }))
+    expect(def('show', ...cache)).toEqual(
+      keys<CacheConfig>({ inputs: true, outputs: true, rewrittenInputs: true }),
+    )
     expect(def('show', ...cache, 'properties', 'inputs')).toEqual(
       keys<CacheInputs>({
         files: true,

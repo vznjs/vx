@@ -704,13 +704,13 @@ is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry;
 declare what it writes as an output, which the status line says when it
 names a file other than `package.json` (TanStack Router's committed
-`routeTree.gen.ts`, rewritten by every build). On CI (`CI` set, not
-`0` or `false`) a write during the command is judged by its bytes
-instead, as an earlier write is: no person edits a file mid-run there,
-so the same bytes are the task's own identical rewrite (tsdown's
-`package.json`), and the entry is saved; different bytes still
-withhold it, and a task writing another task's files is the sandbox's
-to refuse (owner, 2026-10-09). A file ADDED under an
+`routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
+task of the same project running alongside can change an input and put
+it back. A task that rewrites its own input to identical bytes (tsdown's
+`package.json`) sets `cache.rewrittenInputs: 'compare'`, and a write
+during its command is then judged by its bytes, as an earlier write is;
+different bytes still withhold the entry. `VX_REWRITTEN_INPUTS=compare`
+makes that the default (owner, 2026-10-12). A file ADDED under an
 input glob since the listing the key filtered (`addedInput`) withholds
 the save the same way, named on the same line: the listing's
 directories a glob reaches are `lstat`ed, one whose ctime moved since

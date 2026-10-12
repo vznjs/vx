@@ -687,8 +687,9 @@ next?".
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
-28. OPEN (owner, 2026-10-10) — on CI a mid-run write to an input is
-    judged by bytes (X-225), and the sandbox lets a task write anywhere
+28. OPEN (owner, 2026-10-10) — with `cache.rewrittenInputs: 'compare'`
+    (opt-in since 2026-10-12; CI no longer implies it) a mid-run write to an
+    input is judged by bytes, and the sandbox lets a task write anywhere
     in its own project, so another task of the same project running at
     the same time could change an input and restore it before the check:
     the bytes match and the entry is saved over what the command read.

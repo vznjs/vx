@@ -60,7 +60,11 @@ const EXEC = [
   'timeout',
 ] as const satisfies readonly Keys<ExecConfig>[]
 const ENV = ['define', 'passThrough', 'secret'] as const satisfies readonly Keys<ExecEnv>[]
-const CACHE = ['inputs', 'outputs'] as const satisfies readonly Keys<CacheConfig>[]
+const CACHE = [
+  'inputs',
+  'outputs',
+  'rewrittenInputs',
+] as const satisfies readonly Keys<CacheConfig>[]
 const INPUTS = [
   'env',
   'files',

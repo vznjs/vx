@@ -628,7 +628,7 @@
       ],
       "tasks.*.exec.sandbox.deny": ["network"],
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
-      "tasks.*.cache": ["inputs", "outputs"],
+      "tasks.*.cache": ["inputs", "outputs", "rewrittenInputs"],
       "tasks.*.cache.inputs": [
         "env",
         "files",
@@ -2070,7 +2070,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache must be an object (fields: inputs, outputs), not an array": [
+        "$CONFIG: tasks.c.cache must be an object (fields: inputs, outputs, rewrittenInputs), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -2087,7 +2087,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.inputs is required when `cache` is set": ["{}"],
-        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputs, outputs)": [
+        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputs, outputs, rewrittenInputs)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -2524,6 +2524,42 @@
         ],
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
           "[\".\"]"
+        ]
+      },
+      "tasks.*.cache.rewrittenInputs": {
+        "ok": ["<absent>", "\"compare\""],
+        "$CONFIG: tasks.c.cache.rewrittenInputs must be 'withhold' or 'compare'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
         ]
       }
     },

@@ -39,18 +39,18 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
-// A write during the command is judged by bytes on CI: the rows run
-// local unless they set `CI` themselves (CI's runner sets it).
-const savedCi = process.env['CI']
+// `VX_REWRITTEN_INPUTS` sets the default the rows below judge; each row
+// starts without it and sets it only to say so.
+const saved = { rewritten: process.env['VX_REWRITTEN_INPUTS'] }
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
-  delete process.env['CI']
+  delete process.env['VX_REWRITTEN_INPUTS']
 })
 
 afterEach(async () => {
-  if (savedCi === undefined) delete process.env['CI']
-  else process.env['CI'] = savedCi
+  if (saved.rewritten === undefined) delete process.env['VX_REWRITTEN_INPUTS']
+  else process.env['VX_REWRITTEN_INPUTS'] = saved.rewritten
   await rm(root, { recursive: true, force: true })
 })
 
@@ -141,28 +141,37 @@ describe('a task that rewrites its own input', () => {
   )
 })
 
-describe('on CI a write during the command is judged by bytes (owner, 2026-10-09)', () => {
-  const formatter = (from: string) => ({
+describe('cache.rewrittenInputs: compare judges a write during the command by bytes', () => {
+  const WITHHELD = [
+    '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+  ]
+  const formatter = (from: string, rewritten?: string) => ({
     config: `
       export default {
         tasks: {
           format: {
             exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-            cache: { inputs: { files: ['a.ts'] }, outputs: { files: [] } },
+            cache: {
+              inputs: { files: ['a.ts'] },
+              outputs: { files: [] },
+              ${rewritten === undefined ? '' : `rewrittenInputs: '${rewritten}',`}
+            },
           },
         },
       }
     `,
     files: { 'a.ts': `const x = "${from}"\n` },
   })
+  async function fixture(from: string, rewritten?: string): Promise<void> {
+    await addProject(root, 'app', formatter(from, rewritten))
+    await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+    commit()
+  }
 
   it(
     'the same bytes rewritten: saved, and the next run is a hit',
     async () => {
-      process.env['CI'] = 'true'
-      await addProject(root, 'app', formatter('formatted'))
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
-      commit()
+      await fixture('formatted', 'compare')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
@@ -173,14 +182,49 @@ describe('on CI a write during the command is judged by bytes (owner, 2026-10-09
   it(
     'different bytes: still withheld',
     async () => {
-      process.env['CI'] = 'true'
-      await addProject(root, 'app', formatter('unformatted'))
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
-      commit()
+      await fixture('unformatted', 'compare')
       await runTask('format')
-      expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
-      ])
+      expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'VX_REWRITTEN_INPUTS=compare is the default for a task that does not say',
+    async () => {
+      process.env['VX_REWRITTEN_INPUTS'] = 'compare'
+      await fixture('formatted')
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a task's 'withhold' wins over the env var",
+    async () => {
+      process.env['VX_REWRITTEN_INPUTS'] = 'compare'
+      await fixture('formatted', 'withhold')
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'on CI the default still withholds (owner, 2026-10-12: a concurrent task can put an input back)',
+    async () => {
+      const ci = process.env['CI']
+      process.env['CI'] = 'true'
+      try {
+        await fixture('formatted')
+        await runTask('format')
+        expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
+      } finally {
+        if (ci === undefined) delete process.env['CI']
+        else process.env['CI'] = ci
+      }
     },
     TIMEOUT,
   )
