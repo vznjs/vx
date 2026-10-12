@@ -121,7 +121,7 @@ nothing before a run and only the files it recorded before a restore. A failed t
 and refreshes the cache; `--no-cache` ignores it.
 
 Overhead on a 9,603-task run where nothing changed: vx 1.07 s,
-Turborepo 898 ms (vx 19% slower), Nx 25.45 s (vx 24× faster)
+Turborepo 898 ms, Nx 25.45 s
 ([benchmarks](../../benchmarks/); the key, part by part:
 [Caching in depth](../../caching/)).
 

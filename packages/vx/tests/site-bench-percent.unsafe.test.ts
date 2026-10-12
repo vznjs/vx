@@ -31,8 +31,9 @@ describe('every vx multiple a page quotes is the benchmarks page’s', () => {
           wrong.push(`${path.basename(file)}: ${m[1]} (${m[2]})`)
       }
     }
-    // honest-benchmarks, why-vx-is-fast, no-daemon, from-nx, configure.
-    expect(checked).toBeGreaterThanOrEqual(15)
+    // honest-benchmarks' table: prose quotes no multiple (owner, 2026-10-12:
+    // never say how much faster vx is; the benchmark shows it).
+    expect(checked).toBeGreaterThanOrEqual(9)
     expect(wrong).toEqual([])
   })
 })

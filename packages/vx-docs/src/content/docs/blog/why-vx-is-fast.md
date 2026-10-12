@@ -9,13 +9,13 @@ tags:
 excerpt: 'With nothing changed, vx adds 1.07 s to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
-The headline number is the runner's overhead: the time it adds on top
+The number this post explains is the runner's overhead: the time it adds on top
 of the tasks themselves. On a synthetic workspace of 1,601 projects and
 9,603 tasks, with nothing changed, vx adds 1.07 s over one git walk,
-Turborepo 898 ms (vx 19% slower), Vite Task 11.75 s (vx 11× faster) and
-Nx 25.45 s (vx 24× faster). On a cold build vx adds 7.07 s, Turborepo
-9.15 s (vx 29% faster) and Nx 3 min 48 s (vx 32× faster); Vite Task
-8.16 s (vx 15% faster). Each runner runs in its own native
+Turborepo 898 ms, Vite Task 11.75 s and
+Nx 25.45 s. On a cold build vx adds 7.07 s, Turborepo
+9.15 s and Nx 3 min 48 s; Vite Task
+8.16 s. Each runner runs in its own native
 config.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
