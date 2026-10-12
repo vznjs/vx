@@ -19,5 +19,5 @@
     "allowImportingTsExtensions": true,
     "types": ["bun"]
   },
-  "include": ["*.ts", "tests/**/*", "playground-spike/**/*.ts"]
+  "include": ["*.ts", "real/*.ts", "tests/**/*", "playground-spike/**/*.ts"]
 }
