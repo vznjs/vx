@@ -51,6 +51,7 @@ pins this list to `prepare.ts` and `run.ts`, and the spans to every
 - `git enumeration`
 - `plugin stages`
 - `classify + probe`
+- `schedule`
 - `run graph`
 - `record history`
 - `output dir snapshots`

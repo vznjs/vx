@@ -127,7 +127,9 @@ export interface VxPlugin {
   /**
    * Scheduling priorities: task id → weight, higher runs first among READY
    * tasks (merged over the structural baseline, which stays the tie-break).
-   * Runs once, after the graph is final. A later plugin's weight for a task
+   * Runs once, after the graph is final and the local hits are known, and
+   * only when a task will start: a run of confirmed local hits restores
+   * in no order a weight changes. A later plugin's weight for a task
    * overrides an earlier one's. Return undefined to leave the baseline.
    */
   schedule?(

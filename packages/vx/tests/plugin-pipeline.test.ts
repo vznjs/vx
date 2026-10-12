@@ -1233,6 +1233,45 @@ describe('schedule stage', () => {
     TIMEOUT,
   )
 
+  it(
+    'a run of confirmed local hits does not ask the stage; a run with a miss does',
+    async () => {
+      // The stage read history (148 ms at 8,002 tasks) to order work a
+      // nothing-changed run never dispatches: its restores take no weight.
+      const cached = `export default { tasks: { build: { exec: { command: 'echo build' },
+        cache: { inputs: { files: ['*.txt'] }, outputs: { files: [] } } } } }\n`
+      await pkg('a', cached)
+      await pkg('b', cached)
+      const asked = path.join(root, 'asked.log')
+      await rm(asked, { force: true })
+      await workspace(
+        [
+          pluginSource(
+            'org/count',
+            `{ schedule() { appendFileSync(${JSON.stringify(asked)}, 'x') } }`,
+          ),
+        ],
+        "import { appendFileSync } from 'node:fs'\n",
+      )
+      const times = async (): Promise<number> => {
+        const summary = await run({
+          cwd: root,
+          tasks: ['build'],
+          log: silent(),
+          handleSignals: false,
+        })
+        expect(summary.ok).toBe(true)
+        return (await Bun.file(asked).exists()) ? (await Bun.file(asked).text()).length : 0
+      }
+      const first = await times()
+      const allHits = await times()
+      await writeFile(path.join(root, 'packages', 'a', 'in.txt'), 'changed')
+      const oneMiss = await times()
+      expect({ first, allHits, oneMiss }).toEqual({ first: 1, allHits: 1, oneMiss: 2 })
+    },
+    TIMEOUT,
+  )
+
   it('a weight for a task outside this run is dropped before it is checked (item 651)', async () => {
     // A history-backed policy weighs every task it has ever seen; a run with
     // a filter holds a few. The stale ids leave the map, and a junk weight on
