@@ -2405,6 +2405,27 @@ A git command vx runs to read the diff failed; the message carries
 git's exit and its own words. Run that command in the workspace to see
 why (a broken index, a missing object in a partial clone).
 
+#### `VX_E_DEPENDS_ON`
+
+A task's `dependsOn` names a task or project that is not declared, or uses
+a form vx does not take (a bare wildcard, a negation, a pattern in
+`pkg#task`). The message names the task and the entry: declare the
+target, fix its spelling, or drop the entry.
+
+#### `VX_E_OUTPUT_OVERLAP`
+
+Two tasks declare overlapping outputs with no `dependsOn` edge between
+them, so whichever runs second deletes the other's files. Give each task
+its own output path, or make one depend on the other.
+
+#### `VX_E_INPUT_IS_OUTPUT`
+
+A task's `cache.inputs` match outputs: its own (vx cleans outputs before
+a run, so it would delete its sources) or another task's (its key must
+not read them; `dependsOn` already cascades). Exclude the outputs from
+the inputs with a `!` glob, as the message shows, or declare no outputs
+for a task that rewrites files in place.
+
 #### `VX_E_INTERNAL`
 
 A defect in vx; stderr carries the stack. Report it with that stack at

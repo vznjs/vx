@@ -30,6 +30,21 @@ beforeAll(async () => {
       y: { exec: { command: 'true' }, dependsOn: ['x'] },
     } }\n`,
   )
+  await addProject(
+    root,
+    'dangling',
+    `export default { tasks: { d: { exec: { command: 'true' }, dependsOn: ['ghost'] } } }\n`,
+  )
+  const out = `cache: { inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] } }`
+  await addProject(
+    root,
+    'twin',
+    `export default { tasks: {
+      p: { exec: { command: 'true' }, ${out} },
+      q: { exec: { command: 'true' }, ${out} },
+      s: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] } } },
+    } }\n`,
+  )
   // Its own workspace: a config that does not load refuses every run there.
   broken = await makeWorkspace({ prefix: 'vx-error-codes-broken-' })
   await addProject(
@@ -79,6 +94,9 @@ describe('a refusal under --format json', () => {
       config: await refusal(['run', 'b', '--all', '--dry=json'], broken),
       noWorkspace: await refusal(['run', 'build', '--format', 'json'], bare),
       affectedBase: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
+      dependsOn: await refusal(['run', 'd', '--filter', 'dangling', '--dry=json']),
+      outputOverlap: await refusal(['run', 'p', 'q', '--filter', 'twin', '--dry=json']),
+      inputIsOutput: await refusal(['run', 's', '--filter', 'twin', '--dry=json']),
     }).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
@@ -86,6 +104,9 @@ describe('a refusal under --format json', () => {
       config: 'VX_E_CONFIG',
       noWorkspace: 'VX_E_NO_WORKSPACE',
       affectedBase: 'VX_E_AFFECTED_BASE',
+      dependsOn: 'VX_E_DEPENDS_ON',
+      outputOverlap: 'VX_E_OUTPUT_OVERLAP',
+      inputIsOutput: 'VX_E_INPUT_IS_OUTPUT',
     })
   })
 
