@@ -1293,7 +1293,11 @@ the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 A write grants the top directory it landed in, so the next file there
 passes too; a read the output depends on is a key input as well, and
-the line says so, since a grant never adds one.
+the line says so, since a grant never adds one. A credential path
+(`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`, `~/.netrc`,
+`~/.npmrc`, `~/.docker/config.json`, a `.env` file) is never put in the
+line: an agent applies it as given, so it is named apart as one to
+grant only on purpose.
 "Didn't declare" means the grants, which on Linux are wider than they
 read: a file-shaped write grant is bound as its whole directory, so
 every file beside it is readable without a violation — `schema.md`
@@ -2827,7 +2831,8 @@ agent reads why without the terminal. `fixedIn` names the first later run where 
 passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
-granted its denials, the same grants the terminal prints as `fix:`. They live in `<cacheDir>/failures/<runId>.json`, the
+granted its denials, the same grants the terminal prints as `fix:`;
+`withheld` lists the credential paths it denied and left out. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that

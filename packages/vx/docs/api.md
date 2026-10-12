@@ -2453,7 +2453,13 @@ export interface TaskOutcome {
   flaky?: { passes: number; failures: number }
   sandboxViolations?: number
   sandboxViolationLines?: string[]
-  sandboxFix?: { read?: string[]; write?: string[]; network?: string[]; systemInfo?: string[] }
+  sandboxFix?: {
+    read?: string[]
+    write?: string[]
+    network?: string[]
+    systemInfo?: string[]
+    withheld?: string[]
+  }
 }
 ```
 

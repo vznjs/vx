@@ -534,20 +534,18 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // A read the output depends on is a key input too; the sandbox never
   // adds one (owner, 2026-10-09).
   const fix = outcome.sandboxFix
+  const line = fix === undefined ? undefined : sandboxFixLine(fix)
+  const dim = (text: string): string => paint('', text, colors, { dim: true })
   const note =
     fix === undefined
       ? []
       : [
-          paint('', `fix: ${sandboxFixLine(fix)}`, colors, { dim: true }),
+          ...(line !== undefined ? [dim(`fix: ${line}`)] : []),
           ...(fix.read !== undefined
-            ? [
-                paint(
-                  '',
-                  'a read the output depends on belongs in cache.inputs.files too',
-                  colors,
-                  { dim: true },
-                ),
-              ]
+            ? [dim('a read the output depends on belongs in cache.inputs.files too')]
+            : []),
+          ...(fix.withheld !== undefined
+            ? [dim(`credential path, grant it only on purpose: ${fix.withheld.join(', ')}`)]
             : []),
           '',
         ]

@@ -449,6 +449,14 @@ describe('formatTaskBlock', () => {
     const write = fixed({ write: ['dist/'] })
     expect(write).toContain("fix: exec.sandbox.allow: { write: ['dist/'] }")
     expect(write.filter((l) => l.includes('cache.inputs'))).toEqual([])
+    // A credential path is named, never put in the line an agent applies.
+    const secret = fixed({ withheld: ['~/.ssh/id_rsa'] })
+    const s = secret.indexOf('openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]')
+    expect(secret.slice(s + 1, s + 4)).toEqual([
+      '',
+      'credential path, grant it only on purpose: ~/.ssh/id_rsa',
+      '',
+    ])
   })
 
   it('skipped tasks show 0ms + skipped status, and the blocker when one is recorded', () => {

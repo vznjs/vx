@@ -11,7 +11,24 @@ import type { TaskOutcome } from '../graph/index.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
-type Kind = keyof SandboxFix
+type Kind = Exclude<keyof SandboxFix, 'withheld'>
+
+// Where credentials live. A denial here is never turned into a grant: an
+// agent applies `sandboxFix` as given, so a dependency probing ~/.ssh would
+// get its grant suggested and applied (Security, 2026-10-12).
+const CREDENTIAL_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.config/gh']
+const CREDENTIAL_FILES = ['.netrc', '.npmrc', '.docker/config.json']
+
+function isCredential(abs: string): boolean {
+  const base = path.basename(abs)
+  if (base === '.env' || base.startsWith('.env.')) return true
+  const rel = path.relative(os.homedir(), abs)
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false
+  return (
+    CREDENTIAL_FILES.includes(rel) ||
+    CREDENTIAL_DIRS.some((d) => rel === d || rel.startsWith(d + path.sep))
+  )
+}
 
 /**
  * A path as a grant spells it: project-relative inside the project, `~/…`
@@ -51,11 +68,12 @@ export function sandboxFix(
   projectDir: string,
   mask: (text: string) => string = (t) => t,
 ): SandboxFix | undefined {
-  const fix: Record<Kind, Set<string>> = {
+  const fix: Record<Kind | 'withheld', Set<string>> = {
     read: new Set(),
     write: new Set(),
     network: new Set(),
     systemInfo: new Set(),
+    withheld: new Set(),
   }
   for (const v of violations) {
     if (v.hint === true || v.target === undefined) continue
@@ -64,6 +82,7 @@ export function sandboxFix(
     if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
+    else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, projectDir))
     else if (kind === 'read') fix.read.add(grantPath(v.path, projectDir))
     else {
       const isDir =
@@ -73,13 +92,17 @@ export function sandboxFix(
     }
   }
   const out: SandboxFix = {}
-  for (const k of ['read', 'write', 'network', 'systemInfo'] as const)
+  for (const k of ['read', 'write', 'network', 'systemInfo', 'withheld'] as const)
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-/** The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`. */
-export function sandboxFixLine(fix: SandboxFix): string {
+/**
+ * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
+ * or undefined when every denial was a withheld credential path.
+ */
+export function sandboxFixLine({ withheld: _, ...fix }: SandboxFix): string | undefined {
+  if (Object.keys(fix).length === 0) return undefined
   const parts = Object.entries(fix).map(
     ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
   )

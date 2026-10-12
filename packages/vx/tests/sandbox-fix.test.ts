@@ -51,10 +51,51 @@ describe('sandboxFix', () => {
       dir,
     )
     expect(fix).toEqual({
-      read: ['/etc/hosts', 'src/i.js', 'tsconfig.json', '~/.npmrc'],
+      read: ['/etc/hosts', 'src/i.js', 'tsconfig.json'],
       write: ['dist/', 'log.txt', 'out/'],
       network: ['example.com'],
       systemInfo: ['kern.x'],
+      withheld: ['~/.npmrc'],
+    })
+  })
+
+  it('never turns a credential path into a grant', () => {
+    const home = (p: string) => path.join(os.homedir(), p)
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], p)
+    const fix = sandboxFix(
+      [
+        read(home('.ssh/id_ed25519')),
+        read(home('.ssh')),
+        read(home('.aws/credentials')),
+        read(home('.gnupg/pubring.kbx')),
+        read(home('.kube/config')),
+        read(home('.config/gh/hosts.yml')),
+        read(home('.docker/config.json')),
+        read(home('.netrc')),
+        read(path.join(dir, '.env')),
+        v('deny(1) file-write-create', ['write'], path.join(dir, '.env.local')),
+        // Near misses stay grants.
+        read(home('.sshrc')),
+        read(home('.config/ghx')),
+        read(path.join(dir, '.envrc')),
+        read(path.join(dir, 'env')),
+      ],
+      dir,
+    )
+    expect(fix).toEqual({
+      read: ['.envrc', 'env', '~/.config/ghx', '~/.sshrc'],
+      withheld: [
+        '.env',
+        '.env.local',
+        '~/.aws/credentials',
+        '~/.config/gh/hosts.yml',
+        '~/.docker/config.json',
+        '~/.gnupg/pubring.kbx',
+        '~/.kube/config',
+        '~/.netrc',
+        '~/.ssh',
+        '~/.ssh/id_ed25519',
+      ],
     })
   })
 
