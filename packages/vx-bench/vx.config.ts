@@ -16,7 +16,7 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test', 'check.site', 'check.perf'],
+      dependsOn: ['lint', 'test', 'check.site', 'check.perf', 'check.vs-turbo'],
     },
 
     // The per-PR performance guard (perf-guard.ts): exact work counts and
@@ -32,6 +32,33 @@ export default defineProject({
       cache: {
         inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
         outputs: { files: [] },
+      },
+    },
+
+    // The per-PR bench against Turborepo (pr-bench.ts): vx / turbo time
+    // ratios on one small workspace, held to pr-bench-baseline.json.
+    // Core's source reaches the key through install's ^build.
+    'check.vs-turbo': {
+      description: 'pr-bench.ts: vx vs Turborepo ratios against pr-bench-baseline.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun pr-bench.ts',
+        sandbox: { allow: { read: ['**/*'] } },
+      },
+      cache: {
+        inputs: {
+          files: ['pr-bench.ts', 'pr-bench-baseline.json', 'bench-env.ts', 'package.json'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'vs-turbo.update': {
+      description: 'pr-bench.ts --update: record this platform in pr-bench-baseline.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun pr-bench.ts --update',
+        sandbox: { allow: { read: ['**/*'], write: ['pr-bench-baseline.json'] } },
       },
     },
 
