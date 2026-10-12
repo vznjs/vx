@@ -425,6 +425,32 @@ describe('formatTaskBlock', () => {
     )
   })
 
+  it('ends the violations section with the grants that would have allowed them', () => {
+    const fixed = (sandboxFix: Record<string, string[]>) =>
+      formatTaskBlock(
+        node('a#build', 'cat tsconfig.json'),
+        outcome('a#build', 'failed', {
+          exitCode: 1,
+          sandboxViolations: 1,
+          sandboxViolationLines: ['openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]'],
+          sandboxFix,
+        }),
+        {},
+      ).split('\n')
+    const read = fixed({ read: ['tsconfig.json'], network: ['example.com'] })
+    const at = read.indexOf('openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]')
+    expect(read.slice(at + 1, at + 5)).toEqual([
+      '',
+      "fix: exec.sandbox.allow: { read: ['tsconfig.json'], network: ['example.com'] }",
+      'a read the output depends on belongs in cache.inputs.files too',
+      '',
+    ])
+    // A write is no key input: no inputs note.
+    const write = fixed({ write: ['dist/'] })
+    expect(write).toContain("fix: exec.sandbox.allow: { write: ['dist/'] }")
+    expect(write.filter((l) => l.includes('cache.inputs'))).toEqual([])
+  })
+
   it('skipped tasks show 0ms + skipped status, and the blocker when one is recorded', () => {
     // A fail-fast skip has no blocker: the run stopped, and the old header's
     // "(upstream failed)" claimed one that never existed.

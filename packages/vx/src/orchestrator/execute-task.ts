@@ -78,6 +78,7 @@ import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
 import type { MissExplainer } from './miss-reason.js'
 import { shellVerdict } from './shell-verdict.js'
+import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
@@ -1620,6 +1621,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   const finalViolations = violations
+  const fixOf = (fix: TaskOutcome['sandboxFix']) => (fix === undefined ? {} : { sandboxFix: fix })
 
   return {
     node,
@@ -1652,6 +1654,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           sandboxViolations: finalViolations.filter((v) => v.hint !== true).length,
           // A denied path is the task's own spelling, a secret in it too.
           sandboxViolationLines: finalViolations.map((v) => secrets?.mask(v.line) ?? v.line),
+          ...fixOf(sandboxFix(finalViolations, node.projectDir, (t) => secrets?.mask(t) ?? t)),
         }
       : {}),
   }

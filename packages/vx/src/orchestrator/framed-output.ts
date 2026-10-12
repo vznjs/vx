@@ -32,6 +32,7 @@ import { paint, type ColorSupport } from './colors.js'
 import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
+import { sandboxFixLine } from './sandbox-fix.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -529,7 +530,34 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // every record for telemetry.
   const body = [...new Set(vlines)]
   // Red, not amber: a violation fails the task, so it reads as a failure.
-  return [sectionLine(`SANDBOX VIOLATIONS (${body.length})`, ERROR, colors), '', ...body, '']
+  // vx's note, after the evidence: the grants that would have allowed it.
+  // A read the output depends on is a key input too; the sandbox never
+  // adds one (owner, 2026-10-09).
+  const fix = outcome.sandboxFix
+  const note =
+    fix === undefined
+      ? []
+      : [
+          paint('', `fix: ${sandboxFixLine(fix)}`, colors, { dim: true }),
+          ...(fix.read !== undefined
+            ? [
+                paint(
+                  '',
+                  'a read the output depends on belongs in cache.inputs.files too',
+                  colors,
+                  { dim: true },
+                ),
+              ]
+            : []),
+          '',
+        ]
+  return [
+    sectionLine(`SANDBOX VIOLATIONS (${body.length})`, ERROR, colors),
+    '',
+    ...body,
+    '',
+    ...note,
+  ]
 }
 
 export function formatFrameClose(

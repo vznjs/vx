@@ -390,6 +390,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
               ...t,
               output: f.output,
               locations: f.locations,
+              ...(f.sandboxFix !== undefined ? { sandboxFix: f.sandboxFix } : {}),
               ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
             }
       })

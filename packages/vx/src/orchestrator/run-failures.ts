@@ -24,6 +24,8 @@ export interface TaskFailure {
   /** Plain text, bounded, secrets masked; '' when the run kept none. */
   output: string
   locations: OutputLocation[]
+  /** The `exec.sandbox.allow` entries that would have granted its denials. */
+  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
   /** The first later run where this task passed (ran or hit): the failure is history. */
   fixedIn?: string
 }
@@ -59,6 +61,7 @@ function failuresOf(outcomes: readonly TaskOutcome[]): StoredFailure[] {
       ...(o.timedOut === true ? { timedOut: true as const } : {}),
       output,
       locations: fileLocations(output, o.node.projectDir, isFile),
+      ...(o.sandboxFix !== undefined ? { sandboxFix: o.sandboxFix } : {}),
     })
   }
   return out
@@ -137,6 +140,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         ...(r.timedOut === 1 ? { timedOut: true as const } : {}),
         output: k?.output ?? '',
         locations: k?.locations ?? [],
+        ...(k?.sandboxFix !== undefined ? { sandboxFix: k.sandboxFix } : {}),
         ...(r.fixedIn !== null ? { fixedIn: r.fixedIn } : {}),
       }
     }),

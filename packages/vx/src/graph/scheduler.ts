@@ -208,6 +208,8 @@ export interface TaskOutcome {
    * inline in the task's block instead of as loose status output.
    */
   sandboxViolationLines?: string[]
+  /** The `exec.sandbox.allow` entries that would have granted the denials. */
+  sandboxFix?: { read?: string[]; write?: string[]; network?: string[]; systemInfo?: string[] }
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
