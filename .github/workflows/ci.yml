@@ -61,6 +61,7 @@ jobs:
           echo "$changed"
           packages=false
           darwin=false
+          platform='process\.platform|darwin|macos|seatbelt|sandbox|realpath|tmpdir|/private/|/proc/|SIG[A-Z]{2,}|\.kill\(|spawn|symlink|chmod|inotify|fsevents|rlimit|ulimit|EPERM|EACCES|statSync|lstat|ctime|\.ino\b'
           # An empty diff reads as one empty line, which `*)` runs.
           while IFS= read -r f; do
             case "$f" in
@@ -70,11 +71,21 @@ jobs:
               README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/*) ;;
               *) packages=true ;;
             esac
+            # macOS runs for what can behave differently there: the
+            # runtime and dependencies, CI itself, the exec and util
+            # layers (sandbox, spawn, signals, paths), and any other
+            # line that names a platform trait (owner, 2026-10-12: macOS
+            # only for platform-touching PRs; main runs it always).
             case "$f" in
-              packages/*/vx.config.ts | packages/*/package.json) darwin=true ;;
-              packages/vx-docs/* | packages/vx-bench/*) ;;
-              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | .claude/*) ;;
-              *) darwin=true ;;
+              '' | package.json | bun.lock | vx.workspace.ts | .github/* | scripts/*) darwin=true ;;
+              packages/*/vx.config.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
+              packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.cjs) darwin=true ;;
+              *)
+                # Not `grep -q`: its early exit is git's SIGPIPE, a
+                # failed pipeline under pipefail, and so a missed match.
+                if git diff --no-renames -U0 HEAD^1 HEAD -- "$f" |
+                  grep -E "$platform" > /dev/null; then darwin=true; fi
+                ;;
             esac
           done <<< "$changed"
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
