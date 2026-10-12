@@ -79,6 +79,21 @@ and the report names the path. An undeclared path *outside* the
 project is the wall, denied silently, because a project reading its
 neighbour is not a mis-declaration to fix but a boundary being held.
 
+The report ends with the line that would have allowed each denial,
+ready to paste:
+
+```
+fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }
+```
+
+A write grants the directory it landed in, unless the task reads that
+directory as an input: then it grants the file alone, so a fix never
+lets a task write its own inputs. Agents get the same grants as
+`sandboxFix` in `vx last --format json` and from `vx mcp`'s
+`getFailures`. Because an agent may apply them as given, a credential
+path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a `.env` file and the like) never
+goes in the line. It is listed apart, to grant only on purpose.
+
 A failed task is never cached, so a violation cannot poison the cache.
 When a tool is legitimately noisy (a probe for a file that may not
 exist), `ignore` silences the specific pattern without granting it.
