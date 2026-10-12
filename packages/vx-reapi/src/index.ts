@@ -23,11 +23,13 @@ import {
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
+import { type CacheTrustOptions, signedRemote } from './trust.js'
 
 // `ReapiRemoteCache` is public for a workspace that composes cache
 // layers by hand; the wire, the Merkle encoders and the executor are
 // internal (1.0 freezes what this file exports).
 export { ReapiRemoteCache } from './cache.js'
+export { type CacheTrustOptions, signedRemote } from './trust.js'
 export { type ReapiOptions } from './wire.js'
 
 // The connection's wire form, not the plugin's: the plugin reads PEM FILES
@@ -81,6 +83,13 @@ export interface ReapiPluginOptions extends Partial<
    */
   tlsClientCertificate?: string
   tlsClientKey?: string
+  /**
+   * Signed artifacts: a downloaded artifact is taken only when one of
+   * `keys` (`'ed25519:<base64 public key>'`) signed it, else it is a miss.
+   * A run with `VX_CACHE_SIGNING_KEY` (the base64 32-byte seed; give it to
+   * main's CI job only) signs its uploads; without it, it uploads nothing.
+   */
+  trust?: CacheTrustOptions
 }
 
 /**
@@ -200,6 +209,7 @@ const REAPI_PLUGIN_KEYS: PluginOptionKinds<ReapiPluginOptions> = {
   callTimeoutMs: 'number',
   metaTimeoutMs: 'number',
   chunkBytes: 'number',
+  trust: 'object',
 }
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
@@ -275,7 +285,15 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       // remote (hydrating local on a remote hit); writes go local immediately
       // and the remote upload drains in the background. All of that is core's
       // LayeredCache — this plugin supplies only the wire.
-      return new LayeredCache(ctx.localCache, remote, {
+      const wire =
+        options.trust === undefined
+          ? remote
+          : signedRemote(remote, options.trust, {
+              where: 'reapi()',
+              warn: (m) => ctx.warn(m),
+              signingKey: process.env['VX_CACHE_SIGNING_KEY'],
+            })
+      return new LayeredCache(ctx.localCache, wire, {
         policy: ctx.policy,
         onRemoteError: (err) => ctx.warn(`vx/reapi: ${err.message}`),
       })

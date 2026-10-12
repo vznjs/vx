@@ -200,6 +200,39 @@ check, a plan would report `cache hit (remote)` for a task that then
 executes for real. It costs one extra round trip and only for a PREDICTED
 HIT — a miss still answers in a single call.
 
+## Signed artifacts
+
+A write credential the server checks is one boundary; `trust` is one that
+holds whoever can write the store. Main's CI job signs every artifact it
+uploads, and every reader takes a downloaded artifact only when a key it
+lists signed it:
+
+```ts
+reapi({ endpoint: 'grpcs://cache.example.com', trust: { keys: ['ed25519:<base64 public key>'] } })
+```
+
+The signing key is `VX_CACHE_SIGNING_KEY`, the base64 32-byte Ed25519
+seed: give it to main's job only, as a secret of an environment whose one
+deployment branch is main. The signature is Ed25519 over the storage key and
+the SHA-256 of the compressed artifact, appended as a zstd skippable frame,
+so a reader without `trust` still decodes it. A download that is unsigned,
+signed by an unlisted key, or signed over other bytes or another key errors
+as it streams, so vx's ingest stores nothing and the hit is a miss. A run with
+`trust` and no signing key uploads nothing, said once, since every reader
+would refuse it. Rotate by listing the new key beside the old one, moving the
+secret, then dropping the old key. The local cache is never signed. Without
+`trust`, nothing is hashed or signed. `signedRemote(layer, trust, opts)` (`trust` is a `CacheTrustOptions`) wraps
+any `RemoteCacheLayer` the same way.
+
+A keypair, with openssl (bash):
+
+```sh
+openssl genpkey -algorithm ed25519 -outform DER | tail -c 32 | base64   # VX_CACHE_SIGNING_KEY
+echo "$VX_CACHE_SIGNING_KEY" | base64 -d \
+  | cat <(printf '\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x70\x04\x22\x04\x20') - \
+  | openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64     # ed25519:<this>
+```
+
 ## Downloads are verified
 
 Every blob read — ByteStream and batch alike, compressed or not — is

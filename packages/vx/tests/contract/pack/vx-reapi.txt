@@ -17,4 +17,5 @@ src/cache.ts
 src/executor.ts
 src/index.ts
 src/merkle.ts
+src/trust.ts
 src/wire.ts

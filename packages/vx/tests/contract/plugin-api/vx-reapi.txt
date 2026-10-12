@@ -9,6 +9,16 @@ export class ReapiRemoteCache {
 }
 == function reapi (src/index.ts)
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin
+== function signedRemote (src/trust.ts)
+export function signedRemote(
+  remote: RemoteCacheLayer,
+  trust: CacheTrustOptions,
+  opts: { where: string; warn: (m: string) => void; signingKey?: string | undefined },
+): RemoteCacheLayer
+== type CacheTrustOptions (src/trust.ts)
+export interface CacheTrustOptions {
+  keys: readonly string[]
+}
 == type ReapiOptions (src/wire.ts)
 export interface ReapiOptions {
   endpoint: string

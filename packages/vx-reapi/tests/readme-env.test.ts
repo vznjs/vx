@@ -33,7 +33,7 @@ describe('README names every VX_ variable the plugin reads', () => {
     // `VX_REQUIRE_REAPI`) are
     // the README's too, but tests read them, not the plugin.
     const named = new Set(
-      [...readme.matchAll(/`(VX_REAPI_[A-Z0-9_]+)(?:=[^`]*)?`/g)]
+      [...readme.matchAll(/`(VX_(?:REAPI_[A-Z0-9_]+|CACHE_SIGNING_KEY))(?:=[^`]*)?`/g)]
         .map((m) => m[1]!)
         .filter((n) => n !== 'VX_REAPI_TEST_ENDPOINT' && n !== 'VX_REAPI_EXEC_ENDPOINT'),
     )

@@ -89,6 +89,18 @@ writes whatever its config says. Never give the write secret to a
 out a pull request's code: it runs with main's ref and secrets, and
 `github()` scopes it `pr-<n>` only on the client side.
 
+## Signed artifacts
+
+A boundary that holds whoever can write the store, in the remote plugin:
+`reapi({ trust: { keys: ['ed25519:<base64 public key>'] } })`. Main's CI job
+holds `VX_CACHE_SIGNING_KEY` and signs each upload; every reader takes a
+download only when a listed key signed its storage key and bytes, and refuses
+anything else as it streams, so the hit is a miss. A run with `trust` and no
+signing key uploads nothing. The local cache is never signed: it is this
+user's own. A signature proves who wrote the bytes, not that the key covered
+every input; that is `exec.sandbox`'s proof. Details and key generation:
+`@vzn/vx-reapi`'s README § Signed artifacts.
+
 ## What vx checks on bytes it did not write
 
 Every artifact that arrives from a remote, and every one read back from
