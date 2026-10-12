@@ -885,12 +885,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of [
-      '1.07 s',
-      '25.45 s (vx 24× faster)',
-      '32.28 s',
-      '6 min 6 s (vx 11× faster)',
-    ]) {
+    for (const figure of ['1.07 s', '25.45 s', '32.28 s', '6 min 6 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2177,9 +2172,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
     expect(post('no-daemon.md')).toContain(`since ${version}, no longer uses it for \`turbo run\``)
     const harness = readFileSync(path.join(core, '..', 'vx-bench', 'compare.ts'), 'utf8')
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
-    expect(post('no-choice-on-the-market.md')).toContain(
-      "(vx 24× faster and 19% slower), Nx's daemon off as in CI.",
-    )
+    expect(post('no-choice-on-the-market.md')).toContain("vx's 1.07 s, Nx's daemon off as in CI.")
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
     )
