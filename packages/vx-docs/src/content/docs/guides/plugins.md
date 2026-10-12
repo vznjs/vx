@@ -347,6 +347,73 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
+### Signed artifacts
+
+Core needs nothing more to make a shared cache trust its writers, not its
+store. A body that errors as core streams it leaves nothing stored and the
+read is a miss, so a wrapper can hash the download as it passes and fail it
+at the end unless a key you trust signed it. Only main's CI holds the private
+key; readers list the public one:
+
+```ts
+// signed-cache.ts
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
+import { definePlugin, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+
+/** `remote`, but a download no trusted key signed is a miss, and uploads are signed. */
+function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: string): RemoteCacheLayer {
+  const trusted = createPublicKey(trustedPem)
+  const signer = signingPem ? createPrivateKey(signingPem) : undefined
+  // The key is signed too, so a valid artifact cannot be replayed under another.
+  const message = (hash: string, digest: string) => Buffer.from(`${hash}\0${digest}`)
+  return {
+    has: (hash) => remote.has(hash),
+    async get(hash) {
+      const [got, sig] = await Promise.all([remote.get(hash), remote.get(`${hash}.sig`)])
+      if (got === null || sig === null) return null
+      const signature = Buffer.from(await sig.body.arrayBuffer())
+      const sha = createHash('sha256')
+      const source = got.body instanceof Blob ? got.body.stream() : got.body.body!
+      const body = source.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, out) {
+            sha.update(chunk)
+            out.enqueue(chunk)
+          },
+          flush(out) {
+            const ok = verify(null, message(hash, sha.digest('hex')), trusted, signature)
+            if (!ok) out.error(new Error(`${hash}: no trusted signature`))
+          },
+        }),
+      )
+      return { body: new Response(body), durationMs: got.durationMs }
+    },
+    async put(hash, body, meta) {
+      if (signer === undefined) return // every reader would refuse it
+      const digest = createHash('sha256').update(await body.bytes()).digest('hex')
+      await remote.put(hash, body, meta)
+      await remote.put(`${hash}.sig`, new Blob([sign(null, message(hash, digest), signer)]), meta)
+    },
+  }
+}
+
+export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlugin {
+  return definePlugin(import.meta, {
+    cache: (ctx) =>
+      new LayeredCache(ctx.localCache, signed(remote, trustedPem, process.env.CACHE_SIGNING_KEY), {
+        policy: ctx.policy,
+        onRemoteError: (err) => ctx.warn(`signed-cache: ${err.message}`),
+      }),
+  })
+}
+```
+
+`signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` in `plugins`, and
+`CACHE_SIGNING_KEY` (the private key's PEM) only in main's CI job. Make the
+pair with `openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`.
+A pull request's job, or anyone who can write the bucket, can still write
+bytes; no reader takes them.
+
 ## What core refuses
 
 - A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
