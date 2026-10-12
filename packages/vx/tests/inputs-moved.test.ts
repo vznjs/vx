@@ -41,7 +41,7 @@ const logger: Logger = {
 
 // `VX_REWRITTEN_INPUTS` sets the default the rows below judge; each row
 // starts without it and sets it only to say so.
-const savedRewritten = process.env['VX_REWRITTEN_INPUTS']
+const saved = { rewritten: process.env['VX_REWRITTEN_INPUTS'] }
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
@@ -49,8 +49,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  if (savedRewritten === undefined) delete process.env['VX_REWRITTEN_INPUTS']
-  else process.env['VX_REWRITTEN_INPUTS'] = savedRewritten
+  if (saved.rewritten === undefined) delete process.env['VX_REWRITTEN_INPUTS']
+  else process.env['VX_REWRITTEN_INPUTS'] = saved.rewritten
   await rm(root, { recursive: true, force: true })
 })
 

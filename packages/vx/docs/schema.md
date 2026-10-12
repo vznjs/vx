@@ -719,7 +719,7 @@ it. `VX_REWRITTEN_INPUTS=compare` sets the default for every task that
 does not say (owner, 2026-10-12).
 
 ```ts
-import { defineProject } from '@vzn/vx'
+import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
