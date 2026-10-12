@@ -9,7 +9,15 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## orchestrator: say where the schedule stage runs in a run
+## cache: split inputStability into strategy and severity
+
+cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use cache.inputStability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
+
+## cache: name the moved-input check cache.inputStability
+
+cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use cache.inputStability ('withhold' is 'strict', 'compare' is 'content') and VX_INPUT_STABILITY.
+
+## orchestrator: skip the schedule stage when every task is a hit
 
 PreparedRun.priorities is a function returning the schedule stage's weights, and the stage runs after setup, only when a task will start.
 

@@ -707,10 +707,12 @@ names a file other than `package.json` (TanStack Router's committed
 `routeTree.gen.ts`, rewritten by every build). That holds on CI too: a
 task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
-`package.json`) sets `cache.rewrittenInputs: 'compare'`, and a write
+`package.json`) sets `cache.inputStability: { strategy: 'mutable' }`, and a write
 during its command is then judged by its bytes, as an earlier write is;
-different bytes still withhold the entry. `VX_REWRITTEN_INPUTS=compare`
-makes that the default (owner, 2026-10-12). A file ADDED under an
+different bytes still withhold the entry. `VX_INPUT_STABILITY=mutable`
+makes that the default (owner, 2026-10-12); `'unchecked'` skips the
+check, and `severity: 'error'` fails the task instead of warning
+(`docs/schema.md`). A file ADDED under an
 input glob since the listing the key filtered (`addedInput`) withholds
 the save the same way, named on the same line: the listing's
 directories a glob reaches are `lstat`ed, one whose ctime moved since

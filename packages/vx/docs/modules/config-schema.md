@@ -17,6 +17,8 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
 // `cacheScope`'s rule, which `VX_CACHE_SCOPE` (read in prepare) shares, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
 export function cacheScopeEnvError(): UserError
+// `VX_INPUT_STABILITY` / `VX_INPUT_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
+export function inputStabilityEnv(): InputStability
 // Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script
 export function taskNameProblem(name: string): string | null
 // A level's field set → the fields a release removed from it (item H-3)

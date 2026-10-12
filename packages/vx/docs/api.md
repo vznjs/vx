@@ -186,7 +186,7 @@ type · `src/config.ts`
 export interface CacheConfig {
   inputs: CacheInputs
   outputs: CacheOutputs
-  rewrittenInputs?: 'withhold' | 'compare'
+  inputStability?: InputStability
 }
 ```
 
@@ -857,6 +857,17 @@ export interface InfoFacts {
   flakyTasks: FlakyTask[]
   lockfile: boolean
   sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
+}
+```
+
+## `InputStability`
+
+type · `src/config.ts`
+
+```ts
+export interface InputStability {
+  strategy?: 'immutable' | 'mutable' | 'unchecked'
+  severity?: 'warn' | 'error'
 }
 ```
 
@@ -2769,6 +2780,7 @@ export interface WorkspaceConfig {
   affectedBase?: string
   cacheScope?: string
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  inputStability?: InputStability
   rules?: WorkspaceRules
   plugins?: readonly (Plugin | undefined | null | false)[]
 }

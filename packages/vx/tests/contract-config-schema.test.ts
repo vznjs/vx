@@ -25,6 +25,7 @@ import type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  InputStability,
   ExecConfig,
   ExecEnv,
   PersistentConfig,
@@ -61,8 +62,10 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       cacheScope: true,
       rules: true,
       schedule: true,
+      inputStability: true,
       plugins: true,
     }),
+    inputStability: keys<InputStability>({ strategy: true, severity: true }),
     cacheRetention: keys<NonNullable<WorkspaceConfig['cacheRetention']>>({
       olderThan: true,
       maxSize: true,
@@ -112,7 +115,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       systemInfo: true,
     }),
     'tasks.*.exec.sandbox.deny': keys<SandboxDenials>({ network: true }),
-    'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true, rewrittenInputs: true }),
+    'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true, inputStability: true }),
     'tasks.*.cache.inputs': keys<CacheInputs>({
       files: true,
       workspaceFiles: true,
@@ -122,6 +125,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       workspaceRuntime: true,
     }),
     'tasks.*.cache.outputs': keys<CacheOutputs>({ files: true, workspaceFiles: true }),
+    'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
   },
 }
 
@@ -136,6 +140,7 @@ function workspaceSeed(): Record<string, unknown> {
     cacheScope: 'pr-1',
     rules: { exclusiveOutputs: true, upfrontKeys: true },
     schedule: 'critical-path',
+    inputStability: { strategy: 'mutable', severity: 'error' },
     plugins: [],
   }
 }
@@ -198,7 +203,7 @@ function projectSeed(): Record<string, unknown> {
             workspaceRuntime: ['bun -v'],
           },
           outputs: { files: ['dist/**'], workspaceFiles: ['out/**'] },
-          rewrittenInputs: 'compare',
+          inputStability: { strategy: 'mutable', severity: 'error' },
         },
       },
       g: { dependsOn: ['t'] },

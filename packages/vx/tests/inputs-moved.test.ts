@@ -39,18 +39,24 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
-// `VX_REWRITTEN_INPUTS` sets the default the rows below judge; each row
+// `VX_INPUT_STABILITY(_SEVERITY)` set the defaults the rows below judge; each row
 // starts without it and sets it only to say so.
-const saved = { rewritten: process.env['VX_REWRITTEN_INPUTS'] }
+const saved = {
+  stability: process.env['VX_INPUT_STABILITY'],
+  severity: process.env['VX_INPUT_STABILITY_SEVERITY'],
+}
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
-  delete process.env['VX_REWRITTEN_INPUTS']
+  delete process.env['VX_INPUT_STABILITY']
+  delete process.env['VX_INPUT_STABILITY_SEVERITY']
 })
 
 afterEach(async () => {
-  if (saved.rewritten === undefined) delete process.env['VX_REWRITTEN_INPUTS']
-  else process.env['VX_REWRITTEN_INPUTS'] = saved.rewritten
+  if (saved.stability === undefined) delete process.env['VX_INPUT_STABILITY']
+  else process.env['VX_INPUT_STABILITY'] = saved.stability
+  if (saved.severity === undefined) delete process.env['VX_INPUT_STABILITY_SEVERITY']
+  else process.env['VX_INPUT_STABILITY_SEVERITY'] = saved.severity
   await rm(root, { recursive: true, force: true })
 })
 
@@ -141,11 +147,11 @@ describe('a task that rewrites its own input', () => {
   )
 })
 
-describe('cache.rewrittenInputs: compare judges a write during the command by bytes', () => {
+describe('cache.inputStability: what a write during the command means', () => {
   const WITHHELD = [
     '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
   ]
-  const formatter = (from: string, rewritten?: string) => ({
+  const formatter = (from: string, stability?: object) => ({
     config: `
       export default {
         tasks: {
@@ -154,7 +160,7 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
             cache: {
               inputs: { files: ['a.ts'] },
               outputs: { files: [] },
-              ${rewritten === undefined ? '' : `rewrittenInputs: '${rewritten}',`}
+              ${stability === undefined ? '' : `inputStability: ${JSON.stringify(stability)},`}
             },
           },
         },
@@ -162,16 +168,16 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
     `,
     files: { 'a.ts': `const x = "${from}"\n` },
   })
-  async function fixture(from: string, rewritten?: string): Promise<void> {
-    await addProject(root, 'app', formatter(from, rewritten))
+  async function fixture(from: string, stability?: object): Promise<void> {
+    await addProject(root, 'app', formatter(from, stability))
     await writeFile(path.join(root, '.gitignore'), '.vx/\n')
     commit()
   }
 
   it(
-    'the same bytes rewritten: saved, and the next run is a hit',
+    "'mutable', the same bytes rewritten: saved, and the next run is a hit",
     async () => {
-      await fixture('formatted', 'compare')
+      await fixture('formatted', { strategy: 'mutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
@@ -180,9 +186,9 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
   )
 
   it(
-    'different bytes: still withheld',
+    "'mutable', different bytes: still withheld",
     async () => {
-      await fixture('unformatted', 'compare')
+      await fixture('unformatted', { strategy: 'mutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
     },
@@ -190,9 +196,9 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
   )
 
   it(
-    'VX_REWRITTEN_INPUTS=compare is the default for a task that does not say',
+    'VX_INPUT_STABILITY=mutable is the default for a task that does not say',
     async () => {
-      process.env['VX_REWRITTEN_INPUTS'] = 'compare'
+      process.env['VX_INPUT_STABILITY'] = 'mutable'
       await fixture('formatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -202,10 +208,28 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
   )
 
   it(
-    "a task's 'withhold' wins over the env var",
+    "the env var wins over a task's own setting, for the run",
     async () => {
-      process.env['VX_REWRITTEN_INPUTS'] = 'compare'
-      await fixture('formatted', 'withhold')
+      process.env['VX_INPUT_STABILITY'] = 'mutable'
+      await fixture('formatted', { strategy: 'immutable' })
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "the workspace's inputStability is the default; a task's own field wins over it",
+    async () => {
+      await fixture('formatted')
+      const ws = path.join(root, 'vx.workspace.mjs')
+      await writeFile(
+        ws,
+        "export default { plugins: [], inputStability: { strategy: 'mutable' } }\n",
+      )
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      await addProject(root, 'app', formatter('formatted', { strategy: 'immutable' }))
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
     },
@@ -225,6 +249,64 @@ describe('cache.rewrittenInputs: compare judges a write during the command by by
         if (ci === undefined) delete process.env['CI']
         else process.env['CI'] = ci
       }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "severity 'error': the save is withheld and the task fails, naming the file",
+    async () => {
+      await fixture('unformatted', { severity: 'error' })
+      const r = await run({ cwd: root, tasks: ['format'], log: logger })
+      expect(r.ok).toBe(false)
+      expect(statusOf(r, 'app#format')).toBe('failed')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputStability.severity is 'error', so the task fails; if the task writes it, declare it in cache.outputs",
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'VX_INPUT_STABILITY_SEVERITY=error is the default for a task that does not say',
+    async () => {
+      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'error'
+      await fixture('unformatted')
+      const r = await run({ cwd: root, tasks: ['format'], log: logger })
+      expect(statusOf(r, 'app#format')).toBe('failed')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "'unchecked': no check, the entry is saved under the key of the bytes it rewrote",
+    async () => {
+      await fixture('unformatted', { strategy: 'unchecked', severity: 'error' })
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      // The old bytes back: the entry taken before the rewrite answers.
+      gitIn(root)('checkout', '--', 'packages/app/a.ts')
+      expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'VX_INPUT_STABILITY=unchecked skips the check, and a value naming no mode is refused before any task',
+    async () => {
+      process.env['VX_INPUT_STABILITY'] = 'unchecked'
+      await fixture('unformatted')
+      await runTask('format')
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      process.env['VX_INPUT_STABILITY'] = 'content'
+      await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
+        "VX_INPUT_STABILITY must be 'immutable', 'mutable' or 'unchecked'",
+      )
+      delete process.env['VX_INPUT_STABILITY']
+      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'fail'
+      await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
+        "VX_INPUT_STABILITY_SEVERITY must be 'warn' or 'error'",
+      )
     },
     TIMEOUT,
   )

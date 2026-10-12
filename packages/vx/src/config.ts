@@ -56,6 +56,12 @@ export interface WorkspaceConfig {
    */
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /**
+   * The `cache.inputStability` of every task that does not set its own
+   * field. `VX_INPUT_STABILITY` / `VX_INPUT_STABILITY_SEVERITY` override
+   * both for the run.
+   */
+  inputStability?: InputStability
+  /**
    * Graph rules a run checks before it schedules anything. Each is on unless
    * set to `false`; turning one off allows a shape vx handles correctly but
    * more slowly. Never folded into a cache key.
@@ -491,15 +497,29 @@ export interface CacheConfig {
   /** What this task produces. Captured for restore on a cache hit. */
   outputs: CacheOutputs
   /**
-   * What a write to an input while the command runs means. `'withhold'`
-   * (the default): the entry is not saved, whatever the file holds after,
-   * since an edit undone mid-run cannot be told from no edit. `'compare'`:
-   * a file rewritten to the bytes the key folded counts as unchanged, for
-   * a task that rewrites its own input identically (tsdown's
-   * `package.json`). `VX_REWRITTEN_INPUTS=compare` sets the default for
-   * every task that does not say.
+   * What a write to an input while the command runs means. Each field,
+   * highest first: its env var, this, the workspace's `inputStability`,
+   * the default (`'immutable'`, `'warn'`).
    */
-  rewrittenInputs?: 'withhold' | 'compare'
+  inputStability?: InputStability
+}
+
+export interface InputStability {
+  /**
+   * `'immutable'` (the default): any write to an input during the command
+   * withholds the entry, whatever the file holds after, since an edit
+   * undone mid-run cannot be told from no edit. `'mutable'`: a file
+   * rewritten to the bytes the key folded counts as unchanged, for a task
+   * that rewrites its own input identically (tsdown's `package.json`).
+   * `'unchecked'`: no check.
+   */
+  strategy?: 'immutable' | 'mutable' | 'unchecked'
+  /**
+   * What a withheld entry does to the run. `'warn'` (the default): the
+   * result stands, vx says why, and the run goes on. `'error'`: the task
+   * fails, so the run fails.
+   */
+  severity?: 'warn' | 'error'
 }
 
 export interface CacheOutputs {

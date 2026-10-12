@@ -81,3 +81,38 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a task of another project that reads the moved input, with no edge to the writer, is not saved',
+  async () => {
+    // `lib#fmt` rewrites its input once `app#read` has started, then lets
+    // `app#read` read it: the reader's key folded the bytes from before.
+    await addProject(root, 'lib', {
+      config: `export default { tasks: {
+        fmt: { exec: { command: 'while [ ! -f ../app/started ]; do sleep 0.01; done; echo more >> src/a.txt; touch ../app/go' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }`,
+      files: { 'src/a.txt': 'one\n' },
+    })
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        read: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; cat ../lib/src/a.txt > out.txt' },
+                cache: { inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/src/a.txt'] },
+                         outputs: { files: ['out.txt'] } } } } }`,
+      files: { 'src/x.txt': 'x', '.gitignore': 'out.txt\ngo\nstarted\n' },
+    })
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'fixture')
+    const r = await run({ cwd: root, tasks: ['lib#fmt', 'app#read'], log, handleSignals: false })
+    expect(r.ok).toBe(true)
+    expect(lines.filter((l) => l.startsWith('[vx] app#read:'))).toEqual([
+      '[vx] app#read: `packages/lib/src/a.txt` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
+    ])
+    // The old bytes back: no entry holds the new ones under their key.
+    gitIn(root)('checkout', '--', 'packages/lib/src/a.txt')
+    for (const m of ['started', 'go']) await rm(path.join(root, 'packages/app', m), { force: true })
+    writeFileSync(path.join(root, 'packages/app/go'), '')
+    const again = await run({ cwd: root, tasks: ['app#read'], log, handleSignals: false })
+    expect(again.outcomes.find((o) => o.node.id === 'app#read')?.status).toBe('success')
+  },
+  TIMEOUT,
+)

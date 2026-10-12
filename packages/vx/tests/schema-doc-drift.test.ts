@@ -287,13 +287,45 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] } } } } }),
   ],
   [
-    "cache.rewrittenInputs must be 'withhold' or 'compare'",
+    'cache.inputStability must be an object',
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
-            cache: { inputs: { files: [] }, outputs: { files: [] }, rewrittenInputs: 'bytes' },
+            cache: { inputs: { files: [] }, outputs: { files: [] }, inputStability: 'mutable' },
+          },
+        },
+      }),
+  ],
+  [
+    "cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: [] },
+              outputs: { files: [] },
+              inputStability: { strategy: 'content' },
+            },
+          },
+        },
+      }),
+  ],
+  [
+    "cache.inputStability.severity must be 'warn' or 'error'",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: [] },
+              outputs: { files: [] },
+              inputStability: { severity: 'fail' },
+            },
           },
         },
       }),
@@ -679,7 +711,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
     expect(message).toContain(
-      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, plugins, rules, schedule, timeout)',
+      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, inputStability, plugins, rules, schedule, timeout)',
     )
   })
 })

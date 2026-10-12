@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
+import type { ExecConfig, TaskConfig, CacheConfig, InputStability } from '../config.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -175,6 +175,11 @@ export interface ExecuteArgs {
    * `exec.timeout` wins. Threaded as an option only — never hashed.
    */
   timeout?: number
+  /**
+   * The run's `inputStability` layers around the task's own: `run` from
+   * the env vars (above the task), `workspace` from `vx.workspace` (below).
+   */
+  inputStability?: { run: InputStability; workspace?: InputStability }
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (package.json bytes + task config). */
@@ -338,15 +343,21 @@ async function restoreOrMiss(
 }
 
 /**
- * Does a write to an input during the command count as unchanged when it
- * left the bytes the key folded (`movedInput`'s `writesByBytes`)? Only when
- * the task says `compare`, or says nothing and `VX_REWRITTEN_INPUTS` is
- * `compare`: by default any such write withholds the save, on CI too,
- * since a concurrent task can change an input and put it back (owner,
- * 2026-10-12).
+ * What a write to an input during the command means, each field highest
+ * first: the env var (`layers.run`), the task's `cache.inputStability`,
+ * the workspace's, then `'immutable'` and `'warn'` (owner, 2026-10-12), so
+ * by default any such write withholds the save, on CI too, since a
+ * concurrent task can change an input and put it back.
  */
-function rewritesByBytes(cache: CacheConfig | undefined): boolean {
-  return (cache?.rewrittenInputs ?? process.env['VX_REWRITTEN_INPUTS']) === 'compare'
+function inputStabilityOf(
+  cache: CacheConfig | undefined,
+  layers: ExecuteArgs['inputStability'],
+): Required<InputStability> {
+  const task = cache?.inputStability
+  return {
+    strategy: layers?.run.strategy ?? task?.strategy ?? layers?.workspace?.strategy ?? 'immutable',
+    severity: layers?.run.severity ?? task?.severity ?? layers?.workspace?.severity ?? 'warn',
+  }
 }
 
 /**
@@ -1462,6 +1473,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
+  let movedFails = false
   let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
@@ -1576,7 +1589,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         described!.facts,
         cache,
         described!.describedAt,
-        rewritesByBytes(args.node.config.cache),
+        stability.strategy === 'mutable',
       )) ?? described!.added()
     )
   }
@@ -1597,6 +1610,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       unkeyed = true
       return false
     }
+    // `'unchecked'` skips the check of the command's own window; a key the
+    // re-derive before the command already disagreed with still withholds,
+    // since it never described the bytes the command read.
+    if (stability.strategy === 'unchecked' && described!.hash === hash) return true
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()
@@ -1611,14 +1628,24 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       moved === null || path.basename(moved) === 'package.json'
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
-    log.status(
-      `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
-        `but is not saved under a key that no longer describes it${hint}`,
-    )
+    if (stability.severity === 'error') {
+      log.status(
+        `[vx] ${node.id}: ${what} changed after its key was taken — the result is not saved, ` +
+          `and inputStability.severity is 'error', so the task fails${hint}`,
+      )
+      movedFails = true
+    } else {
+      log.status(
+        `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
+          `but is not saved under a key that no longer describes it${hint}`,
+      )
+    }
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
     unkeyed = true
     return false
   }
+
+  if (movedFails) effectiveExitCode = 1
 
   if (unkeyedUpstream !== undefined && willWrite && effectiveExitCode === 0) {
     log.status(

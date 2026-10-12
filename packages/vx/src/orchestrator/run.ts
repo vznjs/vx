@@ -3,7 +3,12 @@
 // so the layers can be swapped without touching the others.
 
 import type { ProjectEntry } from '../workspace/index.js'
-import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
+import {
+  inputStabilityEnv,
+  loadWorkspace,
+  unreachedHint,
+  unreachedPackages,
+} from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -610,6 +615,13 @@ async function runOnBus(
   // ignored (a bad timeout must not silently disable a task's own limit).
   const taskTimeoutDefault =
     options.timeout ?? readTaskTimeoutEnv() ?? workspaceConfig?.timeout ?? undefined
+  // Read once, before any task: a bad value is refused here, not mid-run.
+  const inputStability = {
+    run: inputStabilityEnv(),
+    ...(workspaceConfig?.inputStability !== undefined
+      ? { workspace: workspaceConfig.inputStability }
+      : {}),
+  }
 
   // Run-scoped registries of live subprocesses:
   //   - `liveChildren`: in-flight children. The runner adds/removes
@@ -1056,6 +1068,7 @@ async function runOnBus(
       }
       if (options.retries !== undefined) a.retries = options.retries
       if (taskTimeoutDefault !== undefined) a.timeout = taskTimeoutDefault
+      a.inputStability = inputStability
       if (download.modeOf.get(node.id) === 'deferred') a.download = 'deferred'
       if (placements.remoteOnlyNoop.has(node.id)) a.remoteOnlyNoop = true
       if (placements.remoteOnly.has(node.id)) a.remoteOnly = true

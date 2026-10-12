@@ -10,6 +10,7 @@ import {
   PLUGIN_FUNCTION_HOOKS,
   PLUGIN_HOOKS,
   PLUGIN_PACKAGE,
+  type InputStability,
   type Plugin,
   type ProjectConfig,
   type WorkspaceConfig,
@@ -48,6 +49,57 @@ export function cacheScopeEnvError(): UserError {
   return new UserError(`VX_CACHE_SCOPE ${CACHE_SCOPE_RULE}`)
 }
 
+const STRATEGIES = ['immutable', 'mutable', 'unchecked'] as const
+const SEVERITIES = ['warn', 'error'] as const
+const INPUT_STABILITY_FIELDS = new Set(['strategy', 'severity'])
+const oneOf = (values: readonly string[]): string =>
+  `must be ${values
+    .map((v) => `'${v}'`)
+    .join(', ')
+    .replace(/, ([^,]*)$/, ' or $1')}`
+
+function envOneOf<T extends string>(
+  name: string,
+  raw: string | undefined,
+  values: readonly T[],
+): T | undefined {
+  if (raw === undefined || raw === '') return undefined
+  if (!(values as readonly string[]).includes(raw)) throw new UserError(`${name} ${oneOf(values)}`)
+  return raw as T
+}
+
+function validateInputStability(stability: unknown, at: string): void {
+  if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
+    throw new UserError(`${at} must be an object — \`inputStability: { strategy: 'mutable' }\``)
+  }
+  assertKnownFields(stability, INPUT_STABILITY_FIELDS, at)
+  const { strategy, severity } = stability as Record<string, unknown>
+  if (strategy !== undefined && !STRATEGIES.includes(strategy as never)) {
+    throw new UserError(`${at}.strategy ${oneOf(STRATEGIES)}`)
+  }
+  if (severity !== undefined && !SEVERITIES.includes(severity as never)) {
+    throw new UserError(`${at}.severity ${oneOf(SEVERITIES)}`)
+  }
+}
+
+/**
+ * `VX_INPUT_STABILITY` and `VX_INPUT_STABILITY_SEVERITY`, which override
+ * every task's `cache.inputStability` for the run: each undefined when
+ * unset or empty, refused when it names no value.
+ */
+export function inputStabilityEnv(): InputStability {
+  const strategy = envOneOf('VX_INPUT_STABILITY', process.env['VX_INPUT_STABILITY'], STRATEGIES)
+  const severity = envOneOf(
+    'VX_INPUT_STABILITY_SEVERITY',
+    process.env['VX_INPUT_STABILITY_SEVERITY'],
+    SEVERITIES,
+  )
+  return {
+    ...(strategy !== undefined ? { strategy } : {}),
+    ...(severity !== undefined ? { severity } : {}),
+  }
+}
+
 const WORKSPACE_FIELDS = new Set([
   'concurrency',
   'cacheDir',
@@ -57,6 +109,7 @@ const WORKSPACE_FIELDS = new Set([
   'cacheScope',
   'rules',
   'schedule',
+  'inputStability',
   'plugins',
 ])
 
@@ -198,6 +251,9 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
   if (config.rules !== undefined) validateRules(config.rules, configPath)
+  if (config.inputStability !== undefined) {
+    validateInputStability(config.inputStability, `${configPath}: \`inputStability\``)
+  }
   if (config.schedule !== undefined && !Object.hasOwn(SCHEDULES, config.schedule)) {
     throw new UserError(
       `${configPath}: \`schedule\` must be one of ${Object.keys(SCHEDULES)
@@ -668,10 +724,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         )
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
-      const rewritten = (cache as { rewrittenInputs?: unknown }).rewrittenInputs
-      if (rewritten !== undefined && rewritten !== 'withhold' && rewritten !== 'compare') {
-        throw new UserError(`${where}.cache.rewrittenInputs must be 'withhold' or 'compare'`)
-      }
+      const stability = (cache as { inputStability?: unknown }).inputStability
+      if (stability !== undefined)
+        validateInputStability(stability, `${where}.cache.inputStability`)
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
       // A present field of the wrong shape (`outputs: 'dist'`) was told it
@@ -908,7 +963,7 @@ const EXEC_FIELDS = new Set([
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
-const CACHE_FIELDS = new Set(['inputs', 'outputs', 'rewrittenInputs'])
+const CACHE_FIELDS = new Set(['inputs', 'outputs', 'inputStability'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',
   'workspaceFiles',
@@ -948,6 +1003,15 @@ export const REMOVED_FIELDS: ReadonlyMap<
         use:
           "`@vzn/vx-schedule-history`, which learns each task's reservation from its run " +
           "history (declare one by hand with its `reservations: { 'pkg#task': { cpus, memory } }`)",
+      },
+    },
+  ],
+  [
+    CACHE_FIELDS,
+    {
+      rewrittenInputs: {
+        removedIn: '0.0.636',
+        use: "`inputStability: { strategy: 'immutable' | 'mutable' }` ('withhold', 'compare')",
       },
     },
   ],

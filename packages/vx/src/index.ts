@@ -48,6 +48,7 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  InputStability,
   SandboxConfig,
   SandboxGrants,
   SandboxDenials,

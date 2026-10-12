@@ -7,13 +7,15 @@
         "cacheRetention",
         "cacheScope",
         "concurrency",
+        "inputStability",
         "plugins",
         "rules",
         "schedule",
         "timeout"
       ],
       "cacheRetention": ["maxSize", "olderThan"],
-      "rules": ["exclusiveOutputs", "upfrontKeys"]
+      "rules": ["exclusiveOutputs", "upfrontKeys"],
+      "inputStability": ["severity", "strategy"]
     },
     "records": [],
     "fields": {
@@ -553,6 +555,115 @@
           "{\"x\":\"y\"}"
         ]
       },
+      "inputStability": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `inputStability` must be an object — `inputStability: { strategy: 'mutable' }`": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `inputStability` has unknown field \"x\" (allowed: severity, strategy)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "inputStability.strategy": {
+        "ok": ["<absent>", "\"mutable\""],
+        "$CONFIG: `inputStability`.strategy must be 'immutable', 'mutable' or 'unchecked'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "inputStability.severity": {
+        "ok": ["<absent>", "\"error\""],
+        "$CONFIG: `inputStability`.severity must be 'warn' or 'error'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
       "plugins": {
         "ok": ["<absent>", "[]"],
         "$CONFIG: `plugins` must be an array of plugin objects": [
@@ -628,7 +739,7 @@
       ],
       "tasks.*.exec.sandbox.deny": ["network"],
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
-      "tasks.*.cache": ["inputs", "outputs", "rewrittenInputs"],
+      "tasks.*.cache": ["inputStability", "inputs", "outputs"],
       "tasks.*.cache.inputs": [
         "env",
         "files",
@@ -637,7 +748,8 @@
         "workspaceFiles",
         "workspaceRuntime"
       ],
-      "tasks.*.cache.outputs": ["files", "workspaceFiles"]
+      "tasks.*.cache.outputs": ["files", "workspaceFiles"],
+      "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
@@ -2070,7 +2182,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache must be an object (fields: inputs, outputs, rewrittenInputs), not an array": [
+        "$CONFIG: tasks.c.cache must be an object (fields: inputStability, inputs, outputs), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -2087,7 +2199,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.inputs is required when `cache` is set": ["{}"],
-        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputs, outputs, rewrittenInputs)": [
+        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputStability, inputs, outputs)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -2526,9 +2638,82 @@
           "[\".\"]"
         ]
       },
-      "tasks.*.cache.rewrittenInputs": {
-        "ok": ["<absent>", "\"compare\""],
-        "$CONFIG: tasks.c.cache.rewrittenInputs must be 'withhold' or 'compare'": [
+      "tasks.*.cache.inputStability": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: tasks.c.cache.inputStability must be an object — `inputStability: { strategy: 'mutable' }`": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: tasks.c.cache.inputStability has unknown field \"x\" (allowed: severity, strategy)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.inputStability.strategy": {
+        "ok": ["<absent>", "\"mutable\""],
+        "$CONFIG: tasks.c.cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.inputStability.severity": {
+        "ok": ["<absent>", "\"error\""],
+        "$CONFIG: tasks.c.cache.inputStability.severity must be 'warn' or 'error'": [
           "null",
           "true",
           "false",
