@@ -5,8 +5,8 @@
 <h1 align="center">vx</h1>
 
 <p align="center">
-  <strong>The fastest task runner for JS monorepos.</strong><br>
-  Measured against Turborepo and Nx, each in its own native config.<br>
+  <strong>The task runner you own, for JS monorepos.</strong><br>
+  Correct, sandboxed, extensible. No cloud, no account, no paywall.<br>
   <a href="https://vznjs.github.io/vx/"><strong>vznjs.github.io/vx</strong></a>
 </p>
 
@@ -103,7 +103,7 @@ a `vx.workspace.ts` that maps the old config instead: a temporary start,
 not a way to run the repo. The numbers above are native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 
-## Why it is faster
+## Fast, without trading correctness
 
 - **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
 - **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.

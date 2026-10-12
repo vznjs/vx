@@ -185,7 +185,7 @@ describe('the published plugin packages', async () => {
       unknown
     >
     expect([main.description, main.homepage]).toEqual([
-      'The fastest task runner and build cache for JavaScript monorepos.',
+      'A correct, sandboxed, extensible task runner and build cache for JavaScript monorepos.',
       'https://vznjs.github.io/vx/',
     ])
   })

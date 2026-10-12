@@ -1,7 +1,7 @@
 ---
 // vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
 // only through migration): the hero with the newest release, what agents
-// get, the benchmark chart and why it is faster, what shipped lately
+// get, what plugins unlock, the benchmark chart and why it is faster, what shipped lately
 // (owner, 2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
 // and a strip of the feature pages.
 // In the site's one Starlight shell (header, search, theme, phone menu),
@@ -25,9 +25,9 @@ import Cover from '../components/blog/Cover.astro'
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
 const href = (p: string) => `${base}${p}`
 const GH = 'https://github.com/vznjs/vx'
-const TITLE = 'vx — the fastest task runner for JS monorepos'
+const TITLE = 'vx — the task runner you own, for JS monorepos'
 const DESCRIPTION =
-  'Less overhead than Turborepo, Nx and Vite Task on a cold build, each measured in its own native config. MIT, no account.'
+  'A correct, sandboxed, extensible core for JS monorepos. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.'
 
 /** A callout's line, each backticked span as code. */
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -104,14 +104,27 @@ const benchBars = renderBars(
   })),
 )
 
-// The hero's three numbers, each the multiple a benchTable cell already
-// states, so a new run moves them with the chart.
+// The hero's three facts (owner, 2026-10-12: lead with ownership and
+// extensibility; speed is a floor, not the pitch). The speed one is the
+// multiple a benchTable cell already states, so a new run moves it.
 const timesOf = (cell: string): string => /^vx ([\d.]+(?:×|%)) faster$/.exec(vsOf(cell)[1])![1]!
 const row = (label: string) => benchTable.find((r) => r.label === label)!
 const wins = [
-  { n: timesOf(row('Nothing changed').nx), line: 'faster cached run than Nx' },
+  { n: '14', line: 'pipeline stages a plugin can fill' },
+  { n: 'MIT', line: 'sandbox, remote cache and remote execution, no paid tier' },
   { n: timesOf(row('Cold build').turbo), line: 'less cold build overhead than Turborepo' },
-  { n: timesOf(row('Cold build: CPU the runner burns').turbo), line: 'less CPU burned than Turborepo' },
+]
+
+// Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
+// core features; the section shows they are examples, not the limit).
+const plugins = [
+  { pkg: 'vx-reapi', title: 'Remote cache and remote execution', line: 'Any Bazel REAPI server: NativeLink, BuildBuddy, your own.' },
+  { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Turbo’s or Nx’s remote cache; run a Turbo or Nx repo unchanged while you move.' },
+  { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
+  { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
+  { pkg: 'vx-mcp', title: 'Agents', line: 'vx mcp for any MCP client.' },
+  { pkg: 'vx-schedule-history', title: 'Smarter scheduling', line: 'Order by the critical path learned from your run history.' },
+  { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
 ]
 
 // Where vx differs from both, each cell as the choosing page's model says it
@@ -215,8 +228,8 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
             <span class="announce-title">{latest.title}</span>
             <span aria-hidden="true">→</span>
           </a>
-          <h1>The <span class="phosphor">fastest</span> task runner for JS monorepos.</h1>
-          <p class="lede">Measured against Turborepo, Nx and Vite Task, each in its own native config.</p>
+          <h1>The task runner you <span class="phosphor">own</span>.</h1>
+          <p class="lede">vx runs and caches your monorepo’s task graph correctly, and every stage after that is a seam you can fill.</p>
           <ul class="wins">
             {
               wins.map((w) => (
@@ -289,11 +302,37 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
         </div>
       </section>
 
+      <section class="section" id="plugins">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// extensibility is king</p>
+            <h2>What vx can do. Not what it is limited to.</h2>
+          </div>
+          <p class="sub">Every plugin below is a separate package on core’s public seams, and yours can be too.</p>
+          <div class="plugin-grid">
+            {
+              plugins.map((p) => (
+                <a class="plugin-card" href={href(`plugins/${p.pkg}/`)}>
+                  <h3>{p.title}</h3>
+                  <code class="plugin-pkg">@vzn/{p.pkg}</code>
+                  <p>{p.line}</p>
+                </a>
+              ))
+            }
+            <a class="plugin-card plugin-own" href={href('guides/plugins/')}>
+              <h3>Your own</h3>
+              <code class="plugin-pkg">definePlugin()</code>
+              <p>Fill any of the 14 stages: where tasks run, where the cache lives, who watches, which commands exist.</p>
+            </a>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="bench">
         <div class="container">
           <div class="section-head">
             <p class="vx-kicker">// 9,603 tasks · 1,601 projects · 30 levels · identical commands, identical concurrency</p>
-            <h2>Fastest cold build.</h2>
+            <h2>Fast, never at the cost of a correct cache.</h2>
           </div>
           <div class="bench-panel">
             <Fragment set:html={benchBars} />

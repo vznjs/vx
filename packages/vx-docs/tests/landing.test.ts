@@ -19,7 +19,17 @@ const DIST = path.resolve(import.meta.dir, '../dist')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 
 // Every section below the hero, top to bottom.
-const SECTIONS = ['agents', 'bench', 'shipping', 'edge', 'try', 'one-run', 'pillars', 'features']
+const SECTIONS = [
+  'agents',
+  'plugins',
+  'bench',
+  'shipping',
+  'edge',
+  'try',
+  'one-run',
+  'pillars',
+  'features',
+]
 
 // The six lines under the picture, as the design writes them, each at the
 // anchor the old chapters redirect to.
@@ -219,9 +229,9 @@ describe('the landing page', () => {
   it('says what vx is in one line, then the sections in order', () => {
     const h1 = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)]
     expect(h1).toHaveLength(1)
-    expect(text(h1[0]![1]!)).toBe('The fastest task runner for JS monorepos.')
+    expect(text(h1[0]![1]!)).toBe('The task runner you own.')
     expect(text(/<p class="lede">([\s\S]*?)<\/p>/.exec(hero)![1]!)).toBe(
-      'Measured against Turborepo, Nx and Vite Task, each in its own native config.',
+      'vx runs and caches your monorepo’s task graph correctly, and every stage after that is a seam you can fill.',
     )
     const ids = [...html.matchAll(/<section\b[^>]*\bid="([\w-]+)"/g)]
     expect(ids.map((m) => m[1])).toEqual(SECTIONS)
@@ -280,7 +290,7 @@ describe('the landing page', () => {
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
     const bench = section(html, 'bench')
-    expect(text(bench)).toContain('Fastest cold build.')
+    expect(text(bench)).toContain('Fast, never at the cost of a correct cache.')
     expect([...html.matchAll(/class="bench-panel"/g)]).toHaveLength(1)
     expect(bench).not.toContain('<table')
     const figures = [...bench.matchAll(/<figure class="vx-bars">([\s\S]*?)<\/figure>/g)].map(
@@ -326,16 +336,16 @@ describe('the landing page', () => {
     expect(reasons).toHaveLength(3)
   })
 
-  // The hero's three numbers are the chart's own multiples (owner,
-  // 2026-10-04: "show off best traits of vx vs competitors").
-  it('leads with three multiples the chart states', () => {
+  // The hero's three facts: ownership and extensibility first, speed a
+  // floor (owner, 2026-10-12); the speed one is the chart's own multiple.
+  it('leads with seams, no paid tier, then one multiple the chart states', () => {
     const wins = [
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
-      'faster cached run than Nx',
+      'pipeline stages a plugin can fill',
+      'sandbox, remote cache and remote execution, no paid tier',
       'less cold build overhead than Turborepo',
-      'less CPU burned than Turborepo',
     ])
     const bench = section(html, 'bench')
     const notes = [
@@ -343,7 +353,7 @@ describe('the landing page', () => {
     ].map((m) => m[1]!)
     // The "faster" notes in chart order; Turborepo's two cached rows and
     // Vite Task's CPU row read "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual([notes[0]!, notes[4]!, notes[7]!])
+    expect(wins.map((m) => text(m[1]!))).toEqual(['14', 'MIT', notes[4]!])
   })
 
   // Where vx differs from both, as the choosing page's model says it.
@@ -522,11 +532,11 @@ describe('a shared link shows the card', () => {
       expect(meta(html, 'og:image')).toEqual([`${SITE}${BASE}og.png`])
       expect(meta(html, 'twitter:card')).toEqual(['summary_large_image'])
     }
-    expect(meta(page(), 'og:title')).toEqual(['vx — the fastest task runner for JS monorepos'])
+    expect(meta(page(), 'og:title')).toEqual(['vx — the task runner you own, for JS monorepos'])
     // The search result's and the card's headline says what vx is: the
     // cinematic landing's slogan outlived the page it headed.
     expect(/<title>([^<]*)<\/title>/.exec(page())?.[1]).toBe(
-      'vx — the fastest task runner for JS monorepos',
+      'vx — the task runner you own, for JS monorepos',
     )
   })
 

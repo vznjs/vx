@@ -146,7 +146,7 @@ const FIRST: readonly Feature[] = [
   // ---- Speed ----
   {
     slug: 'fastest',
-    title: 'The fastest task runner',
+    title: 'Low overhead, measured in the open',
     category: 'speed',
     hook: 'Less overhead on a cold build: 29% faster than Turborepo, 32× faster than Nx.',
     body: [
