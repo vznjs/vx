@@ -14,22 +14,23 @@ says when Nx is the better choice. The design choices behind both are on
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx          | Nx         |
 | ---------------------------------------------------------- | ----------- | ---------- |
-| Nothing changed                                            | **1.07 s**  | 25.45 s    |
-| Nothing changed, outputs restored                          | **1.27 s**  | 23.82 s    |
-| Cold build                                                 | **7.07 s**  | 3 min 48 s |
-| Cold build: CPU the runner burns                           | **32.28 s** | 6 min 6 s  |
+| Nothing changed                                            | **856 ms**  | 23.22 s    |
+| Nothing changed, outputs restored                          | **1.45 s**  | 21.64 s    |
+| Cold build                                                 | **7.73 s**  | 3 min 23 s |
+| Cold build: CPU the runner burns                           | **36.42 s** | 5 min 35 s |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-09 on linux x64, 4 cores: vx at commit 3d48a981d, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+Run 2026-10-12 on linux x64, 4 cores: vx at commit 126d60a93, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
 
 <!-- bench:end -->
 
 Every Nx task is an `nx:run-commands` target running the same command vx
-runs, with Nx's daemon off as in CI.
+runs, with Nx's daemon off as in CI. The daemon does not help here: with it on,
+a nothing-changed run took 87 s against 25 s off (2026-10-12).
 
 ## Feature by feature
 

@@ -196,7 +196,7 @@ does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency ${d.concurrency}, each in its own native
 config: Turborepo ${turbo.version} (\`turbo.json\`), Nx ${nx.version} (\`nx:run-commands\` targets,
-\`^\` inputs), Vite Task (\`vp run\`, vite-plus ${vt.version}, tasks in each \`vite.config.ts\`).
+\`^\` inputs, \`.env\` loading off), Vite Task (\`vp run\`, vite-plus ${vt.version}, tasks in each \`vite.config.ts\`).
 vx runs from a \`vx lock\` snapshot (\`--frozen\`), as a CI pipeline runs it;
 *vx, no lock* evaluates every config per run. Both order tasks with
 \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, from timings an earlier
