@@ -240,7 +240,7 @@ describe('the landing page', () => {
 
   it('offers the install command, the quickstart and GitHub, nothing else', () => {
     expect(hero).toContain('data-copy="npm install -g @vzn/vx"')
-    expect(hrefs(hero)).toEqual(['#bench', `${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
+    expect(hrefs(hero)).toEqual([`${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
     const buttons = [...hero.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*>([\s\S]*?)<\/a>/g)]
     expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
   })
@@ -336,24 +336,18 @@ describe('the landing page', () => {
     expect(reasons).toHaveLength(3)
   })
 
-  // The hero's three facts: ownership and extensibility first, speed a
-  // floor (owner, 2026-10-12); the speed one is the chart's own multiple.
-  it('leads with seams, no paid tier, then one multiple the chart states', () => {
+  // The hero's three facts: ownership and extensibility, never a speed
+  // multiple (owner, 2026-10-12: the benchmark shows speed, copy does not).
+  it('leads with seams, no paid tier and nothing to run beside it', () => {
     const wins = [
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
     ]
     expect(wins.map((m) => text(m[2]!))).toEqual([
       'pipeline stages a plugin can fill',
       'sandbox, remote cache and remote execution, no paid tier',
-      'more cold build overhead in Turborepo than in vx',
+      'daemons, accounts or cloud services to run it',
     ])
-    const bench = section(html, 'bench')
-    const notes = [
-      ...bench.matchAll(/<span class="vx-bar-note">vx ([\d.]+(?:×|%)) faster<\/span>/g),
-    ].map((m) => m[1]!)
-    // The "faster" notes in chart order; Turborepo's two cached rows and
-    // Vite Task's CPU row read "slower".
-    expect(wins.map((m) => text(m[1]!))).toEqual(['14', 'MIT', notes[4]!])
+    expect(wins.map((m) => text(m[1]!))).toEqual(['14', 'MIT', '0'])
   })
 
   // Where vx differs from both, as the choosing page's model says it.

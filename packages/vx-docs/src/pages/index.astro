@@ -105,15 +105,11 @@ const benchBars = renderBars(
 )
 
 // The hero's three facts (owner, 2026-10-12: lead with ownership and
-// extensibility; speed is a floor, not the pitch). The speed one is the
-// multiple a benchTable cell already states, so a new run moves it.
-const timesOf = (cell: string): string => /^vx ([\d.]+(?:×|%)) faster$/.exec(vsOf(cell)[1])![1]!
-const row = (label: string) => benchTable.find((r) => r.label === label)!
+// extensibility; speed is never the headline, the chart shows it).
 const wins = [
   { n: '14', line: 'pipeline stages a plugin can fill' },
   { n: 'MIT', line: 'sandbox, remote cache and remote execution, no paid tier' },
-  // Linked to the chart, which carries the setup, versions and date (Legal).
-  { n: timesOf(row('Cold build').turbo), line: 'more cold build overhead in Turborepo than in vx', href: '#bench' },
+  { n: '0', line: 'daemons, accounts or cloud services to run it' },
 ]
 
 // Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
@@ -166,7 +162,7 @@ const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
 ]
 const mark = { yes: '✓', no: '✕', paid: '$' }
 
-// Why it is faster: three reasons, one short sentence each.
+// Why the overhead stays low: three reasons, one short sentence each.
 const reasons = [
   { term: 'Nothing boots per task.', line: 'No daemon, no Node process per task: vx spawns your command.' },
   { term: 'Hashing without reading.', line: 'On a clean tree, cache keys come from git’s index.' },

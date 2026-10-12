@@ -38,7 +38,7 @@ export const CATEGORIES: readonly Category[] = [
   {
     id: 'speed',
     title: 'Speed',
-    line: 'Faster on every run, cold or cached.',
+    line: 'Low overhead on every run, cold or cached.',
     intro:
       'vx adds as little as it can around your commands. Keys come from git’s own index, and nothing stays running between runs.',
   },
@@ -148,10 +148,10 @@ const FIRST: readonly Feature[] = [
     slug: 'fastest',
     title: 'Low overhead, measured in the open',
     category: 'speed',
-    hook: 'Less overhead on a cold build: 29% faster than Turborepo, 32× faster than Nx.',
+    hook: 'Measured against Turborepo, Nx and Vite Task on 9,603 tasks, losses included.',
     body: [
       'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency. Every number is the time a tool adds over the ideal run.',
-      'With nothing changed, vx adds 1.07 s, Turborepo 898 ms, Vite Task 11.75 s and Nx 25.45 s. On a cold build vx adds 7.07 s: 29% faster than Turborepo and 32× faster than Nx.',
+      'With nothing changed, vx adds 1.07 s, Turborepo 898 ms, Vite Task 11.75 s and Nx 25.45 s. On a cold build vx adds 7.07 s, Vite Task 8.16 s, Turborepo 9.15 s and Nx 3 min 48 s.',
       'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.',
       'The benchmarks page shows every row, including the ones vx loses: Vite Task burns less CPU on a cold build, and Turborepo adds less when nothing changed or outputs are restored. The harness lives in the repo, so you can run it yourself.',
     ],
