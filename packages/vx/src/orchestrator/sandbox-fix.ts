@@ -16,8 +16,8 @@ type Kind = Exclude<keyof SandboxFix, 'withheld'>
 // Where credentials live. A denial here is never turned into a grant: an
 // agent applies `sandboxFix` as given, so a dependency probing ~/.ssh would
 // get its grant suggested and applied (Security, 2026-10-12).
-const CREDENTIAL_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.config/gh']
-const CREDENTIAL_FILES = ['.netrc', '.npmrc', '.docker/config.json']
+const CREDENTIAL_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.config/gh', '.config/gcloud']
+const CREDENTIAL_FILES = ['.netrc', '.npmrc', '.docker/config.json', '.git-credentials', '.pypirc']
 
 function isCredential(abs: string): boolean {
   const base = path.basename(abs)
@@ -43,13 +43,23 @@ function grantPath(abs: string, projectDir: string): string {
 
 /**
  * A write grant covers the top directory the write landed in: granting
- * `dist/a.js` alone fails the run again on `dist/b.js`.
+ * `dist/a.js` alone fails the run again on `dist/b.js`. Not when the task
+ * reads that directory as an input: the grant would let it write its own
+ * inputs, so it names the path alone.
  */
-function writeGrant(grant: string, isDir: boolean): string {
+function writeGrant(grant: string, isDir: boolean, inputs: readonly string[]): string {
   const slash = grant.indexOf('/')
-  if (grant.startsWith('~/') || path.isAbsolute(grant)) return isDir ? `${grant}/` : grant
-  if (slash !== -1) return grant.slice(0, slash + 1)
-  return isDir ? `${grant}/` : grant
+  const exact = isDir ? `${grant}/` : grant
+  if (grant.startsWith('~/') || path.isAbsolute(grant) || slash === -1) return exact
+  const top = grant.slice(0, slash)
+  return inputs.some((g) => readsDir(g, top)) ? exact : `${top}/`
+}
+
+/** Whether input glob `g` can match under top directory `top`. */
+function readsDir(g: string, top: string): boolean {
+  if (g.startsWith('!')) return false
+  const first = g.replace(/^\.\//, '').split('/')[0] ?? ''
+  return first === top || /[*?[{]/.test(first)
 }
 
 function kindOf(v: SandboxViolation): Kind | undefined {
@@ -67,6 +77,8 @@ export function sandboxFix(
   violations: readonly SandboxViolation[],
   projectDir: string,
   mask: (text: string) => string = (t) => t,
+  /** The task's `cache.inputs.files`: a write under one is granted exactly. */
+  inputs: readonly string[] = [],
 ): SandboxFix | undefined {
   const fix: Record<Kind | 'withheld', Set<string>> = {
     read: new Set(),
@@ -88,7 +100,7 @@ export function sandboxFix(
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(grantPath(v.path, projectDir), isDir))
+      fix.write.add(writeGrant(grantPath(v.path, projectDir), isDir, inputs))
     }
   }
   const out: SandboxFix = {}

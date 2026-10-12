@@ -239,11 +239,3 @@ json` replayed a failure already fixed with no word of it. A failed
   and deleting `// ` caches it, no copying from the TODO line. A fresh
   two-package workspace went from init to `all cached` by that one
   edit. Row: `migration.test.ts` (commented line in the TODO task only).
-- **DX-42** Roadmap DX #4: a sandboxed task's violations end with
-  `fix: exec.sandbox.allow: { … }`, the grants that would have allowed
-  each denial (project-relative; a write grants its top directory), and
-  a read adds that it belongs in `cache.inputs.files` too. A
-  credential path is never a grant (Security): it goes to `withheld`.
-  `vx last --format json` and MCP `getFailures` carry it as
-  `sandboxFix`. Failure path only. Rows: `sandbox-fix.test.ts`,
-  `framed-output.test.ts`.

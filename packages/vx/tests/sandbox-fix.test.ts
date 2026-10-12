@@ -59,6 +59,21 @@ describe('sandboxFix', () => {
     })
   })
 
+  it('grants a write under a read input as the file alone', () => {
+    const write = (p: string) => v('deny(1) file-write-create', ['write'], path.join(dir, p))
+    const denials = [write('src/gen.js'), write('dist/a.js'), write('lib/x.js')]
+    expect(sandboxFix(denials, dir, undefined, ['src/**', '!dist/**'])?.write).toEqual([
+      'dist/',
+      'lib/',
+      'src/gen.js',
+    ])
+    expect(sandboxFix(denials, dir, undefined, ['./**/*.ts'])?.write).toEqual([
+      'dist/a.js',
+      'lib/x.js',
+      'src/gen.js',
+    ])
+  })
+
   it('never turns a credential path into a grant', () => {
     const home = (p: string) => path.join(os.homedir(), p)
     const read = (p: string) => v('deny(1) file-read-data', ['read'], p)
@@ -72,6 +87,9 @@ describe('sandboxFix', () => {
         read(home('.config/gh/hosts.yml')),
         read(home('.docker/config.json')),
         read(home('.netrc')),
+        read(home('.git-credentials')),
+        read(home('.pypirc')),
+        read(home('.config/gcloud/credentials.db')),
         read(path.join(dir, '.env')),
         v('deny(1) file-write-create', ['write'], path.join(dir, '.env.local')),
         // Near misses stay grants.
@@ -88,11 +106,14 @@ describe('sandboxFix', () => {
         '.env',
         '.env.local',
         '~/.aws/credentials',
+        '~/.config/gcloud/credentials.db',
         '~/.config/gh/hosts.yml',
         '~/.docker/config.json',
+        '~/.git-credentials',
         '~/.gnupg/pubring.kbx',
         '~/.kube/config',
         '~/.netrc',
+        '~/.pypirc',
         '~/.ssh',
         '~/.ssh/id_ed25519',
       ],

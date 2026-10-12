@@ -1654,7 +1654,14 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           sandboxViolations: finalViolations.filter((v) => v.hint !== true).length,
           // A denied path is the task's own spelling, a secret in it too.
           sandboxViolationLines: finalViolations.map((v) => secrets?.mask(v.line) ?? v.line),
-          ...fixOf(sandboxFix(finalViolations, node.projectDir, (t) => secrets?.mask(t) ?? t)),
+          ...fixOf(
+            sandboxFix(
+              finalViolations,
+              node.projectDir,
+              (t) => secrets?.mask(t) ?? t,
+              cacheCfg?.inputs.files,
+            ),
+          ),
         }
       : {}),
   }

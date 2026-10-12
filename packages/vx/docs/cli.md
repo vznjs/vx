@@ -1292,10 +1292,12 @@ task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
 the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 A write grants the top directory it landed in, so the next file there
-passes too; a read the output depends on is a key input as well, and
+passes too, unless `cache.inputs.files` reads that directory: then it
+grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
 the line says so, since a grant never adds one. A credential path
-(`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`, `~/.netrc`,
-`~/.npmrc`, `~/.docker/config.json`, a `.env` file) is never put in the
+(`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
+`~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
+`~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
 line: an agent applies it as given, so it is named apart as one to
 grant only on purpose.
 "Didn't declare" means the grants, which on Linux are wider than they
