@@ -345,7 +345,7 @@ describe('the landing page', () => {
     expect(wins.map((m) => text(m[2]!))).toEqual([
       'pipeline stages a plugin can fill',
       'sandbox, remote cache and remote execution, no paid tier',
-      'less cold build overhead than Turborepo',
+      'more cold build overhead in Turborepo than in vx',
     ])
     const bench = section(html, 'bench')
     const notes = [

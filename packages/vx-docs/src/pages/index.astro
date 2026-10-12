@@ -112,7 +112,7 @@ const row = (label: string) => benchTable.find((r) => r.label === label)!
 const wins = [
   { n: '14', line: 'pipeline stages a plugin can fill' },
   { n: 'MIT', line: 'sandbox, remote cache and remote execution, no paid tier' },
-  { n: timesOf(row('Cold build').turbo), line: 'less cold build overhead than Turborepo' },
+  { n: timesOf(row('Cold build').turbo), line: 'more cold build overhead in Turborepo than in vx' },
 ]
 
 // Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
