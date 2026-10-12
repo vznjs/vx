@@ -285,7 +285,7 @@ describe('the landing page', () => {
   })
 
   // The numbers are check.site's; the shape is here: one chart per number,
-  // vx's bar first, every other tool's bar saying how vx compares, each bar
+  // vx's bar first, no bar saying how much faster vx is (owner, 2026-10-12), each bar
   // as long as its time against the slowest, the formula under the chart,
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
@@ -314,13 +314,10 @@ describe('the landing page', () => {
       expect(bars.map((m) => m[1])).toEqual([' vx-bar-lead', '', '', ''])
       expect(Math.max(...bars.map((m) => Number(m[2])))).toBe(100)
       const notes = bars.map((m) => /<span class="vx-bar-note">([\s\S]*?)<\/span>/.exec(m[3]!)?.[1])
-      expect(notes[0]).toBeUndefined()
-      expect(
-        notes.slice(1).filter((n) => !/^vx (?:[\d.]+×|\d+%) (?:faster|slower)$/.test(n ?? '')),
-      ).toEqual([])
+      expect(notes).toEqual([undefined, undefined, undefined, undefined])
     }
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
-      'Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.',
+      'Time each tool adds over the ideal run; lower is better.',
     )
     // The workload sits under every bench chart (owner, 2026-10-09).
     expect(

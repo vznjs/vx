@@ -2446,7 +2446,7 @@ describe('the headline Nx column runs nx:run-commands', () => {
       'nx:run-commands',
     ])
     expect(bench).toContain('(`nx:run-commands` targets,')
-    expect(bench).toContain('20m 55s (vx 78× faster)')
+    expect(bench).toContain('| 20m 55s ')
     expect(bench).toContain('`npm run` costs 202 ms of')
   })
 })

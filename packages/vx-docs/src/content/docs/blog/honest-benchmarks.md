@@ -61,11 +61,11 @@ build over its ideal schedule; with nothing changed, over one git walk):
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
 | vx        | **7.07 s** | **1.07 s** | **32.28 s** |
-| Turborepo | 9.15 s (vx 29% faster) | 898 ms (vx 19% slower) | 1 min 3 s (vx 94% faster) |
-| Nx        | 3 min 48 s (vx 32× faster) | 25.45 s (vx 24× faster) | 6 min 6 s (vx 11× faster) |
-| Vite Task | 8.16 s (vx 15% faster) | 11.75 s (vx 11× faster) | 24.82 s (vx 30% slower) |
+| Turborepo | 9.15 s | 898 ms | 1 min 3 s |
+| Nx        | 3 min 48 s | 25.45 s | 6 min 6 s |
+| Vite Task | 8.16 s | 11.75 s | 24.82 s |
 
-vx N% or N× faster in overhead: that tool adds N% more or N times as much as vx; slower: vx adds that much more.
+Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
