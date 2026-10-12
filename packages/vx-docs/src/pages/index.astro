@@ -112,7 +112,8 @@ const row = (label: string) => benchTable.find((r) => r.label === label)!
 const wins = [
   { n: '14', line: 'pipeline stages a plugin can fill' },
   { n: 'MIT', line: 'sandbox, remote cache and remote execution, no paid tier' },
-  { n: timesOf(row('Cold build').turbo), line: 'more cold build overhead in Turborepo than in vx' },
+  // Linked to the chart, which carries the setup, versions and date (Legal).
+  { n: timesOf(row('Cold build').turbo), line: 'more cold build overhead in Turborepo than in vx', href: '#bench' },
 ]
 
 // Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
@@ -235,7 +236,7 @@ npx vx run build --all      # again: the cached tasks are up-to-date`
               wins.map((w) => (
                 <li>
                   <strong>{w.n}</strong>
-                  <span>{w.line}</span>
+                  <span>{w.href ? <a href={w.href}>{w.line}</a> : w.line}</span>
                 </li>
               ))
             }

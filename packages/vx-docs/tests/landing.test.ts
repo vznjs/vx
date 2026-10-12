@@ -240,7 +240,7 @@ describe('the landing page', () => {
 
   it('offers the install command, the quickstart and GitHub, nothing else', () => {
     expect(hero).toContain('data-copy="npm install -g @vzn/vx"')
-    expect(hrefs(hero)).toEqual([`${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
+    expect(hrefs(hero)).toEqual(['#bench', `${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
     const buttons = [...hero.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*>([\s\S]*?)<\/a>/g)]
     expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
   })
