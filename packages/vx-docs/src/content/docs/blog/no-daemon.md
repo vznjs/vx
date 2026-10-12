@@ -64,11 +64,11 @@ stopped mattering:
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result: with nothing changed, vx adds 1.07 s to a run of 9,603
-tasks with no process left behind, against Turborepo's 898 ms and Nx's 25.45 s. vx has no daemon to turn on.
+The result: with nothing changed, vx adds 856 ms to a run of 9,603
+tasks with no process left behind, against Turborepo's 855 ms and Nx's 23.22 s. vx has no daemon to turn on.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 ## The invariant, stated plainly
 

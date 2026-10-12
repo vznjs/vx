@@ -70,6 +70,9 @@ const RUNNER_ENV = benchEnv({
   TURBO_TELEMETRY_DISABLED: '1',
   DO_NOT_TRACK: '1',
   NX_CLOUD: 'false',
+  // The workspace has no .env file; Nx still reads up to ten candidates
+  // per task (2.7 s of a 25 s warm run at 9,603 tasks, 2026-10-12).
+  NX_LOAD_DOT_ENV_FILES: 'false',
 })
 
 /**
