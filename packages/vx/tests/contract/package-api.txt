@@ -67,6 +67,7 @@ export class Cache implements CacheLayer {
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
+  setTrust(trust: CacheTrust): void
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void
@@ -388,6 +389,11 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
 }
+== type ArtifactSigner (src/cache/trust.ts)
+export interface ArtifactSigner {
+  readonly keyId: string
+  sign(message: Uint8Array): Uint8Array
+}
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
@@ -553,6 +559,11 @@ export type CacheStatus =
   | 'no-cache'
   | 'group'
   | 'not-started'
+== type CacheTrust (src/cache/trust.ts)
+export interface CacheTrust {
+  readonly keys: ReadonlyMap<string, KeyObject>
+  readonly signer: ArtifactSigner | undefined
+}
 == type CaptureConfig (src/exec/runner.ts)
 export interface CaptureConfig {
   stdout?: boolean
@@ -1860,6 +1871,7 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
   cacheScope?: string
+  cacheTrust?: { keys: readonly string[] }
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   rules?: WorkspaceRules
   plugins?: readonly (Plugin | undefined | null | false)[]

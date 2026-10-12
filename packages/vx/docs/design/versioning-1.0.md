@@ -43,11 +43,12 @@ the values it takes and each refusal's exact words are recorded in
 
 `vx.workspace.ts`:
 
-| Level            | Fields                                                                                                               |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `concurrency`, `plugins`, `rules`, `schedule`, `timeout` |
-| `cacheRetention` | `maxSize`, `olderThan`                                                                                               |
-| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                    |
+| Level            | Fields                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `cacheTrust`, `concurrency`, `plugins`, `rules`, `schedule`, `timeout` |
+| `cacheRetention` | `maxSize`, `olderThan`                                                                                                             |
+| `cacheTrust`     | `keys`                                                                                                                             |
+| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                                  |
 
 `vx.config.ts`:
 

@@ -89,6 +89,41 @@ writes whatever its config says. Never give the write secret to a
 out a pull request's code: it runs with main's ref and secrets, and
 `github()` scopes it `pr-<n>` only on the client side.
 
+## Signed artifacts
+
+A boundary that holds whatever the store is: a plain bucket, a Turbo or
+Nx remote, one shared token. Main's job signs; every reader checks.
+
+```ts
+// vx.workspace.ts: the public keys a remote artifact must be signed by
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  cacheTrust: { keys: ['ed25519:bHbzuBFM4v+qMVhk+UOdq9E6tMVT705XGb4XHFBRKe8='] },
+})
+```
+
+```sh
+# once: a seed for main's job (secret), and its public key (config)
+openssl genpkey -algorithm ed25519 -outform DER | tail -c 32 | base64   # VX_CACHE_SIGNING_KEY
+echo "$VX_CACHE_SIGNING_KEY" | base64 -d \
+  | cat <(printf '\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x70\x04\x22\x04\x20') - \
+  | openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64     # ed25519:<this>
+```
+
+Only main's job gets `VX_CACHE_SIGNING_KEY`, as a secret of an
+environment whose one deployment branch is main. A remote artifact no
+listed key signed over exactly its cache key and its entries is a miss,
+refused before it is stored, with a warning; a run with keys and no
+signing key uploads nothing, since every reader would refuse it. A
+pull request's job, a leaked read token, or anyone who can write the
+bucket can still write bytes; none can make a reader take them. Rotate by
+listing the new key beside the old, moving the secret, then dropping the
+old key. A local entry is not re-checked (it is this user's save, or an
+ingest checked on arrival), and a signature proves who wrote the bytes,
+not that the key covered every input: that is `exec.sandbox`'s proof.
+The signing key is masked by name in logs and `vx show`.
+
 ## What vx checks on bytes it did not write
 
 Every artifact that arrives from a remote, and every one read back from
@@ -99,6 +134,8 @@ the local store:
 - on arrival, records the cache key it was packed under, and is
   refused under another (a local read-back is not re-checked);
 - on arrival, carries only the files the task declares as outputs;
+- on arrival, with `cacheTrust.keys` set, is signed by one of them over
+  its key and entries (§ Signed artifacts);
 - lands each file under the task's project or declared workspace path:
   traversal (`..`, `.`, absolute names) is refused before anything
   lands, a refused archive leaves nothing behind, and links and devices

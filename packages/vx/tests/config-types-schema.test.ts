@@ -36,6 +36,7 @@ const WORKSPACE = [
   'cacheDir',
   'cacheRetention',
   'cacheScope',
+  'cacheTrust',
   'concurrency',
   'plugins',
   'rules',
@@ -72,6 +73,9 @@ const INPUTS = [
 const OUTPUTS = ['files', 'workspaceFiles'] as const satisfies readonly Keys<CacheOutputs>[]
 const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
   NonNullable<WorkspaceConfig['cacheRetention']>
+>[]
+const TRUST = ['keys'] as const satisfies readonly Keys<
+  NonNullable<WorkspaceConfig['cacheTrust']>
 >[]
 const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConfig>[]
 const SANDBOX = [
@@ -110,12 +114,13 @@ const exhaustive: [
   Exhaustive<CacheInputs, typeof INPUTS>,
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
   Exhaustive<NonNullable<WorkspaceConfig['cacheRetention']>, typeof RETENTION>,
+  Exhaustive<NonNullable<WorkspaceConfig['cacheTrust']>, typeof TRUST>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
 void exhaustive
 
 /** What the validator allows where the call puts a key it does not know. */
@@ -130,6 +135,7 @@ function allowed(validate: () => void): string[] {
   throw new Error('the validator accepted an unknown key')
 }
 const X = { zzUnknown: 1 }
+const KEY = `ed25519:${'A'.repeat(43)}=`
 const task = (extra: object) => ({ tasks: { t: { exec: { command: 'true' }, ...extra } } })
 const exec = (extra: object) => ({ tasks: { t: { exec: { command: 'true', ...extra } } } })
 
@@ -184,6 +190,11 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       'cacheRetention',
       RETENTION,
       () => validateWorkspace({ cacheRetention: { ...X } } as never, 'w'),
+    ],
+    [
+      'cacheTrust',
+      TRUST,
+      () => validateWorkspace({ cacheTrust: { keys: [KEY], ...X } } as never, 'w'),
     ],
     [
       'exec.persistent',

@@ -50,6 +50,7 @@ import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
+import { type ArtifactSigner, SIG_SIZE, signatureEntry, signedMessage } from './trust.js'
 import {
   TarFormatError,
   type TarInput,
@@ -85,14 +86,36 @@ const utf8 = new TextDecoder('utf-8', { ignoreBOM: true })
 const SUM_ENTRY = '.vx-sum'
 const SUM_SIZE = 8
 
-/** The running CRC-32 over entries' names and bodies, as `SUM_ENTRY` defines it. */
+/**
+ * The entry after the sum when a trusted writer packed the artifact
+ * (`trust.ts`): its signature over the key and the SHA-256 of the bytes
+ * the sum walks. Nothing may follow it.
+ */
+const SIG_ENTRY = '.vx-sig'
+
+/**
+ * The running CRC-32 over entries' names and bodies, as `SUM_ENTRY` defines
+ * it, and their SHA-256 too when a signature is made or checked: only then,
+ * so a workspace that signs nothing hashes nothing more.
+ */
 class EntrySum {
   private crc = 0
+  private readonly sha: Bun.CryptoHasher | undefined
+  constructor(digest: boolean) {
+    this.sha = digest ? new Bun.CryptoHasher('sha256') : undefined
+  }
   entry(name: string): void {
-    this.crc = Bun.hash.crc32(new TextEncoder().encode(`${name}\0`), this.crc)
+    const bytes = new TextEncoder().encode(`${name}\0`)
+    this.crc = Bun.hash.crc32(bytes, this.crc)
+    this.sha?.update(bytes)
   }
   add(chunk: Uint8Array): void {
     this.crc = Bun.hash.crc32(chunk, this.crc)
+    this.sha?.update(chunk)
+  }
+  /** The SHA-256 so far, as hex; undefined when this sum takes none. */
+  digest(): string | undefined {
+    return this.sha?.digest('hex')
   }
   async *through(body: AsyncIterable<Uint8Array>): AsyncGenerator<Uint8Array> {
     for await (const chunk of body) {
@@ -108,44 +131,65 @@ class EntrySum {
 /**
  * The reader's half: every regular entry is hashed as it is consumed, and
  * `check` is handed the sum entry's body. An archive whose sum is absent,
- * wrong, or followed by another entry is refused before anything it held
- * is committed.
+ * wrong, or followed by anything but one signature entry is refused before
+ * anything it held is committed. The signature is only kept here; whether
+ * it holds is the caller's question (`trust.ts`).
  */
 class SumCheck {
-  private readonly sum = new EntrySum()
+  private readonly sum: EntrySum
   private seen: boolean = false
-  /** The entry's body, hashed as the caller reads it; null for the sum entry itself (checked here). */
+  private digestHex: string | undefined
+  /** The `.vx-sig` body, when one followed the sum. */
+  signature: string | undefined
+  constructor(digest = false) {
+    this.sum = new EntrySum(digest)
+  }
+  /** The entry's body, hashed as the caller reads it; null for the sum and signature entries (taken here). */
   async body(
     name: string,
     body: AsyncIterable<Uint8Array>,
   ): Promise<AsyncIterable<Uint8Array> | null> {
-    if (!this.enter(name)) return this.sum.through(body)
-    this.verify(await textOf(body))
+    const kind = this.enter(name)
+    if (kind === 'entry') return this.sum.through(body)
+    this.take(kind, await textOf(body))
     return null
   }
   /**
-   * The next regular entry: true when it is the sum entry, whose text the
-   * caller hands to `verify`; otherwise the caller hands its bytes to `add`.
+   * The next regular entry: `sum` or `sig` when it is one of those, whose
+   * text the caller hands to `take`; otherwise the caller hands its bytes
+   * to `add`.
    */
-  enter(name: string): boolean {
-    if (this.seen) throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
-    if (name === SUM_ENTRY) return true
+  enter(name: string): 'entry' | 'sum' | 'sig' {
+    if (this.seen) {
+      if (name === SIG_ENTRY && this.signature === undefined) return 'sig'
+      throw new TarFormatError(`entry ${name} follows the artifact's checksum`)
+    }
+    if (name === SUM_ENTRY) return 'sum'
     this.sum.entry(name)
-    return false
+    return 'entry'
   }
   add(bytes: Uint8Array): void {
     this.sum.add(bytes)
   }
-  verify(got: string): void {
-    if (got !== this.sum.hex()) {
+  take(kind: 'sum' | 'sig', text: string): void {
+    if (kind === 'sig') {
+      this.signature = text
+      return
+    }
+    if (text !== this.sum.hex()) {
       throw new TarFormatError(
-        `artifact content does not match its checksum (${got}, read ${this.sum.hex()})`,
+        `artifact content does not match its checksum (${text}, read ${this.sum.hex()})`,
       )
     }
+    this.digestHex = this.sum.digest()
     this.seen = true
   }
   done(): void {
     if (!this.seen) throw new TarFormatError('artifact carries no checksum')
+  }
+  /** The entries' SHA-256, when this check took one. */
+  get digest(): string | undefined {
+    return this.digestHex
   }
 }
 
@@ -218,6 +262,8 @@ export class ArchiveSecurityError extends Error {
 interface PackArgs {
   /** The cache key, recorded in the sidecar (item 943); ingest refuses an artifact without it. */
   key?: string
+  /** Signs the artifact under `key` (`trust.ts`); none packs it unsigned. */
+  signer?: ArtifactSigner | undefined
   stdout: string
   outputs: ReadonlyMap<string, string>
   /** The producing execution's usage, when the runner reported it. */
@@ -242,6 +288,8 @@ const ON_THREAD_STATS = 32
 export interface ArtifactPlan {
   inputs: TarInput[]
   size: number
+  /** What signs the packed tar, and the key the signature binds. */
+  sign?: { key: string; signer: ArtifactSigner }
 }
 
 /**
@@ -357,12 +405,22 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     })),
     { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
   ]
-  return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
+  const sign =
+    args.signer !== undefined && args.key !== undefined
+      ? { key: args.key, signer: args.signer }
+      : undefined
+  const tail = [sumInput('0'.repeat(SUM_SIZE))]
+  if (sign !== undefined) tail.push({ name: SIG_ENTRY, size: SIG_SIZE, body: ' '.repeat(SIG_SIZE) })
+  return {
+    inputs,
+    size: tarSize([...inputs, ...tail]),
+    ...(sign !== undefined ? { sign } : {}),
+  }
 }
 
 /** The tar as a stream: each output is read from disk as it is written. */
 export function packArtifactStream(plan: ArtifactPlan): ReadableStream<Uint8Array> {
-  return streamOf(tarPack(summed(plan.inputs)))
+  return streamOf(tarPack(summed(plan)))
 }
 
 const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, body: hex })
@@ -372,9 +430,9 @@ const sumInput = (hex: string): TarInput => ({ name: SUM_ENTRY, size: SUM_SIZE, 
  * entry: `tarPack` drains one input before it asks for the next, so the
  * sum is whole when it is asked for.
  */
-async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
-  const sum = new EntrySum()
-  for (const i of inputs) {
+async function* summed(plan: ArtifactPlan): AsyncGenerator<TarInput> {
+  const sum = new EntrySum(plan.sign !== undefined)
+  for (const i of plan.inputs) {
     sum.entry(i.name)
     if (i.body instanceof Blob) {
       yield { ...i, body: sum.through(i.body.stream()) }
@@ -387,6 +445,15 @@ async function* summed(inputs: readonly TarInput[]): AsyncGenerator<TarInput> {
     }
   }
   yield sumInput(sum.hex())
+  const sig = signatureOf(plan, sum)
+  if (sig !== undefined) yield sig
+}
+
+/** The signature entry a signed plan ends with, over the sum's digest. */
+function signatureOf(plan: ArtifactPlan, sum: EntrySum): TarInput | undefined {
+  if (plan.sign === undefined) return undefined
+  const body = signatureEntry(plan.sign.signer, signedMessage(plan.sign.key, sum.digest()!))
+  return { name: SIG_ENTRY, size: SIG_SIZE, body }
 }
 
 /**
@@ -406,7 +473,7 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
   )
   const out = new Uint8Array(plan.size)
   let off = 0
-  for await (const chunk of tarPack(summed(inputs))) {
+  for await (const chunk of tarPack(summed({ ...plan, inputs }))) {
     out.set(chunk, off)
     off += chunk.byteLength
   }
@@ -416,7 +483,7 @@ export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array>
 
 /** `summed` + `tarPack` for a plan whose bodies fit in memory, synchronously. */
 function packSmall(plan: ArtifactPlan): Uint8Array {
-  const sum = new EntrySum()
+  const sum = new EntrySum(plan.sign !== undefined)
   const inputs: (TarInput & { body: Uint8Array | string })[] = []
   for (const i of plan.inputs) {
     const body =
@@ -430,6 +497,8 @@ function packSmall(plan: ArtifactPlan): Uint8Array {
     inputs.push({ ...i, body })
   }
   inputs.push({ name: SUM_ENTRY, size: SUM_SIZE, body: sum.hex() })
+  const sig = signatureOf(plan, sum)
+  if (sig !== undefined) inputs.push(sig as TarInput & { body: string })
   const out = new Uint8Array(plan.size)
   const n = tarPackInto(inputs, out)
   if (n !== plan.size) throw new TarFormatError(`packed ${n} bytes, planned ${plan.size}`)
@@ -460,6 +529,10 @@ interface ArtifactScan {
   stdout: string | null
   exec: ExecUsage | undefined
   key: string | undefined
+  /** The `.vx-sig` body, when the artifact carries one. */
+  signature: string | undefined
+  /** The entries' SHA-256, when the scan was asked for it. */
+  digest: string | undefined
 }
 
 /** A scan's result, built entry by entry in tar order: the one fold both scanners share. */
@@ -483,8 +556,10 @@ class ScanFold {
     this.seen.push({ name, size, mtimeMs })
   }
 
-  result(): ArtifactScan {
+  result(check: SumCheck): ArtifactScan {
     return {
+      signature: check.signature,
+      digest: check.digest,
       entries: this.seen.map((s) => {
         const m = this.files[s.name]
         // A foreign artifact (or one whose sidecar lost an entry) restores
@@ -506,9 +581,12 @@ class ScanFold {
  * name is unsafe — a partial reading of a poisoned artifact is the
  * outcome the traversal defense exists to prevent.
  */
-export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<ArtifactScan> {
+export async function scanArtifact(
+  tar: ReadableStream<Uint8Array>,
+  digest = false,
+): Promise<ArtifactScan> {
   const fold = new ScanFold()
-  const check = new SumCheck()
+  const check = new SumCheck(digest)
   for await (const e of tarEntries(tar)) {
     if (e.type !== '0') continue
     const body = await check.body(e.name, e.body)
@@ -523,7 +601,7 @@ export async function scanArtifact(tar: ReadableStream<Uint8Array>): Promise<Art
     fold.entry(e.name, e.size, e.mtimeMs)
   }
   check.done()
-  return fold.result()
+  return fold.result(check)
 }
 
 /**
@@ -537,8 +615,9 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   const check = new SumCheck()
   for (const e of tarEntriesSync(tar)) {
     if (e.type !== '0') continue
-    if (check.enter(e.name)) {
-      check.verify(utf8.decode(e.body()))
+    const kind = check.enter(e.name)
+    if (kind !== 'entry') {
+      check.take(kind, utf8.decode(e.body()))
       continue
     }
     if (e.name === META_ENTRY) {
@@ -554,7 +633,7 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
     fold.entry(e.name, e.size, e.mtimeMs)
   }
   check.done()
-  return fold.result()
+  return fold.result(check)
 }
 
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */

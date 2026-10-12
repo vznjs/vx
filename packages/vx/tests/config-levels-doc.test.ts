@@ -33,7 +33,7 @@ function inlineTypes(doc: string): Set<string> {
   const out = new Set<string>()
   for (const fence of doc.matchAll(/^```ts\n([\s\S]*?)^```/gm))
     for (const m of fence[1]!.matchAll(/\??: \{ ([^{}\n]+) \}/g)) {
-      const fields = [...m[1]!.matchAll(/(\w+)\?:/g)].map((f) => f[1]!)
+      const fields = [...m[1]!.matchAll(/(\w+)\??:/g)].map((f) => f[1]!)
       if (fields.length > 0) out.add(sorted(fields))
     }
   return out
@@ -49,9 +49,9 @@ const LEVELS = Object.entries(RECORD).flatMap(([side, r]) =>
 describe('docs/schema.md reprints every config level, and only levels', () => {
   it('reads interface blocks and inline types, and only those', () => {
     const doc =
-      '```ts\ninterface A {\n  x?: string // c\n  y(): void\n}\nz?: { p?: string; q?: number }\n```\n'
+      '```ts\ninterface A {\n  x?: string // c\n  y(): void\n}\nz?: { p?: string; q?: number }\nw?: { r: string[] }\n```\n'
     expect([...interfaces(doc)]).toEqual([['A', 'x,y']])
-    expect([...inlineTypes(doc)]).toEqual(['p,q'])
+    expect([...inlineTypes(doc)]).toEqual(['p,q', 'r'])
     expect(LEVELS.length).toBeGreaterThan(12)
   })
 

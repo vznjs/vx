@@ -1553,6 +1553,8 @@ interface WorkspaceConfig {
   affectedBase?: string
   /** Where remote writes land: 'trusted' (default), 'read-only', or an untrusted scope name. */
   cacheScope?: string
+  /** Ed25519 public keys a remote artifact must be signed by ('ed25519:<base64>'). */
+  cacheTrust?: { keys: readonly string[] }
   /** Graph rules checked before anything runs; each on unless set to false. */
   rules?: WorkspaceRules
   /** Which ready task starts first with no timings: 'most-work' (default), 'critical-path', 'direct-dependents', 'ready-order'. */
@@ -1634,6 +1636,19 @@ run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.
+- **`cacheTrust`** — signed artifacts. `keys` lists the Ed25519 public
+  keys (`'ed25519:<base64 of the raw 32 bytes>'`) a remote artifact must
+  be signed by. A run with `VX_CACHE_SIGNING_KEY` (the base64 32-byte
+  seed; env only, never config) signs every artifact it saves: Ed25519
+  over the cache key and the SHA-256 of the artifact's entries, carried
+  as a `.vx-sig` entry. With `keys` set, a remote artifact that is
+  unsigned, signed by an unlisted key, or signed over other bytes or
+  another key is a miss with a warning, refused before it is stored, and
+  a run without a signing key uploads nothing. A local entry is not
+  re-checked: it is this machine's save or an ingest already checked.
+  Rotate by listing the new key beside the old one, then dropping the
+  old. Unset, nothing is hashed or signed. Not folded into any cache key
+  (`docs/security.md` § Signed artifacts).
 - **`schedule`** — which ready task starts first when more are ready
   than workers, with no timings. `most-work` (the default): the one the
   most tasks wait on, at any depth. `critical-path`: the head of the

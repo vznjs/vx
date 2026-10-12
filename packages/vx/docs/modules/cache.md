@@ -34,6 +34,11 @@ and key derivation logic live here.
   transaction per run), the SQL binders, and the 30-day retention (run
   on a writing handle's close only: a reading verb's `Cache.inspect` and
   a dry-run prune delete nothing, item 1004).
+- `trust.ts` — signed artifacts (`cacheTrust`): the Ed25519 signer
+  `VX_CACHE_SIGNING_KEY` makes, the trusted keys, the signed message
+  (`vx-sig-v1\0<key>\0<sha256 of the entries>`) and `signatureRefusal`,
+  which ingest asks before the rename. `cacheTrustOf` builds a run's
+  trust; `Cache.setTrust` hands it to the local layer.
 - `schema.ts` — `createTables`: every table's DDL, the one place each is
   declared, with what each row means.
 - `cache.ts` — opening the index (`SCHEMA_VERSION` check and reset), the
@@ -330,6 +335,12 @@ export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 // The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
 export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
+// `cacheTrust.keys` and `VX_CACHE_SIGNING_KEY` → the run's trust; undefined when neither is set.
+export function cacheTrustOf(
+  keys: readonly string[] | undefined,
+  seed: string | undefined,
+  where: string,
+): CacheTrust | undefined
 ```
 
 ## Key derivation (`Cache.key`)
@@ -408,7 +419,8 @@ everything in `cache.db`.
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
-    └── .vx-sum              #   CRC-32 of every entry above (v36)
+    ├── .vx-sum              #   CRC-32 of every entry above (v36)
+    └── .vx-sig              #   `v1 <key id> <signature>`, when a signing key packed it
 ```
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution

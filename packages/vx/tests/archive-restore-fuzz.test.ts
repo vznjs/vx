@@ -36,6 +36,8 @@ const ATOMS = [
   '…',
   'outputs',
   'workspace-outputs',
+  '.vx-sum',
+  '.vx-sig',
 ]
 const TYPES = ['0', '0', '0', '1', '2', '5', '6', 'x', 'g', 'L', 'K', '7']
 

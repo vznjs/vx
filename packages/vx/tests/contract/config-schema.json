@@ -6,6 +6,7 @@
         "cacheDir",
         "cacheRetention",
         "cacheScope",
+        "cacheTrust",
         "concurrency",
         "plugins",
         "rules",
@@ -13,6 +14,7 @@
         "timeout"
       ],
       "cacheRetention": ["maxSize", "olderThan"],
+      "cacheTrust": ["keys"],
       "rules": ["exclusiveOutputs", "upfrontKeys"]
     },
     "records": [],
@@ -411,6 +413,103 @@
           "{}",
           "{\"x\":\"y\"}"
         ]
+      },
+      "cacheTrust": {
+        "ok": ["<absent>", "<seed>"],
+        "$CONFIG: `cacheTrust` must be { keys: ['ed25519:<base64 public key>', …] }": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` must list at least one 'ed25519:<base64 public key>'": ["{}"],
+        "$CONFIG: `cacheTrust` has unknown field \"x\" (allowed: keys)": ["{\"x\":\"y\"}"]
+      },
+      "cacheTrust.keys": {
+        "$CONFIG: `cacheTrust.keys` must list at least one 'ed25519:<base64 public key>'": [
+          "<absent>",
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"x\")": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"\")": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got 1)": ["[1]"],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got 3000)": [
+          "[3000]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"/x\")": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"!/x\")": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"../x\")": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"!x\")": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"!!x\")": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \".\")": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"**\")": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"A=B\")": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cacheTrust.keys` entries are 'ed25519:<base64 public key>' (got \"A*\")": [
+          "[\"A*\"]"
+        ],
+        "ok": ["[\"ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"]"]
       },
       "rules": {
         "ok": ["<absent>", "{}", "<seed>"],

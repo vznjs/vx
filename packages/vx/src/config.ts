@@ -47,6 +47,17 @@ export interface WorkspaceConfig {
    */
   cacheScope?: string
   /**
+   * Signed artifacts. `keys` lists the Ed25519 public keys
+   * (`'ed25519:<base64>'`) a remote artifact must be signed by: one that is
+   * unsigned, signed by another key, or signed over other bytes or another
+   * cache key is a miss, refused before it is stored. A run with
+   * `VX_CACHE_SIGNING_KEY` (a base64 32-byte seed; env only, never config)
+   * signs what it saves; with `keys` set and no signing key it uploads
+   * nothing, since every reader would refuse it. List the next key before
+   * dropping the old one to rotate. Never folded into a cache key.
+   */
+  cacheTrust?: { keys: readonly string[] }
+  /**
    * Which ready task starts first when there are more than workers, with no
    * timings: `most-work` (the default) the one the most work waits on at
    * any depth, `critical-path` the head of the longest chain of tasks,

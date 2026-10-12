@@ -55,6 +55,7 @@ const WORKSPACE_FIELDS = new Set([
   'cacheRetention',
   'affectedBase',
   'cacheScope',
+  'cacheTrust',
   'rules',
   'schedule',
   'plugins',
@@ -67,6 +68,30 @@ const SCHEDULES = {
   'direct-dependents': true,
   'ready-order': true,
 } satisfies Record<Schedule, true>
+
+const TRUST_FIELDS = new Set(['keys'])
+const TRUST_KEY = /^ed25519:[A-Za-z0-9+/]{43}=$/
+
+function validateTrust(trust: unknown, configPath: string): void {
+  const where = `${configPath}: \`cacheTrust\``
+  if (trust === null || typeof trust !== 'object' || Array.isArray(trust)) {
+    throw new UserError(`${where} must be { keys: ['ed25519:<base64 public key>', …] }`)
+  }
+  assertKnownFields(trust as Record<string, unknown>, TRUST_FIELDS, where)
+  const keys = (trust as { keys?: unknown }).keys
+  if (!Array.isArray(keys) || keys.length === 0) {
+    throw new UserError(
+      `${configPath}: \`cacheTrust.keys\` must list at least one 'ed25519:<base64 public key>'`,
+    )
+  }
+  for (const k of keys) {
+    if (typeof k !== 'string' || !TRUST_KEY.test(k)) {
+      throw new UserError(
+        `${configPath}: \`cacheTrust.keys\` entries are 'ed25519:<base64 public key>' (got ${JSON.stringify(k)?.slice(0, 60)})`,
+      )
+    }
+  }
+}
 
 const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
 
@@ -197,6 +222,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   if (config.cacheScope !== undefined && !isCacheScope(config.cacheScope)) {
     throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
   }
+  if (config.cacheTrust !== undefined) validateTrust(config.cacheTrust, configPath)
   if (config.rules !== undefined) validateRules(config.rules, configPath)
   if (config.schedule !== undefined && !Object.hasOwn(SCHEDULES, config.schedule)) {
     throw new UserError(

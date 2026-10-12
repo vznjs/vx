@@ -16,6 +16,7 @@ import {
   type CachePolicy,
   FULL_CACHE_POLICY,
   scopeCachePolicy,
+  cacheTrustOf,
   GitFilesCache,
   LayeredCache,
   applyGitEnumeration,
@@ -290,10 +291,21 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // a CI job that knows its trust level says so without editing config.
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
-  const policy: CachePolicy = scopeCachePolicy(
+  const scoped: CachePolicy = scopeCachePolicy(
     options.cache ?? FULL_CACHE_POLICY,
     envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
   )
+  const trust = cacheTrustOf(
+    workspaceConfig?.cacheTrust?.keys,
+    process.env['VX_CACHE_SIGNING_KEY'],
+    'vx.workspace',
+  )
+  // A run that cannot sign uploads nothing where readers require a
+  // signature: every one of them would refuse it.
+  const policy: CachePolicy =
+    trust !== undefined && trust.keys.size > 0 && trust.signer === undefined
+      ? { ...scoped, remoteWrite: false }
+      : scoped
   const localCache = new Cache(
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },
@@ -303,6 +315,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     await storeRoot,
   )
   localCache.assertWritable()
+  if (trust !== undefined) localCache.setTrust(trust)
   // Two digests from one read: the config-evaluation cache keys on every
   // file (a config may import a dependency), the task keys on the files no
   // plugin claims (`VxPlugin.fingerprint`).

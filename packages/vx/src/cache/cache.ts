@@ -110,6 +110,7 @@ import { FileHashStore } from './file-hashes.js'
 import { OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
+import { type CacheTrust, signatureRefusal } from './trust.js'
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -714,6 +715,9 @@ export class Cache implements CacheLayer {
    * so the run can report them without a method on the layer seam.
    */
   readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
+
+  /** The workspace's `cacheTrust` (`trust.ts`): what signs a save, and the keys an ingest must be signed by. */
+  private trust: CacheTrust | undefined
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
@@ -2088,6 +2092,11 @@ export class Cache implements CacheLayer {
    * removes its own. A body of at most `INLINE_MAX` bytes — by its size,
    * or counted as it streams — is read to memory and stored inline.
    */
+  /** Sign what this cache packs, and refuse a remote artifact none of `trust.keys` signed. */
+  setTrust(trust: CacheTrust): void {
+    this.trust = trust
+  }
+
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     const tmpPath = this.tempPath(hash)
     // The compressed bytes are bounded too, before the decode's ceiling ever
@@ -2147,7 +2156,9 @@ export class Cache implements CacheLayer {
       await unlink(tmpPath).catch(() => undefined)
       throw err
     }
-    await this.guard(() => this.writeArtifactAndIndex(hash, small ?? { tmpPath }, meta))
+    await this.guard(() =>
+      this.writeArtifactAndIndex(hash, small ?? { tmpPath }, meta, undefined, true),
+    )
   }
 
   /** Archive name → absolute source path for every declared output. */
@@ -2207,6 +2218,7 @@ export class Cache implements CacheLayer {
   private async planWithin(args: Parameters<Cache['packArtifact']>[0]): Promise<ArtifactPlan> {
     const plan = await planArtifact({
       key: args.hash,
+      signer: this.trust?.signer,
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
       exec: usageOfEntry(args.entry),
@@ -2280,6 +2292,8 @@ export class Cache implements CacheLayer {
      * scanned as is rather than decoded back out of the bytes just encoded.
      */
     tar?: Uint8Array,
+    /** The bytes came from a remote (`ingest`): a trusted key must have signed them. */
+    remote = false,
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us a temp of network bytes; a truncated/garbage body that went live first
@@ -2318,6 +2332,7 @@ export class Cache implements CacheLayer {
       // `save` or `ingest` already streamed the artifact into its temp.
       tmpPath = compressed.tmpPath
     }
+    const trustKeys = remote && this.trust?.keys.size ? this.trust.keys : undefined
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
       const endScan = span('save: scan')
@@ -2332,7 +2347,10 @@ export class Cache implements CacheLayer {
           compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
             ? compressed
             : Bun.file(tmpPath!)
-        scanned = await scanArtifact(await decodedTar(source, hash, this.artifactCeiling))
+        scanned = await scanArtifact(
+          await decodedTar(source, hash, this.artifactCeiling),
+          trustKeys !== undefined,
+        )
       }
       endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
@@ -2349,6 +2367,11 @@ export class Cache implements CacheLayer {
         )
       }
       assertArtifactNames(hash, scanned.entries, meta.outputs)
+      if (trustKeys !== undefined) {
+        // Before the rename: an artifact no trusted key signed is never seen.
+        const refusal = signatureRefusal(trustKeys, hash, scanned.digest, scanned.signature)
+        if (refusal !== null) throw new CorruptArtifactError(hash, refusal)
+      }
     } catch (err) {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err

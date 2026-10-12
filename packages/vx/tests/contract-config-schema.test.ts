@@ -59,6 +59,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       cacheRetention: true,
       affectedBase: true,
       cacheScope: true,
+      cacheTrust: true,
       rules: true,
       schedule: true,
       plugins: true,
@@ -67,6 +68,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       olderThan: true,
       maxSize: true,
     }),
+    cacheTrust: keys<NonNullable<WorkspaceConfig['cacheTrust']>>({ keys: true }),
     rules: keys<NonNullable<WorkspaceConfig['rules']>>({
       exclusiveOutputs: true,
       upfrontKeys: true,
@@ -134,6 +136,7 @@ function workspaceSeed(): Record<string, unknown> {
     cacheRetention: { olderThan: '30d', maxSize: '10G' },
     affectedBase: 'origin/main',
     cacheScope: 'pr-1',
+    cacheTrust: { keys: [`ed25519:${'A'.repeat(43)}=`] },
     rules: { exclusiveOutputs: true, upfrontKeys: true },
     schedule: 'critical-path',
     plugins: [],

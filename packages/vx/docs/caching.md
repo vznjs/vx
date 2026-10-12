@@ -1223,7 +1223,8 @@ root) and it holds everything, shared with no other workspace:
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
     │                                       packed under (v35), the miss's CPU and RSS
-    └── .vx-sum                             CRC-32 of every entry above (v36)
+    ├── .vx-sum                             CRC-32 of every entry above (v36)
+    └── .vx-sig                             Ed25519 signature, when a signing key packed it
 ```
 
 `failures/` sits outside `cache.db` so the index layout, and every
@@ -1311,6 +1312,22 @@ stores nothing. It catches damage in transit or at rest, not a store that
 forges artifacts: nothing a key carries can tell those from honest ones.
 Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
 1,000 small files 16.2 → 18.9 ms on tmpfs, min of 15.
+
+A store that forges artifacts is what `cacheTrust` answers. A run with
+`VX_CACHE_SIGNING_KEY` adds one entry after the sum, `.vx-sig`:
+`v1 <key id> <base64 signature>`, the key id being the first 16 hex
+digits of the public key's SHA-256. The signature is Ed25519 over
+`vx-sig-v1`, NUL, the cache key, NUL, and the SHA-256 of the same bytes
+the sum walks, taken in the same pass. A workspace that lists
+`cacheTrust.keys` refuses a remote artifact at ingest, before the
+rename, unless one listed key signed exactly that key and those entries:
+unsigned, an unlisted key, other bytes, or a valid signature carried to
+another key are each a corrupt artifact, so a miss. Nothing after the
+signature is allowed. Without `cacheTrust` and the signing key, nothing
+more is hashed. An older vx refuses a signed artifact (an entry after the
+sum), which is a miss, never a wrong hit. Cost, 1,000 one-file saves
+(`vx-bench/save-bench.ts`, min of 15, interleaved): 200 ms on main, 204
+off, 255 signing; the Ed25519 signature is most of the 50 µs a save adds.
 
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
