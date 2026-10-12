@@ -2084,6 +2084,11 @@ export class Cache implements CacheLayer {
     return { body: Bun.file(pinned), release: () => unlink(pinned).catch(() => undefined) }
   }
 
+  /** Sign what this cache packs, and refuse a remote artifact none of `trust.keys` signed. */
+  setTrust(trust: CacheTrust): void {
+    this.trust = trust
+  }
+
   /**
    * The remote body goes to the temp by `Bun.write`, which streams a
    * `Response` and copies a file `Blob` without collecting either, so a
@@ -2092,11 +2097,6 @@ export class Cache implements CacheLayer {
    * removes its own. A body of at most `INLINE_MAX` bytes — by its size,
    * or counted as it streams — is read to memory and stored inline.
    */
-  /** Sign what this cache packs, and refuse a remote artifact none of `trust.keys` signed. */
-  setTrust(trust: CacheTrust): void {
-    this.trust = trust
-  }
-
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     const tmpPath = this.tempPath(hash)
     // The compressed bytes are bounded too, before the decode's ceiling ever

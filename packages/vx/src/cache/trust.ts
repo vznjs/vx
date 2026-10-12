@@ -53,7 +53,7 @@ function keyIdOf(publicRaw: Uint8Array): string {
 }
 
 /** `cacheTrust.keys` entry → its id and key; the error names the entry. */
-export function parseTrustKey(entry: string, where: string): [string, KeyObject] {
+function parseTrustKey(entry: string, where: string): [string, KeyObject] {
   const m = TRUST_KEY.exec(entry)
   if (m === null) {
     throw new UserError(

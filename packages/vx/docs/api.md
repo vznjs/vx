@@ -162,6 +162,7 @@ export class Cache implements CacheLayer {
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
   pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
+  setTrust(trust: CacheTrust): void
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   dbHandle(): Database
   recordRun(run: RunRecord): void
@@ -2759,6 +2760,7 @@ export interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
   cacheScope?: string
+  cacheTrust?: { keys: readonly string[] }
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   rules?: WorkspaceRules
   plugins?: readonly (Plugin | undefined | null | false)[]

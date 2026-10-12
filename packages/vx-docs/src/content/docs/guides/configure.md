@@ -249,6 +249,7 @@ export default defineWorkspace({
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 | `cacheScope` | where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
+| `cacheTrust` | `{ keys: ['ed25519:…'] }`: a remote artifact is taken only when one of these keys signed it; `VX_CACHE_SIGNING_KEY` signs a run's saves ([Security](../../security/#signed-artifacts)) |
 | `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/schedule-strategy/)) |
 

@@ -40,6 +40,7 @@ src/cache/policy.ts
 src/cache/run-history.ts
 src/cache/schema.ts
 src/cache/tar-stream.ts
+src/cache/trust.ts
 src/cache/zstd.ts
 src/cli/cache.ts
 src/cli/completions.ts
