@@ -302,6 +302,7 @@ export interface BuildGraphOptions {
 export function undeclaredDepsError(taskId: string, name: string): UserError {
   return new UserError(
     `Task ${taskId} depends on ^${name} but no project in the workspace declares ${name}`,
+    'VX_E_DEPENDS_ON',
   )
 }
 
@@ -492,7 +493,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       spec = parseDependencySpec(raw)
     } catch (err) {
       if (err instanceof DependencySpecError) {
-        throw new UserError(`Task ${id}: ${err.message}`)
+        throw new UserError(`Task ${id}: ${err.message}`, 'VX_E_DEPENDS_ON')
       }
       throw err
     }
@@ -503,14 +504,21 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
     // they name a namespace of tasks to add (Nx 19.5 parity).
     if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
-      throw new UserError(`Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`)
+      throw new UserError(
+        `Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`,
+        'VX_E_DEPENDS_ON',
+      )
     }
     if (spec.negated) {
-      throw new UserError(`Task ${id}: dependsOn does not accept negation (got "${raw}")`)
+      throw new UserError(
+        `Task ${id}: dependsOn does not accept negation (got "${raw}")`,
+        'VX_E_DEPENDS_ON',
+      )
     }
     if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
       throw new UserError(
         `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
+        'VX_E_DEPENDS_ON',
       )
     }
     if (spec.kind === 'self') {
@@ -530,6 +538,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         if (!visit(frame, projectName, spec.task, false)) {
           throw new UserError(
             `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
+            'VX_E_DEPENDS_ON',
           )
         }
         goPast(frame, projectName, spec.task, new Set([projectName]))
@@ -594,9 +603,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         if (spec.project === '//')
           throw new UserError(
             `Task ${id} depends on //#${spec.task}, Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task`,
+            'VX_E_DEPENDS_ON',
           )
         throw new UserError(
           `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
+          'VX_E_DEPENDS_ON',
         )
       }
       goPast(frame, spec.project, spec.task, new Set([projectName, spec.project]))
@@ -1109,7 +1120,7 @@ function collideAcross(
         `cache.outputs.files — vx cleans a task's declared outputs before it runs and before a ` +
         `cache-hit restore, so whichever of these runs second DELETES the other's output`
       if (exclusive && (reaches(files.id, ws.id) || reaches(ws.id, files.id))) {
-        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
+        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`, 'VX_E_OUTPUT_OVERLAP')
       }
       if (reaches(files.id, ws.id)) {
         ;(files.addsToOutputsOf ??= []).push(ws.id)
@@ -1132,11 +1143,13 @@ function collideAcross(
           `${head}. ${ws.id} depends on ${files.id}, but adding to its output needs every ` +
             `cache.outputs.workspaceFiles entry inside ${rel === '' ? 'the workspace root' : rel}, ` +
             `and ${JSON.stringify(outside)} is not. Give each task its own output path.`,
+          'VX_E_OUTPUT_OVERLAP',
         )
       }
       throw new UserError(
         `${head} and the run still reports success. Give each task its own output path` +
           (exclusive ? '.' : ', or make one depend on the other.'),
+        'VX_E_OUTPUT_OVERLAP',
       )
     }
   }
@@ -1373,7 +1386,8 @@ function collide(
       // `rules.exclusiveOutputs` is off (X-53). Without an edge the two run
       // in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
-      if (up !== undefined && exclusive) throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`)
+      if (up !== undefined && exclusive)
+        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`, 'VX_E_OUTPUT_OVERLAP')
       if (up !== undefined && down !== undefined) {
         const downGlobs = splitNegations(
           (field === 'files'
@@ -1386,6 +1400,7 @@ function collide(
       }
       throw new UserError(
         `${head} and the run still reports success. Give each task its own output path.`,
+        'VX_E_OUTPUT_OVERLAP',
       )
     }
   }
@@ -1440,6 +1455,7 @@ function refuseSelfClean(node: TaskNode): void {
           `its own output — vx removes a task's outputs before it runs, so the task would ` +
           `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
           `no outputs.`,
+        'VX_E_INPUT_IS_OUTPUT',
       )
     }
   }
@@ -1663,6 +1679,7 @@ function readsOutputs(
           `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
           `cache.inputs.${field}, or set rules: { upfrontKeys: false } in vx.workspace.ts to ` +
           `let it wait for its producer.`,
+        'VX_E_INPUT_IS_OUTPUT',
       )
     }
   }
