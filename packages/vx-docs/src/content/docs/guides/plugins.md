@@ -413,6 +413,8 @@ export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlu
 pair with `openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`.
 A pull request's job, or anyone who can write the bucket, can still write
 bytes; no reader takes them.
+`has()` passes through unchecked, so `vx run --dry` can predict a hit
+that the real run turns into a miss.
 
 ## What core refuses
 
