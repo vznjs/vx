@@ -15,7 +15,15 @@
     "nx",
     "bun",
     "workspaces",
-    "ci"
+    "ci",
+    "task-orchestration",
+    "turborepo-alternative",
+    "nx-alternative",
+    "remote-cache",
+    "sandbox",
+    "incremental-build",
+    "mcp",
+    "pnpm"
   ],
   "type": "module",
   "main": "./src/index.ts",

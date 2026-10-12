@@ -8,6 +8,7 @@
     "vx-plugin",
     "monorepo",
     "turborepo",
+    "turbo",
     "nx",
     "migration",
     "remote-cache"
