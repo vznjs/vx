@@ -197,7 +197,7 @@ export type FilterResolution =
       /** What the other includes selected (`RunOptions.selectedOutright`). */
       outright?: string[]
     }
-  | { error: string }
+  | Refusal
   | { empty: string }
 
 /**
@@ -239,16 +239,23 @@ export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<st
   return out
 }
 
+/** A refusal a resolver returns; `code` is the thrown one's own, when it has one. */
+type Refusal = { error: string; code?: string }
+
+function refusalOf(err: unknown): Refusal {
+  if (!(err instanceof Error)) return { error: String(err) }
+  return isUserError(err) && err.code !== 'VX_E_REFUSED'
+    ? { error: err.message, code: err.code }
+    : { error: err.message }
+}
+
 /**
  * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
  * projects and their dependents. An empty base is the workspace's
  * `affectedBase` (or a plugin's `config` stage, from nx.json's
  * `defaultBase` or `TURBO_SCM_BASE`), then the guess.
  */
-export async function affectedFilterFor(
-  cwd: string,
-  affected: string,
-): Promise<string | { error: string }> {
+export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   let base = affected
   if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
@@ -257,7 +264,7 @@ export async function affectedFilterFor(
       base = await defaultAffectedBase(root)
     } catch (err) {
       if (!isUserError(err)) throw err
-      return { error: err.message }
+      return refusalOf(err)
     }
   }
   return `...[${base}]`
@@ -276,7 +283,7 @@ export async function resolveFilters(
   try {
     parsed = raw.map((r) => parseFilter(r, root))
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
+    return refusalOf(err)
   }
   // `sinceViaDeps` (`e2e...[main]`) walks the changed projects' dependents.
   const walksGraph = parsed.some(
@@ -299,7 +306,7 @@ export async function resolveFilters(
     try {
       edges = taskEdgesFrom(await stagedOnce())
     } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) }
+      return refusalOf(err)
     }
   }
   // A tag lives in the config, so a `tag:` selector needs the staged load
@@ -309,7 +316,7 @@ export async function resolveFilters(
     try {
       tags = new Map([...(await stagedOnce()).values()].map((p) => [p.name, p.config.tags ?? []]))
     } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) }
+      return refusalOf(err)
     }
   }
   const graph = buildPackageGraph(projects, edges)
@@ -353,8 +360,7 @@ export async function resolveFilters(
       }
       affectedByFilter.set(f, names)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { error: msg }
+      return refusalOf(err)
     }
   }
 

@@ -479,7 +479,9 @@ function onCI(v: string | undefined): boolean {
 async function scopeFilters(
   parsed: RunArgs,
   cwd: string,
-): Promise<{ filterStrings: string[]; affectedFilter?: string } | { error: string }> {
+): Promise<
+  { filterStrings: string[]; affectedFilter?: string } | { error: string; code?: string }
+> {
   // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
   // changed projects AND their dependents — what a CI gate must run, what
   // the flag's name says, what the guides promised while the sugar was the
@@ -523,7 +525,7 @@ export async function resolveRunOptions(
   verb: 'run' | 'watch' = 'run',
   /** Given, it learns the ref `--affected` diffed from (`--dry=json` states it). */
   scopeOut?: { affectedBase?: string },
-): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
+): Promise<RunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
     if (idx >= 0) {
@@ -566,7 +568,7 @@ export async function resolveRunOptions(
           affectedFilter,
         )
       : undefined
-  if (resolved !== undefined && 'error' in resolved) return { error: resolved.error }
+  if (resolved !== undefined && 'error' in resolved) return resolved
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (resolved !== undefined) {
@@ -696,11 +698,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     // `--filter` / `--affected` scope the menu, as they scope a bare task:
     // the menu listed every project and the anchored pick ran outside it.
     const scope = await scopeFilters(parsed, cwd)
-    if ('error' in scope) return refuse('run', args, scope.error, 'VX_E_USAGE')
+    if ('error' in scope) return refuse('run', args, scope.error, scope.code ?? 'VX_E_USAGE')
     let only: ReadonlySet<string> | undefined
     if (scope.filterStrings.length > 0) {
       const selected = await resolveFilters(cwd, scope.filterStrings, load, scope.affectedFilter)
-      if ('error' in selected) return refuse('run', args, selected.error, 'VX_E_USAGE')
+      if ('error' in selected)
+        return refuse('run', args, selected.error, selected.code ?? 'VX_E_USAGE')
       if ('empty' in selected) {
         process.stderr.write(`vx run: ${selected.empty}\n`)
         return 0
@@ -716,7 +719,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 
   const scopeOut: { affectedBase?: string } = {}
   const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
-  if ('error' in resolved) return refuse('run', args, resolved.error, 'VX_E_USAGE')
+  if ('error' in resolved) return refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   if ('nothingSelected' in resolved) {
     process.stderr.write(`vx run: ${resolved.nothingSelected}\n`)
     return 0

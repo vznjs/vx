@@ -173,6 +173,7 @@ export async function affectedChanges(
   if (since.length === 0 || since.startsWith('-')) {
     throw new UserError(
       `git ref "${since}" is not a ref: a base cannot be empty or start with "-".`,
+      'VX_E_AFFECTED_BASE',
     )
   }
   // `A..B` / `A...B` reached `rev-parse --verify`, which refuses a range, and
@@ -183,6 +184,7 @@ export async function affectedChanges(
     throw new UserError(
       `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
         `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+      'VX_E_AFFECTED_BASE',
     )
   }
   // `^main` is rev-list's exclusion, not a ref: merge-base refused it, it
@@ -191,6 +193,7 @@ export async function affectedChanges(
   if (since.startsWith('^')) {
     throw new UserError(
       `git ref "${since}" is an exclusion, not a ref: pass the base alone ("${since.replace(/^\^+/, '') || 'HEAD'}").`,
+      'VX_E_AFFECTED_BASE',
     )
   }
   // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
@@ -556,12 +559,13 @@ async function gitBlobsAt(
     proc.exited,
   ])
   if (exit !== 0) {
-    throw new UserError(`git cat-file --batch failed (exit ${exit}): ${stderr.trim()}`)
+    throw new UserError(`git cat-file --batch failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
   }
   let at = 0
   for (const file of batched) {
     const eol = out.indexOf(0x0a, at)
-    if (eol === -1) throw new UserError(`git cat-file --batch ended before ${ref}:./${file}`)
+    if (eol === -1)
+      throw new UserError(`git cat-file --batch ended before ${ref}:./${file}`, 'VX_E_GIT')
     const header = new TextDecoder().decode(out.subarray(at, eol))
     at = eol + 1
     // `<oid> <type> <size>`, or `<spec> missing` / `<spec> ambiguous`.
@@ -636,7 +640,10 @@ async function gitBytesAt(
   // "exists on disk but not in <ref>" and "path does not exist in <ref>"
   // are the file being absent at the ref; anything else is git failing.
   if (/does not exist in|exists on disk, but not in/.test(stderr)) return null
-  throw new UserError(`git show ${ref}:./${file} failed (exit ${exit}): ${stderr.trim()}`)
+  throw new UserError(
+    `git show ${ref}:./${file} failed (exit ${exit}): ${stderr.trim()}`,
+    'VX_E_GIT',
+  )
 }
 
 async function bytesOrNull(file: string): Promise<Uint8Array | null> {
@@ -654,7 +661,7 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
   if (exit !== 0) {
-    throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`)
+    throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
   }
   return stdout.split('\0').filter((s) => s.length > 0)
 }
@@ -724,6 +731,7 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
       '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
         'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
         'base: --affected=origin/main',
+      'VX_E_AFFECTED_BASE',
     )
   }
   return 'HEAD~1'
@@ -742,6 +750,7 @@ function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
   if (revParse(workspaceRoot, 'HEAD') === undefined) {
     return new UserError(
       '--affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+      'VX_E_AFFECTED_BASE',
     )
   }
   return undefined
@@ -832,6 +841,7 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
     throw new UserError(
       `git ref "${ref}" names what is at ${sub[2]}, not a commit: vx diffs the whole ` +
         `workspace, so pass the commit alone ("${sub[1] || 'HEAD'}").`,
+      'VX_E_AFFECTED_BASE',
     )
   }
   return ref
@@ -857,6 +867,7 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
     throw new UserError(
       `git rev-parse failed (exit ${proc.exitCode}) in ${workspaceRoot}` +
         (stderr.length > 0 ? `: ${stderr}` : ''),
+      'VX_E_GIT',
     )
   }
   // A shallow clone (CI's checkout fetches one commit by default) has no
@@ -868,6 +879,7 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       (isShallow
         ? ' This clone is shallow: fetch the history the base needs (`git fetch --unshallow`, or `fetch-depth: 0` on actions/checkout).'
         : ''),
+    'VX_E_AFFECTED_BASE',
   )
 }
 

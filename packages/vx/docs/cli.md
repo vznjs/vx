@@ -2390,6 +2390,21 @@ cache) or grant the write, then re-run.
 Out of file descriptors. Raise the limit (`ulimit -n 4096`), or run fewer
 tasks at once (`--concurrency`), then re-run.
 
+#### `VX_E_AFFECTED_BASE`
+
+`--affected` (or `--affected=<ref>`) has no base to diff against: the
+ref does not resolve, is a range (`A..B`) or an exclusion (`^A`), names
+a path inside a commit, or the repository has no history to compare
+with. Pass a branch or commit you have locally, alone:
+`--affected=origin/main`. On CI, fetch the history the base needs
+(`fetch-depth: 0` on actions/checkout, or `git fetch --unshallow`).
+
+#### `VX_E_GIT`
+
+A git command vx runs to read the diff failed; the message carries
+git's exit and its own words. Run that command in the workspace to see
+why (a broken index, a missing object in a partial clone).
+
 #### `VX_E_INTERNAL`
 
 A defect in vx; stderr carries the stack. Report it with that stack at
