@@ -78,12 +78,14 @@ describe('a refusal under --format json', () => {
       cycle: await refusal(['run', 'x', '--filter', 'loop', '--format', 'json']),
       config: await refusal(['run', 'b', '--all', '--dry=json'], broken),
       noWorkspace: await refusal(['run', 'build', '--format', 'json'], bare),
+      affectedBase: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
     }).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
       cycle: 'VX_E_CYCLE',
       config: 'VX_E_CONFIG',
       noWorkspace: 'VX_E_NO_WORKSPACE',
+      affectedBase: 'VX_E_AFFECTED_BASE',
     })
   })
 

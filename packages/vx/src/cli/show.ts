@@ -145,12 +145,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     let affected: string | undefined
     if (parsed.affected !== undefined) {
       const f = await affectedFilterFor(process.cwd(), parsed.affected)
-      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, 'VX_E_USAGE')
+      if (typeof f === 'object') throw new UserError(`vx show: ${f.error}`, f.code ?? 'VX_E_USAGE')
       affected = f
       raw.unshift(f)
     }
     const r = await resolveFilters(process.cwd(), raw, { noCreate: true }, affected)
-    if ('error' in r) throw new UserError(`vx show: ${r.error}`, 'VX_E_USAGE')
+    if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
     selected = new Set('empty' in r ? [] : r.names)
     if ('names' in r && r.affected !== undefined)
