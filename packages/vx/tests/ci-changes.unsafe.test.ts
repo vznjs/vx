@@ -122,7 +122,7 @@ describe('the changes job', () => {
         write(root, 'CLAUDE.md', 'x\n')
         write(root, '.claude/skills/x/SKILL.md', 'x\n')
       }),
-    ).toBe('packages=false\ndarwin=true\n')
+    ).toBe('packages=false\ndarwin=false\n')
   })
 
   it('skips the macOS job for a diff confined to the site, the bench and prose', () => {
@@ -139,25 +139,22 @@ describe('the changes job', () => {
     ).toBe('packages=false\ndarwin=false\n')
   })
 
-  // Core and the plugins are where macOS diverges; one such path beside a
-  // site edit runs the job.
+  // The runtime, dependencies, CI and the exec and util layers are where
+  // macOS diverges; one such path beside a site edit runs the job.
   it.each([
-    'packages/vx/src/a.ts',
-    'packages/vx/tests/x.test.ts',
-    'packages/vx/docs/a.md',
-    'packages/vx/README.md',
-    'packages/vx-otel/tests/x.test.ts',
-    'packages/vx-plugin-examples/plugins/x.ts',
+    'packages/vx/src/exec/a.ts',
+    'packages/vx/src/util/a.ts',
+    'packages/vx/src/bin.ts',
+    'packages/vx/npm-launcher.cjs',
+    'packages/vx/scripts/x.ts',
     'packages/vx-docs/vx.config.ts',
     'packages/vx-docs/package.json',
     'packages/vx-bench/vx.config.ts',
     'packages/vx-bench/package.json',
-    'LICENSE',
     'bun.lock',
     'package.json',
     'vx.workspace.ts',
     '.github/workflows/ci.yml',
-    'examples/basic/README.md',
     'scripts/x.ts',
   ])('runs the macOS job for %s', (file) => {
     expect(
@@ -166,6 +163,38 @@ describe('the changes job', () => {
         write(root, file, 'changed\n')
       }),
     ).toMatch(/^darwin=true$/m)
+  })
+
+  // Anywhere else, a line that names a platform trait runs the job, added
+  // or removed; logic and prose that name none do not.
+  it.each([
+    ['packages/vx/src/a.ts', 'if (process.platform === "darwin") x()\n', true],
+    ['packages/vx/src/cache/a.ts', 'const st = lstatSync(p)\n', true],
+    ['packages/vx/tests/x.test.ts', 'const real = realpathSync(tmpdir())\n', true],
+    ['packages/vx-otel/src/a.ts', 'child.kill("SIGTERM")\n', true],
+    ['packages/vx/src/graph/a.ts', 'export const order = topo(nodes)\n', false],
+    ['packages/vx/tests/x.test.ts', 'expect(a).toBe(b)\n', false],
+    ['packages/vx/docs/a.md', 'changed\n', false],
+    ['packages/vx/README.md', 'changed\n', false],
+    ['LICENSE', 'changed\n', false],
+    ['examples/basic/README.md', 'changed\n', false],
+  ] as const)('%s with %j runs the macOS job: %p', (file, text, runs) => {
+    expect(
+      outputs((root) => {
+        write(root, 'packages/vx-docs/b.md', 'x\n')
+        write(root, file, text)
+      }),
+    ).toMatch(new RegExp(`^darwin=${runs}$`, 'm'))
+  })
+
+  it('sees a platform line a diff removes', () => {
+    const root = mergeRef(() => {})
+    write(root, 'packages/vx/src/cache/b.ts', 'const st = lstatSync(p)\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'base has it')
+    git(root, 'rm', '-q', 'packages/vx/src/cache/b.ts')
+    git(root, 'commit', '-q', '-m', 'removed')
+    expect(run(root).out).toMatch(/^darwin=true$/m)
   })
 
   // One path the plugin suites can reach turns the job on, whatever else
@@ -201,7 +230,7 @@ describe('the changes job', () => {
   it('sees the path a move leaves, not only the one it lands on', () => {
     expect(
       outputs((root) => git(root, 'mv', 'packages/vx/src/a.ts', 'packages/vx/docs/a.ts')),
-    ).toBe('packages=true\ndarwin=true\n')
+    ).toMatch(/^packages=true$/m)
   })
 
   it('runs everything when the merge changes nothing', () => {
