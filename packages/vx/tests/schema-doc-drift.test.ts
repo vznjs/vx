@@ -287,13 +287,45 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] } } } } }),
   ],
   [
-    "cache.inputStability must be 'strict', 'content', 'fail' or false",
+    'cache.inputStability must be an object',
     () =>
       validated({
         tasks: {
           b: {
             ...ok,
-            cache: { inputs: { files: [] }, outputs: { files: [] }, inputStability: 'bytes' },
+            cache: { inputs: { files: [] }, outputs: { files: [] }, inputStability: 'mutable' },
+          },
+        },
+      }),
+  ],
+  [
+    "cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: [] },
+              outputs: { files: [] },
+              inputStability: { strategy: 'content' },
+            },
+          },
+        },
+      }),
+  ],
+  [
+    "cache.inputStability.severity must be 'warn' or 'error'",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: {
+              inputs: { files: [] },
+              outputs: { files: [] },
+              inputStability: { severity: 'fail' },
+            },
           },
         },
       }),

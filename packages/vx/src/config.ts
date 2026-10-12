@@ -490,17 +490,27 @@ export interface CacheConfig {
   inputs: CacheInputs
   /** What this task produces. Captured for restore on a cache hit. */
   outputs: CacheOutputs
+  /** What a write to an input while the command runs means. */
+  inputStability?: InputStability
+}
+
+export interface InputStability {
   /**
-   * What a write to an input while the command runs means. `'strict'`
-   * (the default): the entry is not saved, whatever the file holds after,
-   * since an edit undone mid-run cannot be told from no edit. `'content'`:
-   * a file rewritten to the bytes the key folded counts as unchanged, for
-   * a task that rewrites its own input identically (tsdown's
-   * `package.json`). `'fail'`: the task fails, which stops the run.
-   * `false`: no check. `VX_INPUT_STABILITY` sets the default for every
-   * task that does not say.
+   * `'immutable'` (the default): any write to an input during the command
+   * withholds the entry, whatever the file holds after, since an edit
+   * undone mid-run cannot be told from no edit. `'mutable'`: a file
+   * rewritten to the bytes the key folded counts as unchanged, for a task
+   * that rewrites its own input identically (tsdown's `package.json`).
+   * `'unchecked'`: no check. `VX_INPUT_STABILITY` sets the default.
    */
-  inputStability?: 'strict' | 'content' | 'fail' | false
+  strategy?: 'immutable' | 'mutable' | 'unchecked'
+  /**
+   * What a withheld entry does to the run. `'warn'` (the default): the
+   * result stands, vx says why, and the run goes on. `'error'`: the task
+   * fails, so the run fails. `VX_INPUT_STABILITY_SEVERITY` sets the
+   * default.
+   */
+  severity?: 'warn' | 'error'
 }
 
 export interface CacheOutputs {

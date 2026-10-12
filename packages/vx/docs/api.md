@@ -186,7 +186,7 @@ type · `src/config.ts`
 export interface CacheConfig {
   inputs: CacheInputs
   outputs: CacheOutputs
-  inputStability?: 'strict' | 'content' | 'fail' | false
+  inputStability?: InputStability
 }
 ```
 
@@ -857,6 +857,17 @@ export interface InfoFacts {
   flakyTasks: FlakyTask[]
   lockfile: boolean
   sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
+}
+```
+
+## `InputStability`
+
+type · `src/config.ts`
+
+```ts
+export interface InputStability {
+  strategy?: 'immutable' | 'mutable' | 'unchecked'
+  severity?: 'warn' | 'error'
 }
 ```
 

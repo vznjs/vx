@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
+import type { ExecConfig, TaskConfig, CacheConfig, InputStability } from '../config.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -339,15 +339,18 @@ async function restoreOrMiss(
 }
 
 /**
- * What a write to an input during the command means: the task's
- * `cache.inputStability`, else `VX_INPUT_STABILITY`, else `'strict'`, so
- * by default any such write withholds the save, on CI too, since a
- * concurrent task can change an input and put it back (owner, 2026-10-12).
+ * What a write to an input during the command means: each field from the
+ * task's `cache.inputStability`, else its env var, else `'immutable'` and
+ * `'warn'`, so by default any such write withholds the save, on CI too,
+ * since a concurrent task can change an input and put it back (owner,
+ * 2026-10-12).
  */
-function inputStabilityOf(
-  cache: CacheConfig | undefined,
-): NonNullable<CacheConfig['inputStability']> {
-  return cache?.inputStability ?? inputStabilityEnv() ?? 'strict'
+function inputStabilityOf(cache: CacheConfig | undefined): Required<InputStability> {
+  const env = inputStabilityEnv()
+  return {
+    strategy: cache?.inputStability?.strategy ?? env.strategy ?? 'immutable',
+    severity: cache?.inputStability?.severity ?? env.severity ?? 'warn',
+  }
 }
 
 /**
@@ -1579,7 +1582,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         described!.facts,
         cache,
         described!.describedAt,
-        stability === 'content',
+        stability.strategy === 'mutable',
       )) ?? described!.added()
     )
   }
@@ -1600,10 +1603,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       unkeyed = true
       return false
     }
-    // `false` skips the check of the command's own window; a key the
+    // `'unchecked'` skips the check of the command's own window; a key the
     // re-derive before the command already disagreed with still withholds,
     // since it never described the bytes the command read.
-    if (stability === false && described!.hash === hash) return true
+    if (stability.strategy === 'unchecked' && described!.hash === hash) return true
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()
@@ -1618,10 +1621,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       moved === null || path.basename(moved) === 'package.json'
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
-    if (stability === 'fail') {
+    if (stability.severity === 'error') {
       log.status(
-        `[vx] ${node.id}: ${what} changed after its key was taken — cache.inputStability ` +
-          `is 'fail', so the task fails${hint}`,
+        `[vx] ${node.id}: ${what} changed after its key was taken — the result is not saved, ` +
+          `and inputStability.severity is 'error', so the task fails${hint}`,
       )
       movedFails = true
     } else {

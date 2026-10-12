@@ -704,31 +704,38 @@ Semantics:
 interface CacheConfig {
   inputs: CacheInputs // required when `cache` is provided
   outputs: CacheOutputs // required when `cache` is provided
-  inputStability?: 'strict' | 'content' | 'fail' | false // optional, default 'strict'
+  inputStability?: InputStability // optional
+}
+
+interface InputStability {
+  strategy?: 'immutable' | 'mutable' | 'unchecked' // default 'immutable'
+  severity?: 'warn' | 'error' // default 'warn'
 }
 ```
 
 `inputStability` says what a write to an input while the command runs
-means:
+means. `strategy` says which writes count:
 
-- `'strict'` (the default, on CI too): the result stands but the entry
-  is not saved, since an edit undone mid-run, or another task changing
-  the file and putting it back, cannot be told from no edit.
-- `'content'`: a file rewritten to the bytes the key folded counts as
-  unchanged and the entry is saved, for a task that rewrites its own
-  input identically (tsdown's `package.json`); different bytes still
-  withhold it.
-- `'fail'`: the task fails, naming the file, and the run stops as on any
-  failure.
-- `false`: no check. The entry is saved under the key taken before the
-  command, whatever the command did to its inputs. A key that no longer
-  held before the command started still withholds it.
+- `'immutable'` (the default, on CI too): any write. An edit undone
+  mid-run, or another task changing the file and putting it back, cannot
+  be told from no edit.
+- `'mutable'`: a file rewritten to the bytes the key folded counts as
+  unchanged, for a task that rewrites its own input identically
+  (tsdown's `package.json`); different bytes still count.
+- `'unchecked'`: none. The entry is saved under the key taken before the
+  command, whatever the command did to its inputs; `severity` is ignored.
+  A key that no longer held before the command started still withholds
+  it.
 
-A withheld save also withholds the save of every task that ran over the
-task's outputs, down the graph, and a task of any project that declares
-the moved file as an input withholds its own. `VX_INPUT_STABILITY`
-(`strict`, `content`, `fail`, `false`) sets the default for every task
-that does not say; any other value is refused before a task runs.
+A write that counts withholds the entry, and `severity` says what else
+happens: `'warn'` (the default) keeps the result, says why on the status
+line, and the run goes on; `'error'` fails the task, so the run fails.
+Either way, every task that ran over the task's outputs, down the graph,
+withholds its save too, and a task of any project that declares the
+moved file as an input withholds its own. `VX_INPUT_STABILITY`
+(`immutable`, `mutable`, `unchecked`) and `VX_INPUT_STABILITY_SEVERITY`
+(`warn`, `error`) set the defaults for every task that does not say;
+any other value is refused before a task runs.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -736,12 +743,13 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({
   tasks: {
     build: {
-      // tsdown rewrites package.json with the same bytes on every build.
+      // tsdown rewrites package.json with the same bytes on every build;
+      // different bytes fail the run rather than rebuild next time.
       exec: { command: 'tsdown' },
       cache: {
         inputs: { files: ['src/**', 'package.json'] },
         outputs: { files: ['dist/**'] },
-        inputStability: 'content',
+        inputStability: { strategy: 'mutable', severity: 'error' },
       },
     },
   },
@@ -2100,7 +2108,9 @@ a user meets most:
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
-| `cache.inputStability must be 'strict', 'content', 'fail' or false`                                                                   | Any other value (`'bytes'`, `true`).                                                                                                                                                                                           |
+| `cache.inputStability must be an object`                                                                                              | A bare string (`inputStability: 'mutable'`).                                                                                                                                                                                   |
+| `cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                         | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
+| `cache.inputStability.severity must be 'warn' or 'error'`                                                                             | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |

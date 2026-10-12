@@ -18,6 +18,7 @@ import type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  InputStability,
   ExecConfig,
   ExecEnv,
   PersistentConfig,
@@ -105,7 +106,7 @@ const KITCHEN = `export default {
           workspaceRuntime: ['echo w'],
         },
         outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'] },
-        inputStability: 'content',
+        inputStability: { strategy: 'mutable', severity: 'error' },
       },
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
@@ -726,6 +727,9 @@ describe('each schema object is its source type', () => {
     )
     expect(def('show', ...cache, 'properties', 'outputs')).toEqual(
       keys<CacheOutputs>({ files: true, workspaceFiles: true }),
+    )
+    expect(def('show', ...cache, 'properties', 'inputStability')).toEqual(
+      keys<InputStability>({ strategy: true, severity: true }),
     )
   })
 })

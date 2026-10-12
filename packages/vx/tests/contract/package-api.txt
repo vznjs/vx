@@ -400,7 +400,7 @@ interface BaseContext {
 export interface CacheConfig {
   inputs: CacheInputs
   outputs: CacheOutputs
-  inputStability?: 'strict' | 'content' | 'fail' | false
+  inputStability?: InputStability
 }
 == type CacheContext (src/orchestrator/plugin.ts)
 export interface CacheContext extends BaseContext {
@@ -839,6 +839,11 @@ export interface InputDiffEntry {
 export interface InputFile {
   readonly path: string
   readonly digest: string
+}
+== type InputStability (src/config.ts)
+export interface InputStability {
+  strategy?: 'immutable' | 'mutable' | 'unchecked'
+  severity?: 'warn' | 'error'
 }
 == type InvocationRecord (src/cache/layer.ts)
 export interface InvocationRecord {

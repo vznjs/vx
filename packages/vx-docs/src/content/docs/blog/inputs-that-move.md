@@ -66,19 +66,19 @@ build: {
   cache: {
     inputs: { files: ['src/**', 'package.json'] },
     outputs: { files: ['dist/**'] },
-    inputStability: 'content',
+    inputStability: { strategy: 'mutable' },
   },
 },
 ```
 
-Different bytes still withhold the entry. `VX_INPUT_STABILITY=content`
-makes `content` the default for every task that does not say. And when
+Different bytes still withhold the entry. `VX_INPUT_STABILITY=mutable`
+makes `mutable` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
 
-Two more modes: `'fail'` fails the task and stops the run on the first
-moved input, for a pipeline that would rather stop than build twice;
-`false` turns the check off.
+`strategy: 'unchecked'` turns the check off. And `severity: 'error'`
+(or `VX_INPUT_STABILITY_SEVERITY=error`) fails the task instead of
+warning, for a pipeline that would rather stop than build twice.
 
 ## What runs downstream
 

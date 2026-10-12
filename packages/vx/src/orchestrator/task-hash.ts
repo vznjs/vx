@@ -238,7 +238,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
  * input changed and changed BACK while the command ran matched its digest
  * again, and the entry saved the other content's output under the key (item
  * 1015). A write before it — an upstream's — is judged by content, as before.
- * `writesByBytes` (`cache.inputStability: 'content'`) judges a write
+ * `writesByBytes` (`inputStability.strategy: 'mutable'`) judges a write
  * during the command by content too: the task says the same bytes are its
  * own identical rewrite (tsdown's package.json), not an edit undone.
  */

@@ -637,7 +637,8 @@
         "workspaceFiles",
         "workspaceRuntime"
       ],
-      "tasks.*.cache.outputs": ["files", "workspaceFiles"]
+      "tasks.*.cache.outputs": ["files", "workspaceFiles"],
+      "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
@@ -2527,10 +2528,84 @@
         ]
       },
       "tasks.*.cache.inputStability": {
-        "ok": ["<absent>", "false", "\"content\""],
-        "$CONFIG: tasks.c.cache.inputStability must be 'strict', 'content', 'fail' or false": [
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: tasks.c.cache.inputStability must be an object — `inputStability: { strategy: 'mutable' }`": [
           "null",
           "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: tasks.c.cache.inputStability has unknown field \"x\" (allowed: severity, strategy)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.inputStability.strategy": {
+        "ok": ["<absent>", "\"mutable\""],
+        "$CONFIG: tasks.c.cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.cache.inputStability.severity": {
+        "ok": ["<absent>", "\"error\""],
+        "$CONFIG: tasks.c.cache.inputStability.severity must be 'warn' or 'error'": [
+          "null",
+          "true",
+          "false",
           "0",
           "1",
           "1.5",

@@ -39,18 +39,24 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
-// `VX_INPUT_STABILITY` sets the default the rows below judge; each row
+// `VX_INPUT_STABILITY(_SEVERITY)` set the defaults the rows below judge; each row
 // starts without it and sets it only to say so.
-const saved = { stability: process.env['VX_INPUT_STABILITY'] }
+const saved = {
+  stability: process.env['VX_INPUT_STABILITY'],
+  severity: process.env['VX_INPUT_STABILITY_SEVERITY'],
+}
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
   delete process.env['VX_INPUT_STABILITY']
+  delete process.env['VX_INPUT_STABILITY_SEVERITY']
 })
 
 afterEach(async () => {
   if (saved.stability === undefined) delete process.env['VX_INPUT_STABILITY']
   else process.env['VX_INPUT_STABILITY'] = saved.stability
+  if (saved.severity === undefined) delete process.env['VX_INPUT_STABILITY_SEVERITY']
+  else process.env['VX_INPUT_STABILITY_SEVERITY'] = saved.severity
   await rm(root, { recursive: true, force: true })
 })
 
@@ -145,7 +151,7 @@ describe('cache.inputStability: what a write during the command means', () => {
   const WITHHELD = [
     '[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs',
   ]
-  const formatter = (from: string, stability?: string | false) => ({
+  const formatter = (from: string, stability?: object) => ({
     config: `
       export default {
         tasks: {
@@ -162,16 +168,16 @@ describe('cache.inputStability: what a write during the command means', () => {
     `,
     files: { 'a.ts': `const x = "${from}"\n` },
   })
-  async function fixture(from: string, stability?: string | false): Promise<void> {
+  async function fixture(from: string, stability?: object): Promise<void> {
     await addProject(root, 'app', formatter(from, stability))
     await writeFile(path.join(root, '.gitignore'), '.vx/\n')
     commit()
   }
 
   it(
-    "'content', the same bytes rewritten: saved, and the next run is a hit",
+    "'mutable', the same bytes rewritten: saved, and the next run is a hit",
     async () => {
-      await fixture('formatted', 'content')
+      await fixture('formatted', { strategy: 'mutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('format'), 'app#format')).toBe('cache-hit')
@@ -180,9 +186,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    "'content', different bytes: still withheld",
+    "'mutable', different bytes: still withheld",
     async () => {
-      await fixture('unformatted', 'content')
+      await fixture('unformatted', { strategy: 'mutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
     },
@@ -190,9 +196,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_INPUT_STABILITY=content is the default for a task that does not say',
+    'VX_INPUT_STABILITY=mutable is the default for a task that does not say',
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'content'
+      process.env['VX_INPUT_STABILITY'] = 'mutable'
       await fixture('formatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -202,10 +208,10 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    "a task's 'strict' wins over the env var",
+    "a task's 'immutable' wins over the env var",
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'content'
-      await fixture('formatted', 'strict')
+      process.env['VX_INPUT_STABILITY'] = 'mutable'
+      await fixture('formatted', { strategy: 'immutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual(WITHHELD)
     },
@@ -230,23 +236,23 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    "'fail': the task fails, naming the file, and the run stops",
+    "severity 'error': the save is withheld and the task fails, naming the file",
     async () => {
-      await fixture('unformatted', 'fail')
+      await fixture('unformatted', { severity: 'error' })
       const r = await run({ cwd: root, tasks: ['format'], log: logger })
       expect(r.ok).toBe(false)
       expect(statusOf(r, 'app#format')).toBe('failed')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
-        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — cache.inputStability is 'fail', so the task fails; if the task writes it, declare it in cache.outputs",
+        "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputStability.severity is 'error', so the task fails; if the task writes it, declare it in cache.outputs",
       ])
     },
     TIMEOUT,
   )
 
   it(
-    'VX_INPUT_STABILITY=fail is the default for a task that does not say',
+    'VX_INPUT_STABILITY_SEVERITY=error is the default for a task that does not say',
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'fail'
+      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'error'
       await fixture('unformatted')
       const r = await run({ cwd: root, tasks: ['format'], log: logger })
       expect(statusOf(r, 'app#format')).toBe('failed')
@@ -255,9 +261,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'false: no check, the entry is saved under the key of the bytes it rewrote',
+    "'unchecked': no check, the entry is saved under the key of the bytes it rewrote",
     async () => {
-      await fixture('unformatted', false)
+      await fixture('unformatted', { strategy: 'unchecked', severity: 'error' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       // The old bytes back: the entry taken before the rewrite answers.
@@ -268,15 +274,20 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_INPUT_STABILITY=false reads as false, and a value naming no mode is refused before any task',
+    'VX_INPUT_STABILITY=unchecked skips the check, and a value naming no mode is refused before any task',
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'false'
+      process.env['VX_INPUT_STABILITY'] = 'unchecked'
       await fixture('unformatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
-      process.env['VX_INPUT_STABILITY'] = 'compare'
+      process.env['VX_INPUT_STABILITY'] = 'content'
       await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
-        "VX_INPUT_STABILITY must be 'strict', 'content', 'fail' or false",
+        "VX_INPUT_STABILITY must be 'immutable', 'mutable' or 'unchecked'",
+      )
+      delete process.env['VX_INPUT_STABILITY']
+      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'fail'
+      await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
+        "VX_INPUT_STABILITY_SEVERITY must be 'warn' or 'error'",
       )
     },
     TIMEOUT,

@@ -10,7 +10,7 @@ import {
   PLUGIN_FUNCTION_HOOKS,
   PLUGIN_HOOKS,
   PLUGIN_PACKAGE,
-  type CacheConfig,
+  type InputStability,
   type Plugin,
   type ProjectConfig,
   type WorkspaceConfig,
@@ -49,20 +49,34 @@ export function cacheScopeEnvError(): UserError {
   return new UserError(`VX_CACHE_SCOPE ${CACHE_SCOPE_RULE}`)
 }
 
-type InputStability = NonNullable<CacheConfig['inputStability']>
-const INPUT_STABILITY = new Set<InputStability>(['strict', 'content', 'fail', false])
-const INPUT_STABILITY_RULE = "must be 'strict', 'content', 'fail' or false"
+const STRATEGIES = ['immutable', 'mutable', 'unchecked'] as const
+const SEVERITIES = ['warn', 'error'] as const
+const INPUT_STABILITY_FIELDS = new Set(['strategy', 'severity'])
+const oneOf = (values: readonly string[]): string =>
+  `must be ${values
+    .map((v) => `'${v}'`)
+    .join(', ')
+    .replace(/, ([^,]*)$/, ' or $1')}`
+
+function envOneOf<T extends string>(name: string, values: readonly T[]): T | undefined {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return undefined
+  if (!(values as readonly string[]).includes(raw)) throw new UserError(`${name} ${oneOf(values)}`)
+  return raw as T
+}
 
 /**
- * `VX_INPUT_STABILITY`, the default `cache.inputStability`: undefined when
- * unset or empty, refused when it names no mode (`false` is the string).
+ * `VX_INPUT_STABILITY` and `VX_INPUT_STABILITY_SEVERITY`, the defaults of
+ * `cache.inputStability`: each undefined when unset or empty, refused when
+ * it names no value.
  */
-export function inputStabilityEnv(): InputStability | undefined {
-  const raw = process.env['VX_INPUT_STABILITY']
-  if (raw === undefined || raw === '') return undefined
-  const mode = raw === 'false' ? false : (raw as InputStability)
-  if (!INPUT_STABILITY.has(mode)) throw new UserError(`VX_INPUT_STABILITY ${INPUT_STABILITY_RULE}`)
-  return mode
+export function inputStabilityEnv(): InputStability {
+  const strategy = envOneOf('VX_INPUT_STABILITY', STRATEGIES)
+  const severity = envOneOf('VX_INPUT_STABILITY_SEVERITY', SEVERITIES)
+  return {
+    ...(strategy !== undefined ? { strategy } : {}),
+    ...(severity !== undefined ? { severity } : {}),
+  }
 }
 
 const WORKSPACE_FIELDS = new Set([
@@ -686,8 +700,21 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const stability = (cache as { inputStability?: unknown }).inputStability
-      if (stability !== undefined && !INPUT_STABILITY.has(stability as InputStability)) {
-        throw new UserError(`${where}.cache.inputStability ${INPUT_STABILITY_RULE}`)
+      if (stability !== undefined) {
+        const at = `${where}.cache.inputStability`
+        if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
+          throw new UserError(
+            `${at} must be an object — \`inputStability: { strategy: 'mutable' }\``,
+          )
+        }
+        assertKnownFields(stability, INPUT_STABILITY_FIELDS, at)
+        const { strategy, severity } = stability as Record<string, unknown>
+        if (strategy !== undefined && !STRATEGIES.includes(strategy as never)) {
+          throw new UserError(`${at}.strategy ${oneOf(STRATEGIES)}`)
+        }
+        if (severity !== undefined && !SEVERITIES.includes(severity as never)) {
+          throw new UserError(`${at}.severity ${oneOf(SEVERITIES)}`)
+        }
       }
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs

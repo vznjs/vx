@@ -25,6 +25,7 @@ import type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  InputStability,
   ExecConfig,
   ExecEnv,
   PersistentConfig,
@@ -122,6 +123,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       workspaceRuntime: true,
     }),
     'tasks.*.cache.outputs': keys<CacheOutputs>({ files: true, workspaceFiles: true }),
+    'tasks.*.cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
   },
 }
 
@@ -198,7 +200,7 @@ function projectSeed(): Record<string, unknown> {
             workspaceRuntime: ['bun -v'],
           },
           outputs: { files: ['dist/**'], workspaceFiles: ['out/**'] },
-          inputStability: 'content',
+          inputStability: { strategy: 'mutable', severity: 'error' },
         },
       },
       g: { dependsOn: ['t'] },
