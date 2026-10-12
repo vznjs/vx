@@ -28,6 +28,8 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 
 <!-- bench:end -->
 
+The bench turns Nx's `.env` loading off (`NX_LOAD_DOT_ENV_FILES=false`), which makes Nx faster here than with its default setting.
+
 Every Nx task is an `nx:run-commands` target running the same command vx
 runs, with Nx's daemon off as in CI. The daemon does not help here: with it on,
 a nothing-changed run of this benchmark took 87 s against 25 s off
