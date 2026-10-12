@@ -272,7 +272,7 @@ describe('task selection', () => {
       }
       const mixed = await resolve(['build', 'a#build', ...flags])
       if (!('error' in mixed)) throw new Error(`the mixed run was not refused`)
-      expect(await resolve(['a#build', ...flags])).toEqual({ error: mixed.error })
+      expect(await resolve(['a#build', ...flags])).toEqual(mixed)
       // CONTROL: a filter that resolves is checked and its scope dropped.
       const ok = await resolve(['a#build', '--filter', 'a'])
       if ('error' in ok || 'nothingSelected' in ok) throw new Error('unreachable')
