@@ -40,7 +40,7 @@ describe('the published @vzn/vx tree', () => {
   it('ships the entry the exports map and the launcher name', async () => {
     expect(await Bun.file(path.join(mainDir, 'src', 'index.ts')).exists()).toBe(true)
     expect(await Bun.file(path.join(mainDir, 'index.ts')).exists()).toBe(true)
-    expect(manifest.bin).toEqual({ vx: './launcher.cjs' })
+    expect(manifest.bin).toEqual({ vx: './launcher.sh' })
     expect(await Bun.file(path.join(mainDir, manifest.bin.vx!)).exists()).toBe(true)
   })
 
@@ -71,6 +71,7 @@ describe('the published @vzn/vx tree', () => {
       'docs/patterns.md',
       'docs/security.md',
       'docs/features.md',
+      'launcher.sh',
       'launcher.cjs',
       'README.md',
       'LICENSE',

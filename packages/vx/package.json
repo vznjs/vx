@@ -43,6 +43,7 @@
   },
   "files": [
     "npm-launcher.cjs",
+    "npm-launcher.sh",
     "index.ts",
     "config",
     "src",

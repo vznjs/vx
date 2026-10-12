@@ -137,9 +137,12 @@ Exit codes:
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT.
 
-Installed from npm, `vx` is a Node launcher. On Node 22.15 or later it
-replaces itself with the binary (`process.execve`), so every signal
-reaches vx directly. On older Node it runs the binary and waits for it:
+Installed from npm, `vx` is a sh launcher that execs the platform
+binary, so every signal reaches vx directly and no Node starts first
+(a `vx --version` through npm: 56 against 14 ms, 2026-10-12). Where it
+finds no binary beside it (musl, Yarn PnP, a platform with none) it
+hands off to a Node launcher. On Node 22.15 or later that one
+replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
 a signal sent to the launcher alone (`kill`, a process manager) is
 passed to the binary, and a terminal's Ctrl-C already reaches both, so
 the launcher does not send it twice.

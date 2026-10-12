@@ -5,7 +5,7 @@
 // Emits, under <out> (default dist/npm):
 //   @vzn/vx-<target>/  — one per platform: the raw `vx` binary + os/cpu manifest
 //   vx/                — the primary @vzn/vx package: library source
-//                        (exports ./src/index.ts) PLUS a Node launcher +
+//                        (exports ./src/index.ts) PLUS the sh launcher (Node fallback) +
 //                        the 4 platform packages as optionalDependencies.
 //   plugins/<dir>/     — every other public workspace package (the plugins),
 //                        at the same version, peer-pinned to this @vzn/vx
@@ -192,6 +192,8 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   const docs = await docsPages()
   for (const f of docs) await cp(join(CORE, f), join(mainDir, f))
   await cp(join(CORE, 'npm-launcher.cjs'), join(mainDir, 'launcher.cjs'))
+  await cp(join(CORE, 'npm-launcher.sh'), join(mainDir, 'launcher.sh'))
+  await chmod(join(mainDir, 'launcher.sh'), 0o755)
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
 
@@ -205,14 +207,23 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     // ships a directory twin for every subpath it names.
     exports: corePkg.exports,
     types: './src/index.ts',
-    // The CLI — a Node launcher that execs the matching platform binary.
-    bin: { vx: './launcher.cjs' },
+    // The CLI: a sh launcher that execs the matching platform binary, with
+    // launcher.cjs as its fallback (no Node start on the common path).
+    bin: { vx: './launcher.sh' },
     engines: { node: '>=18' },
     optionalDependencies: allOptional('@vzn/vx', version),
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
-    files: [...entries, ...PACKAGE_DATA, ...docs, 'launcher.cjs', 'README.md', 'LICENSE'],
+    files: [
+      ...entries,
+      ...PACKAGE_DATA,
+      ...docs,
+      'launcher.sh',
+      'launcher.cjs',
+      'README.md',
+      'LICENSE',
+    ],
     repository: REPOSITORY,
     homepage: corePkg.homepage,
     bugs: `${REPO_URL}/issues`,
