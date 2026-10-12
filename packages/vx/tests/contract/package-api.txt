@@ -1124,7 +1124,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
-  priorities: ReadonlyMap<string, number>
+  priorities: () => Promise<ReadonlyMap<string, number>>
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]

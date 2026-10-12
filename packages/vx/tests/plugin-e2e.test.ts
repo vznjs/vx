@@ -153,9 +153,11 @@ describe('Plugin API — end-to-end via run()', () => {
   })
 
   // `setup` is not a guard over the whole pipeline: the config, project,
-  // cache, graph, key and schedule stages have run by the time it is
-  // called, and a plan never calls it. It does precede every executor,
-  // every telemetry sink, admission and the first task.
+  // cache, graph and key stages have run by the time it is called, and a
+  // plan never calls it. It does precede every executor, every telemetry
+  // sink, admission and the first task. `schedule` follows the up-front
+  // probe, which needs the cache, so it lands after them: a run of
+  // confirmed hits skips it.
   it('setup runs after the planning stages and before the executor, telemetry and the first task', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
@@ -199,10 +201,10 @@ describe('Plugin API — end-to-end via run()', () => {
         'cache',
         'graph',
         'key',
-        'schedule',
         'setup',
         'executor',
         'telemetry',
+        'schedule',
         'admit',
         'task:start',
       ])

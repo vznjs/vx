@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: say where the schedule stage runs in a run
+
+PreparedRun.priorities is a function returning the schedule stage's weights, and the stage runs after setup, only when a task will start.
+
 ## vx-ci: github() is undefined off Actions; skip falsy plugins
 
 @vzn/vx-ci's github() returns undefined outside GitHub Actions; a caller reading its fields must handle undefined.

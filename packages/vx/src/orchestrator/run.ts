@@ -1089,6 +1089,14 @@ async function runOnBus(
     })
 
     mark('classify + probe')
+    // A run whose every task is a confirmed local hit dispatches only
+    // restores, which no weight orders: the `schedule` stage is not asked.
+    const priorities = [...nodes.values()].every(
+      (n) => n.config.exec?.command === undefined || shortCircuit.restoreTier.has(n.id),
+    )
+      ? new Map<string, number>()
+      : await prepared.priorities()
+    mark('schedule')
     // Judged as each task finishes, against the history BEFORE this run's
     // rows land, so the row that prints next carries the verdict: nothing
     // prints below the footer. A hit or a skip asks nothing; a green miss
@@ -1172,7 +1180,7 @@ async function runOnBus(
         : {}),
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
-      ...(prepared.priorities.size > 0 ? { priorities: prepared.priorities } : {}),
+      ...(priorities.size > 0 ? { priorities } : {}),
       // The baseline under them; `most-work` when the workspace names none.
       ...(prepared.workspaceConfig?.schedule !== undefined
         ? { strategy: prepared.workspaceConfig.schedule }
@@ -1718,6 +1726,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     if (prepared.empty === 'none-affected')
       return { tasks: [], noneAffected: noneAffected(prepared, options) }
     if (prepared.empty !== null) return { tasks: [] }
+    // The plan orders nothing, but it refuses what the run would refuse.
+    await prepared.priorities()
     // Its own mark: a dry run's plan (every task's hash, the cache lookups,
     // the history p50s) was booked under `close`, the next mark, and read
     // as 105 ms of closing a cache at 1,000 projects (item 601).
