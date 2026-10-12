@@ -56,8 +56,8 @@ and faster:
    files it recorded before a restore. Turborepo/Nx
    restore additively.
 4. **Daemonless.** No background process, no staleness window, no socket
-   to corrupt — and the fastest warm/cached runs in the head-to-head
-   benchmark all the same.
+   to corrupt, and the head-to-head benchmark shows what that costs on
+   a cached run.
 
 ## The mechanics under the hood
 
