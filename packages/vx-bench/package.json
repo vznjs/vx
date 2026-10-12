@@ -11,13 +11,15 @@
   "//": [
     "picomatch, @types/picomatch: the W9 playground research only (playground-spike/glob-equiv.ts,",
     "items 676 and 692): the glob library scored against Bun.Glob beside the site's port. Not bundled.",
-    "Design: packages/vx/docs/design/playground-spike-2026-09.md"
+    "Design: packages/vx/docs/design/playground-spike-2026-09.md",
+    "turbo: pr-bench.ts's rival (the per-PR vx vs Turborepo ratio, owner 2026-10-12); pinned so CI and the baseline see one version."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@types/picomatch": "^4.0.3",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*",
-    "picomatch": "4.0.4"
+    "picomatch": "4.0.4",
+    "turbo": "2.11.7"
   }
 }

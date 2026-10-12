@@ -302,15 +302,40 @@ jobs:
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
 
-  # The required check: green only when `ci` and both shard runners are.
+  # The per-PR bench against Turborepo (packages/vx-bench/pr-bench.ts) on
+  # a runner of its own: beside the unsafe suite in `ci` the nothing-changed
+  # ratio read 1.29 against 0.83 idle, since load slows the two tools
+  # unequally (2026-10-12).
+  vs-turbo:
+    name: bench vs Turborepo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - name: vx vs Turborepo
+        env:
+          VX_REQUIRE_SANDBOX: '1'
+        run: bun packages/vx/src/bin.ts run check.vs-turbo --filter @vzn/vx-bench
+
+  # The required check: green only when `ci`, both shard runners and the
+  # bench against Turborepo are.
   gate:
     name: lint · format · test
-    needs: [ci, shards]
+    needs: [ci, shards, vs-turbo]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: ci and shards passed
-        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}" = success
+      - name: ci, shards and the bench passed
+        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}" = success && test "${{ needs.vs-turbo.result }}" = success
 
   # The `ci` job above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI

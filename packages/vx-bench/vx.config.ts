@@ -35,6 +35,35 @@ export default defineProject({
       },
     },
 
+    // The per-PR bench against Turborepo (pr-bench.ts): vx / turbo time
+    // ratios on one small workspace, held to pr-bench-baseline.json. Not
+    // in `ci`: CI runs it on a runner of its own, since load beside the
+    // suites moves the ratio.
+    // Core's source reaches the key through install's ^build.
+    'check.vs-turbo': {
+      description: 'pr-bench.ts: vx vs Turborepo ratios against pr-bench-baseline.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun pr-bench.ts',
+        sandbox: { allow: { read: ['**/*'] } },
+      },
+      cache: {
+        inputs: {
+          files: ['pr-bench.ts', 'pr-bench-baseline.json', 'bench-env.ts', 'package.json'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'vs-turbo.update': {
+      description: 'pr-bench.ts --update: record this platform in pr-bench-baseline.json',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun pr-bench.ts --update',
+        sandbox: { allow: { read: ['**/*'], write: ['pr-bench-baseline.json'] } },
+      },
+    },
+
     // Records this platform's numbers after a change meant to move them.
     'perf.update': {
       description: 'perf-guard.ts --update: rewrite perf-baseline.json for this platform',

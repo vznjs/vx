@@ -209,6 +209,29 @@ vx run @vzn/vx-bench#perf.update   # then commit perf-baseline.json
 Run it through `vx run`: the baseline's times are taken under the task
 sandbox, as the check is.
 
+### The per-PR bench against Turborepo
+
+`packages/vx-bench/pr-bench.ts` runs in every PR's CI as
+`@vzn/vx-bench#check.vs-turbo`, on a runner of its own (beside the
+suites, load moved the ratio from 0.83 to 1.29), in about 20 s. One 100-package
+workspace (build then test, copy-sized tasks), this checkout's vx
+compiled as released against Turborepo 2.11.7 (pinned in
+`packages/vx-bench/package.json`), both at concurrency 4: cold,
+restore and nothing-changed, 7 interleaved reps, min of each. A shared
+runner moves both tools alike, so what is held is the ratio vx / turbo
+from the same job: a restore or nothing-changed ratio grown past 1.3×
+its value in `packages/vx-bench/pr-bench-baseline.json` (the CI
+runner's) fails, and a case vx loses prints `LOSS`. Cold is printed,
+not held: 200 spawns on 4 cores moved its ratio from 0.71 to 1.12
+between two CI runs of one commit. A 60 ms sleep added to vx's startup failed the
+nothing-changed case (0.83 → 1.24). Record a change meant to move it
+with `vx run @vzn/vx-bench#vs-turbo.update`.
+
+`packages/vx-bench/real/nightly.ts` re-runs the repos on
+[Real repos](#real-repos) each night against the tool they ship with,
+on this checkout's vx, and exits 1 with a `LOSS` line for any case vx
+loses.
+
 ## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
