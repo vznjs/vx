@@ -63,7 +63,7 @@ const ENV = ['define', 'passThrough', 'secret'] as const satisfies readonly Keys
 const CACHE = [
   'inputs',
   'outputs',
-  'rewrittenInputs',
+  'inputStability',
 ] as const satisfies readonly Keys<CacheConfig>[]
 const INPUTS = [
   'env',

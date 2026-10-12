@@ -76,6 +76,7 @@ import {
 import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
+import { inputStabilityEnv } from '../workspace/index.js'
 import type { MissExplainer } from './miss-reason.js'
 import { shellVerdict } from './shell-verdict.js'
 import { sandboxFix } from './sandbox-fix.js'
@@ -338,15 +339,15 @@ async function restoreOrMiss(
 }
 
 /**
- * Does a write to an input during the command count as unchanged when it
- * left the bytes the key folded (`movedInput`'s `writesByBytes`)? Only when
- * the task says `compare`, or says nothing and `VX_REWRITTEN_INPUTS` is
- * `compare`: by default any such write withholds the save, on CI too,
- * since a concurrent task can change an input and put it back (owner,
- * 2026-10-12).
+ * What a write to an input during the command means: the task's
+ * `cache.inputStability`, else `VX_INPUT_STABILITY`, else `'strict'`, so
+ * by default any such write withholds the save, on CI too, since a
+ * concurrent task can change an input and put it back (owner, 2026-10-12).
  */
-function rewritesByBytes(cache: CacheConfig | undefined): boolean {
-  return (cache?.rewrittenInputs ?? process.env['VX_REWRITTEN_INPUTS']) === 'compare'
+function inputStabilityOf(
+  cache: CacheConfig | undefined,
+): NonNullable<CacheConfig['inputStability']> {
+  return cache?.inputStability ?? inputStabilityEnv() ?? 'strict'
 }
 
 /**
@@ -1462,6 +1463,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  const stability = inputStabilityOf(args.node.config.cache)
+  let movedFails = false
   let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
@@ -1576,7 +1579,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         described!.facts,
         cache,
         described!.describedAt,
-        rewritesByBytes(args.node.config.cache),
+        stability === 'content',
       )) ?? described!.added()
     )
   }
@@ -1597,6 +1600,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       unkeyed = true
       return false
     }
+    // `false` skips the check of the command's own window; a key the
+    // re-derive before the command already disagreed with still withholds,
+    // since it never described the bytes the command read.
+    if (stability === false && described!.hash === hash) return true
     const endCheck = span('miss: recheck inputs')
     const moved = await movedSinceKey()
     endCheck()
@@ -1611,14 +1618,24 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       moved === null || path.basename(moved) === 'package.json'
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
-    log.status(
-      `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
-        `but is not saved under a key that no longer describes it${hint}`,
-    )
+    if (stability === 'fail') {
+      log.status(
+        `[vx] ${node.id}: ${what} changed after its key was taken — cache.inputStability ` +
+          `is 'fail', so the task fails${hint}`,
+      )
+      movedFails = true
+    } else {
+      log.status(
+        `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
+          `but is not saved under a key that no longer describes it${hint}`,
+      )
+    }
     forgetUndeclaredWrites(args, wsOutputs.length > 0 ? 'workspace' : 'project')
     unkeyed = true
     return false
   }
+
+  if (movedFails) effectiveExitCode = 1
 
   if (unkeyedUpstream !== undefined && willWrite && effectiveExitCode === 0) {
     log.status(

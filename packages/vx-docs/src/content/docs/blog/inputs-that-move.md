@@ -66,15 +66,26 @@ build: {
   cache: {
     inputs: { files: ['src/**', 'package.json'] },
     outputs: { files: ['dist/**'] },
-    rewrittenInputs: 'compare',
+    inputStability: 'content',
   },
 },
 ```
 
-Different bytes still withhold the entry. `VX_REWRITTEN_INPUTS=compare`
-makes `compare` the default for every task that does not say. And when
+Different bytes still withhold the entry. `VX_INPUT_STABILITY=content`
+makes `content` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
+
+Two more modes: `'fail'` fails the task and stops the run on the first
+moved input, for a pipeline that would rather stop than build twice;
+`false` turns the check off.
+
+## What runs downstream
+
+A withheld save does not stop at the task. Every task that ran over its
+outputs, down the graph, saves nothing either, and a task of any project
+that declares the moved file as an input withholds its own. Nothing is
+filed on top of a state that was never verified.
 
 ## The trade
 

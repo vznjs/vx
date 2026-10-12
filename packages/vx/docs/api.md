@@ -186,7 +186,7 @@ type · `src/config.ts`
 export interface CacheConfig {
   inputs: CacheInputs
   outputs: CacheOutputs
-  rewrittenInputs?: 'withhold' | 'compare'
+  inputStability?: 'strict' | 'content' | 'fail' | false
 }
 ```
 

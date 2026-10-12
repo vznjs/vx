@@ -10,6 +10,7 @@ import {
   PLUGIN_FUNCTION_HOOKS,
   PLUGIN_HOOKS,
   PLUGIN_PACKAGE,
+  type CacheConfig,
   type Plugin,
   type ProjectConfig,
   type WorkspaceConfig,
@@ -46,6 +47,22 @@ export function isCacheScope(v: unknown): v is string {
 /** Why `VX_CACHE_SCOPE` is refused, in `cacheScope`'s words. */
 export function cacheScopeEnvError(): UserError {
   return new UserError(`VX_CACHE_SCOPE ${CACHE_SCOPE_RULE}`)
+}
+
+type InputStability = NonNullable<CacheConfig['inputStability']>
+const INPUT_STABILITY = new Set<InputStability>(['strict', 'content', 'fail', false])
+const INPUT_STABILITY_RULE = "must be 'strict', 'content', 'fail' or false"
+
+/**
+ * `VX_INPUT_STABILITY`, the default `cache.inputStability`: undefined when
+ * unset or empty, refused when it names no mode (`false` is the string).
+ */
+export function inputStabilityEnv(): InputStability | undefined {
+  const raw = process.env['VX_INPUT_STABILITY']
+  if (raw === undefined || raw === '') return undefined
+  const mode = raw === 'false' ? false : (raw as InputStability)
+  if (!INPUT_STABILITY.has(mode)) throw new UserError(`VX_INPUT_STABILITY ${INPUT_STABILITY_RULE}`)
+  return mode
 }
 
 const WORKSPACE_FIELDS = new Set([
@@ -668,9 +685,9 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         )
       }
       assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
-      const rewritten = (cache as { rewrittenInputs?: unknown }).rewrittenInputs
-      if (rewritten !== undefined && rewritten !== 'withhold' && rewritten !== 'compare') {
-        throw new UserError(`${where}.cache.rewrittenInputs must be 'withhold' or 'compare'`)
+      const stability = (cache as { inputStability?: unknown }).inputStability
+      if (stability !== undefined && !INPUT_STABILITY.has(stability as InputStability)) {
+        throw new UserError(`${where}.cache.inputStability ${INPUT_STABILITY_RULE}`)
       }
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
@@ -908,7 +925,7 @@ const EXEC_FIELDS = new Set([
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
-const CACHE_FIELDS = new Set(['inputs', 'outputs', 'rewrittenInputs'])
+const CACHE_FIELDS = new Set(['inputs', 'outputs', 'inputStability'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',
   'workspaceFiles',

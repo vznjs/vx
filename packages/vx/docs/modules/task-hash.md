@@ -73,7 +73,7 @@ export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
   commandFrom?: number, // the describe's start, just before the command
-  writesByBytes = false, // `cache.rewrittenInputs: 'compare'`: judged by bytes
+  writesByBytes = false, // `cache.inputStability: 'content'`: judged by bytes
 ): Promise<string | undefined>
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 export interface UpfrontGroupKey {
@@ -110,7 +110,7 @@ export interface UpfrontGroupKey {
   (less that widening for a whole-second stamp), whatever it holds now:
   an input changed and changed BACK while the command ran matches its
   digest again (item 1015). With `writesByBytes` (execute-task sets it
-  for `cache.rewrittenInputs: 'compare'` or `VX_REWRITTEN_INPUTS=compare`)
+  for `cache.inputStability: 'content'` or `VX_INPUT_STABILITY=content`)
   such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream

@@ -628,7 +628,7 @@
       ],
       "tasks.*.exec.sandbox.deny": ["network"],
       "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
-      "tasks.*.cache": ["inputs", "outputs", "rewrittenInputs"],
+      "tasks.*.cache": ["inputStability", "inputs", "outputs"],
       "tasks.*.cache.inputs": [
         "env",
         "files",
@@ -2070,7 +2070,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache must be an object (fields: inputs, outputs, rewrittenInputs), not an array": [
+        "$CONFIG: tasks.c.cache must be an object (fields: inputStability, inputs, outputs), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -2087,7 +2087,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.inputs is required when `cache` is set": ["{}"],
-        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputs, outputs, rewrittenInputs)": [
+        "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputStability, inputs, outputs)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -2526,12 +2526,11 @@
           "[\".\"]"
         ]
       },
-      "tasks.*.cache.rewrittenInputs": {
-        "ok": ["<absent>", "\"compare\""],
-        "$CONFIG: tasks.c.cache.rewrittenInputs must be 'withhold' or 'compare'": [
+      "tasks.*.cache.inputStability": {
+        "ok": ["<absent>", "false", "\"content\""],
+        "$CONFIG: tasks.c.cache.inputStability must be 'strict', 'content', 'fail' or false": [
           "null",
           "true",
-          "false",
           "0",
           "1",
           "1.5",

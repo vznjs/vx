@@ -704,19 +704,31 @@ Semantics:
 interface CacheConfig {
   inputs: CacheInputs // required when `cache` is provided
   outputs: CacheOutputs // required when `cache` is provided
-  rewrittenInputs?: 'withhold' | 'compare' // optional, default 'withhold'
+  inputStability?: 'strict' | 'content' | 'fail' | false // optional, default 'strict'
 }
 ```
 
-`rewrittenInputs` says what a write to an input while the command runs
-means. `'withhold'` (the default, on CI too): the result stands but the
-entry is not saved, since an edit undone mid-run, or another task
-changing the file and putting it back, cannot be told from no edit.
-`'compare'`: a file rewritten to the bytes the key folded counts as
-unchanged and the entry is saved, for a task that rewrites its own input
-identically (tsdown's `package.json`); different bytes still withhold
-it. `VX_REWRITTEN_INPUTS=compare` sets the default for every task that
-does not say (owner, 2026-10-12).
+`inputStability` says what a write to an input while the command runs
+means:
+
+- `'strict'` (the default, on CI too): the result stands but the entry
+  is not saved, since an edit undone mid-run, or another task changing
+  the file and putting it back, cannot be told from no edit.
+- `'content'`: a file rewritten to the bytes the key folded counts as
+  unchanged and the entry is saved, for a task that rewrites its own
+  input identically (tsdown's `package.json`); different bytes still
+  withhold it.
+- `'fail'`: the task fails, naming the file, and the run stops as on any
+  failure.
+- `false`: no check. The entry is saved under the key taken before the
+  command, whatever the command did to its inputs. A key that no longer
+  held before the command started still withholds it.
+
+A withheld save also withholds the save of every task that ran over the
+task's outputs, down the graph, and a task of any project that declares
+the moved file as an input withholds its own. `VX_INPUT_STABILITY`
+(`strict`, `content`, `fail`, `false`) sets the default for every task
+that does not say; any other value is refused before a task runs.
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -729,7 +741,7 @@ export default defineProject({
       cache: {
         inputs: { files: ['src/**', 'package.json'] },
         outputs: { files: ['dist/**'] },
-        rewrittenInputs: 'compare',
+        inputStability: 'content',
       },
     },
   },
@@ -2088,7 +2100,7 @@ a user meets most:
 | `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
 | `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
-| `cache.rewrittenInputs must be 'withhold' or 'compare'`                                                                               | Any other value (`'bytes'`, `true`).                                                                                                                                                                                           |
+| `cache.inputStability must be 'strict', 'content', 'fail' or false`                                                                   | Any other value (`'bytes'`, `true`).                                                                                                                                                                                           |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |

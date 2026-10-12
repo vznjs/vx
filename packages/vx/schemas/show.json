@@ -116,7 +116,7 @@
                 "workspaceFiles": { "$ref": "#/$defs/stringList" }
               }
             },
-            "rewrittenInputs": { "enum": ["withhold", "compare"] }
+            "inputStability": { "enum": ["strict", "content", "fail", false] }
           }
         }
       }

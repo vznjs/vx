@@ -400,7 +400,7 @@ interface BaseContext {
 export interface CacheConfig {
   inputs: CacheInputs
   outputs: CacheOutputs
-  rewrittenInputs?: 'withhold' | 'compare'
+  inputStability?: 'strict' | 'content' | 'fail' | false
 }
 == type CacheContext (src/orchestrator/plugin.ts)
 export interface CacheContext extends BaseContext {
