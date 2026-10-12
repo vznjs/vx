@@ -79,7 +79,7 @@ jobs:
             case "$f" in
               '' | package.json | bun.lock | vx.workspace.ts | .github/* | scripts/*) darwin=true ;;
               packages/*/vx.config.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
-              packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.cjs) darwin=true ;;
+              packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.*) darwin=true ;;
               *)
                 # Not `grep -q`: its early exit is git's SIGPIPE, a
                 # failed pipeline under pipefail, and so a missed match.

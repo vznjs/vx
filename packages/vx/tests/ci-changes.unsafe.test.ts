@@ -146,6 +146,7 @@ describe('the changes job', () => {
     'packages/vx/src/util/a.ts',
     'packages/vx/src/bin.ts',
     'packages/vx/npm-launcher.cjs',
+    'packages/vx/npm-launcher.sh',
     'packages/vx/scripts/x.ts',
     'packages/vx-docs/vx.config.ts',
     'packages/vx-docs/package.json',

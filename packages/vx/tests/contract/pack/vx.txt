@@ -10,6 +10,7 @@ docs/schema.md
 docs/security.md
 index.ts
 launcher.cjs
+launcher.sh
 package.json
 schemas/cache.json
 schemas/docs.json

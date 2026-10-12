@@ -2146,21 +2146,19 @@ describe('every arrow chain of the pipeline stages is PLUGIN_HOOKS in order', ()
   })
 })
 
-describe('the one-binary post says the npm command is a Node launcher', () => {
+describe('the one-binary post says what the npm command starts', () => {
   // It said nothing boots before vx's own code runs, for the npm install it
-  // shows; the npm package's `bin` is a Node script that spawns the binary
-  // (J2-20).
-  it('the published bin is the launcher, and the post names its cost', () => {
+  // shows; the npm package's `bin` was a Node script (J2-20), and is a sh
+  // launcher with Node as its fallback since 2026-10-12.
+  it('the published bin is the sh launcher, and the post names its cost', () => {
     const core = path.resolve(import.meta.dir, '..')
     expect(readFileSync(path.join(core, 'scripts', 'build-npm.ts'), 'utf8')).toContain(
-      "bin: { vx: './launcher.cjs' }",
+      "bin: { vx: './launcher.sh' }",
     )
-    expect(readFileSync(path.join(core, 'npm-launcher.cjs'), 'utf8')).toStartWith(
-      '#!/usr/bin/env node\n',
-    )
+    expect(readFileSync(path.join(core, 'npm-launcher.sh'), 'utf8')).toStartWith('#!/bin/sh\n')
     const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
-    expect(post).toContain("The npm package's `vx` command is a small Node launcher")
-    expect(post).toContain('Through npm, the launcher costs one Node start first.')
+    expect(post).toContain("The npm package's `vx` command is a small sh launcher")
+    expect(post).toContain('Through npm, the launcher is one shell start first')
   })
 })
 
