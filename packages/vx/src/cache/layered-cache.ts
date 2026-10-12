@@ -76,7 +76,9 @@ export interface RemoteCacheLayer {
    * straight into the local cache — an HTTP wire returns its `fetch`
    * `Response`, a chunked wire `new Response(stream)`, bytes in hand
    * `new Blob([bytes])`. `durationMs` is the producing task's duration
-   * when the wire carries it.
+   * when the wire carries it. A body that errors before its end stores
+   * nothing and the read is a miss, so a layer can check bytes as they pass
+   * (a digest, a signature) and refuse at the end.
    */
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /**

@@ -89,6 +89,12 @@ writes whatever its config says. Never give the write secret to a
 out a pull request's code: it runs with main's ref and secrets, and
 `github()` scopes it `pr-<n>` only on the client side.
 
+A boundary that holds whoever can write the store is a signing cache
+plugin: main's CI signs each upload, and a reader refuses, as it streams,
+a download no trusted key signed, so the hit is a miss. Core needs no
+change for it; the plugins guide (§ Your own cache › Signed artifacts) has a
+complete one, run by `tests/signed-cache-guide.unsafe.test.ts`.
+
 ## What vx checks on bytes it did not write
 
 Every artifact that arrives from a remote, and every one read back from
