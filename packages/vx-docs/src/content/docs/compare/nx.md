@@ -30,7 +30,8 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 
 Every Nx task is an `nx:run-commands` target running the same command vx
 runs, with Nx's daemon off as in CI. The daemon does not help here: with it on,
-a nothing-changed run took 87 s against 25 s off (2026-10-12).
+a nothing-changed run of this benchmark took 87 s against 25 s off
+(Nx 23.3.0, 2026-10-12).
 
 ## Feature by feature
 
