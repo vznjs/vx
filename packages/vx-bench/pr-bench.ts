@@ -7,9 +7,11 @@
 // One small workspace (PROJECTS packages, build → test, cp-sized tasks),
 // both tools at the same concurrency, interleaved reps, min of each. Time
 // on a shared runner moves with the box, so what is held is the RATIO
-// vx / turbo taken in the same job: a slower box slows both. A case fails
-// when its ratio grew past TOLERANCE over the recorded one; a case vx
-// loses is printed as a LOSS either way.
+// vx / turbo taken in the same job: a slower box slows both. Restore and
+// nothing-changed are the runner's own overhead and are held: a case fails
+// when its ratio grew past TOLERANCE over the recorded one. Cold is printed,
+// not held: 200 spawns on 4 cores moved its ratio from 0.71 to 1.12 between
+// two CI runs of one commit (2026-10-12). A case vx loses prints LOSS.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -24,6 +26,7 @@ const BASELINE = path.join(import.meta.dir, 'pr-bench-baseline.json')
 const update = process.argv.includes('--update')
 
 const ARMS = ['cold', 'restore', 'noop'] as const
+const HELD: readonly Arm[] = ['restore', 'noop']
 type Arm = (typeof ARMS)[number]
 
 function sh(cmd: string[], cwd: string): { ok: boolean; out: string } {
@@ -158,7 +161,7 @@ try {
       `${arm.padEnd(9)} ${best.get(`vx ${arm}`)!.toFixed(0).padStart(5)} ms  ${best.get(`turbo ${arm}`)!.toFixed(0).padStart(5)} ms  ${r.toFixed(2).padStart(8)}  ${was?.toFixed(2) ?? '-'}`,
     )
     if (r > 1) console.log(`LOSS ${arm}: vx is slower than Turbo (${r.toFixed(2)}×)`)
-    if (was !== undefined && r > was * TOLERANCE) {
+    if (HELD.includes(arm) && was !== undefined && r > was * TOLERANCE) {
       fails.push(
         `${arm}: vx/turbo ${was.toFixed(2)} → ${r.toFixed(2)}, past ${TOLERANCE}× the baseline`,
       )
