@@ -211,7 +211,7 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'getFailures',
     description:
-      'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column); `fixedIn` names a later run where the task passed. `runId` defaults to the latest failed run.',
+      'Why a run failed: each failed task’s exit code, its output (plain text, the first 8 KiB and last 56 KiB, secrets masked) and the files the output names (absolute, with line and column); `fixedIn` names a later run where the task passed; `sandboxFix` lists the `exec.sandbox.allow` entries that would have granted a sandboxed task’s denials (credential paths go to `withheld`, never a grant). `runId` defaults to the latest failed run.',
     inputSchema: {
       type: 'object',
       properties: {

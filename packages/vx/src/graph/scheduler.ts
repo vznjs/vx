@@ -208,6 +208,15 @@ export interface TaskOutcome {
    * inline in the task's block instead of as loose status output.
    */
   sandboxViolationLines?: string[]
+  /** The `exec.sandbox.allow` entries that would have granted the denials. */
+  sandboxFix?: {
+    read?: string[]
+    write?: string[]
+    network?: string[]
+    systemInfo?: string[]
+    /** Credential paths denied and left out of the grants: an agent applies the fix as given. */
+    withheld?: string[]
+  }
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'

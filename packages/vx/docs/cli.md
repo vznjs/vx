@@ -1287,7 +1287,19 @@ package, are reported.
 Policy: **fail on violation.** Any task that touches a path it didn't
 declare either fails naturally (Linux: `ENOENT` from bwrap's
 mount-namespace hide) or is flagged via the macOS violation store
-and forced to exit non-zero. No cache is written for a failed task.
+and forced to exit non-zero. No cache is written for a failed task. The
+task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
+the grants that would have allowed each denial, project-relative:
+`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
+A write grants the top directory it landed in, so the next file there
+passes too, unless `cache.inputs.files` reads that directory: then it
+grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
+the line says so, since a grant never adds one. A credential path
+(`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
+`~/.config/gcloud`, `~/.netrc`, `~/.npmrc`, `~/.pypirc`,
+`~/.git-credentials`, `~/.docker/config.json`, a `.env` file) is never put in the
+line: an agent applies it as given, so it is named apart as one to
+grant only on purpose.
 "Didn't declare" means the grants, which on Linux are wider than they
 read: a file-shaped write grant is bound as its whole directory, so
 every file beside it is readable without a violation — `schema.md`
@@ -2818,7 +2830,11 @@ secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute; a file also named with a line
 drops its bare mention, such as bun test's `app.test.js:` header), so an
 agent reads why without the terminal. `fixedIn` names the first later run where that task
-passed, so a replayed failure that is already fixed says so. They live in `<cacheDir>/failures/<runId>.json`, the
+passed, so a replayed failure that is already fixed says so. A
+sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
+entries (`read`, `write`, `network`, `systemInfo`) that would have
+granted its denials, the same grants the terminal prints as `fix:`;
+`withheld` lists the credential paths it denied and left out. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that
