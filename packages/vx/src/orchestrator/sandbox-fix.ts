@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
+import { isLiteralPattern } from '../util/index.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
@@ -59,7 +60,7 @@ function writeGrant(grant: string, isDir: boolean, inputs: readonly string[]): s
 function readsDir(g: string, top: string): boolean {
   if (g.startsWith('!')) return false
   const first = g.replace(/^\.\//, '').split('/')[0] ?? ''
-  return first === top || /[*?[{]/.test(first)
+  return first === top || !isLiteralPattern(first)
 }
 
 function kindOf(v: SandboxViolation): Kind | undefined {
