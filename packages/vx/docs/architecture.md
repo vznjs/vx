@@ -386,7 +386,9 @@ never branches on layering.
    5. **Local short-circuit** (local-only cache, local reads on, ≥1
       task, the cache holds an artifact): derive stable keys + probe local ONCE → `preProbed`
       map (probe reuse) + `restoreTier` set (confirmed hits the
-      scheduler may restore ahead of their deps).
+      scheduler may restore ahead of their deps). The plugins'
+      `schedule` stage runs here, once, unless every task is in the
+      restore tier: restores take no weight.
    6. `runGraph({ nodes, concurrency, execute, priorities,
 restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
