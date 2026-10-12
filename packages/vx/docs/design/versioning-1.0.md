@@ -43,28 +43,30 @@ the values it takes and each refusal's exact words are recorded in
 
 `vx.workspace.ts`:
 
-| Level            | Fields                                                                                                               |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `concurrency`, `plugins`, `rules`, `schedule`, `timeout` |
-| `cacheRetention` | `maxSize`, `olderThan`                                                                                               |
-| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                    |
+| Level            | Fields                                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `concurrency`, `inputStability`, `plugins`, `rules`, `schedule`, `timeout` |
+| `cacheRetention` | `maxSize`, `olderThan`                                                                                                                 |
+| `inputStability` | `severity`, `strategy`                                                                                                                 |
+| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                                      |
 
 `vx.config.ts`:
 
-| Level                              | Fields                                                                                                    |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| (top)                              | `tags`, `tasks`                                                                                           |
-| `tasks.<name>`                     | `cache`, `dependsOn`, `description`, `exec`                                                               |
-| `tasks.<name>.exec`                | `command`, `env`, `interactive`, `persistent`, `remote`, `retries`, `sandbox`, `timeout`                  |
-| `tasks.<name>.exec.env`            | `define`, `passThrough`, `secret`                                                                         |
-| `tasks.<name>.exec.persistent`     | `readyWhen`                                                                                               |
-| `tasks.<name>.exec.sandbox`        | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |
-| `tasks.<name>.exec.sandbox.allow`  | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
-| `tasks.<name>.exec.sandbox.deny`   | `network`                                                                                                 |
-| `tasks.<name>.exec.sandbox.ignore` | `network`, `read`, `systemInfo`, `write`                                                                  |
-| `tasks.<name>.cache`               | `inputs`, `outputs`, `inputStability`                                                                     |
-| `tasks.<name>.cache.inputs`        | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
-| `tasks.<name>.cache.outputs`       | `files`, `workspaceFiles`                                                                                 |
+| Level                               | Fields                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| (top)                               | `tags`, `tasks`                                                                                           |
+| `tasks.<name>`                      | `cache`, `dependsOn`, `description`, `exec`                                                               |
+| `tasks.<name>.exec`                 | `command`, `env`, `interactive`, `persistent`, `remote`, `retries`, `sandbox`, `timeout`                  |
+| `tasks.<name>.exec.env`             | `define`, `passThrough`, `secret`                                                                         |
+| `tasks.<name>.exec.persistent`      | `readyWhen`                                                                                               |
+| `tasks.<name>.exec.sandbox`         | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |
+| `tasks.<name>.exec.sandbox.allow`   | `gitConfig`, `localBinding`, `machLookup`, `network`, `pty`, `read`, `systemInfo`, `unixSockets`, `write` |
+| `tasks.<name>.exec.sandbox.deny`    | `network`                                                                                                 |
+| `tasks.<name>.exec.sandbox.ignore`  | `network`, `read`, `systemInfo`, `write`                                                                  |
+| `tasks.<name>.cache`                | `inputs`, `outputs`, `inputStability`                                                                     |
+| `tasks.<name>.cache.inputs`         | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
+| `tasks.<name>.cache.outputs`        | `files`, `workspaceFiles`                                                                                 |
+| `tasks.<name>.cache.inputStability` | `severity`, `strategy`                                                                                    |
 
 Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 

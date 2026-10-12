@@ -58,8 +58,11 @@ const oneOf = (values: readonly string[]): string =>
     .join(', ')
     .replace(/, ([^,]*)$/, ' or $1')}`
 
-function envOneOf<T extends string>(name: string, values: readonly T[]): T | undefined {
-  const raw = process.env[name]
+function envOneOf<T extends string>(
+  name: string,
+  raw: string | undefined,
+  values: readonly T[],
+): T | undefined {
   if (raw === undefined || raw === '') return undefined
   if (!(values as readonly string[]).includes(raw)) throw new UserError(`${name} ${oneOf(values)}`)
   return raw as T
@@ -85,8 +88,12 @@ function validateInputStability(stability: unknown, at: string): void {
  * unset or empty, refused when it names no value.
  */
 export function inputStabilityEnv(): InputStability {
-  const strategy = envOneOf('VX_INPUT_STABILITY', STRATEGIES)
-  const severity = envOneOf('VX_INPUT_STABILITY_SEVERITY', SEVERITIES)
+  const strategy = envOneOf('VX_INPUT_STABILITY', process.env['VX_INPUT_STABILITY'], STRATEGIES)
+  const severity = envOneOf(
+    'VX_INPUT_STABILITY_SEVERITY',
+    process.env['VX_INPUT_STABILITY_SEVERITY'],
+    SEVERITIES,
+  )
   return {
     ...(strategy !== undefined ? { strategy } : {}),
     ...(severity !== undefined ? { severity } : {}),
