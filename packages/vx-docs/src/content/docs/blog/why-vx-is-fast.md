@@ -6,20 +6,20 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 1.07 s to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 856 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
 The number this post explains is the runner's overhead: the time it adds on top
 of the tasks themselves. On a synthetic workspace of 1,601 projects and
-9,603 tasks, with nothing changed, vx adds 1.07 s over one git walk,
-Turborepo 898 ms, Vite Task 11.75 s and
-Nx 25.45 s. On a cold build vx adds 7.07 s, Turborepo
-9.15 s and Nx 3 min 48 s; Vite Task
-8.16 s. Each runner runs in its own native
+9,603 tasks, with nothing changed, vx adds 856 ms over one git walk,
+Turborepo 855 ms, Vite Task 11.24 s and
+Nx 23.22 s. On a cold build vx adds 7.73 s, Turborepo
+10.32 s and Nx 3 min 23 s; Vite Task
+9.44 s. Each runner runs in its own native
 config.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-09 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache
