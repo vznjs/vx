@@ -77,29 +77,15 @@ const table: ReadonlyArray<readonly [string, (r: Row) => number]> = [
   ['Cold build', (r) => over(r, 'fresh')],
   ['Cold build: CPU the runner burns', cpu],
 ]
-// Every competitor cell says how vx compares, as how many times as long the
-// slower runner takes (owner, 2026-10-04). Under 2× it is a percentage
-// (owner, 2026-10-09). Rounded to nearest: whole from 10×, one decimal from 2×.
-function versus(ours: number, theirs: number): string {
-  const a = Math.max(ours, 1)
-  const b = Math.max(theirs, 1)
-  const faster = a < b
-  const r = faster ? b / a : a / b
-  if (r < 2) {
-    const pct = Math.round((r - 1) * 100)
-    return pct === 0 ? 'vx same' : `vx ${pct}% ${faster ? 'faster' : 'slower'}`
-  }
-  const k = r >= 10 ? Math.round(r) : Math.round(r * 10) / 10
-  return `vx ${k}× ${faster ? 'faster' : 'slower'}`
-}
-const FORMULA =
-  'Time each tool adds over the ideal run; vx N% or N× faster means that tool adds N% more or N times as much as vx.'
+// Cells carry each tool's figure only, never a "vx N× faster" aside: copy
+// never states how much faster vx is, the numbers speak (owner, 2026-10-12).
+const FORMULA = 'Time each tool adds over the ideal run; lower is better.'
 const vxCommit = / @ (\w+)$/.exec(vx.version)?.[1]
 const RUN = `Run ${d.date.slice(0, 10)} on ${d.machine}: vx ${vxCommit ? `at commit ${vxCommit}` : 'from source'}, Turborepo ${turbo.version}, Nx ${nx.version}, Vite Task (vite-plus) ${vt.version}.`
 const s = (ms: number): string =>
   ms < 1000 ? `${Math.round(ms)} ms` : `${+(ms / 1000).toFixed(2)} s`
 const WORKLOAD = `Benchmark workload: a synthetic monorepo of ${n(d.packages)} projects and ${n(d.tasks)} tasks in ${d.levels} dependency levels, five core libraries a quarter of the projects use; build ${s(d.buildMs)}, test and typecheck ${s(d.buildMs / 2)}, lint ${s(d.buildMs / 4)}, publish ${s(d.buildMs / 10)}; real repos with uneven task times will differ.`
-const vs = (r: Row, f: (r: Row) => number): string => `${disp(f(r))} (${versus(f(vx), f(r))})`
+const vs = (r: Row, f: (r: Row) => number): string => disp(f(r))
 const tableBlock =
   'const benchTable = [\n' +
   table
