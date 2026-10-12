@@ -27,7 +27,9 @@ const ARMS = ['cold', 'restore', 'noop'] as const
 type Arm = (typeof ARMS)[number]
 
 function sh(cmd: string[], cwd: string): { ok: boolean; out: string } {
-  const r = Bun.spawnSync(cmd, { cwd, env: benchEnv(), stdout: 'pipe', stderr: 'pipe' })
+  // Turbo's telemetry writes ~/.config/turborepo, which the task sandbox refuses.
+  const env = benchEnv({ TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1' })
+  const r = Bun.spawnSync(cmd, { cwd, env, stdout: 'pipe', stderr: 'pipe' })
   return { ok: r.exitCode === 0, out: r.stdout.toString() + r.stderr.toString() }
 }
 function must(cmd: string[], cwd: string): string {

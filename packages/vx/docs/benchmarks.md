@@ -211,8 +211,9 @@ sandbox, as the check is.
 
 ### The per-PR bench against Turborepo
 
-`packages/vx-bench/pr-bench.ts` runs in every PR's gate as
-`@vzn/vx-bench#check.vs-turbo`, in about 20 s. One 100-package
+`packages/vx-bench/pr-bench.ts` runs in every PR's CI as
+`@vzn/vx-bench#check.vs-turbo`, on a runner of its own (beside the
+suites, load moved the ratio from 0.83 to 1.29), in about 20 s. One 100-package
 workspace (build then test, copy-sized tasks), this checkout's vx
 compiled as released against Turborepo 2.11.7 (pinned in
 `packages/vx-bench/package.json`), both at concurrency 4: cold,
