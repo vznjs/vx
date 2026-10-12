@@ -27,3 +27,13 @@ it('a child spawned with it sees no BUN_OPTIONS', () => {
 it("keeps vx's whole cache in the workspace, where a wipe makes the next run cold", () => {
   expect(benchEnv()['VX_CACHE_DIR']).toBe('.vx/cache')
 })
+
+it('runs git on its defaults, whatever the host config says', () => {
+  const p = Bun.spawnSync({
+    cmd: ['git', 'config', '--get', 'core.checkstat'],
+    env: benchEnv(),
+  })
+  expect(p.stdout.toString()).toBe('')
+  expect(benchEnv()['GIT_CONFIG_GLOBAL']).toBe('/dev/null')
+  expect(benchEnv()['GIT_CONFIG_NOSYSTEM']).toBe('1')
+})

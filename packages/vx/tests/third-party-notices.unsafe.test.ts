@@ -42,6 +42,19 @@ describe('third-party notices', () => {
     expect(committed).toContain('\n@anthropic-ai/sandbox-runtime@')
   })
 
+  it('render the same from the repo root, where the docs say to run it', async () => {
+    const committed = readFileSync(NOTICES, 'utf8')
+    const cwd = process.cwd()
+    process.chdir(path.resolve(import.meta.dir, '..', '..', '..'))
+    try {
+      expect(await renderNotices(pinnedBun(), committedBunLicense(committed, pinnedBun())!)).toBe(
+        committed,
+      )
+    } finally {
+      process.chdir(cwd)
+    }
+  })
+
   it('ship with LICENSE in every platform package', async () => {
     const dist = path.join(root, 'dist')
     mkdirSync(dist)
