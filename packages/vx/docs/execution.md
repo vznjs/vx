@@ -418,10 +418,9 @@ package manager (unkeyed; `schema.md` § `env`). A sandboxed task also gets the 
 proxy, CA and `TMPDIR` values
 ([`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md#the-environment-srt-sets)). This prevents incidental env leakage
 between machines and gives reproducible runs. It is hygiene, not a
-boundary: an unsandboxed task runs as you and can still read vx's own
-environment (`ps eww` on macOS, `/proc/<pid>/environ` on Linux unless it
-holds a secret: `modules/util-hide-env.md`) and your home. `exec.sandbox`
-is the boundary ([`security.md`](./security.md#what-the-sandbox-stops)).
+boundary: an unsandboxed task runs as you and can still read your home,
+and on macOS vx's own environment (`ps eww`; on Linux vx is non-dumpable,
+`modules/util-hide-env.md`). `exec.sandbox` is the boundary ([`security.md`](./security.md#what-the-sandbox-stops)).
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the

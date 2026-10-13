@@ -2,8 +2,8 @@
 // still holds them (a token, a cache signing key). Can a task read them
 // back from vx? Linux: `/proc/<pid>/environ` of any same-user process.
 // macOS: `ps eww`, which reads another process's env through sysctl
-// KERN_PROCARGS2. A sandboxed task must find nothing; an unsandboxed one
-// does, and that control proves the probe works.
+// KERN_PROCARGS2. A sandboxed task must find nothing. An unsandboxed one
+// finds it on macOS, the probe's control; on Linux vx hides it.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
@@ -11,7 +11,6 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
-import { secretMask } from '../src/util/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const available = await sandboxAvailable('sandbox parent env test')
@@ -31,7 +30,7 @@ const PROBE = [
 ].join('\n')
 
 describe.skipIf(!available)("a task and vx's own environment", () => {
-  it('a sandboxed task cannot read it; an unsandboxed one can', async () => {
+  it('a sandboxed task cannot read it; an unsandboxed one only on macOS', async () => {
     root = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-penv-')))
     const ws = path.join(root, 'ws')
     const canary = `vxcanary${crypto.randomUUID().replaceAll('-', '')}`
@@ -51,16 +50,11 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
 `,
     )
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws }).exitCode).toBe(0)
-    // vx hides its env on Linux when it holds a secret (util/hide-env.ts),
-    // so the host's own secrets are left out and the canary's name decides.
-    const host = Object.fromEntries(
-      Object.entries(process.env).filter(([k, v]) => secretMask([{ [k]: v }]) === null),
-    )
-    const out = (task: string, name = 'VX_PROBE_CANARY'): string[] => {
+    const out = (task: string): string[] => {
       const r = Bun.spawnSync({
         cmd: [process.execPath, BIN, 'run', `a#${task}`, '--output-logs', 'full'],
         cwd: ws,
-        env: { ...host, [name]: canary },
+        env: { ...process.env, VX_PROBE_CANARY: canary },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -71,17 +65,15 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) => /^(OWN-ENV|LEAK-proc|LEAK-ps|DONE)$/.test(l))
     }
-    // On Linux a secret in vx's env hides it from an unsandboxed task too;
-    // root reads a non-dumpable process's environ all the same.
-    const hides = process.platform === 'linux' && !skipAsRoot('sandbox parent env')
-    expect({
-      boxed: out('boxed'),
-      open: out('open'),
-      ...(hides && { secret: out('open', 'VX_PROBE_SECRET') }),
-    }).toEqual({
+    // macOS: an unsandboxed task reads it (`ps eww`), the probe's control.
+    // Linux: vx is non-dumpable (util/hide-env.ts), so neither reads it;
+    // hide-env.unsafe.test.ts holds the probe's control there. Root reads a
+    // non-dumpable process's environ all the same.
+    const linux = process.platform === 'linux'
+    const asRoot = linux && skipAsRoot('sandbox parent env')
+    expect({ boxed: out('boxed'), open: out('open') }).toEqual({
       boxed: ['DONE'],
-      open: [process.platform === 'linux' ? 'LEAK-proc' : 'LEAK-ps', 'DONE'],
-      ...(hides && { secret: ['DONE'] }),
+      open: linux ? (asRoot ? ['LEAK-proc', 'DONE'] : ['DONE']) : ['LEAK-ps', 'DONE'],
     })
   })
 })
