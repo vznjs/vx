@@ -47,7 +47,7 @@ describe('a bare vx', () => {
   it('inside a workspace: the reference, exit 0', async () => {
     await writeFile(path.join(dir, 'package.json'), '{"name":"x"}\n')
     expect(await run([])).toBe(0)
-    expect(stdout).toStartWith('vx — open, extensible monorepo task runner\n')
+    expect(stdout).toStartWith('vx — task orchestration you own\n')
     expect(stderr).toBe('')
   })
 
@@ -55,7 +55,7 @@ describe('a bare vx', () => {
     for (const flag of ['--help', '-h']) {
       stdout = ''
       expect(await run([flag])).toBe(0)
-      expect(stdout).toStartWith('vx — open, extensible monorepo task runner\n')
+      expect(stdout).toStartWith('vx — task orchestration you own\n')
     }
     expect(stderr).toBe('')
   })

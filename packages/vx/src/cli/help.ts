@@ -102,7 +102,7 @@ export function verbHelpText(verb: string): string {
 
 export function helpText(pluginCommands: readonly string[] = []): string {
   return [
-    'vx — open, extensible monorepo task runner',
+    'vx — task orchestration you own',
     '',
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
