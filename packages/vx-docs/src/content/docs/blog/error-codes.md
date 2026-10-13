@@ -6,7 +6,7 @@ authors:
 tags:
   - ai
   - dx
-excerpt: 'Under --format json, a refusal is now a JSON line with a stable code. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence.'
+excerpt: 'Under --format json, a refusal is a JSON line with a stable code and a link to its fix. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence, and vx docs <code> prints the fix offline.'
 ---
 
 An agent that runs `vx run build --format json` reads stdout. When vx
@@ -15,7 +15,7 @@ as prose. Now the refusal is on stdout too, as one JSON line:
 
 ```sh frame="terminal"
 $ vx run biuld --all --format json
-{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?"}}
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 
 The exit code is still 1 and stderr still says it in words. The code
@@ -33,3 +33,30 @@ is the contract; the message may change.
 
 `schemas/error.json` describes the line, and the full table is in the
 [CLI reference](../../cli/#error-codes).
+
+## Each code says the fix
+
+`docs` links that code's section. No network? The same section ships
+inside vx:
+
+```sh frame="terminal"
+$ vx docs VX_E_UNKNOWN_TASK
+── cli.md § VX_E_UNKNOWN_TASK · https://vznjs.github.io/vx/cli/#vx_e_unknown_task
+
+#### `VX_E_UNKNOWN_TASK`
+
+No project in scope declares a requested task. The message lists the
+tasks it found; `vx show --format json` lists each project's. …
+```
+
+| Code              | The fix says                            |
+| ----------------- | --------------------------------------- |
+| `VX_E_USAGE`      | the flag it refused; `vx <verb> --help` |
+| `VX_E_CONFIG`     | the file and field; `vx docs <field>`   |
+| `VX_E_CYCLE`      | the loop; drop one `dependsOn` edge     |
+| `VX_E_NO_HISTORY` | run the task once first                 |
+| `VX_E_FDS`        | `ulimit -n 4096`, or fewer tasks at once |
+
+Every core code has its section, and a test holds the list to the codes
+the source can throw. Over MCP, a refused tool call carries the same
+`docs` link. See the [Agents guide](../../guides/agents/).
