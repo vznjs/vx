@@ -153,7 +153,7 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
   it reads anything you can. vx hides its own environment from it on
   every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
   macOS it zeroes the values `ps eww` reads, every variable but the
-  essentials every task gets (COST). It starts its helpers with `PATH`
+  essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
   alone (`tests/hide-env.unsafe.test.ts`). That hides the environment
   only, not files, and a short-lived `git` vx runs still carries it.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like

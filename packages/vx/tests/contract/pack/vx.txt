@@ -155,6 +155,7 @@ src/util/cgroup.ts
 src/util/config-frame.ts
 src/util/edit-distance.ts
 src/util/errors.ts
+src/util/essential-env.ts
 src/util/hangup.ts
 src/util/hash.ts
 src/util/hide-env.ts
