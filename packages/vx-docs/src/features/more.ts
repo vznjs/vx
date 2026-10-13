@@ -1261,7 +1261,7 @@ export const MORE: readonly Feature[] = [
     body: [
       'A build that reads a stray variable from your shell works on your machine and nowhere else. vx starts each task with a clean environment plus what you name.',
       '`passThrough` lets a variable in, `define` sets one, and `secret` masks a value wherever it would be printed.',
-      'This keeps builds alike, not a wall: an unsandboxed task can still read vx’s own environment on macOS (on Linux vx is non-dumpable). `exec.sandbox` keeps it out on both.',
+      'This keeps builds alike, not a wall: vx hides its own environment from a task (non-dumpable on Linux, zeroed for `ps eww` on macOS), but an unsandboxed task still reads any file you can. `exec.sandbox` keeps it out.',
     ],
     example: {
       lang: 'ts',
