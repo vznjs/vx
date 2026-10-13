@@ -585,21 +585,22 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
 }
 
 /**
- * How the user runs vx, for the report's `next:` line. After `npx vx init`
+ * How the user runs vx, for the report's `next:` line. After `npx @vzn/vx init`
  * or `bunx @vzn/vx init` a bare `vx` is on no PATH (the first-five-minutes
  * walk, 2026-09-28), so the line names the runner that started this
  * process — npx, pnpm, yarn and Bun each set `npm_config_user_agent` — and
- * the spec it resolves: the installed bin, else the package, since a bare
- * `bunx vx` or `npx vx` would fetch an unrelated package named `vx`. No
+ * the spec it resolves. npx and bunx always name the package, which runs
+ * the installed bin when there is one: their bare `vx` fetches an unrelated
+ * package named `vx` wherever vx is not installed. No
  * runner (a global install, the compiled binary): `vx`.
  */
 export function vxInvocation(userAgent: string | undefined, installed: boolean): string {
   const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1]
   switch (runner) {
     case 'npm':
-      return installed ? 'npx vx' : 'npx @vzn/vx'
+      return 'npx @vzn/vx'
     case 'bun':
-      return installed ? 'bunx vx' : 'bunx @vzn/vx'
+      return 'bunx @vzn/vx'
     case 'pnpm':
       return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
     case 'yarn':

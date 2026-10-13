@@ -1660,9 +1660,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const all = '@vzn/vx @vzn/vx-migrate'
       expect(rows).toEqual([
         `npm install -D ${all} && vx run compile --all`,
-        `npm install -D ${all} && npx vx run compile --all`,
+        `npm install -D ${all} && npx @vzn/vx run compile --all`,
         // The first lockfile in pnpm, yarn, bun, npm order names the manager.
-        `bun add -d ${all} && bunx vx run compile --all`,
+        `bun add -d ${all} && bunx @vzn/vx run compile --all`,
         `yarn add -D -W ${all} && yarn vx run compile --all`,
         `yarn add -D ${all} && yarn vx run compile --all`,
         `pnpm add -D -w ${all} && pnpm vx run compile --all`,
@@ -1989,7 +1989,7 @@ describe('vx init names the runner that started it', () => {
     }
     try {
       // makeRoot links @vzn/vx in; a dry init loads nothing that needs it.
-      expect(await next()).toBe('next: npx vx run build --all')
+      expect(await next()).toBe('next: npx @vzn/vx run build --all')
       await rm(path.join(root, 'node_modules'), { recursive: true })
       expect(await next()).toBe('next: npx @vzn/vx run build --all')
     } finally {
@@ -2007,10 +2007,10 @@ describe('vx init names the runner that started it', () => {
       undefined,
     ].map((ua) => [ua?.split('/')[0], vxInvocation(ua, false), vxInvocation(ua, true)])
     expect(rows).toEqual([
-      ['npm', 'npx @vzn/vx', 'npx vx'],
+      ['npm', 'npx @vzn/vx', 'npx @vzn/vx'],
       ['pnpm', 'pnpm dlx @vzn/vx', 'pnpm vx'],
       ['yarn', 'yarn dlx @vzn/vx', 'yarn vx'],
-      ['bun', 'bunx @vzn/vx', 'bunx vx'],
+      ['bun', 'bunx @vzn/vx', 'bunx @vzn/vx'],
       ['deno', 'vx', 'vx'],
       [undefined, 'vx', 'vx'],
     ])

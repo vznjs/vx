@@ -421,7 +421,13 @@ const INSTALL: Record<PackageManager, string> = {
   npm: 'npm install -D',
 }
 
-const EXEC: Record<PackageManager, string> = { pnpm: 'pnpm', yarn: 'yarn', bun: 'bunx', npm: 'npx' }
+// npx and bunx name the package: their bare `vx` is a stranger's npm package.
+const EXEC: Record<PackageManager, string> = {
+  pnpm: 'pnpm vx',
+  yarn: 'yarn vx',
+  bun: 'bunx @vzn/vx',
+  npm: 'npx @vzn/vx',
+}
 
 /**
  * Install what the workspace file imports, if missing, then run the repo's
@@ -440,7 +446,7 @@ export function adoptionNext(
     (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
   )
   // A global vx (no runner started this one) runs the workspace's plugins as they are.
-  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : `${EXEC[pm]} vx`
+  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : EXEC[pm]
   const task = firstTask(path.join(root, source), runner)
   const run = `${vx} run ${task} --all`
   if (missing.length === 0) return run

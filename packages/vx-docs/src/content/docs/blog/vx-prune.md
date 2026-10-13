@@ -63,7 +63,7 @@ changes. `full/` holds everything else.
 COPY out/json/ .
 RUN bun install --frozen-lockfile
 COPY out/full/ .
-RUN bunx vx run @demo/web#build
+RUN bunx @vzn/vx run @demo/web#build
 ```
 
 ## Where it comes from

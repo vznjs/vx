@@ -17,7 +17,8 @@ that binary.
 1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
    workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`; Bun:
    `bun add -d @vzn/vx`).
-2. Run `npx vx init`. It writes a `vx.config.ts` per package from its
+2. Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
+   whose `devEngines` names Bun). It writes a `vx.config.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
    repo (`format: prettier --check .`) becomes a task in a root
    `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
@@ -55,8 +56,8 @@ export default defineProject({
 
 ## Run
 
-Installed from npm, the command is `npx vx` (pnpm: `pnpm vx`, Bun:
-`bunx vx`); the lines below drop the prefix.
+Installed from npm, the command is `npx @vzn/vx` (pnpm: `pnpm vx`, Bun:
+`bunx @vzn/vx`); the lines below drop the prefix.
 
 ```bash
 vx run build --all        # every package, in dependency order
@@ -98,7 +99,7 @@ Start with one package and leave the rest of your tooling as it is.
 
 ## Coming from Turbo, Nx or Vite Task
 
-`npx vx init` beside `turbo.json` or `nx.json` runs `@vzn/vx-migrate`, which
+`npx @vzn/vx init` beside `turbo.json` or `nx.json` runs `@vzn/vx-migrate`, which
 writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
 (`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
 from there everything above applies. `vx init --keep` writes only a

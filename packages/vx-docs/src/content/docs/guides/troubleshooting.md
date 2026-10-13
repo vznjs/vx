@@ -23,7 +23,7 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |
 | `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |
-| `vx: command not found`                            | A local install is not on PATH: run `npx vx` or `bunx vx`.              |
+| `vx: command not found`                            | A local install is not on PATH: run `npx @vzn/vx` or `bunx @vzn/vx`.              |
 
 A typo in `--filter` names the closest project:
 
