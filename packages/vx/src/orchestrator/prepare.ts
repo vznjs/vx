@@ -296,15 +296,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
   const workspacePolicy = workspaceCachePolicy(workspaceConfig)
+  const cacheScope =
+    options.cacheScope ??
+    envScope ??
+    workspaceConfig?.cache?.scope ??
+    // A workspace policy naming the remote asks to write it, as `--cache` does.
+    (options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy)
+      ? undefined
+      : options.defaultCacheScope)
   const policy: CachePolicy = scopeCachePolicy(
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags),
-    options.cacheScope ??
-      envScope ??
-      workspaceConfig?.cache?.scope ??
-      // A workspace policy naming the remote asks to write it, as `--cache` does.
-      (options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy)
-        ? undefined
-        : options.defaultCacheScope),
+    cacheScope,
   )
   const localCache = new Cache(
     cacheDir,
@@ -463,6 +465,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           workspaceRoot,
           cacheDir,
           warn: (m) => log.status(m),
+          scope: cacheScope === 'trusted' ? undefined : cacheScope,
           localCache,
           policy,
         })

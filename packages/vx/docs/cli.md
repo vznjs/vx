@@ -580,7 +580,7 @@ them in this precedence order:
 
 1. Start with every axis **on** (the default).
 2. Apply each `--cache=<spec>` segment (the base), or, with no
-   `--cache`, the `VX_CACHE` environment variable's spec, or, with
+   `--cache`, the `VX_CACHE_POLICY` environment variable's spec, or, with
    neither, `vx.workspace`'s `cache.policy` (`docs/schema.md`).
 3. If `--no-cache` was passed, force **all four off**.
 4. If `--force` was passed, force **both reads off** (writes stay
@@ -627,7 +627,7 @@ Combine with `--force` for "re-execute and refresh only the remote":
 
 Invalid layers/flags are a parse error
 (`--cache: invalid layer 'disk'`, `--cache: invalid flag 'x'`, …);
-`VX_CACHE` and `cache.policy` say their own name instead.
+`VX_CACHE_POLICY` and `cache.policy` say their own name instead.
 
 ### Output
 
@@ -2724,7 +2724,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
 - `cache policy` is the policy a `vx run` takes when no flag names one,
-  and where it comes from (`VX_CACHE`, `vx.workspace`'s `cache.policy`,
+  and where it comes from (`VX_CACHE_POLICY`, `vx.workspace`'s `cache.policy`,
   or the default, every layer on); `cache scope` is the same for the
   scope (`VX_CACHE_SCOPE`, `cache.scope`, which `github()` may set, or the
   default: read-only off CI, trusted on CI or when the policy names the
@@ -3113,7 +3113,7 @@ unset, a value its kind does not take is refused naming the form, and a
 name renamed in 0.0.637 (`VX_TIMING`, `VX_TASK_TIMEOUT`,
 `VX_KILL_GRACE_MS`, `VX_TEARDOWN_TIMEOUT_MS`, `VX_READY_NOTICE_MS`,
 `VX_CONFIG_WORKER_TIMEOUT_MS`, `VX_CACHE`, `VX_INPUT_STABILITY`,
-`VX_INPUT_STABILITY_SEVERITY`) is refused naming the new one. A
+`VX_INPUT_STABILITY_SEVERITY`, `VX_DUMPABLE`) is refused naming the new one. A
 plugin's own (the REAPI endpoints, the GitHub token) are in its README;
 what a TASK sees is `exec.env` in `docs/schema.md`.
 
@@ -3364,8 +3364,9 @@ that forces colour for a run's log still parses them
 ## Remote cache (plugin-driven)
 
 Core ships **no remote-cache wire client** — the remote cache is a
-plugin concern. A `cache` plugin composes core's `LayeredCache` over a
-wire client; `@vzn/vx-reapi` provides one for any Bazel REAPI server
+plugin concern. A `cache` plugin returns a wire client (a
+`RemoteCacheLayer`) and core layers it over the local cache;
+`@vzn/vx-reapi` provides one for any Bazel REAPI server
 (ActionCache + CAS).
 
 Reads try local first, then remote (hydrating local on remote hit),

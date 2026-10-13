@@ -25,19 +25,12 @@ import { ownRssHighWater } from '../src/exec/runner.js'
 import {
   LocalHistoryProvider,
   planRun,
-  prepareRun,
   run,
   type RunSummaryRecord,
   type TelemetryRecord,
 } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
-
-/**
- * Absolute specifier for the cache module, so a fixture's generated
- * `vx.workspace.mjs` (loaded from a temp dir) can import `LayeredCache`.
- */
-const cacheModuleSpecifier = new URL('../src/cache/index.ts', import.meta.url).href
 
 /**
  * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —
@@ -1412,23 +1405,6 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
 // own answer, and these pin both directions.
 
 describe('cache layer: hasRemote is the remote-layer signal', () => {
-  /** A pass-through decorator with NO remote — e.g. a metrics wrapper. */
-  const PASSTHROUGH_PLUGIN = localWorkspaceSource([
-    pluginSource(
-      'test/passthrough',
-      `{ cache(ctx) {
-        const inner = ctx.localCache
-        return new Proxy(inner, {
-          get(t, p, r) {
-            const v = Reflect.get(t, p, r)
-            return typeof v === 'function' ? v.bind(t) : v
-          },
-        })
-      },
-    }`,
-    ),
-  ])
-
   it('a bare local Cache reports no remote; a LayeredCache reports one', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hasremote-'))
     try {
@@ -1451,39 +1427,13 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
   })
 
   it(
-    'a pass-through decorator with no remote does NOT claim a remote layer',
+    'a remote-only write policy with no remote stays clamped inert',
     async () => {
+      // An unclamped `remote:w` made execute-task believe a save would
+      // happen, so it wiped the declared outputs before every exec for a
+      // save that goes NOWHERE: `--no-cache`'s "leave the tree alone".
       const fixture = await makeFixture('vx-remote-e2e-')
       try {
-        await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), PASSTHROUGH_PLUGIN)
-        await addProject(fixture.root, 'app', {
-          files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
-        })
-        const prepared = await prepareRun(
-          { cwd: fixture.root, tasks: ['build'] },
-          silentLogger(fixture),
-        )
-        expect(prepared.hasRemoteLayer).toBe(false)
-        prepared.cache.close()
-      } finally {
-        await rm(fixture.root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a remote-only write policy behind a pass-through decorator stays clamped inert',
-    async () => {
-      // The user-visible half: an unclamped `remote:w` made execute-task
-      // believe a save would happen, so it wiped the declared outputs before
-      // every exec for a save that goes NOWHERE — `--no-cache`'s documented
-      // "leave the tree alone" contract, broken by a decorator that has no
-      // remote at all.
-      const fixture = await makeFixture('vx-remote-e2e-')
-      try {
-        await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), PASSTHROUGH_PLUGIN)
         const dir = await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1', 'stray.txt': 'UNTOUCHED' },
           config: `
@@ -1513,13 +1463,11 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
   )
 
   it(
-    'a third-party layer declaring hasRemote gets the prefetch pass and the upload drain',
+    "a plugin's remote gets the prefetch pass, and its uploads drain before teardown",
     async () => {
-      // Both were gated on `instanceof LayeredCache`, so a third-party
-      // remote layer got NEITHER: no prefetch — its remote GETs land on the
-      // up-front classify instead, which is awaited BEFORE any task is
-      // scheduled — and no drain, leaving background uploads in flight when
-      // close() fires.
+      // Without the prefetch a remote's lookups land on the up-front
+      // classify, awaited BEFORE any task is scheduled; without the drain,
+      // uploads are in flight when close() fires.
       const fixture = await makeFixture('vx-remote-e2e-')
       const g = globalThis as Record<string, unknown>
       try {
@@ -1529,75 +1477,46 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         })
         await writeFile(
           path.join(fixture.root, 'vx.workspace.mjs'),
-          localWorkspaceSource(
-            [
-              `                ${pluginSource(
-                'test/thirdparty',
-                `{ cache(ctx) {
-                    const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
-                      policy: ctx.policy,
-                    })
-                    // A hand-written delegating layer: implements CacheLayer,
-                    // is NOT an instanceof LayeredCache, and answers the
-                    // remote question truthfully.
-                    return {
-                      hasRemote: true,
-                      prefetch: (h, c) => {
-                        globalThis.__vxPrefetched = true
-                        return inner.prefetch(h, c)
-                      },
-                      drainUploads: () => {
-                        globalThis.__vxDrained = true
-                        globalThis.__vxTornDownFirst = globalThis.__vxTornDown === true
-                        return inner.drainUploads()
-                      },
-                      remoteHasMany: (h) => inner.remoteHasMany(h),
-                      markRemoteAbsent: (h) => inner.markRemoteAbsent(h),
-                      key: (a) => inner.key(a),
-                      get: (a, b) => inner.get(a, b),
-                      has: (a) => inner.has(a),
-                      loadOutputFilesBatch: (a) => inner.loadOutputFilesBatch(a),
-                      isOutputsCurrent: (a, b) => inner.isOutputsCurrent(a, b),
-                      restoreOutputs: (a, b, c) => inner.restoreOutputs(a, b, c),
-                      save: (a) => inner.save(a),
-                      ingest: (a, b, c) => inner.ingest(a, b, c),
-                      recordRun: (a) => inner.recordRun(a),
-                      recordRuns: (a) => inner.recordRuns(a),
-                      recordRunBundle: (a) => inner.recordRunBundle(a),
-                      stats: (a) => inner.stats(a),
-                      hashFile: (a) => inner.hashFile(a),
-                      outputsPath: (a) => inner.outputsPath(a),
-                      prune: (a) => inner.prune(a),
-                      close: () => inner.close(),
-                    }
-                  },
-                  teardown() {
-                    globalThis.__vxTornDown = true
-                  },
-                }`,
-              )}`,
-            ],
-            `
-            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
-            const alwaysMiss = {
-              async has() { return false },
-              async get() { return null },
-              async put() {},
-            }
-            `,
-          ),
+          localWorkspaceSource([
+            `                ${pluginSource(
+              'test/remote',
+              `{ cache() {
+                  return {
+                    async has() { return false },
+                    async hasMany() {
+                      globalThis.__vxPrefetched = true
+                      return new Set()
+                    },
+                    async get() { return null },
+                    async put() {
+                      await Bun.sleep(50)
+                      globalThis.__vxDrained = true
+                      globalThis.__vxTornDownFirst = globalThis.__vxTornDown === true
+                    },
+                  }
+                },
+                teardown() {
+                  globalThis.__vxTornDown = true
+                },
+              }`,
+            )}`,
+          ]),
         )
         g['__vxPrefetched'] = false
         g['__vxDrained'] = false
-        const res = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+          log: silentLogger(fixture),
+        })
         expect(res.ok).toBe(true)
         expect(g['__vxPrefetched']).toBe(true)
         expect(g['__vxDrained']).toBe(true)
-        // ORDER, not just occurrence: the drain pushes bytes through a layer a
-        // PLUGIN provided, so a plugin releasing its client in teardown() must
-        // not run first. When it did, every remote write was lost to
-        // `Channel has been shut down` — a warning, a green run, and nothing
-        // in the remote store (observed against a live REAPI server).
+        // ORDER, not just occurrence: a plugin releasing its client in
+        // teardown() must not run first. When it did, every remote write was
+        // lost to `Channel has been shut down` — a warning, a green run, and
+        // nothing in the remote store (observed against a live REAPI server).
         expect(g['__vxTornDownFirst']).toBe(false)
       } finally {
         delete g['__vxPrefetched']
@@ -1628,15 +1547,25 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       // the close under test. The claim is "every exit path"; the coverage
       // was one of them.
       //
-      // The lever here is a plugin layer whose `recordOutputDirs` throws: a
-      // restoring hit snapshots its `dist/**` tree after the drain, and that
-      // write is the one plugin call in the normal path left unwrapped (its
-      // `drainUploads` was, until a plugin's upload failure became a warning).
-      // So the run takes its hits and then dies before its own close.
+      // The lever: the local store's run-end `recordOutputDirs` throws. A
+      // restoring hit snapshots its `dist/**` tree after the drain, so the
+      // run takes its hits and then dies before its own close.
       const fixture = await makeFixture('vx-remote-e2e-')
       const g = globalThis as Record<string, unknown>
+      const record = Cache.prototype.recordOutputDirs
+      const dirs = spyOn(Cache.prototype, 'recordOutputDirs').mockImplementation(function (
+        this: Cache,
+        ...args
+      ) {
+        // Only the run-end snapshot (it passes `holds`): the hit path's own
+        // snapshot failure is caught where it is taken.
+        if (g['__vxDirsThrow'] === true && args[3] !== undefined) {
+          throw new Error('snapshot exploded')
+        }
+        return record.apply(this, args)
+      })
       try {
-        await addProject(fixture.root, 'app', {
+        const dir = await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
           config: `
             export default {
@@ -1649,61 +1578,6 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
             }
           `,
         })
-        await writeFile(
-          path.join(fixture.root, 'vx.workspace.mjs'),
-          localWorkspaceSource(
-            [
-              `                ${pluginSource(
-                'test/dirs-throw',
-                `{ cache(ctx) {
-                    const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
-                      policy: ctx.policy,
-                    })
-                    // It wraps the local handle and says so, or the local
-                    // store would be asked ahead of it and answer the hit.
-                    return {
-                      local: ctx.localCache,
-                      hasRemote: true,
-                      prefetch: (h, c) => inner.prefetch(h, c),
-                      drainUploads: () => inner.drainUploads(),
-                      remoteHasMany: (h) => inner.remoteHasMany(h),
-                      markRemoteAbsent: (h) => inner.markRemoteAbsent(h),
-                      key: (a) => inner.key(a),
-                      get: (a, b) => inner.get(a, b),
-                      has: (a) => inner.has(a),
-                      loadOutputFilesBatch: (a) => inner.loadOutputFilesBatch(a),
-                      isOutputsCurrent: (a, b) => inner.isOutputsCurrent(a, b),
-                      restoreOutputs: (a, b, c) => inner.restoreOutputs(a, b, c),
-                      save: (a) => inner.save(a),
-                      ingest: (a, b, c) => inner.ingest(a, b, c),
-                      recordRun: (a) => inner.recordRun(a),
-                      recordRuns: (a) => inner.recordRuns(a),
-                      recordRunBundle: (a) => inner.recordRunBundle(a),
-                      stats: (a) => inner.stats(a),
-                      hashFile: (a) => inner.hashFile(a),
-                      outputsPath: (a) => inner.outputsPath(a),
-                      recordOutputDirs: (a, b, c, d) => {
-                        if (globalThis.__vxDirsThrow === true) {
-                          throw new Error('snapshot exploded')
-                        }
-                        return inner.recordOutputDirs?.(a, b, c, d)
-                      },
-                      prune: (a) => inner.prune(a),
-                      close: () => inner.close(),
-                    }
-                  } }`,
-              )}`,
-            ],
-            `
-            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
-            const alwaysMiss = {
-              async has() { return false },
-              async get() { return null },
-              async put() {},
-            }
-            `,
-          ),
-        )
         g['__vxDirsThrow'] = false
         const first = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
         expect(first.ok).toBe(true)
@@ -1727,13 +1601,14 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         const before = accessedAt()
 
         // A restoring hit: the output tree is gone, so the hit writes it back.
-        await rm(path.join(fixture.root, 'app', 'dist'), { recursive: true, force: true })
+        await rm(path.join(dir, 'dist'), { recursive: true, force: true })
         g['__vxDirsThrow'] = true
         await expect(
           run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
         ).rejects.toThrow('snapshot exploded')
         expect(accessedAt()).toBeGreaterThan(before)
       } finally {
+        dirs.mockRestore()
         delete g['__vxDirsThrow']
         await rm(fixture.root, { recursive: true, force: true })
       }

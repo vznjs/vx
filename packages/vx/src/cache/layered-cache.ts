@@ -37,8 +37,8 @@ import { xxh3hex } from '../util/index.js'
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
- * caching. Core ships no wire client; a plugin's `cache` capability (or an
- * embedder via `RunOptions.remoteCache`) supplies an implementation speaking
+ * caching. Core ships no wire client; a plugin's `cache` hook returns one
+ * (or an embedder passes one as `RunOptions.remoteCache`), speaking
  * whatever protocol it wants, and `LayeredCache` owns everything else:
  * policy gating, in-flight dedup, remote provenance, and the never-fail
  * contract (implementations THROW on failure; LayeredCache degrades every
@@ -60,6 +60,11 @@ export interface RemoteCacheLayer {
    * dropped before it is printed.
    */
   readonly endpoint?: string
+  /**
+   * What the wire's credential allows, when less than both (a read-only
+   * token): core clears the run's remote axis it lacks. Omitted → both.
+   */
+  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /**

@@ -3,14 +3,15 @@
 // here; the run-level differential (saves overlap the next execution, and
 // the second run still hits) is below.
 
+import { appendFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
 import { createSaveLane } from '../src/orchestrator/save-lane.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -88,7 +89,7 @@ describe('createSaveLane', () => {
 
 describe('the save lane in a run', () => {
   it('a slow cache save no longer holds the execution slot, and the entries still land', async () => {
-    // A cache layer whose every save sleeps 300 ms, over the local cache,
+    // A local cache whose every save sleeps 300 ms,
     // and an order log every event appends to. Four independent cached
     // tasks on ONE slot: with the save in the slot no execution can start
     // between a save's start and its end; off the slot the next task's
@@ -97,38 +98,21 @@ describe('the save lane in a run', () => {
     // before the first run returned.
     const root = await makeWorkspace({ prefix: 'vx-save-lane-' })
     const orderLog = path.join(root, 'order.log')
+    let afterSave = (): void => undefined
     try {
-      await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
-        localWorkspaceSource(
-          [
-            pluginSource(
-              'org/slow-save',
-              `{
-                cache: (ctx) => {
-                  const local = ctx.localCache
-                  return new Proxy(local, {
-                    get(target, key) {
-                      const v = Reflect.get(target, key)
-                      if (key === 'save') {
-                        return async (args) => {
-                          appendFileSync(${JSON.stringify(orderLog)}, 'save-start\\n')
-                          await new Promise((r) => setTimeout(r, 300))
-                          const out = await v.call(target, args)
-                          appendFileSync(${JSON.stringify(orderLog)}, 'save-end\\n')
-                          return out
-                        }
-                      }
-                      return typeof v === 'function' ? v.bind(target) : v
-                    },
-                  })
-                },
-              }`,
-            ),
-          ],
-          "import { appendFileSync } from 'node:fs'\n",
-        ),
-      )
+      await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([]))
+      const save = Cache.prototype.save
+      const slow = spyOn(Cache.prototype, 'save').mockImplementation(async function (
+        this: Cache,
+        args,
+      ) {
+        appendFileSync(orderLog, 'save-start\n')
+        await Bun.sleep(300)
+        const out = await save.call(this, args)
+        appendFileSync(orderLog, 'save-end\n')
+        return out
+      })
+      afterSave = () => slow.mockRestore()
       for (const name of ['a', 'b', 'c', 'd']) {
         await addProject(root, name, {
           files: { 'src/in.txt': name },
@@ -170,6 +154,7 @@ describe('the save lane in a run', () => {
         'cache-hit',
       ])
     } finally {
+      afterSave()
       await rm(root, { recursive: true, force: true })
     }
   }, 30_000)

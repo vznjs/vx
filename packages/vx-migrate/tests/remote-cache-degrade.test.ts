@@ -131,6 +131,9 @@ function hostileServer() {
 }
 
 /** A workspace whose one task writes a file, with `plugin` above the local cache. */
+/** Core names the plugin a remote's warning comes from. */
+const PLUGIN_PREFIX = "[vx] plugin '@vzn/vx-migrate':"
+
 async function fixture(plugin: string, importName: string): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-degrade-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
@@ -367,14 +370,14 @@ describe('a refused token costs ONE line on a whole workspace', () => {
       new Response(proc.stderr).text(),
     ])
     const exitCode = await proc.exited
-    const warnings = `${out}${err}`.split('\n').filter((l) => l.includes('vx/turbo-cache:'))
+    const warnings = `${out}${err}`.split('\n').filter((l) => l.includes(PLUGIN_PREFIX))
     // Every request after the refusal degrades in silence, so there is no
     // repeat count either. Which request meets it first is a race between
     // the prefetch pass's batch probe and a task's own download.
     expect({ exitCode, warnings: warnings.length }).toEqual({ exitCode: 0, warnings: 1 })
     expect(warnings[0]).toMatch(
       new RegExp(
-        `^vx/turbo-cache: (probe of 6 artifacts at|download [0-9a-f]{16} from) ${srv.url}/v8/artifacts failed: HTTP 401: the token was refused; remote cache off for this run$`,
+        `^\\[vx\\] plugin '@vzn/vx-migrate': (probe of 6 artifacts at|download [0-9a-f]{16} from) ${srv.url}/v8/artifacts failed: HTTP 401: the token was refused; remote cache off for this run$`,
       ),
     )
   })
@@ -410,7 +413,7 @@ async function cliRun(
 }
 
 for (const wire of ['turboCache', 'nxCache'] as const) {
-  const prefix = wire === 'turboCache' ? 'vx/turbo-cache:' : 'vx/nx-cache:'
+  const prefix = PLUGIN_PREFIX
   const base = wire === 'turboCache' ? '/v8/artifacts' : '/v1/cache'
   // turborepo#487, #2096, #8772: a failed upload was silent, and the team
   // found out only when nothing ever hit.
