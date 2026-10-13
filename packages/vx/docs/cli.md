@@ -2071,6 +2071,10 @@ A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
 on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
 `^build`, an edge to each build outside its cycle that `^build` would
 reach, and a TODO to order the cycle: `^build` there refuses the run.
+A script that runs a workspace package's bin the package gets only
+through the root's dependencies (vite's playgrounds run `vite` from the
+root's `vite: workspace:*`) also waits on that package's build
+(`vite#build`): no `^build` edge reaches it.
 `test` / `typecheck` wait for
 `build` when the package has one (`lint` reads sources and gets no
 edge); `dev` / `start` / `serve` / `watch` /
