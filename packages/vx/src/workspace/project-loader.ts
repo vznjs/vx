@@ -836,6 +836,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'deepEquals',
   'env',
   'file',
+  'gunzipSync',
   'hash',
   'inspect',
   'main',
