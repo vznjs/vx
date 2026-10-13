@@ -69,7 +69,8 @@ function envOneOf<T extends string>(
   values: readonly T[],
 ): T | undefined {
   if (raw === undefined || raw === '') return undefined
-  if (!(values as readonly string[]).includes(raw)) throw new UserError(`${name} ${oneOf(values)}`)
+  if (!(values as readonly string[]).includes(raw))
+    throw new UserError(`${name} ${oneOf(values)}`, 'VX_E_USAGE')
   return raw as T
 }
 
