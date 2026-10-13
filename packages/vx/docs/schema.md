@@ -671,8 +671,8 @@ Semantics:
   too, as long as SOME project in the workspace declares `name`: a
   preset spreads `'^build'` over packages whose deps have no `build`.
   A `'^name'` that **no project in the whole workspace declares** is a
-  hard error at graph-build time, since it can only be a typo: "Task
-  app#test depends on ^biuld but no project in the workspace declares
+  hard error at graph-build time, since it can only be a typo: "app#test:
+  dependsOn ^biuld but no project in the workspace declares
   biuld". Until 2026-09-24 it resolved to no edges and the run went
   green (Nx#32779 is the same bug). A scoped run (an anchored
   `app#test`, `--filter`, a project directory) loads only its projects

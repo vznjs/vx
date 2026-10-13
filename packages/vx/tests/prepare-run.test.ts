@@ -309,7 +309,7 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       const err = await refusal({ tasks: ['app#typo'] })
       expect(err).toBeInstanceOf(UserError)
       expect((err as Error).message).toBe(
-        'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
+        'app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
       )
     },
     TIMEOUT,
@@ -337,9 +337,7 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
         }
       }
       expect(messages).toEqual(
-        Array(6).fill(
-          'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
-        ),
+        Array(6).fill('app#typo: dependsOn ^biuld but no project in the workspace declares biuld'),
       )
     },
     TIMEOUT,

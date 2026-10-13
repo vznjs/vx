@@ -83,7 +83,7 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'a', task: 'test' }],
       }),
-    ).toThrow(/depends on a#nope/)
+    ).toThrow(/dependsOn a#nope/)
   })
 
   // ─── '^name' frontier expansion (nearest-holder semantics) ──────────
@@ -282,7 +282,7 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/Cycle detected in task graph: a#build -> b#build -> a#build$/)
+    ).toThrow(/dependsOn cycle: a#build -> b#build -> a#build — remove one edge of the loop$/)
   })
 
   it('names an unknown pkg#task target as such, not as a missing same-project task', () => {
@@ -292,7 +292,7 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/a#build depends on nope#build but no such project or task is declared/)
+    ).toThrow(/a#build: dependsOn nope#build but no such project or task is declared/)
   })
 
   it('detects a same-project task self-cycle', () => {
@@ -306,7 +306,7 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/Cycle detected/)
+    ).toThrow(/dependsOn cycle/)
   })
 
   it('returns an empty graph when no projects are requested', () => {
@@ -812,7 +812,7 @@ describe('a ^name no project declares is refused (nx#32779)', () => {
     )
     expect(err).toBeInstanceOf(UserError)
     expect((err as Error).message).toBe(
-      'Task app#typo depends on ^biuld but no project in the workspace declares biuld',
+      'app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
     )
   })
 
@@ -1149,7 +1149,7 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
         }),
         requested: [build('lib1')],
       }),
-    ).toThrow(/Cycle detected/)
+    ).toThrow(/dependsOn cycle/)
   })
 
   it('a task cycle that bridges a project without the task is still refused', () => {
@@ -1169,7 +1169,7 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
         }),
         requested: [build('lib1')],
       }),
-    ).toThrow(/Cycle detected/)
+    ).toThrow(/dependsOn cycle/)
   })
 
   it('a package cycle that wraps back through pass-through projects is no task cycle', () => {
@@ -1378,7 +1378,7 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
         packageGraph: packageGraph({}),
         requested: [build('a')],
       }),
-    ).toThrow(/Cycle detected/)
+    ).toThrow(/dependsOn cycle/)
   })
 })
 
@@ -1430,7 +1430,7 @@ describe('buildTaskGraph — depth is not bounded by the call stack', () => {
     }
     expect(thrown).toBeInstanceOf(UserError)
     expect((thrown as Error).message).toBe(
-      `Cycle detected in task graph: ${[...ids, 'p0#build'].join(' -> ')}`,
+      `dependsOn cycle: ${[...ids, 'p0#build'].join(' -> ')} — remove one edge of the loop`,
     )
   })
 })
@@ -1513,7 +1513,7 @@ describe('task-graph.ts rows the C-30 sweep found unheld', () => {
         requested: [{ project: 'app', task: 'build' }],
       }),
     )
-    expect(message).toBe('Task app#build: Invalid dependency spec "^": "^" with no task name')
+    expect(message).toBe('app#build: invalid dependsOn "^": "^" with no task name')
   })
 
   it('a pattern in the project half of pkg#task is refused as a pattern', () => {
@@ -1528,7 +1528,7 @@ describe('task-graph.ts rows the C-30 sweep found unheld', () => {
       }),
     )
     expect(message).toBe(
-      'Task app#build: dependsOn patterns are not supported in the "pkg#task" form (got "lib*#build")',
+      'app#build: dependsOn patterns are not supported in the "pkg#task" form (got "lib*#build")',
     )
   })
 
@@ -1546,7 +1546,7 @@ describe('task-graph.ts rows the C-30 sweep found unheld', () => {
         requested: [{ project: 'p', task: 'a' }],
       }),
     )
-    expect(message).toBe('Cycle detected in task graph: p#b -> p#c -> p#b')
+    expect(message).toBe('dependsOn cycle: p#b -> p#c -> p#b — remove one edge of the loop')
   })
 
   it('excludeDependencies adds no order-only edge a kept edge already gives', () => {

@@ -98,7 +98,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       .then(() => '')
       .catch((e: Error) => e.message)
     expect(refused).toContain(
-      "depends on //#build, Turbo's root package, but the workspace root is no project here",
+      "dependsOn //#build, Turbo's root package, but the workspace root is no project here",
     )
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })

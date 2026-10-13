@@ -388,7 +388,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
       // CONTROL: once the diff reaches tool#build, the name is refused.
       await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
       expect(planned(['build'], '--affected=HEAD~1', '--filter', '!x')).toContain(
-        'tool#build depends on ^nope',
+        'tool#build: dependsOn ^nope',
       )
     },
     TIMEOUT,
