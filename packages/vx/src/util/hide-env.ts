@@ -6,10 +6,12 @@ const PR_SET_DUMPABLE = 4
  * A task gets only declared variables, but vx itself holds the rest. Not
  * a boundary (`exec.sandbox` is): it hides the environment, not files. A
  * child is dumpable again after `exec`, so tasks are unaffected. On every
- * verb (owner, 2026-10-13); loading `bun:ffi` costs ~0.8 ms.
+ * verb (owner, 2026-10-13); loading `bun:ffi` costs ~0.8 ms. `VX_DUMPABLE`
+ * keeps vx observable: strace cannot read a non-dumpable tracee's memory,
+ * nor a debugger `/proc/<pid>/fd`.
  */
 export async function hideEnvFromTasks(): Promise<boolean> {
-  if (process.platform !== 'linux') return false
+  if (process.platform !== 'linux' || process.env['VX_DUMPABLE']) return false
   try {
     const { dlopen, FFIType } = await import('bun:ffi')
     const libc = dlopen('libc.so.6', {

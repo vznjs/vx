@@ -11,6 +11,11 @@ run lock's liveness check still works, and vx still reads its own
 `/proc/self`. A child is dumpable again after `exec`, so tasks are
 unaffected. Loading `bun:ffi` costs about 0.8 ms per command.
 
+`VX_DUMPABLE` (non-empty) skips it: strace cannot read a non-dumpable
+tracee's memory, so it prints no paths, and a debugger cannot list
+`/proc/<pid>/fd`. The strace tests, `vx-bench`'s `strace-vx.ts` and
+`sandbox-session-guard.unsafe.test.ts` set it.
+
 A helper vx keeps running beside its tasks would show the same values:
 a spawn with no `env` hands the child vx's startup env, and the child is
 dumpable after its `exec`. `helperEnv()` is `PATH` alone; the group
