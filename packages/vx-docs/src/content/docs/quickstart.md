@@ -94,7 +94,8 @@ of a small package (first run, again, again after `rm -rf dist`):
 
 Start with one package and leave the rest of your tooling as it is.
 
-1. Give one package a `vx.config.ts` with the command its `build` script runs.
+1. Add a `vx.workspace.ts` at the repo root (`export default {}` will do)
+   and give one package a `vx.config.ts` with the command its `build` script runs.
 2. Run `vx run build` twice in it. The second run is a cache hit. If it
    ran again, `vx why <package>#build` names what changed in its key.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss,
@@ -117,6 +118,7 @@ once the configs exist.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **A task ran again with nothing changed.** `vx why <package>#<task>` names what moved in its key: a file, an env var, or an upstream task (often one that rewrites a file this task reads).
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
+- **`no vx.workspace.ts in …`.** The file marks the workspace root. Run `vx init`, or add `vx.workspace.ts` at the root by hand.
 - **`vx requires git`.** Run `git init` at the workspace root.
 - **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
