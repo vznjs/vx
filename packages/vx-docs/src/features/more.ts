@@ -1377,10 +1377,10 @@ export const MORE: readonly Feature[] = [
     slug: 'verified-releases',
     title: 'Releases you can verify',
     category: 'safety',
-    hook: 'Binaries carry provenance, and `vx upgrade` checks every download’s SHA-256.',
+    hook: 'Binaries carry provenance, and `vx upgrade` checks npm’s registry signature on every download.',
     body: [
       'A task runner runs every command in your repo, so where its binary came from matters. vx release binaries carry build provenance, and the npm package is published with provenance.',
-      '`vx upgrade` checks the download against its SHA-256 before replacing anything.',
+      '`vx upgrade` checks npm’s registry signature against a pinned key, then the SHA-512 it signed, before replacing anything.',
     ],
     example: {
       lang: 'sh',

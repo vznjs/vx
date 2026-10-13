@@ -112,7 +112,7 @@ config key or an environment variable is missing here.
 - **Artifact integrity checks** — a CRC-32, a key match and an outputs-only check on every artifact; damage is a miss. [page](https://vznjs.github.io/vx/features/artifact-integrity/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Sandbox names what to grant** — a refused write is named beside the failed task with the path to allow. [page](https://vznjs.github.io/vx/features/sandbox-grants/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Strict numeric flags** — `0x10`, `1e3` and `2.7` are refused, never reinterpreted. [page](https://vznjs.github.io/vx/features/strict-numbers/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
-- **Verified releases** — binaries carry provenance, `vx upgrade` checks SHA-256, npm publishes with provenance. [page](https://vznjs.github.io/vx/features/verified-releases/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
+- **Verified releases** — binaries carry provenance, `vx upgrade` checks npm's registry signature and the SHA-512, npm publishes with provenance. [page](https://vznjs.github.io/vx/features/verified-releases/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 
 ## Daily work
 
@@ -120,7 +120,7 @@ config key or an environment variable is missing here.
 - **Dev servers in the graph** (`exec.persistent`, `readyWhen`, `VX_READY_NOTICE_MS`) — a server is a node; dependents start when it is ready. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
 - **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. [page](https://vznjs.github.io/vx/features/interactive-tasks/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
-- **vx upgrade** (`vx upgrade`) — replace the binary with a release. [page](https://vznjs.github.io/vx/features/upgrade/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
+- **vx upgrade** (`vx upgrade`) — upgrade vx the way it was installed: a verified binary, or its package manager. [page](https://vznjs.github.io/vx/features/upgrade/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 - **Help and version** (`vx help`, `vx version`) — every verb's reference. [page](https://vznjs.github.io/vx/features/help-and-version/) · post: [An upgrade you can trust](https://vznjs.github.io/vx/blog/upgrade-you-can-trust/)
 - **Did-you-mean** — a mistyped flag or verb gets the nearest valid spelling. [page](https://vznjs.github.io/vx/features/did-you-mean/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Task typed as a verb** — `vx build app` answers with the exact `vx run` command that does it. [page](https://vznjs.github.io/vx/features/task-as-verb/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)

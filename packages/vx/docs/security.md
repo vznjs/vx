@@ -214,10 +214,16 @@ secret values: a name-based match would refuse public `*_KEY` values too.
 
 Release binaries carry a build-provenance attestation
 (`gh attestation verify vx-<target> --repo vznjs/vx`); `vx upgrade`
-checks each download's SHA-256 before it replaces anything and stages it in a fresh directory, never a name another user could plant a link at, which proves
-the bytes arrived intact, not who built them: the digest comes from the
-release that serves the asset, and no signature is checked (owner,
-2026-10-03: no release signing key for now); npm packages
+installs a binary only after npm's registry signature over the platform
+package's `name@version:integrity` verifies against npm's key, pinned
+in vx, and the tarball matches that integrity: the host that serves the
+bytes cannot make the signature, so a swapped tarball is refused before
+anything is written, and a key id vx does not pin is refused with a hint
+that the installer needs updating (owner, 2026-10-13; pnpm's installer
+checks the same). The new binary is staged in a fresh directory, never a
+name another user could plant a link at. A vx a package manager
+installed is upgraded by that manager, which checks its own integrity.
+npm packages
 publish with provenance; every third-party action in CI runs from a
 full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a
