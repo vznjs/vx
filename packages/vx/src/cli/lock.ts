@@ -22,11 +22,13 @@ import {
   LOCKFILE_VERSION,
   readLockfile,
   buildPackageGraph,
+  checkDependencyRules,
   writeLockfile,
   type Lockfile,
   type LockfileEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
+import { taskEdgesFrom } from './select.js'
 import { discoverCliProjects, loadCliWorkspace, warnToStderr } from './workspace-config.js'
 
 interface LockArgs {
@@ -111,7 +113,7 @@ export async function lockWorkspace(root: string, reads?: LoadReads): Promise<nu
 }
 
 /**
- * The graph rules (`run.rules`), checked here over every task the
+ * The graph rules (`run.rules`), checked here over every project and task the
  * workspace declares: a frozen run trusts the lock and does not check them
  * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
  * stage included; its refusal, or null.
@@ -123,6 +125,14 @@ async function graphRuleRefusal(root: string, all: ProjectMeta[]): Promise<strin
     const names = new Set<string>()
     for (const entry of projects.values())
       for (const t of Object.keys(entry.config.tasks ?? {})) names.add(t)
+    const dependencyRules = workspaceConfig?.run?.rules?.dependencies ?? []
+    if (dependencyRules.length > 0)
+      checkDependencyRules(
+        dependencyRules,
+        [...projects.keys()],
+        new Map([...projects.values()].map((p) => [p.name, p.config.tags ?? []])),
+        buildPackageGraph(all, taskEdgesFrom(projects)),
+      )
     const rules = runRules(workspaceConfig)
     const nodes = buildTaskGraph({
       projects,

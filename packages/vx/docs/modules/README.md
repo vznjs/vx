@@ -118,6 +118,7 @@ here, itself or in a brace group.
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
 | [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                                                                       |
+|                                            | `src/workspace/dependency-rules.ts` — `run.rules.dependencies` held to the graph's direct deps (see package-graph.md).                          |
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                         |
 | [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                                   |
 | [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.                                                                        |

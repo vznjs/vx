@@ -97,6 +97,10 @@ Until `bunx @vzn/vx-migrate` writes native config, `vx run build --all` maps eve
 | `root`  | Directory holding `nx.json`. Defaults to the workspace root.                                                                                                 |
 | `graph` | An exported graph (`nx graph --file=<path>`) to read instead of keeping a snapshot; with it set the plugin never runs `nx`. Relative to `root`, or absolute. |
 
+### Module boundaries
+
+`@nx/enforce-module-boundaries`' `depConstraints` in the root ESLint config become `run.rules.dependencies`, which `vx lock` checks over each project's workspace dependencies, unless `vx.workspace.ts` sets its own. `sourceTag` is `from`, `onlyDependOnLibsWithTags` is `allow`, `notDependOnLibsWithTags` is `deny`. The config is read, never run, so a flat config's constraints must be a literal array. vx leaves out what it cannot express: `allSourceTags`, a `/regex/` tag, and banned external imports. vx checks package dependencies, not source imports, and lets an untagged project depend on anything.
+
 ### `nx:run-commands`
 
 Nx's own option handling, rendered as one POSIX `sh` line (`vx show` prints it):

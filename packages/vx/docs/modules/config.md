@@ -33,7 +33,8 @@ export interface WorkspaceConfig // { run, cache, watch, plugins }
 export interface RunSettings // `run`: concurrency, schedule, timeout, retries, rules …
 export interface CacheSettings // `cache`: dir, retention, policy, scope, download, inputStability
 export interface WatchSettings // `watch`: poll
-export interface WorkspaceRules // `run.rules`: graph checks, each on unless false (X-53)
+export interface WorkspaceRules // `run.rules`: graph checks, each on unless false (X-53); `dependencies`, checked by `vx lock`
+export interface DependencyRule // { from, allow?, deny? }: selectors `tag:<tag>` or a project name, `*` a wildcard
 export type Duration // '500ms', '30s', '10m', '12h', '30d': every duration carries its unit
 export interface TaskConfig
 export interface ExecConfig

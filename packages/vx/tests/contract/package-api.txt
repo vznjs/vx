@@ -591,6 +591,12 @@ export interface DeclaredOutputs {
   files: readonly string[]
   workspaceFiles: readonly string[]
 }
+== type DependencyRule (src/config.ts)
+export interface DependencyRule {
+  from: string
+  allow?: readonly string[]
+  deny?: readonly string[]
+}
 == type DependsOnEntry (src/config.ts)
 type DependsOnEntry<K extends string> =
   | K
@@ -1916,6 +1922,7 @@ export interface WorkspaceIdentity {
 export interface WorkspaceRules {
   exclusiveOutputs?: boolean
   upfrontKeys?: boolean
+  dependencies?: readonly DependencyRule[]
 }
 == runtime values
 LOG_WIRE_VERSION = 1

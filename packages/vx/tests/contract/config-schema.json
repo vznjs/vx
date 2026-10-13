@@ -15,7 +15,7 @@
         "teardownTimeout",
         "timeout"
       ],
-      "run.rules": ["exclusiveOutputs", "upfrontKeys"],
+      "run.rules": ["dependencies", "exclusiveOutputs", "upfrontKeys"],
       "cache": ["dir", "download", "inputStability", "policy", "retention", "scope"],
       "cache.retention": ["maxSize", "olderThan"],
       "cache.inputStability": ["severity", "strategy"],
@@ -802,7 +802,7 @@
       },
       "run.rules": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, upfrontKeys)": [
+        "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, upfrontKeys, dependencies)": [
           "null",
           "true",
           "false",
@@ -833,7 +833,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.rules` has unknown field \"x\" (allowed: exclusiveOutputs, upfrontKeys)": [
+        "$CONFIG: `run.rules` has unknown field \"x\" (allowed: dependencies, exclusiveOutputs, upfrontKeys)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -915,6 +915,47 @@
         "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {})": ["{}"],
         "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
+        ]
+      },
+      "run.rules.dependencies": {
+        "ok": [
+          "<absent>",
+          "[]",
+          "[{\"from\":\"tag:app\",\"allow\":[\"tag:lib\"],\"deny\":[\"tag:e2e\"]}]"
+        ],
+        "$CONFIG: `run.rules.dependencies` must be an array of { from, allow?, deny? }, each a selector like 'tag:app' or '@acme/*'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "{}",
+          "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: `run.rules.dependencies`[0] must be { from, allow?, deny? }": [
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
         ]
       },
       "cache": {

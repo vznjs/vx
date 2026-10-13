@@ -43,6 +43,7 @@ import {
 } from './nx-map.js'
 import { exportGraph } from './export-graph.js'
 import { lernaJsonText } from './lerna.js'
+import { nxDependencyRules } from './nx-boundaries.js'
 export type {
   NxExecutors,
   NxExecutorTarget,
@@ -149,6 +150,14 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
         if (workspace.run?.concurrency === undefined) {
           const parallel = await nxParallel(root)
           if (parallel !== undefined) workspace.run = { ...workspace.run, concurrency: parallel }
+        }
+        if (workspace.run?.rules?.dependencies === undefined) {
+          const dependencies = await nxDependencyRules(root)
+          if (dependencies !== undefined && dependencies.length > 0)
+            workspace.run = {
+              ...workspace.run,
+              rules: { ...workspace.run?.rules, dependencies },
+            }
         }
         if (workspace.cache?.retention === undefined) {
           const maxSize = await nxMaxCacheSize(root)
