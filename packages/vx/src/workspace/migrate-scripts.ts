@@ -1009,6 +1009,7 @@ export function migrateScripts(
   }
   const lerna = metas.length === 1 ? lernaPackages(metas[0]!.dir) : undefined
   if (lerna !== undefined) notes.push(lernaNote(lerna))
+  rootBinBuilds(projects, metas, root?.packageJson ?? outside)
   breakBuildCycles(projects, metas)
   pruneOrphanPersistentNotes(projects, PERSISTENT_TODO)
   return {
@@ -1021,6 +1022,66 @@ export function migrateScripts(
     projects,
     extraFiles: [],
     notes,
+  }
+}
+
+const DEP_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
+
+const depsOf = (manifest: object | undefined): Set<string> =>
+  new Set(
+    DEP_FIELDS.flatMap((f) => {
+      const deps = (manifest as Record<string, unknown> | undefined)?.[f]
+      return typeof deps === 'object' && deps !== null ? Object.keys(deps) : []
+    }),
+  )
+
+/** The bin names a manifest declares: `bin: './cli.js'` is named after the package. */
+function binsOf(manifest: object, name: string): string[] {
+  const bin = (manifest as Record<string, unknown>)['bin']
+  if (typeof bin === 'string') return [name.replace(/^@[^/]+\//, '')]
+  return typeof bin === 'object' && bin !== null ? Object.keys(bin) : []
+}
+
+/**
+ * A member's script that runs a workspace package's bin it gets only
+ * through the root's dependencies (vite's playgrounds run `vite` from the
+ * root's `vite: workspace:*`) has no `^build` edge to that package: 64 of
+ * 70 playground builds ran before vite's own (Growth's trial 4, F9). Each
+ * such task waits on that package's build too.
+ */
+function rootBinBuilds(
+  projects: GeneratedProject[],
+  metas: readonly ProjectMeta[],
+  rootManifest: object | undefined,
+): void {
+  const fromRoot = depsOf(rootManifest)
+  if (fromRoot.size === 0) return
+  const builds = new Set(
+    projects
+      .filter((p) => p.tasks.some((t) => t.name === 'build' && t.task !== null))
+      .map((p) => p.name),
+  )
+  const owner = new Map<string, string>()
+  for (const m of metas)
+    if (fromRoot.has(m.name) && builds.has(m.name))
+      for (const b of binsOf(m.packageJson, m.name)) owner.set(b, m.name)
+  if (owner.size === 0) return
+  const metaOf = new Map(metas.map((m) => [m.name, m]))
+  for (const p of projects) {
+    const own = depsOf(metaOf.get(p.name)?.packageJson)
+    for (const t of p.tasks) {
+      const command = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+      if (typeof command !== 'string') continue
+      const needs = new Set(
+        command
+          .split(/[\s;&|()]+/)
+          .map((w) => owner.get(w))
+          .filter((n): n is string => n !== undefined && n !== p.name && !own.has(n)),
+      )
+      if (needs.size === 0) continue
+      const deps = Array.isArray(t.task!['dependsOn']) ? (t.task!['dependsOn'] as string[]) : []
+      t.task!['dependsOn'] = [...deps, ...[...needs].sort().map((n) => `${n}#build`)]
+    }
   }
 }
 
