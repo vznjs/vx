@@ -185,7 +185,7 @@ Encountering a GRAY node while traversing means we're in a cycle. The
 error message formats the cycle path:
 
 ```
-Cycle detected in task graph: a#build -> b#build -> a#build
+dependsOn cycle: a#build -> b#build -> a#build — remove one edge of the loop
 ```
 
 Both cross-project cycles and self-cycles (a task listing itself) are

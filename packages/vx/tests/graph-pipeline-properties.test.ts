@@ -208,7 +208,10 @@ it('builds, refuses and runs random workspaces as the reference says', async () 
 
     if (hasCycle(ws, want)) {
       cycles++
-      const m = 'error' in built ? /^Cycle detected in task graph: (.+)$/.exec(built.error) : null
+      const m =
+        'error' in built
+          ? /^dependsOn cycle: (.+) — remove one edge of the loop$/.exec(built.error)
+          : null
       if (m === null) {
         bad(`a cycle not refused as one: ${show(built)}`)
         continue

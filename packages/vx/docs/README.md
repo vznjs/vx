@@ -106,6 +106,9 @@ bun add -d @vzn/vx
 npm install -g @vzn/vx
 ```
 
+A global vx run inside a project that installs `@vzn/vx` hands the call
+to that project's own, so the lockfile's version runs.
+
 The binaries link glibc; on musl (Alpine) the launcher runs vx from
 source with Bun when Bun is installed.
 

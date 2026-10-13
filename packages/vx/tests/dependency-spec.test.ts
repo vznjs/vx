@@ -30,20 +30,20 @@ describe('parseDependencySpec', () => {
   // The parser is pure — every malformed shape throws DependencySpecError,
   // whose message names the raw spec (the graph and the filter print it).
   const invalid: Array<{ raw: string; message: string }> = [
-    { raw: '', message: 'Invalid dependency spec "": empty spec' },
-    { raw: '!', message: 'Invalid dependency spec "!": negation with no body' },
-    { raw: '^', message: 'Invalid dependency spec "^": "^" with no task name' },
+    { raw: '', message: 'invalid dependsOn "": empty spec' },
+    { raw: '!', message: 'invalid dependsOn "!": negation with no body' },
+    { raw: '^', message: 'invalid dependsOn "^": "^" with no task name' },
     {
       raw: '^a#b',
-      message: 'Invalid dependency spec "^a#b": "^" cannot combine with "pkg#task" — pick one',
+      message: 'invalid dependsOn "^a#b": "^" cannot combine with "pkg#task" — pick one',
     },
     {
       raw: 'pkg#',
-      message: 'Invalid dependency spec "pkg#": pkg#task requires a non-empty project AND task',
+      message: 'invalid dependsOn "pkg#": pkg#task requires a non-empty project AND task',
     },
     {
       raw: '#task',
-      message: 'Invalid dependency spec "#task": pkg#task requires a non-empty project AND task',
+      message: 'invalid dependsOn "#task": pkg#task requires a non-empty project AND task',
     },
   ]
   for (const { raw, message } of invalid) {

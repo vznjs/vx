@@ -341,7 +341,7 @@ describe('scoped config loading', () => {
         (err: unknown) => err,
       )
       const message = r instanceof Error ? r.message : String(r)
-      expect(message).toContain('Task lib#build:')
+      expect(message).toContain('lib#build:')
       expect(message).toContain('"^" cannot combine with "pkg#task"')
     },
     TIMEOUT,

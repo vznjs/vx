@@ -30,13 +30,26 @@ const ALLOWED: Record<string, readonly string[]> = {
   version: [],
   // `settings`: every setting's path, env name, flag and parse (src/settings.ts).
   settings: ['util'],
+  // `handoff`: the hand-off to a project's own vx runs before anything else
+  // loads, so it stands alone; the doctor reports which vx ran.
+  handoff: [],
   // `version`: the config-evaluation cache keys on vx's version, since a
   // stored evaluation is served without re-validation.
   workspace: ['util', 'config', 'version', 'settings'],
   graph: ['util', 'config', 'workspace'],
   cache: ['util', 'config'],
   exec: ['util', 'config'],
-  orchestrator: ['util', 'config', 'version', 'settings', 'workspace', 'graph', 'cache', 'exec'],
+  orchestrator: [
+    'util',
+    'config',
+    'version',
+    'handoff',
+    'settings',
+    'workspace',
+    'graph',
+    'cache',
+    'exec',
+  ],
   cli: ['util', 'config', 'version', 'settings', 'workspace', 'graph', 'cache', 'orchestrator'],
   index: [
     'util',
@@ -52,7 +65,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
   // to this copy (registerCoreAlias). `version`: a lone `--version` is
   // answered before the dispatcher loads.
-  bin: ['util', 'version', 'cli', 'index'],
+  bin: ['util', 'version', 'handoff', 'cli', 'index'],
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module

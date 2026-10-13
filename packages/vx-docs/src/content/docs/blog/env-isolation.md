@@ -96,14 +96,14 @@ cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files:
 
 ## Hygiene, not a wall
 
-Dropping variables keeps builds the same from machine to machine. It does
-not stop a task that goes looking: an unsandboxed task runs as you, and
-on macOS it can still read vx's own environment with `ps eww`. On Linux
-vx makes itself non-dumpable, so a task cannot read it there
-(`VX_DEBUG_DUMPABLE=1` turns that off for strace and debuggers). That guards
-the environment only, not your files. To keep a task
-away from what it was not given, sandbox it with `exec.sandbox`: a
-sandboxed task cannot read vx's environment on Linux or macOS.
+Dropping variables keeps builds the same from machine to machine. It is
+not a wall: an unsandboxed task runs as you and reads any file you can.
+vx does hide its own environment from it: on Linux vx makes itself
+non-dumpable (`VX_DEBUG_DUMPABLE=1` turns that off for strace and debuggers),
+and on macOS it zeroes the values `ps eww` reads, every variable but the
+essentials every task gets. That guards the environment only, not your
+files. To keep a task away from what it was not given, sandbox it with
+`exec.sandbox`.
 
 What the task gets and what the key sees are separate on purpose. The
 whole set of rules is in the [schema](../../schema/).

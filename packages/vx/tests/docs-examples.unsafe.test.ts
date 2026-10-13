@@ -72,7 +72,7 @@ function commands(f: Fence): { verb: string; flags: string[] }[] {
       // Past `--` the words are the task's own.
       .replace(/\s--(?:\s.*)?$/, '')
       .trim()
-    const m = /^(?:npx |bunx )?vx ([a-z]+)(.*)$/.exec(line)
+    const m = /^(?:(?:npx|bunx) @vzn\/)?vx ([a-z]+)(.*)$/.exec(line)
     if (m === null || !(m[1]! in surface.verbs)) continue
     out.push({ verb: m[1]!, flags: m[2]!.split(/\s+/).filter((a) => a.startsWith('-')) })
   }
@@ -117,7 +117,11 @@ describe('every example an agent reads from the docs', () => {
 
   // Controls: the parsers find what they are for, and miss what is absent.
   it('reads a command and a key the way the rows above do', () => {
-    const f: Fence = { page: 'x', lang: 'sh', code: '$ npx vx run build --all --nope | jq .\n' }
+    const f: Fence = {
+      page: 'x',
+      lang: 'sh',
+      code: '$ npx @vzn/vx run build --all --nope | jq .\n',
+    }
     expect(commands(f)).toEqual([{ verb: 'run', flags: ['--all', '--nope'] }])
     expect(acceptedFlags('run')).not.toContain('--nope')
     expect(sets("  cache: { inputs: { files: ['x'] } },", 'files')).toBe(true)

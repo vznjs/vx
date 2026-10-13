@@ -458,7 +458,7 @@ describe('graph stage', () => {
         ),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
-        /plugin 'org\/loop' failed in graph: Cycle detected/,
+        /plugin 'org\/loop' failed in graph: dependsOn cycle/,
       )
     },
     TIMEOUT,

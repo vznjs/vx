@@ -81,6 +81,30 @@ async function addPackage(
 
 // ─── Source detection ────────────────────────────────────────────────
 
+describe('vx init names what it wrote', () => {
+  it('lists ten files one per line, past that the root files and a count', async () => {
+    // TanStack form's init listed 97 lines and pushed `next:` off screen
+    // (Growth's first-run funnel F4, 2026-10-13).
+    const root = await makeRoot('vx-init-files-')
+    try {
+      for (let i = 0; i < 12; i++) await addPackage(root, `p${i}`, { build: 'tsc' })
+      const lines = (await vx(root, ['init', '--dry'])).out.split('\n')
+      const from = lines.indexOf('files (dry run, nothing written):')
+      expect(lines.slice(from + 1, from + 3)).toEqual([
+        '  vx.workspace.ts',
+        '  and 12 more in package directories',
+      ])
+      // CONTROL: ten or fewer are each named.
+      for (let i = 2; i < 12; i++)
+        await rm(path.join(root, 'packages', `p${i}`), { recursive: true })
+      const few = (await vx(root, ['init', '--dry'])).out
+      expect(few).toContain('  packages/p0/vx.config.ts\n  packages/p1/vx.config.ts\n')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init source detection', () => {
   it(
     'an empty workspace still writes the workspace file; scripts are the source',
@@ -1360,7 +1384,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await mkdir(path.dirname(bin), { recursive: true })
       await writeFile(bin, '')
       expect([before, migrateCommand(root, [])]).toEqual([
-        [process.execPath, 'x', `@vzn/vx-migrate@${pinned}`, '--dry'],
+        [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${pinned}`, '--dry'],
         [process.execPath, '--no-install', bin],
       ])
     } finally {
@@ -1636,9 +1660,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const all = '@vzn/vx @vzn/vx-migrate'
       expect(rows).toEqual([
         `npm install -D ${all} && vx run compile --all`,
-        `npm install -D ${all} && npx vx run compile --all`,
+        `npm install -D ${all} && npx @vzn/vx run compile --all`,
         // The first lockfile in pnpm, yarn, bun, npm order names the manager.
-        `bun add -d ${all} && bunx vx run compile --all`,
+        `bun add -d ${all} && bunx @vzn/vx run compile --all`,
         `yarn add -D -W ${all} && yarn vx run compile --all`,
         `yarn add -D ${all} && yarn vx run compile --all`,
         `pnpm add -D -w ${all} && pnpm vx run compile --all`,
@@ -1965,7 +1989,7 @@ describe('vx init names the runner that started it', () => {
     }
     try {
       // makeRoot links @vzn/vx in; a dry init loads nothing that needs it.
-      expect(await next()).toBe('next: npx vx run build --all')
+      expect(await next()).toBe('next: npx @vzn/vx run build --all')
       await rm(path.join(root, 'node_modules'), { recursive: true })
       expect(await next()).toBe('next: npx @vzn/vx run build --all')
     } finally {
@@ -1983,10 +2007,10 @@ describe('vx init names the runner that started it', () => {
       undefined,
     ].map((ua) => [ua?.split('/')[0], vxInvocation(ua, false), vxInvocation(ua, true)])
     expect(rows).toEqual([
-      ['npm', 'npx @vzn/vx', 'npx vx'],
+      ['npm', 'npx @vzn/vx', 'npx @vzn/vx'],
       ['pnpm', 'pnpm dlx @vzn/vx', 'pnpm vx'],
       ['yarn', 'yarn dlx @vzn/vx', 'yarn vx'],
-      ['bun', 'bunx @vzn/vx', 'bunx vx'],
+      ['bun', 'bunx @vzn/vx', 'bunx @vzn/vx'],
       ['deno', 'vx', 'vx'],
       [undefined, 'vx', 'vx'],
     ])

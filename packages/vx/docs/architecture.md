@@ -57,7 +57,8 @@ Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
 path, variable, flag, parser), `version.ts` (the `VERSION`
 constant, extracted so `index`/`cli`/`orchestrator` don't form a
-cycle through it).
+cycle through it), `handoff.ts` (a global vx hands off to the
+project's own, before anything else loads).
 
 ### The orchestrator's file inventory
 

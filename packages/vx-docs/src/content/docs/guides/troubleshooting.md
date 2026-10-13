@@ -17,13 +17,13 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Fetch the history (`fetch-depth: 0` in CI), or pass `--affected=<ref>`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
-| `Cycle detected in task graph`                     | Remove one `dependsOn` edge of the loop it prints.                      |
-| `depends on … but no such project or task is declared` | Fix the name, or declare that task in that package.                 |
+| `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
+| `dependsOn … but no such project or task is declared`  | Fix the name, or declare that task in that package.                 |
 | `no projects declare task(s)`                      | A typo, or no config declares it: `vx show` lists every task.           |
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |
 | `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |
-| `vx: command not found`                            | A local install is not on PATH: run `npx vx` or `bunx vx`.              |
+| `vx: command not found`                            | A local install is not on PATH: run `npx @vzn/vx` or `bunx @vzn/vx`.              |
 
 A typo in `--filter` names the closest project:
 

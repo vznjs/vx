@@ -15,7 +15,7 @@ your `package.json` scripts.
 
 ## One command
 
-`npx vx init` is the whole adoption in a Turbo or Nx repo: beside
+`npx @vzn/vx init` is the whole adoption in a Turbo or Nx repo: beside
 `turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the installed one, else
 vx's own version), which `npx @vzn/vx-migrate` (`pnpx`, `bunx`, `yarn dlx`)
 also runs directly, and a [Vite Task](#vite-task) repo needs. It asks whether to migrate natively (a `vx.config.ts` per
@@ -38,7 +38,7 @@ error names the same fix.
 ## Turborepo
 
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`; Bun: `bun add -d @vzn/vx`).
-2. Run `npx vx init --keep`. Beside `turbo.json` or `turbo.jsonc` it writes this
+2. Run `npx @vzn/vx init --keep`. Beside `turbo.json` or `turbo.jsonc` it writes this
    `vx.workspace.ts` and nothing else, then prints a `next:` line.
 3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
    manager, then builds once through `turbo()`: a check that the mapping
@@ -61,11 +61,11 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 ```
 
 ```text
-$ npx vx init --keep
+$ npx @vzn/vx init --keep
 vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx vx run build --all
+next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -89,7 +89,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: npm uninstall @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: dropped turbo() from vx.workspace.ts
@@ -101,7 +101,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-next: bunx vx run build --all
+next: bunx @vzn/vx run build --all
 ```
 
 The first run after it misses every task once: the lockfile plugin it
@@ -149,14 +149,14 @@ the goal. Each line and its comment is what a test runs and sees on each commit
 
 ```sh
 npm install && git init && git add -A && git commit -m init
-npx vx run test --all      # 3 miss: lib#build, app#build, app#test
-npx vx run test --all      # 3 up-to-date
+npx @vzn/vx run test --all      # 3 miss: lib#build, app#build, app#test
+npx @vzn/vx run test --all      # 3 up-to-date
 bunx @vzn/vx-migrate       # 3 tasks migrated clean, 0 TODOs
 git add -A && git commit -m migrate
-npx vx run test --all      # 3 up-to-date: the written configs derive the same keys
+npx @vzn/vx run test --all      # 3 up-to-date: the written configs derive the same keys
 rm vx.workspace.ts         # drop turbo(); the configs stand alone
 git add -A && git commit -m done
-npx vx run test --all      # 3 up-to-date
+npx @vzn/vx run test --all      # 3 up-to-date
 ```
 
 | Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
@@ -196,7 +196,7 @@ The command itself comes from your `package.json` script, with its
 ## Nx
 
 1. Install vx: `npm install -D @vzn/vx` (pnpm: `pnpm add -D -w @vzn/vx`; Bun: `bun add -d @vzn/vx`).
-2. Run `npx vx init --keep`. Beside `nx.json` it writes this `vx.workspace.ts`
+2. Run `npx @vzn/vx init --keep`. Beside `nx.json` it writes this `vx.workspace.ts`
    and nothing else. With `turbo.json` there too, it declares `turbo()`.
    A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
    an Nx Cloud workspace is named instead, since vx cannot share its cache.
@@ -231,18 +231,18 @@ export default { plugins: [nx()] } satisfies WorkspaceConfig
 ```
 
 ```text
-$ npx vx init --keep
+$ npx @vzn/vx init --keep
 vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
 wrote vx.workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx vx run build --all
+next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate` reports what it wrote:
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: nx graph → vx.config.ts
 note: dropped nx() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
@@ -253,7 +253,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-next: bunx vx run build --all
+next: bunx @vzn/vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written (the `define` names are the

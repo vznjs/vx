@@ -155,7 +155,7 @@ const FIRST: readonly Feature[] = [
       'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.',
       'The benchmarks page shows every row, including the ones vx loses: Vite Task burns less CPU on a cold build, and Turborepo adds less when nothing changed or outputs are restored. The harness lives in the repo, so you can run it yourself.',
     ],
-    example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx vx run build --all' },
+    example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx @vzn/vx run build --all' },
     image: 'fastest.png',
     imageAlt:
       'Time added over the ideal run with nothing changed, 9,603 tasks: vx 1.07 s, Turborepo 898 ms, Vite Task 11.75 s, Nx 25.45 s.',
@@ -663,7 +663,7 @@ export default defineProject({
     ],
     example: {
       lang: 'sh',
-      code: 'npm install -D @vzn/vx\nnpx vx init\nnpx vx run build --all\nnpx vx run build --all   # again: the cached tasks are up-to-date',
+      code: 'npm install -D @vzn/vx\nnpx @vzn/vx init\nnpx @vzn/vx run build --all\nnpx @vzn/vx run build --all   # again: the cached tasks are up-to-date',
     },
     image: 'quickstart.png',
     imageAlt: 'Install, vx init, and two runs of vx run build --all.',
@@ -678,7 +678,7 @@ export default defineProject({
       '`npm install -D @vzn/vx` brings a prebuilt binary for Linux and macOS, x64 and arm64. There is no postinstall step and no runtime to match.',
       'CI can download the release binary directly, and it needs no Node either. Your tasks still run on your own toolchain.',
     ],
-    example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx vx version' },
+    example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx @vzn/vx version' },
     image: 'one-binary.png',
     imageAlt: 'One vx binary per platform, with nothing installed underneath.',
     docs: { label: 'Install', href: 'quickstart/#install' },

@@ -301,7 +301,7 @@ export interface BuildGraphOptions {
  */
 export function undeclaredDepsError(taskId: string, name: string): UserError {
   return new UserError(
-    `Task ${taskId} depends on ^${name} but no project in the workspace declares ${name}`,
+    `${taskId}: dependsOn ^${name} but no project in the workspace declares ${name}`,
     'VX_E_DEPENDS_ON',
   )
 }
@@ -493,7 +493,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       spec = parseDependencySpec(raw)
     } catch (err) {
       if (err instanceof DependencySpecError) {
-        throw new UserError(`Task ${id}: ${err.message}`, 'VX_E_DEPENDS_ON')
+        throw new UserError(`${id}: ${err.message}`, 'VX_E_DEPENDS_ON')
       }
       throw err
     }
@@ -505,19 +505,19 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     // they name a namespace of tasks to add (Nx 19.5 parity).
     if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
       throw new UserError(
-        `Task ${id}: dependsOn does not accept bare wildcards (got "${raw}")`,
+        `${id}: dependsOn does not accept bare wildcards (got "${raw}")`,
         'VX_E_DEPENDS_ON',
       )
     }
     if (spec.negated) {
       throw new UserError(
-        `Task ${id}: dependsOn does not accept negation (got "${raw}")`,
+        `${id}: dependsOn does not accept negation (got "${raw}")`,
         'VX_E_DEPENDS_ON',
       )
     }
     if (spec.kind === 'cross' && (isTaskPattern(spec.task) || isTaskPattern(spec.project))) {
       throw new UserError(
-        `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
+        `${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
         'VX_E_DEPENDS_ON',
       )
     }
@@ -537,7 +537,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // doesn't resolve in this project.
         if (!visit(frame, projectName, spec.task, false)) {
           throw new UserError(
-            `Task ${id} depends on ${taskId(projectName, spec.task)} but no such task is declared`,
+            `${id}: dependsOn ${taskId(projectName, spec.task)} but no such task is declared`,
             'VX_E_DEPENDS_ON',
           )
         }
@@ -602,11 +602,11 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // The loader spells `//` as the root project's name when there is one.
         if (spec.project === '//')
           throw new UserError(
-            `Task ${id} depends on //#${spec.task}, Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task`,
+            `${id}: dependsOn //#${spec.task}, Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task`,
             'VX_E_DEPENDS_ON',
           )
         throw new UserError(
-          `Task ${id} depends on ${taskId(spec.project, spec.task)} but no such project or task is declared`,
+          `${id}: dependsOn ${taskId(spec.project, spec.task)} but no such project or task is declared`,
           'VX_E_DEPENDS_ON',
         )
       }
@@ -1725,7 +1725,10 @@ function detectCycle(nodes: Map<string, TaskNode>): void {
           for (let i = 0; i < stack.length; i += 2) path.push(idsArr[stack[i]!]!)
           const startInPath = path.indexOf(idsArr[depIdx]!)
           const cycle = [...path.slice(startInPath), idsArr[depIdx]!].join(' -> ')
-          throw new UserError(`Cycle detected in task graph: ${cycle}`, 'VX_E_CYCLE')
+          throw new UserError(
+            `dependsOn cycle: ${cycle} — remove one edge of the loop`,
+            'VX_E_CYCLE',
+          )
         }
         color[depIdx] = GRAY
         stack.push(depIdx, 0)

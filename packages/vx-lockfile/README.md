@@ -63,7 +63,7 @@ The out dir (default `out/`, relative to the cwd) gets the root `package.json` w
 COPY out/json/ .
 RUN bun install --frozen-lockfile
 COPY out/full/ .
-RUN bunx vx run app#build
+RUN bunx @vzn/vx run app#build
 ```
 
 The pruned lockfile is the source with whole entries cut, in the package manager's own layout, so it installs with a frozen lockfile (`bun install --frozen-lockfile`, `pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`) and a line only another project reaches no longer busts the install layer. Kept: the root's and each kept workspace's entries and every package they reach — through Bun's and npm's hoisted walk (a package stays at the path it held; nothing is re-hoisted), pnpm's snapshots, Yarn's descriptors. Workspace-wide fields (catalogs, overrides, patches, settings, `trustedDependencies`) stay whole: the root manifest still names them. pnpm's env document stays whole. Yarn classic records no workspaces, so its walk starts at each kept manifest's dependencies.

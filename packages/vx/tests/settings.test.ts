@@ -24,8 +24,8 @@ import { parseRunArgs } from '../src/cli/run.js'
 
 const ROOT = path.join(import.meta.dir, '..')
 const SRC = path.join(ROOT, 'src')
-/** What vx sets on every task's environment: outputs, never settings. */
-const TASK_MARKERS = ['VX_RUN_WORKSPACE', 'VX_RUN_TASK']
+/** What vx sets for the processes it starts: outputs, never settings. */
+const TASK_MARKERS = ['VX_RUN_WORKSPACE', 'VX_RUN_TASK', 'VX_HANDED_OFF']
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -300,6 +300,7 @@ function variablesTable(): string {
     '| Variable | Setting | What it does |',
     '| --- | --- | --- |',
     ...rows,
+    "| `VX_HANDED_OFF` | — | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again. |",
     '| `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | — | Set by vx on every task (below); a `vx run` a task starts reads them back. |',
   ].join('\n')
 }

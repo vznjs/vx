@@ -803,6 +803,8 @@ export interface HostContext {
 == type InfoFacts (src/orchestrator/doctor.ts)
 export interface InfoFacts {
   vx: string
+  vxPath: string
+  handedOffFrom: string | null
   bun: string
   bunSupported: boolean
   git: string | null

@@ -117,8 +117,8 @@ describe('verbFlags is what each verb accepts', () => {
       if (verb === 'watch') for (const f of WATCH_REFUSED_FLAGS) named.delete(f)
       // watch's own flag, matched in the parser run and watch share.
       if (verb === 'run') named.delete('--poll')
-      // Bun's own flag on init's vx-migrate spawn, not one init takes.
-      if (verb === 'init') named.delete('--no-install')
+      // Bun's own flags on init's vx-migrate spawn, not ones init takes.
+      if (verb === 'init') for (const f of ['--no-install', '--silent']) named.delete(f)
       expect(named.size).toBeGreaterThan(0)
       for (const f of named) if (!verbFlags(verb).includes(f)) missing.push(`${verb} ${f}`)
     }

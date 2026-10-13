@@ -90,6 +90,7 @@ src/graph/index.ts
 src/graph/priorities.ts
 src/graph/scheduler.ts
 src/graph/task-graph.ts
+src/handoff.ts
 src/index.ts
 src/orchestrator/admission.ts
 src/orchestrator/affected-tasks.ts

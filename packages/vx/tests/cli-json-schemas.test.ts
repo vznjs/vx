@@ -418,6 +418,8 @@ describe('each schema object is its source type', () => {
     expect(props('info')).toEqual(
       keys<InfoFacts>({
         vx: true,
+        vxPath: true,
+        handedOffFrom: true,
         bun: true,
         bunSupported: true,
         git: true,

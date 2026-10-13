@@ -10,7 +10,7 @@
 // workspace's `workspace:*` ranges are what `npm pack` rewrites), as does
 // the `npm install -D @vzn/…` vx-migrate runs (helpers/npm-checkout.ts), and
 // the Nx repo's own `nx` is a stand-in whose one verb is `graph --file`, as
-// in vx-migrate's suites. Every `npx vx …` line runs verbatim.
+// in vx-migrate's suites. Every `npx @vzn/vx …` line runs verbatim.
 
 import {
   cpSync,
@@ -47,9 +47,9 @@ function guideFences(name: string, lang: string): string[] {
 
 const COMMANDS = [
   'npm install -D @vzn/vx @vzn/vx-migrate',
-  'npx vx init',
-  'npx vx run build --all',
-  'npx vx run build --all',
+  'npx @vzn/vx init',
+  'npx @vzn/vx run build --all',
+  'npx @vzn/vx run build --all',
 ]
 
 const roots: string[] = []
@@ -263,14 +263,14 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
-    expect(initCmd).toBe('npx vx init --keep')
+    expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
     writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
-    const cached = step(root, 'npx vx init --keep --dry --force')
+    const cached = step(root, 'npx @vzn/vx init --keep --dry --force')
     expect(cached.out.split('\n')).toContain(cacheLine!.trimEnd())
     rmSync(path.join(root, '.github'), { recursive: true })
 
@@ -291,7 +291,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initFence, migrateFence] = guideFences('Nx', 'text')
     expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
-    expect(initCmd).toBe('npx vx init --keep')
+    expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
@@ -364,7 +364,7 @@ function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[
   git('add', '-A')
   git('commit', '-q', '-m', 'native')
   return [0, 1].map(() => {
-    expect(step(root, 'npx vx run build --all').code).toBe(0)
+    expect(step(root, 'npx @vzn/vx run build --all').code).toBe(0)
     const s = lastStatuses(root)
     return [s['app#build']!, s['lib#build']!]
   })

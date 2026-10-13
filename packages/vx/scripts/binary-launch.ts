@@ -8,6 +8,8 @@
 // inside the sandbox is a `system-fsctl` violation no grant can lift
 // (macOS 27, 2026-10-03).
 
+import { tmpdir } from 'node:os'
+
 export interface Launch {
   readonly exitCode: number
   readonly version: string
@@ -16,7 +18,10 @@ export interface Launch {
 
 const text = (b: Uint8Array): string => new TextDecoder().decode(b)
 
-const spawn = (cmd: string[]) => Bun.spawnSync({ cmd, stdout: 'pipe', stderr: 'pipe' })
+// Outside any project: inside one that installs @vzn/vx (this repo does)
+// the binary hands `--version` to that install (src/handoff.ts).
+const spawn = (cmd: string[]) =>
+  Bun.spawnSync({ cmd, cwd: tmpdir(), stdout: 'pipe', stderr: 'pipe' })
 
 /** `codesign -s - --force` then `--verify`; the failing step's output, or undefined. */
 function resign(bin: string): string | undefined {

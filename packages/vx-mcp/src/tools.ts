@@ -281,7 +281,7 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'getWorkspaceInfo',
     description:
-      'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
+      'The workspace doctor, the object `vx info --format json` prints: vx, vxPath, handedOffFrom, bun, bunSupported, git, ' +
       'gitStatusCache, workspaceRoot, projects, tasks, configErrors, plugins (and the seams each fills), ' +
       'workers and memory (what a run will use, and where each comes from), cacheDir, cacheStore, cacheVersion, ' +
       'schemaVersion, cacheEntries, cacheBytes, settings (each with its value and source), cacheRetention, orphans, runs24h, hits24h, restored24h, flakyTasks, lockfile, sandbox ' +

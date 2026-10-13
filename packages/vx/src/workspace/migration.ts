@@ -468,7 +468,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push(...plan.notes)
     if (files.length === 0) report.push(dry ? 'no files (dry run)' : 'no files written')
     else report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
-    for (const f of files) report.push(`  ${f.relPath}`)
+    report.push(...fileLines(files.map((f) => f.relPath)))
     if (kept.length > 0) {
       report.push('kept (each already has a vx config):')
       for (const f of kept) report.push(`  ${f}`)
@@ -585,21 +585,22 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
 }
 
 /**
- * How the user runs vx, for the report's `next:` line. After `npx vx init`
+ * How the user runs vx, for the report's `next:` line. After `npx @vzn/vx init`
  * or `bunx @vzn/vx init` a bare `vx` is on no PATH (the first-five-minutes
  * walk, 2026-09-28), so the line names the runner that started this
  * process — npx, pnpm, yarn and Bun each set `npm_config_user_agent` — and
- * the spec it resolves: the installed bin, else the package, since a bare
- * `bunx vx` or `npx vx` would fetch an unrelated package named `vx`. No
+ * the spec it resolves. npx and bunx always name the package, which runs
+ * the installed bin when there is one: their bare `vx` fetches an unrelated
+ * package named `vx` wherever vx is not installed. No
  * runner (a global install, the compiled binary): `vx`.
  */
 export function vxInvocation(userAgent: string | undefined, installed: boolean): string {
   const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1]
   switch (runner) {
     case 'npm':
-      return installed ? 'npx vx' : 'npx @vzn/vx'
+      return 'npx @vzn/vx'
     case 'bun':
-      return installed ? 'bunx vx' : 'bunx @vzn/vx'
+      return 'bunx @vzn/vx'
     case 'pnpm':
       return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
     case 'yarn':
@@ -609,6 +610,16 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
     default:
       return 'vx'
   }
+}
+
+/** Files named one per line; past this, the root's and a count (TanStack form: 97). */
+const FILES_SHOWN = 10
+
+function fileLines(paths: readonly string[]): string[] {
+  if (paths.length <= FILES_SHOWN) return paths.map((p) => `  ${p}`)
+  const root = paths.filter((p) => !p.includes('/'))
+  const more = paths.length - root.length
+  return [...root.map((p) => `  ${p}`), `  and ${more} more in package directories`]
 }
 
 /** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */

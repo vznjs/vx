@@ -10,12 +10,16 @@
 // `core.checkstat=minimal` and `core.trustctime=false`, under which vx
 // rightly trusts no index OID and hashes every input from disk; that alone
 // made the 8,002-task nothing-changed run 4.0 s against 2.0 s (2026-10-10).
+// `VX_HANDED_OFF`: the vx under test runs itself. A workspace whose
+// node_modules holds @vzn/vx (pr-bench links this package's) handed the
+// compiled binary's calls to that source install, and noop timed it.
 export function benchEnv(extra: Record<string, string> = {}): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {
     ...process.env,
     VX_CACHE_DIR: '.vx/cache',
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_NOSYSTEM: '1',
+    VX_HANDED_OFF: 'bench',
     ...extra,
   }
   delete env['BUN_OPTIONS']

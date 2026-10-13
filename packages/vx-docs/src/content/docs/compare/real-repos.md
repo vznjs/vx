@@ -67,7 +67,7 @@ each, best of three interleaved runs. Every run is in
 
 ```sh
 npm install -D @vzn/vx
-npx vx init --keep
+npx @vzn/vx init --keep
 ```
 
 `--keep` writes one file, `vx.workspace.ts`, which reads your

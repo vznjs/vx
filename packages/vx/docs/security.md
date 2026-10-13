@@ -18,6 +18,10 @@ vulnerability), never in a public issue.
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
+- **Your project's own vx.** A global vx hands every call to the
+  project's `node_modules/.bin/vx` (cli.md § Which vx runs), so even
+  `vx --version` in a repo you do not trust runs that repo's code. One
+  another user owns is never run.
 - **Your plugins.** A plugin is code you imported. It runs in vx's
   process with a config's reach; vx checks the shape of what it hands
   back and isolates a telemetry plugin's failures, nothing more.
@@ -134,8 +138,11 @@ A task with `exec.sandbox` runs where only what it declares exists:
 - its temp directory, port-bridge socket and trace log are its own
   (mode 0700), unreachable from another task and another local user;
 - the host's credential stores (`~/.ssh`, `~/.gnupg`, `~/.aws`,
-  `~/.npmrc`, `~/.netrc` and the like; the list is in the schema's
-  sandbox section) are unreadable unless `allow.read` names one (L-41);
+  `~/.npmrc`, `~/.netrc`, the token files of deploy and agent CLIs such
+  as Vercel, Wrangler, Fly or Claude, and the like; the list is in the
+  schema's sandbox section) are unreadable unless `allow.read` names one
+  (L-41), and a denied read's `fix:` hint never suggests granting one
+  (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);

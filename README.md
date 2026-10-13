@@ -38,8 +38,12 @@ Windows: run vx inside WSL2.
 In a git repo with a `package.json` workspace:
 
 ```sh
-npx vx init               # a vx.config.ts per package, from its scripts
+npm install -D @vzn/vx    # the scope matters: npm's `vx` is an unrelated package
+npx @vzn/vx init          # a vx.config.ts per package, from its scripts
 ```
+
+Bun workspaces: `bun add -d @vzn/vx` and `bunx @vzn/vx` (npm refuses to run in
+a repo whose `devEngines` names Bun).
 
 Give a task a cache block, what it reads and writes:
 
@@ -62,10 +66,10 @@ export default defineProject({
 ```
 
 ```sh
-npx vx run build --all    # builds, in dependency order; stores the results
-npx vx run build --all    # nothing changed: up-to-date, in milliseconds
+npx @vzn/vx run build --all    # builds, in dependency order; stores the results
+npx @vzn/vx run build --all    # nothing changed: up-to-date, in milliseconds
 rm -rf packages/*/dist
-npx vx run build --all    # restored from the cache, not rebuilt
+npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 ```
 
 <img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
@@ -107,7 +111,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 
 ## Coming from Turbo or Nx
 
-Beside `turbo.json` or `nx.json`, `npx vx init` runs `@vzn/vx-migrate`:
+Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
 a `vx.workspace.ts` that maps the old config instead: a temporary start,
