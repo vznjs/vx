@@ -619,9 +619,9 @@ export function untouchedPlaceholderLine(projectDir: string, placeholder: string
 /**
  * Where tools keep credentials under the user's home. A sandboxed task
  * reads none of them unless its `allow.read` names one (a publish task's
- * `~/.npmrc`).
+ * `~/.npmrc`), and `sandboxFix` never suggests one as a grant.
  */
-const CREDENTIAL_STORES = [
+export const CREDENTIAL_STORES = [
   '.ssh',
   '.gnupg',
   '.aws',
