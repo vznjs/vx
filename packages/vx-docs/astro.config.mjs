@@ -84,6 +84,8 @@ export default defineConfig({
     '/blog/4/': `${root}blog/`,
     '/blog/5/': `${root}blog/`,
     '/blog/authors/vzn/': `${root}blog/`,
+    // Folded into the essay it announced (blog is a knowledge base, 2026-10-13).
+    '/blog/schedule-strategy/': `${root}blog/scheduling-strategies/#pick-the-guess`,
     // Release notes moved out of the blog into their own section.
     '/blog/tags/release/': `${root}releases/`,
     '/blog/tags/essays/': `${root}blog/`,

@@ -182,11 +182,37 @@ over the file, and the file wins over `assume`.
 [Carry the scheduler's memory between CI runners](../ci-timings-file/)
 shows the cache step.
 
-## Turn it on
+## Pick the guess
 
-For the first run, before there is any history, you can also
-[pick the rule vx guesses with](../schedule-strategy/) in
-`vx.workspace.ts`. The default stays most transitive dependents.
+Before there is any history, one line in `vx.workspace.ts` picks the
+rule vx guesses with:
+
+```ts
+// vx.workspace.ts
+export default {
+  schedule: 'critical-path',
+}
+```
+
+| `schedule` | Starts first |
+| --- | --- |
+| `most-work` (default) | The task the most work waits on, at any depth |
+| `critical-path` | The task at the head of the longest chain of tasks |
+| `direct-dependents` | The task the most tasks wait on directly |
+| `ready-order` | The task that became ready first |
+
+A `schedule` plugin's ranking still comes first under every rule; the
+rule only breaks its ties and orders tasks it has no timing for yet.
+The default runs the same code as before; another rule is computed
+only when the workspace names it, in one pass over the graph.
+
+Keep the default unless you know your graph. If a slow task with
+nothing after it (a typecheck, a lint) keeps starting late, try
+`ready-order`. If long chains of small tasks finish last, try
+`critical-path`. Once the history plugin has a run to learn from, it
+beats all of them.
+
+## Turn it on
 
 ```sh
 npm install -D @vzn/vx-schedule-history

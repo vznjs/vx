@@ -144,6 +144,7 @@ const MERGED: Record<string, string> = {
   // Release notes left the blog for their own section (owner, 2026-10-08).
   'blog/tags/release/': 'releases/',
   'blog/tags/essays/': 'blog/',
+  'blog/schedule-strategy/': 'blog/scheduling-strategies/#pick-the-guess',
   ...Object.fromEntries(
     ['21', '75', '199', '242', '325', '360', '495', '520', '589', '625'].map((n) => [
       `blog/vx-0-0-${n}/`,
