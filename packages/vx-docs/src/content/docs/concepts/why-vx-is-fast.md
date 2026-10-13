@@ -112,6 +112,28 @@ Speed by subtraction is still speed:
   grants nothing, so the sandbox checks the input list only where
   `allow.read` mirrors it. Guessing is replaced by a boundary.
 
+## See where the time goes
+
+`VX_TIMING=1` prints each stage of a run on stderr. A cached one-task
+run on a 4-core Linux container:
+
+```text
+$ VX_TIMING=1 vx run @demo/app#build
+[vx timing]  stage                    own   cumulative
+             startup                 58.9ms      58.9ms
+             workspace config         4.7ms      63.6ms
+             discover projects        4.6ms      68.2ms
+             load configs             5.7ms      81.9ms
+             build graph              3.3ms      85.2ms
+             git enumeration          8.8ms      93.9ms
+             classify + probe        15.7ms     109.8ms
+             run graph                8.5ms     118.3ms
+             close                    3.9ms     125.7ms
+```
+
+Rows under 1 ms are cut here. See
+[Timing](../../modules/timing/) for the full table.
+
 ## Go deeper
 
 - **[Optimizations](../../optimizations/)** — every decision with its
