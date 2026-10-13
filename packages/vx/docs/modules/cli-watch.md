@@ -232,7 +232,7 @@ are refused too: they format one run's result.
      waited for a restart (the three item-891 rows).
    - Filter out `node_modules` / `.git` / `.vx` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
-     cache directory (a relocated `cacheDir` would otherwise re-trigger
+     cache directory (a relocated `cache.dir` would otherwise re-trigger
      every cycle), and each project's declared outputs
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit, and neither is `dist` itself;
@@ -294,7 +294,7 @@ are refused too: they format one run's result.
    `AbortController`, with the signal's name as the reason, whose
    signal every cycle's `run()` carries (`RunOptions.signal`, `handleSignals: false`). The
    in-flight cycle tears its children down (the received signal, a
-   SIGHUP as SIGTERM; `VX_KILL_GRACE_MS`; SIGKILL) and returns; the loop
+   SIGHUP as SIGTERM; `VX_RUN_KILL_GRACE`; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
    it holds with the same signal, and resolves; watch exits 0. The pool
    stays closed: a cycle still re-arming arms nothing, and a watcher the

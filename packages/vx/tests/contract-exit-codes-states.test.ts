@@ -17,7 +17,7 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes-states.json')
-const env = { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: '200' }
+const env = { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: '200ms' }
 
 let root: string
 const config = (command: string): string => `export default {

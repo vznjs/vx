@@ -1,4 +1,4 @@
-// `VX_TIMING=1` prints the stage table at the end of a dry run as it does
+// `VX_DEBUG_TIMING=1` prints the stage table at the end of a dry run as it does
 // at the end of a run: a dry run is how the prepare stages get profiled on
 // a real repo with no install to run against (refine, 2026-09-11 — the
 // table was silent under `--dry` and the profile needed a 2.3 GB install).
@@ -15,7 +15,7 @@ async function vx(root: string, args: string[], env: Record<string, string>): Pr
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_TIMING: '', ...env },
+    env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '', ...env },
   })
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -25,7 +25,7 @@ async function vx(root: string, args: string[], env: Record<string, string>): Pr
   return out + err
 }
 
-describe('VX_TIMING on a dry run', () => {
+describe('VX_DEBUG_TIMING on a dry run', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace()
@@ -48,7 +48,7 @@ describe('VX_TIMING on a dry run', () => {
   })
 
   it('prints the stage table through the graph build and the close', async () => {
-    const out = await vx(root, ['build', '--all', '--dry'], { VX_TIMING: '1' })
+    const out = await vx(root, ['build', '--all', '--dry'], { VX_DEBUG_TIMING: '1' })
     expect(out).toContain('[vx timing]  stage')
     for (const stage of [
       'discover projects',

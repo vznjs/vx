@@ -177,10 +177,10 @@ describe('computeTaskHash — what the config contributes', () => {
     // genuinely different tasks share a key. This fails if the strip is too
     // wide.
     const a = await key({
-      node: node({}, { exec: { command: 'build', remote: false, timeout: 5_000 } }),
+      node: node({}, { exec: { command: 'build', remote: false, timeout: '5s' } }),
     })
     const b = await key({
-      node: node({}, { exec: { command: 'build', remote: false, timeout: 9_000 } }),
+      node: node({}, { exec: { command: 'build', remote: false, timeout: '9s' } }),
     })
     expect(b).not.toBe(a)
   })
@@ -216,7 +216,7 @@ describe('computeTaskHash — what the config contributes', () => {
     const execValues: Record<string, unknown> = {
       command: 'other',
       env: { passThrough: ['FOO'] },
-      timeout: 5_000,
+      timeout: '5s',
       retries: 2,
       persistent: { readyWhen: 'ready' },
       interactive: true,
@@ -274,7 +274,7 @@ describe('computeTaskHash — what the config contributes', () => {
     // and reasonably concludes "these are all scheduling hints, strip them
     // too" has to fail this test first.
     const a = await key({ node: node({}, { exec: { command: 'build' } }) })
-    const b = await key({ node: node({}, { exec: { command: 'build', timeout: 5_000 } }) })
+    const b = await key({ node: node({}, { exec: { command: 'build', timeout: '5s' } }) })
     expect(b).not.toBe(a)
   })
 

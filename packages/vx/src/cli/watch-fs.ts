@@ -389,25 +389,28 @@ export const CLOSED: WatchHandle = { close() {} }
 /**
  * Every watcher `vx watch` arms. Each OS watcher proves delivery or is
  * swapped for the poller in its slot; an OS watch limit (ENOSPC, EMFILE)
- * goes straight to the poller; `VX_WATCH_POLL=1` polls from the start.
+ * goes straight to the poller; `watch.poll` (`--poll`, `VX_WATCH_POLL`)
+ * polls from the start.
  * `skip` is what the poller leaves unsampled, asked on each walk.
  */
 export class WatcherPool {
   private readonly watchers: WatchHandle[] = []
   private readonly proofs: Promise<void>[] = []
-  // `VX_WATCH_POLL=1` skips the OS watcher entirely. Where it is known not
-  // to work — a sandbox with no `machLookup` for `com.apple.FSEvents`, a
-  // network mount, a container bind — the attempt costs a denied syscall
-  // and a two-second wait before the fallback takes over anyway.
-  private readonly forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
   // The stop closes the pool while a cycle may still be re-arming: an arm
   // after it, or a proof that fails because it closed the watcher, would
   // leave a live watcher or poller nothing ever closes.
   private closed = false
 
-  constructor(private readonly skip: (dir: string, rel: string) => boolean) {
-    if (this.forcePoll)
-      process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (VX_WATCH_POLL)\n`)
+  // `forcePoll` skips the OS watcher entirely. Where it is known not to
+  // work — a sandbox with no `machLookup` for `com.apple.FSEvents`, a
+  // network mount, a container bind — the attempt costs a denied syscall
+  // and a two-second wait before the fallback takes over anyway.
+  constructor(
+    private readonly skip: (dir: string, rel: string) => boolean,
+    private readonly forcePoll = false,
+  ) {
+    if (forcePoll)
+      process.stderr.write(`vx watch: polling every ${POLL_INTERVAL_MS} ms (watch.poll)\n`)
   }
 
   private poll(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle {

@@ -24,17 +24,14 @@ export interface RunArgs {
   filters: string[] // raw --filter values
   all: boolean
   excludeDependencies: 'all' | string[]
-  concurrency: number | undefined // `<n>` or `<n>%` of the cores this process may use
-  cache: CachePolicy // resolved from --cache / VX_CACHE / --no-cache / --force (default all-on)
+  settings: Record<string, unknown> // each setting flag by path, parsed by its kind (`run.timeout` → ms)
+  cache: CachePolicy // resolved from --cache-policy / VX_CACHE_POLICY / --no-cache / --force (default all-on)
   cacheFlags?: CacheFlags // no spec named: --no-cache / --force, applied over the workspace's cache.policy
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheDir: string | undefined // --cache-dir
   cacheScope?: string // --cache-scope
   frozen: boolean // --frozen: run the lock's graph
-  retries: number | undefined // --retry <n> run-level default
-  timeout: number | undefined // --timeout <ms> run-level default
-  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only' // --output-logs
-  download?: 'all' | 'toplevel' | 'none' // --download
+  poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -50,7 +47,6 @@ export interface RunArgs {
 }
 
 export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs
-export function parseConcurrency(v: string, cpus?: number): number | null
 export function detectFlow(
   parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
 ): 'focused' | 'broad'
@@ -83,12 +79,16 @@ refusal points at: `vx watch` reads the same flags, M-58):
 2. Loop the prefix: recognize each flag form. Optional-value flags
    (`--dry`, `--graph`, `--summarize`, `--profile`, `--affected`,
    `--exclude-dependencies`) accept either the bare form or `=<value>`.
-3. Unknown flags + missing values + invalid integers → returned via
+3. A setting's flag (`src/settings.ts` names each one, its verb and its
+   kind) parses by that kind into `settings` at the setting's path; a
+   name renamed in 0.0.637 (`--retry`, `--download`) is refused naming
+   the new one.
+4. Unknown flags + missing values + invalid integers → returned via
    `RunArgs.error`. The handler short-circuits to exit 1. An unknown
    flag names the nearest flag `vx run` accepts (`flagHint('run', arg)`
    in `help.ts`, which every verb's refusal shares; it reads the help
    text, so there is no second list to drift).
-4. Mutually-exclusive combinations checked at the end:
+5. Mutually-exclusive combinations checked at the end:
    `--dry` + `--graph`; either + `--summarize` / `--profile` /
    `--report` / `--report-file` (they skip execution; the artifacts need
    a real run). `--no-cache` beats
@@ -113,7 +113,7 @@ then keeps a bare request only when the diff reaches its `dependsOn`
 closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). With a
 `graph` plugin the candidates are every project once anything changed:
 the plugin's edges exist only in the run's graph. The no-value form takes
-the workspace's `affectedBase` (a plugin's `config` stage may set it),
+the workspace's `run.affectedBase` (a plugin's `config` stage may set it),
 else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
 `origin/main`, `origin/master`, `main`, `master` that is not HEAD, else
 `HEAD~1` (`affected.md`); a

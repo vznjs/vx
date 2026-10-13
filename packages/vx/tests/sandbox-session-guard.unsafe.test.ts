@@ -103,7 +103,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const proc = Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
           cwd: root,
           // The test reads vx's `/proc/<pid>/fd`: vx stays dumpable.
-          env: { ...process.env, VX_DUMPABLE: '1' },
+          env: { ...process.env, VX_DEBUG_DUMPABLE: '1' },
           stdout: 'ignore',
           stderr: 'ignore',
         })

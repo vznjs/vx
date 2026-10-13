@@ -240,11 +240,14 @@ export function defineProject<const T extends ProjectConfig>(
 export function defineWorkspace<T extends WorkspaceConfig>(
   config: T &
     Known<T, WorkspaceConfig> & {
-      cacheRetention?: Known<
-        At<T, 'cacheRetention'>,
-        NonNullable<WorkspaceConfig['cacheRetention']>
-      >
-      rules?: Known<At<T, 'rules'>, WorkspaceRules>
+      run?: Known<At<T, 'run'>, RunSettings> & {
+        rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
+      }
+      cache?: Known<At<T, 'cache'>, CacheSettings> & {
+        retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
+        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      }
+      watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
 == function escapeMarkdownCell (src/orchestrator/run-report.ts)
@@ -538,6 +541,15 @@ export interface CachePolicy {
   remoteWrite: boolean
   remoteScope?: string
 }
+== type CacheSettings (src/config.ts)
+export interface CacheSettings {
+  dir?: string
+  retention?: { olderThan?: Duration; maxSize?: string }
+  policy?: string
+  scope?: string
+  download?: 'all' | 'toplevel' | 'none'
+  inputStability?: InputStability
+}
 == type CacheSource (src/orchestrator/telemetry.ts)
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
 == type CacheStats (src/cache/layer.ts)
@@ -624,6 +636,8 @@ export interface DiscoverContext extends WorkspaceHookContext {
   readonly projects: readonly ProjectMeta[]
   worktreeChanges(): Promise<readonly string[] | null>
 }
+== type Duration (src/config.ts)
+export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 == type EventBus (src/orchestrator/events.ts)
 export interface EventBus {
   emit(event: RunEvent): void
@@ -634,7 +648,7 @@ export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
   env?: ExecEnv
-  timeout?: number
+  timeout?: Duration
   retries?: number
   persistent?: PersistentConfig
   interactive?: boolean
@@ -802,7 +816,7 @@ export interface InfoFacts {
   plugins: Array<{ name: string; seams: string[] }>
   workers: {
     count: number
-    source: 'workspace' | 'cgroup' | 'cores'
+    source: 'env' | 'workspace' | 'cgroup' | 'cores'
     cores: number
     cpuQuota: number | null
   }
@@ -813,8 +827,10 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
-  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
-  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
+  settings: Record<
+    string,
+    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
+  >
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -1322,6 +1338,10 @@ export interface RunOptions {
   retries?: number
   timeout?: number
   continueMode?: ContinueMode
+  schedule?: NonNullable<RunSettings['schedule']>
+  killGrace?: number
+  teardownTimeout?: number
+  readyNotice?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
@@ -1393,6 +1413,19 @@ export interface RunResult {
 export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
+}
+== type RunSettings (src/config.ts)
+export interface RunSettings {
+  concurrency?: number | `${number}%`
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  affectedBase?: string
+  timeout?: Duration
+  retries?: number
+  continue?: 'never' | 'deps-ok' | 'always'
+  killGrace?: Duration
+  teardownTimeout?: Duration
+  readyNotice?: Duration
+  rules?: WorkspaceRules
 }
 == type RunStage (src/orchestrator/telemetry.ts)
 export interface RunStage {
@@ -1852,6 +1885,10 @@ export interface VxPlugin {
   setup?(ctx: PluginSetupContext): void | Promise<void>
   teardown?(): void | Promise<void>
 }
+== type WatchSettings (src/config.ts)
+export interface WatchSettings {
+  poll?: boolean
+}
 == type WhyDidThisRerun (src/orchestrator/metrics.ts)
 export interface WhyDidThisRerun {
   runId: string
@@ -1883,18 +1920,9 @@ export interface Workspace {
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {
-  concurrency?: number
-  cacheDir?: string
-  timeout?: number
-  cacheRetention?: { olderThan?: string; maxSize?: string }
-  affectedBase?: string
-  cache?: {
-    policy?: string
-    scope?: string
-  }
-  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  inputStability?: InputStability
-  rules?: WorkspaceRules
+  run?: RunSettings
+  cache?: CacheSettings
+  watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 == type WorkspaceFilesCache (src/cache/inputs.ts)

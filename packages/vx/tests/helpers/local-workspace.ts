@@ -21,7 +21,7 @@ export function localWorkspaceSource(
   rules?: string,
 ): string {
   return `${PLUGIN_IMPORT}${prelude}
-export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, rules: ${rules}`} }
+export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, run: { rules: ${rules} }`} }
 `
 }
 

@@ -46,7 +46,7 @@ A content-addressed cache only grows. Set a policy once, in
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
-  cacheRetention: { olderThan: '30d', maxSize: '10G' },
+  cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
 })
 ```
 

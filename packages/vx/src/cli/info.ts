@@ -10,6 +10,7 @@ import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 import { MIN_BUN } from '../util/index.js'
+import { envName } from '../settings.js'
 
 interface InfoArgs {
   format: 'pretty' | 'json'
@@ -96,13 +97,10 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', describeEntries(f)],
-    ['cache policy', `${f.cachePolicy.spec} (${describeFrom(f.cachePolicy.from)})`],
-    [
-      'cache scope',
-      f.cacheScope.scope === null
-        ? 'read-only off CI, trusted on CI or when the policy names the remote'
-        : `${f.cacheScope.scope} (${describeFrom(f.cacheScope.from)})`,
-    ],
+    // Only the settings a variable or the workspace changed.
+    ...(Object.values(f.settings).some((s) => s.source !== 'default')
+      ? ([['settings', describeSettings(f.settings)]] as [string, string][])
+      : []),
     ...(f.cacheRetention !== null
       ? ([['cache retention', describeRetention(f.cacheRetention)]] as [string, string][])
       : []),
@@ -142,11 +140,21 @@ function describeEntries(f: InfoFacts): string {
   return `${f.cacheEntries} (${size})`
 }
 
-/** What a run's end evicts: `entries unused for 30d, and the oldest entries past 10G`. */
-function describeFrom(from: string): string {
-  return from === 'workspace' ? 'vx.workspace' : from === 'default' ? 'the default' : from
+/**
+ * The settings not at their default, with where each came from:
+ * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (vx.workspace)`.
+ */
+function describeSettings(settings: InfoFacts['settings']): string {
+  return Object.entries(settings)
+    .filter(([, s]) => s.source !== 'default')
+    .map(
+      ([path, s]) =>
+        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : 'vx.workspace'})`,
+    )
+    .join(', ')
 }
 
+/** What a run's end evicts: `entries unused for 30d, and the oldest entries past 10G`. */
 function describeRetention(r: NonNullable<InfoFacts['cacheRetention']>): string {
   const parts = [
     ...(r.olderThan !== undefined ? [`entries unused for ${r.olderThan}`] : []),

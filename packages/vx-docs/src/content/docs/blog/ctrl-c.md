@@ -23,7 +23,7 @@ vx has one teardown, and every way a run can end goes through it.
    `SIGINT` stays `SIGINT`, so a Ctrl-C cleanup runs, and `SIGTERM` or
    `SIGHUP` arrives as `SIGTERM`.
 2. vx waits a grace period, two seconds by default,
-   `VX_KILL_GRACE_MS` to change it.
+   `VX_RUN_KILL_GRACE` to change it.
 3. It re-reads its registries, because a child may have spawned during
    the grace, and sends `SIGKILL` to anything still alive.
 4. It reaps, so nothing is left as a zombie. Then the run finishes the
@@ -74,7 +74,7 @@ window would hide a regression that merely got slower. "The task has
 started" is a marker file, never a `sleep`.
 
 That is also why the grace is a named constant rather than a literal:
-`SIGNAL_SHUTDOWN_GRACE_MS` is the default, `VX_KILL_GRACE_MS` is the
+`SIGNAL_SHUTDOWN_GRACE_MS` is the default, `VX_RUN_KILL_GRACE` is the
 env var the tests set to 200 ms so they prove the escalation without
 waiting two seconds each, and a change to either is a visible diff.
 

@@ -354,10 +354,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     // 2^31-1 ms `setTimeout` fires at 1 ms instead of never, so the task is
     // killed as it spawns. Documented because the symptom (`failed` in a few
     // ms) looks nothing like the cause (a timeout that reads as "no limit").
-    'exec.timeout: <n> ms exceeds the maximum timer delay',
+    'exec.timeout of <value> exceeds the maximum timer delay',
     () =>
       validated({
-        tasks: { b: { exec: { command: 'x', timeout: 9_999_999_999_999 } } },
+        tasks: { b: { exec: { command: 'x', timeout: '9999999999999ms' } } },
       }),
   ],
   [
@@ -546,56 +546,54 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
         `${plugin('b', '{ commands: { hi: { description: "d", run() { return 0 } } } }')}] }`,
     ),
   ],
-  ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
-  ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
-  ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
-  ['cacheDir is only whitespace — name a directory', workspaceConfig('{ cacheDir: "   " }')],
-  ['cacheDir holds a NUL, which no path can carry', workspaceConfig('{ cacheDir: "a\\0b" }')],
   [
-    "affectedBase must be a git ref like 'origin/main'",
-    workspaceConfig('{ affectedBase: "--output=x" }'),
+    '<setting> must be <what its kind takes> (got <value>)',
+    workspaceConfig('{ run: { concurrency: 0 } }'),
   ],
   [
-    "cache must be an object like { policy, scope }; a task caches through its own cache in its project's vx.config",
+    "<setting> takes a duration with its unit, like '<n>ms' or '<n>s' (got <n>)",
+    workspaceConfig('{ run: { timeout: 30000 } }'),
+  ],
+  [
+    '<setting> of <value> exceeds the maximum timer delay',
+    workspaceConfig('{ run: { timeout: "9999999999999ms" } }'),
+  ],
+  ['<group> must be an object (fields: <fields>)', workspaceConfig('{ run: true }')],
+  [
+    "cache must be an object like { dir, policy, scope }; a task caches through its own cache in its project's vx.config",
     workspaceConfig('{ cache: "remote:" }'),
   ],
   [
-    "cache.policy must be a spec like 'local:rw,remote:r'",
-    workspaceConfig('{ cache: { policy: " " } }'),
+    'cache.dir holds a NUL, which no path can carry',
+    workspaceConfig('{ cache: { dir: "a\\0b" } }'),
+  ],
+  [
+    "run.affectedBase must be a git ref like 'origin/main'",
+    workspaceConfig('{ run: { affectedBase: "--output=x" } }'),
   ],
   [
     "cache.scope must be 'trusted', 'read-only', or a scope name of <rule>",
     workspaceConfig('{ cache: { scope: "pr 123" } }'),
   ],
   [
-    'rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }',
-    workspaceConfig('{ rules: true }'),
-  ],
-  ['rules.<name> must be true or false', workspaceConfig('{ rules: { upfrontKeys: "off" } }')],
-  [
-    "cacheRetention must be { olderThan?: '30d', maxSize?: '10G' }",
-    workspaceConfig('{ cacheRetention: "30d" }'),
-  ],
-  ['cacheRetention names neither olderThan nor maxSize', workspaceConfig('{ cacheRetention: {} }')],
-  [
-    "cacheRetention.olderThan must be a duration like '30d', '12h', '90m' or '45s'",
-    workspaceConfig('{ cacheRetention: { olderThan: "30 days" } }'),
+    'cache.retention names neither olderThan nor maxSize',
+    workspaceConfig('{ cache: { retention: {} } }'),
   ],
   [
-    "cacheRetention.maxSize must be a size like '10G', '500MB' or '64KB'",
-    workspaceConfig('{ cacheRetention: { maxSize: "1.5G" } }'),
+    'cache.retention.olderThan of 0 evicts every entry after every run',
+    workspaceConfig('{ cache: { retention: { olderThan: "0d" } } }'),
   ],
   [
-    'cacheRetention.olderThan of 0 evicts every entry after every run',
-    workspaceConfig('{ cacheRetention: { olderThan: "0d" } }'),
+    'cache.retention.maxSize of 0 evicts every entry after every run',
+    workspaceConfig('{ cache: { retention: { maxSize: "0G" } } }'),
   ],
   [
-    'cacheRetention.maxSize of 0 evicts every entry after every run',
-    workspaceConfig('{ cacheRetention: { maxSize: "0G" } }'),
+    "cache.retention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>MB', '<n>GB')",
+    workspaceConfig('{ cache: { retention: { maxSize: "10" } } }'),
   ],
   [
-    "cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')",
-    workspaceConfig('{ cacheRetention: { maxSize: "10" } }'),
+    '<file> has field "<key>", which vx <version> removed — use <replacement>',
+    workspaceConfig('{ concurrency: 2 }'),
   ],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],
@@ -718,9 +716,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     const message = await workspaceConfig('{ plugin: [{ name: "p", setup() {} }] }')()
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
-    expect(message).toContain(
-      '(allowed: affectedBase, cache, cacheDir, cacheRetention, concurrency, inputStability, plugins, rules, schedule, timeout)',
-    )
+    expect(message).toContain('(allowed: cache, plugins, run, watch)')
   })
 })
 

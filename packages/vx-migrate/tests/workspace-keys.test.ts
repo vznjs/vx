@@ -28,14 +28,17 @@ describe('turbo(): turbo.json workspace keys', () => {
       path.join(root, 'turbo.json'),
       JSON.stringify({ concurrency: '3', cacheMaxSize: '10GB', tasks: {} }),
     )
-    expect(await staged(turbo())).toEqual({ concurrency: 3, cacheRetention: { maxSize: '10GB' } })
+    expect(await staged(turbo())).toEqual({
+      run: { concurrency: 3 },
+      cache: { retention: { maxSize: '10GB' } },
+    })
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ global: { concurrency: '50%', cacheMaxAge: '2w' }, tasks: {} }),
     )
     expect(await staged(turbo())).toEqual({
-      concurrency: Math.max(1, Math.floor(availableParallelism() / 2)),
-      cacheRetention: { olderThan: '14d' },
+      run: { concurrency: Math.max(1, Math.floor(availableParallelism() / 2)) },
+      cache: { retention: { olderThan: '14d' } },
     })
   })
 
@@ -44,26 +47,26 @@ describe('turbo(): turbo.json workspace keys', () => {
       path.join(root, 'turbo.json'),
       JSON.stringify({ concurrency: '3', cacheMaxSize: '0', cacheMaxAge: '0', tasks: {} }),
     )
-    expect(await staged(turbo())).toEqual({ concurrency: 3 })
-    expect(await staged(turbo(), { concurrency: 8 })).toEqual({ concurrency: 8 })
+    expect(await staged(turbo())).toEqual({ run: { concurrency: 3 } })
+    expect(await staged(turbo(), { run: { concurrency: 8 } })).toEqual({ run: { concurrency: 8 } })
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ cacheMaxSize: '10GB', tasks: {} }),
     )
-    const own = { cacheRetention: { olderThan: '30d' } }
-    expect(await staged(turbo(), own)).toEqual({ cacheRetention: { olderThan: '30d' } })
+    const own: WorkspaceConfig = { cache: { retention: { olderThan: '30d' } } }
+    expect(await staged(turbo(), own)).toEqual({ cache: { retention: { olderThan: '30d' } } })
   })
 
   it("the cache bounds take Turbo's grammar: a fraction, a bare number", async () => {
     // langfuse's `"cacheMaxSize": "7.5GB"`: Turbo truncates a fraction to
     // bytes, core takes whole numbers only and refused the workspace.
     const cases: [Record<string, string>, WorkspaceConfig][] = [
-      [{ cacheMaxSize: '7.5GB' }, { cacheRetention: { maxSize: '7680MB' } }],
-      [{ cacheMaxSize: '1.5kb' }, { cacheRetention: { maxSize: '1536B' } }],
-      [{ cacheMaxSize: '1000000' }, { cacheRetention: { maxSize: '1000000B' } }],
-      [{ cacheMaxSize: '2048MB' }, { cacheRetention: { maxSize: '2GB' } }],
+      [{ cacheMaxSize: '7.5GB' }, { cache: { retention: { maxSize: '7680MB' } } }],
+      [{ cacheMaxSize: '1.5kb' }, { cache: { retention: { maxSize: '1536B' } } }],
+      [{ cacheMaxSize: '1000000' }, { cache: { retention: { maxSize: '1000000B' } } }],
+      [{ cacheMaxSize: '2048MB' }, { cache: { retention: { maxSize: '2GB' } } }],
       [{ cacheMaxSize: '0.1B' }, {}],
-      [{ cacheMaxAge: '30' }, { cacheRetention: { olderThan: '30d' } }],
+      [{ cacheMaxAge: '30' }, { cache: { retention: { olderThan: '30d' } } }],
     ]
     for (const [keys, expected] of cases) {
       await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ ...keys, tasks: {} }))
@@ -91,9 +94,9 @@ describe('turbo(): turbo.json workspace keys', () => {
         await under({ TURBO_CACHE_MAX_SIZE: '0', TURBO_CACHE_MAX_AGE: '3' }),
         await under({ TURBO_CONCURRENCY: '' }),
       ]).toEqual([
-        { concurrency: 1, cacheRetention: { maxSize: '1GB', olderThan: '14d' } },
-        { concurrency: 8, cacheRetention: { olderThan: '3d' } },
-        { concurrency: 8, cacheRetention: { maxSize: '10GB', olderThan: '14d' } },
+        { run: { concurrency: 1 }, cache: { retention: { maxSize: '1GB', olderThan: '14d' } } },
+        { run: { concurrency: 8 }, cache: { retention: { olderThan: '3d' } } },
+        { run: { concurrency: 8 }, cache: { retention: { maxSize: '10GB', olderThan: '14d' } } },
       ])
     } finally {
       names.forEach((n, i) => {
@@ -120,7 +123,7 @@ describe('nx(): nx.json maxCacheSize', () => {
       if (env === undefined) delete process.env['NX_MAX_CACHE_SIZE']
       else process.env['NX_MAX_CACHE_SIZE'] = env
       await writeFile(path.join(root, 'nx.json'), JSON.stringify({ maxCacheSize }))
-      return (await staged(nx(), ws)).cacheRetention
+      return (await staged(nx(), ws)).cache?.retention
     }
     try {
       expect([
@@ -130,7 +133,7 @@ describe('nx(): nx.json maxCacheSize', () => {
         await at(1000000),
         await at('0'),
         await at('10GB', '1GB'),
-        await at('10GB', undefined, { cacheRetention: { olderThan: '7d' } }),
+        await at('10GB', undefined, { cache: { retention: { olderThan: '7d' } } }),
       ]).toEqual([
         { maxSize: '10GB' },
         { maxSize: '1536MB' },
@@ -150,13 +153,13 @@ describe('nx(): nx.json maxCacheSize', () => {
 describe('nx(): nx.json parallel', () => {
   it('parallel, or the legacy runner option, is the concurrency', async () => {
     await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 1 }))
-    expect(await staged(nx())).toEqual({ concurrency: 1 })
+    expect(await staged(nx())).toEqual({ run: { concurrency: 1 } })
     await writeFile(
       path.join(root, 'nx.json'),
       JSON.stringify({ tasksRunnerOptions: { default: { options: { parallel: 5 } } } }),
     )
-    expect(await staged(nx())).toEqual({ concurrency: 5 })
-    expect(await staged(nx(), { concurrency: 2 })).toEqual({ concurrency: 2 })
+    expect(await staged(nx())).toEqual({ run: { concurrency: 5 } })
+    expect(await staged(nx(), { run: { concurrency: 2 } })).toEqual({ run: { concurrency: 2 } })
   })
 
   // Nx reads NX_PARALLEL above nx.json (`readParallelFromArgsAndEnv`).
@@ -165,7 +168,7 @@ describe('nx(): nx.json parallel', () => {
     const saved = process.env['NX_PARALLEL']
     const under = async (v: string) => {
       process.env['NX_PARALLEL'] = v
-      return (await staged(nx())).concurrency
+      return (await staged(nx())).run?.concurrency
     }
     try {
       expect([await under('2'), await under('50%'), await under(''), await under('x')]).toEqual([
@@ -198,7 +201,8 @@ describe('the affected base', () => {
   }
 
   it('nx(): NX_BASE, then defaultBase, then affected.defaultBase', async () => {
-    const base = () => withEnv('NX_BASE', undefined, async () => (await staged(nx())).affectedBase)
+    const base = () =>
+      withEnv('NX_BASE', undefined, async () => (await staged(nx())).run?.affectedBase)
     await writeFile(path.join(root, 'nx.json'), JSON.stringify({}))
     expect(await base()).toBeUndefined()
     await writeFile(
@@ -212,11 +216,11 @@ describe('the affected base', () => {
     )
     expect(await base()).toBe('develop')
     expect(
-      await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).affectedBase),
+      await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).run?.affectedBase),
     ).toBe('origin/next')
     expect(
-      await withEnv('NX_BASE', undefined, () => staged(nx(), { affectedBase: 'main' })),
-    ).toEqual({ affectedBase: 'main' })
+      await withEnv('NX_BASE', undefined, () => staged(nx(), { run: { affectedBase: 'main' } })),
+    ).toEqual({ run: { affectedBase: 'main' } })
   })
 
   it('turbo(): TURBO_SCM_BASE', async () => {
@@ -246,7 +250,7 @@ describe('the affected base', () => {
       Object.assign(process.env, { GITHUB_ACTIONS: 'true', GITHUB_EVENT_PATH: event, ...vars })
       for (const [k, v] of Object.entries(vars)) if (v === undefined) delete process.env[k]
       try {
-        return (await staged(turbo())).affectedBase
+        return (await staged(turbo())).run?.affectedBase
       } finally {
         names.forEach((n, i) => {
           if (prev[i] === undefined) delete process.env[n]
@@ -287,12 +291,12 @@ describe('the affected base', () => {
     expect(await withEnv('TURBO_SCM_BASE', undefined, () => staged(turbo()))).toEqual({})
     expect(await withEnv('TURBO_SCM_BASE', '', () => staged(turbo()))).toEqual({})
     expect(await withEnv('TURBO_SCM_BASE', 'origin/develop', () => staged(turbo()))).toEqual({
-      affectedBase: 'origin/develop',
+      run: { affectedBase: 'origin/develop' },
     })
     expect(
       await withEnv('TURBO_SCM_BASE', 'origin/develop', () =>
-        staged(turbo(), { affectedBase: 'main' }),
+        staged(turbo(), { run: { affectedBase: 'main' } }),
       ),
-    ).toEqual({ affectedBase: 'main' })
+    ).toEqual({ run: { affectedBase: 'main' } })
   }
 })

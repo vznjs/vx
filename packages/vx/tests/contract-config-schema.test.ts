@@ -25,6 +25,9 @@ import type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
+  CacheSettings,
+  RunSettings,
+  WatchSettings,
   InputStability,
   ExecConfig,
   ExecEnv,
@@ -53,28 +56,37 @@ const keys = <T>(k: Keys<T>): string[] => Object.keys(k).sort()
  */
 const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
   workspace: {
-    '': keys<WorkspaceConfig>({
+    '': keys<WorkspaceConfig>({ run: true, cache: true, watch: true, plugins: true }),
+    run: keys<RunSettings>({
       concurrency: true,
-      cacheDir: true,
-      timeout: true,
-      cacheRetention: true,
-      affectedBase: true,
-      cache: true,
-      rules: true,
       schedule: true,
-      inputStability: true,
-      plugins: true,
+      affectedBase: true,
+      timeout: true,
+      retries: true,
+      continue: true,
+      killGrace: true,
+      teardownTimeout: true,
+      readyNotice: true,
+      rules: true,
     }),
-    inputStability: keys<InputStability>({ strategy: true, severity: true }),
-    cache: keys<NonNullable<WorkspaceConfig['cache']>>({ policy: true, scope: true }),
-    cacheRetention: keys<NonNullable<WorkspaceConfig['cacheRetention']>>({
-      olderThan: true,
-      maxSize: true,
-    }),
-    rules: keys<NonNullable<WorkspaceConfig['rules']>>({
+    'run.rules': keys<NonNullable<RunSettings['rules']>>({
       exclusiveOutputs: true,
       upfrontKeys: true,
     }),
+    cache: keys<CacheSettings>({
+      dir: true,
+      retention: true,
+      policy: true,
+      scope: true,
+      download: true,
+      inputStability: true,
+    }),
+    'cache.retention': keys<NonNullable<CacheSettings['retention']>>({
+      olderThan: true,
+      maxSize: true,
+    }),
+    'cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
+    watch: keys<WatchSettings>({ poll: true }),
   },
   project: {
     '': keys<ProjectConfig>({ tags: true, tasks: true }),
@@ -133,15 +145,27 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
 /** A valid workspace config that sets every field once. */
 function workspaceSeed(): Record<string, unknown> {
   return {
-    concurrency: 2,
-    cacheDir: '.vx/cache',
-    timeout: 1000,
-    cacheRetention: { olderThan: '30d', maxSize: '10G' },
-    affectedBase: 'origin/main',
-    cache: { policy: 'local:rw,remote:r', scope: 'pr-1' },
-    rules: { exclusiveOutputs: true, upfrontKeys: true },
-    schedule: 'critical-path',
-    inputStability: { strategy: 'mutable', severity: 'error' },
+    run: {
+      concurrency: 2,
+      schedule: 'critical-path',
+      affectedBase: 'origin/main',
+      timeout: '1s',
+      retries: 1,
+      continue: 'deps-ok',
+      killGrace: '2s',
+      teardownTimeout: '3s',
+      readyNotice: '10s',
+      rules: { exclusiveOutputs: true, upfrontKeys: true },
+    },
+    cache: {
+      dir: '.vx/cache',
+      retention: { olderThan: '30d', maxSize: '10GB' },
+      policy: 'local:rw,remote:r',
+      scope: 'pr-1',
+      download: 'all',
+      inputStability: { strategy: 'mutable', severity: 'error' },
+    },
+    watch: { poll: true },
     plugins: [],
   }
 }
@@ -179,7 +203,7 @@ function projectSeed(): Record<string, unknown> {
         exec: {
           command: 'true',
           remote: false,
-          timeout: 1000,
+          timeout: '1s',
           env: { passThrough: ['CI'], define: { A: 'b' }, secret: ['CI'] },
           persistent: { readyWhen: 'ready' },
           sandbox: {

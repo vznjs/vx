@@ -41,6 +41,18 @@ function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] 
   return plugins.map((p) => `${indent}${p.factory}(),`)
 }
 
+/** `run.concurrency` and `run.affectedBase` as one `run: { … }` line. */
+function groupLines(
+  fields: readonly { readonly field: string; readonly source: string }[],
+): string[] {
+  const groups = new Map<string, string[]>()
+  for (const f of fields) {
+    const [group, key] = f.field.split('.') as [string, string]
+    groups.set(group, [...(groups.get(group) ?? []), `${key}: ${f.source}`])
+  }
+  return [...groups].map(([group, entries]) => `  ${group}: { ${entries.join(', ')} },`)
+}
+
 /** `vx.workspace.<format>` declaring `plugins`. */
 export function renderWorkspaceFile(
   plugins: readonly WorkspacePlugin[],
@@ -55,7 +67,7 @@ export function renderWorkspaceFile(
     '  plugins: [',
     ...entries(plugins, '    '),
     '  ],',
-    ...fields.map((f) => `  ${f.field}: ${f.source},`),
+    ...groupLines(fields),
     `}${format === 'ts' ? ' satisfies WorkspaceConfig' : ''}`,
     '',
   ].join('\n')

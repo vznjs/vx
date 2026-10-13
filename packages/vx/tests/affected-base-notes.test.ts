@@ -115,11 +115,11 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(vx(root, 'run', 'build', '--affected').out).toContain(
       'nothing affected since origin/feat',
     )
-    await workspace(`{ affectedBase: 'develop', plugins: [] }`)
+    await workspace(`{ run: { affectedBase: 'develop' }, plugins: [] }`)
     expect(plan('--affected')).toEqual(['app#build'])
     expect(vx(root, 'run', 'build', '--affected=HEAD').out).toContain('nothing affected since HEAD')
     await workspace(
-      `{ plugins: [${pluginSource('base', `{ config(ws) { ws.affectedBase = 'develop' } }`)}] }`,
+      `{ plugins: [${pluginSource('base', `{ config(ws) { ws.run = { ...ws.run, affectedBase: 'develop' } } }`)}] }`,
     )
     expect(plan('--affected')).toEqual(['app#build'])
   })

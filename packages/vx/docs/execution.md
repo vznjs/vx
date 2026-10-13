@@ -43,9 +43,8 @@ terminal and a task succeeding or failing. Read it alongside
  │       for pnpm; the package.json forms read as bytes (readOnce,
  │       shared with step 1) and JSON.parse.
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the optional
- │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (concurrency /
- │       cacheDir / timeout / cacheRetention / affectedBase / cache /
- │       rules / schedule / inputStability / plugins),
+ │       vx.workspace.{ts,mts,js,mjs,cts,cjs} at the root (run / cache /
+ │       watch / plugins),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
@@ -163,7 +162,7 @@ terminal and a task succeeding or failing. Read it alongside
  │                signal, forward it (SIGHUP as SIGTERM) to everything
  │                in liveChildren + persistentRegistry (and kill any
  │                running cache.inputs.runtime probe, C-65), wait
- │                VX_KILL_GRACE_MS (2 s) for their groups, SIGKILL
+ │                VX_RUN_KILL_GRACE (2 s) for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
  │                die of the signal (SIGINT → 130, SIGTERM → 143,
@@ -576,7 +575,7 @@ The colors / framing modules:
   capped by the cgroup CPU quota a container runs under (`cpu.max` on v2,
   `cpu.cfs_quota_us` on v1, an ancestor's quota binding too; a 1.5-core
   quota is two workers, never below one — `util/cgroup.ts`), or
-  `vx.workspace.ts`'s `concurrency` field when set. Inside a container the
+  `vx.workspace.ts`'s `run.concurrency` field when set. Inside a container the
   raw count is the HOST's, and eight workers on a two-core quota is
   oversubscription by four; `--concurrency <n>%` is a percentage of the
   same capped count.

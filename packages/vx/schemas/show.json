@@ -66,7 +66,7 @@
           "properties": {
             "command": { "type": "string" },
             "remote": { "enum": [true, false, "only"] },
-            "timeout": { "type": "number", "description": "ms" },
+            "timeout": { "type": "string", "description": "a duration as written, like '30s'" },
             "retries": { "type": "integer" },
             "env": {
               "type": "object",

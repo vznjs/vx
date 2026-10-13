@@ -57,7 +57,7 @@ export interface TaskOutcome {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)
-  attempts?: number // set only when `retries` / `--retry` ran it more than once
+  attempts?: number // set only when `retries` / `--retries` ran it more than once
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[] // the attempts that were run again
   flaky?: { passes: number; failures: number } // the run proved it flaky; its row says so
   sandboxViolations?: number

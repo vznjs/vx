@@ -104,7 +104,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
-          env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
         }),
       )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -146,7 +146,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // printed "run history not recorded: ... another vx version".
   it('records the history after another vx version reset the index mid-session', async () => {
     const dir = await addProject(root, 'app', config(0))
-    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_KILL_GRACE_MS: '200' }
+    const env = { ...process.env, VX_CACHE_DIR: '.vx/cache', VX_RUN_KILL_GRACE: '200ms' }
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
         cwd: root,
@@ -203,7 +203,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'ignore',
         stderr: 'ignore',
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       }),
     )
     await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -220,7 +220,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -277,7 +277,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '500' },
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '500ms' },
         }),
       )
       let out = ''
@@ -330,7 +330,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -366,7 +366,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -407,7 +407,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -456,7 +456,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
           cwd: root,
           stdout: 'ignore',
           stderr: 'ignore',
-          env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
         }),
       )
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
@@ -476,7 +476,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     let out = ''
@@ -529,7 +529,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: dir,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const [out, err, code] = await Promise.all([
@@ -570,7 +570,13 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', VX_KILL_GRACE_MS: '200', NO_COLOR: '1' },
+        env: {
+          ...process.env,
+          CI: '',
+          GITHUB_ACTIONS: '',
+          VX_RUN_KILL_GRACE: '200ms',
+          NO_COLOR: '1',
+        },
       }),
     )
     const [out, err, code] = await Promise.all([
@@ -652,7 +658,7 @@ describe('a persistent server that dies before the run stops it', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '400' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '400ms' },
       }),
     )
     const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -765,7 +771,7 @@ describe('a persistent task keeps an open stdin', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       }),
     )
     const out = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -957,7 +963,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
         detached: true,
@@ -989,7 +995,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
         detached: true,
@@ -1038,7 +1044,7 @@ Bun.spawn = (cmd, opts) => {
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'e2e', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
       }),
@@ -1073,13 +1079,13 @@ Bun.spawn = (cmd, opts) => {
       root,
       'app',
       `export default { tasks: {
-        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; echo $$ > shell.pid; wait', timeout: 1000, persistent: { readyWhen: 'NEVER' } } },
+        dev: { exec: { command: 'sh -c "trap \\\\"echo t > term.txt\\\\" TERM; while :; do sleep 0.05; done" >/dev/null 2>&1 & echo $! > server.pid; echo $$ > shell.pid; wait', timeout: '1s', persistent: { readyWhen: 'NEVER' } } },
       } }`,
     )
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
         cwd: root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'ignore',
         stderr: 'ignore',
       }),

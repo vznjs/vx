@@ -1,360 +1,775 @@
 {
   "workspace": {
     "levels": {
-      "": [
+      "": ["cache", "plugins", "run", "watch"],
+      "run": [
         "affectedBase",
-        "cache",
-        "cacheDir",
-        "cacheRetention",
         "concurrency",
-        "inputStability",
-        "plugins",
+        "continue",
+        "killGrace",
+        "readyNotice",
+        "retries",
         "rules",
         "schedule",
+        "teardownTimeout",
         "timeout"
       ],
-      "cacheRetention": ["maxSize", "olderThan"],
-      "cache": ["policy", "scope"],
-      "rules": ["exclusiveOutputs", "upfrontKeys"],
-      "inputStability": ["severity", "strategy"]
+      "run.rules": ["exclusiveOutputs", "upfrontKeys"],
+      "cache": ["dir", "download", "inputStability", "policy", "retention", "scope"],
+      "cache.retention": ["maxSize", "olderThan"],
+      "cache.inputStability": ["severity", "strategy"],
+      "watch": ["poll"]
     },
     "records": [],
     "fields": {
-      "concurrency": {
+      "run": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, timeout, retries, continue, killGrace, teardownTimeout, readyNotice, rules)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, concurrency, continue, killGrace, readyNotice, retries, rules, schedule, teardownTimeout, timeout)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.concurrency": {
         "ok": ["<absent>", "1", "65536", "2147483648", "2"],
-        "$CONFIG: `concurrency` must be a positive integer": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1.5",
-          "-1",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cacheDir": {
-        "ok": [
-          "<absent>",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\".vx/cache\""
-        ],
-        "$CONFIG: `cacheDir` must be a string": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "timeout": {
-        "ok": ["<absent>", "1", "65536", "1000"],
-        "$CONFIG: `timeout` must be a positive integer (milliseconds)": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1.5",
-          "-1",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ],
-        "$CONFIG: `timeout`: 2147483648 ms exceeds the maximum timer delay (2147483647 ms, ~24.8 days). Timers larger than this do NOT mean \"no limit\" — the platform reduces them to 1 ms, so the task would be killed the moment it starts. Omit `timeout` for no limit.": [
-          "2147483648"
-        ]
-      },
-      "cacheRetention": {
-        "ok": ["<absent>", "<seed>"],
-        "$CONFIG: `cacheRetention` must be { olderThan?: '30d', maxSize?: '10G' }": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cacheRetention` names neither `olderThan` nor `maxSize`": ["{}"],
-        "$CONFIG: `cacheRetention` has unknown field \"x\" (allowed: maxSize, olderThan)": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cacheRetention.olderThan": {
-        "ok": ["<absent>", "\"30d\""],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got null)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got null)": [
           "null"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got true)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got true)": [
           "true"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got false)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got false)": [
           "false"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 0)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got 0)": [
           "0"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 1.5)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got 1.5)": [
           "1.5"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got -1)": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got -1)": [
           "-1"
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"\")": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"\")": [
           "\"\""
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"x\")": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"x\")": [
           "\"x\""
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"(\")": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"(\")": [
           "\"(\""
         ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `cacheRetention.olderThan` must be a duration like '30d', '12h', '90m' or '45s' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cacheRetention.maxSize": {
-        "ok": ["<absent>", "\"10G\""],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got \"30d\")": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"30d\")": [
           "\"30d\""
         ],
-        "$CONFIG: `cacheRetention.maxSize` '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [])": [
           "[]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"x\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"x\"])": [
           "[\"x\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [1])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [1])": [
           "[1]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [3000])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [3000])": [
           "[3000]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"/x\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"/x\"])": [
           "[\"/x\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!/x\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"../x\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!x\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!x\"])": [
           "[\"!x\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"!!x\",\"y\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\".\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\".\"])": [
           "[\".\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"**\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"**\"])": [
           "[\"**\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"A=B\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got [\"A*\"])": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got {})": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got {})": [
           "{}"
         ],
-        "$CONFIG: `cacheRetention.maxSize` must be a size like '10G', '500MB' or '64KB' (got {\"x\":\"y\"})": [
+        "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
-      "affectedBase": {
+      "run.schedule": {
+        "ok": ["<absent>", "\"critical-path\""],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.affectedBase": {
         "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"origin/main\""],
-        "$CONFIG: `affectedBase` must be a git ref like 'origin/main'": [
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `run.affectedBase` must be a non-blank string (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.timeout": {
+        "ok": ["<absent>", "\"1s\""],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": ["1"],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.timeout` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.retries": {
+        "ok": ["<absent>", "0", "1", "65536", "2147483648"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got null)": ["null"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got true)": ["true"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got false)": ["false"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got 1.5)": ["1.5"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got -1)": ["-1"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"\")": ["\"\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [])": ["[]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [1])": ["[1]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [3000])": ["[3000]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got {})": ["{}"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.continue": {
+        "ok": ["<absent>", "\"deps-ok\""],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got null)": ["null"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got true)": ["true"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": ["0"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": ["1"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": ["-1"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": ["\"\""],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [])": ["[]"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": ["[1]"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": ["{}"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.killGrace": {
+        "ok": ["<absent>", "\"2s\""],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.killGrace` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.killGrace` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.teardownTimeout": {
+        "ok": ["<absent>", "\"3s\""],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.teardownTimeout` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.readyNotice": {
+        "ok": ["<absent>", "\"10s\""],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `run.readyNotice` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `run.readyNotice` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `run.readyNotice` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `run.readyNotice` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
+          "\"30d\""
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `run.readyNotice` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `run.readyNotice` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.rules": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, upfrontKeys)": [
           "null",
           "true",
           "false",
@@ -365,6 +780,11 @@
           "65536",
           "2147483648",
           "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -378,14 +798,95 @@
           "[\".\"]",
           "[\"**\"]",
           "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `run.rules` has unknown field \"x\" (allowed: exclusiveOutputs, upfrontKeys)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.rules.exclusiveOutputs": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got null)": ["null"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 0)": ["0"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1)": ["1"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [])": ["[]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {})": ["{}"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "run.rules.upfrontKeys": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got null)": ["null"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 0)": ["0"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 1)": ["1"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [])": ["[]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {})": ["{}"],
+        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache` must be an object like { policy, scope }; a task caches through its own `cache` in its project's vx.config": [
+        "$CONFIG: `cache` must be an object like { dir, policy, scope }; a task caches through its own `cache` in its project's vx.config": [
           "null",
           "true",
           "false",
@@ -416,7 +917,254 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: policy, scope)": ["{\"x\":\"y\"}"]
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, policy, retention, scope)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.dir": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\".vx/cache\""],
+        "$CONFIG: `cache.dir` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
+      },
+      "cache.retention": {
+        "ok": ["<absent>", "<seed>"],
+        "$CONFIG: `cache.retention` must be an object (fields: maxSize, olderThan)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.retention` names neither `olderThan` nor `maxSize`": ["{}"],
+        "$CONFIG: `cache.retention` has unknown field \"x\" (allowed: maxSize, olderThan)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.retention.olderThan": {
+        "ok": ["<absent>", "\"30d\""],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `cache.retention.olderThan` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `cache.retention.olderThan` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.retention.olderThan` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cache.retention.olderThan` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `cache.retention.olderThan` must be a duration like '45s', '12h' or '30d' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.retention.maxSize": {
+        "ok": ["<absent>", "\"10G\"", "\"10GB\""],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got 0)": ["0"],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got 1)": ["1"],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got -1)": ["-1"],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.retention.maxSize` '10' reads as 10 bytes — give a unit (e.g. '10MB', '10GB')": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [])": ["[]"],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got {})": ["{}"],
+        "$CONFIG: `cache.retention.maxSize` must be a size like '500MB' or '10GB' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
       },
       "cache.policy": {
         "ok": [
@@ -428,70 +1176,140 @@
           "\"10\"",
           "\"local:rw,remote:r\""
         ],
-        "$CONFIG: `cache.policy` must be a spec like 'local:rw,remote:r'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `cache.policy` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "cache.scope": {
         "ok": ["<absent>", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"pr-1\""],
+        "$CONFIG: `cache.scope` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got \"\")": ["\"\""],
         "$CONFIG: `cache.scope` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"(\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
+          "\"(\""
+        ],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `cache.scope` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
+      },
+      "cache.download": {
+        "ok": ["<absent>", "\"all\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got null)": ["null"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got true)": ["true"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got false)": ["false"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 0)": ["0"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1)": ["1"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got -1)": ["-1"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 65536)": ["65536"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"\")": ["\"\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [])": ["[]"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [1])": ["[1]"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {})": ["{}"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
-      "rules": {
+      "cache.inputStability": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `rules` must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }": [
+        "$CONFIG: `cache.inputStability` must be an object (fields: strategy, severity)": [
           "null",
           "true",
           "false",
@@ -522,190 +1340,195 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `rules` has unknown field \"x\" (allowed: exclusiveOutputs, upfrontKeys)": [
+        "$CONFIG: `cache.inputStability` has unknown field \"x\" (allowed: severity, strategy)": [
           "{\"x\":\"y\"}"
         ]
       },
-      "rules.exclusiveOutputs": {
-        "ok": ["<absent>", "true", "false"],
-        "$CONFIG: `rules`.exclusiveOutputs must be true or false": [
-          "null",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "rules.upfrontKeys": {
-        "ok": ["<absent>", "true", "false"],
-        "$CONFIG: `rules`.upfrontKeys must be true or false": [
-          "null",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "schedule": {
-        "ok": ["<absent>", "\"critical-path\""],
-        "$CONFIG: `schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "inputStability": {
-        "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `inputStability` must be an object — `inputStability: { strategy: 'mutable' }`": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `inputStability` has unknown field \"x\" (allowed: severity, strategy)": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "inputStability.strategy": {
+      "cache.inputStability.strategy": {
         "ok": ["<absent>", "\"mutable\""],
-        "$CONFIG: `inputStability`.strategy must be 'immutable', 'mutable' or 'unchecked'": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1",
-          "1.5",
-          "-1",
-          "65536",
-          "2147483648",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 0)": [
+          "0"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [])": [
+          "[]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {})": [
+          "{}"
+        ],
+        "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
-      "inputStability.severity": {
+      "cache.inputStability.severity": {
         "ok": ["<absent>", "\"error\""],
-        "$CONFIG: `inputStability`.severity must be 'warn' or 'error'": [
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 0)": ["0"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1)": ["1"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got -1)": ["-1"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [])": ["[]"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {})": ["{}"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "watch": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `watch` must be an object (fields: poll)": [
           "null",
           "true",
           "false",
@@ -734,10 +1557,41 @@
           "[\".\"]",
           "[\"**\"]",
           "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
-        ]
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `watch` has unknown field \"x\" (allowed: poll)": ["{\"x\":\"y\"}"]
+      },
+      "watch.poll": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `watch.poll` must be true or false (got null)": ["null"],
+        "$CONFIG: `watch.poll` must be true or false (got 0)": ["0"],
+        "$CONFIG: `watch.poll` must be true or false (got 1)": ["1"],
+        "$CONFIG: `watch.poll` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `watch.poll` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `watch.poll` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `watch.poll` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `watch.poll` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `watch.poll` must be true or false (got [])": ["[]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `watch.poll` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!!x\",\"y\"])": ["[\"!!x\",\"y\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got {})": ["{}"],
+        "$CONFIG: `watch.poll` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "plugins": {
         "ok": ["<absent>", "[]"],
@@ -1132,39 +1986,99 @@
         ]
       },
       "tasks.*.exec.timeout": {
-        "ok": ["<absent>", "1", "65536", "1000"],
-        "$CONFIG: tasks.t.exec.timeout must be a positive integer (milliseconds)": [
-          "null",
-          "true",
-          "false",
-          "0",
-          "1.5",
-          "-1",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "[]",
-          "[\"x\"]",
-          "[\"\"]",
-          "[1]",
-          "[3000]",
-          "[\"/x\"]",
-          "[\"!/x\"]",
-          "[\"../x\"]",
-          "[\"!x\"]",
-          "[\"!!x\",\"y\"]",
-          "[\".\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "{}",
-          "{\"x\":\"y\"}"
+        "ok": ["<absent>", "\"1s\""],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
+          "null"
         ],
-        "$CONFIG: tasks.t.exec.timeout: 2147483648 ms exceeds the maximum timer delay (2147483647 ms, ~24.8 days). Timers larger than this do NOT mean \"no limit\" — the platform reduces them to 1 ms, so the task would be killed the moment it starts. Omit `timeout` for no limit.": [
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
+          "true"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
+          "false"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
+          "0"
+        ],
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '1ms' or '1s' (got 1)": [
+          "1"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
+          "-1"
+        ],
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
           "2147483648"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
+          "\"30d\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
+          "[]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
+          "{}"
+        ],
+        "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
         ]
       },
       "tasks.*.exec.env": {

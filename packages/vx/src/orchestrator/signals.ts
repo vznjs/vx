@@ -21,7 +21,7 @@ import type { Logger } from './logger.js'
 /**
  * How long a SIGTERMed child gets before SIGKILL on the way out. The
  * end-of-run persistent shutdown grants the same two seconds; both read
- * `VX_KILL_GRACE_MS` (util/settle.ts) so the suites that prove the
+ * `VX_RUN_KILL_GRACE` (util/settle.ts) so the suites that prove the
  * escalation do not wait the full grace.
  */
 export const SIGNAL_SHUTDOWN_GRACE_MS = 2000

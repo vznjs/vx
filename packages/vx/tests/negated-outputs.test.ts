@@ -49,7 +49,7 @@ const build = async (tasks = ['build']) => {
 const additive = () =>
   writeFile(
     path.join(fx.root, 'vx.workspace.mjs'),
-    'export default { rules: { exclusiveOutputs: false } }\n',
+    'export default { run: { rules: { exclusiveOutputs: false } } }\n',
   )
 const read = (rel: string): string => readFileSync(path.join(app, rel), 'utf8')
 /** The paths an entry recorded, as the index holds them. */

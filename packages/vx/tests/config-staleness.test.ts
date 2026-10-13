@@ -167,7 +167,7 @@ describe('worker-evaluated repeat loads', () => {
         dependsOn: ['^build', 'gen'],
         exec: {
           command: 'echo hi',
-          timeout: 1000,
+          timeout: '1s',
           retries: 2,
           env: { passThrough: ['HOME'], define: { A: 'b' } },
         },
@@ -335,8 +335,8 @@ describe('config worker settlement', () => {
     //
     // The deadline is driven down rather than waited out, so this asserts the
     // real rejection instead of the existence of a constant.
-    const prev = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-    process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '250'
+    const prev = process.env['VX_CONFIG_WORKER_TIMEOUT']
+    process.env['VX_CONFIG_WORKER_TIMEOUT'] = '250ms'
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-worker-settle-'))
     try {
       const { evaluateConfigFresh } = await import('../src/workspace/config-eval.js')
@@ -352,8 +352,8 @@ describe('config worker settlement', () => {
       expect(outcome).not.toBe('HUNG')
       expect(outcome).toMatch(/did not answer within 250ms/)
     } finally {
-      if (prev === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-      else process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = prev
+      if (prev === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT']
+      else process.env['VX_CONFIG_WORKER_TIMEOUT'] = prev
       await rm(dir, { recursive: true, force: true })
     }
   }, 20_000)

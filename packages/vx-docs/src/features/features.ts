@@ -174,7 +174,7 @@ const FIRST: readonly Feature[] = [
     ],
     example: {
       lang: 'sh',
-      code: 'VX_TIMING=1 vx run build --all   # the stage table shows where the time went',
+      code: 'VX_DEBUG_TIMING=1 vx run build --all   # the stage table shows where the time went',
     },
     image: 'keys-from-git.png',
     imageAlt: 'Cache keys built from the blob hashes in git’s index.',
@@ -513,7 +513,7 @@ export default defineProject({
     ],
     example: {
       lang: 'sh',
-      code: 'VX_KILL_GRACE_MS=5000 vx run dev   # a longer grace before SIGKILL',
+      code: 'VX_RUN_KILL_GRACE=5s vx run dev   # a longer grace before SIGKILL',
     },
     image: 'ctrl-c.png',
     imageAlt: 'Ctrl-C stopping every task’s process group.',

@@ -470,7 +470,7 @@ describe('timing.md lists every mark and span the run path records', () => {
     const src = read('src/orchestrator/prepare.ts') + read('src/orchestrator/run.ts')
     const marks = [...new Set([...src.matchAll(/\bmark\('([^']+)'\)/g)].map((m) => m[1]!))]
     const doc = read('docs/benchmarks.md')
-    const start = doc.indexOf('**`VX_TIMING=1 vx run …`**')
+    const start = doc.indexOf('**`VX_DEBUG_TIMING=1 vx run …`**')
     expect(start).toBeGreaterThan(-1)
     const sentence = doc.slice(start, doc.indexOf('This is the first thing to', start))
     expect(

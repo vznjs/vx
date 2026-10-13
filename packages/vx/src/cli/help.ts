@@ -106,7 +106,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
-    '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
+    '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
     '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
@@ -127,37 +127,37 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                             foo, @scope/*, ./packages/foo, foo..., ...foo,',
     '                             foo^..., !foo, [<since>]',
     '      --affected[=<base>]  Sugar for --filter "...[<base>]". Default base =',
-    '                             affectedBase, else origin/HEAD, else main or',
+    '                             run.affectedBase, else origin/HEAD, else main or',
     '                             master, else HEAD~1.',
     "  pkg#task                 Run a specific project's task directly.",
     '',
     'Execution (for run):',
+    '  Each setting flag beats its VX_* variable, which beats vx.workspace (docs/schema.md § Settings).',
     '      --concurrency <n>           Max parallel tasks (default: the cores this process may use); `50%` = half of them.',
+    '      --schedule <rule>           most-work (default) | critical-path | direct-dependents | ready-order.',
     '      --exclude-dependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
     '      --no-cache                  Disable caching entirely (no reads, no writes, outputs left alone).',
     '      --force                     Re-execute everything (skip reads) but still refresh the cache (writes on).',
-    '      --cache <spec>              Per-layer read/write control. Comma list of <layer>:<flags>',
-    '                                  (layer = local|remote, flags ⊆ rw). A named layer is set EXACTLY',
-    '                                  to its flags; unnamed layers keep their value. Examples:',
+    '      --cache-policy, --cache <spec>  Per-layer read/write control. Comma list of',
+    '                                  <layer>:<flags> (layer = local|remote, flags ⊆ rw). A named layer is',
+    '                                  set EXACTLY to its flags; unnamed layers keep their value. Examples:',
     '                                  local:rw,remote:r (remote read-only), remote: (remote off),',
-    '                                  local:r (local read-only). Beats VX_CACHE and the workspace',
-    '                                  cache.policy.',
+    '                                  local:r (local read-only).',
     "      --cache-scope <name>        This run's cache.scope: trusted | read-only | a scope (pr-123).",
-    '                                  Beats VX_CACHE_SCOPE and the workspace cache.scope.',
-    '      --cache-dir <path>          Cache directory override (cwd-relative). Beats VX_CACHE_DIR,',
-    '                                  the workspace cacheDir field and the ~/.vx/<id>/cache default.',
-    '      --retry <n>                 Re-run a failed task up to <n> more times (default for tasks',
-    "                                  without their own exec.retries; explicit config wins). Doesn't",
-    '                                  affect cache keys.',
-    '      --timeout <ms>              Default per-task timeout for tasks without their own exec.timeout',
-    '                                  (above VX_TASK_TIMEOUT env + workspace timeout). Kills + fails',
-    '                                  a runaway task. Per-task exec.timeout always wins.',
+    '      --cache-dir <path>          Cache directory (cwd-relative); default .vx/cache, entries in ~/.vx/<id>/cache.',
+    '      --cache-download, --download <mode>  all (default) | toplevel | none — where remote outputs land.',
+    '      --retries <n>               Re-run a failed task up to <n> more times, for tasks without their',
+    "                                  own exec.retries. Doesn't affect cache keys.",
+    "      --timeout <duration>        A task's time limit (30s, 10m), for tasks without their own",
+    '                                  exec.timeout. Kills + fails a runaway task.',
+    '      --kill-grace <duration>     How long a task that ignores SIGTERM gets before SIGKILL (default 2s).',
+    "      --teardown-timeout <duration>  The bound on each plugin's end-of-run flush (default 3s).",
+    '      --ready-notice <duration>   When vx says a persistent task still waits for readyWhen (default 10s).',
     '      --continue[=<mode>]         What a failed task takes down: never | deps-ok (default, skips',
     '                                  its dependents) | always (bare form; dependents run, never save).',
     '      --frozen                    Load configs from vx-lock.json (CI; pair with vx lock --check).',
     '      --output-logs <mode>        full | errors-only | hash-only | none — overrides the flow default',
     '                                  (focused without --all/--filter/--affected, broad with, full in CI).',
-    '      --download <mode>           all (default) | toplevel | none — where remote outputs land.',
     '      --verbosity <n>             0 (default) or 1+: print a per-task summary table after the run.',
     '',
     'Planning (for run — skips execution):',
@@ -195,7 +195,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                             Uses the same flags as `vx run` except --dry /',
     '                             --graph / --summarize / --profile / --report /',
     '                             --report-file / --verbosity (they plan or report',
-    '                             one run). Press Ctrl+C to stop. Cache means most',
+    '                             one run), plus --poll (watch.poll: poll instead of',
+    '                             the OS watcher). Press Ctrl+C to stop. Cache means most',
     '                             re-runs are near-zero cost (cache hits restore',
     '                             outputs + replay logs).',
     '',
@@ -206,7 +207,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --format <fmt>                  pretty (default) | json.',
     '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
     '',
-    '  Duration units: s, m, h, d. Size units: K, M, G, T (powers of 1024).',
+    '  Duration units: ms, s, m, h, d. Size units: K, M, G, T (powers of 1024).',
     '  Cache statistics — directory, entry count, size — are part of `vx info`.',
     '',
     'Introspection:',
@@ -316,7 +317,7 @@ export function refusedWord(arg: string): string {
  * `(did you mean --concurrency?)` for a flag within two edits of one `verb`
  * accepts; empty for anything else (a positional included). A third edit
  * is allowed only between flags that share their first five characters,
- * so `--retries` reaches `--retry` while `--zzz` does not reach `--all`.
+ * so `--timeouts` reaches `--timeout` while `--zzz` does not reach `--all`.
  */
 export function flagHint(verb: string, arg: string): string {
   if (!arg.startsWith('-')) return ''
@@ -355,8 +356,9 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
     if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
       inVerb = line.endsWith(`(for ${verb}):`)
     if (!inVerb) continue
-    const own = /^\s+(--[a-zA-Z][a-zA-Z-]*)/.exec(line)
-    if (own !== null) flags.add(own[1]!)
+    // `--cache-policy, --cache <spec>`: a flag and its alias.
+    const own = /^\s+(--[a-zA-Z][a-zA-Z-]*)(?:, (--[a-zA-Z][a-zA-Z-]*))?/.exec(line)
+    if (own !== null) for (const f of own.slice(1)) if (f !== undefined) flags.add(f)
   }
   return [...flags]
 }

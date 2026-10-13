@@ -121,10 +121,10 @@ describe('a refusal under --format json', () => {
       cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
       cacheFlag: await refusal(['run', 'build', '--all', '--cache=disk:r', '--dry=json']),
       cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
-        VX_CACHE: 'disk:r',
+        VX_CACHE_POLICY: 'disk:r',
       }),
       stabilityEnv: await refusal(['run', 'build', '--all', '--format', 'json'], root, {
-        VX_INPUT_STABILITY: 'bogus',
+        VX_CACHE_INPUT_STABILITY_STRATEGY: 'bogus',
       }),
     }).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',

@@ -41,8 +41,15 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--cache': ['local:rw'],
   '--cache-dir': ['d'],
   '--cache-scope': ['pr-1'],
-  '--retry': ['1'],
-  '--timeout': ['10'],
+  '--retries': ['1'],
+  '--timeout': ['10ms'],
+  '--schedule': ['most-work'],
+  '--cache-policy': ['local:rw'],
+  '--cache-download': ['all'],
+  '--kill-grace': ['1s'],
+  '--teardown-timeout': ['1s'],
+  '--ready-notice': ['1s'],
+  '--poll': [],
   '--continue': [],
   '--frozen': [],
   '--output-logs': ['full'],
@@ -108,6 +115,8 @@ describe('verbFlags is what each verb accepts', () => {
       const named = new Set(Array.from(src.matchAll(/'(--[a-z][a-z-]*)=?'/g), (m) => m[1]!))
       if (src.includes('parseCacheDirFlag(args')) named.add('--cache-dir')
       if (verb === 'watch') for (const f of WATCH_REFUSED_FLAGS) named.delete(f)
+      // watch's own flag, matched in the parser run and watch share.
+      if (verb === 'run') named.delete('--poll')
       // Bun's own flags on init's vx-migrate spawn, not ones init takes.
       if (verb === 'init') for (const f of ['--no-install', '--silent']) named.delete(f)
       expect(named.size).toBeGreaterThan(0)

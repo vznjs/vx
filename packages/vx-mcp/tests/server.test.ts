@@ -412,7 +412,7 @@ describe('the command context carries the workspace’s declared cacheDir', () =
       await writeFile(
         path.join(ws, 'vx.workspace.mjs'),
         `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
-          `export default { cacheDir: 'build/.vx-cache', plugins: [mcp()] }\n`,
+          `export default { cache: { dir: 'build/.vx-cache' }, plugins: [mcp()] }\n`,
       )
       const cache = new Cache(path.join(ws, 'build', '.vx-cache'))
       cache.recordRun({
@@ -429,9 +429,13 @@ describe('the command context carries the workspace’s declared cacheDir', () =
         cacheHit: false,
       })
       cache.close()
+      // VX_CACHE_DIR beats the workspace's cache.dir; the run around this test may set it.
+      const env = { ...process.env }
+      delete env['VX_CACHE_DIR']
       const p = Bun.spawn({
         cmd: [process.execPath, CORE_BIN, 'mcp'],
         cwd: ws,
+        env,
         stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',

@@ -195,7 +195,7 @@ export interface TaskTelemetry {
    *  Additive-optional, same no-bump precedent as `where`. */
   outputs?: 'deferred'
   /** Total attempts when the task RETRIED (>1) — set only when `exec.retries`
-   *  / `--retry` produced more than one attempt. A retried-then-passed task is
+   *  / `--retries` produced more than one attempt. A retried-then-passed task is
    *  flaky by definition; this is the telemetry-side flaky signal. */
   attempts?: number
   /**
@@ -340,7 +340,7 @@ export interface RunSummaryRecord {
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
   /**
-   * The run's stages as `VX_TIMING` marks them (startup, load configs,
+   * The run's stages as `VX_DEBUG_TIMING` marks them (startup, load configs,
    * classify + probe, run graph, …), each a wall window in epoch ms. The
    * stages ahead of the run lock end before `startedAt`. Additive.
    */

@@ -80,7 +80,7 @@ $ vx run lint --all --concurrency 200%   # I/O-bound work can go over
 
 The default is the core count, capped by the container's CPU quota, so a
 CI runner with a two-CPU limit does not start sixteen tasks. Set
-`concurrency` in `vx.workspace.ts` to change the default for everyone.
+`run.concurrency` in `vx.workspace.ts` to change the default for everyone.
 
 Cache hits do not count against it. Restoring a hit is disk work, so hits
 run on their own lane, up to twice the limit, and a warm run is not held

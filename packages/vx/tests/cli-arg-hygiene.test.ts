@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { parseConcurrency, parseRunArgs } from '../src/cli/run.js'
+import { parseRunArgs } from '../src/cli/run.js'
+import { parseConcurrency } from '../src/settings.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
 import { run } from '../src/cli/index.js'
 
@@ -168,10 +169,10 @@ describe('vx watch rejects flags it cannot honor', () => {
 
 describe('numeric flags take a plain decimal integer only', () => {
   it('--concurrency rejects hex / fraction / exponent / padded / signed forms', () => {
-    for (const v of ['0x10', '2.7', '1e3', ' 4 ', '+4', '4abc', '']) {
+    for (const v of ['0x10', '2.7', '1e3', ' 4 ', '+4', '4abc']) {
       expect(parseRunArgs(['build', '--concurrency', v]).error).toMatch(/--concurrency must be/)
     }
-    expect(parseRunArgs(['build', '--concurrency', '4']).concurrency).toBe(4)
+    expect(parseRunArgs(['build', '--concurrency', '4']).settings['run.concurrency']).toBe(4)
   })
 
   it('--concurrency <n>% is that share of the CPUs, never below 1', () => {
@@ -182,8 +183,8 @@ describe('numeric flags take a plain decimal integer only', () => {
     for (const v of ['0%', '%', '50 %', '0x10%', '1.5%', '-50%'])
       expect(parseConcurrency(v, 8)).toBeNull()
     const cpus = Math.max(1, navigator.hardwareConcurrency)
-    expect(parseRunArgs(['build', '--concurrency', '100%']).concurrency).toBe(cpus)
-    expect(parseRunArgs(['build', '--concurrency=50%']).concurrency).toBe(
+    expect(parseRunArgs(['build', '--concurrency', '100%']).settings['run.concurrency']).toBe(cpus)
+    expect(parseRunArgs(['build', '--concurrency=50%']).settings['run.concurrency']).toBe(
       Math.max(1, Math.round(cpus / 2)),
     )
   })
@@ -193,17 +194,19 @@ describe('numeric flags take a plain decimal integer only', () => {
       expect(parseRunArgs([`--timeout=${v}`, 'build']).error).toMatch(/--timeout must be/)
     }
     // Silently became 9007199254740992 — a different number than typed.
-    expect(parseRunArgs(['--timeout=9007199254740993', 'build']).error).toMatch(/--timeout must be/)
-    expect(parseRunArgs(['--timeout=5000', 'build']).timeout).toBe(5000)
-    expect(parseRunArgs(['--timeout', '250', 'build']).timeout).toBe(250)
+    expect(parseRunArgs(['--timeout=9007199254740993ms', 'build']).error).toMatch(
+      /--timeout must be/,
+    )
+    expect(parseRunArgs(['--timeout=5000ms', 'build']).settings['run.timeout']).toBe(5000)
+    expect(parseRunArgs(['--timeout', '250ms', 'build']).settings['run.timeout']).toBe(250)
   })
 
-  it('--retry rejects the same forms', () => {
+  it('--retries rejects the same forms', () => {
     for (const v of ['0x3', '1e2', '1.5', ' 2 ']) {
-      expect(parseRunArgs([`--retry=${v}`, 'build']).error).toMatch(/--retry must be/)
+      expect(parseRunArgs([`--retries=${v}`, 'build']).error).toMatch(/--retries must be/)
     }
-    expect(parseRunArgs(['--retry=2', 'build']).retries).toBe(2)
-    expect(parseRunArgs(['--retry=0', 'build']).retries).toBe(0)
+    expect(parseRunArgs(['--retries=2', 'build']).settings['run.retries']).toBe(2)
+    expect(parseRunArgs(['--retries=0', 'build']).settings['run.retries']).toBe(0)
   })
 
   it('--verbosity rejects the same forms', () => {
@@ -299,33 +302,37 @@ describe('value flags accept the = form', () => {
   })
 
   it('--concurrency=', () => {
-    expect(parseRunArgs(['build', '--concurrency=4']).concurrency).toBe(4)
-    expect(parseRunArgs(['build', '--concurrency=']).error).toMatch(/--concurrency must be/)
+    expect(parseRunArgs(['build', '--concurrency=4']).settings['run.concurrency']).toBe(4)
+    expect(parseRunArgs(['build', '--concurrency=']).error).toMatch(
+      /--concurrency requires a value/,
+    )
   })
 
   it('--output-logs=', () => {
-    expect(parseRunArgs(['build', '--output-logs=none']).outputLogs).toBe('none')
-    expect(parseRunArgs(['build', '--output-logs=errors-only']).outputLogs).toBe('errors-only')
+    expect(parseRunArgs(['build', '--output-logs=none']).settings['run.outputLogs']).toBe('none')
+    expect(parseRunArgs(['build', '--output-logs=errors-only']).settings['run.outputLogs']).toBe(
+      'errors-only',
+    )
     expect(parseRunArgs(['build', '--output-logs=loud']).error).toBe(
-      '--output-logs must be full, errors-only, hash-only, or none (got loud)',
+      "--output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud)",
     )
     expect(parseRunArgs(['build', '--output-logs=']).error).toBe(
-      '--output-logs requires a value (full, errors-only, hash-only, or none)',
+      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
     )
     expect(parseRunArgs(['build', '--output-logs']).error).toBe(
-      '--output-logs requires a value (full, errors-only, hash-only, or none)',
+      "--output-logs requires a value (one of 'full', 'errors-only', 'hash-only', 'none')",
     )
   })
 
   it('--download= and --continue= echo the bad value', () => {
     expect(parseRunArgs(['build', '--download=some']).error).toBe(
-      '--download must be all, toplevel, or none (got some)',
+      "--download must be one of 'all', 'toplevel', 'none' (got some)",
     )
     expect(parseRunArgs(['build', '--download']).error).toBe(
-      '--download requires a value (all, toplevel, or none)',
+      "--download requires a value (one of 'all', 'toplevel', 'none')",
     )
     expect(parseRunArgs(['build', '--download=']).error).toBe(
-      '--download requires a value (all, toplevel, or none)',
+      "--download requires a value (one of 'all', 'toplevel', 'none')",
     )
     expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
       '--continue must be never, deps-ok, or always (got sometimes)',
@@ -360,10 +367,14 @@ describe('value flags accept the = form', () => {
 
 describe('--output-logs hash-only', () => {
   it('parses in both spellings and rejects a typo with the full mode list', () => {
-    expect(parseRunArgs(['build', '--output-logs', 'hash-only']).outputLogs).toBe('hash-only')
-    expect(parseRunArgs(['build', '--output-logs=hash-only']).outputLogs).toBe('hash-only')
+    expect(parseRunArgs(['build', '--output-logs', 'hash-only']).settings['run.outputLogs']).toBe(
+      'hash-only',
+    )
+    expect(parseRunArgs(['build', '--output-logs=hash-only']).settings['run.outputLogs']).toBe(
+      'hash-only',
+    )
     expect(parseRunArgs(['build', '--output-logs', 'hashonly']).error).toMatch(
-      /full, errors-only, hash-only, or none/,
+      /one of 'full', 'errors-only', 'hash-only', 'none'/,
     )
   })
 })
@@ -375,7 +386,7 @@ describe('a refused value says what the flag takes (E-36)', () => {
         (flag) => parseRunArgs(['build', ...flag]).error,
       ),
     ).toEqual([
-      '--concurrency must be a positive integer, or a share of the cores such as 50% (got 0)',
+      "--concurrency must be a positive integer, or a share of the cores like '50%' (got 0)",
       '--verbosity must be a non-negative integer (got high)',
       '--dry must be text or json (got yaml)',
     ])

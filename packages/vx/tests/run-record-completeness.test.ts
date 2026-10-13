@@ -113,7 +113,7 @@ describe('every recorded outcome earns a row (real CLI)', () => {
             dev: {
               exec: {
                 command: 'echo wrong-banner && exec sleep 2',
-                timeout: 400,
+                timeout: '400ms',
                 persistent: { readyWhen: 'Listening' },
               },
             },

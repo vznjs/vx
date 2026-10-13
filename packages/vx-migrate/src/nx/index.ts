@@ -142,17 +142,18 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     {
       async config(workspace, ctx) {
         const root = options.root ?? ctx.workspaceRoot
-        if (workspace.affectedBase === undefined) {
+        if (workspace.run?.affectedBase === undefined) {
           const base = await nxBase(root)
-          if (base !== undefined) workspace.affectedBase = base
+          if (base !== undefined) workspace.run = { ...workspace.run, affectedBase: base }
         }
-        if (workspace.concurrency === undefined) {
+        if (workspace.run?.concurrency === undefined) {
           const parallel = await nxParallel(root)
-          if (parallel !== undefined) workspace.concurrency = parallel
+          if (parallel !== undefined) workspace.run = { ...workspace.run, concurrency: parallel }
         }
-        if (workspace.cacheRetention === undefined) {
+        if (workspace.cache?.retention === undefined) {
           const maxSize = await nxMaxCacheSize(root)
-          if (maxSize !== undefined) workspace.cacheRetention = { maxSize }
+          if (maxSize !== undefined)
+            workspace.cache = { ...workspace.cache, retention: { maxSize } }
         }
       },
       // An integrated Nx repo keeps projects out of the package manager's

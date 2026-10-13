@@ -1,4 +1,4 @@
-// `VX_TIMING` under `vx watch`: the stage table is per cycle. The marks
+// `VX_DEBUG_TIMING` under `vx watch`: the stage table is per cycle. The marks
 // lived for the process, so each cycle's table reprinted every earlier
 // cycle's rows, and its `startup` row ran from the previous one's last
 // mark, the idle wait included (1.4 s and 3.4 s for a 10 ms cycle).
@@ -17,11 +17,11 @@ const stageRows = (table: string): string[] =>
     .filter((l) => l.startsWith('             ') && /ms\s+[\d.]+ms$/.test(l))
     .map((l) => l.trim().split(/\s{2,}/)[0]!)
 
-describe('vx watch with VX_TIMING', () => {
+describe('vx watch with VX_DEBUG_TIMING', () => {
   const f = useWatchFixture()
 
   it("a cycle's table holds that cycle's stages alone, timed from its own start", async () => {
-    f.watch = startWatch(f.root, ['--all'], { VX_TIMING: '1' })
+    f.watch = startWatch(f.root, ['--all'], { VX_DEBUG_TIMING: '1' })
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await until(() => w.err().includes(TABLE), 'the initial table')

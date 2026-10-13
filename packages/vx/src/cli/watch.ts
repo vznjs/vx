@@ -33,6 +33,7 @@ import {
   type ProjectMeta,
 } from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
+import { resolveSetting } from '../settings.js'
 import {
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
@@ -326,6 +327,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       claimedRootFiles: claimsOf(ws.plugins),
       // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
       cacheDir: opts.cacheDir ?? ws.cacheDir,
+      poll: resolveSetting('watch.poll', ws.workspaceConfig, parsed.poll).value === true,
     })
   }
 }
@@ -380,6 +382,8 @@ interface WatchLoopArgs {
   fenceDirs: readonly string[]
   /** The watched set again, after a cycle that followed an event which can change it. */
   rediscover: () => Promise<Rediscovered>
+  /** `watch.poll`: poll from the start instead of the OS watcher. */
+  poll: boolean
 }
 
 const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.dir)
@@ -569,7 +573,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel))
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel), args.poll)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 

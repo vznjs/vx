@@ -131,7 +131,7 @@ otel({
   says how many more);
 - a child span per stage of the run, named by the stage (`startup`,
   `load configs`, `git enumeration`, `classify + probe`, `run graph`,
-  `record history`, …, the stages `VX_TIMING` prints), with
+  `record history`, …, the stages `VX_DEBUG_TIMING` prints), with
   `vx.stage.name`: where the time before the first task and after the
   last went. The stages ahead of the run lock end before the `vx.run`
   span starts.
@@ -192,7 +192,7 @@ same CPU live as with one send at the end (median of 10: 815 ms both).
 No send ever holds a task: a task's end only queues its records. A collector
 that never answers holds nothing either: at the end of the run every send
 still in flight is cut at core's teardown deadline (3 s,
-`VX_TEARDOWN_TIMEOUT_MS`), and the process exits.
+`VX_RUN_TEARDOWN_TIMEOUT`), and the process exits.
 
 ## Behavior note
 
@@ -219,5 +219,5 @@ userinfo and query string replaced by `***`, so an endpoint that carries
 its credential in the URL does not leak it into a CI log. The run stays
 green either way; a collector that
 takes too long is cut off by core's end-of-run deadline
-(`VX_TEARDOWN_TIMEOUT_MS`, 3 s by default) with a line saying the buffered
+(`VX_RUN_TEARDOWN_TIMEOUT`, 3 s by default) with a line saying the buffered
 records were lost.

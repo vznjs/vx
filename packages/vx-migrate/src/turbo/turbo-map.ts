@@ -76,7 +76,7 @@ const keyable = (name: string): boolean =>
  * one of `configs` (turbo.json texts, any string, a superset) or in Turbo's
  * framework table matches, and each core cannot key (a literal one is
  * dropped only when no variable has it). The kept mapping keyed on every
- * name, so any variable that came or went (a CI step's, `VX_TIMING`)
+ * name, so any variable that came or went (a CI step's, `VX_DEBUG_TIMING`)
  * remapped the workspace: ~330 ms a run on vercel/ai.
  */
 export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {

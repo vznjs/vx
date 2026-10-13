@@ -4,7 +4,7 @@
 
 Core applies NO plugin on its own and ships none. Running a command
 here and caching it on this machine (`~/.vx/<id>/cache`, or a named
-`cacheDir`) are not plugins but core's FLOOR:
+`cache.dir`) are not plugins but core's FLOOR:
 `resolveExecutors` appends `localExecutor()` (`src/exec/local-executor.ts`)
 to the tail of every executor list and `resolveCache` puts the host's
 local `Cache` first in every chain, before each remote in declared order

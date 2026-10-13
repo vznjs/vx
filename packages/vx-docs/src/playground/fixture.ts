@@ -70,7 +70,7 @@ export default defineProject({
     codegen: { exec: { command: 'echo generated > gen.txt' } },
     build: {
       dependsOn: ['^build', 'codegen', '@pg/core#test'],
-      exec: { command: 'mkdir -p dist && cp src/*.ts dist/', timeout: 60000 },
+      exec: { command: 'mkdir -p dist && cp src/*.ts dist/', timeout: '1m' },
       cache: {
         inputs: {
           files: ['src/**', 'gen.txt'],

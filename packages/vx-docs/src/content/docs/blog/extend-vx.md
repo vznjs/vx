@@ -103,7 +103,7 @@ package name, taken from `import.meta`.
 last. Use them to start a service, take a lock, or flush a report. A
 `setup` that throws stops the run with a clean error naming the plugin.
 A `teardown` cannot hold the exit hostage: it gets 3 seconds, which
-`VX_TEARDOWN_TIMEOUT_MS` changes.
+`VX_RUN_TEARDOWN_TIMEOUT` changes.
 
 ## vx from your own scripts
 

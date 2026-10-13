@@ -40,24 +40,24 @@ const logger: Logger = {
   taskComplete: () => {},
 }
 
-// `VX_INPUT_STABILITY(_SEVERITY)` set the defaults the rows below judge; each row
+// `VX_CACHE_INPUT_STABILITY_STRATEGY(_SEVERITY)` set the defaults the rows below judge; each row
 // starts without it and sets it only to say so.
 const saved = {
-  stability: process.env['VX_INPUT_STABILITY'],
-  severity: process.env['VX_INPUT_STABILITY_SEVERITY'],
+  stability: process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'],
+  severity: process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'],
 }
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-moved-' })
   status = []
-  delete process.env['VX_INPUT_STABILITY']
-  delete process.env['VX_INPUT_STABILITY_SEVERITY']
+  delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
+  delete process.env['VX_CACHE_INPUT_STABILITY_SEVERITY']
 })
 
 afterEach(async () => {
-  if (saved.stability === undefined) delete process.env['VX_INPUT_STABILITY']
-  else process.env['VX_INPUT_STABILITY'] = saved.stability
-  if (saved.severity === undefined) delete process.env['VX_INPUT_STABILITY_SEVERITY']
-  else process.env['VX_INPUT_STABILITY_SEVERITY'] = saved.severity
+  if (saved.stability === undefined) delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
+  else process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = saved.stability
+  if (saved.severity === undefined) delete process.env['VX_CACHE_INPUT_STABILITY_SEVERITY']
+  else process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = saved.severity
   await rm(root, { recursive: true, force: true })
 })
 
@@ -197,9 +197,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_INPUT_STABILITY=mutable is the default for a task that does not say',
+    'VX_CACHE_INPUT_STABILITY_STRATEGY=mutable is the default for a task that does not say',
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'mutable'
+      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'mutable'
       await fixture('formatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -211,7 +211,7 @@ describe('cache.inputStability: what a write during the command means', () => {
   it(
     "the env var wins over a task's own setting, for the run",
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'mutable'
+      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'mutable'
       await fixture('formatted', { strategy: 'immutable' })
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -226,7 +226,7 @@ describe('cache.inputStability: what a write during the command means', () => {
       const ws = path.join(root, 'vx.workspace.mjs')
       await writeFile(
         ws,
-        "export default { plugins: [], inputStability: { strategy: 'mutable' } }\n",
+        "export default { plugins: [], cache: { inputStability: { strategy: 'mutable' } } }\n",
       )
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
@@ -276,9 +276,9 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_INPUT_STABILITY_SEVERITY=error is the default for a task that does not say',
+    'VX_CACHE_INPUT_STABILITY_SEVERITY=error is the default for a task that does not say',
     async () => {
-      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'error'
+      process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = 'error'
       await fixture('unformatted')
       const r = await run({ cwd: root, tasks: ['format'], log: logger })
       expect(statusOf(r, 'app#format')).toBe('failed')
@@ -300,20 +300,20 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'VX_INPUT_STABILITY=unchecked skips the check, and a value naming no mode is refused before any task',
+    'VX_CACHE_INPUT_STABILITY_STRATEGY=unchecked skips the check, and a value naming no mode is refused before any task',
     async () => {
-      process.env['VX_INPUT_STABILITY'] = 'unchecked'
+      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'unchecked'
       await fixture('unformatted')
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
-      process.env['VX_INPUT_STABILITY'] = 'content'
+      process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'content'
       await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
-        "VX_INPUT_STABILITY must be 'immutable', 'mutable' or 'unchecked'",
+        "VX_CACHE_INPUT_STABILITY_STRATEGY must be one of 'immutable', 'mutable', 'unchecked' (got content)",
       )
-      delete process.env['VX_INPUT_STABILITY']
-      process.env['VX_INPUT_STABILITY_SEVERITY'] = 'fail'
+      delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
+      process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'] = 'fail'
       await expect(run({ cwd: root, tasks: ['format'], log: logger })).rejects.toThrow(
-        "VX_INPUT_STABILITY_SEVERITY must be 'warn' or 'error'",
+        "VX_CACHE_INPUT_STABILITY_SEVERITY must be one of 'warn', 'error' (got fail)",
       )
     },
     TIMEOUT,

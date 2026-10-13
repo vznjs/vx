@@ -101,7 +101,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // output replays from the row (`hit.stdout`), and its artifact holds
   // only logs. Extracting it anyway cost an `exists` + a tar read per hit
   // — 1.7 ms each on a four-task real repo whose `link` and `element`
-  // tasks declare `outputs: []` (2026-09-10, VX_TIMING).
+  // tasks declare `outputs: []` (2026-09-10, `VX_DEBUG_TIMING`).
   let skipRestore = !anyOutputs
   // The walk that found the tree stale, handed to the clean when nothing
   // was awaited between them: the clean's own walk would only repeat it

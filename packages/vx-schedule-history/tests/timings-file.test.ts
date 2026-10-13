@@ -94,7 +94,7 @@ describe('the file between machines', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['test'], concurrency: 1, handleSignals: false }
       const file = path.join(root, 'timings.json')
@@ -140,7 +140,7 @@ describe('the file between machines', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['build'], handleSignals: false }
       const file = path.join(root, 'timings.json')
@@ -171,7 +171,7 @@ describe('the file between machines', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['all'], handleSignals: false }
       const file = path.join(root, 'timings.json')

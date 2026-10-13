@@ -41,7 +41,7 @@ import {
   loadProjects,
   loadWorkspacePlugins,
 } from './projects.js'
-import { workspaceCachePolicy } from './prepare.js'
+import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'
 
 const warnToStderr = (message: string): void => {
   process.stderr.write(`${message}\n`)
@@ -78,14 +78,14 @@ export interface InfoFacts {
   configErrors: Array<{ path: string; message: string }>
   plugins: Array<{ name: string; seams: string[] }>
   /**
-   * The worker count a run defaults to and where it comes from: the
-   * workspace's `concurrency`, else the cores this process may use — the
+   * The worker count a run defaults to and where it comes from:
+   * `run.concurrency` (variable, then workspace), else the cores this process may use — the
    * CPU count capped by a cgroup quota (`cpuQuota`, in cores, null when
    * none binds).
    */
   workers: {
     count: number
-    source: 'workspace' | 'cgroup' | 'cores'
+    source: 'env' | 'workspace' | 'cgroup' | 'cores'
     cores: number
     cpuQuota: number | null
   }
@@ -102,18 +102,15 @@ export interface InfoFacts {
   cacheEntries: number
   cacheBytes: number
   /**
-   * The cache policy a `vx run` with no `--cache` takes: `VX_CACHE`, else
-   * the workspace's `cache.policy`, else every layer on.
+   * Every setting (src/settings.ts) as a run with no flags takes it: its
+   * variable's value, else the workspace's (after the `config` stage),
+   * else null with source `default` (docs/schema.md names each default).
    */
-  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
-  /**
-   * The cache scope a `vx run` with no `--cache-scope` takes: `VX_CACHE_SCOPE`,
-   * else the workspace's `cache.scope` (a plugin's `config` stage may set
-   * it), else null: read-only off CI, trusted on CI or when the policy
-   * names the remote.
-   */
-  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
-  /** The workspace's `cacheRetention`, with `maxSize` in bytes; null when none is declared. */
+  settings: Record<
+    string,
+    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
+  >
+  /** `cache.retention`, with `maxSize` in bytes; null when none is set. */
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -262,7 +259,7 @@ async function collectWorkspaceInfo(
     // all" before reading any config. A declined seam still costs nothing;
     // this names the declarations, not what a run consulted.
     plugins: plugins.map((p) => ({ name: p.name, seams: filledSeams(p) })),
-    workers: workersFact(workspaceConfig?.concurrency),
+    workers: workersFact(resolveSetting('run.concurrency', workspaceConfig)),
     memory: memoryFact(),
     cacheDir,
     // The store the index records, else the one a first run would open.
@@ -274,9 +271,8 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
-    cachePolicy: policyFact(workspaceConfig),
-    cacheScope: scopeFact(workspaceConfig),
-    cacheRetention: retentionFact(workspaceConfig?.cacheRetention),
+    settings: settingsFact(workspaceConfig),
+    cacheRetention: retentionFact(workspaceConfig),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache prune` reclaims (after an upgrade's
     // schema reset, most often).
@@ -336,11 +332,11 @@ function filledSeams(p: VxPlugin): string[] {
  * numbers would be the OOM killer's. The doctor says which one a run
  * reads, because nothing else would.
  */
-function workersFact(workspaceConcurrency: number | undefined): InfoFacts['workers'] {
+function workersFact(set: { value: unknown; source: SettingSource }): InfoFacts['workers'] {
   const cores = Math.max(1, navigator.hardwareConcurrency)
   const quota = process.platform === 'linux' ? (cgroupCpuQuota() ?? null) : null
-  if (workspaceConcurrency !== undefined) {
-    return { count: workspaceConcurrency, source: 'workspace', cores, cpuQuota: quota }
+  if (set.source === 'env' || set.source === 'workspace') {
+    return { count: set.value as number, source: set.source, cores, cpuQuota: quota }
   }
   const machine = machineParallelism()
   return { count: machine, source: machine < cores ? 'cgroup' : 'cores', cores, cpuQuota: quota }
@@ -437,30 +433,30 @@ async function countLoadableTasks(
   return { tasks, sandboxed, errors }
 }
 
-function policyFact(config: WorkspaceConfig | null): InfoFacts['cachePolicy'] {
-  const env = process.env['VX_CACHE'] || undefined
-  if (env !== undefined) return { spec: env, from: 'VX_CACHE' }
-  // Parsed for its refusal: a spec `vx run` would refuse is not reported as the policy.
-  if (workspaceCachePolicy(config) !== undefined) {
-    return { spec: config!.cache!.policy!, from: 'workspace' }
+function settingsFact(config: WorkspaceConfig | null): InfoFacts['settings'] {
+  const out: InfoFacts['settings'] = {}
+  for (const s of SETTINGS) {
+    const env = process.env[envName(s.path)]
+    const declared = s.config === false ? undefined : atPath(config, s.path)
+    out[s.path] =
+      env !== undefined && env !== ''
+        ? { value: env, source: 'env' }
+        : declared !== undefined
+          ? { value: declared as string | number | boolean, source: 'workspace' }
+          : { value: null, source: 'default' }
   }
-  return { spec: 'local:rw,remote:rw', from: 'default' }
+  return out
 }
 
-function scopeFact(config: WorkspaceConfig | null): InfoFacts['cacheScope'] {
-  const env = process.env['VX_CACHE_SCOPE'] || undefined
-  if (env !== undefined) return { scope: env, from: 'VX_CACHE_SCOPE' }
-  const declared = config?.cache?.scope
-  return declared !== undefined
-    ? { scope: declared, from: 'workspace' }
-    : { scope: null, from: 'default' }
-}
-
-function retentionFact(r: WorkspaceConfig['cacheRetention']): InfoFacts['cacheRetention'] {
-  if (r === undefined) return null
+function retentionFact(config: WorkspaceConfig | null): InfoFacts['cacheRetention'] {
+  const raw = (path: string): string | undefined =>
+    process.env[envName(path)] || (atPath(config, path) as string | undefined)
+  const olderThan = raw('cache.retention.olderThan')
+  const maxSize = raw('cache.retention.maxSize')
+  if (olderThan === undefined && maxSize === undefined) return null
   return {
-    ...(r.olderThan !== undefined ? { olderThan: r.olderThan } : {}),
-    // Validated at load, so it parses.
-    ...(r.maxSize !== undefined ? { maxSize: r.maxSize, maxBytes: parseSize(r.maxSize)! } : {}),
+    ...(olderThan !== undefined ? { olderThan } : {}),
+    // Validated before the run (env) or at load (workspace), so it parses.
+    ...(maxSize !== undefined ? { maxSize, maxBytes: parseSize(maxSize)! } : {}),
   }
 }

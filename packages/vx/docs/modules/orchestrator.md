@@ -115,7 +115,7 @@ export interface RunSummary {
     needs), to KEEP ALIVE in the real CLI foreground (`options.log === undefined
 && handleSignals !== false`); `shutdownPersistent` SIGTERMs every
     other persistent child's group and waits for the groups, SIGKILLing
-    whatever is left after a 2 s grace (`VX_KILL_GRACE_MS` shortens it;
+    whatever is left after a 2 s grace (`VX_RUN_KILL_GRACE` shortens it;
     see util-settle.md, kill-tree.md).
     Before the SIGTERM it returns the children that already ended on
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a

@@ -36,7 +36,7 @@
 // with the message the first load gives (item 701).
 
 import path from 'node:path'
-import { MAX_TIMEOUT_MS, UserError } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDuration, UserError } from '../util/index.js'
 import { nonJsonMessage, nonJsonPaths, type NonJsonValue } from './json-data.js'
 
 /** Why a config's `process.exit` throws, on both load paths (D-65). */
@@ -262,22 +262,17 @@ export function thrownValueMessage(kind: string, configPath: string, shown: stri
 /**
  * How long a single config evaluation may take, in the worker or in process
  * (D-66); in process a synchronous loop holds the thread the deadline needs. Real evaluations are ~10 ms; this exists only so a hung config or a
- * killed worker cannot stall a run or a long-lived process indefinitely. Read
- * per call so a test can drive the deadline instead of waiting it out.
+ * killed worker cannot stall a run or a long-lived process indefinitely.
+ * `config.workerTimeout` (`VX_CONFIG_WORKER_TIMEOUT`, read before any
+ * workspace loads), per call so a test can drive the deadline.
  */
 export function evalBudgetMs(): number {
-  const raw = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-  // Same kind of value as the teardown deadline, so the same treatment: a
-  // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
-  // back rather than clamping, because honouring ~24.8 days would hang
-  // `vx watch` forever on a worker the OS killed — and unbounded makes it 1 ms,
-  // so EVERY config load times out instead. Both ends break the same feature,
-  // and `0` is the second end: it fired on the next tick (D-157).
-  if (raw !== undefined && /^[0-9]+$/.test(raw)) {
-    const n = Number(raw)
-    if (n > 0 && n <= MAX_TIMEOUT_MS) return n
-  }
-  return 30_000
+  // A bound on a worker that may be wedged, with no "no limit" reading: 0
+  // fired on the next tick (D-157) and a timer past the platform's range at
+  // 1 ms, so both fall back. The CLI refuses either before a run
+  // (checkSettingsEnv); an embedder's falls back.
+  const n = parseDuration(process.env['VX_CONFIG_WORKER_TIMEOUT'] ?? '')
+  return n !== null && n > 0 && n <= MAX_TIMEOUT_MS ? n : 30_000
 }
 
 const pending = new Map<number, Pending>()

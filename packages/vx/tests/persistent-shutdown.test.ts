@@ -2,7 +2,7 @@
 // run keeps, and how the rest go down — SIGTERM first so a server can clean
 // up, SIGKILL past the grace, and not returning before the killed ones have
 // exited. The e2e rows (keep-alive, persistent, task-tree-kill) set
-// VX_KILL_GRACE_MS, so the default grace is pinned here once, unset.
+// VX_RUN_KILL_GRACE, so the default grace is pinned here once, unset.
 
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
@@ -147,7 +147,7 @@ describe('shutdownPersistent', () => {
 
   it('the default grace is two seconds, not the run-long wait a larger one would be', async () => {
     const saved = { ...process.env }
-    delete process.env['VX_KILL_GRACE_MS']
+    delete process.env['VX_RUN_KILL_GRACE']
     try {
       const child = await stubborn('default')
       const t0 = Date.now()
@@ -161,11 +161,11 @@ describe('shutdownPersistent', () => {
     }
   }, 15_000)
 
-  // C-46: the e2e rows set VX_KILL_GRACE_MS and pass on the 2 s default
+  // C-46: the e2e rows set VX_RUN_KILL_GRACE and pass on the 2 s default
   // too, only slower, so a default that ignored it survived them.
-  it('VX_KILL_GRACE_MS shortens the default grace', async () => {
+  it('VX_RUN_KILL_GRACE shortens the default grace', async () => {
     const saved = { ...process.env }
-    process.env['VX_KILL_GRACE_MS'] = '100'
+    process.env['VX_RUN_KILL_GRACE'] = '100ms'
     try {
       const child = await stubborn('env')
       const t0 = Date.now()

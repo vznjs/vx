@@ -192,7 +192,7 @@ readers that reach it here.
   loads overlap it is compared once, at the round's end, as most
   built-ins are: reading every variable after every load was 15–25 µs a
   config.
-- A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT_MS`,
+- A first load has the Worker's deadline too (`VX_CONFIG_WORKER_TIMEOUT`,
   30 s): a top-level await that never settles fails the load, naming
   the config and the budget, where it hung `vx run` silently (D-66).
   The evaluation itself cannot be cancelled; a timer it left running
@@ -369,7 +369,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
   task with neither `exec` nor `dependsOn`; rejects `cache` on a
   group task).
 - `loadWorkspaceConfig` returns null when no `vx.workspace.*` file
-  exists, validates `concurrency` and `cacheDir`.
+  exists, validates `concurrency` and `cache.dir`.
 - The served first load (`a project config is evaluated from the bytes
 vx read`): a CommonJS config keeps its exports, non-UTF-8 bytes
   evaluate as Bun reads them, and neither a runtime throw's stack nor

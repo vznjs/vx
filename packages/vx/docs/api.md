@@ -362,6 +362,23 @@ export interface CachePolicy {
 }
 ```
 
+## `CacheSettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.cache`: where the cache lives and what a run does with it.
+
+```ts
+export interface CacheSettings {
+  dir?: string
+  retention?: { olderThan?: Duration; maxSize?: string }
+  policy?: string
+  scope?: string
+  download?: 'all' | 'toplevel' | 'none'
+  inputStability?: InputStability
+}
+```
+
 ## `CacheSource`
 
 type · `src/orchestrator/telemetry.ts`
@@ -481,11 +498,14 @@ function · `src/config.ts`
 export function defineWorkspace<T extends WorkspaceConfig>(
   config: T &
     Known<T, WorkspaceConfig> & {
-      cacheRetention?: Known<
-        At<T, 'cacheRetention'>,
-        NonNullable<WorkspaceConfig['cacheRetention']>
-      >
-      rules?: Known<At<T, 'rules'>, WorkspaceRules>
+      run?: Known<At<T, 'run'>, RunSettings> & {
+        rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
+      }
+      cache?: Known<At<T, 'cache'>, CacheSettings> & {
+        retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
+        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      }
+      watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
 ```
@@ -500,6 +520,17 @@ export interface DiscoverContext extends WorkspaceHookContext {
   readonly projects: readonly ProjectMeta[]
   worktreeChanges(): Promise<readonly string[] | null>
 }
+```
+
+## `Duration`
+
+type · `src/config.ts`
+
+A duration with its unit: `'500ms'`, `'30s'`, `'5m'`, `'2h'`, `'1d'`. A
+bare number is refused: a unit in the value keeps the name free of one.
+
+```ts
+export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 ```
 
 ## `escapeMarkdownCell`
@@ -535,7 +566,7 @@ export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
   env?: ExecEnv
-  timeout?: number
+  timeout?: Duration
   retries?: number
   persistent?: PersistentConfig
   interactive?: boolean
@@ -862,7 +893,7 @@ export interface InfoFacts {
   plugins: Array<{ name: string; seams: string[] }>
   workers: {
     count: number
-    source: 'workspace' | 'cgroup' | 'cores'
+    source: 'env' | 'workspace' | 'cgroup' | 'cores'
     cores: number
     cpuQuota: number | null
   }
@@ -873,8 +904,10 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
-  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
-  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
+  settings: Record<
+    string,
+    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
+  >
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -2026,6 +2059,10 @@ export interface RunOptions {
   retries?: number
   timeout?: number
   continueMode?: ContinueMode
+  schedule?: NonNullable<RunSettings['schedule']>
+  killGrace?: number
+  teardownTimeout?: number
+  readyNotice?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string
@@ -2108,6 +2145,27 @@ seam is gone (a run always executes in-process — see
 export interface RunResult {
   ok: boolean
   outcomes: OutcomeView[]
+}
+```
+
+## `RunSettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.run`: how a run runs.
+
+```ts
+export interface RunSettings {
+  concurrency?: number | `${number}%`
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  affectedBase?: string
+  timeout?: Duration
+  retries?: number
+  continue?: 'never' | 'deps-ok' | 'always'
+  killGrace?: Duration
+  teardownTimeout?: Duration
+  readyNotice?: Duration
+  rules?: WorkspaceRules
 }
 ```
 
@@ -2778,6 +2836,18 @@ export interface VxPlugin {
 }
 ```
 
+## `WatchSettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.watch`.
+
+```ts
+export interface WatchSettings {
+  poll?: boolean
+}
+```
+
 ## `whyDidThisRerunQuery`
 
 function · `src/orchestrator/metrics.ts`
@@ -2802,20 +2872,17 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
 
 type · `src/config.ts`
 
+The workspace: settings in groups (`run`, `cache`, `watch`) and the
+plugins. Each setting's environment variable and flag derive from its
+path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
+the variable, which beats this file. `docs/schema.md` lists them all.
+Nothing here is folded into a cache key.
+
 ```ts
 export interface WorkspaceConfig {
-  concurrency?: number
-  cacheDir?: string
-  timeout?: number
-  cacheRetention?: { olderThan?: string; maxSize?: string }
-  affectedBase?: string
-  cache?: {
-    policy?: string
-    scope?: string
-  }
-  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  inputStability?: InputStability
-  rules?: WorkspaceRules
+  run?: RunSettings
+  cache?: CacheSettings
+  watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 ```

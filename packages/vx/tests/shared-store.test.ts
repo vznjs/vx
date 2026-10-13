@@ -328,7 +328,7 @@ describe('resolveStoreRoot', () => {
 
   it('is null when the workspace names its cache dir', async () => {
     const a = await workspace()
-    expect(await resolveStoreRoot(a.root, { cacheDir: '.cache/vx' })).toBeNull()
+    expect(await resolveStoreRoot(a.root, { cache: { dir: '.cache/vx' } })).toBeNull()
     process.env['VX_CACHE_DIR'] = '.cache/vx'
     expect(await resolveStoreRoot(a.root, null)).toBeNull()
   })

@@ -116,7 +116,9 @@ describe('config stage', () => {
     'a plugin edits the workspace config before it is used',
     async () => {
       await pkg('a', build)
-      await workspace([pluginSource('org/conc', `{ config(ws) { ws.concurrency = 3 } }`)])
+      await workspace([
+        pluginSource('org/conc', `{ config(ws) { ws.run = { ...ws.run, concurrency: 3 } } }`),
+      ])
       const log = silent()
       const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
       expect(summary.ok).toBe(true)
@@ -136,8 +138,11 @@ describe('config stage', () => {
       await Bun.write(
         path.join(root, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          pluginSource('org/double', `{ config(ws) { ws.concurrency = ws.concurrency * 2 } }`),
-        ]).replace('export default {', 'export default { concurrency: 2,'),
+          pluginSource(
+            'org/double',
+            `{ config(ws) { ws.run.concurrency = ws.run.concurrency * 2 } }`,
+          ),
+        ]).replace('export default {', 'export default { run: { concurrency: 2 },'),
       )
       const seen: Array<number | undefined> = []
       for (let i = 0; i < 3; i++) {
@@ -155,11 +160,12 @@ describe('config stage', () => {
     'a plugin that produces an invalid workspace config is refused like a user would be',
     async () => {
       // Unchecked, `concurrency: -3` hung the run, `timeout: 'x'` timed
-      // every task out and `cacheDir: 42` was a TypeError from path.resolve.
+      // every task out and `cacheDir: 42` was a TypeError from path.resolve
+      // (names before the settings groups).
       await pkg('a', build)
       const refusal = async (edit: string): Promise<string | undefined> => {
         await workspace([
-          pluginSource('org/fine', `{ config(ws) { ws.concurrency = 2 } }`),
+          pluginSource('org/fine', `{ config(ws) { ws.run = { concurrency: 2 } } }`),
           pluginSource('org/broken', `{ config(ws) { ${edit} } }`),
         ])
         return planRun({ cwd: root, tasks: ['build'], log: silent() }).then(
@@ -168,15 +174,17 @@ describe('config stage', () => {
         )
       }
       const where = "vx.workspace (after plugin 'org/broken')"
-      expect(await refusal('ws.concurrency = -3')).toBe(
-        `${where}: \`concurrency\` must be a positive integer`,
+      expect(await refusal('ws.run.concurrency = -3')).toBe(
+        `${where}: \`run.concurrency\` must be a positive integer, or a share of the cores like '50%' (got -3)`,
       )
-      expect(await refusal("ws.timeout = 'x'")).toBe(
-        `${where}: \`timeout\` must be a positive integer (milliseconds)`,
+      expect(await refusal("ws.run.timeout = 'x'")).toBe(
+        `${where}: \`run.timeout\` must be a duration like '500ms', '30s' or '5m', at most 24 days (got "x")`,
       )
-      expect(await refusal('ws.cacheDir = 42')).toBe(`${where}: \`cacheDir\` must be a string`)
+      expect(await refusal('ws.cache = { dir: 42 }')).toBe(
+        `${where}: \`cache.dir\` must be a non-blank string (got 42)`,
+      )
       // CONTROL: a valid edit passes the same check.
-      expect(await refusal('ws.timeout = 5000')).toBeUndefined()
+      expect(await refusal("ws.run.timeout = '5s'")).toBeUndefined()
     },
     TIMEOUT,
   )
@@ -479,7 +487,7 @@ describe('graph stage', () => {
         file,
         (await Bun.file(file).text()).replace(
           'export default {',
-          'export default { rules: { exclusiveOutputs: false },',
+          'export default { run: { rules: { exclusiveOutputs: false } },',
         ),
       )
       await expect(planRun({ cwd: root, tasks: ['extra'], log: silent() })).rejects.toThrow(

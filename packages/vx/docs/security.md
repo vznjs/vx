@@ -143,7 +143,7 @@ A task with `exec.sandbox` runs where only what it declares exists:
   schema's sandbox section) are unreadable unless `allow.read` names one
   (L-41), and a denied read's `fix:` hint never suggests granting one
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
-- vx's own cache directory, wherever `cacheDir` puts it in the
+- vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
 - a symlinked output must resolve inside its project: vx packs outputs

@@ -35,7 +35,7 @@
     },
     "lib": {
       "configPath": "packages/lib/vx.config.mjs",
-      "configHash": "df65827e7ba31346",
+      "configHash": "12470c2e6967c59a",
       "config": {
         "tasks": {
           "build": {
@@ -47,7 +47,7 @@
                   "HOME"
                 ]
               },
-              "timeout": 60000,
+              "timeout": "1m",
               "retries": 1
             },
             "cache": {
@@ -70,5 +70,5 @@
       }
     }
   },
-  "validated": "fa19d717f3f83b04"
+  "validated": "b93f7d6c7eb63073"
 }

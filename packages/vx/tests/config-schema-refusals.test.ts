@@ -48,9 +48,9 @@ describe('an empty command in any spelling', () => {
 
 // X-22: whitespace alone made a directory of spaces, or a no-op probe.
 describe('whitespace-only values', () => {
-  it('a cacheDir or runtime probe of spaces is refused', () => {
-    expect([refusal({ cacheDir: '   ' }), refusal({ cacheDir: '.vx/c' })]).toEqual([
-      `${WS}: \`cacheDir\` is only whitespace — name a directory`,
+  it('a cache.dir or runtime probe of spaces is refused', () => {
+    expect([refusal({ cache: { dir: '   ' } }), refusal({ cache: { dir: '.vx/c' } })]).toEqual([
+      `${WS}: \`cache.dir\` must be a non-blank string (got "   ")`,
       null,
     ])
     const probe = (runtime: string[]) =>
@@ -70,14 +70,14 @@ describe('whitespace-only values', () => {
 // Node's argument error: the cache dir's message blamed the workspace's
 // permissions, and affectedBase's named `args[3]` and nothing in the config.
 describe('a NUL in a workspace string', () => {
-  it('is refused in cacheDir and affectedBase', () => {
+  it('is refused in cache.dir and run.affectedBase', () => {
     expect([
-      refusal({ cacheDir: 'a\0b' }),
-      refusal({ affectedBase: 'main\0x' }),
-      refusal({ affectedBase: 'origin/main' }),
+      refusal({ cache: { dir: 'a\0b' } }),
+      refusal({ run: { affectedBase: 'main\0x' } }),
+      refusal({ run: { affectedBase: 'origin/main' } }),
     ]).toEqual([
-      `${WS}: \`cacheDir\` holds a NUL, which no path can carry`,
-      `${WS}: \`affectedBase\` must be a git ref like 'origin/main'`,
+      `${WS}: \`cache.dir\` holds a NUL, which no path can carry`,
+      `${WS}: \`run.affectedBase\` must be a git ref like 'origin/main'`,
       null,
     ])
   })
@@ -85,9 +85,11 @@ describe('a NUL in a workspace string', () => {
 
 describe('workspace refusals the sweep found unheld (item 653)', () => {
   it('a fractional concurrency is refused — the integer arm, past the positivity one', () => {
-    expect(refusal({ concurrency: 1.5 })).toBe(`${WS}: \`concurrency\` must be a positive integer`)
+    expect(refusal({ run: { concurrency: 1.5 } })).toBe(
+      `${WS}: \`run.concurrency\` must be a positive integer, or a share of the cores like '50%' (got 1.5)`,
+    )
     // Control: an integer passes, so the row is not held by a coarser gate.
-    expect(refusal({ concurrency: 2 })).toBeNull()
+    expect(refusal({ run: { concurrency: 2 } })).toBeNull()
   })
 
   it('an EMPTY package stamp is refused like a missing one', () => {
@@ -179,28 +181,28 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
   })
 })
 
-describe('cacheRetention refusals the sweep found unheld (item 653)', () => {
-  const SHAPE = `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`
+describe('cache.retention refusals the sweep found unheld (item 653)', () => {
+  const SHAPE = `${WS}: \`cache.retention\` must be an object (fields: maxSize, olderThan)`
 
   it('a null retention is refused by name, not by a TypeError from the field scan', () => {
-    expect(refusal({ cacheRetention: null })).toBe(SHAPE)
+    expect(refusal({ cache: { retention: null } })).toBe(SHAPE)
   })
 
   it('a NUMBER maxSize is refused by name, not by a TypeError from parseSize', () => {
     // `parseSize` takes a string; the type arm is what keeps a number from it.
-    expect(refusal({ cacheRetention: { maxSize: 1048576 } })).toBe(
-      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got 1048576)`,
+    expect(refusal({ cache: { retention: { maxSize: 1048576 } } })).toBe(
+      `${WS}: \`cache.retention.maxSize\` must be a size like '500MB' or '10GB' (got 1048576)`,
     )
-    expect(refusal({ cacheRetention: { maxSize: '1048576B' } })).toBeNull()
+    expect(refusal({ cache: { retention: { maxSize: '1048576B' } } })).toBeNull()
   })
 
   it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
     // The workspace file has no JSON rule before its schema; the fuzz found it.
-    expect(refusal({ cacheRetention: { olderThan: 30n } })).toBe(
-      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30n)`,
+    expect(refusal({ cache: { retention: { olderThan: 30n } } })).toBe(
+      `${WS}: \`cache.retention.olderThan\` must be a duration like '45s', '12h' or '30d' (got 30n)`,
     )
-    expect(refusal({ cacheRetention: { maxSize: Symbol('s') } })).toBe(
-      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got Symbol(s))`,
+    expect(refusal({ cache: { retention: { maxSize: Symbol('s') } } })).toBe(
+      `${WS}: \`cache.retention.maxSize\` must be a size like '500MB' or '10GB' (got Symbol(s))`,
     )
     const p = testPlugin('fz-fp-bigint', {
       fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
@@ -463,7 +465,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       'vx spells it `cd <dir> && …` in `exec.command`: a task runs in its project directory',
     )
     expect(where({ parallelism: false })).toBe(
-      'vx spells it `concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+      'vx spells it `run.concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
     )
     expect(where({ configurations: {} })).toBe(
       'vx spells it one task per configuration (`build:production`, with its own `exec.command`)',
@@ -709,10 +711,10 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
       'vx spells it a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
     )
     expect(where('globalEnv')).toBe('vx spells it `cache.inputs.env` on the tasks it keys')
-    expect(where('parallel')).toBe('vx spells it `concurrency`')
-    expect(where('cacheDirectory')).toBe('vx spells it `cacheDir`')
+    expect(where('parallel')).toBe('vx spells it `run.concurrency`')
+    expect(where('cacheDirectory')).toBe('vx spells it `cache.dir`')
     // CONTROL: a typo still gets the nearest spelling.
-    expect(where('concurency')).toBe('did you mean concurrency?')
+    expect(where('concurency')).toBe('did you mean `run.concurrency`?')
   })
 
   it("names where vx keeps Nx's nx.json and Turbo's global keys (D-49)", () => {
@@ -724,7 +726,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
       }
       return undefined
     }
-    expect(where('defaultBase')).toBe('vx spells it `affectedBase`')
+    expect(where('defaultBase')).toBe('vx spells it `run.affectedBase`')
     expect(where('tasksRunnerOptions')).toBe(
       'vx spells it a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
     )

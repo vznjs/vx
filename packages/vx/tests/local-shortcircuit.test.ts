@@ -47,7 +47,7 @@ const silentLogger = (fixture: Fixture): Logger => {
 
 // The gate this file pins decides only for a key that MAY read another
 // task's outputs, which `rules.upfrontKeys` refuses by default (X-54).
-const WAITING = 'export default { rules: { upfrontKeys: false } }\n'
+const WAITING = 'export default { run: { rules: { upfrontKeys: false } } }\n'
 
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-sc-' })
@@ -1065,7 +1065,7 @@ describe('local cache short-circuit', () => {
       // only with `rules.exclusiveOutputs` off (X-53).
       await Bun.write(
         path.join(fixture.root, 'vx.workspace.mjs'),
-        'export default { rules: { exclusiveOutputs: false, upfrontKeys: false } }\n',
+        'export default { run: { rules: { exclusiveOutputs: false, upfrontKeys: false } } }\n',
       )
       await addProject(fixture.root, 'a', {
         files: { 'src/a.txt': 'a' },

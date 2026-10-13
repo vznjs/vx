@@ -33,7 +33,7 @@ describe.skipIf(!available)("a sandboxed task's timeout starts at its spawn", ()
           build: {
             exec: {
               command: ${JSON.stringify(command)},
-              timeout: 1000,
+              timeout: '1s',
               retries: 1,
               sandbox: { allow: { write: ['marker.txt'] } },
             },

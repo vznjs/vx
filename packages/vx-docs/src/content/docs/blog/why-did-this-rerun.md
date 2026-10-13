@@ -67,7 +67,7 @@ it rebuilt, tomorrow, from a laptop.
 
 Update (2026-10-07): by default the entries `vx why` compares live in
 the shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
-names a `cacheDir` keeps both there, and that directory is the one to
+names a `cache.dir` keeps both there, and that directory is the one to
 copy.
 
 ## Eleven endings for an unchanged key

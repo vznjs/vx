@@ -36,7 +36,7 @@ $ vx run build --all --cache=local:r             # read local, write nothing loc
 $ vx run build --all --cache=local:,remote:rw    # skip local, still upload
 ```
 
-`VX_CACHE` sets the same spec for every run in a shell or CI job, and
+`VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and
 `cache.policy` in `vx.workspace.ts` sets the default; the flag beats the
 variable, which beats the config. Whatever the spec, a lookup asks the
 local cache first, then each remote in the order the plugins declare them.
@@ -71,7 +71,7 @@ $ vx run build --all
 
 The new worktree had no `dist`. All four builds came back from the shared
 store in 22ms. To put the cache somewhere else, use `--cache-dir`,
-`VX_CACHE_DIR` or `cacheDir` in `vx.workspace.ts`.
+`VX_CACHE_DIR` or `cache.dir` in `vx.workspace.ts`.
 
 ## Who may write the remote cache
 

@@ -677,7 +677,7 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
 
 const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
 const OWN_DIR_HINT =
-  'Point `cacheDir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
+  'Point `cache.dir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -687,7 +687,7 @@ function makeCacheDir(cacheDir: string): void {
     // so this is the first thing any of them says there.
     throw new UserError(
       `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; make ` +
-        `the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+        `the workspace writable, set \`cache.dir\` in vx.workspace.ts, or pass --cache-dir <path>`,
     )
   }
 }

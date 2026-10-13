@@ -307,7 +307,7 @@ describe('computeTaskHash over random resolved configs', () => {
   function config(r: Rand): TaskConfig {
     const exec: NonNullable<TaskConfig['exec']> = { command: `cmd ${str(r, NAME_CHARS)}` }
     if (r() < 0.5) exec.env = { define: { D: str(r, NAME_CHARS) } }
-    if (r() < 0.5) exec.timeout = 1 + int(r, 100)
+    if (r() < 0.5) exec.timeout = `${1 + int(r, 100)}ms`
     if (r() < 0.5) exec.retries = int(r, 4)
     return {
       ...(r() < 0.5 ? { description: str(r, NAME_CHARS) } : {}),
@@ -385,7 +385,10 @@ describe('computeTaskHash over random resolved configs', () => {
           },
     timeout: (c) => ({
       ...c,
-      cfg: { ...c.cfg, exec: { ...c.cfg.exec!, timeout: (c.cfg.exec!.timeout ?? 0) + 1 } },
+      cfg: {
+        ...c.cfg,
+        exec: { ...c.cfg.exec!, timeout: `${parseInt(c.cfg.exec!.timeout ?? '0ms') + 1}ms` },
+      },
     }),
     retries: (c) => ({
       ...c,

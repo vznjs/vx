@@ -24,7 +24,7 @@ const WORKSPACE = `${PLUGIN_IMPORT}
       ${pluginSource(
         'mover',
         `{ config(ws) {
-          ws.cacheDir = '.vx/moved'
+          ws.cache = { ...ws.cache, dir: '.vx/moved' }
         },
       }`,
       )},
@@ -49,7 +49,8 @@ async function vx(
 ): Promise<{ code: number; out: string; err: string }> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
-    env: { ...process.env, NO_COLOR: '1' },
+    // The config stage's cache.dir loses to VX_CACHE_DIR, which the gate sets.
+    env: { ...process.env, NO_COLOR: '1', VX_CACHE_DIR: '' },
     stdout: 'pipe',
     stderr: 'pipe',
   })

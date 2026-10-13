@@ -10,6 +10,9 @@ import { describe, expect, it } from 'bun:test'
 import type {
   CacheConfig,
   CacheInputs,
+  CacheSettings,
+  RunSettings,
+  WatchSettings,
   CacheOutputs,
   InputStability,
   ExecConfig,
@@ -33,17 +36,27 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
   : ['missing from the list:', Exclude<Keys<T>, L[number]>]
 
 const WORKSPACE = [
-  'affectedBase',
   'cache',
-  'cacheDir',
-  'cacheRetention',
-  'concurrency',
-  'inputStability',
   'plugins',
+  'run',
+  'watch',
+] as const satisfies readonly Keys<WorkspaceConfig>[]
+const RUN = [
+  'affectedBase',
+  'concurrency',
+  'continue',
+  'killGrace',
+  'readyNotice',
+  'retries',
   'rules',
   'schedule',
+  'teardownTimeout',
   'timeout',
-] as const satisfies readonly Keys<WorkspaceConfig>[]
+] as const satisfies readonly Keys<RunSettings>[]
+const RULES = ['exclusiveOutputs', 'upfrontKeys'] as const satisfies readonly Keys<
+  NonNullable<RunSettings['rules']>
+>[]
+const WATCH = ['poll'] as const satisfies readonly Keys<WatchSettings>[]
 const PROJECT = ['tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
 const TASK = [
   'cache',
@@ -78,11 +91,16 @@ const INPUTS = [
 ] as const satisfies readonly Keys<CacheInputs>[]
 const OUTPUTS = ['files', 'workspaceFiles'] as const satisfies readonly Keys<CacheOutputs>[]
 const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
-  NonNullable<WorkspaceConfig['cacheRetention']>
+  NonNullable<CacheSettings['retention']>
 >[]
-const WORKSPACE_CACHE = ['policy', 'scope'] as const satisfies readonly Keys<
-  NonNullable<WorkspaceConfig['cache']>
->[]
+const WORKSPACE_CACHE = [
+  'dir',
+  'download',
+  'inputStability',
+  'policy',
+  'retention',
+  'scope',
+] as const satisfies readonly Keys<CacheSettings>[]
 const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConfig>[]
 const SANDBOX = [
   'allow',
@@ -112,6 +130,9 @@ const IGNORES = [
 
 const exhaustive: [
   Exhaustive<WorkspaceConfig, typeof WORKSPACE>,
+  Exhaustive<RunSettings, typeof RUN>,
+  Exhaustive<NonNullable<RunSettings['rules']>, typeof RULES>,
+  Exhaustive<WatchSettings, typeof WATCH>,
   Exhaustive<ProjectConfig, typeof PROJECT>,
   Exhaustive<TaskConfig, typeof TASK>,
   Exhaustive<ExecConfig, typeof EXEC>,
@@ -120,14 +141,34 @@ const exhaustive: [
   Exhaustive<CacheInputs, typeof INPUTS>,
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
   Exhaustive<InputStability, typeof STABILITY>,
-  Exhaustive<NonNullable<WorkspaceConfig['cacheRetention']>, typeof RETENTION>,
-  Exhaustive<NonNullable<WorkspaceConfig['cache']>, typeof WORKSPACE_CACHE>,
+  Exhaustive<NonNullable<CacheSettings['retention']>, typeof RETENTION>,
+  Exhaustive<CacheSettings, typeof WORKSPACE_CACHE>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+] = [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+]
 void exhaustive
 
 /** What the validator allows where the call puts a key it does not know. */
@@ -203,13 +244,24 @@ describe('the config types and the validator agree on every level (D-71)', () =>
           'p',
         ),
     ],
-    ['inputStability', STABILITY, () => validateWorkspace({ inputStability: X } as never, 'w')],
+    ['run', RUN, () => validateWorkspace({ run: { ...X } } as never, 'w')],
+    ['run.rules', RULES, () => validateWorkspace({ run: { rules: X } } as never, 'w')],
+    ['watch', WATCH, () => validateWorkspace({ watch: { ...X } } as never, 'w')],
     [
-      'cacheRetention',
-      RETENTION,
-      () => validateWorkspace({ cacheRetention: { ...X } } as never, 'w'),
+      'cache.inputStability (workspace)',
+      STABILITY,
+      () => validateWorkspace({ cache: { inputStability: X } } as never, 'w'),
     ],
-    ['cache', WORKSPACE_CACHE, () => validateWorkspace({ cache: { ...X } } as never, 'w')],
+    [
+      'cache.retention',
+      RETENTION,
+      () => validateWorkspace({ cache: { retention: { ...X } } } as never, 'w'),
+    ],
+    [
+      'cache (workspace)',
+      WORKSPACE_CACHE,
+      () => validateWorkspace({ cache: { ...X } } as never, 'w'),
+    ],
     [
       'exec.persistent',
       PERSISTENT,

@@ -90,16 +90,16 @@ describe('schedule strategy', () => {
 
   it('the workspace names one of the four, or is refused', () => {
     for (const s of ['most-work', 'critical-path', 'direct-dependents', 'ready-order'] as const) {
-      expect(() => validateWorkspace({ schedule: s }, 'vx.workspace.ts')).not.toThrow()
+      expect(() => validateWorkspace({ run: { schedule: s } }, 'vx.workspace.ts')).not.toThrow()
     }
     let message = ''
     try {
-      validateWorkspace({ schedule: 'fastest' } as never, 'vx.workspace.ts')
+      validateWorkspace({ run: { schedule: 'fastest' } } as never, 'vx.workspace.ts')
     } catch (e) {
       message = (e as Error).message
     }
     expect(message).toBe(
-      "vx.workspace.ts: `schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order'",
+      "vx.workspace.ts: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"fastest\")",
     )
   })
 })
@@ -129,7 +129,7 @@ export default { tasks: { solo: t('solo'), deep: t('deep'), d1: t('d1', ['deep']
   }
 
   it('ready-order starts the first ready task; the default the one with work behind it', async () => {
-    expect(await firstRun(`export default { schedule: 'ready-order' }\n`)).toBe('solo')
+    expect(await firstRun(`export default { run: { schedule: 'ready-order' } }\n`)).toBe('solo')
     expect(await firstRun(`export default {}\n`)).toBe('deep')
   }, 30_000)
 })
