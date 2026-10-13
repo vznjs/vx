@@ -96,12 +96,22 @@ const decoder = new TextDecoder()
  * the project). Throws a `UserError` when there is no candidate before `/`.
  * A load that goes on to `loadWorkspace` passes its `reads`, so the
  * root's manifest is read once for both.
+ *
+ * The walk stops above `start` at a manifest another user owns (root
+ * aside): its workspace config would run as you. A `package.json` planted
+ * in a shared directory above your checkout (`/tmp/package.json` listing
+ * `*`) claimed it, and `vx info` ran the planter's `vx.workspace.ts`
+ * (git's `safe.directory` case). The directory you run in is yours to
+ * judge, and costs no stat. Run as root, vx trusts every owner, as a
+ * container over a mounted checkout needs. `uid` is for tests.
  */
 export async function findWorkspaceRoot(
   start: string,
   reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
 ): Promise<string> {
-  let dir = path.resolve(start)
+  start = path.resolve(start)
+  let dir = start
   const below: string[] = []
   let nearest: string | null = null
   // The nearest manifest with workspace globs of its own, once passed: an
@@ -110,6 +120,7 @@ export async function findWorkspaceRoot(
   // The root that claims `start`, and the members it claimed it through.
   let claimed: string | null = null
   let members: string[] = []
+  let foreign: string | null = null
   while (true) {
     let globs: string[] | null
     try {
@@ -120,6 +131,13 @@ export async function findWorkspaceRoot(
       // behaviour probed only for existence); it just can't claim members.
       // `loadWorkspace` surfaces the parse error if this dir is chosen.
       globs = []
+    }
+    if (globs !== null && uid !== 0 && dir !== start) {
+      const owner = await foreignOwner(dir, uid, reads)
+      if (owner !== null) {
+        foreign = owner
+        break
+      }
     }
     if (globs !== null) {
       nearest ??= dir
@@ -161,12 +179,34 @@ export async function findWorkspaceRoot(
   }
   if (claimed !== null) return claimed
   if (nearest !== null) return nearest
+  if (foreign !== null) {
+    throw new UserError(
+      `${foreign} belongs to another user, so vx does not take its directory as your workspace: ` +
+        `its config would run as you. Run vx in a checkout you own, or create a package.json there`,
+      'VX_E_NO_WORKSPACE',
+    )
+  }
   throw new UserError(
     `Could not find a workspace root in any parent of ${start} ` +
       `(looked for pnpm-workspace.yaml or package.json): run vx inside a project, ` +
       `or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
     'VX_E_NO_WORKSPACE',
   )
+}
+
+/** The first root manifest in `dir` another non-root user owns, or null. */
+async function foreignOwner(dir: string, uid: number, reads: LoadReads): Promise<string | null> {
+  for (const name of ['package.json', 'pnpm-workspace.yaml']) {
+    const file = path.join(dir, name)
+    // Already read by the walk: only a manifest that is there costs a stat.
+    if ((await readOnce(reads, file)) === null) continue
+    const owner = await stat(file).then(
+      (st) => st.uid,
+      () => uid,
+    )
+    if (owner !== uid && owner !== 0) return file
+  }
+  return null
 }
 
 /** True when one of `below` (dirs under `root`, toward `start`) is a member. */

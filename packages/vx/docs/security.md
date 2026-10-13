@@ -10,7 +10,11 @@ vulnerability), never in a public issue.
 
 - **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
-  validates what it returns, not what it does. What a config imports
+  validates what it returns, not what it does. Looking for the
+  workspace root above where you run, vx stops at a manifest another
+  user owns (root aside), so a `package.json` planted in a shared
+  directory such as `/tmp` cannot claim your checkout and run its
+  config as you (`tests/workspace-foreign-owner.test.ts`). What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).

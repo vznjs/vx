@@ -2403,7 +2403,8 @@ The task graph has a cycle. The message names the loop; drop one of its
 #### `VX_E_NO_WORKSPACE`
 
 No workspace root above the working directory. Run vx inside the repo,
-or create a `package.json` and run `vx init`.
+or create a `package.json` and run `vx init`. A manifest above it that
+another user owns does not count (`security.md`); the message names it.
 
 #### `VX_E_CACHE_VERSION`
 
