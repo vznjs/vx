@@ -678,10 +678,19 @@ the project). Throws a `UserError` when there is no candidate before `/`.
 A load that goes on to `loadWorkspace` passes its `reads`, so the
 root's manifest is read once for both.
 
+The walk stops above `start` at a manifest another user owns (root
+aside): its workspace config would run as you. A `package.json` planted
+in a shared directory above your checkout (`/tmp/package.json` listing
+`*`) claimed it, and `vx info` ran the planter's `vx.workspace.ts`
+(git's `safe.directory` case). The directory you run in is yours to
+judge, and costs no stat. Run as root, vx trusts every owner, as a
+container over a mounted checkout needs. `uid` is for tests.
+
 ```ts
 export async function findWorkspaceRoot(
   start: string,
   reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
 ```
 
