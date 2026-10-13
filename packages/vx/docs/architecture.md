@@ -35,7 +35,7 @@ snapshot) and the plugin capabilities (below).
 
 ## Module map
 
-Core is organised as **eight modules** plus four root files. A module
+Core is organised as **eight modules** plus five root files. A module
 is a directory under `src/` with an `index.ts` contract — cross-module
 imports go through that contract, never into internal files — or a
 single root file when it has no internals to hide. The design and
