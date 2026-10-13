@@ -70,10 +70,9 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       env: names,
       pass: names,
       notes: [
-        'Turbo infers nextjs in web and hashes and passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID to ' +
-          'its tasks; the configs list the names their files and their workspace dependencies’ ' +
-          'spell — add any only an installed dependency reads to cache.inputs.env and ' +
-          'exec.env.passThrough',
+        'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
+          'list the names the package and its workspace dependencies spell, so add any an ' +
+          'installed dependency reads to cache.inputs.env and exec.env.passThrough',
       ],
     })
   })
