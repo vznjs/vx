@@ -1418,7 +1418,14 @@ export async function materialiseOutputs(
     const rel = toPosix(path.relative(req.workspaceRoot, abs))
     return declared.includes(rel) || matchers.some((m) => m.match(rel))
   }
-  const fence = new Fence(req.workspaceRoot)
+  // A declared output, or a path under one a literal glob names whole.
+  const underDeclared = (rel: string): boolean => {
+    for (let r = rel; r !== '.' && r !== ''; r = path.posix.dirname(r)) {
+      if (declared.includes(r) || matchers.some((m) => m.match(r))) return true
+    }
+    return false
+  }
+  const fence = new Fence(req.workspaceRoot, underDeclared)
   // A file or link no declared glob names is neither fetched nor written:
   // the workspace root was the only fence, so a result (or a record planted
   // in the action cache) could write `.git/hooks/post-checkout` 0755 or
@@ -1435,6 +1442,7 @@ export async function materialiseOutputs(
     const abs = fence.lexical(req.cwd, f.path)
     await fence.dir(path.dirname(abs))
     await makeDir(path.dirname(abs), created)
+    await fence.landing(abs)
     // Inlined only when it has bytes: an ActionResult read back through
     // proto-loader (the execution-record replay) carries `contents` as an
     // EMPTY Buffer on every file, and taking that as inline wrote each
@@ -1506,9 +1514,33 @@ class Fence {
   private readonly checked = new Set<string>()
   private readonly links: { abs: string; target: string }[] = []
   private readonly root: string
+  private readonly realDirs = new Map<string, Promise<string>>()
 
-  constructor(root: string) {
+  constructor(
+    root: string,
+    /** A workspace-relative path the task declared as output, or under one. */
+    private readonly declared: (rel: string) => boolean = () => true,
+  ) {
     this.root = path.resolve(root)
+  }
+
+  /**
+   * Where a file write really lands, judged after the result's links are
+   * placed: a declared link to `.git/hooks`, then a declared directory
+   * under it, wrote an executable hook (both inside the root, so the
+   * containment checks passed). The landing must itself be declared.
+   */
+  async landing(abs: string): Promise<void> {
+    this.realRoot ??= await realpath(this.root).catch(() => this.root)
+    const dir = path.dirname(abs)
+    let real = this.realDirs.get(dir)
+    if (real === undefined) {
+      real = realpath(dir)
+      this.realDirs.set(dir, real)
+    }
+    const rel = toPosix(path.relative(this.realRoot, path.join(await real, path.basename(abs))))
+    if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel) || !this.declared(rel))
+      throw this.refuse(abs)
   }
 
   /** `rel` joined under `base`, refused when the join leaves the root. */
@@ -1763,6 +1795,7 @@ async function materialiseTree(
         missing(abs, f.digest.hash, abs)
         return
       }
+      await fence.landing(abs)
       await writeOutput(abs, bytes, created)
       if (f.is_executable) await chmod(abs, 0o755)
       // NodeProperties.unix_mode is authoritative when the server sent it.

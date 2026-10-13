@@ -123,7 +123,8 @@ the local store:
 
 Remote execution (`@vzn/vx-reapi`) holds each blob to its digest, and
 writes only the server's outputs a declared glob names, inside the
-workspace, through no link that leads out of it.
+workspace, through no link that leads out of it, and through no link
+into a place no declared glob names.
 
 ## What the sandbox stops
 
