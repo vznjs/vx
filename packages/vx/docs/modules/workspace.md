@@ -72,7 +72,7 @@ export interface ProjectMeta {
   catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
-export function findWorkspaceRoot(start: string, reads?: LoadReads): Promise<string>
+export function findWorkspaceRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 // listProjects, collecting each nameless member's dir into `nameless` (vx init)

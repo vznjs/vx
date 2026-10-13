@@ -5,6 +5,7 @@
 import path from 'node:path'
 import {
   executablePath,
+  gitEnv,
   isLiteralPattern,
   normalizeGlob,
   outputMatcher,
@@ -191,6 +192,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
     try {
       proc = Bun.spawnSync({
         cmd: [executablePath('git'), 'check-ignore', '-v', '-n', '-z', '--stdin'],
+        env: gitEnv(),
         cwd: workspaceRoot,
         stdin: Buffer.from(rest.map((p) => `${p}\0`).join('')),
         stdout: 'pipe',
@@ -215,6 +217,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
       inWorkTree ??=
         Bun.spawnSync({
           cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+          env: gitEnv(),
           cwd: workspaceRoot,
           stdout: 'ignore',
           stderr: 'ignore',
@@ -410,6 +413,7 @@ export function gitFiles(
         '--others',
         '--exclude-standard',
       ],
+      env: gitEnv(),
       cwd: workspaceRoot,
       stdout: 'pipe',
       stderr: 'ignore',

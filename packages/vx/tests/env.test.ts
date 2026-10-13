@@ -4,11 +4,11 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { describe, expect, it } from 'bun:test'
 import {
   buildIsolatedEnv,
-  ESSENTIAL_ENV,
   PM_EXEC_ENV,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
 } from '../src/exec/env.js'
+import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { resolveInputs } from '../src/cache/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'

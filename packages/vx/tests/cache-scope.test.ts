@@ -293,9 +293,7 @@ describe('cache.scope', () => {
       process.env['VX_CACHE_POLICY'] = 'remote:rw'
       expect(parseRunArgs(['build']).remoteRequested).toBe(true)
       process.env['VX_CACHE_POLICY'] = 'disk:r'
-      expect(parseRunArgs(['build']).error).toContain(
-        "VX_CACHE_POLICY: invalid --cache layer 'disk'",
-      )
+      expect(parseRunArgs(['build']).error).toContain("VX_CACHE_POLICY: invalid layer 'disk'")
       process.env['VX_CACHE_POLICY'] = ','
       expect(parseRunArgs(['build']).error).toContain('VX_CACHE_POLICY needs a spec')
     } finally {
@@ -489,7 +487,7 @@ describe('cache.policy', () => {
           config: BUILD_CONFIG,
         })
         expect(await refusal(`{ cache: { policy: 'local:x' } }`)).toBe(
-          "vx.workspace: `cache.policy`: invalid --cache flag 'x' for 'local': expected 'r' and/or 'w'",
+          "vx.workspace: `cache.policy`: invalid flag 'x' for 'local': expected 'r' and/or 'w'",
         )
         expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain(
           'has field "cacheScope", which vx 0.0.637 removed — use `cache: { scope }`',

@@ -30,6 +30,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       ['.aws/credentials', 'AWSKEY'],
       ['.bunfig.toml', 'BUNFIG'],
       ['.cargo/credentials.toml', 'CARGO'],
+      ['.config/configstore/firebase-tools.json', 'FIREBASE'],
+      ['.claude/.credentials.json', 'AGENT'],
       ['.cache/tool/state', 'CACHE'],
     ] as const) {
       await mkdir(path.dirname(path.join(home, rel)), { recursive: true })
@@ -50,6 +52,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       '.aws/credentials',
       '.bunfig.toml',
       '.cargo/credentials.toml',
+      '.config/configstore/firebase-tools.json',
+      '.claude/.credentials.json',
       '.cache/tool/state',
     ]
       .map(read)
@@ -87,7 +91,9 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       return text
         .split('\n')
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
-        .filter((l) => /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|CACHE|WROTE|CLI)/.test(l))
+        .filter((l) =>
+          /^(no \.|SSHKEY|NPMRC|AWSKEY|BUNFIG|CARGO|FIREBASE|AGENT|CACHE|WROTE|CLI)/.test(l),
+        )
     }
     expect(out('peek')).toEqual([
       'no .ssh/id_ed25519',
@@ -95,6 +101,8 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       'no .aws/credentials',
       'no .bunfig.toml',
       'no .cargo/credentials.toml',
+      'no .config/configstore/firebase-tools.json',
+      'no .claude/.credentials.json',
       'CACHE',
     ])
     expect(out('granted')).toEqual(['NPMRC'])

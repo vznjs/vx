@@ -9,26 +9,22 @@ import path from 'node:path'
 import type { SandboxViolation } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { isLiteralPattern } from '../util/index.js'
+import { CREDENTIAL_STORES } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
 type Kind = Exclude<keyof SandboxFix, 'withheld'>
 
-// Where credentials live. A denial here is never turned into a grant: an
-// agent applies `sandboxFix` as given, so a dependency probing ~/.ssh would
-// get its grant suggested and applied (Security, 2026-10-12).
-const CREDENTIAL_DIRS = ['.ssh', '.aws', '.gnupg', '.kube', '.config/gh', '.config/gcloud']
-const CREDENTIAL_FILES = ['.netrc', '.npmrc', '.docker/config.json', '.git-credentials', '.pypirc']
-
+// A denial in a credential store is never turned into a grant: an agent
+// applies `sandboxFix` as given, so a dependency probing ~/.ssh would get
+// its grant suggested and applied (Security, 2026-10-12). The stores are
+// the ones the sandbox denies: a hand copy here missed half of them.
 function isCredential(abs: string): boolean {
   const base = path.basename(abs)
   if (base === '.env' || base.startsWith('.env.')) return true
   const rel = path.relative(os.homedir(), abs)
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return false
-  return (
-    CREDENTIAL_FILES.includes(rel) ||
-    CREDENTIAL_DIRS.some((d) => rel === d || rel.startsWith(d + path.sep))
-  )
+  return CREDENTIAL_STORES.some((d) => rel === d || rel.startsWith(d + path.sep))
 }
 
 /**

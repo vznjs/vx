@@ -6,7 +6,7 @@ authors:
 tags:
   - security
   - dx
-excerpt: 'vx upgrade checks the SHA-256 before it replaces anything, and swaps back if the new binary does not start. Every release carries signed provenance. And a CLI that refuses 0x10 instead of guessing.'
+excerpt: 'vx upgrade checks npm’s registry signature and the SHA-512 before it replaces anything, upgrades an npm, pnpm, bun or yarn install through that package manager, and swaps back if the new binary does not start. And a CLI that refuses 0x10 instead of guessing.'
 ---
 
 A tool that replaces itself has one job to get right: never leave you
@@ -15,9 +15,11 @@ careful about both.
 
 ```mermaid
 flowchart LR
-  A[ask GitHub for the asset and its SHA-256] --> D[download]
-  D --> C{digest matches?}
-  C -->|no| N[nothing replaced]
+  A[read the release from the npm registry] --> G{npm's signature verifies?}
+  G -->|no| N[nothing replaced]
+  G -->|yes| D[download]
+  D --> C{SHA-512 matches what npm signed?}
+  C -->|no| N
   C -->|yes| S[swap in the new binary]
   S --> V{answers --version?}
   V -->|no| B[swap the old one back]
@@ -34,8 +36,13 @@ $ vx upgrade v0.4.0     # a specific one
 
 What it guards against:
 
-- A download that does not match the release's SHA-256 replaces nothing.
-  A release with no digest for the asset is refused before the download.
+- The release must carry npm's registry signature over its name, version
+  and SHA-512, checked against npm's key, which vx pins. The server that
+  hands out the file cannot make that signature, so a swapped file is
+  refused. So is a signature from a key vx does not know, with a note that
+  vx itself needs updating.
+- The download must match the SHA-512 npm signed. Nothing is written
+  until both checks pass.
 - The new binary must answer `--version` within 10 seconds. One that
   does not start on this machine is swapped back, and the command exits 1.
 - A folder you cannot write, such as a root-owned `/usr/local/bin`, is
@@ -45,21 +52,32 @@ What it guards against:
 - On the version it already is, it says `already at <version>` and
   downloads nothing.
 
-An npm install is npm's to update, so there `vx upgrade` tells you to run
-`npm install -g @vzn/vx@latest`, rather than leaving a file npm will
-quietly put back.
+Installed with a package manager? Then that package manager owns the
+file, so `vx upgrade` asks it to do the upgrade and prints the command it
+runs: `npm install -g`, `pnpm add -g`, `bun add -g` or `yarn global add`
+for a global install, and the project's own manager for a dependency, so
+`package.json` and the lockfile change together:
+
+```sh frame="terminal"
+$ vx upgrade
+vx upgrade: 0.0.635 → 0.0.640: running pnpm add @vzn/vx@0.0.640 --save-dev (in /repo)
+```
+
+vx never installs Node or a package manager for you.
 
 ## Who built the bytes
 
-A digest proves the transfer, not the builder. So every release binary
-also carries a Sigstore-signed build-provenance attestation:
+npm's signature proves these are the bytes npm's registry received.
+It does not say who built them. For that, every release binary
+carries a Sigstore-signed build-provenance attestation naming the
+repository, commit and CI workflow that built it:
 
 ```sh frame="terminal"
 $ gh attestation verify vx-linux-x64 --repo vznjs/vx
 ```
 
 npm packages are published from CI through trusted publishing, with
-provenance attached, and no long-lived token exists to steal.
+provenance attached, so no long-lived npm token exists to steal.
 
 ## A CLI that does not guess
 

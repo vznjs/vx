@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { executablePath, relPosix, UserError } from '../util/index.js'
+import { executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
@@ -530,6 +530,7 @@ function gitIgnored(root: string, relPaths: readonly string[]): string[] {
   try {
     const r = Bun.spawnSync({
       cmd: [executablePath('git'), 'check-ignore', '--stdin', '-z'],
+      env: gitEnv(),
       cwd: root,
       stdin: Buffer.from(relPaths.map((p) => `${p}\0`).join('')),
       stdout: 'pipe',
@@ -551,6 +552,7 @@ function inGitWorkTree(root: string): boolean {
     return (
       Bun.spawnSync({
         cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+        env: gitEnv(),
         cwd: root,
         stdout: 'pipe',
         stderr: 'ignore',

@@ -62,6 +62,7 @@ import {
 import {
   BUN_GLOB_WILDCARDS,
   executablePath,
+  helperEnv,
   taskShell,
   grantPrefix,
   isTmpdirRefusal,
@@ -1806,10 +1807,11 @@ function spawnHostBridges(ports: readonly number[], tag: string): void {
             ? Bun.spawn(argv, {
                 stdio: ['ignore', 'ignore', 'ignore'],
                 detached: true,
+                env: helperEnv(),
               })
             : Bun.spawn(
                 [taskShell(), '-c', `${guardLine(3)}exec ${argv.map(shellQuote).join(' ')}`],
-                { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true },
+                { stdio: ['ignore', 'ignore', 'ignore', guard], detached: true, env: helperEnv() },
               ),
         ),
       )

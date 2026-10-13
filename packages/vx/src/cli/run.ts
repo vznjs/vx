@@ -272,7 +272,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         cachePolicy = parseCachePolicy(v, cachePolicy)
         if (/remote:[rw]/.test(v)) out.remoteRequested = true
       } catch (err) {
-        cacheSpecError = err instanceof Error ? err.message : String(err)
+        cacheSpecError = `--cache: ${err instanceof Error ? err.message : String(err)}`
       }
     } else if (a === '--no-cache') {
       noCacheFlag = true

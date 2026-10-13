@@ -36,7 +36,7 @@ vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--for
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
-vx upgrade [TAG]      # self-update a compiled binary
+vx upgrade [TAG]      # upgrade vx the way it was installed
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
 
@@ -625,7 +625,8 @@ Combine with `--force` for "re-execute and refresh only the remote":
 `--cache=local: --force` (local off, reads off, remote write-only).
 
 Invalid layers/flags are a parse error
-(`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
+(`--cache: invalid layer 'disk'`, `--cache: invalid flag 'x'`, …);
+`VX_CACHE` and `cache.policy` say their own name instead.
 
 ### Output
 
@@ -1866,47 +1867,76 @@ version in a comment; bump the SHA and the comment together.
 
 ## `vx upgrade`
 
-Self-update the compiled binary in place: asks the GitHub release API
-for this platform's asset and the SHA-256 digest it publishes,
-downloads the asset, verifies the digest, and atomically replaces the
-running executable (`vx upgrade TAG` pins a specific release; default
-latest; a second tag is refused, not dropped). A download that does not match the digest replaces nothing —
-`the download did not match the release's SHA-256 … nothing replaced` —
-and a release that publishes no digest for the asset is refused before
-the download. The digest comes from the same API as the asset, so it
-proves the transfer, not who built the bytes: every release binary also
-carries a Sigstore-signed build-provenance attestation, checked with
-`gh attestation verify vx-<target> --repo vznjs/vx`. Named
-`upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
-when running from source — use `git pull` — and when the binary is
-npm's: an npm install runs the platform package's compiled binary
-under `node_modules`, and a rename over that file lasts until the next
-`npm install` puts the version npm knows back, so `vx upgrade` there
-says `this vx was installed by npm … Update with: npm install -g
-@vzn/vx@latest`. A host it cannot reach (no route, a proxy that is
-down) is one line — `could not reach api.github.com to read the
-release (…) — check the network or the proxy and re-run` — never a
-stack; so is a release document cut after the headers arrived or not
-JSON (a captive portal's page served with a 200): `could not read the
-release from api.github.com (…) — nothing replaced; …`, and an asset
-download cut the same way: `could not download the release asset from
-github.com (…) — nothing replaced; …`. A binary whose directory this
-user cannot write (a root-owned `/usr/local/bin`) is refused before the
-download: `cannot write to <dir> (EACCES), where this vx lives — nothing
-downloaded; re-run as a user who can (sudo vx upgrade), …`. The new binary
-keeps the old one's mode (and, as root, its owner), and must answer
-`--version` before the upgrade reports it installed: one that does not
-start on this machine — or does not answer within 10 s — is swapped back
-for the previous vx, and the command exits 1 saying so (item 1097). On the version it already is
-it says `already at <version>` and downloads nothing; a second tag is
-refused rather than ignored; and GitHub's hourly API limit for an
-unauthenticated address is named, with its reset time, instead of a
-bare `(403)` (item 1098).
+Brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
+`0.4.0`; default latest; a second tag is refused, not dropped), the way
+it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
+`deno upgrade`). Refuses when running from source: use `git pull`.
 
-Exit codes: `0` the new binary installed, or already at that version;
-`1` anything refused or swapped back: from source, from npm, a host it
-cannot reach, a directory it cannot write, a digest that does not match,
-a binary that does not start.
+**A compiled binary installed by hand** replaces itself. It reads its
+platform package (`@vzn/vx-<os>-<arch>`) from the npm registry and
+checks npm's registry signature over `<name>@<version>:<integrity>`
+against npm's signing key, pinned in vx (key id
+`SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`), then the
+tarball's SHA-512 against that signed integrity, and only then extracts
+`package/vx`, stages it in a fresh directory beside the binary and
+renames it over. The host that serves the tarball cannot make that
+signature, so a swapped tarball, or a document with a swapped integrity,
+is refused: `the npm registry signature for … is not valid — refusing
+to install; nothing replaced`, or `the download did not match the
+integrity npm signed … nothing replaced`. A release signed with a key
+id vx does not pin says so: `… is signed with an npm key this vx does
+not know (…) — if npm rotated its signing key, this vx's installer
+needs updating`. A release with no signature or no integrity is refused
+before the download. Every refusal comes before anything is written.
+There is no fallback to GitHub's release digest: when the registry is
+unreachable, the upgrade is refused.
+
+A host it cannot reach (no route, a proxy that is down) is one line,
+`could not reach registry.npmjs.org to read the release (…) — check the
+network or the proxy and re-run`, never a stack; so is a document cut
+after the headers or not JSON (a captive portal's page served with a
+200), and a tarball cut the same way. A binary whose directory this user
+cannot write (a root-owned `/usr/local/bin`) is refused before the
+download: `cannot write to <dir> (EACCES), where this vx lives — nothing
+downloaded; re-run as a user who can (sudo vx upgrade), …`. The new
+binary keeps the old one's mode (and, as root, its owner), and must
+answer `--version` before the upgrade reports it installed: one that
+does not start on this machine, or does not answer within 10 s, is
+swapped back for the previous vx, and the command exits 1 saying so
+(item 1097). On the version it already is it says `already at
+<version>` and downloads nothing.
+
+**A vx a package manager installed** (the npm package's launcher runs
+`…/node_modules/@vzn/vx-<os>-<arch>/vx`) is upgraded by that package
+manager, never by a rename over its file, which the next install would
+undo. The path names the install:
+
+| Install                | Detected by                           | Runs                          |
+| ---------------------- | ------------------------------------- | ----------------------------- |
+| npm global             | `<prefix>/lib/node_modules`           | `npm install -g @vzn/vx@<v>`  |
+| pnpm global            | `…/pnpm/global/…`                     | `pnpm add -g @vzn/vx@<v>`     |
+| bun global             | `~/.bun/install/global`               | `bun add -g @vzn/vx@<v>`      |
+| yarn global            | `…/yarn/global/…`                     | `yarn global add @vzn/vx@<v>` |
+| a project's dependency | the package.json that lists `@vzn/vx` | its manager's add, same field |
+
+A project's package.json is the tree's root, or for a hoisted workspace
+the nearest one above the current directory that lists `@vzn/vx`. Its
+manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
+`package-lock.json`), else `packageManager`, else npm; the field it is
+listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
+root adds `--workspace-root`. The lockfile is updated by that manager.
+vx prints what it runs (`vx upgrade: 0.0.1 → 0.0.2: running pnpm add
+@vzn/vx@0.0.2 --save-dev (in /repo)`), runs it there, and exits with an
+error if it fails. vx never installs Node or a package manager: one not
+on `PATH` is refused with the command to run. A vx run from an npx or
+bunx cache has nothing installed to upgrade, and says to ask for
+`@vzn/vx@latest` instead.
+
+Exit codes: `0` installed, or already at that version; `1` anything
+refused or swapped back: from source, a cache install, a host it cannot
+reach, a directory it cannot write, a signature or integrity that does
+not verify, a binary that does not start, a package manager that failed
+or is missing.
 
 ## `vx init`
 
@@ -2333,8 +2363,8 @@ prose on stderr do not change. Branch on the code; the message may change.
 
 #### `VX_E_USAGE`
 
-A flag, argument or selection the verb does not take. The message names
-it, and a close spelling the verb does take when there is one;
+A flag, argument, selection or `VX_*` environment value the verb does
+not take. The message names it, and a close spelling the verb does take when there is one;
 `vx <verb> --help` lists every flag.
 
 #### `VX_E_UNKNOWN_COMMAND`
@@ -2380,7 +2410,8 @@ The task graph has a cycle. The message names the loop; drop one of its
 #### `VX_E_NO_WORKSPACE`
 
 No workspace root above the working directory. Run vx inside the repo,
-or create a `package.json` and run `vx init`.
+or create a `package.json` and run `vx init`. A manifest above it that
+another user owns does not count (`security.md`); the message names it.
 
 #### `VX_E_CACHE_VERSION`
 
@@ -2893,7 +2924,9 @@ passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
-`withheld` lists the credential paths it denied and left out. They live in `<cacheDir>/failures/<runId>.json`, the
+`withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`). A task
+failed by `inputStability.severity: 'error'` adds `inputMoved`, the
+input that changed during the run. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that
@@ -3051,32 +3084,33 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 
 <!-- variables table: generated by tests/settings.test.ts -->
 
-| Variable                            | Setting                                               | What it does                                                                                                  |
-| ----------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `VX_RUN_CONCURRENCY`                | [`run.concurrency`](schema.md#settings)               | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                         |
-| `VX_RUN_SCHEDULE`                   | [`run.schedule`](schema.md#settings)                  | Which ready task starts first when there are more than workers.                                               |
-| `VX_RUN_AFFECTED_BASE`              | [`run.affectedBase`](schema.md#settings)              | The git ref a bare `--affected` compares with.                                                                |
-| `VX_RUN_TIMEOUT`                    | [`run.timeout`](schema.md#settings)                   | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).                                    |
-| `VX_RUN_RETRIES`                    | [`run.retries`](schema.md#settings)                   | Re-runs of a failed task, for tasks without their own `exec.retries`.                                         |
-| `VX_RUN_CONTINUE`                   | [`run.continue`](schema.md#settings)                  | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too. |
-| `VX_RUN_OUTPUT_LOGS`                | [`run.outputLogs`](schema.md#settings)                | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                    |
-| `VX_RUN_KILL_GRACE`                 | [`run.killGrace`](schema.md#settings)                 | How long a task that ignores SIGTERM gets before SIGKILL.                                                     |
-| `VX_RUN_TEARDOWN_TIMEOUT`           | [`run.teardownTimeout`](schema.md#settings)           | The bound on each plugin's end-of-run flush and teardown.                                                     |
-| `VX_RUN_READY_NOTICE`               | [`run.readyNotice`](schema.md#settings)               | How long a persistent task may take to match `readyWhen` before vx says it waits.                             |
-| `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                         |
-| `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                  |
-| `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                       |
-| `VX_CACHE_RETENTION_MAX_SIZE`       | [`cache.retention.maxSize`](schema.md#settings)       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                 |
-| `VX_CACHE_RETENTION_OLDER_THAN`     | [`cache.retention.olderThan`](schema.md#settings)     | Evict entries unused for this long at each run's end (`'30d'`).                                               |
-| `VX_CACHE_POLICY`                   | [`cache.policy`](schema.md#settings)                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.         |
-| `VX_CACHE_SCOPE`                    | [`cache.scope`](schema.md#settings)                   | Where remote writes land: `'trusted'`, `'read-only'`, or an untrusted scope (`'pr-123'`).                     |
-| `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                 |
-| `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                  |
-| `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                  |
-| `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                    |
-| `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                      |
-| `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                      |
-| `VX_RUN_WORKSPACE`, `VX_RUN_TASK`   | —                                                     | Set by vx on every task (below); a `vx run` a task starts reads them back.                                    |
+| Variable                            | Setting                                               | What it does                                                                                                                |
+| ----------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `VX_RUN_CONCURRENCY`                | [`run.concurrency`](schema.md#settings)               | Tasks at once: a positive integer, or a share of the cores (`'50%'`).                                                       |
+| `VX_RUN_SCHEDULE`                   | [`run.schedule`](schema.md#settings)                  | Which ready task starts first when there are more than workers.                                                             |
+| `VX_RUN_AFFECTED_BASE`              | [`run.affectedBase`](schema.md#settings)              | The git ref a bare `--affected` compares with.                                                                              |
+| `VX_RUN_TIMEOUT`                    | [`run.timeout`](schema.md#settings)                   | A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).                                                  |
+| `VX_RUN_RETRIES`                    | [`run.retries`](schema.md#settings)                   | Re-runs of a failed task, for tasks without their own `exec.retries`.                                                       |
+| `VX_RUN_CONTINUE`                   | [`run.continue`](schema.md#settings)                  | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.               |
+| `VX_RUN_OUTPUT_LOGS`                | [`run.outputLogs`](schema.md#settings)                | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                  |
+| `VX_RUN_KILL_GRACE`                 | [`run.killGrace`](schema.md#settings)                 | How long a task that ignores SIGTERM gets before SIGKILL.                                                                   |
+| `VX_RUN_TEARDOWN_TIMEOUT`           | [`run.teardownTimeout`](schema.md#settings)           | The bound on each plugin's end-of-run flush and teardown.                                                                   |
+| `VX_RUN_READY_NOTICE`               | [`run.readyNotice`](schema.md#settings)               | How long a persistent task may take to match `readyWhen` before vx says it waits.                                           |
+| `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                       |
+| `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                                |
+| `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                     |
+| `VX_CACHE_RETENTION_MAX_SIZE`       | [`cache.retention.maxSize`](schema.md#settings)       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                               |
+| `VX_CACHE_RETENTION_OLDER_THAN`     | [`cache.retention.olderThan`](schema.md#settings)     | Evict entries unused for this long at each run's end (`'30d'`).                                                             |
+| `VX_CACHE_POLICY`                   | [`cache.policy`](schema.md#settings)                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                       |
+| `VX_CACHE_SCOPE`                    | [`cache.scope`](schema.md#settings)                   | Where remote writes land: `'trusted'`, `'read-only'`, or an untrusted scope (`'pr-123'`).                                   |
+| `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                               |
+| `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                |
+| `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                |
+| `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                  |
+| `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                    |
+| `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                                    |
+| `VX_DEBUG_DUMPABLE`                 | [`debug.dumpable`](schema.md#settings)                | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env. |
+| `VX_RUN_WORKSPACE`, `VX_RUN_TASK`   | —                                                     | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                  |
 
 <!-- /variables table -->
 

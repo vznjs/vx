@@ -51,6 +51,7 @@ export interface TaskOutcome {
   timedOut?: true // failed: vx's own `timeout` killed the final attempt
   failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
+  inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host (telemetry-only)
   outputs?: 'deferred' // outputs left in the remote store (`--download=none`)
   wallclockStartNs?: bigint // hrtime span relative to run t=0

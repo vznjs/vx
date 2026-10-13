@@ -43,7 +43,7 @@ For the high-level data flow, read
 | [`plugin-commands.md`](./plugin-commands.md) | `src/cli/plugin-commands.ts` — plugin-contributed verbs (`VxPlugin.commands`).                                                                                                                                                                                                                                                                              |
 | [`cli-format.md`](./cli-format.md)           | `src/cli/format.ts` — `formatBytes` and other shared formatters.                                                                                                                                                                                                                                                                                            |
 | [`plan-format.md`](./plan-format.md)         | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                                                                                                                                                                                                                                                                                                        |
-| [`upgrade.md`](./upgrade.md)                 | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                                                                                                                                                                                                                                                                                                     |
+| [`upgrade.md`](./upgrade.md)                 | `src/cli/upgrade.ts` — `vx upgrade`: a verified binary, or its package manager.                                                                                                                                                                                                                                                                             |
 
 The remaining subcommand parsers —
 `src/cli/{lock,show,info,last,why,init}.ts`
@@ -153,7 +153,7 @@ here, itself or in a brace group.
 | [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
 | [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
 | [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.           |
-| [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition + essential allowlist.                                                      |
+| [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition; `src/util/essential-env.ts` — the essential allowlist.                     |
 | [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.              |
 |                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |
 |                                              | `src/exec/sandbox-binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.              |
@@ -184,6 +184,7 @@ here, itself or in a brace group.
 | [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                             |
 | [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                             |
 | [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                  |
+| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.  |
 | [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                        |
 | [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                             |
 | [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                       |

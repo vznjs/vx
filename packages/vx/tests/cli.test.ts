@@ -1861,9 +1861,9 @@ describe('parseRunArgs', () => {
   })
 
   it('--cache rejects unknown layers and flags', () => {
-    expect(parseRunArgs(['build', '--cache=disk:r']).error).toMatch(/invalid --cache layer/)
-    expect(parseRunArgs(['build', '--cache=local:x']).error).toMatch(/invalid --cache flag/)
-    expect(parseRunArgs(['build', '--cache=local']).error).toMatch(/invalid --cache segment/)
+    expect(parseRunArgs(['build', '--cache=disk:r']).error).toMatch(/^--cache: invalid layer/)
+    expect(parseRunArgs(['build', '--cache=local:x']).error).toMatch(/^--cache: invalid flag/)
+    expect(parseRunArgs(['build', '--cache=local']).error).toMatch(/^--cache: invalid segment/)
   })
 
   it('--no-cache beats --force regardless of order', () => {

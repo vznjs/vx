@@ -1261,6 +1261,7 @@ export const MORE: readonly Feature[] = [
     body: [
       'A build that reads a stray variable from your shell works on your machine and nowhere else. vx starts each task with a clean environment plus what you name.',
       '`passThrough` lets a variable in, `define` sets one, and `secret` masks a value wherever it would be printed.',
+      'This keeps builds alike, not a wall: an unsandboxed task can still read vx’s own environment on macOS (on Linux vx is non-dumpable). `exec.sandbox` keeps it out on both.',
     ],
     example: {
       lang: 'ts',
@@ -1377,10 +1378,10 @@ export const MORE: readonly Feature[] = [
     slug: 'verified-releases',
     title: 'Releases you can verify',
     category: 'safety',
-    hook: 'Binaries carry provenance, and `vx upgrade` checks every download’s SHA-256.',
+    hook: 'Binaries carry provenance, and `vx upgrade` checks npm’s registry signature on every download.',
     body: [
       'A task runner runs every command in your repo, so where its binary came from matters. vx release binaries carry build provenance, and the npm package is published with provenance.',
-      '`vx upgrade` checks the download against its SHA-256 before replacing anything.',
+      '`vx upgrade` checks npm’s registry signature against a pinned key, then the SHA-512 it signed, before replacing anything.',
     ],
     example: {
       lang: 'sh',

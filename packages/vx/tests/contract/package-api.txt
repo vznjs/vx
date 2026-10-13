@@ -260,6 +260,7 @@ export function exitSignal(code: number): string | undefined
 export async function findWorkspaceRoot(
   start: string,
   reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
 == function foldScriptHooks (src/workspace/migration.ts)
 export function foldScriptHooks(
@@ -1005,6 +1006,7 @@ export interface OutcomeView {
   peakRssBytes?: number
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
   blockedBy?: string
   admissionHeldMs?: number
   queuedMs?: number
@@ -1594,6 +1596,7 @@ export interface TaskFailure {
   taskId: string
   exitCode: number
   timedOut?: true
+  inputMoved?: string
   output: string
   locations: OutputLocation[]
   sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
@@ -1698,6 +1701,7 @@ export interface TaskOutcome {
   timedOut?: true
   failedOutput?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
   where?: string
   outputs?: 'deferred'
   wallclockStartNs?: bigint

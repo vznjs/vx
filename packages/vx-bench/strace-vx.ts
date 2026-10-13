@@ -6,7 +6,7 @@
 // restore's spare round trips and the save's two `mkdir`s: a syscall
 // count is deterministic where this container's wall time is not.
 //
-//   strace -f -o /tmp/vx-cold.txt bun packages/vx/src/bin.ts run build --all
+//   VX_DEBUG_DUMPABLE=1 strace -f -o /tmp/vx-cold.txt bun packages/vx/src/bin.ts run build --all
 //   bun packages/vx-bench/strace-vx.ts /tmp/vx-cold.txt [/tmp/vx-cold-before.txt]
 //
 // With a second file the table is a diff, `after − before` per syscall.

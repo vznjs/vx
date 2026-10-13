@@ -1,4 +1,4 @@
-# Turbo + Nx test gap analysis
+# vx test gaps against Turbo and Nx
 
 > **Status (2026-09-23):** audited in [`parity-audit-2026-09.md`](./parity-audit-2026-09.md)
 > (item 659). Most entries below are fixed, declined or obsolete; the

@@ -109,7 +109,8 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['sandbox-request', 'orchestrator/sandbox-request.ts', 'Placeholder'],
   ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRunUnion'],
   ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
-  ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
+  ['upgrade', 'cli/upgrade.ts', 'SignedRelease'],
+  ['upgrade', 'cli/upgrade.ts', 'ManagedInstall'],
   ['cli-watch', 'cli/watch-fs.ts', 'ArmedWatcher'],
   ['cli-watch', 'cli/watch-set.ts', 'ConfigSweep'],
   ['cli-watch', 'cli/watch-judge.ts', 'JudgeContext'],
@@ -161,7 +162,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("env.md's allowlist paragraph is ESSENTIAL_ENV", () => {
-    const src = read('src/exec/env.ts')
+    const src = read('src/util/essential-env.ts')
     const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
@@ -169,6 +170,16 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const list = /The list:\n\n([\s\S]*?)\n\n/.exec(doc)
     expect(list).not.toBeNull()
     expect([...list![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
+  })
+
+  it("schema.md's credential stores are CREDENTIAL_STORES", () => {
+    const src = read('src/orchestrator/sandbox-request.ts')
+    const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
+    expect(arr).not.toBeNull()
+    const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
+    const list = /shares \(L-41\): ([\s\S]*?)\.\nWhat it grants/.exec(read('docs/schema.md'))
+    expect(list).not.toBeNull()
+    expect([...list![1]!.matchAll(/`~\/([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
 
   it("history.md's default window is DEFAULT_RECENT", () => {

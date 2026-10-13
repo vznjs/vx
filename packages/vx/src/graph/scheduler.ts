@@ -158,6 +158,12 @@ export interface TaskOutcome {
    * the spawn itself failed. Every label reads this instead of the exit.
    */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /**
+   * The input that changed while the command ran, failing the task under
+   * `inputStability.severity: 'error'` (workspace-relative; '' when vx
+   * could not name it). The exit is vx's 1; the label reads this instead.
+   */
+  inputMoved?: string
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string

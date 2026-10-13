@@ -82,7 +82,7 @@ function statusWord(o: OutcomeView): string {
     case 'cache-hit-remote':
       return 'success'
     case 'failed':
-      return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
+      return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
     case 'skipped':
       return skippedLabel(o.blockedBy)
     case 'aborted':

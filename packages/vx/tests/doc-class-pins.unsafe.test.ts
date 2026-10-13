@@ -15,7 +15,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', '..', 'vx-docs', 'src', 'content', 'docs')
@@ -441,8 +441,10 @@ describe('every page stating the timeout ladder states all four rungs', () => {
       'utf8',
     )
     expect(run).toContain("timeout: 'run.timeout',")
-    const pages = handAuthoredDocs().filter((p) =>
-      readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
+    // upgrading.md is git log's breaking footers, not a statement of the ladder.
+    const pages = handAuthoredDocs().filter(
+      (p) =>
+        path.basename(p) !== 'upgrading.md' && readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
     )
     // cli.md, schema.md, the configure guide's workspace section (the
     // workspace-config guide until the short site) and the feature

@@ -31,7 +31,9 @@ const refusal = (where: string, code: string): string =>
   `vx upgrade: cannot write to ${where} (${code}), where this vx lives — nothing downloaded; re-run as a user who can (sudo vx upgrade), or install vx somewhere you can write`
 
 async function refused(dest: string): Promise<string> {
-  return await replaceBinary(dest, 'https://example.invalid/asset', 'a'.repeat(64)).then(
+  const download = async (): Promise<Uint8Array> =>
+    new Uint8Array(await (await fetch('https://example.invalid/asset')).arrayBuffer())
+  return await replaceBinary(dest, download).then(
     () => 'installed',
     (err: Error) => err.message,
   )

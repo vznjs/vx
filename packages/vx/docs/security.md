@@ -10,7 +10,11 @@ vulnerability), never in a public issue.
 
 - **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
-  validates what it returns, not what it does. What a config imports
+  validates what it returns, not what it does. Looking for the
+  workspace root above where you run, vx stops at a manifest another
+  user owns (root aside), so a `package.json` planted in a shared
+  directory such as `/tmp` cannot claim your checkout and run its
+  config as you (`tests/workspace-foreign-owner.test.ts`). What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
@@ -139,13 +143,24 @@ A task with `exec.sandbox` runs where only what it declares exists:
   outside the sandbox, and a link to another project's file would have
   carried that file into the cache (L-23). An output directory linked out
   of the project refuses the task by name (X-88).
+- vx's own environment, which holds the variables a task is not given
+  (a token, a key), is unreadable: the task cannot see vx's
+  `/proc/<pid>/environ` on Linux or read it through `ps eww` on macOS
+  (`tests/sandbox-parent-env.unsafe.test.ts`).
 
 An undeclared touch of the task's own files fails the task, and a failed
 task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/sandboxing/).
 
 ## What it does not stop
 
-- **A task with no `exec.sandbox`.** It runs with your permissions.
+- **A task with no `exec.sandbox`.** It runs with your permissions:
+  it reads anything you can. vx hides its own environment from it on
+  every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
+  macOS it zeroes the values `ps eww` reads, every variable but the
+  essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
+  alone and each `git` with only what git reads
+  (`tests/hide-env.unsafe.test.ts`, `tests/git-env.test.ts`). That hides
+  the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
   stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
@@ -204,10 +219,16 @@ secret values: a name-based match would refuse public `*_KEY` values too.
 
 Release binaries carry a build-provenance attestation
 (`gh attestation verify vx-<target> --repo vznjs/vx`); `vx upgrade`
-checks each download's SHA-256 before it replaces anything and stages it in a fresh directory, never a name another user could plant a link at, which proves
-the bytes arrived intact, not who built them: the digest comes from the
-release that serves the asset, and no signature is checked (owner,
-2026-10-03: no release signing key for now); npm packages
+installs a binary only after npm's registry signature over the platform
+package's `name@version:integrity` verifies against npm's key, pinned
+in vx, and the tarball matches that integrity: the host that serves the
+bytes cannot make the signature, so a swapped tarball is refused before
+anything is written, and a key id vx does not pin is refused with a hint
+that the installer needs updating (owner, 2026-10-13; pnpm's installer
+checks the same). The new binary is staged in a fresh directory, never a
+name another user could plant a link at. A vx a package manager
+installed is upgraded by that manager, which checks its own integrity.
+npm packages
 publish with provenance; every third-party action in CI runs from a
 full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a

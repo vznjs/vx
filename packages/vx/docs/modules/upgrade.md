@@ -1,61 +1,88 @@
-# `src/cli/upgrade.ts` — self-update
+# `src/cli/upgrade.ts` — `vx upgrade`
 
 ## Purpose
 
-`vx upgrade [TAG]` asks the GitHub release API for this os/arch's asset
-and the SHA-256 digest the API publishes for it, downloads the asset,
-verifies the digest, and atomically renames it over the current
-executable. A mismatch — a cut or corrupted transfer — replaces
-nothing (item 233). The digest guards the transfer, not the publisher:
-it comes from the same release API as the asset, and GitHub recomputes
-it on upload, so an asset replaced by someone who can write the release
-carries its own matching digest. No signature is checked (item 1096).
+`vx upgrade [TAG]` brings vx to a release the way it was installed. A
+compiled binary installed by hand reads its platform package
+(`@vzn/vx-<os>-<arch>`) from the npm registry, verifies npm's registry
+signature over `name@version:integrity` against npm's key pinned here,
+verifies the tarball's SHA-512 against that integrity, extracts
+`package/vx` and renames it over the current executable. The signature
+is what proves the bytes are npm's: the host serving the tarball cannot
+make it (owner, 2026-10-13; pnpm/get checks the same). A vx a package
+manager installed is upgraded by that manager (`managedInstall`,
+`upgradeArgv`); vx never installs Node or a package manager.
 
 ## Public surface
 
 ```ts
-export function isBunfsPath(p: string): boolean // a path inside the compiled binary's bundle
-export function npmOwnedBinary(execPath: string): string | null // the npm command that owns this file, or null
-export interface ReleaseAsset {
-  tag: string // the release's tag, as the API names it
-  url: string
-  sha256: string // the digest the release API publishes for the asset
+export const NPM_SIGNING_KEY: SigningKey // npm's registry key, pinned
+export interface SigningKey {
+  id: string // npm's key id, `SHA256:…`
+  spki: string // SPKI DER, base64
 }
-export function releaseAsset(release: unknown, name: string): ReleaseAsset // refuses a release without the asset or its digest
-export async function fetchRelease(tag: string | undefined): Promise<unknown> // exported for tests
-export function isThisVersion(tag: string, version: string): boolean // `v<version>` or `<version>`
+export function isBunfsPath(p: string): boolean // a path inside the compiled binary's bundle
+export function isCompiledBinary(): boolean
+export function npmOwnedBinary(execPath: string): string | null // the package that owns this file, or null
+export function versionSpec(tag: string | undefined): string // `latest`, or the version a tag names
+export async function fetchManifest(pkg: string, spec: string): Promise<unknown> // the registry's document
+export interface SignedRelease {
+  version: string
+  tarball: string
+  integrity: string // `sha512-…`, as npm signed it
+}
+// refuses no signature, an unpinned key id, a signature that does not verify, no integrity
+export function verifiedRelease(manifest: unknown, pkg: string, key?: SigningKey): SignedRelease
+
+export function binaryFromTarball(tgz: Uint8Array): Uint8Array // `package/vx`
+// the signature, the download's SHA-512, then the extraction; null when the release is this vx's version
+export async function releaseBinary(
+  pkg: string,
+  spec: string,
+  announce: (version: string) => void,
+  key?: SigningKey,
+): Promise<Uint8Array | null>
 export async function replaceBinary(
   dest: string,
-  url: string,
-  sha256: string,
+  fetchBinary: () => Promise<Uint8Array | null>, // runs after the write check
   starts?: (dest: string) => boolean, // false puts the previous binary back (item 1097)
-): Promise<void>
+): Promise<boolean> // false: nothing to install
+export interface ManagedInstall {
+  manager: 'npm' | 'pnpm' | 'bun' | 'yarn'
+  scope: 'global' | 'project'
+  cwd: string
+  field?: 'dependencies' | 'devDependencies' | 'optionalDependencies'
+}
+export function managedInstall(execPath: string, cwd: string): ManagedInstall | null
+export function upgradeArgv(install: ManagedInstall, version: string): string[]
 export async function upgradeCmd(args: readonly string[]): Promise<number>
 // `bin --version` when it answers as vx within the bound, else null: what `starts` asks
 export function startedVersion(bin: string, timeoutMs?: number): string | null // default 10 s
 ```
 
-A host the box cannot reach — the release API or the asset's — is
-one line naming the host and the step it was needed for (`could not
-reach <host> to <what>`), with the network or the proxy as the remedy;
-never Bun's `fetch` stack (832c349).
+A host the box cannot reach is one line naming the host and the step
+(`could not reach <host> to <what>`), never Bun's `fetch` stack
+(832c349).
 
 ## Invariants
 
+- Every refusal (signature, key id, integrity, extraction, a directory
+  it cannot write) comes before anything is written; the tarball is not
+  fetched until the signature verifies. `tests/upgrade.test.ts` holds a
+  forged signature, a wrong key id, a re-signed-elsewhere integrity and a
+  tampered tarball, each against an untouched `dest`.
+- The signed message is built from the package vx asked for, so npm's
+  signature for another package does not verify.
+- No fallback to GitHub's release digest: it comes from the same host as
+  the asset, so it proves the transfer only (item 1096).
 - Compiled-binary detection keys off `Bun.main` / `process.argv[1]`
   (`/$bunfs/…`); `import.meta.path` is only a last fallback, since under
-  `--minify --bytecode` it reports the original source path (the
-  2026-06-15 bug, when it was the only check).
-- Running from source refuses with a git-pull hint; an npm-installed
-  binary (the launcher runs `…/node_modules/@vzn/vx-<os>-<arch>/vx`,
-  a compiled binary that passes the bunfs check) refuses with the npm
-  command — npm owns that file, and the next install would put the
-  version it knows back (`npmOwnedBinary`, item 234).
-- `isBunfsPath(p)`, `releaseAsset(release, name)` and
-  `replaceBinary(dest, url, sha256, starts?)` exported for tests; the tests stub
-  `fetch`, and the compiled path against a real release stays manual
-  (proven 2026-09-16 with a scratch binary: `0.0.0 → latest`, verified,
-  replaced, `--version` reported the release).
-- A release without the asset, or an asset the API publishes no digest
-  for, is refused before any download: an upgrade that cannot be
-  verified is not attempted.
+  `--minify --bytecode` it reports the original source path.
+- A binary under `node_modules` is a package manager's: global trees by
+  path (`<prefix>/lib/node_modules`, `pnpm/global`, `.bun/install/global`,
+  `yarn/global`), a project by the package.json that lists `@vzn/vx`
+  (the tree's root, else the nearest above cwd), its manager by lockfile,
+  then `packageManager`. An npx or bunx cache is refused.
+- The compiled path against the real registry stays manual (proven
+  2026-10-13: `@vzn/vx-<os>-<arch>@0.0.635` for all four targets verified,
+  extracted, and the linux-x64 binary answered `vx 0.0.635`).

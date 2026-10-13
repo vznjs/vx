@@ -565,7 +565,7 @@ does: npm-run-all calls that manager back and falls back to a global `npm`
 without it. It names a binary on this machine, so it is not in the key.
 
 Anything outside these three layers, the two variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to the child:
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is absent from the child's environment:
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
@@ -578,6 +578,10 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 - **Determinism.** If host env leaked into the child, two machines
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
+
+This is hygiene, not a boundary: an unsandboxed task runs as you, so it
+can read your files. vx hides its own environment from a task
+(`modules/util-hide-env.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a
@@ -729,7 +733,9 @@ means. `strategy` says which writes count:
 
 A write that counts withholds the entry, and `severity` says what else
 happens: `'warn'` (the default) keeps the result, says why on the status
-line, and the run goes on; `'error'` fails the task, so the run fails.
+line, and the run goes on; `'error'` fails the task, so the run fails,
+and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
+(`inputMoved` in `vx last --format json` and MCP `getFailures`).
 Either way, every task that ran over the task's outputs, down the graph,
 withholds its save too, and a task of any project that declares the
 moved file as an input withholds its own.
@@ -1414,7 +1420,16 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.bunfig.toml`, `~/.config/.bunfig.toml`, `~/.cargo/credentials`,
 `~/.cargo/credentials.toml`, `~/.gem/credentials`, `~/.config/hub`,
 `~/.config/containers/auth.json`, `~/.terraform.d/credentials.tfrc.json`,
-`~/.vault-token`, `~/.pgpass`.
+`~/.vault-token`, `~/.pgpass`, `~/.config/configstore/firebase-tools.json`,
+`~/.local/share/com.vercel.cli/auth.json`,
+`~/Library/Application Support/com.vercel.cli/auth.json`,
+`~/.netlify/config.json`, `~/.config/netlify/config.json`,
+`~/Library/Preferences/netlify/config.json`, `~/.wrangler/config`,
+`~/.config/.wrangler/config`, `~/Library/Preferences/.wrangler/config`,
+`~/.fly/config.yml`, `~/.supabase/access-token`, `~/.config/doctl`,
+`~/Library/Application Support/doctl`, `~/.config/stripe/config.toml`,
+`~/.config/op`, `~/.expo/state.json`, `~/.claude/.credentials.json`,
+`~/.codex/auth.json`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
 Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
@@ -1619,7 +1634,7 @@ task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its
 unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
-`debug.timing`, `config.workerTimeout` and `run.outputLogs` are read
+`debug.timing`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
 None is folded into a cache key. The keys and variables before 0.0.637
 (`concurrency`, `cacheDir`, `timeout`, `VX_KILL_GRACE_MS`, …) are
@@ -1655,6 +1670,7 @@ default and where it came from.
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`                 | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                                                    |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                                 | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take. Was `VX_CONFIG_WORKER_TIMEOUT_MS`.                                                                                                   |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                   | —                                 | true or false                                                           | false                                      | Print the run's stage timings to stderr. Was `VX_TIMING`.                                                                                                                     |
+| `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`                 | —                                 | true or false                                                           | false                                      | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env. Was `VX_DUMPABLE`.                                |
 
 <!-- /settings table -->
 

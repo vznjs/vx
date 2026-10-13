@@ -212,6 +212,14 @@ export const SETTINGS: readonly Setting[] = [
     config: false,
     was: ['VX_TIMING'],
   },
+  {
+    path: 'debug.dumpable',
+    kind: { type: 'bool' },
+    default: 'false',
+    doc: 'Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.',
+    config: false,
+    was: ['VX_DUMPABLE'],
+  },
 ]
 
 /** The `vx.workspace` groups that hold settings; `plugins` is the other key. */
@@ -345,7 +353,7 @@ export function settingEnv(path: string, env: NodeJS.ProcessEnv = process.env): 
   const raw = env[name]
   if (raw === undefined || raw === '') return undefined
   const v = parseSettingValue(kind, raw)
-  if (v === null) throw new UserError(settingRefusal(path, name, raw))
+  if (v === null) throw new UserError(settingRefusal(path, name, raw), 'VX_E_USAGE')
   return v
 }
 
@@ -367,7 +375,7 @@ export function renamedTo(old: string, s: Setting): string {
 export function checkSettingsEnv(env: NodeJS.ProcessEnv = process.env): void {
   for (const [old, s] of RENAMED) {
     if (old.startsWith('VX_') && env[old] !== undefined) {
-      throw new UserError(`${old} was renamed ${renamedTo(old, s)} in vx 0.0.637`)
+      throw new UserError(`${old} was renamed ${renamedTo(old, s)} in vx 0.0.637`, 'VX_E_USAGE')
     }
   }
   for (const s of SETTINGS) settingEnv(s.path, env)

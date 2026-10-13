@@ -1,4 +1,4 @@
-# Turbo vs Nx vs vx — operation-by-operation breakdown
+# vx vs Turbo vs Nx — operation-by-operation breakdown
 
 > **Status:** reference / context doc (2026-05). Captures what each
 > runner does at each step of a `run` invocation. Updated when our
