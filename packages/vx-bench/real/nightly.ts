@@ -135,7 +135,9 @@ for (const repo of REPOS) {
     must(['git', 'clean', '-fdxq', '-e', 'node_modules', '-e', '**/node_modules'], dir)
     must(['pnpm', 'install', '--frozen-lockfile'], dir)
     repairManagedPnpm(dir)
-    must([vxBin, 'init', '--native'], dir)
+    // `vx init` installs the latest vx, published within the day, and a
+    // repo's pnpm `minimumReleaseAge` refuses it (TanStack/query, 2026-10-13).
+    must([vxBin, 'init', '--native'], dir, { ...benchEnv(), pnpm_config_minimum_release_age: '0' })
     const script = path.join(REPO_ROOT, 'packages/vx-bench/real', `${repo.tool}-repo.sh`)
     const toolArgs = repo.tool === 'nx' ? 'NX_ARGS' : 'TURBO_ARGS'
     const out = must(['bash', script, dir, vxBin, repo.tasks, values.reps!], dir, {
@@ -168,7 +170,9 @@ for (const repo of REPOS) {
       rows.push({ repo: repo.name, tool: repo.tool, arm, vx, rival })
     }
   } catch (err) {
-    failures.push(`${repo.name}: ${(err as Error).message.split('\n')[0]}`)
+    // The command line alone named no cause: keep the output's last line too.
+    const lines = (err as Error).message.split('\n').filter((l) => l.trim() !== '')
+    failures.push(`${repo.name}: ${lines[0]}${lines.length > 1 ? ` ${lines.at(-1)!.trim()}` : ''}`)
   }
 }
 
