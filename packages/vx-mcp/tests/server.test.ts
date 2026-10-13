@@ -488,8 +488,8 @@ describe('JSON-RPC edges (F-10)', () => {
     ).toBeNull()
   })
 
-  it('each known protocol version is echoed; an unknown one gets 2025-06-18', async () => {
-    const asked = ['2024-11-05', '2025-03-26', '2025-06-18', '1999-01-01']
+  it('each known protocol version is echoed; an unknown one gets 2025-11-25', async () => {
+    const asked = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '1999-01-01']
     const got: unknown[] = []
     for (const [i, v] of asked.entries()) {
       const r = (await handleMessage(req(i, 'initialize', { protocolVersion: v }), ctx)) as {
@@ -497,7 +497,72 @@ describe('JSON-RPC edges (F-10)', () => {
       }
       got.push(r.result.protocolVersion)
     }
-    expect(got).toEqual(['2024-11-05', '2025-03-26', '2025-06-18', '2025-06-18'])
+    expect(got).toEqual(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25', '2025-11-25'])
+  })
+
+  // 2026-07-28: no handshake; each request names its revision in `_meta`.
+  const meta = (v: unknown) => ({
+    _meta: {
+      'io.modelcontextprotocol/protocolVersion': v,
+      'io.modelcontextprotocol/clientCapabilities': {},
+    },
+  })
+  const serverInfo = { 'io.modelcontextprotocol/serverInfo': { name: 'vx', version: VERSION } }
+
+  it('server/discover lists every revision, the tools capability and who answers', async () => {
+    const r = (await handleMessage(req(1, 'server/discover', {}), ctx)) as {
+      result: Record<string, unknown>
+    }
+    expect(r.result).toEqual({
+      supportedVersions: ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'],
+      capabilities: { tools: {} },
+      instructions: expect.any(String),
+      ttlMs: 0,
+      cacheScope: 'private',
+      resultType: 'complete',
+      _meta: serverInfo,
+    })
+  })
+
+  it('a 2026-07-28 request is answered with no initialize, marked complete and signed', async () => {
+    const list = (await handleMessage(req(1, 'tools/list', meta('2026-07-28')), ctx)) as {
+      result: Record<string, unknown>
+    }
+    expect(list.result['resultType']).toBe('complete')
+    expect(list.result['_meta']).toEqual(serverInfo)
+    expect([list.result['ttlMs'], list.result['cacheScope']]).toEqual([0, 'private'])
+    expect((list.result['tools'] as unknown[]).length).toBeGreaterThan(0)
+    const call = (await handleMessage(
+      req(2, 'tools/call', { name: 'getWorkspaceInfo', arguments: {}, ...meta('2026-07-28') }),
+      ctx,
+    )) as { result: Record<string, unknown> }
+    expect([call.result['resultType'], call.result['_meta']]).toEqual(['complete', serverInfo])
+    // The older revisions' results stay as they were.
+    const old = (await handleMessage(req(3, 'tools/list'), ctx)) as {
+      result: Record<string, unknown>
+    }
+    expect(Object.keys(old.result)).toEqual(['tools'])
+  })
+
+  it('an unknown _meta revision is the spec error; the handshake and ping are gone from 2026-07-28', async () => {
+    expect(await handleMessage(req(1, 'tools/list', meta('2099-01-01')), ctx)).toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      error: {
+        code: -32022,
+        message: 'unsupported protocol version',
+        data: {
+          supported: ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'],
+          requested: '2099-01-01',
+        },
+      },
+    })
+    for (const method of ['initialize', 'ping']) {
+      const r = (await handleMessage(req(2, method, meta('2026-07-28')), ctx)) as {
+        error: { code: number }
+      }
+      expect(r.error.code).toBe(-32601)
+    }
   })
 
   it('no id is a notification, answered by silence; `id: null` is a request', async () => {

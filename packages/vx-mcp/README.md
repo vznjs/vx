@@ -79,15 +79,18 @@ those task names, and any other is refused before anything runs. A task's
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and four methods
 (`initialize`, `tools/list`, `tools/call`, `ping`); a batch, which the 2025-03-26 revision allows, is answered as one array. `src/server.ts` speaks it in
-about 230 lines with no dependencies, where the reference SDK pulls
+about 300 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
 What a config or plugin stage prints while a tool loads the workspace
 goes to stderr: `console`, `process.stdout`, `Bun.write(Bun.stdout, …)`
 and `Bun.stdout.writer()` (item 1069). A write straight to fd 1
 (`fs.writeSync(1, …)`) or a child with inherited stdout still lands in
 the reply stream: give such a child `stdout: 'pipe'`.
-It speaks revisions 2024-11-05, 2025-03-26 and 2025-06-18 (a client asking for
-another is offered the newest), and answers a request
+It speaks revisions 2024-11-05, 2025-03-26, 2025-06-18 and 2025-11-25
+through `initialize` (a client asking for another is offered the newest),
+and the stateless 2026-07-28: a request naming it in `_meta` needs no
+handshake, `server/discover` lists every revision, and a revision it
+does not speak is -32022 with the supported list. It answers a request
 outside JSON-RPC 2.0's envelope with -32600 and a call to an unknown
 tool or with non-object `arguments` with -32602; a tool's own refusal
 is an `isError` result. Either error's text has secret values masked
