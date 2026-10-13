@@ -565,7 +565,7 @@ does: npm-run-all calls that manager back and falls back to a global `npm`
 without it. It names a binary on this machine, so it is not in the key.
 
 Anything outside these three layers, the two variables vx sets for
-the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is invisible to the child:
+the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is absent from the child's environment:
 a host credential (`SSH_AUTH_SOCK`, `GITHUB_TOKEN`) reaches a task only
 when `passThrough` names it, held end to end by `env.test.ts` (a
 sandboxed task with a restricted network also gets the sandbox's own
@@ -578,6 +578,10 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
 - **Determinism.** If host env leaked into the child, two machines
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
+
+This is hygiene, not a boundary: an unsandboxed task runs as you and can
+still read vx's own environment (`/proc/<pid>/environ`, `ps eww`). Only
+`exec.sandbox` keeps it out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a

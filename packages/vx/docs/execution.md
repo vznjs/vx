@@ -410,14 +410,17 @@ The child process gets, in priority order (lowest first):
    timeout and a shutdown's SIGTERM keep their own lines, and a task the
    run's stop killed (the SIGKILL past the grace too) gets none.
 
-Anything not in these four layers is invisible to the child, except
+Anything not in these four layers is absent from the child's environment, except
 the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a
 task that shells out to `vx run` in its own workspace is refused
 before it forks without bound, and `npm_execpath`, the workspace's
 package manager (unkeyed; `schema.md` § `env`). A sandboxed task also gets the sandbox's own
 proxy, CA and `TMPDIR` values
 ([`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md#the-environment-srt-sets)). This prevents incidental env leakage
-between machines and gives reproducible runs.
+between machines and gives reproducible runs. It is hygiene, not a
+boundary: an unsandboxed task runs as you and can still read vx's own
+environment (`/proc/<pid>/environ`, `ps eww`) and your home. `exec.sandbox`
+is the boundary ([`security.md`](./security.md#what-the-sandbox-stops)).
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the
