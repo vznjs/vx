@@ -6,7 +6,7 @@ authors:
 tags:
   - announcement
   - design
-excerpt: 'vx is a task runner and a content-addressed cache for JavaScript monorepos, and nothing else. This post is the shape of the thing: the five stages, the seams, and the list of features that will never be inside.'
+excerpt: 'vx is task orchestration you own: it runs and caches a task graph, correctly, and nothing else. This post is the shape of the thing: the stages, the seams, and the list of features that will never be inside.'
 ---
 
 Every monorepo tool eventually describes itself with a paragraph of
