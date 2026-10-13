@@ -63,6 +63,13 @@ Asked for JSON, a refusal is one line on stdout with a stable code,
 such as `VX_E_UNKNOWN_TASK` or `VX_E_CYCLE`. The code stays; the
 message may change. See [Error codes](../../cli/#error-codes).
 
+```text
+$ vx run nope --all --format json
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): nope. Tasks: build.","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
+```
+
+The exit code is 1, and `docs` links the fix.
+
 ## Clean streams
 
 A verb whose output is a product writes only that product to stdout.
@@ -73,7 +80,13 @@ straight into a parser.
 
 `vx why app#test` walks the cause chain: which input changed, in which
 upstream task. An agent fixes the cause instead of re-running to find
-it. A mistyped flag gets the right one back: `--concurency` hints
+it. With `--format json`, each changed part of the key is one entry:
+
+```text
+{"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"a853d874…","after":"d14600f9…"}
+```
+
+A mistyped flag gets the right one back: `--concurency` hints
 `--concurrency`, and `--json` hints `--format json`.
 
 ## Docs an agent can read

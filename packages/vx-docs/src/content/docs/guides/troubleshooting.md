@@ -25,6 +25,13 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |
 | `vx: command not found`                            | A local install is not on PATH: run `npx vx` or `bunx vx`.              |
 
+A typo in `--filter` names the closest project:
+
+```text
+$ vx run build --filter @demo/ap
+vx run: no projects matched filter(s): @demo/ap. Did you mean @demo/app?
+```
+
 ## vx did something unexpected
 
 - **Only one package ran.** `vx run build` runs the package you are in
@@ -48,7 +55,21 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
   task's `readyWhen` has not matched its output yet. Fix the pattern,
   or set `exec.timeout` to bound the wait.
 - **A task re-ran and you do not know why.** `vx why <project#task>`
-  names the part of the key that changed.
+  names the part of the key that changed:
+
+  ```text
+  $ vx why @demo/app#build
+  @demo/app#build — run 01a136e5-139e-74a4-b14f-55fa1b06c813
+    this run   2026-10-13T20:12:24.880Z · success · executed · key ecc2003cb26e7a00
+    previous   2026-10-13T20:12:24.429Z · success · key 7aadc81fe3f8c6d2
+    verdict    cache key changed: file packages/app/src/a.ts
+
+    what changed (1 component, 5 unchanged):
+      changed file  packages/app/src/a.ts  a853d874… → d14600f9…
+
+    what to do:
+      file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
+  ```
 - **A variable is empty inside the command.** Past a small essential
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list: add it to `exec.env.passThrough`

@@ -40,6 +40,49 @@ export default defineProject({
 })
 ```
 
+## A run, step by step
+
+A build that reads `tsconfig.json` and writes `dist/`, sandboxed with only
+`src/` granted:
+
+```ts
+build: {
+  exec: {
+    command: 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js',
+    sandbox: { allow: { read: ['src/'] } },
+  },
+  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+},
+```
+
+The first run fails on the write and names the grant:
+
+```sh frame="terminal"
+$ vx run build --all
+┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+mkdir: cannot create directory 'dist': Read-only file system
+├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+mkdir(/repo/packages/app/dist) = a write no grant covers
+fix: exec.sandbox.allow: { write: ['dist/'] }
+```
+
+With `write: ['dist/']` added, the next run fails on the read it never
+declared, and says the file belongs in the key too:
+
+```sh frame="terminal"
+$ vx run build --all
+┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+cat: tsconfig.json: No such file or directory
+├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
+fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
+a read the output depends on belongs in cache.inputs.files too
+```
+
+Grant it and add it to `cache.inputs.files`, and the task passes. Without
+the sandbox, this build would have cached with `tsconfig.json` outside its
+key, and an edit to that file would have replayed the old `dist/`.
+
 ## What you can grant
 
 `allow` takes every key below. `deny` takes only `network`. Domain lists are one union per run, which every sandboxed task reaches; `deny.network` is refused to every sandboxed task. `ignore` takes `read`, `write`, `systemInfo` and `network`, as patterns, and refuses the rest.
