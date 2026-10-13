@@ -575,7 +575,7 @@ export default defineProject({
     category: 'daily',
     hook: 'The release binary updates itself, digest checked.',
     body: [
-      '`vx upgrade` asks the GitHub release for your platform’s binary and its SHA-256 digest, downloads it, checks the digest and replaces the running binary in place. `vx upgrade <tag>` pins a release.',
+      '`vx upgrade` upgrades vx the way you installed it. A standalone binary is replaced in place once npm’s registry signature and the SHA-512 check out; an npm, pnpm, bun or yarn install is upgraded by that package manager, and vx prints what it runs. `vx upgrade <tag>` pins a release.',
       'A download that does not match replaces nothing. An install from npm is updated through npm instead.',
     ],
     example: { lang: 'sh', code: 'vx upgrade' },

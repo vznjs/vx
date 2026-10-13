@@ -1,6 +1,7 @@
-// vx upgrade — self-update mechanics. The downloader is tested
-// against a local server; the CLI path pins the source-mode refusal
-// (the compiled-binary path needs a real release and stays manual).
+// vx upgrade — self-update mechanics. The registry, the tarball and the
+// signature are driven through a stubbed `fetch` and a test signing key;
+// the CLI path pins the source-mode refusal (the compiled-binary path
+// needs a real release and stays manual).
 
 import {
   chmod,
@@ -13,28 +14,142 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import {
-  fetchRelease,
+  binaryFromTarball,
+  fetchManifest,
   isBunfsPath,
-  startedVersion,
-  isThisVersion,
+  managedInstall,
+  NPM_SIGNING_KEY,
   npmOwnedBinary,
-  releaseAsset,
+  releaseBinary,
   replaceBinary,
+  startedVersion,
+  upgradeArgv,
+  verifiedRelease,
+  versionSpec,
+  type SigningKey,
 } from '../src/cli/upgrade.js'
 import { UserError } from '../src/util/index.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
-const FAKE_SHA = new Bun.CryptoHasher('sha256').update(FAKE).digest('hex')
+const fake = (): Promise<Uint8Array> => Promise.resolve(new TextEncoder().encode(FAKE))
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true })
 })
+
+/** What `fetch` answers, by URL; anything else is a 404. Counts each URL asked. */
+async function withFetch<T>(
+  routes: Record<string, () => Response>,
+  body: (asked: string[]) => Promise<T>,
+): Promise<T> {
+  const real = globalThis.fetch
+  const asked: string[] = []
+  globalThis.fetch = ((input: string | URL | Request) => {
+    const url = input instanceof Request ? input.url : String(input)
+    asked.push(url)
+    return Promise.resolve(routes[url]?.() ?? new Response('nope', { status: 404 }))
+  }) as unknown as typeof fetch
+  try {
+    return await body(asked)
+  } finally {
+    globalThis.fetch = real
+  }
+}
+
+/** A gzip'd ustar holding `files`, as npm packs a package. */
+function tarball(files: Record<string, string | Uint8Array>): Uint8Array {
+  const blocks: Uint8Array[] = []
+  for (const [name, content] of Object.entries(files)) {
+    const body = typeof content === 'string' ? new TextEncoder().encode(content) : content
+    const head = new Uint8Array(512)
+    const put = (at: number, text: string): void => head.set(new TextEncoder().encode(text), at)
+    put(0, name)
+    put(100, '0000755\0')
+    put(108, '0000000\0')
+    put(116, '0000000\0')
+    put(124, `${body.length.toString(8).padStart(11, '0')}\0`)
+    put(136, '00000000000\0')
+    put(148, '        ')
+    put(156, '0')
+    put(257, 'ustar\0')
+    put(263, '00')
+    const sum = head.reduce((a, b) => a + b, 0)
+    put(148, `${sum.toString(8).padStart(6, '0')}\0 `)
+    blocks.push(head, body, new Uint8Array((512 - (body.length % 512)) % 512))
+  }
+  blocks.push(new Uint8Array(1024))
+  return Bun.gzipSync(Buffer.concat(blocks))
+}
+
+const integrityOf = (bytes: Uint8Array): string =>
+  `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`
+
+// A key of the test's own, standing in for npm's: rows that must verify
+// sign with it and pass it as the pinned key; a forgery signs with it and
+// is checked against the real pin.
+const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+const TEST_KEY: SigningKey = {
+  id: 'SHA256:test-key',
+  spki: pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+}
+const signed = (message: string): string =>
+  sign('sha256', Buffer.from(message), pair.privateKey).toString('base64')
+
+const PKG = '@vzn/vx-linux-x64'
+const TARBALL_URL = `https://registry.npmjs.org/${PKG}/-/vx-linux-x64-9.9.9.tgz`
+const MANIFEST_URL = `https://registry.npmjs.org/${PKG}/9.9.9`
+const TGZ = tarball({ 'package/package.json': '{}', 'package/vx': FAKE })
+
+/** The registry's document for 9.9.9, signed by `TEST_KEY` unless told otherwise. */
+function manifest(
+  over: { integrity?: string; signatures?: unknown; keyid?: string } = {},
+): unknown {
+  const integrity = integrityOf(TGZ)
+  return {
+    name: PKG,
+    version: '9.9.9',
+    dist: {
+      tarball: TARBALL_URL,
+      integrity: over.integrity ?? integrity,
+      signatures: over.signatures ?? [
+        { keyid: over.keyid ?? TEST_KEY.id, sig: signed(`${PKG}@9.9.9:${integrity}`) },
+      ],
+    },
+  }
+}
+
+/** `releaseBinary` into a fresh `dest` against `doc` and `tgz`: the refusal (or 'installed'), what was fetched, and what `dest` holds. */
+async function upgradeAgainst(
+  doc: unknown,
+  key: SigningKey,
+  tgz: Uint8Array = TGZ,
+): Promise<{ outcome: string; asked: string[]; dest: string; left: string[] }> {
+  const sub = mkdtempSync(path.join(dir, 'up-'))
+  const dest = path.join(sub, 'vx')
+  await writeFile(dest, 'old')
+  return await withFetch(
+    {
+      [MANIFEST_URL]: () => Response.json(doc),
+      [TARBALL_URL]: () => new Response(tgz),
+    },
+    async (asked) => {
+      const outcome = await replaceBinary(dest, () =>
+        releaseBinary(PKG, '9.9.9', () => {}, key),
+      ).then(
+        () => 'installed',
+        (err: Error) => err.message,
+      )
+      return { outcome, asked, dest: await readFile(dest, 'utf8'), left: await readdir(sub) }
+    },
+  )
+}
 
 describe('isBunfsPath', () => {
   it('matches the bunfs virtual-root marker', () => {
@@ -52,37 +167,19 @@ describe('isBunfsPath', () => {
 })
 
 describe('replaceBinary', () => {
-  // The downloader is driven through a stubbed global `fetch`, not a
-  // localhost server. `replaceBinary` takes a URL and calls `fetch`, so
-  // the response IS the whole input — binding a port would only add a
-  // socket this suite has no reason to open, and a task in this repo has
-  // no reason to serve the network.
-  const withFetch = async (impl: typeof fetch, body: () => Promise<void>): Promise<void> => {
-    const real = globalThis.fetch
-    globalThis.fetch = impl
-    try {
-      await body()
-    } finally {
-      globalThis.fetch = real
-    }
-  }
+  it('replaces the destination atomically, executable', async () => {
+    const dest = path.join(dir, 'vx')
+    await Bun.write(dest, 'old')
+    expect(await replaceBinary(dest, fake)).toBe(true)
+    expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+    expect((await stat(dest)).mode & 0o111).not.toBe(0)
+  })
 
-  it('downloads and atomically replaces the destination, executable', async () => {
-    const seen: string[] = []
-    await withFetch(
-      ((input: string | URL | Request) => {
-        seen.push(input instanceof Request ? input.url : String(input))
-        return Promise.resolve(new Response(FAKE))
-      }) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx')
-        await Bun.write(dest, 'old')
-        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA)
-        expect(seen).toEqual(['https://example.invalid/asset'])
-        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
-        expect((await stat(dest)).mode & 0o111).not.toBe(0)
-      },
-    )
+  it('nothing to install replaces nothing', async () => {
+    const dest = path.join(dir, 'vx-same')
+    await Bun.write(dest, 'old')
+    expect(await replaceBinary(dest, () => Promise.resolve(null))).toBe(false)
+    expect(await readFile(dest, 'utf8')).toBe('old')
   })
 
   it('stages in a fresh directory: a link planted at a guessable name is never written through', async () => {
@@ -96,12 +193,7 @@ describe('replaceBinary', () => {
     for (const name of [`vx-plant.upgrade-${process.pid}`, `vx-plant.previous-${process.pid}`]) {
       await symlink(victim, path.join(dir, name))
     }
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
-      async () => {
-        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, () => true)
-      },
-    )
+    await replaceBinary(dest, fake, () => true)
     // CONTROL: the upgrade went through, so the victim held because nothing
     // wrote through the links, not because nothing was written.
     expect(await readFile(dest, 'utf8')).toContain('fake-vx')
@@ -113,75 +205,223 @@ describe('replaceBinary', () => {
     ).toEqual([])
   })
 
+  it('an empty binary is refused', async () => {
+    const dest = path.join(dir, 'vx4')
+    await Bun.write(dest, 'old')
+    await expect(replaceBinary(dest, () => Promise.resolve(new Uint8Array()))).rejects.toThrow(
+      "vx upgrade: the release's binary is empty — nothing replaced",
+    )
+    expect(await readFile(dest, 'utf8')).toBe('old')
+  })
+
+  // Item 1097: the install's own mode was replaced with 0755.
+  it("keeps the replaced binary's mode", async () => {
+    const dest = path.join(dir, 'vx-mode')
+    await Bun.write(dest, 'old')
+    await chmod(dest, 0o750)
+    await replaceBinary(dest, fake)
+    expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+    expect((await stat(dest)).mode & 0o7777).toBe(0o750)
+  })
+
+  // Item 1097: a binary this machine cannot start was reported installed,
+  // with the old one gone.
+  it('puts the previous binary back when the new one does not start, and leaves nothing', async () => {
+    const sub = path.join(dir, 'roll')
+    await mkdir(sub)
+    const dest = path.join(sub, 'vx')
+    await Bun.write(dest, 'old')
+    let asked = ''
+    let caught: unknown
+    try {
+      await replaceBinary(dest, fake, (bin) => {
+        asked = readFileSync(bin, 'utf8')
+        return false
+      })
+    } catch (err) {
+      caught = err
+    }
+    // The new bytes were what it asked about; the old ones are back.
+    expect(asked).toContain('fake-vx')
+    expect(caught).toBeInstanceOf(UserError)
+    expect((caught as Error).message).toContain('the previous vx is back in place')
+    expect(await readFile(dest, 'utf8')).toBe('old')
+    expect(await readdir(sub)).toEqual(['vx'])
+    // CONTROL: one that starts keeps the new bytes, and no spare name.
+    await replaceBinary(dest, fake, () => true)
+    expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+    expect(await readdir(sub)).toEqual(['vx'])
+  })
+
+  it('a rename that fails is one refusal naming dest, and leaves no temp file', async () => {
+    // A non-empty directory at dest: the write and chmod of the temp file
+    // succeed, the rename over dest does not.
+    const dest = path.join(dir, 'vx6')
+    await mkdir(path.join(dest, 'inside'), { recursive: true })
+    let caught: unknown
+    try {
+      await replaceBinary(dest, fake)
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(UserError)
+    const message = (caught as Error).message
+    expect(message.startsWith(`vx upgrade: could not replace ${dest} (`)).toBe(true)
+    expect(
+      message.endsWith(`) — nothing replaced; check the permissions of ${dest} and its directory`),
+    ).toBe(true)
+    expect(
+      await Array.fromAsync(
+        new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+      ),
+    ).toEqual([])
+    expect(await readdir(dest)).toEqual(['inside'])
+  })
+})
+
+describe('a release from the npm registry', () => {
+  it('installs when npm’s signature and the integrity verify (control)', async () => {
+    const r = await upgradeAgainst(manifest(), TEST_KEY)
+    expect(r).toEqual({
+      outcome: 'installed',
+      asked: [MANIFEST_URL, TARBALL_URL],
+      dest: FAKE,
+      left: ['vx'],
+    })
+  })
+
+  it('a forged signature is refused before the tarball is fetched', async () => {
+    // Signed by a key that is not npm's, under npm's key id.
+    const r = await upgradeAgainst(manifest({ keyid: NPM_SIGNING_KEY.id }), NPM_SIGNING_KEY)
+    expect(r).toEqual({
+      outcome: `vx upgrade: the npm registry signature for ${PKG}@9.9.9 is not valid — refusing to install; nothing replaced`,
+      asked: [MANIFEST_URL],
+      dest: 'old',
+      left: ['vx'],
+    })
+  })
+
+  it('a key id it does not pin is refused with the installer hint', async () => {
+    const r = await upgradeAgainst(manifest({ keyid: 'SHA256:rotated' }), TEST_KEY)
+    expect(r.outcome).toBe(
+      `vx upgrade: ${PKG}@9.9.9 is signed with an npm key this vx does not know (SHA256:rotated) — if npm rotated its signing key, this vx's installer needs updating: install the new release with npm install -g @vzn/vx@latest, or from https://github.com/vznjs/vx/releases. Nothing replaced`,
+    )
+    expect([r.asked, r.dest, r.left]).toEqual([[MANIFEST_URL], 'old', ['vx']])
+  })
+
+  it('an integrity other than the one npm signed is refused before the tarball is fetched', async () => {
+    // The tarball and the document agree, the signature does not: whoever
+    // swapped both could not sign the new integrity.
+    const other = tarball({ 'package/vx': '#!/bin/sh\necho evil\n' })
+    const r = await upgradeAgainst(manifest({ integrity: integrityOf(other) }), TEST_KEY, other)
+    expect(r).toEqual({
+      outcome: `vx upgrade: the npm registry signature for ${PKG}@9.9.9 is not valid — refusing to install; nothing replaced`,
+      asked: [MANIFEST_URL],
+      dest: 'old',
+      left: ['vx'],
+    })
+  })
+
+  it('a tampered tarball is refused before anything is written', async () => {
+    const tampered = tarball({
+      'package/package.json': '{}',
+      'package/vx': '#!/bin/sh\necho evil\n',
+    })
+    const r = await upgradeAgainst(manifest(), TEST_KEY, tampered)
+    expect(r.outcome).toBe(
+      `vx upgrade: the download did not match the integrity npm signed (expected ${integrityOf(TGZ)}, got ${integrityOf(tampered)}) — nothing replaced; try again, and if it repeats the tarball is not the one npm published`,
+    )
+    expect([r.asked, r.dest, r.left]).toEqual([[MANIFEST_URL, TARBALL_URL], 'old', ['vx']])
+  })
+
+  it('no signature, or no integrity, is refused before the tarball is fetched', async () => {
+    expect((await upgradeAgainst(manifest({ signatures: [] }), TEST_KEY)).outcome).toBe(
+      `vx upgrade: ${PKG}@9.9.9 carries no npm registry signature, so it cannot be verified — nothing replaced`,
+    )
+    const bare = manifest() as { dist: { integrity?: string } }
+    delete bare.dist.integrity
+    expect((await upgradeAgainst(bare, TEST_KEY)).outcome).toBe(
+      `vx upgrade: the npm registry published no SHA-512 integrity for ${PKG}@9.9.9 — nothing to verify the download against, so it is not attempted`,
+    )
+  })
+
+  it('a signature for another package does not verify for this one', () => {
+    const doc = manifest() as { dist: { signatures: { keyid: string; sig: string }[] } }
+    doc.dist.signatures = [
+      { keyid: TEST_KEY.id, sig: signed(`@vzn/vx-darwin-arm64@9.9.9:${integrityOf(TGZ)}`) },
+    ]
+    expect(() => verifiedRelease(doc, PKG, TEST_KEY)).toThrow(/signature .* is not valid/)
+  })
+
+  it('pins npm’s current registry key', () => {
+    // https://registry.npmjs.org/-/npm/v1/keys, the key with no expiry.
+    expect(NPM_SIGNING_KEY.id).toBe('SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U')
+  })
+
+  it('this vx’s own version downloads nothing', async () => {
+    const { VERSION } = await import('../src/version.js')
+    const integrity = integrityOf(TGZ)
+    const doc = {
+      version: VERSION,
+      dist: {
+        tarball: TARBALL_URL,
+        integrity,
+        signatures: [{ keyid: TEST_KEY.id, sig: signed(`${PKG}@${VERSION}:${integrity}`) }],
+      },
+    }
+    const result = await withFetch({ [MANIFEST_URL]: () => Response.json(doc) }, async (asked) => [
+      await releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY),
+      asked,
+    ])
+    expect(result).toEqual([null, [MANIFEST_URL]])
+  })
+
   it('a host it cannot reach is one line naming the host, never a stack', async () => {
-    // Bun's fetch rejects with its own TypeError when there is no route;
-    // the CLI printed it as an internal error (item 247).
-    const dest = path.join(dir, 'vx')
-    await writeFile(dest, 'old')
-    await withFetch(
-      (() =>
-        Promise.reject(
-          new TypeError('Unable to connect. Is the computer able to access the url?'),
-        )) as unknown as typeof fetch,
-      async () => {
-        let caught: unknown
-        try {
-          await replaceBinary(dest, 'https://github.com/vznjs/vx/releases/download/v1/vx', 'ab')
-        } catch (err) {
-          caught = err
-        }
-        expect(caught).toBeInstanceOf(UserError)
-        expect((caught as Error).message).toBe(
-          'vx upgrade: could not reach github.com to download the release asset (Unable to connect. Is the computer able to access the url?) — check the network or the proxy and re-run',
-        )
-        expect(await readFile(dest, 'utf8')).toBe('old')
-      },
-    )
+    const real = globalThis.fetch
+    globalThis.fetch = (() =>
+      Promise.reject(
+        new TypeError('Unable to connect. Is the computer able to access the url?'),
+      )) as unknown as typeof fetch
+    try {
+      await expect(fetchManifest(PKG, 'latest')).rejects.toThrow(
+        'vx upgrade: could not reach registry.npmjs.org to read the release (Unable to connect. Is the computer able to access the url?) — check the network or the proxy and re-run',
+      )
+    } finally {
+      globalThis.fetch = real
+    }
   })
 
-  it('404 leaves the destination untouched', async () => {
-    await withFetch(
-      (() => Promise.resolve(new Response('nope', { status: 404 }))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx2')
-        await Bun.write(dest, 'old')
-        await expect(
-          replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA),
-        ).rejects.toThrow(
-          'vx upgrade: download failed (404) — https://example.invalid/asset — nothing replaced; re-run',
-        )
-        expect(await readFile(dest, 'utf8')).toBe('old')
-      },
+  it('a registry document that is not JSON is one refusal naming the host, never a stack', async () => {
+    // A captive portal or a proxy's error page served with a 200.
+    const message = await withFetch(
+      { [`https://registry.npmjs.org/${PKG}/latest`]: () => new Response('<html>sign in</html>') },
+      () =>
+        fetchManifest(PKG, 'latest').then(
+          () => 'resolved',
+          (err: Error) => err.message,
+        ),
     )
+    expect(
+      message.startsWith('vx upgrade: could not read the release from registry.npmjs.org ('),
+    ).toBe(true)
+    expect(
+      message.endsWith(') — nothing replaced; check the network or the proxy and re-run'),
+    ).toBe(true)
   })
 
-  it('a download that does not match the release digest replaces nothing', async () => {
-    // A cut transfer or a swapped asset: the bytes arrive, the digest
-    // does not, and the running executable stays what it was. Without
-    // the check the rename went through and the next `vx` did not start.
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE.slice(0, 10)))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx3')
-        await Bun.write(dest, 'old')
-        await expect(
-          replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA),
-        ).rejects.toThrow(/did not match the release's SHA-256/)
-        expect(await readFile(dest, 'utf8')).toBe('old')
-        expect(
-          await Array.fromAsync(
-            new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
-          ),
-        ).toEqual([])
-      },
+  it('a version the registry does not have says so', async () => {
+    const message = await withFetch({}, () =>
+      fetchManifest(PKG, '9.9.8').then(
+        () => 'resolved',
+        (err: Error) => err.message,
+      ),
+    )
+    expect(message).toBe(
+      `vx upgrade: could not read ${PKG}@9.9.8 from the npm registry (404) — is 9.9.8 a published version?`,
     )
   })
 
   it('a transfer cut after the headers is one refusal, never a stack, and replaces nothing', async () => {
-    // The status arrives, then the connection drops mid-body: Bun rejects
-    // the body read with its own TypeError (probed against a socket that
-    // closes after 1 KB of a 100 KB Content-Length), which the fetch guard
-    // never saw, so the CLI printed an internal error with a stack.
     const reset = Object.assign(new TypeError('The socket connection was closed unexpectedly.'), {
       code: 'ECONNRESET',
     })
@@ -194,173 +434,152 @@ describe('replaceBinary', () => {
           },
         }),
       )
-    await withFetch((() => Promise.resolve(cut())) as unknown as typeof fetch, async () => {
-      const dest = path.join(dir, 'vx7')
-      await Bun.write(dest, 'old')
-      let caught: unknown
-      try {
-        await replaceBinary(dest, 'https://github.com/vznjs/vx/releases/download/v1/vx', FAKE_SHA)
-      } catch (err) {
-        caught = err
-      }
-      expect(caught).toBeInstanceOf(UserError)
-      expect((caught as Error).message).toBe(
-        'vx upgrade: could not download the release asset from github.com (The socket connection was closed unexpectedly.) — nothing replaced; check the network or the proxy and re-run',
-      )
-      expect(await readFile(dest, 'utf8')).toBe('old')
-      expect(
-        await Array.fromAsync(
-          new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
+    const sub = mkdtempSync(path.join(dir, 'cut-'))
+    const dest = path.join(sub, 'vx')
+    await writeFile(dest, 'old')
+    const message = await withFetch(
+      { [MANIFEST_URL]: () => Response.json(manifest()), [TARBALL_URL]: cut },
+      () =>
+        replaceBinary(dest, () => releaseBinary(PKG, '9.9.9', () => {}, TEST_KEY)).then(
+          () => 'installed',
+          (err: Error) => err.message,
         ),
-      ).toEqual([])
-    })
-  })
-
-  it('an empty download is refused even when the digest agrees (sha256 of nothing)', async () => {
-    // The digest check alone passes an empty body whose published digest is
-    // sha256(''): the emptiness refusal is what stands between that and a
-    // zero-byte executable.
-    const empty = new Bun.CryptoHasher('sha256').update('').digest('hex')
-    await withFetch(
-      (() => Promise.resolve(new Response(''))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx4')
-        await Bun.write(dest, 'old')
-        let caught: unknown
-        try {
-          await replaceBinary(dest, 'https://example.invalid/empty', empty)
-        } catch (err) {
-          caught = err
-        }
-        expect(caught).toBeInstanceOf(UserError)
-        expect((caught as Error).message).toBe(
-          'vx upgrade: empty download — https://example.invalid/empty — nothing replaced; re-run',
-        )
-        expect(await readFile(dest, 'utf8')).toBe('old')
-      },
     )
-  })
-
-  it('an upper-case expected digest still installs', async () => {
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx5')
-        await Bun.write(dest, 'old')
-        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA.toUpperCase())
-        expect(await readFile(dest, 'utf8')).toBe(FAKE)
-      },
+    expect(message).toBe(
+      'vx upgrade: could not download the release from registry.npmjs.org (The socket connection was closed unexpectedly.) — nothing replaced; check the network or the proxy and re-run',
     )
+    expect([await readFile(dest, 'utf8'), await readdir(sub)]).toEqual(['old', ['vx']])
   })
+})
 
-  // Item 1097: the install's own mode was replaced with 0755.
-  it("keeps the replaced binary's mode", async () => {
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx-mode')
-        await Bun.write(dest, 'old')
-        await chmod(dest, 0o750)
-        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA)
-        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
-        expect((await stat(dest)).mode & 0o7777).toBe(0o750)
-      },
+describe('binaryFromTarball', () => {
+  it('takes package/vx, and refuses a tarball without it or not gzip', () => {
+    expect(new TextDecoder().decode(binaryFromTarball(TGZ))).toBe(FAKE)
+    expect(() => binaryFromTarball(tarball({ 'package/README.md': 'hi' }))).toThrow(
+      'vx upgrade: the release tarball holds no package/vx — nothing replaced',
     )
-  })
-
-  // Item 1097: a binary this machine cannot start was reported installed,
-  // with the old one gone.
-  it('puts the previous binary back when the new one does not start, and leaves nothing', async () => {
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
-      async () => {
-        const sub = path.join(dir, 'roll')
-        await mkdir(sub)
-        const dest = path.join(sub, 'vx')
-        await Bun.write(dest, 'old')
-        let asked = ''
-        let caught: unknown
-        try {
-          await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, (bin) => {
-            asked = readFileSync(bin, 'utf8')
-            return false
-          })
-        } catch (err) {
-          caught = err
-        }
-        // The new bytes were what it asked about; the old ones are back.
-        expect(asked).toContain('fake-vx')
-        expect(caught).toBeInstanceOf(UserError)
-        expect((caught as Error).message).toContain('the previous vx is back in place')
-        expect(await readFile(dest, 'utf8')).toBe('old')
-        expect(await readdir(sub)).toEqual(['vx'])
-        // CONTROL: one that starts keeps the new bytes, and no spare name.
-        await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA, () => true)
-        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
-        expect(await readdir(sub)).toEqual(['vx'])
-      },
-    )
-  })
-
-  it('a rename that fails is one refusal naming dest, and leaves no temp file', async () => {
-    // A non-empty directory at dest: the write and chmod of the temp file
-    // succeed, the rename over dest does not.
-    await withFetch(
-      (() => Promise.resolve(new Response(FAKE))) as unknown as typeof fetch,
-      async () => {
-        const dest = path.join(dir, 'vx6')
-        await mkdir(path.join(dest, 'inside'), { recursive: true })
-        let caught: unknown
-        try {
-          await replaceBinary(dest, 'https://example.invalid/asset', FAKE_SHA)
-        } catch (err) {
-          caught = err
-        }
-        expect(caught).toBeInstanceOf(UserError)
-        const message = (caught as Error).message
-        expect(message.startsWith(`vx upgrade: could not replace ${dest} (`)).toBe(true)
-        expect(
-          message.endsWith(
-            `) — nothing replaced; check the permissions of ${dest} and its directory`,
-          ),
-        ).toBe(true)
-        expect(
-          await Array.fromAsync(
-            new Bun.Glob('.vx-upgrade-*').scan({ cwd: dir, dot: true, onlyFiles: false }),
-          ),
-        ).toEqual([])
-        expect(await readdir(dest)).toEqual(['inside'])
-      },
+    expect(() => binaryFromTarball(new TextEncoder().encode('plain'))).toThrow(
+      'vx upgrade: the release tarball is not gzip — nothing replaced',
     )
   })
 })
 
-describe('fetchRelease', () => {
-  it('a release document that is not JSON is one refusal naming the host, never a stack', async () => {
-    // A captive portal or a proxy's error page served with a 200: the
-    // status passes, and `res.json()` threw a SyntaxError the CLI printed
-    // with its stack.
-    const real = globalThis.fetch
-    globalThis.fetch = (() =>
-      Promise.resolve(
-        new Response('<html>sign in to the network</html>', { status: 200 }),
-      )) as unknown as typeof fetch
-    let caught: unknown
-    try {
-      await fetchRelease('v1')
-    } catch (err) {
-      caught = err
-    } finally {
-      globalThis.fetch = real
+describe('versionSpec', () => {
+  it('reads a tag as a registry version, and refuses what is not one', () => {
+    expect([versionSpec(undefined), versionSpec('v0.4.0'), versionSpec('0.4.0-rc.1')]).toEqual([
+      'latest',
+      '0.4.0',
+      '0.4.0-rc.1',
+    ])
+    expect(() => versionSpec('../../evil')).toThrow('vx upgrade: ../../evil is not a version')
+  })
+})
+
+describe('managedInstall', () => {
+  const tree = async (files: Record<string, string>): Promise<string> => {
+    const root = mkdtempSync(path.join(dir, 'tree-'))
+    for (const [rel, body] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+      await writeFile(path.join(root, rel), body)
     }
-    expect(caught).toBeInstanceOf(UserError)
-    const message = (caught as Error).message
-    expect(message.startsWith('vx upgrade: could not read the release from api.github.com (')).toBe(
-      true,
-    )
+    return root
+  }
+  const BIN = 'node_modules/@vzn/vx-linux-x64/vx'
+  const lists = (field: string): string => JSON.stringify({ [field]: { '@vzn/vx': '^0.0.1' } })
+
+  it('names each global install by its manager', () => {
+    const home = '/home/me'
+    expect(managedInstall(`/usr/local/lib/node_modules/@vzn/vx/${BIN}`, home)).toEqual({
+      manager: 'npm',
+      scope: 'global',
+      cwd: '/usr/local/lib',
+    })
     expect(
-      message.endsWith(') — nothing replaced; check the network or the proxy and re-run'),
-    ).toBe(true)
+      managedInstall(
+        `${home}/.local/share/pnpm/global/5/node_modules/.pnpm/@vzn+vx-linux-x64@0.0.1/${BIN}`,
+        home,
+      ),
+    ).toEqual({ manager: 'pnpm', scope: 'global', cwd: `${home}/.local/share/pnpm/global/5` })
+    expect(managedInstall(`${home}/.bun/install/global/${BIN}`, home)).toEqual({
+      manager: 'bun',
+      scope: 'global',
+      cwd: `${home}/.bun/install/global`,
+    })
+    expect(managedInstall(`${home}/.config/yarn/global/${BIN}`, home)).toEqual({
+      manager: 'yarn',
+      scope: 'global',
+      cwd: `${home}/.config/yarn/global`,
+    })
+  })
+
+  it("names a project's manager by its lockfile, and the field that lists vx", async () => {
+    const cases: [string, Record<string, string>, string, string][] = [
+      ['pnpm', { 'pnpm-lock.yaml': '' }, 'devDependencies', 'pnpm add @vzn/vx@1.2.3 --save-dev'],
+      ['bun', { 'bun.lock': '' }, 'devDependencies', 'bun add @vzn/vx@1.2.3 --dev'],
+      ['yarn', { 'yarn.lock': '' }, 'dependencies', 'yarn add @vzn/vx@1.2.3'],
+      [
+        'npm',
+        { 'package-lock.json': '{}' },
+        'optionalDependencies',
+        'npm install @vzn/vx@1.2.3 --save-optional',
+      ],
+    ]
+    for (const [manager, lock, field, argv] of cases) {
+      const root = await tree({ 'package.json': lists(field), ...lock })
+      const install = managedInstall(path.join(root, BIN), root)
+      expect(install).toEqual({ manager, scope: 'project', cwd: root, field } as never)
+      expect(upgradeArgv(install!, '1.2.3').join(' ')).toBe(argv)
+    }
+  })
+
+  it('a hoisted workspace finds the member that lists vx from cwd; the root adds with --workspace-root', async () => {
+    const root = await tree({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': 'packages:\n  - apps/*\n',
+      'apps/web/package.json': lists('devDependencies'),
+    })
+    const bin = path.join(root, 'node_modules/.pnpm/@vzn+vx-linux-x64@0.0.1', BIN)
+    const member = managedInstall(bin, path.join(root, 'apps/web'))
+    expect(member).toEqual({
+      manager: 'pnpm',
+      scope: 'project',
+      cwd: path.join(root, 'apps/web'),
+      field: 'devDependencies',
+    })
+    expect(upgradeArgv(member!, '1.2.3')).toEqual(['pnpm', 'add', '@vzn/vx@1.2.3', '--save-dev'])
+    await writeFile(path.join(root, 'package.json'), lists('devDependencies'))
+    expect(upgradeArgv(managedInstall(bin, root)!, '1.2.3')).toEqual([
+      'pnpm',
+      'add',
+      '@vzn/vx@1.2.3',
+      '--save-dev',
+      '--workspace-root',
+    ])
+  })
+
+  it('global argv per manager', () => {
+    const g = (manager: 'npm' | 'pnpm' | 'bun' | 'yarn'): string =>
+      upgradeArgv({ manager, scope: 'global', cwd: '/' }, '1.2.3').join(' ')
+    expect([g('npm'), g('pnpm'), g('bun'), g('yarn')]).toEqual([
+      'npm install -g @vzn/vx@1.2.3',
+      'pnpm add -g @vzn/vx@1.2.3',
+      'bun add -g @vzn/vx@1.2.3',
+      'yarn global add @vzn/vx@1.2.3',
+    ])
+  })
+
+  it('an npx or bunx cache is refused: nothing installed to upgrade', () => {
+    expect(() => managedInstall(`/home/me/.npm/_npx/1a2b/${BIN}`, '/home/me')).toThrow(
+      /runs from a package-manager cache/,
+    )
+    expect(() => managedInstall(`/tmp/bunx-1000-@vzn/vx@latest/${BIN}`, '/home/me')).toThrow(
+      /runs from a package-manager cache/,
+    )
+  })
+
+  it('a binary installed by hand is no package manager’s', () => {
+    expect(managedInstall('/usr/local/bin/vx', '/home/me')).toBeNull()
   })
 })
 
@@ -415,120 +634,6 @@ describe('npmOwnedBinary', () => {
 
   it('a node_modules with nothing under it still counts as npm-owned', () => {
     expect(npmOwnedBinary('/home/me/app/node_modules')).toBe('node_modules')
-  })
-})
-
-describe('releaseAsset', () => {
-  const release = {
-    tag_name: 'v0.0.21',
-    assets: [
-      {
-        name: 'vx-darwin-arm64',
-        browser_download_url: 'https://x/d',
-        digest: 'sha256:' + 'a'.repeat(64),
-      },
-      {
-        name: 'vx-linux-x64',
-        browser_download_url: 'https://x/l',
-        digest: 'sha256:' + 'B'.repeat(64),
-      },
-      { name: 'vx-linux-arm64', browser_download_url: 'https://x/a' },
-    ],
-  }
-
-  it('picks the platform asset and its lower-case hex digest', () => {
-    expect(releaseAsset(release, 'vx-linux-x64')).toEqual({
-      tag: 'v0.0.21',
-      url: 'https://x/l',
-      sha256: 'b'.repeat(64),
-    })
-  })
-
-  it('refuses a release without the asset, and an asset without a digest', () => {
-    expect(() => releaseAsset(release, 'vx-windows-x64')).toThrow(
-      /v0.0.21 has no asset vx-windows-x64/,
-    )
-    expect(() => releaseAsset(release, 'vx-linux-arm64')).toThrow(
-      /publishes no SHA-256 digest for vx-linux-arm64/,
-    )
-    expect(() => releaseAsset({ message: 'Not Found' }, 'vx-linux-x64')).toThrow(UserError)
-    let message = ''
-    try {
-      releaseAsset({ message: 'Not Found' }, 'vx-linux-x64')
-    } catch (err) {
-      message = (err as Error).message
-    }
-    expect(message).toBe(
-      'vx upgrade: release (unknown) has no asset vx-linux-x64 for this platform — nothing replaced; npm install -g @vzn/vx@latest installs it instead',
-    )
-  })
-
-  it.each([
-    ['no download url', { name: 'vx-linux-x64', digest: 'sha256:' + 'a'.repeat(64) }],
-    [
-      'an empty download url',
-      { name: 'vx-linux-x64', browser_download_url: '', digest: 'sha256:' + 'a'.repeat(64) },
-    ],
-  ])('refuses an asset with %s', (_, asset) => {
-    let message = ''
-    try {
-      releaseAsset({ tag_name: 'v0.0.21', assets: [asset] }, 'vx-linux-x64')
-    } catch (err) {
-      message = (err as Error).message
-    }
-    expect(message).toBe(
-      'vx upgrade: release v0.0.21 names no download for vx-linux-x64 — nothing replaced; npm install -g @vzn/vx@latest installs it instead',
-    )
-  })
-
-  it('refuses a digest one hex digit too long', () => {
-    const asset = (digest: string) => ({
-      tag_name: 'v0.0.21',
-      assets: [{ name: 'vx-linux-x64', browser_download_url: 'https://x/l', digest }],
-    })
-    expect(releaseAsset(asset('sha256:' + 'c'.repeat(64)), 'vx-linux-x64').sha256).toBe(
-      'c'.repeat(64),
-    )
-    expect(() => releaseAsset(asset('sha256:' + 'c'.repeat(65)), 'vx-linux-x64')).toThrow(
-      /publishes no SHA-256 digest for vx-linux-x64/,
-    )
-  })
-})
-
-// Item 1098: the upgrade to the version it already was downloaded and
-// replaced the binary with itself.
-describe('isThisVersion', () => {
-  it('matches the tag of this version, with or without the v', () => {
-    expect(isThisVersion('v0.4.0', '0.4.0')).toBe(true)
-    expect(isThisVersion('0.4.0', '0.4.0')).toBe(true)
-    // CONTROLS: another version, and a prefix of this one.
-    expect(isThisVersion('v0.4.1', '0.4.0')).toBe(false)
-    expect(isThisVersion('v0.4.0', '0.4.00')).toBe(false)
-  })
-})
-
-describe('the release lookup', () => {
-  // Item 1098: GitHub's rate limit read as `could not read the release (403)`.
-  it("names GitHub's rate limit, and a plain 403 stays plain", async () => {
-    const real = globalThis.fetch
-    const refusal = async (headers: Record<string, string>): Promise<string> => {
-      globalThis.fetch = (() =>
-        Promise.resolve(new Response('{}', { status: 403, headers }))) as unknown as typeof fetch
-      try {
-        await fetchRelease(undefined)
-        return 'resolved'
-      } catch (err) {
-        return (err as Error).message
-      } finally {
-        globalThis.fetch = real
-      }
-    }
-    expect(await refusal({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1790000000' })).toBe(
-      "vx upgrade: GitHub's API rate limit for this address is spent until 2026-09-21T14:13:20.000Z — re-run after that",
-    )
-    expect(await refusal({ 'x-ratelimit-remaining': '12' })).toBe(
-      'vx upgrade: could not read the release (403) — https://api.github.com/repos/vznjs/vx/releases/latest',
-    )
   })
 })
 
