@@ -19,6 +19,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-unreadable-')))
       Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
       await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}')
+      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       for (const p of ['a', 'b']) {
         await mkdir(path.join(root, 'packages', p), { recursive: true })
         await writeFile(path.join(root, 'packages', p, 'package.json'), `{"name":"${p}"}`)

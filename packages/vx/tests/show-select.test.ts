@@ -58,6 +58,7 @@ const LINT = `export default { tasks: { lint: { exec: { command: 'true' } } } }\
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-select-'))
   await write('package.json', JSON.stringify({ name: 'r', private: true, workspaces: ['pkgs/*'] }))
+  await write('vx.workspace.mjs', 'export default {}\n')
   await write('pkgs/lib/package.json', JSON.stringify({ name: 'lib' }))
   await write('pkgs/lib/vx.config.mjs', LINT)
   await write('pkgs/app/package.json', JSON.stringify({ name: 'app', dependencies: { lib: '*' } }))

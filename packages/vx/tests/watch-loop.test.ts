@@ -551,6 +551,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
     const w = { current: undefined as ReturnType<typeof startWatch> | undefined }
     try {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'solo' }))
+      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       await writeFile(
         path.join(root, 'vx.config.mjs'),
         `export default {

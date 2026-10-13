@@ -58,7 +58,7 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(process.cwd(), reads)
+  const root = await findWorkspaceRoot(process.cwd())
   const workspace = await loadWorkspace(root, reads)
   // As a run discovers them: a project a plugin's `discover` stage adds
   // was left out of the lock, and every `--frozen` run then refused it

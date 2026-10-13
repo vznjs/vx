@@ -1716,6 +1716,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
     await addPackage(root, 'w', { build: 'echo hi' })
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['run', 'build', '--all'])
@@ -1733,6 +1734,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'ws', private: true, workspaces: ['apps/*'] }),
     )
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['run', 'build', '--all'])
@@ -1775,6 +1777,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   it('`vx run` there says the same, not `vx init`', async () => {
     const root = await bareRoot()
     try {
+      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
       const text = `${r.out}${r.err}`

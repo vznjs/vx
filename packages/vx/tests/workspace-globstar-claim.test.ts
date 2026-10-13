@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import { findManifestRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 
 let root: string
 
@@ -35,8 +35,8 @@ for (const glob of ['packages/**', 'packages/**/']) {
     await manifest('.', { name: 'outer', workspaces: [glob] })
     const listed = (await listProjects(await loadWorkspace(root))).map((p) => rel(p.dir)).sort()
     expect(listed).toEqual(['packages', 'packages/a'])
-    expect(rel(await findWorkspaceRoot(path.join(root, 'packages')))).toBe('.')
-    expect(rel(await findWorkspaceRoot(path.join(root, 'packages/a')))).toBe('.')
-    expect(rel(await findWorkspaceRoot(path.join(root, 'other')))).toBe('other')
+    expect(rel(await findManifestRoot(path.join(root, 'packages')))).toBe('.')
+    expect(rel(await findManifestRoot(path.join(root, 'packages/a')))).toBe('.')
+    expect(rel(await findManifestRoot(path.join(root, 'other')))).toBe('other')
   })
 }

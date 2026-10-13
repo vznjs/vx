@@ -18,6 +18,7 @@ import { isUserError, relPosix, UserError } from '../util/index.js'
 import {
   applyMigration,
   discoverProjects,
+  findManifestRoot,
   findWorkspaceRoot,
   type LoadReads,
   loadWorkspace,
@@ -99,9 +100,10 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   }
   if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, parsed)
   const reads: LoadReads = new Map()
-  // "a workspace from nowhere" still needs a package.json to start from,
-  // and the lookup's own refusal named no next step.
-  const root = await findWorkspaceRoot(process.cwd(), reads).catch((err: unknown) => {
+  // `vx init` makes the vx.workspace.ts that marks the root, so without one
+  // it starts from the package manager's root. "A workspace from nowhere"
+  // still needs a package.json, and the lookup's own refusal named no next step.
+  const root = await initRoot(reads).catch((err: unknown) => {
     if (isUserError(err) && err.code === 'VX_E_NO_WORKSPACE') {
       throw new UserError(
         'vx init: no package.json here or in any parent directory; create one (`bun init` or `npm init -y`) and run vx init again',
@@ -184,7 +186,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
 
 /** Write `plugins/<seam>.ts` and its test under the workspace root (the cwd when there is none). */
 async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
-  const root = await findWorkspaceRoot(process.cwd(), new Map()).catch(() => process.cwd())
+  const root = await initRoot(new Map()).catch(() => process.cwd())
   const template = PLUGIN_TEMPLATES[seam]!
   const files = [
     [path.join('plugins', `${seam}.ts`), template.plugin],
@@ -546,4 +548,13 @@ async function readRootManifest(root: string): Promise<Record<string, unknown>> 
   return typeof pj === 'object' && pj !== null && !Array.isArray(pj)
     ? (pj as Record<string, unknown>)
     : {}
+}
+
+/**
+ * The workspace root, or where `vx init` makes one: the package manager's
+ * root. A vx.workspace.ts another user owns is not yours to re-init either.
+ */
+async function initRoot(reads: LoadReads): Promise<string> {
+  const cwd = process.cwd()
+  return findWorkspaceRoot(cwd).catch(() => findManifestRoot(cwd, reads))
 }

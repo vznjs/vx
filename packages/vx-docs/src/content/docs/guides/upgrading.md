@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## workspace: vx.workspace.* marks the workspace root
+
+every verb but vx init needs a vx.workspace.* file; without one it stops with VX_E_NO_WORKSPACE. A global vx hands off only to the workspace root's own node_modules/@vzn/vx.
+
 ## cache: a cache plugin provides only the remote
 
 a cache hook returns a RemoteCacheLayer (has, get, put, optional hasMany), not a layer over ctx.localCache; LayeredCache leaves the public API and CacheContext loses localCache and policy.

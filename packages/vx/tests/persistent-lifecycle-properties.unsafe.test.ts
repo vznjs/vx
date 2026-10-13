@@ -65,6 +65,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
   await mkdir(p, { recursive: true })
   await mkdir(pids)
   await writeFile(path.join(root, 'package.json'), '{"name":"fx","workspaces":["packages/*"]}')
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(p, 'package.json'), '{"name":"p"}')
   const n = 2 + Math.floor(rnd() * 6)
   const kinds: string[] = []

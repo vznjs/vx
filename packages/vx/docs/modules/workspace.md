@@ -72,7 +72,12 @@ export interface ProjectMeta {
   catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
-export function findWorkspaceRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
+// the directory of the nearest vx.workspace.* up to the git top-level
+// (handoff.ts workspaceFile); VX_E_NO_WORKSPACE without one
+export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
+// where `vx init` and @vzn/vx-migrate put vx.workspace.ts when there is
+// none: the package manager's root, by the claim rule below
+export function findManifestRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 // listProjects, collecting each nameless member's dir into `nameless` (vx init)
@@ -123,7 +128,7 @@ export type LoadReads = Map<string, Promise<Uint8Array | null>>
 export function readOnce(reads: LoadReads | undefined, file: string): Promise<Uint8Array | null>
 ```
 
-A run reads the root manifest once. `findWorkspaceRoot`, `loadWorkspace`
+A run reads the root manifest once. `findManifestRoot`, `loadWorkspace`
 and `computeWorkspaceFingerprints` each read `pnpm-workspace.yaml` for
 themselves until 2026-09-24 — three probes and three reads per run;
 `prepareRun` now hands all three one `LoadReads`, and so do the verbs
@@ -138,7 +143,24 @@ read — most names asked about are absent, and a failed read costs
 
 ### `findWorkspaceRoot(start)`
 
-Walks up from `start` to the filesystem root. A directory is a root
+The root is the directory holding the nearest `vx.workspace.*` from
+`start` up to the git top-level, inclusive (a worktree's `.git` file is a
+top-level; a submodule goes on to its superproject), or up to `/` outside
+git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
+or a lockfile (owner, 2026-10-13: "Workspace file is the ultimate",
+"never go out of git root"). A file above the checkout is never read.
+Outside git, a file another user owns above `start` is refused (root
+aside): it is code that would run as you. Without one the error is
+`VX_E_NO_WORKSPACE`, naming `vx init`
+(`tests/workspace-root-file.test.ts`). The lookup is `workspaceFile` in
+`handoff.ts`, shared with the hand-off and the config loader, once per run.
+
+### `findManifestRoot(start)`
+
+Where `vx init` and `@vzn/vx-migrate` write `vx.workspace.ts` when there
+is none yet. Walks up from `start` to the git top-level, or to the
+filesystem root outside git, where it stops above `start` at a manifest
+another user owns (root aside). A directory is a root
 CANDIDATE if it contains either:
 
 - `pnpm-workspace.yaml`, OR
@@ -192,7 +214,7 @@ entry, where a `pnpm-workspace.yaml` holds pnpm's settings and no
 ### `loadWorkspace(root, reads?)`
 
 Reads the package-glob list (through `reads`, so the manifest
-`findWorkspaceRoot` just read is not read again):
+`findManifestRoot` just read is not read again):
 
 | Manager                | Source                                                           |
 | ---------------------- | ---------------------------------------------------------------- |
@@ -318,7 +340,8 @@ the plugin `config` stage applied).
 - yarn legacy `workspaces.packages` form.
 - bare-`package.json` single-project mode (`['.']`).
 - duplicate-name detection.
-- `findWorkspaceRoot` ascending behavior + missing-root error.
+- `findWorkspaceRoot` (the nearest `vx.workspace.*`, git-bounded) and
+  `findManifestRoot` ascending behavior + missing-root errors.
 - glob behavior (one project, multiple projects, nested
   `node_modules` skipped).
 

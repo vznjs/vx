@@ -22,6 +22,7 @@ describe('a workspace .env stays out of vx', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
     )
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
       path.join(root, 'packages', 'a', 'vx.config.mjs'),

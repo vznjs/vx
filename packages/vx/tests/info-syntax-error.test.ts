@@ -22,6 +22,7 @@ async function workspace(prefix: string): Promise<string> {
   roots.push(root)
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   return root
 }
 

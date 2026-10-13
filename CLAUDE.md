@@ -19,8 +19,10 @@ CLI verbs exist. Core applies NO plugin by default. Running here and
 caching here are core's FLOOR, not plugins: the local executor sits at
 the tail of every executor list and the local cache heads every cache
 chain (asked first, then each remote in declared order), so a
-workspace with no `vx.workspace.ts` runs and caches, and a plugin that
-declines a task hands it back to this machine.
+`vx.workspace.ts` declaring no plugin runs and caches, and a plugin that
+declines a task hands it back to this machine. That file is required:
+the nearest one up from the cwd, never above the git top-level, marks
+the workspace root (2026-10-13).
 
 Pipeline stages a plugin can fill, in order: `config` → `discover` → `project` →
 `graph` → `key` → `fingerprint` → `schedule` → `admit` → `executor` /

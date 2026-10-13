@@ -220,7 +220,7 @@ describe('local cache short-circuit', () => {
       // The default rule refuses `**/*` beside build's output; with the
       // output excluded, test's key cannot see it, so it is known before
       // build runs and both restore ahead of the schedule.
-      await rm(path.join(fixture.root, 'vx.workspace.mjs'))
+      await Bun.write(path.join(fixture.root, 'vx.workspace.mjs'), 'export default {}\n')
       await addProject(fixture.root, 'app', {
         files: { 'src/a.txt': 'a' },
         config: `

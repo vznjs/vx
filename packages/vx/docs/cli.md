@@ -1867,14 +1867,25 @@ direct publishing (the `E401 token is invalid` that stopped v0.0.17).
 Every `uses:` in both workflows is pinned to a commit SHA with the
 version in a comment; bump the SHA and the comment together.
 
+## The workspace root
+
+Every verb works on one workspace: the directory holding the nearest
+`vx.workspace.ts` (or `.mts`, `.js`, `.mjs`, `.cts`, `.cjs`) from the
+working directory up. vx never looks above the git top-level (a
+worktree is its own; a submodule looks on into its superproject), and
+outside git it looks up to `/`. Nothing else marks the root: not a
+`package.json`, `pnpm-workspace.yaml` or a lockfile (owner, 2026-10-13).
+Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
+`vx init` writes it at the package manager's root. Projects inside the
+root are found from its package globs as before.
+
 ## Which vx runs
 
 A global vx (installed with a package manager, or a compiled binary
 installed by hand) hands every call to the project's own `@vzn/vx` when
 there is one, so a project runs the version its lockfile pins (owner,
-2026-10-13). There is no opt-out. From the working directory up to the
-git root (the level holding `.git` is the last one checked, else the
-filesystem root), the first `node_modules/@vzn/vx` wins, run through its
+2026-10-13). There is no opt-out. The workspace root's
+`node_modules/@vzn/vx` runs, through its
 `node_modules/.bin/vx`. One hop: the receiving vx sees `VX_HANDED_OFF`
 and does not look again. A vx never hands off to itself (the same
 package, a pnpm symlink included), nor to a `.bin/vx` another user owns
@@ -2243,7 +2254,8 @@ without `--force`, or a parse error (`--mjs` with `--plugin` among them).
 ## `vx migrate`
 
 Moved out of core on 2026-09-10: the Turbo and Nx mappers are
-`@vzn/vx-migrate`, their own package, run without a workspace file —
+`@vzn/vx-migrate`, their own package, run before a workspace file
+exists (it writes one) —
 
 ```
 bunx @vzn/vx-migrate           # turbo.json, an Nx graph or vite-plus run.tasks → vx.config.ts
@@ -2442,9 +2454,10 @@ The task graph has a cycle. The message names the loop; drop one of its
 
 #### `VX_E_NO_WORKSPACE`
 
-No workspace root above the working directory. Run vx inside the repo,
-or create a `package.json` and run `vx init`. A manifest above it that
-another user owns does not count (`security.md`); the message names it.
+No `vx.workspace.*` in the working directory or a parent, up to the git
+top-level (a file above the checkout never counts). The file marks the
+workspace root, so run `vx init` to create one. Outside git, one another
+user owns does not count (`security.md`); the message names it.
 
 #### `VX_E_CACHE_VERSION`
 

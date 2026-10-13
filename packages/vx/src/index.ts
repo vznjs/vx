@@ -110,7 +110,7 @@ export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from '
 // or `vx show` sees — plugin stages applied — is `loadResolvedProjects`
 // below. Workspace's `listProjects` re-exports as `listProjectMetas` (the
 // bare name once belonged to a metrics query).
-export { findWorkspaceRoot } from './workspace/index.js'
+export { findManifestRoot, findWorkspaceRoot } from './workspace/index.js'
 export {
   loadWorkspace,
   loadProjectConfig,

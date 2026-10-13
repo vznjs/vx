@@ -22,6 +22,7 @@ beforeAll(async () => {
   const pkg = path.join(root, 'packages', 'a')
   marker = path.join(pkg, 'ran')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await mkdir(pkg, { recursive: true })
   await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))

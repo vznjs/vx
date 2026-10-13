@@ -219,10 +219,15 @@ export function escapeMarkdownCell(value: string): string
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
+== function findManifestRoot (src/workspace/workspace.ts)
+export async function findManifestRoot(
+  start: string,
+  reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
+): Promise<string>
 == function findWorkspaceRoot (src/workspace/workspace.ts)
 export async function findWorkspaceRoot(
   start: string,
-  reads: LoadReads = new Map(),
   uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
 == function foldScriptHooks (src/workspace/migration.ts)

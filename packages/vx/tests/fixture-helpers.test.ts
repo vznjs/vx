@@ -88,8 +88,14 @@ describe('makeWorkspace', () => {
     })
     expect(path.dirname(root)).toBe(dir)
     expect(path.basename(root)).toStartWith('suite-x-')
-    expect(readdirSync(root).sort()).toEqual(['package.json', 'packages', 'pnpm-workspace.yaml'])
+    expect(readdirSync(root).sort()).toEqual([
+      'package.json',
+      'packages',
+      'pnpm-workspace.yaml',
+      'vx.workspace.mjs',
+    ])
     expect(JSON.parse(await text(path.join(root, 'package.json'))).name).toBe('named-root')
+    expect(await text(path.join(root, 'vx.workspace.mjs'))).toBe('export default {}\n')
   })
 
   it("git: 'commit' tracks everything written so far", async () => {

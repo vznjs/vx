@@ -137,6 +137,7 @@ describe('package boundaries', () => {
       'escapeMarkdownCell',
       'executorFallback',
       'exitSignal',
+      'findManifestRoot',
       'findWorkspaceRoot',
       'foldScriptHooks',
       'isCacheHit',

@@ -17,6 +17,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   applyMigration,
+  findManifestRoot,
   findWorkspaceRoot,
   isUserError,
   listProjectMetas,
@@ -134,9 +135,12 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx-migrate: ${parsed.error}\n`)
     return 1
   }
-  const root = await findWorkspaceRoot(process.cwd()).catch(async (err: unknown) => {
-    throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
-  })
+  // No vx.workspace.ts yet is the usual case here: this writes it.
+  const root = await findWorkspaceRoot(process.cwd())
+    .catch(() => findManifestRoot(process.cwd()))
+    .catch(async (err: unknown) => {
+      throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
+    })
   const metas = await listProjectMetas(await loadWorkspace(root))
 
   const turboFile = await turboConfigFile(root)

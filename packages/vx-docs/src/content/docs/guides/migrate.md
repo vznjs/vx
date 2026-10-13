@@ -154,7 +154,7 @@ npx @vzn/vx run test --all      # 3 up-to-date
 bunx @vzn/vx-migrate       # 3 tasks migrated clean, 0 TODOs
 git add -A && git commit -m migrate
 npx @vzn/vx run test --all      # 3 up-to-date: the written configs derive the same keys
-rm vx.workspace.ts         # drop turbo(); the configs stand alone
+echo 'export default {}' > vx.workspace.ts   # drop turbo(); the configs stand alone
 git add -A && git commit -m done
 npx @vzn/vx run test --all      # 3 up-to-date
 ```

@@ -1,7 +1,8 @@
 # Config schema
 
 Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
-and the optional workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`. The
+and the workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`, which is
+required: it marks the workspace root (cli.md § The workspace root). The
 authoritative TypeScript definitions live in `src/config.ts` and are
 re-exported from `@vzn/vx`.
 
@@ -10,7 +11,7 @@ re-exported from `@vzn/vx`.
 ```
 <workspaceRoot>/
 ├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
-├── vx.workspace.ts              (optional, workspace-wide settings)
+├── vx.workspace.ts              (required: marks the root; workspace-wide settings)
 └── packages/
     └── <pkg>/
         ├── package.json

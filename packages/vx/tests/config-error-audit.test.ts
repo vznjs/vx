@@ -20,6 +20,7 @@ const run = async (config: string) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-cfg-err-')))
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
   await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["p"]}')
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'p'))
   await writeFile(path.join(root, 'p', 'package.json'), '{"name":"p"}')
   await writeFile(path.join(root, 'p', 'vx.config.ts'), config)

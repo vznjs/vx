@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findWorkspaceRoot } from '../src/workspace/workspace.js'
+import { findManifestRoot } from '../src/workspace/workspace.js'
 
 let root: string
 
@@ -28,7 +28,7 @@ afterEach(async () => {
 })
 
 const rootFrom = async (dir: string) => {
-  const found = await findWorkspaceRoot(path.join(root, dir))
+  const found = await findManifestRoot(path.join(root, dir))
   return found === root
     ? '.'
     : found

@@ -21,6 +21,7 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-scoped-git-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   const pkg = async (name: string, deps: Record<string, string>, config: string) => {
     const dir = path.join(root, 'packages', name)
     await mkdir(path.join(dir, 'src'), { recursive: true })

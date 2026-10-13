@@ -30,7 +30,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (52 runtime symbols, a deliberate
+through two seams: the public API (53 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -57,8 +57,9 @@ Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
 path, variable, flag, parser), `version.ts` (the `VERSION`
 constant, extracted so `index`/`cli`/`orchestrator` don't form a
-cycle through it), `handoff.ts` (a global vx hands off to the
-project's own, before anything else loads).
+cycle through it), `handoff.ts` (the workspace root: the nearest
+`vx.workspace.*` up to the git top-level; a global vx hands off to that
+root's own vx, before anything else loads).
 
 ### The orchestrator's file inventory
 

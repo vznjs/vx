@@ -19,6 +19,7 @@ async function workspace(rootConfig: boolean): Promise<string> {
   roots.push(root)
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'top', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))

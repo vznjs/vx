@@ -27,7 +27,9 @@ that binary.
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
-3. Or write one by hand, beside a package's `package.json`.
+3. Or write one by hand, beside a package's `package.json`, and a
+   `vx.workspace.ts` at the root (`export default {}` will do): the
+   nearest one up from where you run marks the workspace.
 
 ## Config
 

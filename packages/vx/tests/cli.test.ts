@@ -2306,6 +2306,7 @@ describe('vx cache prune command', () => {
       path.join(workspaceRoot, 'pnpm-workspace.yaml'),
       'packages:\n  - "packages/*"\n',
     )
+    await writeFile(path.join(workspaceRoot, 'vx.workspace.mjs'), 'export default {}\n')
     process.chdir(workspaceRoot)
   })
 
@@ -2675,6 +2676,7 @@ describe('the project a bare task runs in, from a nested subdirectory (e2e)', ()
         const dir = path.join(root, rel)
         await mkdir(path.join(dir, 'src'), { recursive: true })
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+        await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
         await writeFile(
           path.join(dir, 'vx.config.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' } } } }`,

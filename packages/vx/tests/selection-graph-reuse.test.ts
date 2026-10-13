@@ -18,6 +18,7 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-selection-graph-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   for (const name of ['app', 'lib']) {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })

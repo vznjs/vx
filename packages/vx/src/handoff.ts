@@ -1,16 +1,17 @@
-// A global vx hands off to the project's own (owner, 2026-10-13). Here for
+// A global vx hands off to the project's own (owner, 2026-10-13), found
+// from the workspace root, the one lookup every verb shares. Here for
 // the compiled binary installed by hand; an npm install's launcher
 // (npm-launcher.sh) walks the same way and `exec`s, which Bun cannot. The
 // walk runs before anything else loads, through `Bun.file(…).exists()`:
 // importing `node:fs` alone was ~1.1 ms of a 4 ms start (2026-10-13).
 
 /**
- * The project-local vx to run instead of this one, or null: the first
- * `node_modules/@vzn/vx` from `cwd` up to the git root (a `.git` stops the
- * walk after its own level), run through its `.bin/vx`. Null once handed
+ * The project-local vx to run instead of this one, or null: the workspace
+ * root's ({@link workspaceFile}) `node_modules/@vzn/vx`, run through its
+ * `.bin/vx`. Null once handed
  * off (one hop), for a vx that is not a standalone compiled binary (source;
- * an npm install, whose launcher already walked), when the local one is
- * this binary, and when another user owns it.
+ * an npm install, whose launcher already walked), outside a workspace,
+ * when the local one is this binary, and when another user owns it.
  */
 export async function localVx(
   cwd: string,
@@ -20,26 +21,102 @@ export async function localVx(
 ): Promise<string | null> {
   if (process.env['VX_HANDED_OFF'] !== undefined || !compiled) return null
   if (execPath.includes('/node_modules/')) return null
-  for (let d = cwd; d !== ''; d = d.slice(0, d.lastIndexOf('/'))) {
-    // A file each: `exists()` is false for a directory.
-    if (await Bun.file(`${d}/node_modules/@vzn/vx/package.json`).exists()) {
-      const bin = `${d}/node_modules/.bin/vx`
-      const { realpathSync, statSync } = await import('node:fs')
-      try {
-        const real = realpathSync(bin)
-        // One another user planted above your checkout would run as you.
-        if (statSync(real).uid !== uid) return null
-        return real === realpathSync(execPath) ? null : bin
-      } catch {
-        return null
+  const file = await workspaceFile(cwd)
+  if (file === null) return null
+  const root = file.slice(0, file.lastIndexOf('/')) || '/'
+  if (!(await Bun.file(`${root}/node_modules/@vzn/vx/package.json`).exists())) return null
+  const bin = `${root}/node_modules/.bin/vx`
+  const { realpathSync, statSync } = await import('node:fs')
+  try {
+    const real = realpathSync(bin)
+    // One another user planted would run as you.
+    if (statSync(real).uid !== uid) return null
+    return real === realpathSync(execPath) ? null : bin
+  } catch {
+    return null
+  }
+}
+
+/** The workspace config's filenames, in lookup order: one marks the workspace root. */
+export const WORKSPACE_CONFIG_FILENAMES = [
+  'vx.workspace.ts',
+  'vx.workspace.mts',
+  'vx.workspace.js',
+  'vx.workspace.mjs',
+  // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
+  // was ignored without a word (D-86).
+  'vx.workspace.cts',
+  'vx.workspace.cjs',
+]
+
+const files = new Map<string, Promise<string | null>>()
+
+/**
+ * The workspace config that marks the root for `dir`: the first
+ * `vx.workspace.*` from `dir` up to the git top-level ({@link gitTop}),
+ * inclusive, or to `/` outside git (owner, 2026-10-13: "Workspace file is
+ * the ultimate" and "never go out of git root"). Null when there is none.
+ * Learned once per directory per run: the hand-off and the workspace root
+ * share it (principle 9).
+ */
+export function workspaceFile(dir: string): Promise<string | null> {
+  let file = files.get(dir)
+  if (file === undefined) {
+    file = findWorkspaceFile(dir)
+    files.set(dir, file)
+  }
+  return file
+}
+
+async function findWorkspaceFile(start: string): Promise<string | null> {
+  const top = await gitTop(start)
+  const passed: string[] = []
+  let found: string | null = null
+  walk: for (let d = start; ; d = d.slice(0, d.lastIndexOf('/'))) {
+    passed.push(d || '/')
+    for (const name of WORKSPACE_CONFIG_FILENAMES) {
+      const file = `${d}/${name}`
+      if (await Bun.file(file).exists()) {
+        found = file
+        break walk
       }
     }
-    // `.git` is a directory in a clone, a file in a worktree or submodule.
-    if ((await Bun.file(`${d}/.git/HEAD`).exists()) || (await Bun.file(`${d}/.git`).exists())) {
-      return null
-    }
+    if (d === '' || d === top) break
   }
-  return null
+  // Every directory walked has the same answer: the loader asks for the root's.
+  for (const d of passed) if (!files.has(d)) files.set(d, Promise.resolve(found))
+  return found
+}
+
+const tops = new Map<string, Promise<string | null>>()
+
+/**
+ * The git top-level holding `dir`, or null outside git: the nearest `.git`
+ * up from it, a directory in a clone, a file in a worktree. A submodule's
+ * `.git` file points into its superproject's `.git/modules`, so the walk
+ * goes on to the superproject's. Learned once per directory per run: the
+ * hand-off and the workspace root walk share it (principle 9).
+ */
+export function gitTop(dir: string): Promise<string | null> {
+  let top = tops.get(dir)
+  if (top === undefined) {
+    top = findGitTop(dir)
+    tops.set(dir, top)
+  }
+  return top
+}
+
+async function findGitTop(start: string): Promise<string | null> {
+  for (let d = start; ; d = d.slice(0, d.lastIndexOf('/'))) {
+    // A file each: `exists()` is false for a directory.
+    if (await Bun.file(`${d}/.git/HEAD`).exists()) return d || '/'
+    const file = Bun.file(`${d}/.git`)
+    if (await file.exists()) {
+      const gitdir = await file.text().catch(() => '')
+      if (!/(^|[\s/])\.git\/modules\//.test(gitdir)) return d || '/'
+    }
+    if (d === '') return null
+  }
 }
 
 /** This vx's own file: the compiled binary, else the source entry Bun runs. */

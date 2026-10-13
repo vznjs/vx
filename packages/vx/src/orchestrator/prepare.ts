@@ -194,7 +194,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // The root manifest is read once for the root, the globs and the
   // fingerprint. A watch cycle is a new run and reads it afresh.
   const reads: LoadReads = new Map()
-  const workspaceRoot = await findWorkspaceRoot(options.cwd, reads)
+  const workspaceRoot = await findWorkspaceRoot(options.cwd)
   // A frozen run with nothing staged reads the lock whatever discovery
   // finds, so the read (1.1 MB at 1,000 projects, ~10 ms to read and
   // parse) starts here and overlaps discovery's I/O instead of following

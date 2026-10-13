@@ -52,6 +52,7 @@ describe.skipIf(!available)('a sandboxed task and the host’s services', () => 
       path.join(ws, 'package.json'),
       JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
     )
+    await writeFile(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
       path.join(ws, 'packages', 'a', 'vx.config.mjs'),

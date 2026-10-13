@@ -33,6 +33,7 @@ async function lastLine(secret: string): Promise<{ line: string[]; holding: stri
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))

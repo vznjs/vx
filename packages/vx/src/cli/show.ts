@@ -85,7 +85,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const parsed = parseShowArgs(args)
   if (parsed.error) return refuse('show', args, parsed.error, 'VX_E_USAGE')
   const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(process.cwd(), reads)
+  const root = await findWorkspaceRoot(process.cwd())
   const metas = await discoverCliProjects(await loadWorkspace(root, reads))
   const byName = new Map(metas.map((m) => [m.name, m]))
 
