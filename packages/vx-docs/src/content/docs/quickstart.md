@@ -73,6 +73,20 @@ The first run stores the result. The second finds nothing changed and
 `dist/` and the next run restores it from the cache: `restored-local`, the
 `⇢ success local` row.
 
+The frame's last line and the summary's `result` line, from three runs
+of a small package (first run, again, again after `rm -rf dist`):
+
+```text
+└─ @demo/app#build ── (60ms) success
+  result    1 task · 0 cached (0%) · 332ms
+
+└─ @demo/app#build ── (3ms) up-to-date
+  result    1 task · all cached · 60ms saved · 23ms
+
+└─ @demo/app#build ── (14ms) restored-local
+  result    1 task · all cached · 60ms saved · 31ms
+```
+
 ## An existing repo
 
 Start with one package and leave the rest of your tooling as it is.
