@@ -41,8 +41,9 @@ const KEYED_BY_EVERY_TASK = new Set(['package.json', ...PROJECT_CONFIG_FILENAMES
 function wholeProjects(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
-): Set<string> {
-  const whole = new Set(changes.whole)
+): Map<string, string | undefined> {
+  // Each whole project, with the path no cached task claims when one did it.
+  const whole = new Map<string, string | undefined>([...changes.whole].map((n) => [n, undefined]))
   for (const [name, rels] of changes.paths) {
     if (whole.has(name)) continue
     const caches = Object.values(projects.get(name)?.config.tasks ?? {}).flatMap((t) =>
@@ -50,7 +51,8 @@ function wholeProjects(
     )
     const unclaimed = (rel: string): boolean =>
       KEYED_BY_EVERY_TASK.has(rel) || !caches.some((c) => declaresInput(c, rel, null))
-    if (rels.some(unclaimed)) whole.add(name)
+    const rel = rels.find(unclaimed)
+    if (rel !== undefined) whole.set(name, rel)
   }
   return whole
 }
@@ -157,7 +159,7 @@ export function affectedRoots(
       return hit
     }
     if (whole.has(n.projectName)) {
-      seeds?.set(n.id, inProject(n.projectName, undefined))
+      seeds?.set(n.id, inProject(n.projectName, whole.get(n.projectName)))
       return true
     }
     const rel = rels.find((r) => declaresInput(cache, r, null))

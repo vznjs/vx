@@ -88,4 +88,22 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       'affected: packages/lib/src/a.js changed (in its project)',
     ])
   })
+
+  it('json: a path no cached task declares names itself on the whole project', async () => {
+    // Agent trial 2, row 5: `kind: project` with no `file` sent the agent
+    // looking for an input that had not changed; an unignored output had.
+    const stray = path.join(root, 'packages/other/out.txt')
+    await writeFile(stray, 'built\n')
+    try {
+      const plan = JSON.parse(dry('build', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      expect(plan.tasks.find((t) => t.id === 'other#build')?.affected).toEqual({
+        kind: 'project',
+        file: 'packages/other/out.txt',
+      })
+    } finally {
+      await rm(stray)
+    }
+  })
 })

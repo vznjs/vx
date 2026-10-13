@@ -988,8 +988,9 @@ $ vx run build lint --affected=main --dry
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
-project changed and the task reads it whole: an uncached task, or no
-single `file` for a lockfile claim, a manifest edge or a config import),
+project changed and the task reads it whole: an uncached task, or a changed
+`file` no cached task of the project declares, often an output git does not
+ignore; no `file` for a lockfile claim, a manifest edge or a config import),
 `package` (a `^` edge passes a changed `project` with no such task),
 `named` (`pkg#task` beside a bare task) or `selected` (another filter
 selected its project). `via` is the `dependsOn` chain, nearest first, to
