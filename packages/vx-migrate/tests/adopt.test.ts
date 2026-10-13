@@ -3,6 +3,7 @@
 // 2026-10-04: configs were written and nothing installed vx. The repo's
 // own scripts are never edited (owner, 2026-10-06).
 
+import { existsSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -609,6 +610,7 @@ describe('managerArgv', () => {
 describe('install when PATH holds an unrunnable manager', () => {
   // `pnpm exec vx init` under pnpm 12: PATH's pnpm has no shebang (ENOEXEC).
   // A child process, since Bun.spawn looks PATH up in the startup env.
+  let said = ''
   const probe = async (execpath: string, pathPnpm = 'not a script\n') => {
     const root = await tmp('vx-adopt-enoexec-')
     await mkdir(path.join(root, 'bin'))
@@ -616,7 +618,11 @@ describe('install when PATH holds an unrunnable manager', () => {
     await writeFile(path.join(root, 'bin', 'pnpm'), pathPnpm)
     await chmod(path.join(root, 'bin', 'pnpm'), 0o755)
     await mkdir(path.join(root, 'real'))
-    await writeFile(path.join(root, 'real', 'pnpm'), '#!/bin/sh\necho "real pnpm $*"\n')
+    // Its words are shown only on failure, so it leaves a mark instead.
+    await writeFile(
+      path.join(root, 'real', 'pnpm'),
+      '#!/bin/sh\necho "real pnpm $*" > "$(dirname "$0")/ran"\n',
+    )
     await chmod(path.join(root, 'real', 'pnpm'), 0o755)
     await writeFile(path.join(root, 'ws', 'package.json'), '{"name":"ws"}')
     await writeFile(path.join(root, 'ws', 'pnpm-lock.yaml'), '')
@@ -634,8 +640,13 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
         npm_config_user_agent: '',
       },
     })
+    said = r.stdout.toString() + r.stderr.toString()
+    const ran = path.join(root, 'real', 'ran')
+    const out = existsSync(ran)
+      ? readFileSync(ran, 'utf8').trim()
+      : r.stdout.toString().split('\n').slice(1, 2)[0]!
     await rm(root, { recursive: true, force: true })
-    return r.stdout.toString().split('\n').slice(1, 2)[0]!
+    return out
   }
 
   it('runs the pnpm that launched it', async () => {
@@ -646,6 +657,14 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
     expect(await probe('', '#!/bin/sh\nexit 1\n')).toBe(
       'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx-migrate again; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
     )
+  })
+
+  it("shows the manager's own output only when it fails", async () => {
+    await probe('', '#!/bin/sh\necho deprecated-noise\n')
+    expect(said).not.toContain('deprecated-noise')
+    expect(said).toContain('vx-migrate: pnpm add -D -w @vzn/vx (what the written files import)')
+    await probe('', '#!/bin/sh\necho why-it-failed >&2\nexit 1\n')
+    expect(said).toContain('why-it-failed')
   })
 
   it('names the spawn error when nothing else can run it', async () => {

@@ -152,7 +152,7 @@ export function listedPackages(root: string, packages: readonly string[]): strin
   )
 }
 
-/** Install `packages` (at `version`, given one) with the repo's manager, its output on the terminal. */
+/** Install `packages` (at `version`, given one) with the repo's manager; its output only on failure. */
 export function install(
   root: string,
   packages: readonly string[],
@@ -164,10 +164,11 @@ export function install(
     installArgv(root, pm, version === null ? packages : packages.map((p) => `${p}@${version}`)),
     'installing vx',
     // pnpm 12 refuses a version younger than minimumReleaseAge, and vx
-    // releases daily; its words scroll by above, so the way out is named.
+    // releases daily; its words print above, so the way out is named.
     pm === 'pnpm'
       ? `; if pnpm refused a version published within its minimumReleaseAge, list ${packages.join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
       : '',
+    ' (what the written files import)',
   )
 }
 
@@ -204,13 +205,26 @@ async function runManager(
   argv: string[],
   what: string,
   ranHint = '',
+  why = '',
 ): Promise<string> {
   const line = argv.join(' ')
-  process.stdout.write(`vx-migrate: ${line}\n`)
-  const spawn = (cmd: string[]) =>
-    Bun.spawn(cmd, { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] }).exited
+  process.stdout.write(`vx-migrate: ${line}${why}\n`)
+  // The manager's own output (progress, deprecations, audit, postinstalls)
+  // is shown only when it fails: mid-init it buried the report (Growth's
+  // first-run funnel F3, 2026-10-13).
+  let said = ''
+  const spawn = async (cmd: string[]) => {
+    const p = Bun.spawn(cmd, { cwd: root, stdin: 'inherit', stdout: 'pipe', stderr: 'pipe' })
+    const [out, err, code] = await Promise.all([
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+      p.exited,
+    ])
+    said = out + err
+    return code
+  }
   let code: number
-  let why = ''
+  let failed = ''
   try {
     code = await spawn(argv)
   } catch (e) {
@@ -220,12 +234,13 @@ async function runManager(
       code = await spawn(launcher)
     } catch (e2) {
       code = -1
-      why = `: ${(e2 as Error).message}`
+      failed = `: ${(e2 as Error).message}`
     }
   }
   if (code !== 0) {
+    process.stderr.write(said)
     throw new UserError(
-      `${what} failed (${line} exited ${code}${why}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`,
+      `${what} failed (${line} exited ${code}${failed}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`,
     )
   }
   return line

@@ -468,7 +468,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push(...plan.notes)
     if (files.length === 0) report.push(dry ? 'no files (dry run)' : 'no files written')
     else report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
-    for (const f of files) report.push(`  ${f.relPath}`)
+    report.push(...fileLines(files.map((f) => f.relPath)))
     if (kept.length > 0) {
       report.push('kept (each already has a vx config):')
       for (const f of kept) report.push(`  ${f}`)
@@ -609,6 +609,16 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
     default:
       return 'vx'
   }
+}
+
+/** Files named one per line; past this, the root's and a count (TanStack form: 97). */
+const FILES_SHOWN = 10
+
+function fileLines(paths: readonly string[]): string[] {
+  if (paths.length <= FILES_SHOWN) return paths.map((p) => `  ${p}`)
+  const root = paths.filter((p) => !p.includes('/'))
+  const more = paths.length - root.length
+  return [...root.map((p) => `  ${p}`), `  and ${more} more in package directories`]
 }
 
 /** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */

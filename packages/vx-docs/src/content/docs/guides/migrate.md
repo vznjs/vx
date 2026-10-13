@@ -89,7 +89,7 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: npm uninstall @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: dropped turbo() from vx.workspace.ts
@@ -242,7 +242,7 @@ next: npm install -D @vzn/vx-migrate && npx vx run build --all
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: nx graph → vx.config.ts
 note: dropped nx() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
