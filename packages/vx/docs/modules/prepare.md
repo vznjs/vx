@@ -82,10 +82,11 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    `resolveCacheDir(root, workspaceConfig)`, refused up front with the
    directory named when this user cannot write it (`assertWritable`).
    Then the layer resolution: an injected `RunOptions.remoteCache`
-   composed into a `LayeredCache` wins; else `resolveCache` collects
-   every `cache` capability in the declared plugin list in order — one
-   layer is used as is, two or more are chained, and a plugin
-   declaring nothing leaves the local store unwrapped as the floor.
+   composed into a `LayeredCache` wins; else `resolveCache` layers
+   every plugin's `cache` remote over the local store, in declared
+   order, under the run's policy — one remote is one `LayeredCache`,
+   two or more are chained, and none leaves the local store unwrapped
+   as the floor.
    `computeWorkspaceFingerprints` yields two digests from one read:
    the config-evaluation key over every root file, and the task key
    over the files no plugin's `fingerprint` claims.

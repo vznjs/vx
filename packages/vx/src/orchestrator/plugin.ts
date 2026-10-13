@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
+import type { Cache, RemoteCacheLayer } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
@@ -167,14 +167,14 @@ export interface VxPlugin {
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
   /**
-   * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
-   * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
-   * Every contributed layer is kept and chained in declaration order,
-   * ahead of core's own `.vx/cache` handle at the tail: a lookup walks
-   * them until one hits, a save reaches each. A layer that WRAPS the local
-   * handle subsumes that tail, so it is not written twice.
+   * Contribute a remote cache: the wire (`has`, `get`, `put`, optional
+   * `hasMany`), or undefined to decline. Consulted ONCE per prepareRun.
+   * Core layers each one behind its own local cache and owns the rest:
+   * the local store is asked first, then each remote in declaration order;
+   * the run's policy and scope gate every remote; a remote's throw is a
+   * miss and a warning naming the plugin, never a failed run.
    */
-  cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+  cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>
 
   /**
    * Contribute a task executor — WHERE one task's command runs. Consulted
@@ -366,11 +366,15 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
 }
 
+/** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */
 export interface CacheContext extends BaseContext {
-  /** The local Cache handle the plugin may wrap (LayeredCache(local, remote)). */
-  readonly localCache: Cache
-  /** The run's cache policy (the 4 read/write axes). */
-  readonly policy: CachePolicy
+  /**
+   * The run's `cache.scope`: `undefined` when trusted, `'read-only'`, or an
+   * untrusted scope's name (`'pr-123'`). Core already keys a scoped run's
+   * writes apart; a remote reads it to pick a credential or check a token's
+   * claims (an OIDC branch) for every call it makes.
+   */
+  readonly scope: string | undefined
 }
 
 export interface ExecutorContext extends BaseContext {

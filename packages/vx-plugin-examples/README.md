@@ -12,7 +12,7 @@ shows `config`, `discover` and `fingerprint`.
 | Seam        | File                                           | What it does                                                                       |
 | ----------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `executor`  | [`plugins/executor.ts`](plugins/executor.ts)   | runs a task's command in its own process group; stops it on the request's `signal` |
-| `cache`     | [`plugins/cache.ts`](plugins/cache.ts)         | a directory as the remote store, behind `LayeredCache`                             |
+| `cache`     | [`plugins/cache.ts`](plugins/cache.ts)         | a directory as the remote store; core layers it over the local cache               |
 | `telemetry` | [`plugins/telemetry.ts`](plugins/telemetry.ts) | appends one JSON line per run to a file                                            |
 | `schedule`  | [`plugins/schedule.ts`](plugins/schedule.ts)   | named tasks start first                                                            |
 | `admit`     | [`plugins/admit.ts`](plugins/admit.ts)         | at most one task of a name runs at a time                                          |

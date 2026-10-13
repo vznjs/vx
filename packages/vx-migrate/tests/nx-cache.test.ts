@@ -309,8 +309,6 @@ describe('vx run with nxCache() layered over the local cache', () => {
 
   it('the plugin declines without a server', () => {
     const ctx = {
-      localCache: {} as never,
-      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
       warn: () => {},
       workspaceRoot: root,
       cacheDir: root,

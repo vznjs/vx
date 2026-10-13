@@ -17,8 +17,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   definePlugin,
-  LayeredCache,
-  type CacheLayer,
   type RemoteCacheLayer,
   type VxPlugin,
   refuseUnknownOptions,
@@ -366,7 +364,7 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
 /**
  * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
- * auth failure (401/403) throws ONCE — LayeredCache reports it — and then
+ * auth failure (401/403) throws ONCE — core reports it — and then
  * turns the layer off for the rest of the process (an upload's 403 turns off
  * uploads alone: the read-only token), so a bad token costs one
  * line, not one per task — the requests already in flight when it lands
@@ -389,6 +387,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private writesRefused = false
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
+  /** What `TURBO_REMOTE_CACHE_READ_ONLY` and friends leave this run (`turboRemoteAccess`). */
+  access?: { read: boolean; write: boolean }
   constructor(
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -724,7 +724,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   return definePlugin(import.meta, {
-    cache(ctx): CacheLayer | undefined {
+    cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveTurboCacheConfig(
         options,
         Bun.env,
@@ -732,20 +732,14 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         localConfigOf(ctx.workspaceRoot),
       )
       if (config === undefined) return undefined
-      const remote = turboRemoteAccess(Bun.env)
-      const policy = {
-        ...ctx.policy,
-        remoteRead: ctx.policy.remoteRead && remote.read,
-        remoteWrite: ctx.policy.remoteWrite && remote.write,
-      }
-      if (!policy.remoteRead && !policy.remoteWrite) return undefined
+      const access = turboRemoteAccess(Bun.env)
+      if (!access.read && !access.write) return undefined
       // A signed download waits in a temp until its tag checks: in vx's
       // cache directory, which the sandbox walls, not the shared temp dir a
       // sandboxed task may read (L-45).
-      return new LayeredCache(ctx.localCache, new TurboRemoteCache(config, fetch, ctx.cacheDir), {
-        policy,
-        onRemoteError: (err) => ctx.warn(`vx/turbo-cache: ${err.message}`),
-      })
+      const remote = new TurboRemoteCache(config, fetch, ctx.cacheDir)
+      remote.access = access
+      return remote
     },
   })
 }
