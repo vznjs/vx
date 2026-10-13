@@ -96,3 +96,19 @@ cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files:
 
 What the task gets and what the key sees are separate on purpose. The
 whole set of rules is in the [schema](../../schema/).
+
+## Hygiene, and where the boundary is
+
+Dropping variables keeps builds the same from machine to machine. It is
+not a wall: a dropped variable is absent from the task's environment,
+but vx itself still holds it, and a task with no `exec.sandbox` runs as
+you. On macOS such a task can read vx's environment with `ps eww`. On
+Linux vx makes itself non-dumpable before each command and starts its
+helpers with `PATH` alone, so `/proc/<pid>/environ` is closed to the
+task; that covers the environment, not your files.
+
+A task in `exec.sandbox` cannot read vx's environment on either
+platform, and a test plants a value on vx and probes for it from both
+sides of the sandbox to prove it. If a variable is a secret, the sandbox
+is what keeps it from a task. Details:
+[Security](../../security/#what-the-sandbox-stops).
