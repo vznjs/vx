@@ -100,7 +100,8 @@ Dropping variables keeps builds the same from machine to machine. It does
 not stop a task that goes looking: an unsandboxed task runs as you, and
 on macOS it can still read vx's own environment with `ps eww`. On Linux
 vx makes itself non-dumpable, so a task cannot read it there
-(`VX_DUMPABLE=1` turns that off for strace and debuggers). To keep a task
+(`VX_DUMPABLE=1` turns that off for strace and debuggers). That guards
+the environment only, not your files. To keep a task
 away from what it was not given, sandbox it with `exec.sandbox`: a
 sandboxed task cannot read vx's environment on Linux or macOS.
 
