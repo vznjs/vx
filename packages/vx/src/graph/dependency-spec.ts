@@ -11,7 +11,7 @@ export type DependencySpec =
 
 export class DependencySpecError extends Error {
   constructor(raw: string, message: string) {
-    super(`Invalid dependency spec "${raw}": ${message}`)
+    super(`invalid dependsOn "${raw}": ${message}`)
   }
 }
 

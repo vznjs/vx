@@ -16,7 +16,7 @@ export type TaskNameFor = (project: string, target: string, configuration: strin
  * target (`processTasksForSingleProject`), and says nothing otherwise:
  * nx-examples' `targetDefaults` give every `typecheck` a `codegen` that
  * one project declares. Passed through, core refused the whole run —
- * "depends on …#codegen but no such task is declared". Dropped here as
+ * "dependsOn …#codegen but no such task is declared". Dropped here as
  * Nx drops it, for this project and a named one alike.
  */
 type HasTarget = (project: string, target: string) => boolean
