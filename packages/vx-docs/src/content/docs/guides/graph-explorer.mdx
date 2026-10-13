@@ -1,0 +1,16 @@
+---
+title: Graph explorer
+description: Browse your own task graph in the browser. Paste a vx plan to see what each task waits on, what waits on it, and why one task depends on another.
+---
+
+import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
+
+Browse your task graph: what each task waits on, what waits on it, and why.
+
+```sh
+vx run build --all --dry=json > plan.json
+```
+
+Drop `plan.json` below, or paste it. The plan stays in your browser: nothing is uploaded.
+
+<GraphExplorer />
