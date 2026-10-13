@@ -35,8 +35,10 @@ run `postRunSteps` calls `cache.put(task.hash, …)` with that hash. It
 does not compare inputs before and after. In batch mode, a task whose
 inputs include its dependencies' outputs is hashed again after it runs,
 against the files as they are then.
-Source: `nx@23.3.0`, `dist/src/tasks-runner/task-orchestrator.js`
-(`processTask`, `postRunSteps`) and `cache.js` (`put`).
+Source: `nx@23.3.0`,
+[`dist/src/tasks-runner/task-orchestrator.js`](https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/task-orchestrator.js)
+(`processTask`, `postRunSteps`) and
+[`cache.js`](https://unpkg.com/nx@23.3.0/dist/src/tasks-runner/cache.js) (`put`).
 
 ## Vite Task (vite-plus 1.1.0)
 
