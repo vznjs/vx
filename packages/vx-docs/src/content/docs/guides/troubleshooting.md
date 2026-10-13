@@ -11,6 +11,8 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 
 | vx prints                                          | Fix                                                                     |
 | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| `no vx.workspace.ts in …` | The file marks the workspace root: run `vx init`, or add `vx.workspace.ts` at the root. A file above the checkout does not count. |
+| `… belongs to another user, so vx does not take its directory as your workspace` | Outside git, vx ignores a `vx.workspace.ts` another user owns. Run vx in a checkout you own. |
 | `not inside a project`                             | Run from a package directory, or pass `--all` or `--filter <pattern>`.  |
 | `… has a vx config but no package.json — skipped` | Add a `package.json` with a `"name"` to that directory: vx names a project by it. |
 | `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
