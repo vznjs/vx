@@ -2548,6 +2548,7 @@ export interface TaskOutcome {
     network?: string[]
     systemInfo?: string[]
     withheld?: string[]
+    inputs?: string[]
   }
 }
 ```

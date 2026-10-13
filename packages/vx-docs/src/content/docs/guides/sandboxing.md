@@ -10,7 +10,7 @@ Prove a task reads only what it declares.
 1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input. The credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are the exception: denied unless `allow.read` names one.
 2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's command tasks; an uncached task reads every linked package.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
-4. Run the task. An undeclared read or write fails it and names the path; the failure ends with a `fix:` line, the grants that would have allowed it (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`). `vx last --format json` and MCP `getFailures` carry the same grants as `sandboxFix`. A credential path is named apart, never in the line.
+4. Run the task. An undeclared read or write fails it and names the path; the failure ends with a `fix:` line, the grants that would have allowed it (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`). `vx last --format json` and MCP `getFailures` carry the same grants as `sandboxFix`. A credential path is named apart, never in the line. A cached task's read that no `cache.inputs.files` glob matches is named once more (`and, if the output depends on them, cache.inputs.files: ['tsconfig.json']`; `sandboxFix.inputs` in JSON): a grant alone lets the task read it, but only an input re-keys the task when it changes.
 5. Declare that path, or silence a noisy tool's path with `ignore`.
 
 ## Config
@@ -76,7 +76,7 @@ cat: tsconfig.json: No such file or directory
 ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
 openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
 fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
-a read the output depends on belongs in cache.inputs.files too
+and, if the output depends on them, cache.inputs.files: ['tsconfig.json']
 ```
 
 Grant it and add it to `cache.inputs.files`, and the task passes. Without

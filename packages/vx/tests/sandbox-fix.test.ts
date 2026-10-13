@@ -75,6 +75,25 @@ describe('sandboxFix', () => {
     ])
   })
 
+  it('names the reads of the project no input glob matches, for a cached task', () => {
+    const read = (p: string) => v('deny(1) file-read-data', ['read'], p)
+    const denials = [
+      read(path.join(dir, 'src/i.js')),
+      read(path.join(dir, 'src/gen/x.js')),
+      read(path.join(dir, 'tsconfig.json')),
+      read('/etc/hosts'),
+      read(path.join(os.homedir(), '.cache/x')),
+      v('deny(1) file-write-create', ['write'], path.join(dir, 'out.txt')),
+    ]
+    expect(sandboxFix(denials, dir, undefined, ['./src/**', '!src/gen/**'])?.inputs).toEqual([
+      'src/gen/x.js',
+      'tsconfig.json',
+    ])
+    // CONTROL: every read keyed, and a task with no cache, name none.
+    expect(sandboxFix(denials, dir, undefined, ['**'])?.inputs).toBeUndefined()
+    expect(sandboxFix(denials, dir)?.inputs).toBeUndefined()
+  })
+
   it('never turns a credential path into a grant', () => {
     const home = (p: string) => path.join(os.homedir(), p)
     const read = (p: string) => v('deny(1) file-read-data', ['read'], p)

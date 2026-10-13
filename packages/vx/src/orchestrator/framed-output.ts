@@ -532,7 +532,8 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // Red, not amber: a violation fails the task, so it reads as a failure.
   // vx's note, after the evidence: the grants that would have allowed it.
   // A read the output depends on is a key input too; the sandbox never
-  // adds one (owner, 2026-10-09).
+  // adds one (owner, 2026-10-09), so the note names the reads no input
+  // glob matches and the user decides.
   const fix = outcome.sandboxFix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)
   const dim = (text: string): string => paint('', text, colors, { dim: true })
@@ -541,8 +542,12 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
       ? []
       : [
           ...(line !== undefined ? [dim(`fix: ${line}`)] : []),
-          ...(fix.read !== undefined
-            ? [dim('a read the output depends on belongs in cache.inputs.files too')]
+          ...(fix.inputs !== undefined
+            ? [
+                dim(
+                  `and, if the output depends on them, cache.inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
+                ),
+              ]
             : []),
           ...(fix.withheld !== undefined
             ? [dim(`credential path, grant it only on purpose: ${fix.withheld.join(', ')}`)]

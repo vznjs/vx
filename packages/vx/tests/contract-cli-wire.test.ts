@@ -139,7 +139,7 @@ async function summarizeJson(): Promise<unknown> {
     flaky: { passes: 1, failures: 1 },
     sandboxViolations: 3,
     sandboxViolationLines: ['deny file-read /x'],
-    sandboxFix: { read: ['x'] },
+    sandboxFix: { read: ['x'], inputs: ['x'] },
     inputMoved: 'src/a.ts',
     failedOutput: 'boom\n',
     queuedMs: 2,

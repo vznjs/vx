@@ -13,7 +13,7 @@ import { CREDENTIAL_STORES } from './sandbox-request.js'
 
 /** Grants to add under `exec.sandbox.allow`, each list sorted and unique. */
 type SandboxFix = NonNullable<TaskOutcome['sandboxFix']>
-type Kind = Exclude<keyof SandboxFix, 'withheld'>
+type Kind = Exclude<keyof SandboxFix, 'withheld' | 'inputs'>
 
 // A denial in a credential store is never turned into a grant: an agent
 // applies `sandboxFix` as given, so a dependency probing ~/.ssh would get
@@ -59,6 +59,16 @@ function readsDir(g: string, top: string): boolean {
   return first === top || !isLiteralPattern(first)
 }
 
+const inProject = (grant: string): boolean => !grant.startsWith('~/') && !path.isAbsolute(grant)
+
+/** Whether a project-relative path is one the task's input globs match. */
+function keyedBy(globs: readonly string[]): (rel: string) => boolean {
+  const strip = (g: string) => g.replace(/^\.\//, '')
+  const take = globs.filter((g) => !g.startsWith('!')).map((g) => new Bun.Glob(strip(g)))
+  const drop = globs.filter((g) => g.startsWith('!')).map((g) => new Bun.Glob(strip(g.slice(1))))
+  return (rel) => take.some((g) => g.match(rel)) && !drop.some((g) => g.match(rel))
+}
+
 function kindOf(v: SandboxViolation): Kind | undefined {
   const can = v.ignorable ?? []
   if (can.length === 1) return can[0]
@@ -74,16 +84,22 @@ export function sandboxFix(
   violations: readonly SandboxViolation[],
   projectDir: string,
   mask: (text: string) => string = (t) => t,
-  /** The task's `cache.inputs.files`: a write under one is granted exactly. */
-  inputs: readonly string[] = [],
+  /**
+   * The task's `cache.inputs.files`, undefined when it does not cache: a
+   * write under one is granted exactly, and a read of the project no glob
+   * matches is named for the key too.
+   */
+  inputs?: readonly string[],
 ): SandboxFix | undefined {
-  const fix: Record<Kind | 'withheld', Set<string>> = {
+  const fix: Record<Kind | 'withheld' | 'inputs', Set<string>> = {
     read: new Set(),
     write: new Set(),
     network: new Set(),
     systemInfo: new Set(),
     withheld: new Set(),
+    inputs: new Set(),
   }
+  const keyed = inputs === undefined ? undefined : keyedBy(inputs)
   for (const v of violations) {
     if (v.hint === true || v.target === undefined) continue
     const kind = kindOf(v)
@@ -92,16 +108,19 @@ export function sandboxFix(
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
     else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, projectDir))
-    else if (kind === 'read') fix.read.add(grantPath(v.path, projectDir))
-    else {
+    else if (kind === 'read') {
+      const grant = grantPath(v.path, projectDir)
+      fix.read.add(grant)
+      if (keyed !== undefined && inProject(grant) && !keyed(grant)) fix.inputs.add(grant)
+    } else {
       const isDir =
         v.line.startsWith('mkdir') ||
         lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
-      fix.write.add(writeGrant(grantPath(v.path, projectDir), isDir, inputs))
+      fix.write.add(writeGrant(grantPath(v.path, projectDir), isDir, inputs ?? []))
     }
   }
   const out: SandboxFix = {}
-  for (const k of ['read', 'write', 'network', 'systemInfo', 'withheld'] as const)
+  for (const k of ['read', 'write', 'network', 'systemInfo', 'withheld', 'inputs'] as const)
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -110,7 +129,11 @@ export function sandboxFix(
  * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
  * or undefined when every denial was a withheld credential path.
  */
-export function sandboxFixLine({ withheld: _, ...fix }: SandboxFix): string | undefined {
+export function sandboxFixLine({
+  withheld: _,
+  inputs: __,
+  ...fix
+}: SandboxFix): string | undefined {
   if (Object.keys(fix).length === 0) return undefined
   const parts = Object.entries(fix).map(
     ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
