@@ -98,8 +98,8 @@ export default { tasks: {} }
 it('a blame that outlives its budget leaves the umask as it found it', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-umask-blame-'))
   const mask = process.umask()
-  const budget = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-  process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '300'
+  const budget = process.env['VX_CONFIG_WORKER_TIMEOUT']
+  process.env['VX_CONFIG_WORKER_TIMEOUT'] = '300ms'
   const hangs = `import { isMainThread } from 'node:worker_threads'
 process.umask(0o777)
 if (!isMainThread) await new Promise(() => {})
@@ -123,8 +123,8 @@ export default { tasks: {} }
       process.umask() === mask ? 'umask kept' : `umask moved to ${process.umask().toString(8)}`
   } finally {
     process.umask(mask)
-    if (budget === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-    else process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = budget
+    if (budget === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT']
+    else process.env['VX_CONFIG_WORKER_TIMEOUT'] = budget
     await rm(dir, { recursive: true, force: true })
   }
   expect(moved).toBe('umask kept')

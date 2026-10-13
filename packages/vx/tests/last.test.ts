@@ -34,7 +34,7 @@ const APP_CONFIG = `
         exec: { command: 'kill -9 $$' },
       },
       slow: {
-        exec: { command: 'sleep 5', timeout: 300 },
+        exec: { command: 'sleep 5', timeout: '300ms' },
       },
       dev: {
         exec: { command: 'echo nope; exit 2', persistent: { readyWhen: 'Listening' } },

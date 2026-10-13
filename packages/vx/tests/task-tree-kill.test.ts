@@ -30,7 +30,7 @@ const CONFIG = `
   export default {
     tasks: {
       timed: {
-        exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60", timeout: 2000 },
+        exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60", timeout: '2s' },
       },
       forever: {
         exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60" },
@@ -38,7 +38,7 @@ const CONFIG = `
       timedTrap: {
         exec: {
           command: "sh -c 'trap \\"\\" TERM; echo $$ > gc.pid; exec sleep 60' & sleep 60",
-          timeout: 2000,
+          timeout: '2s',
         },
       },
       graceful: {
@@ -90,7 +90,7 @@ function spawnVx(root: string, task: string, graceMs = 200): ReturnType<typeof B
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: String(graceMs) },
+      env: { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: `${graceMs}ms` },
     }),
   )
 }
@@ -257,7 +257,7 @@ describe('a task dies with everything it forked', () => {
             cwd: root,
             stdout: 'pipe',
             stderr: 'pipe',
-            env: { ...process.env, NO_COLOR: '1', VX_KILL_GRACE_MS: '200' },
+            env: { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: '200ms' },
           },
         ),
       )

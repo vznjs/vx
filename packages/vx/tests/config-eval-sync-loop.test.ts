@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { evaluateConfigFresh } from '../src/workspace/config-eval.js'
 
-const BUDGET = 'VX_CONFIG_WORKER_TIMEOUT_MS'
+const BUDGET = 'VX_CONFIG_WORKER_TIMEOUT'
 const saved = process.env[BUDGET]
 let dir: string | undefined
 
@@ -21,7 +21,7 @@ const settle = async (body: string) => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-sync-loop-'))
   const file = path.join(dir, 'vx.config.mjs')
   await writeFile(file, body)
-  process.env[BUDGET] = '300'
+  process.env[BUDGET] = '300ms'
   return evaluateConfigFresh(file).then(
     () => 'settled',
     (err: Error) => err.message,

@@ -27,7 +27,7 @@ export interface NxExecutorTarget {
 == type NxExecutorTranslation (src/nx/nx-map.ts)
 export interface NxExecutorTranslation {
   readonly command: string
-  readonly timeout?: number
+  readonly timeout?: Duration
   readonly env?: Readonly<Record<string, string>>
 }
 == type NxExecutorTranslator (src/nx/nx-map.ts)

@@ -1,4 +1,5 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import { settingEnv } from '../settings.js'
 import { detectColors, type ColorSupport } from './colors.js'
 import {
   formatFrameClose,
@@ -177,7 +178,10 @@ export function resolveOutputView(
     ...(gha ? { gha: true } : {}),
     ...(ci ? { ci: true } : {}),
   })
-  if (options.outputLogs !== undefined) return mk(options.outputLogs)
+  // `run.outputLogs`: chosen before the workspace loads, so flag, then variable.
+  const outputLogs =
+    options.outputLogs ?? (settingEnv('run.outputLogs', env) as OutputView['mode'] | undefined)
+  if (outputLogs !== undefined) return mk(outputLogs)
   if (ci) return mk('full')
   if (options.flow !== undefined) return mk(options.flow)
   return mk('full')

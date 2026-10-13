@@ -7,7 +7,7 @@ core's verbs first; for a word it does not know it asks
 `resolvePluginCommand(verb, cwd)`, which finds the workspace around the
 cwd, loads `vx.workspace.*`, and returns the one plugin whose
 `commands[verb]` exists (the load refuses two declaring a verb) — with a `CommandContext`
-(`workspaceRoot`, `cacheDir`, `warn`, and `concurrency`, the worker
+(`workspaceRoot`, `cache.dir`, `warn`, and `run.concurrency`, the worker
 count a `vx run` there uses without `--concurrency`: the workspace's
 `concurrency`, else `machineParallelism()`). `pluginCommandHelp(cwd)` lists
 every plugin verb for `vx help`; `pluginVerbs(cwd)` names them for

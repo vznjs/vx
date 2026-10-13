@@ -19,7 +19,7 @@
 //
 // Two defects are pinned here rather than fixed (see the comments at each):
 // a rejected evaluation leaves its deadline timer armed, and a deliberately
-// huge `VX_CONFIG_WORKER_TIMEOUT_MS` becomes an INSTANT deadline.
+// huge `VX_CONFIG_WORKER_TIMEOUT` becomes an INSTANT deadline.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -33,7 +33,7 @@ import {
 import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 import type { ProjectConfig } from '../src/config.js'
 
-const BUDGET_ENV = 'VX_CONFIG_WORKER_TIMEOUT_MS'
+const BUDGET_ENV = 'VX_CONFIG_WORKER_TIMEOUT'
 
 let root: string
 let seq = 0
@@ -305,7 +305,7 @@ describe('a config that calls process.exit (D-65)', () => {
 
   it('is refused by the worker at once, not at the deadline', async () => {
     // The exit ended the worker unheard; the load waited out its budget.
-    process.env[BUDGET_ENV] = '5000'
+    process.env[BUDGET_ENV] = '5000ms'
     const file = await write(EXITING)
     const end = beginEvalRound()
     const t0 = performance.now()
@@ -367,7 +367,7 @@ describe('a first load that never settles (D-66)', () => {
     )
     const p = Bun.spawn({
       cmd: [process.execPath, driver],
-      env: { ...process.env, [BUDGET_ENV]: '300' },
+      env: { ...process.env, [BUDGET_ENV]: '300ms' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -378,7 +378,7 @@ describe('a first load that never settles (D-66)', () => {
       code: 3,
       err:
         JSON.stringify({
-          got: `Project config ${file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT_MS)`,
+          got: `Project config ${file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)`,
           restored: true,
         }) + '\n',
     })
@@ -512,7 +512,7 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
   const BUDGET = 4000
 
   beforeEach(() => {
-    process.env[BUDGET_ENV] = String(BUDGET)
+    process.env[BUDGET_ENV] = `${BUDGET}ms`
   })
 
   it('rebuilds the thrown error with its name, message and the config in the stack', async () => {
@@ -694,8 +694,8 @@ describe('validation stays in the parent process', () => {
       expect(err.message).toBe(`Workspace config at ${file} did not export a default object`)
     }
     // Control: a Promise of an object loads.
-    await writeFile(file, 'export default Promise.resolve({ concurrency: 2 })\n')
-    expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 2 })
+    await writeFile(file, 'export default Promise.resolve({ run: { concurrency: 2 } })\n')
+    expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 2 } })
   })
 
   it('only rejects a typo whose value JSON drops on the FIRST load', async () => {
@@ -734,7 +734,7 @@ describe('the evaluation deadline', () => {
     // takes milliseconds. Driving the budget down asserts the real rejection
     // instead of the existence of a constant; without the deadline this test
     // does not fail, it HANGS, which is the point.
-    process.env[BUDGET_ENV] = '250'
+    process.env[BUDGET_ENV] = '250ms'
     const wedged = await settleOrHang(evaluateConfigFresh(await write(HANG)), 5000)
     expect(wedged).toBe('REJECTED config worker did not answer within 250ms')
 
@@ -744,7 +744,7 @@ describe('the evaluation deadline', () => {
     // generous: 250 ms also had to cover the fresh worker's spawn, which a
     // loaded macOS runner missed (PR #1503, #1738). A kept wedged worker
     // still fails it, rejected at 4000 ms or held past 5000.
-    process.env[BUDGET_ENV] = '4000'
+    process.env[BUDGET_ENV] = '4000ms'
     const after = await settleOrHang(
       evaluateConfigFresh(await write('export default { tasks: { ok: {} } }\n')),
       5000,
@@ -756,7 +756,7 @@ describe('the evaluation deadline', () => {
     // A round held open across sequential loads (item 694) keeps its
     // worker; a busy loop blocks that worker's thread, so kept after the
     // deadline it would time out every later config in the round.
-    process.env[BUDGET_ENV] = '250'
+    process.env[BUDGET_ENV] = '250ms'
     const end = beginEvalRound()
     try {
       const busy = await settleOrHang(evaluateConfigFresh(await write('while (true) {}\n')), 5000)
@@ -764,7 +764,7 @@ describe('the evaluation deadline', () => {
       // The next load spawns a fresh worker, which a 250 ms budget does not
       // cover on a loaded box (A-51's shape; M-13). A kept wedged worker
       // still fails it, rejected at 4000 ms or held past 5000.
-      process.env[BUDGET_ENV] = '4000'
+      process.env[BUDGET_ENV] = '4000ms'
       const next = await settleOrHang(
         evaluateConfigFresh(await write('export default { tasks: { ok: {} } }\n')),
         5000,
@@ -779,7 +779,7 @@ describe('the evaluation deadline', () => {
     // A throw from a config's microtask escapes the evaluation's try and
     // reaches the worker's `error` event; unheard, the load waited out the
     // budget and said only that the worker did not answer.
-    process.env[BUDGET_ENV] = '10000'
+    process.env[BUDGET_ENV] = '10000ms'
     const file = await write(
       "queueMicrotask(() => { throw new Error('micro boom') })\nexport default {}\n",
     )
@@ -799,9 +799,9 @@ describe('the evaluation deadline', () => {
     // only the first call's 200 ms deadline can reject it inside the ceiling,
     // and the rejection names that budget. A 500 ms ceiling between the two
     // budgets raced a loaded box's late 200 ms timer and read HUNG (D-94).
-    process.env[BUDGET_ENV] = '200'
+    process.env[BUDGET_ENV] = '200ms'
     const first = evaluateConfigFresh(await write(HANG))
-    process.env[BUDGET_ENV] = '60000'
+    process.env[BUDGET_ENV] = '60000ms'
     const second = evaluateConfigFresh(await write(HANG))
 
     const outcomes = await Promise.all([settleOrHang(first, 5000), settleOrHang(second, 5000)])
@@ -810,7 +810,7 @@ describe('the evaluation deadline', () => {
     for (const o of outcomes) expect(o).toBe('REJECTED config worker did not answer within 200ms')
   }, 15_000)
 
-  const MALFORMED = ['abc', '', ' 250', '-5', '1e3', '25.0']
+  const MALFORMED = ['abc', '', ' 250ms', '-5ms', '1e3ms', '25.0ms', '250']
 
   for (const raw of MALFORMED) {
     it(`ignores a malformed budget ${JSON.stringify(raw)} instead of deadlining instantly`, async () => {
@@ -818,7 +818,7 @@ describe('the evaluation deadline', () => {
       // `setTimeout(fn, NaN)` fires on the next tick, so dropping the regex
       // would turn any typo in this env var into "every repeat config load
       // fails with a timeout" — including the empty-string case a shell
-      // produces from `VX_CONFIG_WORKER_TIMEOUT_MS=$UNSET`.
+      // produces from `VX_CONFIG_WORKER_TIMEOUT=$UNSET`.
       process.env[BUDGET_ENV] = raw
       const file = await write('export default { tasks: { ok: {} } }\n')
       expect(await settleOrHang(evaluateConfigFresh(file), 5000)).toBe(
@@ -830,9 +830,9 @@ describe('the evaluation deadline', () => {
   it('a budget of 0 falls back to the default instead of firing on the next tick (D-157)', async () => {
     // `0` deadlined every repeat load instantly ("did not answer within 0ms"),
     // so `vx watch` failed each cycle. It is out of range for a bound, as it is
-    // for VX_KILL_GRACE_MS, and falls back like the timer-ceiling case below:
+    // for VX_RUN_KILL_GRACE, and falls back like the timer-ceiling case below:
     // not "no deadline", which would let a wedged worker hang the watch loop.
-    process.env[BUDGET_ENV] = '0'
+    process.env[BUDGET_ENV] = '0ms'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
     const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
     expect(outcome).toBe('RESOLVED {"tasks":{"ok":{}}}')
@@ -847,7 +847,7 @@ describe('the evaluation deadline', () => {
     // It falls back to the 30s default rather than clamping to ~24.8 days: this
     // is a BOUND on a worker that may be wedged, not a duration the caller is
     // choosing, so honouring the huge value would hang the watch loop forever.
-    process.env[BUDGET_ENV] = '999999999999'
+    process.env[BUDGET_ENV] = '999999999999ms'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
     const started = Date.now()
     const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
@@ -877,12 +877,12 @@ describe('the evaluation deadline', () => {
     // shared worker, before the healthy load can answer.
     const end = beginEvalRound()
     try {
-      process.env[BUDGET_ENV] = '10000'
+      process.env[BUDGET_ENV] = '10000ms'
       const warm = await write('export default {}\n')
       expect(await settleOrHang(evaluateConfigFresh(warm), 12_000)).toBe('RESOLVED {}')
 
       const rejectedBudget = 3000
-      process.env[BUDGET_ENV] = String(rejectedBudget)
+      process.env[BUDGET_ENV] = `${rejectedBudget}ms`
       const broken = await write(`throw new Error('typo in preset')\n`)
       expect(await settleOrHang(evaluateConfigFresh(broken), 10_000)).toBe(
         'REJECTED typo in preset',
@@ -893,7 +893,7 @@ describe('the evaluation deadline', () => {
       // and the row passed with the orphan alive).
       const brokenSettled = Date.now()
 
-      process.env[BUDGET_ENV] = '20000'
+      process.env[BUDGET_ENV] = '20000ms'
       const release = path.join(root, `release.${seq}`)
       const held = await write(
         `import { existsSync } from 'node:fs'\n` +
@@ -1116,10 +1116,10 @@ describe('a config is JSON data, on every path (item 701)', () => {
     // `JSON.stringify`. The literal is what 107a8f8b (before the rule)
     // produced for this file on both paths.
     const file = await write(
-      `const shared = ['src/**', 'package.json']\nexport default {\n  tasks: {\n    build: {\n      description: 'büild — "quoted"',\n      exec: { command: 'bun run build', timeout: 60000, env: { passThrough: ['HOME'], define: { MODE: 'prod' } } },\n      dependsOn: ['^build'],\n      cache: { inputs: { files: shared, env: ['API_URL'] }, outputs: { files: ['dist/**'] } },\n    },\n    ci: { dependsOn: ['build'], description: undefined },\n  },\n}\n`,
+      `const shared = ['src/**', 'package.json']\nexport default {\n  tasks: {\n    build: {\n      description: 'büild — "quoted"',\n      exec: { command: 'bun run build', timeout: '1m', env: { passThrough: ['HOME'], define: { MODE: 'prod' } } },\n      dependsOn: ['^build'],\n      cache: { inputs: { files: shared, env: ['API_URL'] }, outputs: { files: ['dist/**'] } },\n    },\n    ci: { dependsOn: ['build'], description: undefined },\n  },\n}\n`,
     )
     const json =
-      '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":60000,"env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"cache":{"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"outputs":{"files":["dist/**"]}}},"ci":{"dependsOn":["build"]}}}'
+      '{"tasks":{"build":{"description":"büild — \\"quoted\\"","exec":{"command":"bun run build","timeout":"1m","env":{"passThrough":["HOME"],"define":{"MODE":"prod"}}},"dependsOn":["^build"],"cache":{"inputs":{"files":["src/**","package.json"],"env":["API_URL"]},"outputs":{"files":["dist/**"]}}},"ci":{"dependsOn":["build"]}}}'
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
     expect(JSON.stringify(await loadProjectConfig(file))).toBe(json)
   })

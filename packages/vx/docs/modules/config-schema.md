@@ -19,7 +19,7 @@ export function isCacheScope(v: unknown): v is string
 export function cacheScopeEnvError(): UserError
 // The same refusal as text, naming its source (`--cache-scope` in the CLI)
 export function cacheScopeError(source?: string): string
-// `VX_INPUT_STABILITY` / `VX_INPUT_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
+// `VX_CACHE_INPUT_STABILITY_STRATEGY` / `VX_CACHE_INPUT_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
 export function inputStabilityEnv(): InputStability
 // Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script
 export function taskNameProblem(name: string): string | null

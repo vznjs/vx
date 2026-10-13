@@ -1,9 +1,9 @@
-# `src/util/timing.ts` — `VX_TIMING` stage table
+# `src/util/timing.ts` — `VX_DEBUG_TIMING` stage table
 
 ## Purpose
 
 Answer "where did the warm run go?" without a profiler. With
-`VX_TIMING` set to anything but the empty string, `mark(label)` records
+`VX_DEBUG_TIMING` set to anything but the empty string, `mark(label)` records
 the end of each stage — `prepareRun`'s eight, then `run()`'s, the
 first of which is marked as `prepareRun` returns and holds the graph,
 key and schedule hooks, so a plugin's cost is its own row — and
@@ -100,7 +100,7 @@ Spans, accumulated per call:
 
 ## Tests
 
-Exercised by every `VX_TIMING` measurement in `docs/benchmarks.md`.
+Exercised by every `VX_DEBUG_TIMING` measurement in `docs/benchmarks.md`.
 `tests/timing-dry.test.ts` pins the dry-run table (present through
 `build graph` and `close` with the variable, absent without); the
 table's shape is a developer tool, not a contract.

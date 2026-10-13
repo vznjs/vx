@@ -31,7 +31,7 @@ export default defineProject({
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
-      exec: { command: 'playwright test', timeout: 600_000, retries: 1 },
+      exec: { command: 'playwright test', timeout: '10m', retries: 1 },
     },
     // A group: no command, it only runs its dependencies.
     ci: { dependsOn: ['build', 'e2e'] },
@@ -202,7 +202,7 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({
   tasks: {
     dev: {
-      exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: 30_000 },
+      exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
     },
     e2e: {
       dependsOn: ['dev'],
@@ -233,28 +233,41 @@ import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({
   plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
-  concurrency: 8,            // default: the cores this process may use
-  cacheDir: 'build/.vx',     // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
-  timeout: 600_000,
-  cacheRetention: { olderThan: '30d', maxSize: '10G' },
+  run: {
+    concurrency: 8, // default: the cores this process may use
+    timeout: '10m', // default: none
+  },
+  cache: {
+    dir: 'build/.vx', // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
+    retention: { olderThan: '30d', maxSize: '10GB' },
+  },
 })
 ```
+
+Settings sit in groups, `run`, `cache` and `watch`, beside `plugins`.
+Each has one path, and its variable and flag come from it:
+`run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats
+the variable, which beats this file. Durations carry a unit (`'500ms'`,
+`'30s'`, `'10m'`), sizes too (`'10GB'`). The
+[settings table](../../schema/#settings) lists all of them.
 
 | Field            | Sets                                                                  |
 | ---------------- | --------------------------------------------------------------------- |
 | `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../plugins/)) |
-| `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
-| `cacheDir`       | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
-| `timeout`        | a default task timeout in ms; default none                            |
-| `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
-| `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
-| `cache` | `policy`: which layers read and write, as `--cache`'s spec (`'local:rw,remote:r'`; `VX_CACHE` and `--cache` beat it); `scope`: where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
-| `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
-| `schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/schedule-strategy/)) |
-| `inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_INPUT_STABILITY` env vars win over both ([Schema](../../schema/#cache-optional)) |
+| `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
+| `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
+| `run.affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
+| `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/schedule-strategy/)) |
+| `run.rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
+| `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
+| `cache.retention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
+| `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
+| `cache.scope` | where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
+| `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
+| `watch.poll` | `vx watch` polls instead of using the OS watcher |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
-`--timeout <ms>`, then `VX_TASK_TIMEOUT`, then this. Only `exec.timeout` is in the
+`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout` is in the
 cache key. There is no `globalInputs`: import a shared array instead.
 
 ## Lockfiles

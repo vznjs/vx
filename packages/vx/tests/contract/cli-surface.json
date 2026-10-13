@@ -52,6 +52,8 @@
       "--all",
       "--cache",
       "--cache-dir",
+      "--cache-download",
+      "--cache-policy",
       "--cache-scope",
       "--concurrency",
       "--continue",
@@ -64,14 +66,18 @@
       "--frozen",
       "--graph",
       "--help",
+      "--kill-grace",
       "--no-cache",
       "--output-logs",
       "--profile",
+      "--ready-notice",
       "--report",
       "--report-file",
-      "--retry",
+      "--retries",
+      "--schedule",
       "--summarize",
       "--tag",
+      "--teardown-timeout",
       "--timeout",
       "--verbosity"
     ],
@@ -92,6 +98,8 @@
       "--all",
       "--cache",
       "--cache-dir",
+      "--cache-download",
+      "--cache-policy",
       "--cache-scope",
       "--concurrency",
       "--continue",
@@ -101,10 +109,15 @@
       "--force",
       "--frozen",
       "--help",
+      "--kill-grace",
       "--no-cache",
       "--output-logs",
-      "--retry",
+      "--poll",
+      "--ready-notice",
+      "--retries",
+      "--schedule",
       "--tag",
+      "--teardown-timeout",
       "--timeout"
     ],
     "why": [
@@ -191,6 +204,19 @@
     "run --cache-dir": [
       "*"
     ],
+    "run --cache-download": [
+      "all",
+      "none",
+      "toplevel"
+    ],
+    "run --cache-policy": [
+      "local:r",
+      "local:rw",
+      "local:w",
+      "remote:r",
+      "remote:rw",
+      "remote:w"
+    ],
     "run --cache-scope": [
       "*"
     ],
@@ -231,6 +257,13 @@
     "run --graph": [
       "*"
     ],
+    "run --kill-grace": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
     "run --output-logs": [
       "errors-only",
       "full",
@@ -240,28 +273,45 @@
     "run --profile": [
       "*"
     ],
+    "run --ready-notice": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
     "run --report": [
       "markdown"
     ],
     "run --report-file": [
       "*"
     ],
-    "run --retry": [
+    "run --retries": [
       "0",
       "1",
       "10",
       "2"
     ],
+    "run --schedule": [],
     "run --summarize": [
       "*"
     ],
     "run --tag": [
       "k=v"
     ],
+    "run --teardown-timeout": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
     "run --timeout": [
-      "1",
-      "10",
-      "2"
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
     ],
     "run --verbosity": [
       "0",
@@ -293,6 +343,19 @@
     "watch --cache-dir": [
       "*"
     ],
+    "watch --cache-download": [
+      "all",
+      "none",
+      "toplevel"
+    ],
+    "watch --cache-policy": [
+      "local:r",
+      "local:rw",
+      "local:w",
+      "remote:r",
+      "remote:rw",
+      "remote:w"
+    ],
     "watch --cache-scope": [
       "*"
     ],
@@ -322,25 +385,49 @@
       "false",
       "true"
     ],
+    "watch --kill-grace": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
     "watch --output-logs": [
       "errors-only",
       "full",
       "hash-only",
       "none"
     ],
-    "watch --retry": [
+    "watch --ready-notice": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
+    "watch --retries": [
       "0",
       "1",
       "10",
       "2"
     ],
+    "watch --schedule": [],
     "watch --tag": [
       "k=v"
     ],
+    "watch --teardown-timeout": [
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
+    ],
     "watch --timeout": [
-      "1",
-      "10",
-      "2"
+      "12h",
+      "1d",
+      "30m",
+      "30s",
+      "500M"
     ],
     "why --cache-dir": [
       "*"
@@ -354,19 +441,30 @@
     ]
   },
   "env": [
-    "VX_CACHE",
     "VX_CACHE_DIR",
+    "VX_CACHE_DOWNLOAD",
+    "VX_CACHE_INPUT_STABILITY_SEVERITY",
+    "VX_CACHE_INPUT_STABILITY_STRATEGY",
+    "VX_CACHE_POLICY",
+    "VX_CACHE_RETENTION_MAX_SIZE",
+    "VX_CACHE_RETENTION_OLDER_THAN",
     "VX_CACHE_SCOPE",
-    "VX_CONFIG_WORKER_TIMEOUT_MS",
-    "VX_INPUT_STABILITY",
-    "VX_INPUT_STABILITY_SEVERITY",
-    "VX_KILL_GRACE_MS",
-    "VX_READY_NOTICE_MS",
+    "VX_CONFIG_WORKER_TIMEOUT",
+    "VX_DEBUG_TIMING",
+    "VX_RUN_AFFECTED_BASE",
+    "VX_RUN_CONCURRENCY",
+    "VX_RUN_CONTINUE",
+    "VX_RUN_KILL_GRACE",
+    "VX_RUN_OUTPUT_LOGS",
+    "VX_RUN_READY_NOTICE",
+    "VX_RUN_RETRIES",
+    "VX_RUN_RULES_EXCLUSIVE_OUTPUTS",
+    "VX_RUN_RULES_UPFRONT_KEYS",
+    "VX_RUN_SCHEDULE",
     "VX_RUN_TASK",
+    "VX_RUN_TEARDOWN_TIMEOUT",
+    "VX_RUN_TIMEOUT",
     "VX_RUN_WORKSPACE",
-    "VX_TASK_TIMEOUT",
-    "VX_TEARDOWN_TIMEOUT_MS",
-    "VX_TIMING",
     "VX_WATCH_POLL"
   ]
 }

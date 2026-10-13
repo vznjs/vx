@@ -17,7 +17,6 @@ import {
 } from '../config.js'
 import {
   CORE_VERBS,
-  MAX_TIMEOUT_MS,
   nearest,
   normalizeGlob,
   parseDuration,
@@ -29,6 +28,14 @@ import {
   asTrees,
   isLiteralPattern,
 } from '../util/index.js'
+import {
+  parseSettingValue,
+  setting,
+  SETTING_GROUPS,
+  SETTINGS,
+  settingEnv,
+  settingRefusal,
+} from '../settings.js'
 import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 
@@ -63,16 +70,6 @@ const oneOf = (values: readonly string[]): string =>
     .join(', ')
     .replace(/, ([^,]*)$/, ' or $1')}`
 
-function envOneOf<T extends string>(
-  name: string,
-  raw: string | undefined,
-  values: readonly T[],
-): T | undefined {
-  if (raw === undefined || raw === '') return undefined
-  if (!(values as readonly string[]).includes(raw)) throw new UserError(`${name} ${oneOf(values)}`)
-  return raw as T
-}
-
 function validateInputStability(stability: unknown, at: string): void {
   if (typeof stability !== 'object' || stability === null || Array.isArray(stability)) {
     throw new UserError(`${at} must be an object — \`inputStability: { strategy: 'mutable' }\``)
@@ -88,80 +85,103 @@ function validateInputStability(stability: unknown, at: string): void {
 }
 
 /**
- * `VX_INPUT_STABILITY` and `VX_INPUT_STABILITY_SEVERITY`, which override
- * every task's `cache.inputStability` for the run: each undefined when
- * unset or empty, refused when it names no value.
+ * `VX_CACHE_INPUT_STABILITY_STRATEGY` and `_SEVERITY`, which override every
+ * task's `cache.inputStability` for the run: each undefined when unset or
+ * empty, refused when it names no value.
  */
 export function inputStabilityEnv(): InputStability {
-  const strategy = envOneOf('VX_INPUT_STABILITY', process.env['VX_INPUT_STABILITY'], STRATEGIES)
-  const severity = envOneOf(
-    'VX_INPUT_STABILITY_SEVERITY',
-    process.env['VX_INPUT_STABILITY_SEVERITY'],
-    SEVERITIES,
-  )
+  const strategy = settingEnv('cache.inputStability.strategy') as InputStability['strategy']
+  const severity = settingEnv('cache.inputStability.severity') as InputStability['severity']
   return {
     ...(strategy !== undefined ? { strategy } : {}),
     ...(severity !== undefined ? { severity } : {}),
   }
 }
 
-const WORKSPACE_FIELDS = new Set([
-  'concurrency',
-  'cacheDir',
-  'timeout',
-  'cacheRetention',
-  'affectedBase',
-  'cache',
-  'rules',
-  'schedule',
-  'inputStability',
-  'plugins',
-])
+const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'plugins'])
 
-type Schedule = NonNullable<WorkspaceConfig['schedule']>
-const SCHEDULES = {
-  'most-work': true,
-  'critical-path': true,
-  'direct-dependents': true,
-  'ready-order': true,
-} satisfies Record<Schedule, true>
-
-const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
-const WORKSPACE_CACHE_FIELDS = new Set(['policy', 'scope'])
-
-// `policy`'s grammar is the cache module's (`parseCachePolicy`), which this
-// module may not import: the run parses it before any task (prepare.ts).
-function validateWorkspaceCache(cache: unknown, configPath: string): void {
-  if (typeof cache !== 'object' || cache === null || Array.isArray(cache)) {
-    // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
-    throw new UserError(
-      `${configPath}: \`cache\` must be an object like { policy, scope }; a task caches through its own \`cache\` in its project's vx.config`,
-    )
+/**
+ * `vx.workspace`'s settings, as `src/settings.ts` lists them: each group's
+ * fields, and the nested objects (`run.rules`) with theirs.
+ */
+const GROUP_FIELDS = new Map<string, Set<string>>()
+for (const s of SETTINGS) {
+  if (s.config === false) continue
+  const parts = s.path.split('.')
+  for (let i = 1; i < parts.length; i++) {
+    const at = parts.slice(0, i).join('.')
+    if (!GROUP_FIELDS.has(at)) GROUP_FIELDS.set(at, new Set())
+    GROUP_FIELDS.get(at)!.add(parts[i]!)
   }
-  assertKnownFields(cache, WORKSPACE_CACHE_FIELDS, `${configPath}: \`cache\``)
-  const { policy, scope } = cache as { policy?: unknown; scope?: unknown }
-  if (policy !== undefined && (typeof policy !== 'string' || policy.trim() === '')) {
-    throw new UserError(`${configPath}: \`cache.policy\` must be a spec like 'local:rw,remote:r'`)
+}
+
+/** A setting's value or the level holding it, held to the schema. */
+function validateSettingsAt(value: unknown, at: string, configPath: string): void {
+  const where = `${configPath}: \`${at}\``
+  const fields = GROUP_FIELDS.get(at)
+  if (fields !== undefined) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      if (at === 'cache')
+        // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
+        throw new UserError(
+          `${where} must be an object like { dir, policy, scope }; a task caches through its own \`cache\` in its project's vx.config`,
+        )
+      throw new UserError(`${where} must be an object (fields: ${[...fields].join(', ')})`)
+    }
+    assertKnownFields(value, fields, where)
+    for (const [k, v] of Object.entries(value)) {
+      if (v !== undefined) validateSettingsAt(v, `${at}.${k}`, configPath)
+    }
+    return
   }
+  validateSettingValue(value, at, where)
+}
+
+/** `value` as the setting at `path` takes it, refused in `where`'s words. */
+function validateSettingValue(value: unknown, path: string, where: string): void {
+  const { kind } = setting(path)
+  // The bound `vx cache prune` refuses too: each run would empty the cache,
+  // the entries it just saved included, so nothing ever hits (item 969).
+  if (
+    path === 'cache.retention.olderThan' &&
+    typeof value === 'string' &&
+    parseDuration(value) === 0
+  ) {
+    throw new UserError(`${where} of 0 evicts every entry after every run`)
+  }
+  // A file's values are typed: a count or a switch is no string (only a
+  // share of the cores is), as a variable's or a flag's must be.
+  const untyped =
+    (kind.type === 'concurrency' && typeof value === 'string' && !value.endsWith('%')) ||
+    (kind.type === 'int' && typeof value !== 'number') ||
+    (kind.type === 'bool' && typeof value !== 'boolean')
+  if (untyped || parseSettingValue(kind, value) === null) {
+    throw new UserError(settingRefusal(path, where, value, shown(value)))
+  }
+}
+
+/** The rules a setting's kind cannot say. */
+function validateSettingsExtra(config: WorkspaceConfig, configPath: string): void {
+  const dir = config.cache?.dir
+  if (dir !== undefined && dir.includes('\0')) {
+    // No path can carry one: the mkdir's argument error was reported as an
+    // unwritable workspace.
+    throw new UserError(`${configPath}: \`cache.dir\` holds a NUL, which no path can carry`)
+  }
+  const base = config.run?.affectedBase
+  // A leading '-' would reach git as an option, not a ref; a NUL fails the
+  // spawn with an argument error naming nothing in this file.
+  if (base !== undefined && !/^[^-\s\0][^\s\0]*$/.test(base)) {
+    throw new UserError(`${configPath}: \`run.affectedBase\` must be a git ref like 'origin/main'`)
+  }
+  // `policy`'s grammar is the cache module's (`parseCachePolicy`), which
+  // this module may not import: the run parses it before any task (prepare.ts).
+  const scope = config.cache?.scope
   if (scope !== undefined && !isCacheScope(scope)) {
     throw new UserError(`${configPath}: \`cache.scope\` ${CACHE_SCOPE_RULE}`)
   }
+  if (config.cache?.retention !== undefined) validateRetention(config.cache.retention, configPath)
 }
-
-function validateRules(rules: unknown, configPath: string): void {
-  const where = `${configPath}: \`rules\``
-  if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
-    throw new UserError(`${where} must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`)
-  }
-  assertKnownFields(rules as Record<string, unknown>, RULE_FIELDS, where)
-  for (const [name, value] of Object.entries(rules)) {
-    if (value !== undefined && typeof value !== 'boolean') {
-      throw new UserError(`${where}.${name} must be true or false`)
-    }
-  }
-}
-
-const RETENTION_FIELDS = new Set(['olderThan', 'maxSize'])
 
 /**
  * A refused value as a message quotes it. A workspace file is evaluated
@@ -173,43 +193,26 @@ function shown(v: unknown): string {
   return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
 }
 
-function validateRetention(retention: unknown, configPath: string): void {
-  const where = `${configPath}: \`cacheRetention\``
-  const field = (key: string) => `${configPath}: \`cacheRetention.${key}\``
-  if (retention === null || typeof retention !== 'object' || Array.isArray(retention)) {
-    throw new UserError(`${where} must be { olderThan?: '30d', maxSize?: '10G' }`)
-  }
-  assertKnownFields(retention as Record<string, unknown>, RETENTION_FIELDS, where)
-  const { olderThan, maxSize } = retention as { olderThan?: unknown; maxSize?: unknown }
+function validateRetention(
+  retention: NonNullable<NonNullable<WorkspaceConfig['cache']>['retention']>,
+  configPath: string,
+): void {
+  const { olderThan, maxSize } = retention
   // An empty object would load and evict nothing, which reads as a policy.
   if (olderThan === undefined && maxSize === undefined) {
-    throw new UserError(`${where} names neither \`olderThan\` nor \`maxSize\``)
-  }
-  if (
-    olderThan !== undefined &&
-    (typeof olderThan !== 'string' || parseDuration(olderThan) === null)
-  ) {
     throw new UserError(
-      `${field('olderThan')} must be a duration like '30d', '12h', '90m' or '45s' (got ${shown(olderThan)})`,
+      `${configPath}: \`cache.retention\` names neither \`olderThan\` nor \`maxSize\``,
     )
   }
-  if (maxSize !== undefined && (typeof maxSize !== 'string' || parseSize(maxSize) === null)) {
-    throw new UserError(
-      `${field('maxSize')} must be a size like '10G', '500MB' or '64KB' (got ${shown(maxSize)})`,
-    )
-  }
-  // The bounds `vx cache prune` refuses, for the same reason: each evicts
-  // every entry, and here it would do so at the end of every run, the
-  // entries that run just saved included, so nothing ever hits (item 969).
-  if (olderThan !== undefined && parseDuration(olderThan) === 0) {
-    throw new UserError(`${field('olderThan')} of 0 evicts every entry after every run`)
-  }
+  // As for olderThan (item 969).
   if (maxSize !== undefined && parseSize(maxSize) === 0) {
-    throw new UserError(`${field('maxSize')} of 0 evicts every entry after every run`)
+    throw new UserError(
+      `${configPath}: \`cache.retention.maxSize\` of 0 evicts every entry after every run`,
+    )
   }
   if (maxSize !== undefined && /^\d+$/.test(maxSize)) {
     throw new UserError(
-      `${field('maxSize')} '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}M', '${maxSize}G')`,
+      `${configPath}: \`cache.retention.maxSize\` '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}MB', '${maxSize}GB')`,
     )
   }
 }
@@ -224,66 +227,10 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
   // objects of functions by design, the file is evaluated in-process on
   // every load (never through the config worker), and no key folds its JSON.
   assertKnownFields(config, WORKSPACE_FIELDS, configPath)
-  if (config.concurrency !== undefined) {
-    if (
-      typeof config.concurrency !== 'number' ||
-      !Number.isFinite(config.concurrency) ||
-      config.concurrency < 1 ||
-      !Number.isInteger(config.concurrency)
-    ) {
-      throw new UserError(`${configPath}: \`concurrency\` must be a positive integer`)
-    }
+  for (const group of SETTING_GROUPS) {
+    if (config[group] !== undefined) validateSettingsAt(config[group], group, configPath)
   }
-  if (config.cacheDir !== undefined && typeof config.cacheDir !== 'string') {
-    throw new UserError(`${configPath}: \`cacheDir\` must be a string`)
-  }
-  // `'   '` made a directory named three spaces at the root, hidden by the
-  // cache's own `.gitignore` (X-22).
-  if (
-    typeof config.cacheDir === 'string' &&
-    config.cacheDir !== '' &&
-    config.cacheDir.trim() === ''
-  ) {
-    throw new UserError(`${configPath}: \`cacheDir\` is only whitespace — name a directory`)
-  }
-  // No path can carry one: the mkdir's argument error was reported as an
-  // unwritable workspace.
-  if (typeof config.cacheDir === 'string' && config.cacheDir.includes('\0')) {
-    throw new UserError(`${configPath}: \`cacheDir\` holds a NUL, which no path can carry`)
-  }
-  if (config.timeout !== undefined) {
-    if (
-      typeof config.timeout !== 'number' ||
-      !Number.isInteger(config.timeout) ||
-      config.timeout <= 0
-    ) {
-      throw new UserError(`${configPath}: \`timeout\` must be a positive integer (milliseconds)`)
-    }
-    assertTimeoutInRange(config.timeout, `${configPath}: \`timeout\``)
-  }
-  if (config.cacheRetention !== undefined) validateRetention(config.cacheRetention, configPath)
-  if (config.affectedBase !== undefined) {
-    // A leading '-' would reach git as an option, not a ref; a NUL fails the
-    // spawn with an argument error naming nothing in this file.
-    if (
-      typeof config.affectedBase !== 'string' ||
-      !/^[^-\s\0][^\s\0]*$/.test(config.affectedBase)
-    ) {
-      throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
-    }
-  }
-  if (config.cache !== undefined) validateWorkspaceCache(config.cache, configPath)
-  if (config.rules !== undefined) validateRules(config.rules, configPath)
-  if (config.inputStability !== undefined) {
-    validateInputStability(config.inputStability, `${configPath}: \`inputStability\``)
-  }
-  if (config.schedule !== undefined && !Object.hasOwn(SCHEDULES, config.schedule)) {
-    throw new UserError(
-      `${configPath}: \`schedule\` must be one of ${Object.keys(SCHEDULES)
-        .map((k) => `'${k}'`)
-        .join(', ')}`,
-    )
-  }
+  validateSettingsExtra(config, configPath)
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
@@ -552,10 +499,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       }
       const timeout = (exec as { timeout?: unknown }).timeout
       if (timeout !== undefined) {
-        if (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout <= 0) {
-          throw new UserError(`${where}.exec.timeout must be a positive integer (milliseconds)`)
-        }
-        assertTimeoutInRange(timeout, `${where}.exec.timeout`)
+        validateSettingValue(timeout, 'run.timeout', `${where}.exec.timeout`)
       }
       const retries = (exec as { retries?: unknown }).retries
       if (retries !== undefined) {
@@ -1032,10 +976,22 @@ export const REMOVED_FIELDS: ReadonlyMap<
   [
     WORKSPACE_FIELDS,
     {
+      // Settings went into groups (docs/schema.md § Settings).
       cacheScope: {
         removedIn: '0.0.637',
         use: "`cache: { scope }` ('trusted', 'read-only', 'pr-123')",
       },
+      concurrency: { removedIn: '0.0.637', use: "`run: { concurrency }` (4, '50%')" },
+      schedule: { removedIn: '0.0.637', use: '`run: { schedule }`' },
+      affectedBase: { removedIn: '0.0.637', use: '`run: { affectedBase }`' },
+      timeout: { removedIn: '0.0.637', use: "`run: { timeout }`, a duration ('30m')" },
+      rules: { removedIn: '0.0.637', use: '`run: { rules }`' },
+      cacheDir: { removedIn: '0.0.637', use: '`cache: { dir }`' },
+      cacheRetention: {
+        removedIn: '0.0.637',
+        use: "`cache: { retention }` ({ olderThan: '30d' })",
+      },
+      inputStability: { removedIn: '0.0.637', use: '`cache: { inputStability }`' },
     },
   ],
   [
@@ -1079,7 +1035,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
       cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
       parallelism:
-        '`concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+        '`run.concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
       configurations:
         'one task per configuration (`build:production`, with its own `exec.command`)',
     },
@@ -1173,9 +1129,9 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       globalDependencies: '`cache.inputs.workspaceFiles` on the tasks it keys',
       remoteCache:
         'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
-      parallel: '`concurrency`',
-      cacheDirectory: '`cacheDir`',
-      defaultBase: '`affectedBase`',
+      parallel: '`run.concurrency`',
+      cacheDirectory: '`cache.dir`',
+      defaultBase: '`run.affectedBase`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
@@ -1198,6 +1154,25 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
   ],
 ])
 
+/**
+ * A top-level typo of a grouped setting, as its path: by its last name
+ * (`concurency`) or its path run together (`cachedir`).
+ */
+function nearestSetting(key: string): string | undefined {
+  const byName = new Map<string, string>()
+  for (const s of SETTINGS) {
+    if (s.config === false) continue
+    const parts = s.path.split('.')
+    byName.set(parts.at(-1)!, s.path)
+    byName.set(
+      parts.map((p, i) => (i === 0 ? p : p[0]!.toUpperCase() + p.slice(1))).join(''),
+      s.path,
+    )
+  }
+  const name = nearest(key, byName.keys())
+  return name === undefined ? undefined : `\`${byName.get(name)}\``
+}
+
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
   // `typeof [] === 'object'`, so an array reaches here and its indices read
   // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
@@ -1219,7 +1194,8 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
       const foreign = FOREIGN_FIELDS.get(allowed)?.[key]
-      const near = nearest(key, allowed)
+      const near =
+        nearest(key, allowed) ?? (allowed === WORKSPACE_FIELDS ? nearestSetting(key) : undefined)
       throw new UserError(
         `${where} has unknown field "${key}" (allowed: ${[...allowed].sort().join(', ')})` +
           (foreign !== undefined
@@ -1230,27 +1206,6 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
       )
     }
   }
-}
-
-/**
- * A millisecond delay past `MAX_TIMEOUT_MS` does not mean "effectively never" —
- * `setTimeout` silently reduces it to 1 ms, so the task is killed the instant it
- * spawns and reported `failed`. That is the exact inverse of the declaration,
- * and the only clue is a `TimeoutOverflowWarning` on stderr.
- *
- * Refused rather than clamped, because this is a value the user WROTE and reads
- * back: silently substituting ~24.8 days for the 317 years they asked for would
- * trade one surprise for a quieter one. Costs nothing — such a config never
- * worked, it killed the task in milliseconds, so refusing reports a state that
- * already existed.
- */
-function assertTimeoutInRange(ms: number, where: string): void {
-  if (ms <= MAX_TIMEOUT_MS) return
-  throw new UserError(
-    `${where}: ${ms} ms exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days). ` +
-      `Timers larger than this do NOT mean "no limit" — the platform reduces them to 1 ms, so ` +
-      `the task would be killed the moment it starts. Omit \`timeout\` for no limit.`,
-  )
 }
 
 /**

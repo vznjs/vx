@@ -869,7 +869,7 @@ describe('Cache storage (v10)', () => {
       try {
         expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(UserError)
         expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(
-          /^cannot create cache directory .*sealed\/\.vx\/cache \(EACCES: .*\) — vx keeps its cache there; make the workspace writable, set `cacheDir` in vx\.workspace\.ts, or pass --cache-dir <path>$/,
+          /^cannot create cache directory .*sealed\/\.vx\/cache \(EACCES: .*\) — vx keeps its cache there; make the workspace writable, set `cache\.dir` in vx\.workspace\.ts, or pass --cache-dir <path>$/,
         )
       } finally {
         await chmod(parent, 0o755)
@@ -891,7 +891,7 @@ describe('Cache storage (v10)', () => {
     }
     expect(thrown).toBeInstanceOf(UserError)
     expect((thrown as Error).message).toBe(
-      `cannot create cache directory ${file} (EEXIST: file already exists, mkdir '${file}') — vx keeps its cache there; make the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+      `cannot create cache directory ${file} (EEXIST: file already exists, mkdir '${file}') — vx keeps its cache there; make the workspace writable, set \`cache.dir\` in vx.workspace.ts, or pass --cache-dir <path>`,
     )
   })
 

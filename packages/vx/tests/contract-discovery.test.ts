@@ -84,7 +84,7 @@ const LAYOUTS: Record<string, Record<string, string>> = {
 
 const CONFIG = (v: number): string =>
   `export default { tasks: { t${v}: { exec: { command: 'true' } } } }\n`
-const WS_CONFIG = (v: number): string => `export default { concurrency: ${v} }\n`
+const WS_CONFIG = (v: number): string => `export default { run: { concurrency: ${v} } }\n`
 
 it('each discovery case answers as tests/contract/discovery.json records', async () => {
   const live: Record<string, unknown> = {}
@@ -121,7 +121,7 @@ it('each discovery case answers as tests/contract/discovery.json records', async
       ...Object.fromEntries(wsNames.slice(i + 1).map((f, j) => [f, WS_CONFIG(i + j + 2)])),
     })
     const config = await loadWorkspaceConfig(root)
-    const read = config?.concurrency
+    const read = config?.run?.concurrency
     live[`workspace config: ${wsNames.slice(i).join(' + ')}`] =
       typeof read === 'number' ? wsNames[read - 1] : null
   }
@@ -158,11 +158,13 @@ it('each discovery case answers as tests/contract/discovery.json records', async
       ...Object.fromEntries(
         files.map((f, i) => [
           f,
-          f.endsWith('.mjs') ? WS_CONFIG(i + 1) : `module.exports = { concurrency: ${i + 1} }\n`,
+          f.endsWith('.mjs')
+            ? WS_CONFIG(i + 1)
+            : `module.exports = { run: { concurrency: ${i + 1} } }\n`,
         ]),
       ),
     })
-    const read = (await loadWorkspaceConfig(root))?.concurrency
+    const read = (await loadWorkspaceConfig(root))?.run?.concurrency
     live[`workspace config: ${files.join(' + ')}`] =
       typeof read === 'number' ? files[read - 1] : null
   }

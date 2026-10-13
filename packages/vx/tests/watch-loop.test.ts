@@ -233,7 +233,7 @@ describe('vx watch loop (e2e)', () => {
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
-    expect(w.err()).toContain('vx watch: polling every 250 ms (VX_WATCH_POLL)')
+    expect(w.err()).toContain('vx watch: polling every 250 ms (watch.poll)')
     expect(w.err()).not.toContain('no OS watch events')
 
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'polled\n')

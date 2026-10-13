@@ -64,17 +64,17 @@ provenance attached, and no long-lived token exists to steal.
 ## A CLI that does not guess
 
 Numbers are strict. `0x10`, `1e3` and `2.7` are refused, never read as
-something you did not mean:
+something you did not mean, and an old flag names its new one:
 
 ```sh frame="terminal"
 $ vx run build --concurrency 0x10
-vx run: --concurrency must be a positive integer, or a share of the cores such as 50% (got 0x10) (see `vx run --help`)
+vx run: --concurrency must be a positive integer, or a share of the cores like '50%' (got 0x10) (see `vx run --help`)
 
 $ vx run build --timeout 1e3
-vx run: --timeout must be a positive integer in ms (got 1e3) (see `vx run --help`)
+vx run: --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3) (see `vx run --help`)
 
-$ vx run build --retries 2
-vx run: unknown flag: --retries (did you mean --retry?) (see `vx run --help`)
+$ vx run build --retry 2
+vx run: --retry was renamed --retries (a non-negative integer) in vx 0.0.637 (see `vx run --help`)
 ```
 
 `vx help` lists every verb, `vx help <verb>` shows one, and `vx version`

@@ -43,7 +43,7 @@ The same policy can run by itself. Declare it in `vx.workspace.ts`:
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
-  cacheRetention: { olderThan: '30d', maxSize: '10G' },
+  cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
 })
 ```
 

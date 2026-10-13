@@ -277,10 +277,10 @@ describe('cache.scope', () => {
     TIMEOUT,
   )
 
-  it('VX_CACHE is the spec a run takes when no --cache names one', () => {
-    const saved = process.env['VX_CACHE']
+  it('VX_CACHE_POLICY is the spec a run takes when no --cache names one', () => {
+    const saved = process.env['VX_CACHE_POLICY']
     try {
-      process.env['VX_CACHE'] = 'local:r,remote:'
+      process.env['VX_CACHE_POLICY'] = 'local:r,remote:'
       const off = { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }
       expect(parseRunArgs(['build']).cache).toEqual(off)
       expect(parseRunArgs(['build', '--cache=local:rw']).cache).toEqual({
@@ -290,15 +290,17 @@ describe('cache.scope', () => {
         remoteWrite: true,
       })
       expect(parseRunArgs(['build', '--force']).cache).toEqual({ ...off, localRead: false })
-      process.env['VX_CACHE'] = 'remote:rw'
+      process.env['VX_CACHE_POLICY'] = 'remote:rw'
       expect(parseRunArgs(['build']).remoteRequested).toBe(true)
-      process.env['VX_CACHE'] = 'disk:r'
-      expect(parseRunArgs(['build']).error).toContain("VX_CACHE: invalid --cache layer 'disk'")
-      process.env['VX_CACHE'] = ','
-      expect(parseRunArgs(['build']).error).toContain('VX_CACHE needs a spec')
+      process.env['VX_CACHE_POLICY'] = 'disk:r'
+      expect(parseRunArgs(['build']).error).toContain(
+        "VX_CACHE_POLICY: invalid --cache layer 'disk'",
+      )
+      process.env['VX_CACHE_POLICY'] = ','
+      expect(parseRunArgs(['build']).error).toContain('VX_CACHE_POLICY needs a spec')
     } finally {
-      if (saved === undefined) delete process.env['VX_CACHE']
-      else process.env['VX_CACHE'] = saved
+      if (saved === undefined) delete process.env['VX_CACHE_POLICY']
+      else process.env['VX_CACHE_POLICY'] = saved
     }
   })
 
@@ -440,7 +442,7 @@ describe('cache.policy', () => {
           'success',
         )
         expect(readOnly.store.size).toBe(0)
-        // `--cache` or `VX_CACHE` hands `run()` a whole policy: the workspace's is not read.
+        // `--cache` or `VX_CACHE_POLICY` hands `run()` a whole policy: the workspace's is not read.
         expect(
           await runUnder(fixture, readOnly.layer, `{ cache: { policy: 'remote:r' } }`, {
             cache: FULL_CACHE_POLICY,
@@ -500,9 +502,9 @@ describe('cache.policy', () => {
   )
 
   it('the CLI leaves the policy to the workspace when no spec names one', () => {
-    const saved = process.env['VX_CACHE']
+    const saved = process.env['VX_CACHE_POLICY']
     try {
-      delete process.env['VX_CACHE']
+      delete process.env['VX_CACHE_POLICY']
       expect(parseRunArgs(['build']).cacheFlags).toEqual({})
       expect(parseRunArgs(['build', '--force']).cacheFlags).toEqual({ force: true })
       expect(parseRunArgs(['build', '--no-cache', '--force']).cacheFlags).toEqual({
@@ -510,11 +512,11 @@ describe('cache.policy', () => {
         force: true,
       })
       expect(parseRunArgs(['build', '--cache=remote:']).cacheFlags).toBeUndefined()
-      process.env['VX_CACHE'] = 'remote:'
+      process.env['VX_CACHE_POLICY'] = 'remote:'
       expect(parseRunArgs(['build']).cacheFlags).toBeUndefined()
     } finally {
-      if (saved === undefined) delete process.env['VX_CACHE']
-      else process.env['VX_CACHE'] = saved
+      if (saved === undefined) delete process.env['VX_CACHE_POLICY']
+      else process.env['VX_CACHE_POLICY'] = saved
     }
   })
 })

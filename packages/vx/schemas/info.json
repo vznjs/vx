@@ -22,8 +22,7 @@
     "schemaVersion",
     "cacheEntries",
     "cacheBytes",
-    "cachePolicy",
-    "cacheScope",
+    "settings",
     "cacheRetention",
     "orphans",
     "runs24h",
@@ -95,29 +94,22 @@
     "schemaVersion": { "type": "string" },
     "cacheEntries": { "type": "integer" },
     "cacheBytes": { "type": "integer" },
-    "cachePolicy": {
+    "settings": {
       "type": "object",
-      "description": "the policy a vx run with no --cache takes: VX_CACHE, else the workspace's cache.policy, else every layer on",
-      "additionalProperties": false,
-      "required": ["spec", "from"],
-      "properties": {
-        "spec": { "type": "string" },
-        "from": { "enum": ["VX_CACHE", "workspace", "default"] }
-      }
-    },
-    "cacheScope": {
-      "type": "object",
-      "description": "the scope a vx run with no --cache-scope takes: VX_CACHE_SCOPE, else the workspace's cache.scope, else null (read-only off CI, trusted on CI or when the policy names the remote)",
-      "additionalProperties": false,
-      "required": ["scope", "from"],
-      "properties": {
-        "scope": { "type": ["string", "null"] },
-        "from": { "enum": ["VX_CACHE_SCOPE", "workspace", "default"] }
+      "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else vx.workspace's value, else null with source default",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "source"],
+        "properties": {
+          "value": { "type": ["string", "number", "boolean", "null"] },
+          "source": { "enum": ["env", "workspace", "default"] }
+        }
       }
     },
     "cacheRetention": {
       "type": ["object", "null"],
-      "description": "the workspace's cacheRetention, maxSize also in bytes; null when none is declared",
+      "description": "cache.retention from its variables, else the workspace, maxSize also in bytes; null when none is declared",
       "additionalProperties": false,
       "properties": {
         "olderThan": { "type": "string" },

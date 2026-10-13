@@ -17,22 +17,22 @@
   {
     "key": "turbo.json cacheDir",
     "status": "not-supported",
-    "reason": "Ignored without a warning; vx uses its own `cacheDir` in `vx.workspace.ts`."
+    "reason": "Ignored without a warning; vx uses its own `cache.dir` in `vx.workspace.ts`."
   },
   {
     "key": "turbo.json cacheMaxAge",
     "status": "mapped",
-    "reason": "turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `\"0\"` is off; `TURBO_CACHE_MAX_AGE` wins over it."
+    "reason": "turbo() fills `cache.retention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `\"0\"` is off; `TURBO_CACHE_MAX_AGE` wins over it."
   },
   {
     "key": "turbo.json cacheMaxSize",
     "status": "mapped",
-    "reason": "turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `\"0\"` is off; `TURBO_CACHE_MAX_SIZE` wins over it."
+    "reason": "turbo() fills `cache.retention.maxSize` when `vx.workspace.ts` sets no retention; `\"0\"` is off; `TURBO_CACHE_MAX_SIZE` wins over it."
   },
   {
     "key": "turbo.json concurrency",
     "status": "mapped",
-    "reason": "turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`\"50%\"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo."
+    "reason": "turbo() fills the workspace's `run.concurrency` when `vx.workspace.ts` sets none (`\"50%\"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo."
   },
   {
     "key": "turbo.json daemon",
@@ -322,7 +322,7 @@
   {
     "key": "nx.json affected",
     "status": "mapped",
-    "reason": "Its `defaultBase` (before Nx 20) is `affectedBase` when the top-level key is absent; nothing else in it is read."
+    "reason": "Its `defaultBase` (before Nx 20) is `run.affectedBase` when the top-level key is absent; nothing else in it is read."
   },
   {
     "key": "nx.json extends",
@@ -332,7 +332,7 @@
   {
     "key": "nx.json defaultBase",
     "status": "mapped",
-    "reason": "`nx()` sets `affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx."
+    "reason": "`nx()` sets `run.affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx."
   },
   {
     "key": "nx.json tasksRunnerOptions",
@@ -402,12 +402,12 @@
   {
     "key": "nx.json parallel",
     "status": "mapped",
-    "reason": "nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx."
+    "reason": "nx() fills the workspace's `run.concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx."
   },
   {
     "key": "nx.json cacheDirectory",
     "status": "not-supported",
-    "reason": "Ignored; vx uses its own `cacheDir`."
+    "reason": "Ignored; vx uses its own `cache.dir`."
   },
   {
     "key": "nx.json useDaemonProcess",

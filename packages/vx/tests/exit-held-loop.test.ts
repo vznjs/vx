@@ -67,12 +67,12 @@ it(
   async () => {
     const r = await show(
       'await new Promise(() => { setInterval(() => {}, 1000) })\nexport default {}\n',
-      { VX_CONFIG_WORKER_TIMEOUT_MS: '300' },
+      { VX_CONFIG_WORKER_TIMEOUT: '300ms' },
     )
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 1,
       out: '',
-      err: `vx: Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT_MS)\n`,
+      err: `vx: Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
     })
   },
   HANG_MS + 5_000,

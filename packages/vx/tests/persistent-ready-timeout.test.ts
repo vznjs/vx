@@ -15,7 +15,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
-process.env['VX_KILL_GRACE_MS'] = '200'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 15_000
 
@@ -64,7 +64,7 @@ describe('exec.timeout — normal task', () => {
         `export default {
           tasks: {
             build: {
-              exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: 1000 },
+              exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: '1s' },
               cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
             },
           },
@@ -100,7 +100,7 @@ describe('exec.timeout — normal task', () => {
         'quick',
         `export default {
           tasks: {
-            build: { exec: { command: 'echo done', timeout: 10000 } },
+            build: { exec: { command: 'echo done', timeout: '10s' } },
           },
         }
         `,
@@ -138,7 +138,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: "trap '' TERM; echo $$ > pid.txt && echo wrong-banner && exec sleep 30",
-                timeout: 1000,
+                timeout: '1s',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -169,7 +169,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: "trap 'exit 0' TERM; echo wrong-banner; while :; do sleep 0.05; done",
-                timeout: 500,
+                timeout: '500ms',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -180,7 +180,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // The trap runs once the loop's `sleep` returns; a loaded macOS runner
       // took past the file's 200 ms grace once and the SIGKILL read 137
       // (CI run 37847982300). The row is about the code, not the grace.
-      process.env['VX_KILL_GRACE_MS'] = '5000'
+      process.env['VX_RUN_KILL_GRACE'] = '5000ms'
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
         const { status, notReady, exitCode } = r.outcomes[0]!
@@ -190,7 +190,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           exitCode: 143,
         })
       } finally {
-        process.env['VX_KILL_GRACE_MS'] = '200'
+        process.env['VX_RUN_KILL_GRACE'] = '200ms'
       }
     },
     TIMEOUT,
@@ -210,7 +210,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: "trap '' TERM; echo wrong-banner && exec sleep 30",
-                timeout: 500,
+                timeout: '500ms',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -218,7 +218,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         }
         `,
       )
-      process.env['VX_KILL_GRACE_MS'] = '2000'
+      process.env['VX_RUN_KILL_GRACE'] = '2000ms'
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
         const { exitCode, durationMs } = r.outcomes[0]!
@@ -227,7 +227,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           waited: true,
         })
       } finally {
-        process.env['VX_KILL_GRACE_MS'] = '200'
+        process.env['VX_RUN_KILL_GRACE'] = '200ms'
       }
     },
     TIMEOUT,
@@ -248,7 +248,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: "sh -c \\"trap '' TERM; exec sleep 30\\" & echo $! > pid.txt; wait",
-                timeout: 1000,
+                timeout: '1s',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -275,7 +275,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: 'echo $$ > pid.txt && echo wrong-banner && exec sleep 30',
-                timeout: 1000,
+                timeout: '1s',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -330,7 +330,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: 'echo lived > lived.txt && echo Listening on :3000 && exec sleep 30',
-                timeout: 5000,
+                timeout: '5s',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -363,7 +363,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
             dev: {
               exec: {
                 command: 'echo $$ > pid.txt; trap "trap - TERM; sleep 0.2; echo done > clean.txt; echo Listening; exit 0" TERM; echo booting; while :; do sleep 0.05; done',
-                timeout: 500,
+                timeout: '500ms',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -371,8 +371,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         }
         `,
       )
-      const grace = process.env['VX_KILL_GRACE_MS']
-      process.env['VX_KILL_GRACE_MS'] = '3000'
+      const grace = process.env['VX_RUN_KILL_GRACE']
+      process.env['VX_RUN_KILL_GRACE'] = '3000ms'
       const kill = vi.spyOn(process, 'kill')
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
@@ -383,7 +383,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         expect(readFileSync(path.join(dir, 'clean.txt'), 'utf8')).toBe('done\n')
       } finally {
         kill.mockRestore()
-        process.env['VX_KILL_GRACE_MS'] = grace
+        process.env['VX_RUN_KILL_GRACE'] = grace
       }
     },
     TIMEOUT,
@@ -405,19 +405,20 @@ describe('exec.timeout — loader validation', () => {
     return loadProjectConfig(file)
   }
 
-  it('rejects non-positive-integer timeout', async () => {
-    await expect(load(`{ command: 'x', timeout: 0 }`)).rejects.toThrow(/positive integer/)
-    await expect(load(`{ command: 'x', timeout: 1.5 }`)).rejects.toThrow(/positive integer/)
-    await expect(load(`{ command: 'x', timeout: '5s' }`)).rejects.toThrow(/positive integer/)
+  it('rejects a timeout that is no positive duration', async () => {
+    await expect(load(`{ command: 'x', timeout: '0s' }`)).rejects.toThrow(/must be a duration/)
+    await expect(load(`{ command: 'x', timeout: 1500 }`)).rejects.toThrow(
+      /takes a duration with its unit/,
+    )
   })
 
-  it('accepts a positive integer timeout', async () => {
-    const cfg = await load(`{ command: 'x', timeout: 30000 }`)
-    expect(cfg.tasks?.dev?.exec?.timeout).toBe(30000)
+  it('accepts a duration timeout', async () => {
+    const cfg = await load(`{ command: 'x', timeout: '30s' }`)
+    expect(cfg.tasks?.dev?.exec?.timeout).toBe('30s')
   })
 
   it('accepts timeout on a ready-on-spawn persistent task (no-op, not an error)', async () => {
-    const cfg = await load(`{ command: 'x', timeout: 1000, persistent: {} }`)
-    expect(cfg.tasks?.dev?.exec?.timeout).toBe(1000)
+    const cfg = await load(`{ command: 'x', timeout: '1s', persistent: {} }`)
+    expect(cfg.tasks?.dev?.exec?.timeout).toBe('1s')
   })
 })

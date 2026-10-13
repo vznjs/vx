@@ -981,7 +981,7 @@ describe('loadProjectConfig', () => {
           dependsOn: ['^build'],
           exec: {
             command: 'true',
-            timeout: 1000,
+            timeout: '1s',
             retries: 1,
             env: { passThrough: ['CI'], define: { A: 'b' } },
             sandbox: { allow: { read: ['../shared'], network: ['registry.npmjs.org'] } },
@@ -1260,10 +1260,10 @@ describe('loadWorkspaceConfig', () => {
   it('loads a default-exported object from vx.workspace.mjs', async () => {
     await writeFile(
       path.join(dir, 'vx.workspace.mjs'),
-      'export default { concurrency: 4, cacheDir: "build/.vx-cache" }',
+      'export default { run: { concurrency: 4 }, cache: { dir: "build/.vx-cache" } }',
     )
     const cfg = await loadWorkspaceConfig(dir)
-    expect(cfg).toEqual({ concurrency: 4, cacheDir: 'build/.vx-cache' })
+    expect(cfg).toEqual({ run: { concurrency: 4 }, cache: { dir: 'build/.vx-cache' } })
   })
 
   // A repeat load busts the config's own URL, but Bun answers its imports
@@ -1283,17 +1283,17 @@ describe('loadWorkspaceConfig', () => {
       await writeFile(helper, 'export const n = 1\n')
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        "import { n } from './helper.mjs'\nexport default { concurrency: n }\n",
+        "import { n } from './helper.mjs'\nexport default { run: { concurrency: n } }\n",
       )
-      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 1 })
+      expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 1 } })
       // CONTROL: nothing it imports moved, and an edit to the config itself
       // is read as ever.
-      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 1 })
+      expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 1 } })
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        "import { n } from './helper.mjs'\nexport default { concurrency: n + 1 }\n",
+        "import { n } from './helper.mjs'\nexport default { run: { concurrency: n + 1 } }\n",
       )
-      expect(await loadWorkspaceConfig(root)).toEqual({ concurrency: 2 })
+      expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 2 } })
       await writeFile(helper, 'export const n = 5\n')
       const later = new Date(Date.now() + 5_000)
       await utimes(helper, later, later)
@@ -1308,24 +1308,33 @@ describe('loadWorkspaceConfig', () => {
   )
 
   it('takes the FIRST file in lookup order when two exist (item 653)', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { concurrency: 2 }')
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { concurrency: 3 }')
-    expect(await loadWorkspaceConfig(dir)).toEqual({ concurrency: 2 })
+    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { run: { concurrency: 2 } }')
+    await writeFile(
+      path.join(dir, 'vx.workspace.mjs'),
+      'export default { run: { concurrency: 3 } }',
+    )
+    expect(await loadWorkspaceConfig(dir)).toEqual({ run: { concurrency: 2 } })
   })
 
   it('throws when concurrency is non-positive or non-integer', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { concurrency: 0 }')
+    await writeFile(
+      path.join(dir, 'vx.workspace.mjs'),
+      'export default { run: { concurrency: 0 } }',
+    )
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/positive integer/)
   })
 
   it('throws when concurrency is a non-number', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { concurrency: "8" }')
+    await writeFile(
+      path.join(dir, 'vx.workspace.mjs'),
+      'export default { run: { concurrency: "8" } }',
+    )
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/positive integer/)
   })
 
-  it('throws when cacheDir is not a string', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { cacheDir: 7 }')
-    await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/must be a string/)
+  it('throws when cache.dir is not a string', async () => {
+    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { cache: { dir: 7 } }')
+    await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/must be a non-blank string/)
   })
 
   it('throws when the file does not export a default object', async () => {
@@ -1435,7 +1444,7 @@ describe('first loads run together (D-68)', () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-d68-'))
   })
   afterEach(async () => {
-    delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+    delete process.env['VX_CONFIG_WORKER_TIMEOUT']
     await rm(dir, { recursive: true, force: true })
   })
   const config = async (name: string, body: string): Promise<string> => {
@@ -1451,7 +1460,7 @@ describe('first loads run together (D-68)', () => {
     // `a` settles only when `b` has run. In order, one at a time, `a` held
     // the loop until its deadline.
     // The channel is a module both import: a global is refused (D-122).
-    process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '2000'
+    process.env['VX_CONFIG_WORKER_TIMEOUT'] = '2000ms'
     await writeFile(
       path.join(dir, 'chan.mjs'),
       'export let release\nexport const released = new Promise((r) => { release = r })\n',

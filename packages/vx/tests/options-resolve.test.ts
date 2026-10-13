@@ -4,17 +4,18 @@
 // precedence ladders that a refactor can silently invert:
 //
 //   timeout      per-task `exec.timeout` > RunOptions.timeout (`--timeout`)
-//                > `VX_TASK_TIMEOUT` env > workspace `timeout`
-//   retries      per-task `exec.retries` > RunOptions.retries (`--retry`)
-//   concurrency  RunOptions.concurrency > workspace `concurrency`
-//                > `navigator.hardwareConcurrency`
+//                > `VX_RUN_TIMEOUT` env > workspace `run.timeout`
+//   retries      per-task `exec.retries` > RunOptions.retries (`--retries`)
+//                > `VX_RUN_RETRIES` env > workspace `run.retries`
+//   concurrency  RunOptions.concurrency > `VX_RUN_CONCURRENCY` env
+//                > workspace `run.concurrency` > the cores this process may use
 //
 // Two subtleties carry most of the risk, and both are the kind a plausible
 // rewrite breaks without failing anything else:
 //   - an explicit config `0` must WIN over a run-level default rather than
 //     read as absent (`exec.retries: 0` means "never retry" — `??`, not `||`
 //     and not `Math.max`);
-//   - a MALFORMED env value must fall through to the next rung rather than
+//   - a MALFORMED env value is refused before any task rather than
 //     imposing or disabling a limit.
 // And every one of these knobs is per-RUN, so none may reach a cache key.
 //
@@ -33,8 +34,7 @@ import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/worksp
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { MAX_TIMEOUT_MS } from '../src/util/index.js'
-import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
-import { parseDecimalInt } from '../src/util/index.js'
+import { settingEnv } from '../src/settings.js'
 
 const TIMEOUT = 20_000
 
@@ -123,102 +123,45 @@ describe('options.ts — a types-only leaf', () => {
 // timeout ladder — the env rung's parser
 // --------------------------------------------------------------------------
 
-describe('VX_TASK_TIMEOUT — the env rung parser', () => {
-  const read = (raw: string | undefined): number | undefined => {
-    const prev = process.env['VX_TASK_TIMEOUT']
-    if (raw === undefined) delete process.env['VX_TASK_TIMEOUT']
-    else process.env['VX_TASK_TIMEOUT'] = raw
+describe('VX_RUN_TIMEOUT — the env rung parser', () => {
+  const read = (raw: string | undefined): unknown =>
+    settingEnv('run.timeout', raw === undefined ? {} : { VX_RUN_TIMEOUT: raw })
+  const refusal = (raw: string): string => {
     try {
-      return readTaskTimeoutEnv()
-    } finally {
-      if (prev === undefined) delete process.env['VX_TASK_TIMEOUT']
-      else process.env['VX_TASK_TIMEOUT'] = prev
+      read(raw)
+    } catch (err) {
+      return (err as Error).message
     }
+    return 'NO THROW'
   }
 
-  it('accepts a plain positive decimal integer', () => {
-    expect(read('250')).toBe(250)
-    expect(read('1')).toBe(1)
-    expect(read('60000')).toBe(60000)
+  it('takes a duration, in ms', () => {
+    expect(read('250ms')).toBe(250)
+    expect(read('1s')).toBe(1000)
+    expect(read('10m')).toBe(600_000)
   })
 
   it('an unset or empty value contributes nothing (the next rung applies)', () => {
-    // Empty is the `VX_TASK_TIMEOUT="$UNSET_VAR"` shape — it must behave like
-    // "not passed", never like a 0ms limit that kills every task instantly.
+    // Empty is the `VX_RUN_TIMEOUT="$UNSET_VAR"` shape: "not passed", never
+    // a 0 ms limit that kills every task at once.
     expect(read(undefined)).toBeUndefined()
     expect(read('')).toBeUndefined()
-    expect(read('   ')).toBeUndefined()
   })
 
-  it('0 and negatives are IGNORED — 0 never means "no timeout"', () => {
-    // Both `Number()` to a non-positive value. Returning 0 here would arm a
-    // 0ms timer (kill everything); treating 0 as "disable the limit" would
-    // silently defeat a workspace `timeout`. Ignoring is the third option and
-    // the one that keeps the ladder honest: the next rung decides.
-    expect(read('0')).toBeUndefined()
-    expect(read('-1')).toBeUndefined()
-    expect(read('-250')).toBeUndefined()
-  })
-
-  it('non-integer and non-numeric junk is IGNORED', () => {
-    // The documented promise: "a typo never silently disables a task's own
-    // `exec.timeout`" — a bad value must not arm anything at all.
-    expect(read('1.5')).toBeUndefined()
-    expect(read('abc')).toBeUndefined()
-    expect(read('250ms')).toBeUndefined()
-    expect(read('NaN')).toBeUndefined()
-    expect(read('1_000')).toBeUndefined()
-    expect(read('Infinity')).toBeUndefined()
-    expect(read('-Infinity')).toBeUndefined()
-  })
-
-  // ---- CURRENT behaviour, suspected defect --------------------------------
-  // `readTaskTimeoutEnv` (src/orchestrator/run.ts) parses with a bare
-  // `Number()`. The sibling `--timeout` FLAG was moved off `Number()` onto
-  // `parseDecimalInt` in the 2026-07-26 CLI-hygiene wave for exactly this
-  // reason — `src/util/num.ts` says so in as many words: "`Number()` is the
-  // wrong tool at an argument boundary: it silently accepts hex (`0x10` →
-  // 16), exponents (`1e3` → 1000), fractions, a leading `+`, and surrounding
-  // whitespace — so a typo becomes a different number instead of an error."
-  // The env rung was never tightened, so the two boundaries disagree. These
-  // tests pin what the code does TODAY; if the env rung is tightened they
-  // should flip to `toBeUndefined()`.
-  it('CURRENT: accepts non-decimal numeric forms a typo can produce', () => {
-    expect(read('0x10')).toBe(16) // hex — a 16ms limit, not 10ms and not an error
-    expect(read('0b101')).toBe(5)
-    expect(read('0o17')).toBe(15)
-    expect(read('1e3')).toBe(1000)
-    expect(read('+300')).toBe(300)
-    expect(read('  100  ')).toBe(100)
-    expect(read('\n700\n')).toBe(700) // a trailing newline from `$(cat file)`
-  })
-
-  it('a value past the timer ceiling is CLAMPED, not passed through', () => {
-    // This rung is the OTHER kind of timeout, and the treatment differs on
-    // purpose. Omitting a task timeout means "no limit", so clamping a huge
-    // value to the largest expressible one (~24.8 days) is indistinguishable
-    // from what the user wanted \u2014 unlike the teardown and config-worker
-    // deadlines, where there is no "no limit" reading and out-of-range falls
-    // back to the default instead.
-    //
-    // What must never happen is the third option: passing it through, where the
-    // timer collapses it to 1ms and every task is killed as it spawns.
-    expect(read('9007199254740993')).toBe(MAX_TIMEOUT_MS)
-    expect(read('1e21')).toBe(MAX_TIMEOUT_MS)
-    expect(read('2147483647')).toBe(MAX_TIMEOUT_MS)
-    expect(read('2147483648')).toBe(MAX_TIMEOUT_MS)
-    expect(read('120000')).toBe(120_000)
-  })
-
-  it('the env rung and the --timeout flag disagree on the SAME input', () => {
-    // The drift stated as one assertion, so it reads as the finding it is:
-    // every form below is rejected at the flag boundary and accepted at the
-    // env boundary. Tightening `readTaskTimeoutEnv` makes this test fail —
-    // which is the signal to delete it.
-    for (const v of ['0x10', '1e3', '+300', ' 100 ', '9007199254740993']) {
-      expect(parseDecimalInt(v)).toBeNull()
-      expect(read(v)).toBeTypeOf('number')
+  it('refuses what is no duration, before any task, rather than guessing', () => {
+    // Ignoring a typo let it disable nothing and say nothing; `Number()`
+    // read hex, exponents and padding as some other limit.
+    for (const raw of ['0ms', '-1s', '1.5s', 'abc', '0x10', '1e3', '+300', ' 100ms ', 'Infinity']) {
+      expect(refusal(raw)).toStartWith('VX_RUN_TIMEOUT must be a duration')
     }
+    expect(refusal('250')).toBe(
+      "VX_RUN_TIMEOUT takes a duration with its unit, like '250ms' or '1s' (got 250)",
+    )
+  })
+
+  it('refuses a value past the timer ceiling, which would fire at once', () => {
+    expect(read(`${MAX_TIMEOUT_MS}ms`)).toBe(MAX_TIMEOUT_MS)
+    expect(refusal(`${MAX_TIMEOUT_MS + 1}ms`)).toContain('exceeds the maximum timer delay')
   })
 })
 
@@ -229,15 +172,15 @@ describe('VX_TASK_TIMEOUT — the env rung parser', () => {
 describe('timeout ladder — the env rung in isolation', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
   })
   afterEach(async () => {
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
     await rm(fixture.root, { recursive: true, force: true })
   })
 
   it(
-    'VX_TASK_TIMEOUT alone bounds a task — no workspace file, no --timeout',
+    'VX_RUN_TIMEOUT alone bounds a task — no workspace file, no --timeout',
     async () => {
       // The sibling suite always pairs the env with a workspace `timeout`, so
       // it cannot distinguish "the env rung works" from "the env rung merely
@@ -250,7 +193,7 @@ describe('timeout ladder — the env rung in isolation', () => {
         'a',
         `export default { tasks: { run: { exec: { command: 'exec sleep 30' } } } }`,
       )
-      process.env['VX_TASK_TIMEOUT'] = '250'
+      process.env['VX_RUN_TIMEOUT'] = '250ms'
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -368,7 +311,7 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
   it(
     'the workspace rung is honored, and RunOptions.concurrency overrides it',
     async () => {
-      // Nothing else in the suite asserts that `defineWorkspace({ concurrency })`
+      // Nothing else in the suite asserts that `run: { concurrency }` in vx.workspace
       // reaches the scheduler at all — project-loader.test.ts only proves it
       // LOADS, and the CLI tests only prove `--concurrency` parses. Two runs
       // over one fixture: the workspace value alone must serialize two
@@ -376,7 +319,7 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
       const config = `export default { tasks: { run: { exec: { command: ${JSON.stringify(SPAN_CMD)} } } } }`
       const a = await addProject(fixture.root, 'a', config)
       const b = await addProject(fixture.root, 'b', config)
-      await setWorkspace(fixture.root, 'concurrency: 1')
+      await setWorkspace(fixture.root, 'run: { concurrency: 1 }')
 
       const serial = await run({
         cwd: fixture.root,

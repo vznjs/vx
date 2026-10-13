@@ -75,7 +75,7 @@ nothing runs and caches here.
   (`admit-warning-prefix.test.ts`).
 - `teardownPlugins(plugins, warn)` — end-of-run, in declaration order:
   each plugin's `teardown()` under try/catch and a time bound
-  (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
+  (`teardownTimeoutMs()`: `VX_RUN_TEARDOWN_TIMEOUT`, 3 s by default; a
   call that never settles is warned by name, never awaited past the
   bound). A throw is warned as every stage names one (C-84):
   `plugin '<p>' failed in teardown: <reason>`; the run's verdict stands.

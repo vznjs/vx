@@ -412,7 +412,7 @@ describe('the command context carries the workspace’s declared cacheDir', () =
       await writeFile(
         path.join(ws, 'vx.workspace.mjs'),
         `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
-          `export default { cacheDir: 'build/.vx-cache', plugins: [mcp()] }\n`,
+          `export default { cache: { dir: 'build/.vx-cache' }, plugins: [mcp()] }\n`,
       )
       const cache = new Cache(path.join(ws, 'build', '.vx-cache'))
       cache.recordRun({

@@ -183,7 +183,7 @@ export interface TaskOutcome {
   restored?: boolean
   /**
    * How many times the task executed this run, when `exec.retries` /
-   * `--retry` re-ran failed attempts. Set only when > 1 — a plain
+   * `--retries` re-ran failed attempts. Set only when > 1 — a plain
    * single-attempt run carries nothing. Not persisted; telemetry-side
    * flaky detection reads it off the outcome stream.
    */

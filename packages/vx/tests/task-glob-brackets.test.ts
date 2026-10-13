@@ -149,7 +149,7 @@ for (const [spelling, glob] of spellings) {
       root = await makeWorkspace({ prefix: 'vx-brackets-' })
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        'export default { rules: { exclusiveOutputs: false } }\n',
+        'export default { run: { rules: { exclusiveOutputs: false } } }\n',
       )
       const dir = await addProject(root, 'p', {
         config: `

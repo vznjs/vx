@@ -29,8 +29,12 @@ config, measured 2026-09-10). The scaffolds still write the type-only
 ```ts
 // Types
 export interface ProjectConfig
-export interface WorkspaceConfig
-export interface WorkspaceRules // `rules`: graph checks, each on unless false (X-53)
+export interface WorkspaceConfig // { run, cache, watch, plugins }
+export interface RunSettings // `run`: concurrency, schedule, timeout, retries, rules …
+export interface CacheSettings // `cache`: dir, retention, policy, scope, download, inputStability
+export interface WatchSettings // `watch`: poll
+export interface WorkspaceRules // `run.rules`: graph checks, each on unless false (X-53)
+export type Duration // '500ms', '30s', '10m', '12h', '30d': every duration carries its unit
 export interface TaskConfig
 export interface ExecConfig
 export interface ExecEnv
@@ -68,7 +72,7 @@ its `allow`, `deny`, `ignore`, D-156), `cache`, `cache.inputs` and
 generic argument skips TypeScript's excess-property check, so a
 Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
 failed only when vx loaded the config (D-69). `defineWorkspace` does
-the same for its keys, `cacheRetention`'s and `rules`': a lone unknown key failed
+the same for its keys, `cache.retention`'s and `rules`': a lone unknown key failed
 TypeScript's weak-type check, but a typo beside a known one
 (`{ plugins, concurency }`, D-70; `rules: { exclusiveOutputs, upfrontKey }`,
 D-155) type-checked.
@@ -105,7 +109,7 @@ The function body is a one-liner today and that's by design.
 
 - The exported types and helpers are the **only** public contract.
 - The types and `config-schema.ts` name the same keys at every level
-  (workspace, `cacheRetention`, project, task, `exec`, `exec.env`,
+  (workspace, `cache.retention`, project, task, `exec`, `exec.env`,
   `exec.persistent`, `exec.sandbox` and its `allow` / `deny` /
   `ignore`, `cache`, `cache.inputs`, `cache.outputs`):
   `tests/config-types-schema.test.ts` holds each list to the type with

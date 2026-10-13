@@ -2,6 +2,7 @@
 // handler lives in a sibling `<name>.ts`; tests import its parsers there.
 
 import { VERSION } from '../version.js'
+import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
 import { FOREIGN_VERBS } from './foreign-flags.js'
 import {
@@ -34,6 +35,9 @@ export async function run(argv: readonly string[]): Promise<number> {
     await printHelp(await (await plugins()).pluginCommandHelp(), command)
     return 0
   }
+  // Each setting's variable once, before any verb: a renamed one is named,
+  // and a deep reader trusts what it reads.
+  checkSettingsEnv()
 
   switch (command) {
     case undefined: {

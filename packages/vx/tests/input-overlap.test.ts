@@ -73,7 +73,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
       'app#test reads "**" in cache.inputs.files, which matches app#build\'s output "dist/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!dist/**" to app#test\'s ' +
-        'cache.inputs.files, or set rules: { upfrontKeys: false } in vx.workspace.ts to let ' +
+        'cache.inputs.files, or set run.rules.upfrontKeys: false in vx.workspace.ts to let ' +
         'it wait for its producer.',
     )
   })
@@ -89,7 +89,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
   for (const [what, inputs, outputs] of refused) {
     it(`refuses ${what}: ${inputs.join()} against ${outputs.join()}`, () => {
       const graph = app({ build: task(['src/**'], outputs), test: task(inputs, ['out/**']) })
-      expect(refusal(graph)).toMatch(/^app#test reads .* rules: \{ upfrontKeys: false \}/)
+      expect(refusal(graph)).toMatch(/^app#test reads .* run\.rules\.upfrontKeys: false/)
       expect(refusal(graph, { upfrontKeys: true })).toMatch(/^app#test reads /)
       // The way out it names: the rule off.
       expect(refusal(graph, { upfrontKeys: false })).toBeNull()
@@ -120,7 +120,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
       'app#build reads "**" in cache.inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!gen/**" to app#build\'s ' +
-        'cache.inputs.files, or set rules: { upfrontKeys: false } in vx.workspace.ts to let ' +
+        'cache.inputs.files, or set run.rules.upfrontKeys: false in vx.workspace.ts to let ' +
         'it wait for its producer.',
     )
     expect(
@@ -213,7 +213,7 @@ describe('rules.upfrontKeys end to end', () => {
       expect(await Bun.file(path.join(dir, 'out.txt')).exists()).toBe(false)
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        'export default { rules: { upfrontKeys: false } }\n',
+        'export default { run: { rules: { upfrontKeys: false } } }\n',
       )
       const r = await run({ cwd: root, tasks: ['test'], log: silent })
       expect(r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual([
@@ -260,10 +260,10 @@ describe('rules.upfrontKeys end to end', () => {
       await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        "export default { rules: { upfrontKeys: 'yes' } }\n",
+        "export default { run: { rules: { upfrontKeys: 'yes' } } }\n",
       )
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent })).rejects.toThrow(
-        /`rules`\.upfrontKeys must be true or false/,
+        /`run\.rules\.upfrontKeys` must be true or false/,
       )
     } finally {
       await rm(root, { recursive: true, force: true })

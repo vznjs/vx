@@ -27,7 +27,7 @@ describe('the configure guide', () => {
     const trunks = JSON.parse(
       /const TRUNKS = (\[[^\]]*\])/.exec(affected)![1]!.replaceAll("'", '"'),
     ) as string[]
-    const row = PAGE.split('\n').find((l) => l.startsWith('| `affectedBase`'))!
+    const row = PAGE.split('\n').find((l) => l.startsWith('| `run.affectedBase`'))!
     expect(trunks.filter((t) => !row.includes(`\`${t}\``))).toEqual([])
     expect(row).toContain('`HEAD~1`')
   })

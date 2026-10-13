@@ -45,7 +45,7 @@ run is refused before anything starts:
 
 ```sh frame="terminal"
 $ vx run @demo/api#bundle
-vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set rules: { exclusiveOutputs: false } in vx.workspace.ts to let a dependant add to its upstream's outputs.
+vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in vx.workspace.ts to let a dependant add to its upstream's outputs.
 ```
 
 This is a workspace rule. Rules are checks that keep vx fast and
@@ -57,7 +57,7 @@ correctly, only slower, and never changes a cache key:
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
-  rules: { exclusiveOutputs: false, upfrontKeys: true },
+  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },
 })
 ```
 
@@ -70,7 +70,7 @@ finishes. The message names the glob to exclude.
 A `vx.config.ts` is code, and code can hang: an `await` on a server that
 is down, or a loop. Each config gets 30 seconds, and then the load fails
 and names the config. A real evaluation takes about 10 ms.
-`VX_CONFIG_WORKER_TIMEOUT_MS` changes the limit.
+`VX_CONFIG_WORKER_TIMEOUT` changes the limit.
 
 ## A pure config is read once
 

@@ -29,9 +29,9 @@ const notes = async (nxJson: unknown): Promise<string[]> => {
 
 it('names each nx.json run setting the written workspace file needs', async () => {
   expect(await notes({ parallel: 1, defaultBase: 'master', maxCacheSize: '10GB' })).toEqual([
-    'nx.json `parallel: 1`: add `concurrency: 1` to vx.workspace.ts',
-    'nx.json `defaultBase` "master": add `affectedBase: "master"` to vx.workspace.ts',
-    'nx.json `maxCacheSize`: add `cacheRetention: { maxSize: "10GB" }` to vx.workspace.ts',
+    'nx.json `parallel: 1`: add `run: { concurrency: 1 }` to vx.workspace.ts',
+    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to vx.workspace.ts',
+    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "10GB" } }` to vx.workspace.ts',
   ])
   // The legacy spellings Nx still reads.
   expect(
@@ -40,8 +40,8 @@ it('names each nx.json run setting the written workspace file needs', async () =
       affected: { defaultBase: 'develop' },
     }),
   ).toEqual([
-    'nx.json `parallel: 3`: add `concurrency: 3` to vx.workspace.ts',
-    'nx.json `defaultBase` "develop": add `affectedBase: "develop"` to vx.workspace.ts',
+    'nx.json `parallel: 3`: add `run: { concurrency: 3 }` to vx.workspace.ts',
+    'nx.json `defaultBase` "develop": add `run: { affectedBase: "develop" }` to vx.workspace.ts',
   ])
   // CONTROL: none set, `0` is no cap, and the environment is not read.
   process.env['NX_PARALLEL'] = '2'
@@ -81,7 +81,10 @@ it('writes them into the vx.workspace.ts it writes; one it cannot read stays a n
   expect(await proc.exited).toBe(0)
   const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
   expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to vx.workspace.ts')]).toEqual([
-    ['  concurrency: 2,', "  affectedBase: 'main',", "  cacheRetention: { maxSize: '10GB' },"],
+    [
+      "  run: { concurrency: 2, affectedBase: 'main' },",
+      "  cache: { retention: { maxSize: '10GB' } },",
+    ],
     false,
   ])
   // A size vx cannot read is not written: the note keeps it.
@@ -89,7 +92,7 @@ it('writes them into the vx.workspace.ts it writes; one it cannot read stays a n
   expect(
     (await migrateNx(root, [], 'ts', undefined, true)).notes.filter((n) => n.startsWith('nx.json')),
   ).toEqual([
-    'nx.json `maxCacheSize`: add `cacheRetention: { maxSize: "1.5 TB" }` to vx.workspace.ts',
+    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "1.5 TB" } }` to vx.workspace.ts',
   ])
 })
 
@@ -119,9 +122,9 @@ it('names them where the workspace file is already there', async () => {
   })
   const out = await new Response(proc.stdout).text()
   expect(await proc.exited).toBe(0)
-  expect(out).toContain('nx.json `parallel: 1`: add `concurrency: 1` to vx.workspace.ts')
+  expect(out).toContain('nx.json `parallel: 1`: add `run: { concurrency: 1 }` to vx.workspace.ts')
   expect(out).toContain(
-    'nx.json `defaultBase` "master": add `affectedBase: "master"` to vx.workspace.ts',
+    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to vx.workspace.ts',
   )
   expect(await readFile(path.join(root, 'vx.workspace.mjs'), 'utf8')).toBe(
     'export default { plugins: [] }\n',

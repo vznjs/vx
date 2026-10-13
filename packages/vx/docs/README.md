@@ -132,7 +132,7 @@ export default defineProject({
       cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
     },
     dev: {
-      exec: { command: 'vite', timeout: 30_000, persistent: { readyWhen: 'Local:' } },
+      exec: { command: 'vite', timeout: '30s', persistent: { readyWhen: 'Local:' } },
     },
   },
 })

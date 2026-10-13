@@ -49,7 +49,7 @@ describe('exec.interactive in the schema', () => {
       shape: refusal({ exec: { command: 'x', interactive: 'yes' } }),
       // CONTROLS: a server with no readyWhen, a timeout, and `false` beside a cache.
       server: refusal({ exec: { command: 'x', interactive: true, persistent: {} } }),
-      timeout: refusal({ exec: { command: 'x', interactive: true, timeout: 1000 } }),
+      timeout: refusal({ exec: { command: 'x', interactive: true, timeout: '1s' } }),
       off: refusal({ exec: { command: 'x', interactive: false }, cache }),
     }).toEqual({
       cache:

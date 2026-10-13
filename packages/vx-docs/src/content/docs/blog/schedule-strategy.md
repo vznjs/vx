@@ -17,7 +17,7 @@ the guess:
 ```ts
 // vx.workspace.ts
 export default {
-  schedule: 'critical-path',
+  run: { schedule: 'critical-path' },
 }
 ```
 

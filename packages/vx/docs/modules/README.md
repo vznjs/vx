@@ -21,12 +21,13 @@ For the high-level data flow, read
 
 ## Root files
 
-| File                         | Topic                                                            |
-| ---------------------------- | ---------------------------------------------------------------- |
-| [`bin.md`](./bin.md)         | `src/bin.ts` — shebang entry; wires `process.argv` to cli `run`. |
-| [`config.md`](./config.md)   | `src/config.ts` — public schema types + `defineProject` helpers. |
-| [`index.md`](./index.md)     | `src/index.ts` — public package façade (re-exports only).        |
-| [`version.md`](./version.md) | `src/version.ts` — the `VERSION` constant (cycle-free leaf).     |
+| File                           | Topic                                                                 |
+| ------------------------------ | --------------------------------------------------------------------- |
+| [`bin.md`](./bin.md)           | `src/bin.ts` — shebang entry; wires `process.argv` to cli `run`.      |
+| [`config.md`](./config.md)     | `src/config.ts` — public schema types + `defineProject` helpers.      |
+| [`index.md`](./index.md)       | `src/index.ts` — public package façade (re-exports only).             |
+| [`settings.md`](./settings.md) | `src/settings.ts` — every setting once: path, variable, flag, parser. |
+| [`version.md`](./version.md)   | `src/version.ts` — the `VERSION` constant (cycle-free leaf).          |
 
 ## CLI
 
@@ -61,7 +62,7 @@ here, itself or in a brace group.
 |                                                    | `src/orchestrator/run-records.ts` — the runs rows, invocation header and telemetry mirror from one pass (see orchestrator.md).                                                                                                                        |
 |                                                    | `src/orchestrator/persistent.ts` — keep-alive selection and bounded shutdown of persistent children (see orchestrator.md).                                                                                                                            |
 |                                                    | `src/orchestrator/run-lock.ts` — one run at a time per workspace on this machine; runs in one process share it (see orchestrator.md).                                                                                                                 |
-| [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations.                                                                                                                                                                             |
+| [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations; `src/orchestrator/run-settings.ts` fills them from the settings.                                                                                                            |
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                                                                                                                                                    |
 | [`sandbox-request.md`](./sandbox-request.md)       | `src/orchestrator/sandbox-request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.                                                                                                                           |
 | [`keyed-projects.md`](./keyed-projects.md)         | `src/orchestrator/keyed-projects.ts` — the projects a task's key answers for, which bound a cached task's linked-package grant.                                                                                                                       |
@@ -176,7 +177,7 @@ here, itself or in a brace group.
 | [`util-hash.md`](./util-hash.md)                   | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site.                                                           |
 | [`util-ulid.md`](./util-ulid.md)                   | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).                                                                 |
 | [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting; `src/util/config-frame.ts` — a config refusal at its line. |
-| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_TIMING=1` stage table + per-task spans.                                                              |
+| [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_DEBUG_TIMING=1` stage table + per-task spans.                                                        |
 | [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                                                          |
 | [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.                                              |
 | [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                                                                |

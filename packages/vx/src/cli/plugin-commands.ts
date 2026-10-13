@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { findWorkspaceRoot, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
 import { machineParallelism, maskedLine } from '../util/index.js'
+import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
   plugin: VxPlugin
@@ -69,7 +70,9 @@ async function workspacePlugins(
     workspaceRoot,
     cacheDir: ws.cacheDir,
     // What run.ts takes when no --concurrency is given.
-    concurrency: ws.workspaceConfig?.concurrency ?? machineParallelism(),
+    concurrency:
+      (resolveSetting('run.concurrency', ws.workspaceConfig).value as number | undefined) ??
+      machineParallelism(),
     plugins: ws.plugins,
   }
 }

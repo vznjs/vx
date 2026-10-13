@@ -49,7 +49,7 @@ it('a runtime probe running when vx exits on SIGINT is gone with its tree', asyn
     cwd: root,
     stdout: 'ignore',
     stderr: 'ignore',
-    env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+    env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
   })
   const deadline = Date.now() + 20_000
   while (

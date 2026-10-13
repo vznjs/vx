@@ -71,13 +71,13 @@ build: {
 },
 ```
 
-Different bytes still withhold the entry. `VX_INPUT_STABILITY=mutable`
+Different bytes still withhold the entry. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes `mutable` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
 
 `strategy: 'unchecked'` turns the check off. And `severity: 'error'`
-(or `VX_INPUT_STABILITY_SEVERITY=error`) fails the task instead of
+(or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails the task instead of
 warning, for a pipeline that would rather stop than build twice.
 
 ## What runs downstream

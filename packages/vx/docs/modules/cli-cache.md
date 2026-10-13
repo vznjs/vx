@@ -3,7 +3,7 @@
 ## Purpose
 
 Implements `vx cache prune`. Both parsers are `util/size.ts`'s,
-re-exported here: the workspace's `cacheRetention` field reads the
+re-exported here: the workspace's `cache.retention` field reads the
 same spellings the flags do. Drives
 `Cache.prune({...})` from `src/cache/cache.ts` against the cache
 directory a run would use.
@@ -50,7 +50,7 @@ with no index row) and stale temps, and says so — `Pruned 12 entries
 `Would prune …` and `would reap`.
 
 The directory is the one a run would use — `--cache-dir`,
-`defineWorkspace({ cacheDir })` and a `config` plugin's edit of it,
+`defineWorkspace({ cache: { dir } })` and a `config` plugin's edit of it,
 through `cliCacheDir` — or a prune silently no-ops against the wrong
 path. So is the store: with `.vx/cache` deleted the prune still opens
 the store a run would (`resolveStoreRoot`), where it once said 0 while
@@ -69,7 +69,7 @@ touched survives it. A dry run takes no lock.
 ### `parseDuration(input): number | null`
 
 ```
-/^(\d+)([smhd])$/i
+/^(\d+)(ms|[smhd])$/i
 ```
 
 Returns ms. `s` (× 1000), `m` (× 60_000), `h` (× 3_600_000), `d`

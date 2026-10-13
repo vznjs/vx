@@ -10,12 +10,12 @@ import { run, type Logger } from '../src/orchestrator/index.js'
 
 let notice: string | undefined
 beforeAll(() => {
-  notice = process.env['VX_READY_NOTICE_MS']
-  process.env['VX_READY_NOTICE_MS'] = '200'
+  notice = process.env['VX_RUN_READY_NOTICE']
+  process.env['VX_RUN_READY_NOTICE'] = '200ms'
 })
 afterAll(() => {
-  if (notice === undefined) delete process.env['VX_READY_NOTICE_MS']
-  else process.env['VX_READY_NOTICE_MS'] = notice
+  if (notice === undefined) delete process.env['VX_RUN_READY_NOTICE']
+  else process.env['VX_RUN_READY_NOTICE'] = notice
 })
 let root: string | undefined
 afterEach(async () => {
@@ -24,7 +24,7 @@ afterEach(async () => {
 
 const runWith = async (command: string, timeout?: number) => {
   root = await makeWorkspace({ prefix: 'vx-ready-notice-' })
-  const bound = timeout === undefined ? '' : `, timeout: ${timeout}`
+  const bound = timeout === undefined ? '' : `, timeout: '${timeout}ms'`
   await addProject(
     root,
     'app',

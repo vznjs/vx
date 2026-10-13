@@ -1,5 +1,5 @@
 // G-147: the kept turbo() mapping keyed on every env var name, so a
-// variable that came or went (a CI step's, `VX_TIMING`) remapped the
+// variable that came or went (a CI step's, `VX_DEBUG_TIMING`) remapped the
 // workspace (~330 ms a run on vercel/ai). It keys on the names a wildcard
 // can match, and on those core cannot key.
 import { describe, expect, it } from 'bun:test'

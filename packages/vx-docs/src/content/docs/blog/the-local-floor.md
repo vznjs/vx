@@ -34,7 +34,7 @@ and nothing else.
 
 Update (2026-10-07): the floor's artifacts now live in a shared store,
 `~/.vx/<id>/cache`, that every checkout of the repository hits; each
-workspace keeps its own index in `.vx/cache`. A named `cacheDir` holds
+workspace keeps its own index in `.vx/cache`. A named `cache.dir` holds
 both. See [the shared store](../../caching/#storage-layout).
 
 ## Declining is a first-class outcome

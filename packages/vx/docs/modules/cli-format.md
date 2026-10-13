@@ -4,7 +4,7 @@
 
 Small string formatters shared by multiple CLI subcommands. The one
 formatter lives in `util/size.ts` since item 658 (a run names what the
-workspace's `cacheRetention` evicted, and the orchestrator may not
+workspace's `cache.retention` evicted, and the orchestrator may not
 import the CLI); this file re-exports it for the verbs.
 
 ## Public surface

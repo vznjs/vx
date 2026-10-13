@@ -51,6 +51,7 @@ import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '..
 import {
   killGraceMs,
   MASKED,
+  parseDuration,
   maskedEmitter,
   printable,
   relPosix,
@@ -163,18 +164,19 @@ export interface ExecuteArgs {
   /** Name what a missed key changed (`createMissExplainer`); absent when nobody listens. */
   explainMiss?: MissExplainer
   /**
-   * Run-level retry default (`--retry <n>` / `RunOptions.retries`).
+   * Run-level retry default (`--retries <n>` / `RunOptions.retries`).
    * Explicit `exec.retries` wins, including an explicit 0. Threaded as
    * an option only — never folded into any hash, so cache keys are
    * byte-identical with and without it.
    */
   retries?: number
   /**
-   * Run-level default task timeout (ms) — the already-resolved
-   * `VX_TASK_TIMEOUT`/workspace/`--timeout` fallback. Per-task
-   * `exec.timeout` wins. Threaded as an option only — never hashed.
+   * `run.timeout` (ms), already resolved from flag, variable and
+   * workspace. Per-task `exec.timeout` wins. Never hashed.
    */
   timeout?: number
+  /** `run.readyNotice` (ms), resolved like `timeout`; unset, 10 s. */
+  readyNotice?: number
   /**
    * The run's `inputStability` layers around the task's own: `run` from
    * the env vars (above the task), `workspace` from `vx.workspace` (below).
@@ -566,7 +568,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
   // For a persistent task the timeout bounds the readiness wait. Per-task
   // `exec.timeout` wins; else the run-level default (env/workspace/--timeout).
-  const effectiveTimeout = step.timeout ?? args.timeout
+  const effectiveTimeout = taskTimeoutMs(step) ?? args.timeout
   if (effectiveTimeout !== undefined) {
     persistentOpts.timeoutMs = effectiveTimeout
   }
@@ -617,7 +619,8 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // it fails, and with no `exec.timeout` the wait never ends, so a run
   // whose `readyWhen` never matched showed nothing at all.
   const readyWhen = step.persistent.readyWhen
-  const noticeMs = readyNoticeMs()
+  // How long a server may take to match `readyWhen` before vx says it waits.
+  const noticeMs = args.readyNotice ?? 10_000
   const notice =
     readyWhen === undefined
       ? undefined
@@ -795,10 +798,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  // Timeout precedence: per-task `exec.timeout` → run-level default
-  // (`--timeout`/`RunOptions.timeout` → `VX_TASK_TIMEOUT` → workspace
-  // `timeout`, already collapsed into `args.timeout` by run.ts).
-  const effectiveTimeout = step.timeout ?? args.timeout
+  // Per-task `exec.timeout` beats `run.timeout` (flag, variable,
+  // workspace; resolved into `args.timeout` by run.ts).
+  const effectiveTimeout = taskTimeoutMs(step) ?? args.timeout
   // `signal` stops a plugin executor on the run's stop AND on
   // `exec.timeout`: core cannot kill a process an executor spawned, so a
   // declared timeout meant nothing on one that kept its own clock (H-12).
@@ -1061,7 +1063,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let withheld: WithheldLink[] = []
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
-  // Explicit config wins over the run-level `--retry` default, including
+  // Explicit config wins over the run-level `--retries` default, including
   // an explicit `retries: 0`.
   const maxAttempts = 1 + (step.retries ?? args.retries ?? 0)
   let attempt = 0
@@ -1765,16 +1767,11 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   return env
 }
 
-function isAborted(signal: AbortSignal | undefined): boolean {
-  return signal?.aborted === true
+/** A task's own `exec.timeout` in ms; the schema has checked its form. */
+function taskTimeoutMs(step: ExecConfig): number | undefined {
+  return step.timeout === undefined ? undefined : parseDuration(step.timeout)!
 }
 
-/**
- * How long a server may take to match `readyWhen` before vx says it waits.
- * `VX_READY_NOTICE_MS` overrides it, as `VX_KILL_GRACE_MS` does the grace.
- */
-function readyNoticeMs(): number {
-  const raw = process.env['VX_READY_NOTICE_MS']
-  if (raw !== undefined && /^[0-9]+$/.test(raw) && Number(raw) > 0) return Number(raw)
-  return 10_000
+function isAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true
 }

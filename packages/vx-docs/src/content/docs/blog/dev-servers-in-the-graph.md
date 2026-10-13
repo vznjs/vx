@@ -22,7 +22,7 @@ dev: {
   exec: {
     command: 'vite',
     persistent: { readyWhen: 'Local:' },
-    timeout: 30_000,
+    timeout: '30s',
   },
 },
 e2e: {

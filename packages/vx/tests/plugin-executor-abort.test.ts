@@ -91,7 +91,7 @@ it("exec.timeout aborts a plugin executor's request, and the task fails as timed
   await addProject(
     root,
     'app',
-    `export default { tasks: { slow: { exec: { command: 'exec sleep 30', timeout: 300 } } } }`,
+    `export default { tasks: { slow: { exec: { command: 'exec sleep 30', timeout: '300ms' } } } }`,
   )
   const started = Date.now()
   const r = await run({
@@ -132,7 +132,7 @@ it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (
     `export default { tasks: { slow: {
       exec: {
         command: "trap 'exit 0' TERM; mkdir -p dist; echo partial > dist/out.txt; while :; do sleep 0.05; done",
-        timeout: 300,
+        timeout: '300ms',
       },
       cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
     } } }`,
@@ -165,12 +165,12 @@ describe('an executor that ignores the signal', () => {
   )
   let grace: string | undefined
   beforeEach(() => {
-    grace = process.env['VX_KILL_GRACE_MS']
-    process.env['VX_KILL_GRACE_MS'] = '200'
+    grace = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '200ms'
   })
   afterEach(() => {
-    if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
-    else process.env['VX_KILL_GRACE_MS'] = grace
+    if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
+    else process.env['VX_RUN_KILL_GRACE'] = grace
   })
 
   it('is abandoned after the grace once exec.timeout fires, and the task times out', async () => {
@@ -178,7 +178,7 @@ describe('an executor that ignores the signal', () => {
     await addProject(
       root,
       'app',
-      `export default { tasks: { slow: { exec: { command: 'true', timeout: 300 } } } }`,
+      `export default { tasks: { slow: { exec: { command: 'true', timeout: '300ms' } } } }`,
     )
     const stderr: string[] = []
     const started = Date.now()

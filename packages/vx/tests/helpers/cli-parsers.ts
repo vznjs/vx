@@ -15,7 +15,7 @@ import { watchRefusal } from '../../src/cli/watch.js'
 export const PARSE: Readonly<Record<string, (argv: string[]) => string | null>> = {
   run: (a) => parseRunArgs(['build', ...a]).error ?? null,
   watch: (a) => {
-    const parsed = parseRunArgs(['build', ...a])
+    const parsed = parseRunArgs(['build', ...a], 'watch')
     return parsed.error ?? watchRefusal(parsed)
   },
   cache: (a) => parsePruneArgs(a).error ?? null,

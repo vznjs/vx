@@ -9,6 +9,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
 import { relPosix } from '../src/util/index.js'
+import { setting } from '../src/settings.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
@@ -168,13 +169,11 @@ describe('README.md quotes the current warm floor, not a wave on the way', () =>
 // `--output-logs hash-only` as SHIPPED (2026-08-25) and its flag map lists
 // all four modes, while the "Shipped since this list was first drawn" bullet
 // listed three — written before hash-only landed and never revisited
-// (item 383, 2026-09-19). The modes are a list run.ts owns.
+// (item 383, 2026-09-19). The modes are a list settings.ts owns.
 describe("comparison.md's shipped list names every --output-logs mode", () => {
-  it('its bullet is the set run.ts accepts', () => {
-    const run = readFileSync(path.join(pkg, 'src', 'cli', 'run.ts'), 'utf8')
-    const guard = /if \(([^)]*v !== '[^']+'[^)]*)\) \{/.exec(run)
-    expect(guard).not.toBeNull()
-    const modes = [...guard![1]!.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]!)
+  it('its bullet is the set run.outputLogs takes', () => {
+    const { kind } = setting('run.outputLogs')
+    const modes = kind.type === 'enum' ? [...kind.values] : []
     expect(modes.sort()).toEqual(['errors-only', 'full', 'hash-only', 'none'])
     const doc = readFileSync(path.join(pkg, 'docs', 'comparison.md'), 'utf8')
     const bullet = /^- `--output-logs ([a-z|-]+)`\.$/m.exec(doc)
@@ -248,7 +247,7 @@ describe('no page describes a Windows branch the source dropped', () => {
 })
 
 // J2-56: execution.md's timeline listed the workspace file's fields
-// without `affectedBase`, which WorkspaceConfig declares.
+// without `affectedBase`, which WorkspaceConfig then declared.
 describe("execution.md's workspace-config step names every field", () => {
   it('the parenthesised list is WorkspaceConfig, field for field', () => {
     const config = readFileSync(path.join(pkg, 'src', 'config.ts'), 'utf8')
@@ -256,7 +255,7 @@ describe("execution.md's workspace-config step names every field", () => {
     const fields = [...body.slice(0, body.indexOf('\n}')).matchAll(/^ {2}([a-zA-Z]+)\??:/gm)].map(
       (m) => m[1]!,
     )
-    expect(fields.length).toBeGreaterThanOrEqual(6)
+    expect(fields.length).toBeGreaterThanOrEqual(4)
     const doc = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')
     const step = doc.slice(doc.indexOf('loadWorkspaceConfig reads'))
     const list = step

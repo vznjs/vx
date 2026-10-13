@@ -134,6 +134,7 @@ src/orchestrator/run-id.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts
 src/orchestrator/run-report.ts
+src/orchestrator/run-settings.ts
 src/orchestrator/run.ts
 src/orchestrator/sandbox-fix.ts
 src/orchestrator/sandbox-request.ts
@@ -150,6 +151,7 @@ src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
 src/orchestrator/terminal-signals.ts
 src/orchestrator/upstream.ts
+src/settings.ts
 src/util/bun-version.ts
 src/util/cgroup.ts
 src/util/config-frame.ts

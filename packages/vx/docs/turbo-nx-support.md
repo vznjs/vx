@@ -16,10 +16,10 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `$schema` | not applicable | Editor schema hint only; the mapper never reads it. |
 | `agentGuidance` | not applicable | Guidance for AI agents, not task or cache config; vx ignores it. |
 | `boundaries` | not applicable | Turbo's import-rule checker; vx has no module-boundary rules and ignores it. |
-| `cacheDir` | not supported | Ignored without a warning; vx uses its own `cacheDir` in `vx.workspace.ts`. |
-| `cacheMaxAge` | mapped, with a note | turbo() fills `cacheRetention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `"0"` is off; `TURBO_CACHE_MAX_AGE` wins over it. |
-| `cacheMaxSize` | mapped, with a note | turbo() fills `cacheRetention.maxSize` when `vx.workspace.ts` sets no retention; `"0"` is off; `TURBO_CACHE_MAX_SIZE` wins over it. |
-| `concurrency` | mapped, with a note | turbo() fills the workspace's `concurrency` when `vx.workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
+| `cacheDir` | not supported | Ignored without a warning; vx uses its own `cache.dir` in `vx.workspace.ts`. |
+| `cacheMaxAge` | mapped, with a note | turbo() fills `cache.retention.olderThan` when `vx.workspace.ts` sets no retention; weeks become days, `"0"` is off; `TURBO_CACHE_MAX_AGE` wins over it. |
+| `cacheMaxSize` | mapped, with a note | turbo() fills `cache.retention.maxSize` when `vx.workspace.ts` sets no retention; `"0"` is off; `TURBO_CACHE_MAX_SIZE` wins over it. |
+| `concurrency` | mapped, with a note | turbo() fills the workspace's `run.concurrency` when `vx.workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |
 | `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it. |
@@ -82,9 +82,9 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | Key | vx | Note |
 | --- | --- | --- |
 | `implicitDependencies` | not supported | The top-level map is not read. |
-| `affected` | mapped, with a note | Its `defaultBase` (before Nx 20) is `affectedBase` when the top-level key is absent; nothing else in it is read. |
+| `affected` | mapped, with a note | Its `defaultBase` (before Nx 20) is `run.affectedBase` when the top-level key is absent; nothing else in it is read. |
 | `extends` | supported | The chain is followed and merged as Nx does, before named inputs are read. |
-| `defaultBase` | mapped, with a note | `nx()` sets `affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx. |
+| `defaultBase` | mapped, with a note | `nx()` sets `run.affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx. |
 | `tasksRunnerOptions` | mapped, with a note | Only `default.options.cacheableOperations` is read, as the legacy cached-targets list. |
 | `namedInputs` | mapped, with a note | Expanded per project (project entries win) into each task's `cache.inputs`; vx has no named inputs. |
 | `targetDefaults` | mapped, with a note | Applied by Nx while it builds the graph vx reads; vx sees the merged targets. |
@@ -98,8 +98,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `nxCloudUrl` | not applicable | Nx Cloud endpoint; `nxCache()` talks to self-hosted `/v1/cache` servers. |
 | `nxCloudEncryptionKey` | not applicable | Nx Cloud artifact encryption. |
 | `neverConnectToCloud` | not applicable | Nx Cloud opt-out; vx never connects to Nx Cloud. |
-| `parallel` | mapped, with a note | nx() fills the workspace's `concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx. |
-| `cacheDirectory` | not supported | Ignored; vx uses its own `cacheDir`. |
+| `parallel` | mapped, with a note | nx() fills the workspace's `run.concurrency` when `vx.workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx. |
+| `cacheDirectory` | not supported | Ignored; vx uses its own `cache.dir`. |
 | `useDaemonProcess` | not applicable | vx has no daemon; Nx's setting still applies when vx asks Nx for the graph. |
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |
 | `analytics` | not applicable | Nx usage analytics. |

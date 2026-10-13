@@ -20,19 +20,28 @@ export function parseSize(input: string): number | null {
 }
 
 /**
- * Parse `<n><unit>` where unit is s/m/h/d, case-insensitively (`parseSize`
+ * Parse `<n><unit>` where unit is ms/s/m/h/d, case-insensitively (`parseSize`
  * has always been case-insensitive; this matched only lowercase, so `30D`
  * was rejected while `1GB` and `1gb` both worked).
  */
 export function parseDuration(input: string): number | null {
-  const m = input.match(/^(\d+)([smhd])$/i)
+  const m = input.match(/^(\d+)(ms|[smhd])$/i)
   if (!m) return null
   const n = parseDecimalInt(m[1]!)
   if (n === null) return null
   // Lowercase before the switch: with the /i flag an uppercase `M` would
   // otherwise fall through to the days branch.
   const unit = m[2]!.toLowerCase()
-  const mult = unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000
+  const mult =
+    unit === 'ms'
+      ? 1
+      : unit === 's'
+        ? 1000
+        : unit === 'm'
+          ? 60_000
+          : unit === 'h'
+            ? 3_600_000
+            : 86_400_000
   return n * mult
 }
 

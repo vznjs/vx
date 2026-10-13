@@ -36,7 +36,7 @@ const KINDS = {
   crashAfter: (rec: string) =>
     `{ exec: { command: '${rec}; echo READY; sleep 0.2; exit 5', persistent: { readyWhen: 'READY' } } }`,
   neverReady: (rec: string) =>
-    `{ exec: { command: '${rec}; exec sleep 30', timeout: 400, persistent: { readyWhen: 'READY' } } }`,
+    `{ exec: { command: '${rec}; exec sleep 30', timeout: '400ms', persistent: { readyWhen: 'READY' } } }`,
   trapServer: (rec: string) =>
     `{ exec: { command: 'trap "" TERM; ${rec}; echo READY; while true; do sleep 0.1; done', persistent: { readyWhen: 'READY' } } }`,
 }
@@ -47,12 +47,12 @@ let grace: string | undefined
 beforeAll(async () => {
   tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-plife-'))
   // The trapping server waits out the kill grace at every stop.
-  grace = process.env['VX_KILL_GRACE_MS']
-  process.env['VX_KILL_GRACE_MS'] = '300'
+  grace = process.env['VX_RUN_KILL_GRACE']
+  process.env['VX_RUN_KILL_GRACE'] = '300ms'
 })
 afterAll(async () => {
-  if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
-  else process.env['VX_KILL_GRACE_MS'] = grace
+  if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
+  else process.env['VX_RUN_KILL_GRACE'] = grace
   await rm(tmp, { recursive: true, force: true })
 })
 

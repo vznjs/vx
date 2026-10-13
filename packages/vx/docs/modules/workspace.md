@@ -289,7 +289,7 @@ asynchronously, so `prepareRun` asks it
 before discovery and awaits it when the cache opens; shallow is read from
 the common dir's `shallow` file; the root is realpathed first, as git
 resolves it, so a symlinked path to the workspace is the same id). Null
-when the workspace names its cache dir (`cacheDir`, `VX_CACHE_DIR`),
+when the workspace names its cache dir (`cache.dir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
 Used by `prepareRun` (so `run` and `planRun`), the doctor, and every

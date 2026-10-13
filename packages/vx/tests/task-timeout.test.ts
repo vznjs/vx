@@ -1,6 +1,6 @@
 // Task timeout resolution — the per-task / env / workspace precedence.
 // A task WITHOUT its own `exec.timeout` falls back, highest first:
-//   RunOptions.timeout / `--timeout`  →  VX_TASK_TIMEOUT env  →  workspace
+//   RunOptions.timeout / `--timeout`  →  VX_RUN_TIMEOUT env  →  workspace
 //   `timeout`. Per-task `exec.timeout` always wins. A timed-out task is
 // killed (SIGTERM) and reported `failed` — never cached. The run-level
 // defaults are threaded as options only, so they never touch a cache key.
@@ -18,8 +18,8 @@ import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
-// (`VX_KILL_GRACE_MS`, see util/settle.ts); children inherit it.
-process.env['VX_KILL_GRACE_MS'] = '200'
+// (`VX_RUN_KILL_GRACE`, see util/settle.ts); children inherit it.
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 20_000
 
@@ -51,7 +51,7 @@ async function makeWorkspace(): Promise<Fixture> {
 async function setWorkspace(root: string, fields: string): Promise<void> {
   await writeFile(
     path.join(root, 'vx.workspace.mjs'),
-    `export default { ${fields}, plugins: [] }\n`,
+    `export default { run: { ${fields} }, plugins: [] }\n`,
   )
 }
 
@@ -63,18 +63,18 @@ const SLEEPER = (name: string) =>
 describe('task timeout — precedence', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
   })
   afterEach(async () => {
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
     await rm(fixture.root, { recursive: true, force: true })
   })
 
   it(
-    'workspace `timeout` bounds a task with no exec.timeout',
+    'workspace `run.timeout` bounds a task with no exec.timeout',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
-      await setWorkspace(fixture.root, 'timeout: 250')
+      await setWorkspace(fixture.root, "timeout: '250ms'")
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -89,12 +89,12 @@ describe('task timeout — precedence', () => {
   )
 
   it(
-    'VX_TASK_TIMEOUT env overrides a (longer) workspace default',
+    'VX_RUN_TIMEOUT env overrides a (longer) workspace default',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
       // Workspace alone would allow the sleep for 30s; the env's 250ms wins.
-      await setWorkspace(fixture.root, 'timeout: 30000')
-      process.env['VX_TASK_TIMEOUT'] = '250'
+      await setWorkspace(fixture.root, "timeout: '30s'")
+      process.env['VX_RUN_TIMEOUT'] = '250ms'
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -111,7 +111,7 @@ describe('task timeout — precedence', () => {
     'RunOptions.timeout (`--timeout`) overrides the env default',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
-      process.env['VX_TASK_TIMEOUT'] = '30000'
+      process.env['VX_RUN_TIMEOUT'] = '30000ms'
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -131,10 +131,10 @@ describe('task timeout — precedence', () => {
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: 'sleep 30', timeout: 250 } } } }`,
+        `export default { tasks: { run: { exec: { command: 'sleep 30', timeout: '250ms' } } } }`,
       )
-      await setWorkspace(fixture.root, 'timeout: 30000')
-      process.env['VX_TASK_TIMEOUT'] = '30000'
+      await setWorkspace(fixture.root, "timeout: '30s'")
+      process.env['VX_RUN_TIMEOUT'] = '30000ms'
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -156,9 +156,9 @@ describe('task timeout — precedence', () => {
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: 'sleep 0.3', timeout: 30000 } } } }`,
+        `export default { tasks: { run: { exec: { command: 'sleep 0.3', timeout: '30s' } } } }`,
       )
-      process.env['VX_TASK_TIMEOUT'] = '200'
+      process.env['VX_RUN_TIMEOUT'] = '200ms'
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -172,20 +172,14 @@ describe('task timeout — precedence', () => {
   )
 
   it(
-    'a malformed VX_TASK_TIMEOUT is ignored and falls through to workspace',
+    'a malformed VX_RUN_TIMEOUT is refused before any task runs',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
-      await setWorkspace(fixture.root, 'timeout: 250')
-      process.env['VX_TASK_TIMEOUT'] = 'not-a-number'
-      const r = await run({
-        cwd: fixture.root,
-        tasks: ['run'],
-        projects: ['a'],
-        log: capturingLogger(fixture),
-      })
-      expect(r.ok).toBe(false)
-      // The bad env was ignored; the workspace 250ms applied.
-      expect(fixture.err.join('')).toContain('timed out after 250ms')
+      await setWorkspace(fixture.root, "timeout: '250ms'")
+      process.env['VX_RUN_TIMEOUT'] = 'not-a-number'
+      await expect(
+        run({ cwd: fixture.root, tasks: ['run'], projects: ['a'], log: capturingLogger(fixture) }),
+      ).rejects.toThrow('VX_RUN_TIMEOUT must be a duration')
     },
     TIMEOUT,
   )
@@ -214,10 +208,10 @@ describe('task timeout — precedence', () => {
 describe('task timeout — cache key stability', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
   })
   afterEach(async () => {
-    delete process.env['VX_TASK_TIMEOUT']
+    delete process.env['VX_RUN_TIMEOUT']
     await rm(fixture.root, { recursive: true, force: true })
   })
 
@@ -258,18 +252,19 @@ describe('task timeout — cache key stability', () => {
 })
 
 describe('task timeout — --timeout parsing', () => {
-  it('accepts --timeout <ms> and --timeout=<ms>', () => {
-    expect(parseRunArgs(['--timeout', '500']).timeout).toBe(500)
-    expect(parseRunArgs(['--timeout=750']).timeout).toBe(750)
+  it('accepts --timeout <duration> and --timeout=<duration>', () => {
+    expect(parseRunArgs(['--timeout', '500ms']).settings['run.timeout']).toBe(500)
+    expect(parseRunArgs(['--timeout=2s']).settings['run.timeout']).toBe(2000)
   })
-  it('rejects non-positive / non-integer values', () => {
+  it('rejects a zero, unitless or malformed value', () => {
     expect(parseRunArgs(['--timeout', 'abc']).error).toContain('--timeout')
+    expect(parseRunArgs(['--timeout', '500']).error).toContain('takes a duration with its unit')
     expect(parseRunArgs(['--timeout', '0']).error).toContain('--timeout')
     expect(parseRunArgs(['--timeout', '-5']).error).toContain('--timeout')
     expect(parseRunArgs(['--timeout']).error).toContain('requires a value')
   })
   it('defaults to undefined when absent', () => {
-    expect(parseRunArgs(['build']).timeout).toBeUndefined()
+    expect(parseRunArgs(['build']).settings['run.timeout']).toBeUndefined()
   })
 })
 
@@ -285,17 +280,17 @@ describe('workspace timeout — loader validation', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('accepts a positive-integer timeout', async () => {
-    await setWorkspace(root, 'timeout: 5000')
+  it('accepts a duration timeout', async () => {
+    await setWorkspace(root, "timeout: '5s'")
     const cfg = await loadWorkspaceConfig(root)
-    expect(cfg?.timeout).toBe(5000)
+    expect(cfg?.run?.timeout).toBe('5s')
   })
-  it('rejects a non-positive / non-integer timeout', async () => {
-    await setWorkspace(root, 'timeout: 0')
+  it('rejects a zero, unitless or bare-number timeout', async () => {
+    await setWorkspace(root, "timeout: '0s'")
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
     await setWorkspace(root, 'timeout: 1.5')
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
-    await setWorkspace(root, 'timeout: "nope"')
+    await setWorkspace(root, "timeout: '5000'")
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
   })
 })
@@ -329,7 +324,7 @@ describe('task timeout — classification + escalation', () => {
         fixture.root,
         'a',
         `export default { tasks: { run: {
-          exec: { command: "trap 'echo TRAPPED >> out.txt; exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: 1000 },
+          exec: { command: "trap 'echo TRAPPED >> out.txt; exit 0' TERM; echo PARTIAL > out.txt; sleep 30 & wait; echo COMPLETE >> out.txt", timeout: '1s' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
         } } }`,
       )
@@ -377,7 +372,7 @@ describe('task timeout — classification + escalation', () => {
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: 1000 } } } }`,
+        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: '1s' } } } }`,
       )
       const started = Date.now()
       const r = await run({

@@ -1,84 +1,22 @@
 // Public schema for vx project and workspace configuration.
 
+/**
+ * A duration with its unit: `'500ms'`, `'30s'`, `'5m'`, `'2h'`, `'1d'`. A
+ * bare number is refused: a unit in the value keeps the name free of one.
+ */
+export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
+
+/**
+ * The workspace: settings in groups (`run`, `cache`, `watch`) and the
+ * plugins. Each setting's environment variable and flag derive from its
+ * path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
+ * the variable, which beats this file. `docs/schema.md` lists them all.
+ * Nothing here is folded into a cache key.
+ */
 export interface WorkspaceConfig {
-  /** Maximum concurrent tasks. Defaults to the number of CPUs. */
-  concurrency?: number
-  /**
-   * Cache directory, relative to the workspace root. Named, it holds the whole
-   * cache and shares nothing; unset, the workspace keeps its index in
-   * `.vx/cache` and its entries in the user's shared store.
-   */
-  cacheDir?: string
-  /**
-   * Default per-task timeout (ms) — the lowest-precedence fallback for a
-   * task that declares no `exec.timeout`. Precedence, highest first:
-   * per-task `exec.timeout` → `VX_TASK_TIMEOUT` env → this workspace
-   * default. Purely a runaway-process guard; never folded into a cache
-   * key (a timed-out task fails and is never cached). Omitted → no default.
-   */
-  timeout?: number
-  /**
-   * Evict from the local cache at the end of every run, whatever its
-   * `--cache` policy (a remote hit is ingested under any), by the same policy `vx cache prune` takes as flags: entries not used
-   * for `olderThan` (`30d`, `12h`), then least-recently-used entries
-   * until the cache is under `maxSize` (`10G`, `500MB`). Either or both.
-   * Omitted → nothing is evicted unless you run `vx cache prune`. Never
-   * folded into a cache key.
-   */
-  cacheRetention?: { olderThan?: string; maxSize?: string }
-  /**
-   * The git ref a bare `--affected` compares with (`origin/develop`).
-   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, then the
-   * first of `origin/main`, `origin/master`, `main`, `master` that is not
-   * HEAD, else `HEAD~1`. Never folded into a cache key.
-   */
-  affectedBase?: string
-  /** The run's cache policy and scope, read before any task. */
-  cache?: {
-    /**
-     * Which layers a run reads and writes: `--cache`'s spec
-     * (`'local:rw,remote:r'`; a layer it leaves out stays on). `VX_CACHE`
-     * beats it and `--cache` beats both; `--no-cache` and `--force` still
-     * apply on top. Omitted → every layer reads and writes. The local
-     * layer is always read first, then each remote in declared order.
-     * Never folded into a cache key.
-     */
-    policy?: string
-    /**
-     * Where this run's remote cache writes land. `'trusted'` reads and
-     * writes the trusted keys, for the default branch's CI. `'read-only'`
-     * reads them and writes nothing; omitted, `vx run` off CI takes it, and
-     * on CI (or with a policy naming the remote) `'trusted'`. Any other
-     * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
-     * then the trusted ones, and writes go to the scope's only, so a PR never
-     * writes what the default branch reads. A client-side convention, not a
-     * security boundary: only a cache server that scopes writes by token
-     * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it, and
-     * `vx run --cache-scope` beats both. Never folded into a cache key.
-     */
-    scope?: string
-  }
-  /**
-   * Which ready task starts first when there are more than workers, with no
-   * timings: `most-work` (the default) the one the most work waits on at
-   * any depth, `critical-path` the head of the longest chain of tasks,
-   * `direct-dependents` the one the most tasks wait on directly (Nx's
-   * rule), `ready-order` the one that became ready first (Turbo's). A
-   * `schedule` plugin's weights still come first; this breaks their ties.
-   */
-  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  /**
-   * The `cache.inputStability` of every task that does not set its own
-   * field. `VX_INPUT_STABILITY` / `VX_INPUT_STABILITY_SEVERITY` override
-   * both for the run.
-   */
-  inputStability?: InputStability
-  /**
-   * Graph rules a run checks before it schedules anything. Each is on unless
-   * set to `false`; turning one off allows a shape vx handles correctly but
-   * more slowly. Never folded into a cache key.
-   */
-  rules?: WorkspaceRules
+  run?: RunSettings
+  cache?: CacheSettings
+  watch?: WatchSettings
   /**
    * Plugins registered for this workspace, consulted in this order once
    * per `vx run`: each fills any of the pipeline stages and capabilities
@@ -90,7 +28,102 @@ export interface WorkspaceConfig {
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
 
-/** `WorkspaceConfig.rules`. */
+/** `WorkspaceConfig.run`: how a run runs. */
+export interface RunSettings {
+  /** Tasks at once: a positive integer, or a share of the cores (`'50%'`). Omitted → the cores this process may use. */
+  concurrency?: number | `${number}%`
+  /**
+   * Which ready task starts first when there are more than workers, with no
+   * timings: `most-work` (the default) the one the most work waits on at
+   * any depth, `critical-path` the head of the longest chain of tasks,
+   * `direct-dependents` the one the most tasks wait on directly (Nx's
+   * rule), `ready-order` the one that became ready first (Turbo's). A
+   * `schedule` plugin's weights still come first; this breaks their ties.
+   */
+  schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
+  /**
+   * The git ref a bare `--affected` compares with (`origin/develop`).
+   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, then the
+   * first of `origin/main`, `origin/master`, `main`, `master` that is not
+   * HEAD, else `HEAD~1`.
+   */
+  affectedBase?: string
+  /**
+   * A task's time limit, for tasks without their own `exec.timeout` (which
+   * beats every run-level source). A runaway-process guard: a timed-out
+   * task fails and is never cached. Omitted → no limit.
+   */
+  timeout?: Duration
+  /** Re-runs of a failed task, for tasks without their own `exec.retries`. Omitted → 0. */
+  retries?: number
+  /**
+   * What a failed task takes down: `never` stops the run, `deps-ok` (the
+   * default) skips its dependents, `always` runs them too.
+   */
+  continue?: 'never' | 'deps-ok' | 'always'
+  /** How long a task that ignores SIGTERM gets before SIGKILL. Omitted → `'2s'`. */
+  killGrace?: Duration
+  /** The bound on each plugin's end-of-run flush and teardown. Omitted → `'3s'`. */
+  teardownTimeout?: Duration
+  /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
+  readyNotice?: Duration
+  /**
+   * Graph rules a run checks before it schedules anything. Each is on unless
+   * set to `false`; turning one off allows a shape vx handles correctly but
+   * more slowly.
+   */
+  rules?: WorkspaceRules
+}
+
+/** `WorkspaceConfig.cache`: where the cache lives and what a run does with it. */
+export interface CacheSettings {
+  /**
+   * Cache directory, relative to the workspace root. Named, it holds the whole
+   * cache and shares nothing; unset, the workspace keeps its index in
+   * `.vx/cache` and its entries in the user's shared store.
+   */
+  dir?: string
+  /**
+   * Evict from the local cache at the end of every run, whatever its
+   * policy (a remote hit is ingested under any), by the same policy
+   * `vx cache prune` takes as flags: entries not used for `olderThan`
+   * (`'30d'`, `'12h'`), then least-recently-used entries until the cache
+   * is under `maxSize` (`'10GB'`, `'500MB'`). Either or both. Omitted →
+   * nothing is evicted unless you run `vx cache prune`.
+   */
+  retention?: { olderThan?: Duration; maxSize?: string }
+  /**
+   * Which layers a run reads and writes (`'local:rw,remote:r'`; a layer it
+   * leaves out stays on); `--no-cache` and `--force` still apply on top.
+   * Omitted → every layer reads and writes. The local layer is always read
+   * first, then each remote in declared order.
+   */
+  policy?: string
+  /**
+   * Where this run's remote cache writes land. `'trusted'` reads and
+   * writes the trusted keys, for the default branch's CI. `'read-only'`
+   * reads them and writes nothing; omitted, `vx run` off CI takes it, and
+   * on CI (or with a policy naming the remote) `'trusted'`. Any other
+   * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
+   * then the trusted ones, and writes go to the scope's only, so a PR never
+   * writes what the default branch reads. A client-side convention, not a
+   * security boundary: only a cache server that scopes writes by token
+   * can refuse a run that ignores it.
+   */
+  scope?: string
+  /** Which remote hits land on disk: `all` (the default), only the requested tasks' (`toplevel`), or `none`. */
+  download?: 'all' | 'toplevel' | 'none'
+  /** The `cache.inputStability` of every task that does not set its own. */
+  inputStability?: InputStability
+}
+
+/** `WorkspaceConfig.watch`. */
+export interface WatchSettings {
+  /** Poll for changes from the start instead of the OS watcher. */
+  poll?: boolean
+}
+
+/** `WorkspaceConfig.run.rules`. */
 export interface WorkspaceRules {
   /**
    * Refuse two tasks whose declared outputs overlap even when a `dependsOn`
@@ -398,7 +431,8 @@ export interface ExecConfig {
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**
-   * Upper bound (ms) before vx SIGTERMs the child. A normal task that
+   * Upper bound before vx SIGTERMs the child (`'10m'`), beating
+   * `run.timeout` and its flag and variable. A normal task that
    * runs longer is killed and reported `failed` (timed out) — never
    * cached. Omitted → no limit.
    *
@@ -409,7 +443,7 @@ export interface ExecConfig {
    * on spawn (no `readyWhen`) becomes ready before the timer can fire,
    * so the timeout is a no-op for it.
    */
-  timeout?: number
+  timeout?: Duration
   /**
    * Max ADDITIONAL attempts after a failed attempt. `retries: 2` means
    * up to 3 executions total. 0 / omitted → no retries (today's
@@ -419,8 +453,8 @@ export interface ExecConfig {
    * a failed attempt's partial outputs can't leak into the next. The
    * final outcome (and the cached artifact) is the last attempt's.
    * Not allowed with `persistent` — a persistent task has no exit to
-   * retry. Explicit config wins over the run-level `--retry <n>`
-   * default, including `retries: 0`.
+   * retry. Beats `run.retries` and its flag and variable, including
+   * `retries: 0`.
    */
   retries?: number
   /**
@@ -709,11 +743,14 @@ export function defineProject<const T extends ProjectConfig>(
 export function defineWorkspace<T extends WorkspaceConfig>(
   config: T &
     Known<T, WorkspaceConfig> & {
-      cacheRetention?: Known<
-        At<T, 'cacheRetention'>,
-        NonNullable<WorkspaceConfig['cacheRetention']>
-      >
-      rules?: Known<At<T, 'rules'>, WorkspaceRules>
+      run?: Known<At<T, 'run'>, RunSettings> & {
+        rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
+      }
+      cache?: Known<At<T, 'cache'>, CacheSettings> & {
+        retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
+        inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
+      }
+      watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T {
   return config

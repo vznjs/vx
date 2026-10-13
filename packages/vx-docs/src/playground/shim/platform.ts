@@ -12,7 +12,7 @@
 //   semver.satisfies — a manifest range against a workspace version (semver.ts);
 //   file          — manifests, lockfiles, workspace globs (the VFS);
 //   nanoseconds   — `util/timing.ts` takes a start mark at module load;
-//   process.env   — `cache.inputs.env` values, and `VX_TIMING` at load;
+//   process.env   — `cache.inputs.env` values, and `VX_DEBUG_TIMING` at load;
 //   process.platform — `listProjects` picks its readdir strategy by it;
 //   process.stderr — the scheduler's and discovery's warnings;
 //   Buffer.from(…).indexOf — the `bun.lock` patch-key probe (fingerprint.ts).

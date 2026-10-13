@@ -77,6 +77,7 @@ import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
 import { refuseFiltersThroughGroups } from './upstream.js'
+import { runRules } from '../settings.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -234,7 +235,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   )
   mark('workspace config')
   // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
-  // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
+  // `cache.dir` + the `.vx/cache` default; resolved relative to cwd.
   // A cache dir named anywhere holds everything; the default shares its
   // entries through the user's store.
   const cacheDir = options.cacheDir
@@ -537,7 +538,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         packageGraph,
         requested: req,
         workspaceRoot,
-        rules: workspaceConfig?.rules,
+        rules: runRules(workspaceConfig),
         ...(partialLoad
           ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
           : {}),
@@ -550,7 +551,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         cacheDir,
         projectMetas,
         warn: (m) => log.status(m),
-        rules: workspaceConfig?.rules,
+        rules: runRules(workspaceConfig),
       })
     // `--affected` selects over the FINAL graph: an edge or an input a
     // `graph` hook adds moves a key, so the hooks run first, over every
@@ -833,9 +834,7 @@ const namesRemote = (spec: string | undefined): boolean =>
  * since the grammar lives in the cache module the workspace module may not
  * import. Undefined when it names none.
  */
-export function workspaceCachePolicy(
-  config: WorkspaceConfig | null | undefined,
-): CachePolicy | undefined {
+function workspaceCachePolicy(config: WorkspaceConfig | null | undefined): CachePolicy | undefined {
   const spec = config?.cache?.policy
   if (spec === undefined) return undefined
   try {

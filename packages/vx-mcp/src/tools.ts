@@ -284,7 +284,7 @@ const TOOLS: readonly ToolDef[] = [
       'The workspace doctor, the object `vx info --format json` prints: vx, bun, bunSupported, git, ' +
       'gitStatusCache, workspaceRoot, projects, tasks, configErrors, plugins (and the seams each fills), ' +
       'workers and memory (what a run will use, and where each comes from), cacheDir, cacheStore, cacheVersion, ' +
-      'schemaVersion, cacheEntries, cacheBytes, cachePolicy, cacheScope, cacheRetention, orphans, runs24h, hits24h, restored24h, flakyTasks, lockfile, sandbox ' +
+      'schemaVersion, cacheEntries, cacheBytes, settings (each with its value and source), cacheRetention, orphans, runs24h, hits24h, restored24h, flakyTasks, lockfile, sandbox ' +
       '— the facts a bug report needs.',
     inputSchema: { type: 'object', properties: {} },
   },

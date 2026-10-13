@@ -36,5 +36,5 @@ it("names vx's home for a workspace key another tool spells (D-98)", () => {
     "a task caches through its own `cache` in its project's vx.config",
   )
   // CONTROL: a typo still gets the nearest spelling.
-  expect(where('cachedir')).toBe('did you mean cacheDir?')
+  expect(where('cachedir')).toBe('did you mean `cache.dir`?')
 })

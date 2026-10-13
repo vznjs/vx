@@ -23,7 +23,16 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { MAX_TIMEOUT_MS, parseDecimalInt, machineParallelism } from '../util/index.js'
+import { parseDecimalInt } from '../util/index.js'
+import {
+  kindHint,
+  parseSettingValue,
+  RENAMED,
+  renamedTo,
+  type Setting,
+  SETTINGS,
+  settingRefusal,
+} from '../settings.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -44,37 +53,30 @@ export interface RunArgs {
    * `[...names]` → drop only these specific dep names.
    */
   excludeDependencies: 'all' | string[]
-  concurrency: number | undefined
+  /**
+   * The settings a flag set, by path (`run.timeout` → ms): each flag
+   * src/settings.ts names for the verb, parsed by its kind.
+   */
+  settings: Record<string, unknown>
   /**
    * Resolved 4-axis cache policy after applying `--cache` / `--no-cache`
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
   /**
-   * Neither `--cache` nor `VX_CACHE` named a spec: the run starts from the
+   * Neither `--cache-policy` nor `VX_CACHE_POLICY` named a spec: the run starts from the
    * workspace's `cache.policy` and applies these on top.
    */
   cacheFlags?: CacheFlags
-  /** `--cache` named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
+  /** The policy named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
   remoteRequested?: boolean
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
   /** `--cache-scope <name>`: this run's `cache.scope`, above `VX_CACHE_SCOPE` and the workspace's. */
   cacheScope?: string
   frozen: boolean
-  /**
-   * `--retry <n>` / `--retry=<n>`: run-level retry default for tasks
-   * without their own `exec.retries`. Undefined when not passed.
-   */
-  retries: number | undefined
-  /**
-   * `--timeout <ms>` / `--timeout=<ms>`: run-level default task timeout for
-   * tasks without their own `exec.timeout`. Sits above the `VX_TASK_TIMEOUT`
-   * env and workspace `timeout` defaults. Undefined when not passed.
-   */
-  timeout: number | undefined
-  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
-  download?: 'all' | 'toplevel' | 'none'
+  /** `vx watch --poll` (`watch.poll`). */
+  poll?: true
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -107,24 +109,41 @@ export interface RunArgs {
 // quoted literal, so the doc-drift test does not count it as an accepted flag.
 const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
 
-/**
- * `--concurrency <n>` is a positive decimal integer, or `<n>%` of the
- * cores this process may use (`50%` on eight cores is 4, never below 1;
- * over 100% is allowed for I/O-bound work; a container's CPU quota caps
- * the count the way it caps the default). The percent form resolves
- * here, at parse time, so the run sees one number and the summary says
- * what it ran with.
- */
-export function parseConcurrency(v: string, cpus = machineParallelism()): number | null {
-  const pct = /^(\d+)%$/.exec(v)
-  if (pct) {
-    const n = parseDecimalInt(pct[1]!)
-    if (n === null || n < 1) return null
-    return Math.max(1, Math.round((Math.max(1, cpus) * n) / 100))
-  }
-  const n = parseDecimalInt(v)
-  return n === null || n < 1 ? null : n
+/** `name` when `a` is it, bare or with `=`. */
+function flagOf(a: string | undefined, name: string): string | undefined {
+  return a === name || a?.startsWith(`${name}=`) ? name : undefined
 }
+
+// The settings parsed by their kind alone; the cache flags, `--continue`
+// and `--cache-dir` keep their own branches above.
+const GENERIC_FLAGS = SETTINGS.filter(
+  (s) =>
+    s.flag?.verb === 'run' &&
+    !['run.continue', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
+)
+
+/** The setting a flag names, by its name or alias. */
+function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
+  for (const s of GENERIC_FLAGS) {
+    for (const name of [s.flag!.name, s.flag!.alias]) {
+      if (name !== undefined && flagOf(a, name) !== undefined) return { s, name }
+    }
+  }
+  return undefined
+}
+
+/** Each setting a flag sets, and the RunOptions field it lands in. */
+const SETTING_OPTIONS = [
+  ['run.concurrency', 'concurrency'],
+  ['run.schedule', 'schedule'],
+  ['run.timeout', 'timeout'],
+  ['run.retries', 'retries'],
+  ['run.outputLogs', 'outputLogs'],
+  ['run.killGrace', 'killGrace'],
+  ['run.teardownTimeout', 'teardownTimeout'],
+  ['run.readyNotice', 'readyNotice'],
+  ['cache.download', 'download'],
+] as const satisfies readonly (readonly [string, keyof RunOptions])[]
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
  * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
@@ -134,12 +153,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     filters: [],
     all: false,
     excludeDependencies: [],
-    concurrency: undefined,
+    settings: {},
     cache: { ...FULL_CACHE_POLICY },
     cacheDir: undefined,
     frozen: false,
-    retries: undefined,
-    timeout: undefined,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -182,20 +199,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
           error: `--filter requires a value (a project name, glob or path, e.g. --filter app)`,
         }
       out.filters.push(v)
-    } else if (a === '--concurrency' || a?.startsWith('--concurrency=')) {
-      const v = a === '--concurrency' ? before[++i] : a.slice('--concurrency='.length)
-      if (v === undefined)
-        return {
-          ...out,
-          error: `--concurrency requires a value (a positive integer, or a share of the cores such as 50%)`,
-        }
-      const n = parseConcurrency(v)
-      if (n === null)
-        return {
-          ...out,
-          error: `--concurrency must be a positive integer, or a share of the cores such as 50% (got ${v})`,
-        }
-      out.concurrency = n
     } else if (a === '--all') {
       out.all = true
     } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
@@ -211,7 +214,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       // bare flag) and "drop none" (an empty list) are equally defensible
       // readings, and silently picking either does the opposite of what
       // half the callers mean. Reject and name both explicit forms; the
-      // sibling value flags (--retry=, --timeout=, --cache-dir=)
+      // sibling value flags (--retries=, --timeout=, --cache-dir=)
       // reject an empty `=` value the same way.
       if (raw === '') {
         return {
@@ -225,58 +228,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         .filter((s) => s.length > 0)
     } else if (a === '--frozen') {
       out.frozen = true
-    } else if (a === '--retry' || a?.startsWith('--retry=')) {
-      const v = a === '--retry' ? before[++i] : a.slice('--retry='.length)
-      if (v === undefined)
-        return { ...out, error: `--retry requires a value (a non-negative integer)` }
-      const n = parseDecimalInt(v)
-      if (n === null) {
-        return { ...out, error: `--retry must be a non-negative integer (got ${v})` }
-      }
-      out.retries = n
-    } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
-      const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
-      if (v === undefined)
-        return { ...out, error: `--timeout requires a value (a positive integer, in ms)` }
-      const n = parseDecimalInt(v)
-      if (n !== null && n > MAX_TIMEOUT_MS) {
-        // Not "effectively no limit" — setTimeout reduces a delay past 2^31-1
-        // to 1 ms, so this would kill every task the moment it spawned.
-        return {
-          ...out,
-          error:
-            `--timeout ${n} exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days); ` +
-            `larger values are silently reduced to 1 ms. Omit --timeout for no limit.`,
-        }
-      }
-      if (n === null || n <= 0) {
-        return { ...out, error: `--timeout must be a positive integer in ms (got ${v})` }
-      }
-      out.timeout = n
-    } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
-      const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
-      if (v === undefined || v === '') {
-        return {
-          ...out,
-          error: `--output-logs requires a value (full, errors-only, hash-only, or none)`,
-        }
-      }
-      if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
-        return {
-          ...out,
-          error: `--output-logs must be full, errors-only, hash-only, or none (got ${v})`,
-        }
-      }
-      out.outputLogs = v
-    } else if (a === '--download' || a?.startsWith('--download=')) {
-      const v = a === '--download' ? before[++i] : a.slice('--download='.length)
-      if (v === undefined || v === '') {
-        return { ...out, error: `--download requires a value (all, toplevel, or none)` }
-      }
-      if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
-        return { ...out, error: `--download must be all, toplevel, or none (got ${v})` }
-      }
-      out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
@@ -297,13 +248,14 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined || !isCacheScope(v))
         return { ...out, error: cacheScopeError('--cache-scope') }
       out.cacheScope = v
-    } else if (a === '--cache' || a?.startsWith('--cache=')) {
+    } else if (flagOf(a, '--cache-policy') ?? flagOf(a, '--cache')) {
       cacheFlag = true
-      const v = a === '--cache' ? before[++i] : a.slice('--cache='.length)
+      const name = (flagOf(a, '--cache-policy') ?? flagOf(a, '--cache'))!
+      const v = a === name ? before[++i] : a!.slice(name.length + 1)
       if (v === undefined)
         return {
           ...out,
-          error: `--cache requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
+          error: `${name} requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
         }
       // A spec with no segment at all applies NOTHING, so `--cache=`
       // (an empty shell var, or someone reaching for "no cache") left
@@ -313,7 +265,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (!v.split(',').some((seg) => seg.trim().length > 0)) {
         return {
           ...out,
-          error: `--cache needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis`,
+          error: `${name} needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis`,
         }
       }
       try {
@@ -413,6 +365,22 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--report must be markdown (got ${fmt})` }
       }
       out.report = fmt
+    } else if (verb === 'watch' && a === '--poll') {
+      out.poll = true
+    } else if (a !== undefined && settingFlagOf(a) !== undefined) {
+      const { s: set, name } = settingFlagOf(a)!
+      const v = a === name ? before[++i] : a.slice(name.length + 1)
+      if (v === undefined || v === '')
+        return { ...out, error: `${name} requires a value (${kindHint(set.kind)})` }
+      const value = parseSettingValue(set.kind, v)
+      if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
+      out.settings[set.path] = value
+    } else if (a !== undefined && RENAMED.has(a.split('=')[0]!)) {
+      const old = a.split('=')[0]!
+      return {
+        ...out,
+        error: `${old} was renamed ${renamedTo(old, RENAMED.get(old)!)} in vx 0.0.637`,
+      }
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
@@ -423,18 +391,21 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   if (cacheSpecError !== undefined) {
     return { ...out, error: cacheSpecError }
   }
-  // `VX_CACHE` is the spec a run takes when no `--cache` names one.
-  const envSpec = process.env['VX_CACHE'] || undefined
+  // `VX_CACHE_POLICY` is the spec a run takes when no flag names one.
+  const envSpec = process.env['VX_CACHE_POLICY'] || undefined
   if (!cacheFlag && envSpec !== undefined) {
     if (!envSpec.split(',').some((seg) => seg.trim().length > 0))
       return {
         ...out,
-        error: `VX_CACHE needs a spec like local:r, local:rw, remote:, or local:,remote:rw`,
+        error: `VX_CACHE_POLICY needs a spec like local:r, local:rw, remote:, or local:,remote:rw`,
       }
     try {
       cachePolicy = parseCachePolicy(envSpec, cachePolicy)
     } catch (err) {
-      return { ...out, error: `VX_CACHE: ${err instanceof Error ? err.message : String(err)}` }
+      return {
+        ...out,
+        error: `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`,
+      }
     }
     if (/remote:[rw]/.test(envSpec)) out.remoteRequested = true
   }
@@ -651,9 +622,7 @@ export async function resolveRunOptions(
       : {}),
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
-    ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
-    ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
     // isatty, not process.stdin: touching the stream opens it, and a config
@@ -671,10 +640,10 @@ export async function resolveRunOptions(
   if (outright !== undefined) opts.selectedOutright = outright
   if (staged !== undefined) opts.staged = staged
   if (discovered !== undefined) opts.discovered = discovered
-  if (parsed.retries !== undefined) opts.retries = parsed.retries
-  if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
-  if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
+  for (const [path, field] of SETTING_OPTIONS) {
+    if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
+  }
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.format === 'json') opts.json = true
   if (parsed.profile !== undefined) opts.profile = parsed.profile

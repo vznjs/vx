@@ -288,7 +288,7 @@ export interface BuildGraphOptions {
    * with other root-anchored ones.
    */
   workspaceRoot?: string
-  /** The workspace's `rules`; each is on unless set to `false`. */
+  /** The workspace's `run.rules`; each is on unless set to `false`. */
   rules?: WorkspaceRules | undefined
 }
 
@@ -1352,12 +1352,12 @@ function neverWritesLocally(n: TaskNode): boolean {
 }
 
 /**
- * The way out of an edge-ordered overlap under `rules.exclusiveOutputs`: an
+ * The way out of an edge-ordered overlap under `run.rules.exclusiveOutputs`: an
  * ordered pair is correct (the addition shape, item 588), only slower to
  * clean and restore, so the rule may be turned off.
  */
 const EXCLUSIVE_OUTPUTS_FIX =
-  'Give each task its own output path, or set rules: { exclusiveOutputs: false } in ' +
+  'Give each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
   "vx.workspace.ts to let a dependant add to its upstream's outputs."
 
 function collide(
@@ -1383,7 +1383,7 @@ function collide(
       // dependant runs after its upstream and adds to that tree, so the
       // order is fixed and the dependant's own set can be told apart from
       // what it found. Marked on both, and the pair is allowed when
-      // `rules.exclusiveOutputs` is off (X-53). Without an edge the two run
+      // `run.rules.exclusiveOutputs` is off (X-53). Without an edge the two run
       // in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
       if (up !== undefined && exclusive)
@@ -1504,7 +1504,7 @@ interface Side {
 }
 
 /**
- * `rules.upfrontKeys` (X-54): refuse a task whose input globs can match
+ * `run.rules.upfrontKeys` (X-54): refuse a task whose input globs can match
  * another task's declared outputs. Such a key reads bytes a producer writes
  * this run, so it is not known until the producer ran (`stable-keys.ts`
  * keeps it waiting); refused, every key reads only what no task writes and
@@ -1677,7 +1677,7 @@ function readsOutputs(
           `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
           `another task's outputs (the dependency's key already cascades through dependsOn). ` +
           `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-          `cache.inputs.${field}, or set rules: { upfrontKeys: false } in vx.workspace.ts to ` +
+          `cache.inputs.${field}, or set run.rules.upfrontKeys: false in vx.workspace.ts to ` +
           `let it wait for its producer.`,
         'VX_E_INPUT_IS_OUTPUT',
       )

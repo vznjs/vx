@@ -117,10 +117,10 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
       'app#build and app#individual both declare the output "dist" / "dist/individual" in ' +
         "cache.outputs.files — vx cleans a task's declared outputs before it runs and before a " +
         "cache-hit restore, so whichever of these runs second DELETES the other's output. Give " +
-        'each task its own output path, or set rules: { exclusiveOutputs: false } in ' +
+        'each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
         "vx.workspace.ts to let a dependant add to its upstream's outputs.",
     )
-    expect(() => graph(twenty, {})).toThrow(/rules: \{ exclusiveOutputs: false \}/)
+    expect(() => graph(twenty, {})).toThrow(/run\.rules\.exclusiveOutputs: false/)
     expect(() => graph(twenty, { exclusiveOutputs: true })).toThrow(/exclusiveOutputs: false/)
   })
 
@@ -152,7 +152,7 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
         b: { build: task(['dist/**']) },
       }),
     ).toThrow(
-      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set rules: { exclusiveOutputs: false }`,
+      `a#build declares the output "b/dist/a.txt" in cache.outputs.workspaceFiles, inside b#build's "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false`,
     )
     expect(() =>
       graph({

@@ -65,7 +65,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
   src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
                         resolution, boundaries) + git-inputs (the git enumeration it trusts)
   src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
-  src/util/             incl. timing.ts (`VX_TIMING=1` stage table)
+  src/util/             incl. timing.ts (`VX_DEBUG_TIMING=1` stage table)
   index.ts              root shim (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)

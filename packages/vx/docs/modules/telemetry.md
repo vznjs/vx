@@ -41,7 +41,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
   else by its plugin's (`org/p`, or `org/p #2` for the second of a
   list), else by its place in the source's list (`#2`; item 1027).
 - `TelemetryContext` — what the hook is handed: `workspaceRoot`,
-  `cacheDir` (a STRING, not a Cache handle — a sink cannot reach the
+  `cache.dir` (a STRING, not a Cache handle — a sink cannot reach the
   cache) and `warn`.
 - `TelemetrySource` — the live projection: a bus `subscriber`,
   `emitSummary` and `flush`.
@@ -141,7 +141,7 @@ interface RunSummaryRecord {
   restoredRemoteCount: number
   exitOk: boolean
   tasks: readonly TaskTelemetry[]
-  stages?: readonly RunStage[] // VX_TIMING's stages; those before the run lock end before startedAt
+  stages?: readonly RunStage[] // VX_DEBUG_TIMING's stages; those before the run lock end before startedAt
   uploads?: { count: number; bytes: number; ms: number; failed: number } // remote uploads once settled; ms summed
 }
 

@@ -249,7 +249,7 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
 const MAX_VIOLATION_EVENTS = 100
 
 /**
- * A child span of the run for one of its stages (`VX_TIMING`'s marks):
+ * A child span of the run for one of its stages (`VX_DEBUG_TIMING`'s marks):
  * where the time before the first task and after the last one went. Named
  * by the stage, a fixed set. The stages ahead of the run lock end before
  * the run span starts.

@@ -396,7 +396,7 @@ Determinism notes:
 By default the entries and artifacts live in the repository's shared
 store (`storeRoot`, `~/.vx/<id>/cache`, `workspace/resolveStoreRoot`)
 and the workspace's `.vx/cache` holds only its own index, which attaches
-`store.db` as `store`. A named `cacheDir` (`storeRoot` null) holds
+`store.db` as `store`. A named `cache.dir` (`storeRoot` null) holds
 everything in `cache.db`.
 
 ```
@@ -609,7 +609,7 @@ Surfaced by `vx info`.
 
 - Doesn't garbage-collect old entries unasked. Eviction is
   `vx cache prune --older-than <d>` / `--max-size <s>` (calls into
-  `Cache.prune`), or the workspace's `cacheRetention` at the end of a
+  `Cache.prune`), or the workspace's `cache.retention` at the end of a
   run (`Cache.evictIfDue`); both sweep artifacts the index has no row
   for by the same policy, on file times, and temps once an hour old
   (`docs/caching.md` § Storage layout). `evictIfDue` runs that sweep on its own when the

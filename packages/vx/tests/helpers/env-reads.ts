@@ -4,6 +4,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect } from 'bun:test'
+import { envName, SETTINGS } from '../../src/settings.js'
 
 const pkg = path.resolve(import.meta.dir, '..', '..')
 
@@ -26,7 +27,9 @@ export function readInSource(): Set<string> {
   for (const src of sources)
     for (const m of src.matchAll(/const (\w+_ENV) = '(VX_[A-Z0-9_]+)'/g))
       constants.set(m[1]!, m[2]!)
-  const names = new Set<string>()
+  // A setting's variable is read by its path (`settingEnv('run.timeout')`,
+  // settings.ts), every one checked once per command (checkSettingsEnv).
+  const names = new Set<string>(SETTINGS.map((s) => envName(s.path)))
   for (const src of sources) {
     // `Bun.env` is the other spelling; core reads none through it today
     // (exec/sandbox-runtime.ts says why), and a negative is a claim about

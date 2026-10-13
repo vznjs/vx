@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { readInSource } from './helpers/env-reads.js'
+import { RENAMED } from '../src/settings.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 
@@ -29,6 +30,9 @@ it("every quoted 'VX_*' name in core's source is a read the reader finds", () =>
   const reads = readInSource()
   const quoted = literals(SRC)
   expect(quoted.size).toBeGreaterThan(5)
-  const unread = [...quoted].filter(([name]) => !reads.has(name)).map(([n, f]) => `${f}: ${n}`)
+  // A name renamed in 0.0.637 is quoted to be refused, not read.
+  const unread = [...quoted]
+    .filter(([name]) => !reads.has(name) && !RENAMED.has(name))
+    .map(([n, f]) => `${f}: ${n}`)
   expect(unread).toEqual([])
 })

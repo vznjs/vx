@@ -1227,14 +1227,15 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(10)
+    expect(fields.length).toBe(4)
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Workspace config',
     )
     expect(page).toContain('plugins: [')
-    const rows = [...page.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
-    expect(rows.sort()).toEqual([...fields].sort())
+    // A row names a setting by its path (`run.timeout`); its group is the field.
+    const rows = new Set([...page.matchAll(/^\| `(\w+)[.`]/gm)].map((m) => m[1]!))
+    expect([...rows].sort()).toEqual([...fields].sort())
   })
 })
 

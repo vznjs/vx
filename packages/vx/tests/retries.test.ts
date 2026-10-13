@@ -1,4 +1,4 @@
-// Task-level retries — `exec.retries` + the `--retry <n>` run-level
+// Task-level retries — `exec.retries` + the `--retries <n>` run-level
 // default. A failed attempt re-executes up to `retries` more times; the
 // final outcome (and the cached artifact) is the last attempt's. The
 // CLI default never touches cache keys.
@@ -342,7 +342,7 @@ describe('exec.retries — e2e', () => {
   )
 })
 
-describe('--retry — run-level default (real CLI)', () => {
+describe('--retries — run-level default (real CLI)', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
   })
@@ -367,7 +367,7 @@ describe('--retry — run-level default (real CLI)', () => {
         }
         `,
       )
-      const r = await vx(fixture.root, ['run', 'flaky#build', '--retry', '1'])
+      const r = await vx(fixture.root, ['run', 'flaky#build', '--retries', '1'])
       expect(r.code).toBe(0)
       expect(lineCount(path.join(dir, 'count.txt'))).toBe(2)
     },
@@ -375,7 +375,7 @@ describe('--retry — run-level default (real CLI)', () => {
   )
 
   it(
-    'explicit `retries: 0` in config wins over --retry 5 (fails immediately)',
+    'explicit `retries: 0` in config wins over --retries 5 (fails immediately)',
     async () => {
       const dir = await addProject(
         fixture.root,
@@ -389,7 +389,7 @@ describe('--retry — run-level default (real CLI)', () => {
         }
         `,
       )
-      const r = await vx(fixture.root, ['run', 'pinned#build', '--retry', '5'])
+      const r = await vx(fixture.root, ['run', 'pinned#build', '--retries', '5'])
       expect(r.code).toBe(1)
       expect(lineCount(path.join(dir, 'count.txt'))).toBe(1)
     },
@@ -397,7 +397,7 @@ describe('--retry — run-level default (real CLI)', () => {
   )
 
   it(
-    'never affects cache keys: a --retry run hits the entry a plain run saved',
+    'never affects cache keys: a --retries run hits the entry a plain run saved',
     async () => {
       const dir = await addProject(
         fixture.root,
@@ -469,20 +469,20 @@ describe('exec.retries — loader validation', () => {
   })
 })
 
-describe('--retry — CLI parser', () => {
-  it('parses --retry <n> and --retry=<n>', () => {
-    expect(parseRunArgs(['build', '--retry', '2']).retries).toBe(2)
-    expect(parseRunArgs(['build', '--retry=2']).retries).toBe(2)
-    expect(parseRunArgs(['build', '--retry', '0']).retries).toBe(0)
-    expect(parseRunArgs(['build']).retries).toBeUndefined()
+describe('--retries — CLI parser', () => {
+  it('parses --retries <n> and --retries=<n>', () => {
+    expect(parseRunArgs(['build', '--retries', '2']).settings['run.retries']).toBe(2)
+    expect(parseRunArgs(['build', '--retries=2']).settings['run.retries']).toBe(2)
+    expect(parseRunArgs(['build', '--retries', '0']).settings['run.retries']).toBe(0)
+    expect(parseRunArgs(['build']).settings['run.retries']).toBeUndefined()
   })
 
   it('rejects garbage values', () => {
-    expect(parseRunArgs(['build', '--retry', '-1']).error).toMatch(/--retry/)
-    expect(parseRunArgs(['build', '--retry', 'abc']).error).toMatch(/--retry/)
-    expect(parseRunArgs(['build', '--retry', '1.5']).error).toMatch(/--retry/)
-    expect(parseRunArgs(['build', '--retry=']).error).toMatch(/--retry/)
-    expect(parseRunArgs(['build', '--retry']).error).toMatch(/--retry requires a value/)
+    expect(parseRunArgs(['build', '--retries', '-1']).error).toMatch(/--retries/)
+    expect(parseRunArgs(['build', '--retries', 'abc']).error).toMatch(/--retries/)
+    expect(parseRunArgs(['build', '--retries', '1.5']).error).toMatch(/--retries/)
+    expect(parseRunArgs(['build', '--retries=']).error).toMatch(/--retries/)
+    expect(parseRunArgs(['build', '--retries']).error).toMatch(/--retries requires a value/)
   })
 })
 

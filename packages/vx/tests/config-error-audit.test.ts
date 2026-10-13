@@ -87,9 +87,12 @@ it.each([
     ),
   ],
   [
-    'a timeout in words',
-    task("exec: { command: 'x', timeout: '5s' }"),
-    framed(58, ': tasks.build.exec.timeout must be a positive integer (milliseconds)'),
+    'a timeout with no unit',
+    task("exec: { command: 'x', timeout: 5000 }"),
+    framed(
+      58,
+      ": tasks.build.exec.timeout takes a duration with its unit, like '5000ms' or '5s' (got 5000)",
+    ),
   ],
 ] as Array<[string, string, string | ((config: string) => string)]>)(
   '%s',

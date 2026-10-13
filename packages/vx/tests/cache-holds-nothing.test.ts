@@ -94,7 +94,7 @@ describe('a run on an empty local cache', () => {
       cwd: ws,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, NO_COLOR: '1', VX_TIMING: '1' },
+      env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '1' },
     })
     const [out, err, code] = await Promise.all([
       new Response(proc.stdout).text(),

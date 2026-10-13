@@ -18,7 +18,7 @@ export interface ExecuteArgs {
   cache: CacheLayer
   cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
-  retries?: number // run-level retry default (--retry); exec.retries wins
+  retries?: number // run-level retry default (run.retries); exec.retries wins
   log: Logger
   executor: TaskExecutor // where run.ts placed this task
   keyedProjects: (node: TaskNode) => ReadonlySet<string> // keyed-projects.md

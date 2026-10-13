@@ -427,23 +427,22 @@ describe('every page listing the env allowlist lists all of it', () => {
 // The task-timeout ladder has FOUR rungs and a page that drops one inverts
 // nothing — it just hides the rung a user actually types. The
 // workspace-config guide read "a task's own `exec.timeout`, then the
-// `VX_TASK_TIMEOUT` env var, then this", leaving `--timeout` out entirely,
+// `VX_RUN_TIMEOUT` env var, then this", leaving `--timeout` out entirely,
 // while schema.md, cli.md, `options.ts`, `run.ts` and
 // `options-resolve.test.ts`'s header all name all four (item 378,
 // 2026-09-19). The behaviour is pinned; the pages were not.
 describe('every page stating the timeout ladder states all four rungs', () => {
-  it('names exec.timeout, --timeout, VX_TASK_TIMEOUT and the workspace default', () => {
-    // The ladder itself, from the one expression that resolves it. If this
+  it('names exec.timeout, --timeout, VX_RUN_TIMEOUT and the workspace default', () => {
+    // The ladder itself: the flag's option resolves through the
+    // `run.timeout` setting (flag > VX_RUN_TIMEOUT > workspace). If this
     // line moves, the rung names below are no longer the code's.
     const run = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'run.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'run-settings.ts'),
       'utf8',
     )
-    expect(run).toContain(
-      'options.timeout ?? readTaskTimeoutEnv() ?? workspaceConfig?.timeout ?? undefined',
-    )
+    expect(run).toContain("timeout: 'run.timeout',")
     const pages = handAuthoredDocs().filter((p) =>
-      readFileSync(p, 'utf8').includes('VX_TASK_TIMEOUT'),
+      readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
     )
     // cli.md, schema.md, the configure guide's workspace section (the
     // workspace-config guide until the short site) and the feature
@@ -458,7 +457,7 @@ describe('every page stating the timeout ladder states all four rungs', () => {
       const text = readFileSync(page, 'utf8')
       expect({
         page: path.basename(page),
-        missing: ['exec.timeout', '--timeout', 'VX_TASK_TIMEOUT'].filter(
+        missing: ['exec.timeout', '--timeout', 'VX_RUN_TIMEOUT'].filter(
           (rung) => !text.includes(rung),
         ),
       }).toEqual({ page: path.basename(page), missing: [] })
