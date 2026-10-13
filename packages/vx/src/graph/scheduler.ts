@@ -222,6 +222,12 @@ export interface TaskOutcome {
     systemInfo?: string[]
     /** Credential paths denied and left out of the grants: an agent applies the fix as given. */
     withheld?: string[]
+    /**
+     * Reads of the project the task's `cache.inputs.files` does not match:
+     * add them there too when the output depends on them, or a hit replays
+     * output built from an older copy. Cached tasks only.
+     */
+    inputs?: string[]
   }
 }
 

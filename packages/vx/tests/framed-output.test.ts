@@ -437,14 +437,21 @@ describe('formatTaskBlock', () => {
         }),
         {},
       ).split('\n')
-    const read = fixed({ read: ['tsconfig.json'], network: ['example.com'] })
+    const read = fixed({
+      read: ['tsconfig.json'],
+      network: ['example.com'],
+      inputs: ['tsconfig.json'],
+    })
     const at = read.indexOf('openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]')
     expect(read.slice(at + 1, at + 5)).toEqual([
       '',
       "fix: exec.sandbox.allow: { read: ['tsconfig.json'], network: ['example.com'] }",
-      'a read the output depends on belongs in cache.inputs.files too',
+      "and, if the output depends on them, cache.inputs.files: ['tsconfig.json']",
       '',
     ])
+    // A read the inputs already match, or an uncached task's: no inputs note.
+    const keyed = fixed({ read: ['tsconfig.json'] })
+    expect(keyed.filter((l) => l.includes('cache.inputs'))).toEqual([])
     // A write is no key input: no inputs note.
     const write = fixed({ write: ['dist/'] })
     expect(write).toContain("fix: exec.sandbox.allow: { write: ['dist/'] }")

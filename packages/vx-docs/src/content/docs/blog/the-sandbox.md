@@ -92,7 +92,10 @@ lets a task write its own inputs. Agents get the same grants as
 `sandboxFix` in `vx last --format json` and from `vx mcp`'s
 `getFailures`. Because an agent may apply them as given, a credential
 path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a `.env` file and the like) never
-goes in the line. It is listed apart, to grant only on purpose.
+goes in the line. It is listed apart, to grant only on purpose. A
+cached task's read that no input glob matches is named again as a
+`cache.inputs.files` entry: the grant lets the task read the file, and
+only an input makes a change to it miss the cache.
 
 A failed task is never cached, so a violation cannot poison the cache.
 When a tool is legitimately noisy (a probe for a file that may not

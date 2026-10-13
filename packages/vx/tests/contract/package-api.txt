@@ -1683,6 +1683,7 @@ export interface TaskOutcome {
     network?: string[]
     systemInfo?: string[]
     withheld?: string[]
+    inputs?: string[]
   }
 }
 == type TaskPlacement (src/exec/executor.ts)
