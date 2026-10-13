@@ -330,3 +330,23 @@ describe('materialiseOutputs writes only what a declared glob names', () => {
     }).toEqual({ hook: false, other: 'mine', src: false, lib: false, dist: 'built' })
   })
 })
+
+describe('materialiseOutputs writes nothing through a link into an undeclared place', () => {
+  it('a declared link into .git/hooks, then a declared directory written through it', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    const hooks: Directory = {
+      files: [{ name: 'post-checkout', digest: blob('#!/bin/sh\npwned\n'), is_executable: true }],
+      directories: [],
+      symlinks: [],
+    }
+    const r = await run(
+      {
+        output_symlinks: [{ path: 'dist/a', target: '../../.git/hooks' }],
+        output_directories: [{ path: 'dist/a', tree_digest: tree(hooks) }],
+      },
+      req(['dist/**']),
+    )
+    expect(r).toBe(refused(path.join(cwd, 'dist', 'a', 'post-checkout')))
+    expect(existsSync(path.join(ws, '.git', 'hooks', 'post-checkout'))).toBe(false)
+  })
+})

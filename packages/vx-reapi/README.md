@@ -187,7 +187,9 @@ generated files. Only what a declared glob names (or what sits under a
 directory it names) is written back; the rest stays as it is on disk.
 Writing all of it once put the worker's copy of the sources over the
 user's, so an edit made while the action ran was lost. A directory a
-literal glob names is written whole.
+literal glob names is written whole. Where a write really lands, after
+the result's own links are placed, must be declared too: a declared link
+to `.git/hooks` and a declared directory under it wrote a hook.
 
 ## The existence probe confirms the artifact, not just the entry
 
