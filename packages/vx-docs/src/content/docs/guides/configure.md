@@ -3,8 +3,10 @@ title: Configure
 description: Tasks and dependencies, caching, environment variables, dev servers, the workspace file and lockfiles, one section each.
 ---
 
-Tell vx what each package runs, what it reads and what it may see. Every
-field: [the config reference](../../schema/).
+Tell vx what each package runs, what it reads and what it may see: a
+`vx.config.ts` per package, and one [`vx.workspace.ts`](#workspace-config)
+at the root that marks the workspace. Every field:
+[the config reference](../../schema/).
 
 ## Tasks and dependencies
 
