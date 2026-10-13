@@ -21,6 +21,7 @@ import {
   parseSize,
   relPosix,
 } from '../util/index.js'
+import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
 import {
@@ -49,6 +50,10 @@ const warnToStderr = (message: string): void => {
 /** The doctor's facts, typed: what `--format json` prints and the pretty rows render. */
 export interface InfoFacts {
   vx: string
+  /** The file that ran: the compiled binary, or the source entry. */
+  vxPath: string
+  /** The vx that handed this call to the project's own (`VX_HANDED_OFF`), else null. */
+  handedOffFrom: string | null
   bun: string
   /**
    * False when `bun` is below `MIN_BUN`. A separate field on purpose: `bun`
@@ -233,6 +238,8 @@ async function collectWorkspaceInfo(
   const sandbox = { ...(await probing), declared: sandboxed }
   return {
     vx: VERSION,
+    vxPath: vxPath(),
+    handedOffFrom: process.env['VX_HANDED_OFF'] ?? null,
     // An unsupported Bun does not stop a run, it makes the run's ANSWERS
     // wrong (util/bun-version.ts measures which). The row a reader already
     // consults for "is my setup sane" is where that belongs: a warning on

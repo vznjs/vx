@@ -18,6 +18,10 @@ vulnerability), never in a public issue.
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
+- **Your project's own vx.** A global vx hands every call to the
+  project's `node_modules/.bin/vx` (cli.md § Which vx runs), so even
+  `vx --version` in a repo you do not trust runs that repo's code. One
+  another user owns is never run.
 - **Your plugins.** A plugin is code you imported. It runs in vx's
   process with a config's reach; vx checks the shape of what it hands
   back and isolates a telemetry plugin's failures, nothing more.

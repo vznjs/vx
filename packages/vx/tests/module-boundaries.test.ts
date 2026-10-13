@@ -28,19 +28,22 @@ const ALLOWED: Record<string, readonly string[]> = {
   util: [],
   config: [],
   version: [],
+  // `handoff`: the hand-off to a project's own vx runs before anything else
+  // loads, so it stands alone; the doctor reports which vx ran.
+  handoff: [],
   // `version`: the config-evaluation cache keys on vx's version, since a
   // stored evaluation is served without re-validation.
   workspace: ['util', 'config', 'version'],
   graph: ['util', 'config', 'workspace'],
   cache: ['util', 'config'],
   exec: ['util', 'config'],
-  orchestrator: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec'],
+  orchestrator: ['util', 'config', 'version', 'handoff', 'workspace', 'graph', 'cache', 'exec'],
   cli: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
   index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec', 'orchestrator'],
   // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
   // to this copy (registerCoreAlias). `version`: a lone `--version` is
   // answered before the dispatcher loads.
-  bin: ['util', 'version', 'cli', 'index'],
+  bin: ['util', 'version', 'handoff', 'cli', 'index'],
 }
 
 // Modules whose contract (index.ts) is the only legal cross-module

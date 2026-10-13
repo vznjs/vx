@@ -35,7 +35,7 @@ snapshot) and the plugin capabilities (below).
 
 ## Module map
 
-Core is organised as **eight modules** plus three root files. A module
+Core is organised as **eight modules** plus four root files. A module
 is a directory under `src/` with an `index.ts` contract — cross-module
 imports go through that contract, never into internal files — or a
 single root file when it has no internals to hide. The design and
@@ -56,7 +56,8 @@ migration history live in
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `version.ts` (the `VERSION`
 constant, extracted so `index`/`cli`/`orchestrator` don't form a
-cycle through it).
+cycle through it), `handoff.ts` (a global vx hands off to the
+project's own, before anything else loads).
 
 ### The orchestrator's file inventory
 

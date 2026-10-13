@@ -29,6 +29,28 @@ base=${here##*/}
 scope=${here%/*}
 scope=${scope##*/}
 
+# A global vx hands off to the project's own (owner, 2026-10-13): the first
+# node_modules/<scope>/<name> from the working directory up to the git root
+# runs instead, through its .bin entry. One hop (VX_HANDED_OFF, which also
+# names this launcher), never to this package itself (`-ef`: same inode, so a
+# pnpm symlink counts as itself). Shell tests only, no fork per level.
+if [ -z "${VX_HANDED_OFF-}" ]; then
+  d=$PWD
+  while [ -n "$d" ]; do
+    if [ -d "$d/node_modules/$scope/$base" ]; then
+      # -O: a vx another user planted above your checkout would run as you.
+      if [ ! "$d/node_modules/$scope/$base" -ef "$here" ] && [ -x "$d/node_modules/.bin/$base" ] && [ -O "$d/node_modules/.bin/$base" ]; then
+        VX_HANDED_OFF=$self
+        export VX_HANDED_OFF
+        exec "$d/node_modules/.bin/$base" "$@"
+      fi
+      break
+    fi
+    [ -e "$d/.git" ] && break
+    d=${d%/*}
+  done
+fi
+
 key=
 loader=
 case $(uname -sm) in

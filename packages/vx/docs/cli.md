@@ -8,7 +8,8 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 so existing Turbo users can swap in with minimal muscle-memory churn.
 
 ```sh
-# Standalone binary via npm (no Bun required on target):
+# Standalone binary via npm (no Bun required on target); inside a project
+# that installs @vzn/vx, it runs that one (§ Which vx runs):
 npm install -g @vzn/vx
 
 # From source (Bun ≥ 1.4):
@@ -1859,6 +1860,30 @@ direct publishing (the `E401 token is invalid` that stopped v0.0.17).
 Every `uses:` in both workflows is pinned to a commit SHA with the
 version in a comment; bump the SHA and the comment together.
 
+## Which vx runs
+
+A global vx (installed with a package manager, or a compiled binary
+installed by hand) hands every call to the project's own `@vzn/vx` when
+there is one, so a project runs the version its lockfile pins (owner,
+2026-10-13). There is no opt-out. From the working directory up to the
+git root (the level holding `.git` is the last one checked, else the
+filesystem root), the first `node_modules/@vzn/vx` wins, run through its
+`node_modules/.bin/vx`. One hop: the receiving vx sees `VX_HANDED_OFF`
+and does not look again. A vx never hands off to itself (the same
+package, a pnpm symlink included), nor to a `.bin/vx` another user owns
+(one planted above your checkout would run as you). An npm install's launcher does the
+walk in the shell, a test per level and no fork, and `exec`s the local
+vx; the compiled binary checks one path per level before it loads
+anything, then runs the local vx with its stdio, passes on a signal sent
+to it alone, and exits with its code. From source (`bun src/bin.ts`) vx
+never hands off.
+
+`vx --version` says when it was handed the call (`vx 0.0.640
+(/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from
+/usr/local/bin/vx)`), and `vx info` (and `vx mcp`'s
+`getWorkspaceInfo`) shows the file that ran and who handed off
+(`vxPath`, `handedOffFrom`).
+
 ## `vx upgrade`
 
 Brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
@@ -1919,6 +1944,9 @@ manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
 `package-lock.json`), else `packageManager`, else npm; the field it is
 listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
 root adds `--workspace-root`. The lockfile is updated by that manager.
+Run inside a project that installs `@vzn/vx`, a global vx hands
+`vx upgrade` to the project's own (§ Which vx runs), so the project's
+dependency is what moves.
 vx prints what it runs (`vx upgrade: 0.0.1 → 0.0.2: running pnpm add
 @vzn/vx@0.0.2 --save-dev (in /repo)`), runs it there, and exits with an
 error if it fails. vx never installs Node or a package manager: one not
@@ -2700,7 +2728,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   flight). A task that asks for one's key again indexes it and hits;
   the rest only `vx cache prune` reclaims, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
-  script or a bug-report template: `vx`, `bun`, `bunSupported` (false
+  script or a bug-report template: `vx`, `vxPath` (the file that ran),
+  `handedOffFrom` (the vx that handed the call to the project's own, else
+  null), `bun`, `bunSupported` (false
   below Bun 1.4.0), `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
@@ -3086,6 +3116,7 @@ task are the last row.
 | `VX_CONFIG_WORKER_TIMEOUT_MS`     | integer (ms)                        | 30000       | How long one `vx.config.ts` evaluation may take, in process or in its worker, before the load fails naming the config (a real evaluation is ~10 ms). A synchronous loop on a first load holds the thread the deadline needs, so it hangs until killed. Out of range falls back to the default.                          |
 | `VX_DUMPABLE`                     | any non-empty                       | off         | Linux: vx stays dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task can read its env (`docs/modules/util-hide-env.md`).                                                                                                                                                 |
 | `VX_WATCH_POLL`                   | any non-empty                       | off         | `vx watch` polls every 250 ms from the start instead of probing the OS watcher (§ `vx watch` › How changes are seen).                                                                                                                                                                                                   |
+| `VX_HANDED_OFF`                   | set by vx                           | —           | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off. The receiving vx does not hand off again, and `vx --version` and `vx info` name it.                                                                                                                  |
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK` | set by vx                           | —           | Set on every task's environment (the workspace root; `project#task`). Read back by a `vx run` a task starts: one in the same workspace is refused, since a nested run is invisible to the outer graph and a loop back to its own task forks without bound (`docs/schema.md` § `env`).                                   |
 
 Colors are the two conventions in § Output format › Colors (`NO_COLOR`,

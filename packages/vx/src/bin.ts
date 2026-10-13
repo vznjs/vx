@@ -1,18 +1,33 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
+import { handOff, localVx, vxPath } from './handoff.js'
+
 let settled = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   try {
+    // Inside the try: `process.cwd()` throws EMFILE when out of descriptors,
+    // and that is a one-line UserError below, not a stack.
+    const local = await localVx(
+      process.cwd(),
+      process.execPath,
+      Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
+    )
+    if (local !== null) await handOff(local, argv)
     // `vx --version` needs one leaf module; the dispatcher and the util
     // barrel it pulled in were 20 ms of its 28 (2026-10-01).
     if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
       // `Bun.stdout`, not `process.stdout`: the Node stream's first touch is
       // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
       // failure of the line.
-      await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}\n`).catch(() => {})
+      // Handed off, it says which vx ran and which one handed it the call.
+      const from = process.env['VX_HANDED_OFF']
+      const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
+      await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}${where}\n`).catch(
+        () => {},
+      )
       settled = true
       return
     }

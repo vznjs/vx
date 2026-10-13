@@ -62,7 +62,10 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
 
 export function renderInfo(f: InfoFacts): string {
   const rows: [string, string][] = [
-    ['vx', f.vx],
+    [
+      'vx',
+      `${f.vx} (${tildePath(f.vxPath)}${f.handedOffFrom === null ? '' : `, handed off from ${tildePath(f.handedOffFrom)}`})`,
+    ],
     // The prose stays in the rendered row; `f.bun` itself is the bare
     // version a script reads (doctor.ts says why).
     [
