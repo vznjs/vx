@@ -362,10 +362,15 @@ export const RENAMED: ReadonlyMap<string, Setting> = new Map(
   SETTINGS.flatMap((s) => (s.was ?? []).map((w) => [w, s] as const)),
 )
 
-/** The way a renamed name reads now, for its refusal. */
-export function renamedTo(old: string, s: Setting): string {
-  if (old.startsWith('--')) return `${s.flag!.name} (${kindHint(s.kind)})`
-  return `${envName(s.path)} (${kindHint(s.kind)})`
+/**
+ * The refusal of a renamed name. A value the new name takes is handed back
+ * as the line to type; any other value gets the kind's hint instead.
+ */
+export function renamedRefusal(old: string, s: Setting, value?: string): string {
+  const now = old.startsWith('--') ? s.flag!.name : envName(s.path)
+  if (value !== undefined && parseSettingValue(s.kind, value) !== null)
+    return `${old} was renamed ${now} in vx 0.0.637 — use ${now}=${value}`
+  return `${old} was renamed ${now} (${kindHint(s.kind)}) in vx 0.0.637`
 }
 
 /**
@@ -375,7 +380,7 @@ export function renamedTo(old: string, s: Setting): string {
 export function checkSettingsEnv(env: NodeJS.ProcessEnv = process.env): void {
   for (const [old, s] of RENAMED) {
     if (old.startsWith('VX_') && env[old] !== undefined) {
-      throw new UserError(`${old} was renamed ${renamedTo(old, s)} in vx 0.0.637`, 'VX_E_USAGE')
+      throw new UserError(renamedRefusal(old, s, env[old]), 'VX_E_USAGE')
     }
   }
   for (const s of SETTINGS) settingEnv(s.path, env)

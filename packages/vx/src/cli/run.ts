@@ -28,7 +28,7 @@ import {
   kindHint,
   parseSettingValue,
   RENAMED,
-  renamedTo,
+  renamedRefusal,
   type Setting,
   SETTINGS,
   settingRefusal,
@@ -377,10 +377,8 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.settings[set.path] = value
     } else if (a !== undefined && RENAMED.has(a.split('=')[0]!)) {
       const old = a.split('=')[0]!
-      return {
-        ...out,
-        error: `${old} was renamed ${renamedTo(old, RENAMED.get(old)!)} in vx 0.0.637`,
-      }
+      const v = a === old ? before[i + 1] : a.slice(old.length + 1)
+      return { ...out, error: renamedRefusal(old, RENAMED.get(old)!, v) }
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {

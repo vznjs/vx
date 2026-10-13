@@ -17,7 +17,7 @@ export const SETTING_GROUPS: readonly ['run', 'cache', 'watch']
 export const RENAMED: ReadonlyMap<string, Setting>
 export function setting(path: string): Setting
 export function kindHint(kind: SettingKind): string
-export function renamedTo(old: string, s: Setting): string
+export function renamedRefusal(old: string, s: Setting, value?: string): string
 export function atPath(config: unknown, path: string): unknown
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean; upfrontKeys?: boolean }
 export function envName(path: string): string

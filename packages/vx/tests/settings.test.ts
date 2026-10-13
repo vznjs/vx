@@ -206,7 +206,9 @@ describe('the environment', () => {
     expect(() => checkSettingsEnv({ VX_KILL_GRACE_MS: '200' })).toThrow(
       "VX_KILL_GRACE_MS was renamed VX_RUN_KILL_GRACE (a duration like '500ms', '30s' or '5m', at most 24 days) in vx 0.0.637",
     )
-    expect(() => checkSettingsEnv({ VX_TIMING: '1' })).toThrow('renamed VX_DEBUG_TIMING')
+    expect(() => checkSettingsEnv({ VX_TIMING: '1' })).toThrow(
+      'VX_TIMING was renamed VX_DEBUG_TIMING in vx 0.0.637 — use VX_DEBUG_TIMING=1',
+    )
   })
   it('refuses a value its kind does not take, before any verb runs', () => {
     expect(() => checkSettingsEnv({ VX_RUN_TIMEOUT: '0' })).toThrow(
@@ -246,8 +248,11 @@ describe('flags', () => {
       'cache.download': 'none',
     })
   })
-  it('refuse a renamed flag, naming the new one', () => {
+  it('refuse a renamed flag, naming the new one with the value to type', () => {
     expect(parseRunArgs(['build', '--retry', '2']).error).toBe(
+      '--retry was renamed --retries in vx 0.0.637 — use --retries=2',
+    )
+    expect(parseRunArgs(['build', '--retry=x']).error).toBe(
       '--retry was renamed --retries (a non-negative integer) in vx 0.0.637',
     )
   })
