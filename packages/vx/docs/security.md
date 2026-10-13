@@ -158,6 +158,11 @@ A task with `exec.sandbox` runs where only what it declares exists:
 An undeclared touch of the task's own files fails the task, and a failed
 task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/sandboxing/).
 
+The sandbox costs each task it runs; a cache hit runs nothing and costs
+nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
+`true` task, min of 20, on every CI run. On GitHub-hosted runners on
+2026-10-13 it printed +269 ms on Linux and +97 ms on macOS.
+
 ## What it does not stop
 
 - **A task with no `exec.sandbox`.** It runs with your permissions:
