@@ -12,6 +12,10 @@ open a public issue for a security problem. You will get an
 acknowledgement within a few days and a fix or a written assessment
 before any public disclosure.
 
+vx is pre-alpha: security fixes ship in the next release only, with no
+backports to older versions. Upgrade with `vx upgrade` or your package
+manager.
+
 What is in scope: anything that makes vx replay wrong bytes as a cache
 hit, run a command it was not asked to run, read or write outside a
 task's declared surface while the sandbox says otherwise, or accept a
