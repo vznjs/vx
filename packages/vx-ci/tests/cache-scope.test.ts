@@ -1,4 +1,4 @@
-// `github()` sets the workspace's `cacheScope` from the Actions ref: the
+// `github()` sets the workspace's `cache.scope` from the Actions ref: the
 // default branch stays trusted, a PR and any other ref get their own scope.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -36,7 +36,7 @@ async function scopeOf(
   try {
     // Off Actions the factory is undefined: nothing to set the scope.
     await github(options)?.config!(workspace, { workspaceRoot: dir, warn: () => {} })
-    return workspace.cacheScope
+    return workspace.cache?.scope
   } finally {
     for (const [k, v] of saved) {
       if (v === undefined) delete process.env[k]
@@ -107,9 +107,9 @@ it('an unknown default branch is not trusted', async () => {
 
 it('outside Actions, a declared scope, or cacheScope: false changes nothing', async () => {
   expect(await scopeOf({ GITHUB_REF: 'refs/pull/1/merge' })).toBeUndefined()
-  expect(await scopeOf(actions('refs/pull/1/merge', '1/merge'), { cacheScope: 'trusted' })).toBe(
-    'trusted',
-  )
+  expect(
+    await scopeOf(actions('refs/pull/1/merge', '1/merge'), { cache: { scope: 'trusted' } }),
+  ).toBe('trusted')
   expect(
     await scopeOf(actions('refs/pull/1/merge', '1/merge'), {}, { cacheScope: false }),
   ).toBeUndefined()

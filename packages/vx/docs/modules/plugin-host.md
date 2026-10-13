@@ -29,10 +29,11 @@ list (`prepared.plugins`). (A whole-run `backend` capability was resolved
 by the CLI layer before `run()` started, until that seam was removed in
 2026-08 — it moved the scheduler server-side, which is exactly what core
 does not do. `executor` replaced it at the per-task grain.)
-Core's floor is appended: `resolveExecutors` puts `localExecutor()` at
-the tail of the list and `resolveCache` puts the host's local `Cache` at
-the tail of the chain (dropped again when a declared layer already wraps
-it), so a workspace that declares nothing runs and caches here.
+Core's floor is always there: `resolveExecutors` puts `localExecutor()`
+at the tail of the list and `resolveCache` asks the host's local `Cache`
+first, before each remote in declared order (dropped when a declared
+layer already wraps it and comes first), so a workspace that declares
+nothing runs and caches here.
 
 ## Public surface
 

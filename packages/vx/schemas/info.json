@@ -22,6 +22,8 @@
     "schemaVersion",
     "cacheEntries",
     "cacheBytes",
+    "cachePolicy",
+    "cacheScope",
     "cacheRetention",
     "orphans",
     "runs24h",
@@ -93,6 +95,26 @@
     "schemaVersion": { "type": "string" },
     "cacheEntries": { "type": "integer" },
     "cacheBytes": { "type": "integer" },
+    "cachePolicy": {
+      "type": "object",
+      "description": "the policy a vx run with no --cache takes: VX_CACHE, else the workspace's cache.policy, else every layer on",
+      "additionalProperties": false,
+      "required": ["spec", "from"],
+      "properties": {
+        "spec": { "type": "string" },
+        "from": { "enum": ["VX_CACHE", "workspace", "default"] }
+      }
+    },
+    "cacheScope": {
+      "type": "object",
+      "description": "the scope a vx run with no --cache-scope takes: VX_CACHE_SCOPE, else the workspace's cache.scope, else null (read-only off CI, trusted on CI or when the policy names the remote)",
+      "additionalProperties": false,
+      "required": ["scope", "from"],
+      "properties": {
+        "scope": { "type": ["string", "null"] },
+        "from": { "enum": ["VX_CACHE_SCOPE", "workspace", "default"] }
+      }
+    },
     "cacheRetention": {
       "type": ["object", "null"],
       "description": "the workspace's cacheRetention, maxSize also in bytes; null when none is declared",

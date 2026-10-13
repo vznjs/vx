@@ -82,6 +82,7 @@ export type { AffectedChanges } from './workspace/index.js'
 export type { RunPlan, PlannedTask } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export type {
+  CacheFlags,
   CachePolicy,
   Logger,
   OutputView,

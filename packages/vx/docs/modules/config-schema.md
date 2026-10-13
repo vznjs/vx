@@ -14,7 +14,7 @@ what a config may SAY, the loader decides HOW a file is evaluated.
 ```ts
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
-// `cacheScope`'s rule, which `VX_CACHE_SCOPE` (read in prepare) shares, and that variable's refusal
+// `cache.scope`'s rule, which `VX_CACHE_SCOPE` (read in prepare) shares, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
 export function cacheScopeEnvError(): UserError
 // The same refusal as text, naming its source (`--cache-scope` in the CLI)

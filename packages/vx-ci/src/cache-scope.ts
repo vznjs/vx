@@ -26,7 +26,7 @@ export async function githubCacheScope(
   const branch = event?.repository?.default_branch
   if (typeof branch === 'string' && branch !== '' && ref === `refs/heads/${branch}`)
     return undefined
-  // `cacheScope` takes letters, digits and . _ - / @; a ref may hold more.
+  // `cache.scope` takes letters, digits and . _ - / @; a ref may hold more.
   return `ref-${name.replace(/[^\w.@/-]/g, '_').slice(0, 124)}`
 }
 

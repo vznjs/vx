@@ -27,12 +27,13 @@ it("names vx's home for a workspace key another tool spells (D-98)", () => {
   expect(where('npmClient')).toBe(
     "vx spells it no field: a task's command runs as written, with no package manager in between",
   )
-  expect(where('cache')).toBe(
-    "vx spells it each task's `cache` in its project's vx.config (a task caches only when it declares one)",
-  )
   expect(where('remote')).toBe('vx spells it a cache plugin in `plugins`')
   expect(where('env')).toBe(
     'vx spells it `cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
+  )
+  // `cache` is vx's own run policy here; Turbo's `cache: true` is told where tasks cache.
+  expect(() => validateWorkspace({ cache: true } as never, 'vx.workspace.ts')).toThrow(
+    "a task caches through its own `cache` in its project's vx.config",
   )
   // CONTROL: a typo still gets the nearest spelling.
   expect(where('cachedir')).toBe('did you mean cacheDir?')

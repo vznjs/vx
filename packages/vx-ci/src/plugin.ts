@@ -40,7 +40,7 @@ export interface GithubPluginOptions {
   /** Check-run name. Default: `'vx'`. */
   checkName?: string
   /**
-   * Set the workspace's `cacheScope` from the run's ref when it names none:
+   * Set the workspace's `cache.scope` from the run's ref when it names none:
    * a push to the default branch stays trusted, a pull request writes to
    * `pr-<n>`, any other ref to `ref-<name>`. Default: on; `false` opts out.
    */
@@ -95,9 +95,9 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
   }
   return definePlugin(import.meta, {
     async config(workspace) {
-      if (options.cacheScope === false || workspace.cacheScope !== undefined) return
+      if (options.cacheScope === false || workspace.cache?.scope !== undefined) return
       const scope = await githubCacheScope(process.env)
-      if (scope !== undefined) workspace.cacheScope = scope
+      if (scope !== undefined) workspace.cache = { ...workspace.cache, scope }
     },
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']

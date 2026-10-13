@@ -235,7 +235,7 @@ describe('resolveCache — chaining', () => {
   )
 
   it(
-    'two contributing plugins → a ChainedCache in declaration order',
+    'two contributing plugins → a ChainedCache, the local store first',
     withTwo(async (a, b) => {
       const plugins: VxPlugin[] = [
         testPlugin('org/first', { cache: () => b }),
@@ -243,7 +243,7 @@ describe('resolveCache — chaining', () => {
       ]
       const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a, policy })
       expect(resolved).toBeInstanceOf(ChainedCache)
-      expect((resolved as ChainedCache).layers).toEqual([b, a])
+      expect((resolved as ChainedCache).layers).toEqual([a, b])
     }),
   )
 
@@ -345,6 +345,42 @@ describe('resolveCache — chaining', () => {
       expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(layered)
     }),
   )
+})
+
+describe('resolveCache — the local store is asked first', () => {
+  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+
+  it('the local store is asked first, then each remote in declared order', async () => {
+    const asked: string[] = []
+    const recording = (name: string): CacheLayer => {
+      const f = fake(name)
+      // The methods a get never reaches, so the seam's shape check passes.
+      const unused = Object.fromEntries(
+        ['key', 'isOutputsCurrent', 'ingest', 'recordRunBundle', 'stats', 'hashFile', 'prune'].map(
+          (m) => [m, () => undefined],
+        ),
+      )
+      return {
+        ...f.layer,
+        ...unused,
+        get: async (h: string) => {
+          asked.push(name)
+          return f.layer.get(h)
+        },
+      } as CacheLayer
+    }
+    const local = recording('local') as Cache
+    const resolved = await resolveCache(
+      [
+        testPlugin('org/first', { cache: () => recording('first') }),
+        testPlugin('org/second', { cache: () => recording('second') }),
+      ],
+      { ...baseCtx, localCache: local, policy },
+    )
+    expect(await resolved.get('h')).toBeNull()
+    expect(asked).toEqual(['local', 'first', 'second'])
+  })
 })
 
 describe('ChainedCache — layers sharing one local handle', () => {

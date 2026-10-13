@@ -144,7 +144,12 @@ function genWorkspace(r: R): Obj {
       return fields({ olderThan, maxSize })
     }),
     affectedBase: maybe(r, () => pick(r, ['origin/main', 'HEAD~1'])),
-    cacheScope: maybe(r, () => pick(r, ['trusted', 'read-only', 'pr-123', '@team/ci'])),
+    cache: maybe(r, () =>
+      fields({
+        policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
+        scope: maybe(r, () => pick(r, ['trusted', 'read-only', 'pr-123', '@team/ci'])),
+      }),
+    ),
     rules: maybe(r, () =>
       fields({
         exclusiveOutputs: maybe(r, () => chance(r)),
@@ -224,7 +229,8 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   olderThan: ['soon', '0d'],
   maxSize: ['big', '0G', '100'],
   affectedBase: ['-x', 'a b'],
-  cacheScope: ['has space', '', 'x'.repeat(129)],
+  scope: ['has space', '', 'x'.repeat(129)],
+  policy: ['', '   ', 3],
   localBinding: [0, 70_000],
   tags: [''],
   passThrough: ['A=B', 'my.var', 'VITE_*', '!HOME'],
@@ -306,7 +312,8 @@ const SCHEMAS: Schema[] = [
       'olderThan',
       'maxSize',
       'affectedBase',
-      'cacheScope',
+      'policy',
+      'scope',
     ],
   },
 ]

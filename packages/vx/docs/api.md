@@ -201,6 +201,19 @@ export interface CacheContext extends BaseContext {
 }
 ```
 
+## `CacheFlags`
+
+type · `src/cache/policy.ts`
+
+`--no-cache` and `--force`, which still apply over whichever spec set the base.
+
+```ts
+export interface CacheFlags {
+  noCache?: boolean
+  force?: boolean
+}
+```
+
 ## `CacheInputs`
 
 type · `src/config.ts`
@@ -849,6 +862,8 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
+  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
+  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -1988,6 +2003,7 @@ export interface RunOptions {
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
+  cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
   defaultCacheScope?: string
@@ -2779,7 +2795,10 @@ export interface WorkspaceConfig {
   timeout?: number
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
-  cacheScope?: string
+  cache?: {
+    policy?: string
+    scope?: string
+  }
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   inputStability?: InputStability
   rules?: WorkspaceRules

@@ -2,7 +2,7 @@
 // so internals like prepare.ts can import them without an upward
 // import of index.ts — the module entry must stay cycle-free.
 
-import type { CachePolicy, RemoteCacheLayer } from '../cache/index.js'
+import type { CacheFlags, CachePolicy, RemoteCacheLayer } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
@@ -74,11 +74,16 @@ export interface RunOptions {
   /**
    * Granular cache read/write control across the local + remote layers.
    * Each of the four axes (localRead / localWrite / remoteRead /
-   * remoteWrite) is independent. Undefined → {@link FULL_CACHE_POLICY}
-   * (everything on). `--no-cache` sets all four false; `--force` sets
-   * both reads false (re-execute, still refresh the cache).
+   * remoteWrite) is independent. Undefined → the workspace's
+   * `cache.policy` with `cacheFlags` applied, else {@link FULL_CACHE_POLICY}
+   * (everything on).
    */
   cache?: CachePolicy
+  /**
+   * With no `cache`: `--no-cache` (all four off) and `--force` (both reads
+   * off), applied over the workspace's `cache.policy`.
+   */
+  cacheFlags?: CacheFlags
   /**
    * The caller asked for a remote axis by name (`--cache=remote:rw`). With
    * no cache plugin supplying a remote layer the axes are inert, and a CI
@@ -86,12 +91,13 @@ export interface RunOptions {
    * saying it is not.
    */
   remoteRequested?: boolean
-  /** This run's `cacheScope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `vx.workspace`. */
+  /** This run's `cache.scope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `vx.workspace`. */
   cacheScope?: string
   /**
-   * The `cacheScope` a run takes when `vx.workspace` names none. The CLI
+   * The `cache.scope` a run takes when `vx.workspace` names none. The CLI
    * passes `'read-only'` off CI (`CI` unset, `0` or `false`) unless
-   * `--cache` names the remote; omitted → trusted.
+   * `--cache` or `VX_CACHE` names the remote; omitted → trusted. Dropped
+   * when the workspace's `cache.policy` names the remote.
    */
   defaultCacheScope?: string
   /**

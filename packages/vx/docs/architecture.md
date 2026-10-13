@@ -181,8 +181,9 @@ plugin) and `teardown`. Consultation lives in `plugin-host.ts`
 (commands). Every run capability is resolved inside
 `prepareRun`/`run()` from the declared list (`prepared.plugins`). **No defaults:** core applies no plugin on its own
 and ships none — running here (`src/exec/local-executor.ts`) and caching
-here (the local `Cache`) are its FLOOR, not plugins, appended at the tail
-of every executor list and cache chain (see `docs/modules/plugins.md`);
+here (the local `Cache`) are its FLOOR, not plugins: the tail of every
+executor list, and the first layer every cache lookup asks, before each
+remote in declared order (see `docs/modules/plugins.md`);
 a workspace that declares none runs and caches, and every plugin is a
 package (`packages/vx-*`) declared in `vx.workspace.ts`. The hard
 invariant for observe-only plugins: **a workspace whose telemetry plugins
