@@ -82,6 +82,7 @@ writeFileSync(
   path.join(ws, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
+writeFileSync(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(ws, 'packages', 'a', 'vx.config.mjs'),
@@ -128,6 +129,7 @@ writeFileSync(
   path.join(dotenv, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
+writeFileSync(path.join(dotenv, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
@@ -181,6 +183,7 @@ writeFileSync(
   path.join(resolve, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
+writeFileSync(path.join(resolve, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(resolve, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
