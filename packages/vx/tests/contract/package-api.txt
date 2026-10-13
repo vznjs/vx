@@ -425,6 +425,11 @@ export interface CacheEntry {
   sizeBytes?: number
   fetchMs?: number
 }
+== type CacheFlags (src/cache/policy.ts)
+export interface CacheFlags {
+  noCache?: boolean
+  force?: boolean
+}
 == type CacheGetContext (src/cache/layer.ts)
 export interface CacheGetContext {
   taskId: string
@@ -805,6 +810,8 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
+  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
+  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
@@ -1300,6 +1307,7 @@ export interface RunOptions {
   concurrency?: number
   cacheDir?: string
   cache?: CachePolicy
+  cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
   defaultCacheScope?: string
@@ -1874,7 +1882,10 @@ export interface WorkspaceConfig {
   timeout?: number
   cacheRetention?: { olderThan?: string; maxSize?: string }
   affectedBase?: string
-  cacheScope?: string
+  cache?: {
+    policy?: string
+    scope?: string
+  }
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   inputStability?: InputStability
   rules?: WorkspaceRules

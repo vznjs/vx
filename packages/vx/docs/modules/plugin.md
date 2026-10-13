@@ -84,6 +84,7 @@ type PluginHookName = keyof PluginHookHandlers
   pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two
   observe paths.)
 - **No defaults, one floor.** Core applies no plugin on its own; its
-  local executor and local cache are appended at the tail of every list
-  and chain (see plugin-host.md), so a workspace that declares nothing
+  local executor is the tail of every executor list and its local cache
+  is asked first in every cache chain (see plugin-host.md), so a
+  workspace that declares nothing
   runs and caches here.

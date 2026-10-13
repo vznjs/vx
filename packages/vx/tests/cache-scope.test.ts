@@ -1,4 +1,4 @@
-// `cacheScope`, end to end over an injected remote: the trusted scope reads
+// `cache.scope`, end to end over an injected remote: the trusted scope reads
 // and writes the task key; an untrusted scope reads its own key, then
 // the trusted one, and writes only its own; `read-only` writes nothing.
 
@@ -14,7 +14,12 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
-import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import {
+  Cache,
+  FULL_CACHE_POLICY,
+  LayeredCache,
+  type RemoteCacheLayer,
+} from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -65,7 +70,9 @@ async function runScoped(
 ): Promise<{ status: string; hash: string }> {
   await writeFile(
     path.join(fixture.root, 'vx.workspace.mjs'),
-    scope === undefined ? `export default {}\n` : `export default { cacheScope: '${scope}' }\n`,
+    scope === undefined
+      ? `export default {}\n`
+      : `export default { cache: { scope: '${scope}' } }\n`,
   )
   await writeFile(path.join(fixture.root, 'packages/app/src/in.txt'), input)
   // Only the remote may answer: every run starts from an empty local cache.
@@ -83,7 +90,7 @@ async function runScoped(
   return { status: outcome.status, hash: outcome.hash! }
 }
 
-describe('cacheScope', () => {
+describe('cache.scope', () => {
   it(
     'a scope reads the trusted keys and its own, and writes only its own',
     async () => {
@@ -394,6 +401,120 @@ describe('cacheScope', () => {
     } finally {
       local.close()
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('cache.policy', () => {
+  /** One run of `build` under a workspace body, from an empty local cache. */
+  async function runUnder(
+    fixture: Fixture,
+    remote: RemoteCacheLayer,
+    workspace: string,
+    extra: Partial<Parameters<typeof run>[0]> = {},
+  ): Promise<string> {
+    await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), `export default ${workspace}\n`)
+    await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+    const result = await run({
+      cwd: fixture.root,
+      tasks: ['build'],
+      log: silentLogger(fixture),
+      remoteCache: remote,
+      ...extra,
+    })
+    expect(result.ok).toBe(true)
+    return result.outcomes[0]!.status
+  }
+
+  it(
+    'the workspace policy is the base: a spec beats it, --force applies on top, and naming the remote asks to write it',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-policy-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const readOnly = memoryRemote()
+        expect(await runUnder(fixture, readOnly.layer, `{ cache: { policy: 'remote:r' } }`)).toBe(
+          'success',
+        )
+        expect(readOnly.store.size).toBe(0)
+        // `--cache` or `VX_CACHE` hands `run()` a whole policy: the workspace's is not read.
+        expect(
+          await runUnder(fixture, readOnly.layer, `{ cache: { policy: 'remote:r' } }`, {
+            cache: FULL_CACHE_POLICY,
+          }),
+        ).toBe('success')
+        expect(readOnly.store.size).toBe(1)
+        // --force re-executes over the remote hit and still writes nothing remote.
+        const forced = memoryRemote()
+        for (const [k, v] of readOnly.store) forced.store.set(k, v)
+        expect(
+          await runUnder(fixture, forced.layer, `{ cache: { policy: 'remote:r' } }`, {
+            cacheFlags: { force: true },
+          }),
+        ).toBe('success')
+        expect(forced.gets).toEqual([])
+        // A laptop's read-only default gives way to a policy naming the remote.
+        const writes = memoryRemote()
+        expect(
+          await runUnder(fixture, writes.layer, `{ cache: { policy: 'remote:rw' } }`, {
+            defaultCacheScope: 'read-only',
+          }),
+        ).toBe('success')
+        expect(writes.store.size).toBe(1)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a bad spec and the old cacheScope key are refused by name',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-policy-bad-')
+      const { layer } = memoryRemote()
+      const refusal = (workspace: string): Promise<string> =>
+        runUnder(fixture, layer, workspace).then(
+          () => 'ran',
+          (err: Error) => err.message,
+        )
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        expect(await refusal(`{ cache: { policy: 'local:x' } }`)).toBe(
+          "vx.workspace: `cache.policy`: invalid --cache flag 'x' for 'local': expected 'r' and/or 'w'",
+        )
+        expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain(
+          'has field "cacheScope", which vx 0.0.637 removed — use `cache: { scope }`',
+        )
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it('the CLI leaves the policy to the workspace when no spec names one', () => {
+    const saved = process.env['VX_CACHE']
+    try {
+      delete process.env['VX_CACHE']
+      expect(parseRunArgs(['build']).cacheFlags).toEqual({})
+      expect(parseRunArgs(['build', '--force']).cacheFlags).toEqual({ force: true })
+      expect(parseRunArgs(['build', '--no-cache', '--force']).cacheFlags).toEqual({
+        noCache: true,
+        force: true,
+      })
+      expect(parseRunArgs(['build', '--cache=remote:']).cacheFlags).toBeUndefined()
+      process.env['VX_CACHE'] = 'remote:'
+      expect(parseRunArgs(['build']).cacheFlags).toBeUndefined()
+    } finally {
+      if (saved === undefined) delete process.env['VX_CACHE']
+      else process.env['VX_CACHE'] = saved
     }
   })
 })

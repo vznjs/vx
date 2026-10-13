@@ -34,9 +34,9 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
 
 const WORKSPACE = [
   'affectedBase',
+  'cache',
   'cacheDir',
   'cacheRetention',
-  'cacheScope',
   'concurrency',
   'inputStability',
   'plugins',
@@ -80,6 +80,9 @@ const OUTPUTS = ['files', 'workspaceFiles'] as const satisfies readonly Keys<Cac
 const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
   NonNullable<WorkspaceConfig['cacheRetention']>
 >[]
+const WORKSPACE_CACHE = ['policy', 'scope'] as const satisfies readonly Keys<
+  NonNullable<WorkspaceConfig['cache']>
+>[]
 const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConfig>[]
 const SANDBOX = [
   'allow',
@@ -118,12 +121,13 @@ const exhaustive: [
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
   Exhaustive<InputStability, typeof STABILITY>,
   Exhaustive<NonNullable<WorkspaceConfig['cacheRetention']>, typeof RETENTION>,
+  Exhaustive<NonNullable<WorkspaceConfig['cache']>, typeof WORKSPACE_CACHE>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
-] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
 void exhaustive
 
 /** What the validator allows where the call puts a key it does not know. */
@@ -205,6 +209,7 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       RETENTION,
       () => validateWorkspace({ cacheRetention: { ...X } } as never, 'w'),
     ],
+    ['cache', WORKSPACE_CACHE, () => validateWorkspace({ cache: { ...X } } as never, 'w')],
     [
       'exec.persistent',
       PERSISTENT,

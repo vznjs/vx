@@ -5,8 +5,10 @@
 // re-exported through cache.ts.
 
 export {
+  applyCacheFlags,
   ArtifactVanishedError,
   Cache,
+  type CacheFlags,
   type CacheEntry,
   type CacheKeyInput,
   type CacheLayer,

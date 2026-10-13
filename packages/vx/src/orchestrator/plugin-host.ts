@@ -468,7 +468,7 @@ export function buildAdmission(
 
 /**
  * Collect every plugin's `cache` layer in declaration order, with the local
- * store at the tail, and chain them (lookup walks them, save reaches all;
+ * store asked first, and chain them (lookup walks them, save reaches all;
  * see ChainedCache). The local store is dropped when a declared layer wraps
  * it (`layer.local === ctx.localCache`), so a remote plugin that layers over
  * the local handle does not also write it directly. Only a single layer
@@ -494,13 +494,21 @@ export async function resolveCache(
     layers.push(layer)
     if (!owners.has(layer)) owners.set(layer, `plugin '${plugin.name}'`)
   }
-  // Core's own store is the TAIL of the chain — the floor under every
-  // lookup, not a plugin a workspace has to declare. A layer that WRAPS
+  // Core's own store is in every chain — the floor under every lookup,
+  // not a plugin a workspace has to declare. A layer that WRAPS
   // the local handle subsumes it below, so a remote plugin does not write
   // the local store twice.
   if (!layers.includes(ctx.localCache)) layers.push(ctx.localCache)
   const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
-  const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
+  let distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
+  // The local store is asked first, then each remote in declared order
+  // (owner, 2026-10-13): a first layer that neither is nor wraps it would be
+  // a network lookup ahead of a disk one. A wrapping layer after it asks
+  // the local store again on a miss; saves to one handle are made once.
+  const head = distinct[0]!
+  if (head !== ctx.localCache && head.local !== ctx.localCache) {
+    distinct = [ctx.localCache, ...distinct.filter((l) => l !== ctx.localCache)]
+  }
   if (distinct.length === 1) return distinct[0]!
   // One line per layer and method: a layer that throws on every lookup
   // would otherwise print once per task.

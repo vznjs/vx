@@ -6,8 +6,9 @@ Core applies NO plugin on its own and ships none. Running a command
 here and caching it on this machine (`~/.vx/<id>/cache`, or a named
 `cacheDir`) are not plugins but core's FLOOR:
 `resolveExecutors` appends `localExecutor()` (`src/exec/local-executor.ts`)
-to the tail of every executor list and `resolveCache` appends the host's
-local `Cache` to the tail of every chain (`src/orchestrator/plugin-host.ts`).
+to the tail of every executor list and `resolveCache` puts the host's
+local `Cache` first in every chain, before each remote in declared order
+(`src/orchestrator/plugin-host.ts`).
 A workspace with no `vx.workspace.ts` therefore runs and caches, and a
 plugin executor whose `accepts()` declines hands the task back to this
 machine.

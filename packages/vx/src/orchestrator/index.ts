@@ -21,7 +21,12 @@ export type { HeldPersistent, RunOptions, RunSummary } from './options.js'
 // Re-surface the cache policy contract (defined in the cache module) so
 // embedders constructing RunOptions.cache and the package façade can
 // reach it without importing the cache module directly.
-export { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
+export {
+  type CacheFlags,
+  type CachePolicy,
+  FULL_CACHE_POLICY,
+  parseCachePolicy,
+} from '../cache/index.js'
 // The CLI reads a recorded exit code; the runner's convention decodes it.
 // It records its own argv quoted as the runner quotes forwarded args.
 export { exitSignal, shellQuote } from '../exec/index.js'

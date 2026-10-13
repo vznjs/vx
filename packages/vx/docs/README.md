@@ -73,7 +73,8 @@ task's command runs), `cache` (where artifacts live), `telemetry`
 (where run records go), `commands` (which verbs exist), with `setup`
 and `teardown` around the run — and applies **none** of them by
 default. Running here and caching here are its floor: the local
-executor and the local cache sit at the tail of every list, so a
+executor sits at the tail of every executor list and the local cache is
+asked first in every cache chain, so a
 workspace that declares nothing still runs and caches, and a plugin
 that declines a task hands it back to this machine. Nothing here is a
 first-party product you have to adopt

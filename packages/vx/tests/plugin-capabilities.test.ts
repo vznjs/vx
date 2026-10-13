@@ -177,7 +177,7 @@ describe('the cache-layer gate names EVERY method, not a count of them', () => {
 describe('plugin-host — capability consultation + fallbacks', () => {
   const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
 
-  it('resolveCache: every contributing plugin is kept, chained in declaration order', async () => {
+  it('resolveCache: every contributing plugin is kept, the local store first', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     const otherDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-'))
@@ -194,7 +194,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
         policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
       })
       expect(resolved).toBeInstanceOf(ChainedCache)
-      expect((resolved as ChainedCache).layers).toEqual([other, local])
+      expect((resolved as ChainedCache).layers).toEqual([local, other])
     } finally {
       local.close()
       other.close()

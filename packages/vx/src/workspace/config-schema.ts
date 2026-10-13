@@ -39,12 +39,12 @@ import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 const CACHE_SCOPE_RULE =
   "must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'"
 
-/** `cacheScope`'s rule, shared with `VX_CACHE_SCOPE`. */
+/** `cache.scope`'s rule, shared with `VX_CACHE_SCOPE`. */
 export function isCacheScope(v: unknown): v is string {
   return typeof v === 'string' && /^[\w.@/-]{1,128}$/.test(v)
 }
 
-/** Why a `VX_CACHE_SCOPE` or `--cache-scope` value is refused, in `cacheScope`'s words. */
+/** Why a `VX_CACHE_SCOPE` or `--cache-scope` value is refused, in `cache.scope`'s words. */
 export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
   return `${source} ${CACHE_SCOPE_RULE}`
 }
@@ -111,7 +111,7 @@ const WORKSPACE_FIELDS = new Set([
   'timeout',
   'cacheRetention',
   'affectedBase',
-  'cacheScope',
+  'cache',
   'rules',
   'schedule',
   'inputStability',
@@ -127,6 +127,26 @@ const SCHEDULES = {
 } satisfies Record<Schedule, true>
 
 const RULE_FIELDS = new Set(['exclusiveOutputs', 'upfrontKeys'])
+const WORKSPACE_CACHE_FIELDS = new Set(['policy', 'scope'])
+
+// `policy`'s grammar is the cache module's (`parseCachePolicy`), which this
+// module may not import: the run parses it before any task (prepare.ts).
+function validateWorkspaceCache(cache: unknown, configPath: string): void {
+  if (typeof cache !== 'object' || cache === null || Array.isArray(cache)) {
+    // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
+    throw new UserError(
+      `${configPath}: \`cache\` must be an object like { policy, scope }; a task caches through its own \`cache\` in its project's vx.config`,
+    )
+  }
+  assertKnownFields(cache, WORKSPACE_CACHE_FIELDS, `${configPath}: \`cache\``)
+  const { policy, scope } = cache as { policy?: unknown; scope?: unknown }
+  if (policy !== undefined && (typeof policy !== 'string' || policy.trim() === '')) {
+    throw new UserError(`${configPath}: \`cache.policy\` must be a spec like 'local:rw,remote:r'`)
+  }
+  if (scope !== undefined && !isCacheScope(scope)) {
+    throw new UserError(`${configPath}: \`cache.scope\` ${CACHE_SCOPE_RULE}`)
+  }
+}
 
 function validateRules(rules: unknown, configPath: string): void {
   const where = `${configPath}: \`rules\``
@@ -252,9 +272,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       throw new UserError(`${configPath}: \`affectedBase\` must be a git ref like 'origin/main'`)
     }
   }
-  if (config.cacheScope !== undefined && !isCacheScope(config.cacheScope)) {
-    throw new UserError(`${configPath}: \`cacheScope\` ${CACHE_SCOPE_RULE}`)
-  }
+  if (config.cache !== undefined) validateWorkspaceCache(config.cache, configPath)
   if (config.rules !== undefined) validateRules(config.rules, configPath)
   if (config.inputStability !== undefined) {
     validateInputStability(config.inputStability, `${configPath}: \`inputStability\``)
@@ -1012,6 +1030,15 @@ export const REMOVED_FIELDS: ReadonlyMap<
     },
   ],
   [
+    WORKSPACE_FIELDS,
+    {
+      cacheScope: {
+        removedIn: '0.0.637',
+        use: "`cache: { scope }` ('trusted', 'read-only', 'pr-123')",
+      },
+    },
+  ],
+  [
     CACHE_FIELDS,
     {
       rewrittenInputs: {
@@ -1165,8 +1192,6 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       catalog:
         "pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",
       npmClient: "no field: a task's command runs as written, with no package manager in between",
-      cache:
-        "each task's `cache` in its project's vx.config (a task caches only when it declares one)",
       remote: 'a cache plugin in `plugins`',
       env: '`cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
     },

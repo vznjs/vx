@@ -556,8 +556,16 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ affectedBase: "--output=x" }'),
   ],
   [
-    "cacheScope must be 'trusted', 'read-only', or a scope name of <rule>",
-    workspaceConfig('{ cacheScope: "pr 123" }'),
+    "cache must be an object like { policy, scope }; a task caches through its own cache in its project's vx.config",
+    workspaceConfig('{ cache: "remote:" }'),
+  ],
+  [
+    "cache.policy must be a spec like 'local:rw,remote:r'",
+    workspaceConfig('{ cache: { policy: " " } }'),
+  ],
+  [
+    "cache.scope must be 'trusted', 'read-only', or a scope name of <rule>",
+    workspaceConfig('{ cache: { scope: "pr 123" } }'),
   ],
   [
     'rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }',
@@ -711,7 +719,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
     expect(message).toContain(
-      '(allowed: affectedBase, cacheDir, cacheRetention, cacheScope, concurrency, inputStability, plugins, rules, schedule, timeout)',
+      '(allowed: affectedBase, cache, cacheDir, cacheRetention, concurrency, inputStability, plugins, rules, schedule, timeout)',
     )
   })
 })

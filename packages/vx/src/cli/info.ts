@@ -93,6 +93,13 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', describeEntries(f)],
+    ['cache policy', `${f.cachePolicy.spec} (${describeFrom(f.cachePolicy.from)})`],
+    [
+      'cache scope',
+      f.cacheScope.scope === null
+        ? 'read-only off CI, trusted on CI or when the policy names the remote'
+        : `${f.cacheScope.scope} (${describeFrom(f.cacheScope.from)})`,
+    ],
     ...(f.cacheRetention !== null
       ? ([['cache retention', describeRetention(f.cacheRetention)]] as [string, string][])
       : []),
@@ -133,6 +140,10 @@ function describeEntries(f: InfoFacts): string {
 }
 
 /** What a run's end evicts: `entries unused for 30d, and the oldest entries past 10G`. */
+function describeFrom(from: string): string {
+  return from === 'workspace' ? 'vx.workspace' : from === 'default' ? 'the default' : from
+}
+
 function describeRetention(r: NonNullable<InfoFacts['cacheRetention']>): string {
   const parts = [
     ...(r.olderThan !== undefined ? [`entries unused for ${r.olderThan}`] : []),

@@ -1659,7 +1659,10 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                     const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
                       policy: ctx.policy,
                     })
+                    // It wraps the local handle and says so, or the local
+                    // store would be asked ahead of it and answer the hit.
                     return {
+                      local: ctx.localCache,
                       hasRemote: true,
                       prefetch: (h, c) => inner.prefetch(h, c),
                       drainUploads: () => inner.drainUploads(),

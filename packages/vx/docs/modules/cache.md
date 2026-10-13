@@ -327,8 +327,14 @@ export interface CachePolicy {
 }
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
-// The workspace's `cacheScope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
+// The run's `cache.scope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
 export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
+// `--no-cache` (all off) beats `--force` (reads off), over whichever spec set the base
+export interface CacheFlags {
+  noCache?: boolean
+  force?: boolean
+}
+export function applyCacheFlags(policy: CachePolicy, flags: CacheFlags | undefined): CachePolicy
 export function cachesNothing(p: CachePolicy): boolean // no axis on: no cache answers for any task
 ```
 
