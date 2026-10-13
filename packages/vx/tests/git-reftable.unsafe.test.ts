@@ -57,16 +57,19 @@ afterEach(async () => {
   for (const r of roots.splice(0)) await rm(r, { recursive: true, force: true })
 })
 
-/** Two projects committed in one repository, refs in `format`; returns the root. */
-async function workspace(format: 'files' | 'reftable'): Promise<string> {
-  const root = await makeWorkspace({ prefix: `vx-reftable-${format}-`, git: false })
+/** Two projects committed in one repository, refs in `format`, objects in `objects`; returns the root. */
+async function workspace(
+  format: 'files' | 'reftable',
+  objects: 'sha1' | 'sha256' = 'sha1',
+): Promise<string> {
+  const root = await makeWorkspace({ prefix: `vx-reftable-${format}-${objects}-`, git: false })
   roots.push(root)
   await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
   for (const name of ['a', 'b']) {
     await addProject(root, name, { config: CONFIG, files: { 'src/x.txt': name } })
   }
   const git = gitIn(root)
-  git('init', '-q', `--ref-format=${format}`, '-b', 'main')
+  git('init', '-q', `--ref-format=${format}`, `--object-format=${objects}`, '-b', 'main')
   git('config', 'user.email', 'test@vx.local')
   git('config', 'user.name', 'vx test')
   git('add', '-A')
@@ -184,6 +187,61 @@ describe.skipIf(!reftable)('a reftable repository', () => {
       const moved = await build(wt)
       expect(moved.get('a#build')).not.toBe(keys.get('a#build'))
       expect(moved.get('b#build')).toBe(keys.get('b#build'))
+    },
+    TIMEOUT,
+  )
+})
+
+// Git 3.0 makes both the default: reftable refs and sha256 object names
+// (64 hex, so every index OID, commit and in-process blob hash is too).
+describe.skipIf(!reftable)("a repository in Git 3's defaults (reftable, sha256)", () => {
+  it(
+    'keys from the sha256 index, hits on the second run, and a staged edit keys as committed',
+    async () => {
+      const root = await workspace('reftable', 'sha256')
+      const git = gitIn(root)
+      expect(git('rev-parse', '--show-object-format').trim()).toBe('sha256')
+      expect(git('ls-files', '-s', 'packages/a/src/x.txt')).toMatch(/^100644 [0-9a-f]{64} 0\t/)
+      const sha = git('rev-parse', 'HEAD').trim()
+      expect(captureGitContext(root)).toEqual({ commitSha: sha, branch: 'main', dirty: null })
+      expect(sha).toMatch(/^[0-9a-f]{64}$/)
+      const keys = await build(root)
+      const again = await run({ cwd: root, tasks: ['build'], log: logger })
+      expect(again.outcomes.map((o) => o.status)).toEqual(['cache-hit', 'cache-hit'])
+      // A staged edit is hashed in-process and the same bytes committed
+      // come from the index: the keys agree only if vx hashes as sha256.
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'a2')
+      git('add', '-A')
+      const staged = await build(root)
+      expect(staged.get('a#build')).not.toBe(keys.get('a#build'))
+      expect(staged.get('b#build')).toBe(keys.get('b#build'))
+      git('-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'edit a')
+      expect(Object.fromEntries(await build(root))).toEqual(Object.fromEntries(staged))
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'selects --affected from the history and names the shared store',
+    async () => {
+      const root = await workspace('reftable', 'sha256')
+      const git = gitIn(root)
+      expect(await repoIdOf(root)).toMatch(/^[0-9a-f]{16}$/)
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'a2')
+      git('commit', '-qam', 'edit a')
+      const p = Bun.spawnSync(
+        [process.execPath, BIN, 'run', 'build', '--affected=HEAD~1', '--dry-run'],
+        {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', CI: '' },
+        },
+      )
+      const out = p.stdout.toString() + p.stderr.toString()
+      expect(p.exitCode).toBe(0)
+      expect(out).toContain('a#build')
+      expect(out).not.toContain('b#build')
     },
     TIMEOUT,
   )

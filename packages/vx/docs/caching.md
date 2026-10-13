@@ -200,7 +200,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
 
     Ref storage is not a key input: every ref vx reads comes from a git
     command, so a repository in reftable storage (git 2.45) keys every
-    task as its files-backend twin (`tests/git-reftable.unsafe.test.ts`).
+    task as its files-backend twin. A sha256 repository keys from its
+    64-hex index OIDs, and a dirty file is hashed in-process as sha256,
+    so Git 3's defaults (reftable and sha256 together) run, hit and
+    select `--affected` as a sha1 repository does
+    (`tests/git-reftable.unsafe.test.ts`).
 
     A **submodule or an embedded repository** is enumerated by its own
     git: the workspace repository lists the nested one as a single entry
