@@ -11,12 +11,13 @@ import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
-  UserError,
+  gitEnv,
   gitSpawnRefusal,
   isExecutableMissing,
   isInstalledPath,
   notAWorkTree,
   relPosix,
+  UserError,
 } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
@@ -38,7 +39,13 @@ function spawnGitSync(
   stderr: 'pipe' | 'ignore' = 'pipe',
 ): ReturnType<typeof Bun.spawnSync> {
   try {
-    return Bun.spawnSync({ cmd: [executablePath('git'), ...args], cwd, stdout: 'pipe', stderr })
+    return Bun.spawnSync({
+      cmd: [executablePath('git'), ...args],
+      env: gitEnv(),
+      cwd,
+      stdout: 'pipe',
+      stderr,
+    })
   } catch (err) {
     if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
     throw err
@@ -53,6 +60,7 @@ function spawnGit(
   try {
     return Bun.spawn({
       cmd: [executablePath('git'), ...args],
+      env: gitEnv(),
       cwd,
       stdin: stdin ?? 'ignore',
       stdout: 'pipe',

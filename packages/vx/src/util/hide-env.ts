@@ -83,3 +83,25 @@ async function wipeStartupEnv(): Promise<boolean> {
 export function helperEnv(): Record<string, string> {
   return { PATH: process.env['PATH'] ?? '' }
 }
+
+/**
+ * The env for a `git` vx runs: what git reads (`GIT_*`, the locale,
+ * `XDG_CONFIG_HOME`, the essentials: `HOME`, `PATH`) and nothing else.
+ * A git child is readable after its `exec` like any helper, and `vx
+ * watch` runs git while its tasks run.
+ */
+export function gitEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined) continue
+    if (
+      name.startsWith('GIT_') ||
+      name.startsWith('LC_') ||
+      name === 'XDG_CONFIG_HOME' ||
+      name === 'LANGUAGE' ||
+      ESSENTIAL_ENV.includes(name)
+    )
+      env[name] = value
+  }
+  return env
+}

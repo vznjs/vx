@@ -13,7 +13,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { executablePath, relPosix, ulid, xxh3hex } from '../util/index.js'
+import { executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -86,6 +86,7 @@ export function captureGitContext(
         '--abbrev-ref',
         'HEAD',
       ],
+      env: gitEnv(),
       stdout: 'pipe',
       stderr: 'ignore',
     })
@@ -280,6 +281,7 @@ export function captureDefaultBranch(
           '--short',
           'refs/remotes/origin/HEAD',
         ],
+        env: gitEnv(),
         stdout: 'pipe',
         stderr: 'ignore',
       })
@@ -473,6 +475,7 @@ export function captureWorkspaceIdentity(
         // different proxies would derive different workspace ids. The raw
         // configured URL is the identity.
         cmd: [executablePath('git'), '-C', workspaceRoot, 'config', '--get', 'remote.origin.url'],
+        env: gitEnv(),
         stdout: 'pipe',
         stderr: 'ignore',
       })

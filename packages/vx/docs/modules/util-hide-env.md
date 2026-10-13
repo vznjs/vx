@@ -32,9 +32,10 @@ A helper vx keeps running beside its tasks would show the same values:
 a spawn with no `env` hands the child vx's startup env, and the child is
 readable after its `exec`. `helperEnv()` is `PATH` alone; the group
 guard (`exec/kill-tree.ts`) and the port bridges (`exec/sandbox-runtime.ts`)
-start with it. Not covered: a short-lived `git` vx runs, and the sandbox
-runtime's own network bridges on Linux (`socat`, started by the library
-with its env).
+start with it. `gitEnv()` is what git reads (`GIT_*`, the locale,
+`XDG_CONFIG_HOME`) plus the essentials; every `git` vx runs gets it
+(`tests/git-env.test.ts`). Not covered: the sandbox runtime's own network
+bridges on Linux (`socat`, started by the library with its env).
 
 Elsewhere (musl, other systems) it returns `false`. It hides the
 environment, not files: an unsandboxed task still reads anything you

@@ -10,7 +10,11 @@ vulnerability), never in a public issue.
 
 - **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
-  validates what it returns, not what it does. What a config imports
+  validates what it returns, not what it does. Looking for the
+  workspace root above where you run, vx stops at a manifest another
+  user owns (root aside), so a `package.json` planted in a shared
+  directory such as `/tmp` cannot claim your checkout and run its
+  config as you (`tests/workspace-foreign-owner.test.ts`). What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
@@ -154,8 +158,9 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
   every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
   macOS it zeroes the values `ps eww` reads, every variable but the
   essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
-  alone (`tests/hide-env.unsafe.test.ts`). That hides the environment
-  only, not files, and a short-lived `git` vx runs still carries it.
+  alone and each `git` with only what git reads
+  (`tests/hide-env.unsafe.test.ts`, `tests/git-env.test.ts`). That hides
+  the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
   stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are

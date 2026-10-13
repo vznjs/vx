@@ -9,6 +9,7 @@ import path from 'node:path'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import {
   executablePath,
+  gitEnv,
   gitSpawnRefusal,
   isInstalledPath,
   notAWorkTree,
@@ -60,6 +61,7 @@ export function repoFacts(dir: string): RepoFacts | null {
         '--git-path',
         'index',
       ],
+      env: gitEnv(),
       cwd: dir,
       stdout: 'pipe',
       stderr: 'ignore',
@@ -99,6 +101,7 @@ export function gitRefusal(dir: string): UserError | undefined {
   try {
     proc = Bun.spawnSync({
       cmd: [executablePath('git'), 'rev-parse', '--is-inside-work-tree'],
+      env: gitEnv(),
       cwd: dir,
       stdout: 'ignore',
       stderr: 'pipe',
@@ -476,6 +479,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   try {
     proc = Bun.spawnSync({
       cmd: [executablePath('git'), 'ls-files', '-s', '--others', '--exclude-standard', '-z', '.'],
+      env: gitEnv(),
       cwd,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -1261,7 +1265,7 @@ export async function startGitEnumeration(
         stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
         stdout: 'pipe',
         stderr: 'pipe',
-        ...(env !== undefined ? { env: { ...process.env, ...env } } : {}),
+        env: env !== undefined ? { ...gitEnv(), ...env } : gitEnv(),
       })
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(proc.stdout).bytes(),

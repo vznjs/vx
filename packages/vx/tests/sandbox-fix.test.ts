@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { SandboxViolation } from '../src/exec/index.js'
 import { sandboxFix } from '../src/orchestrator/sandbox-fix.js'
+import { CREDENTIAL_STORES } from '../src/orchestrator/sandbox-request.js'
 
 let dir: string
 beforeEach(() => {
@@ -118,6 +119,16 @@ describe('sandboxFix', () => {
         '~/.ssh/id_ed25519',
       ],
     })
+  })
+
+  // A hand copy of the stores here missed the ones the sandbox added later
+  // (~/.azure, ~/.vault-token, ~/.pgpass, …): their denials came back as
+  // grants an agent would apply.
+  it('withholds every store the sandbox denies, and what lies in one', () => {
+    const reads = CREDENTIAL_STORES.flatMap((s) => [s, `${s}/x`]).map((s) =>
+      v('deny(1) file-read-data', ['read'], path.join(os.homedir(), s)),
+    )
+    expect(sandboxFix(reads, dir)?.read).toBeUndefined()
   })
 
   it('is undefined when nothing maps, and masks what it names', () => {

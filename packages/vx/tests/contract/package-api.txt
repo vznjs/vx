@@ -257,6 +257,7 @@ export function exitSignal(code: number): string | undefined
 export async function findWorkspaceRoot(
   start: string,
   reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
 == function foldScriptHooks (src/workspace/migration.ts)
 export function foldScriptHooks(

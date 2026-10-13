@@ -2403,7 +2403,8 @@ The task graph has a cycle. The message names the loop; drop one of its
 #### `VX_E_NO_WORKSPACE`
 
 No workspace root above the working directory. Run vx inside the repo,
-or create a `package.json` and run `vx init`.
+or create a `package.json` and run `vx init`. A manifest above it that
+another user owns does not count (`security.md`); the message names it.
 
 #### `VX_E_CACHE_VERSION`
 
@@ -2917,7 +2918,7 @@ passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
-`withheld` lists the credential paths it denied and left out. A task
+`withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`). A task
 failed by `inputStability.severity: 'error'` adds `inputMoved`, the
 input that changed during the run. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
