@@ -28,6 +28,7 @@ import {
   type ProjectEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
+import { runRules } from '../settings.js'
 
 interface ShowArgs {
   target?: string
@@ -200,7 +201,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
           plugins: ws.plugins,
           workspaceRoot: root,
           cacheDir: ws.cacheDir,
-          rules: ws.workspaceConfig?.rules,
+          rules: runRules(ws.workspaceConfig),
           warn: warnToStderr,
         }),
       )
@@ -406,7 +407,7 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
   const exec = task.exec
   rows.push(['command', exec?.command ?? '(group)'])
   add('dependsOn', list(task.dependsOn))
-  add('timeout', exec?.timeout === undefined ? undefined : `${exec.timeout}ms`)
+  add('timeout', exec?.timeout)
   add('retries', exec?.retries)
   add('env.passThrough', list(exec?.env?.passThrough))
   add(

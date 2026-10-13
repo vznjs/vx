@@ -1,7 +1,7 @@
 // A hit on a task that declares `outputs: []` replays stdout from the row
 // and touches no artifact: nothing to clean, nothing to extract. Until
 // 2026-09-10 the hit path extracted the logs-only tar anyway — an
-// `exists` and a read per hit for nothing. Pinned through VX_TIMING's
+// `exists` and a read per hit for nothing. Pinned through VX_DEBUG_TIMING's
 // accumulated spans: `restore: extract` must not appear for such a run.
 
 import { rm } from 'node:fs/promises'
@@ -16,7 +16,7 @@ async function vx(root: string, args: string[]): Promise<string> {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_TIMING: '1' },
+    env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '1' },
   })
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),

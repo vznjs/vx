@@ -13,7 +13,7 @@ import { run, type Logger, type RunSummaryRecord } from '../src/orchestrator/ind
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
-process.env['VX_KILL_GRACE_MS'] = '200'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
@@ -162,7 +162,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     )
     const ac = new AbortController()
     // The trap is the subject: a long grace keeps the SIGKILL off it.
-    process.env['VX_KILL_GRACE_MS'] = '5000'
+    process.env['VX_RUN_KILL_GRACE'] = '5000ms'
     try {
       const running = run({
         cwd: root,
@@ -176,7 +176,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       ac.abort()
       expect((await running).ok).toBe(false)
     } finally {
-      process.env['VX_KILL_GRACE_MS'] = '200'
+      process.env['VX_RUN_KILL_GRACE'] = '200ms'
     }
     expect(await Bun.file(path.join(dir, 'got.txt')).text()).toBe('SIGTERM\n')
   }, 20_000)

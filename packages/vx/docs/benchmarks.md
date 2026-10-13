@@ -51,7 +51,7 @@ memoised `Bun.Glob`s) measured on the graph WITH dependencies —
 `vx run test --all`, 2000 tasks, interleaved arms against an immutable
 worktree of the previous commit: 327–329 ms → 308–314 ms.
 
-Where Wave 2's 242 ms at 1000 projects went (`VX_TIMING=1`, see
+Where Wave 2's 242 ms at 1000 projects went (`VX_DEBUG_TIMING=1`, see
 below; Waves 6 and 7 took 70 ms off it, mostly the run-graph phase and
 the git overlap): discovery 22 ms, config load 31 ms (all cache hits) overlapped
 with git's one worktree walk (`status -uall`, ~57 ms, the critical
@@ -105,7 +105,7 @@ and claim nothing — the warm path is unchanged since item 589. Scaling
 
 Two tools, and they answer different questions:
 
-- **`VX_TIMING=1 vx run …`** prints a stage table to stderr at the end of
+- **`VX_DEBUG_TIMING=1 vx run …`** prints a stage table to stderr at the end of
   the run — `startup`, `workspace config`, `discover projects`,
   `package graph`, `open cache`, `load configs`, `build graph`,
   `git enumeration`, `plugin stages`, `classify + probe`, `schedule`, `run graph`,

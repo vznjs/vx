@@ -41,6 +41,10 @@ export { maskedCommand, maskedLine } from './util/index.js'
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
   WorkspaceConfig,
+  RunSettings,
+  CacheSettings,
+  WatchSettings,
+  Duration,
   ProjectConfig,
   TaskConfig,
   ExecConfig,

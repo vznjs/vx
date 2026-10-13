@@ -112,7 +112,7 @@ function genTask(r: R): Obj {
   const cache = mode === 'cached' ? genCache(r, dependsOn) : undefined
   const exec = fields({
     command: pick(r, ['bun test', 'tsc -b', 'echo "hi" && exit 0']),
-    timeout: maybe(r, () => pick(r, [1, 60_000, MAX_TIMEOUT_MS])),
+    timeout: maybe(r, () => pick(r, ['1ms', '1m', `${MAX_TIMEOUT_MS}ms`])),
     retries: mode === 'persistent' ? undefined : maybe(r, () => pick(r, [0, 2])),
     remote: maybe(r, () => pick(r, mode === 'cached' ? [true, false, 'only'] : [true, false])),
     env: maybe(r, () => genEnv(r)),
@@ -135,27 +135,49 @@ function genProject(r: R): Obj {
 
 function genWorkspace(r: R): Obj {
   return fields({
-    concurrency: maybe(r, () => pick(r, [1, 8])),
-    cacheDir: maybe(r, () => pick(r, ['.vx-cache', ''])),
-    timeout: maybe(r, () => pick(r, [1000, MAX_TIMEOUT_MS])),
-    cacheRetention: maybe(r, () => {
-      const olderThan = maybe(r, () => pick(r, ['30d', '12h', '90m']))
-      const maxSize = maybe(r, () => pick(r, ['10G', '500MB']), olderThan === undefined ? 1 : 0.5)
-      return fields({ olderThan, maxSize })
-    }),
-    affectedBase: maybe(r, () => pick(r, ['origin/main', 'HEAD~1'])),
+    run: maybe(r, () =>
+      fields({
+        concurrency: maybe(r, () => pick(r, [1, 8])),
+        schedule: maybe(r, () => pick(r, ['most-work', 'critical-path'])),
+        affectedBase: maybe(r, () => pick(r, ['origin/main', 'HEAD~1'])),
+        timeout: maybe(r, () => pick(r, ['1s', `${MAX_TIMEOUT_MS}ms`])),
+        retries: maybe(r, () => pick(r, [0, 2])),
+        continue: maybe(r, () => pick(r, ['never', 'always'])),
+        killGrace: maybe(r, () => pick(r, ['200ms', '2s'])),
+        teardownTimeout: maybe(r, () => pick(r, ['0ms', '3s'])),
+        readyNotice: maybe(r, () => '10s'),
+        rules: maybe(r, () =>
+          fields({
+            exclusiveOutputs: maybe(r, () => chance(r)),
+            upfrontKeys: maybe(r, () => chance(r)),
+          }),
+        ),
+      }),
+    ),
     cache: maybe(r, () =>
       fields({
+        dir: maybe(r, () => '.vx-cache'),
+        retention: maybe(r, () => {
+          const olderThan = maybe(r, () => pick(r, ['30d', '12h', '90m']))
+          const maxSize = maybe(
+            r,
+            () => pick(r, ['10G', '500MB']),
+            olderThan === undefined ? 1 : 0.5,
+          )
+          return fields({ olderThan, maxSize })
+        }),
         policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
         scope: maybe(r, () => pick(r, ['trusted', 'read-only', 'pr-123', '@team/ci'])),
+        download: maybe(r, () => pick(r, ['all', 'none'])),
+        inputStability: maybe(r, () =>
+          fields({
+            strategy: maybe(r, () => pick(r, ['immutable', 'mutable', 'unchecked'])),
+            severity: maybe(r, () => pick(r, ['warn', 'error'])),
+          }),
+        ),
       }),
     ),
-    rules: maybe(r, () =>
-      fields({
-        exclusiveOutputs: maybe(r, () => chance(r)),
-        upfrontKeys: maybe(r, () => chance(r)),
-      }),
-    ),
+    watch: maybe(r, () => fields({ poll: maybe(r, () => chance(r)) })),
   })
 }
 
@@ -192,7 +214,7 @@ const fieldPath = (path: readonly Seg[]): string[] => {
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cacheRetention.maxSize` ``, `` `rules`.upfrontKeys ``. */
+/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cache.retention.maxSize` ``. */
 const names = (field: readonly string[]): RegExp =>
   new RegExp(`(?<![\\w.])${field.map(escape).join('`?\\.`?')}(?![\\w.])`)
 
@@ -220,12 +242,18 @@ function wrongType(v: unknown): unknown {
  */
 const BAD_VALUES: Record<string, readonly unknown[]> = {
   command: ['   ', 'a\0b'],
-  timeout: [0, -5, 1.5, MAX_TIMEOUT_MS + 1],
+  timeout: ['0s', '-5s', '1.5s', `${MAX_TIMEOUT_MS + 1}ms`, 5000],
   retries: [-1, 0.5],
   remote: ['sometimes', 'ONLY'],
   readyWhen: ['(unclosed'],
   concurrency: [0, 2.5],
-  cacheDir: ['   '],
+  dir: ['   '],
+  schedule: ['fastest'],
+  killGrace: ['0ms', 200],
+  readyNotice: ['soon'],
+  download: ['some'],
+  strategy: ['content'],
+  severity: ['fail'],
   olderThan: ['soon', '0d'],
   maxSize: ['big', '0G', '100'],
   affectedBase: ['-x', 'a b'],
@@ -307,8 +335,15 @@ const SCHEMAS: Schema[] = [
     validate: (c) => validateWorkspace(c as WorkspaceConfig, WORKSPACE_PATH),
     badFields: [
       'concurrency',
-      'cacheDir',
+      'schedule',
+      'dir',
       'timeout',
+      'retries',
+      'killGrace',
+      'readyNotice',
+      'download',
+      'strategy',
+      'severity',
       'olderThan',
       'maxSize',
       'affectedBase',

@@ -92,7 +92,7 @@ import { definePlugin, type VxPlugin } from '@vzn/vx'
 export function ciConcurrency(): VxPlugin {
   return definePlugin(import.meta, {
     config(workspace) {
-      if (process.env.CI) workspace.concurrency = 2
+      if (process.env.CI) workspace.run = { ...workspace.run, concurrency: 2 }
     },
   })
 }
@@ -254,7 +254,7 @@ task's `exec.timeout`: core cannot reach a process your executor spawned,
 so a stop that misses the shell's children leaves them running after vx
 exits. Stopped on the timeout, return a non-zero exit and the task fails
 as timed out. An executor still running two seconds after the abort
-(`VX_KILL_GRACE_MS`) is abandoned: core settles the task without it.
+(`VX_RUN_KILL_GRACE`) is abandoned: core settles the task without it.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
@@ -484,7 +484,7 @@ export default defineWorkspace({
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.cache.upload.*` (remote uploads, once settled), `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
 | `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready`, `vx.task.command`, `vx.task.flaky.*`, `vx.cache.stored_*` (on a hit), `vx.task.admission_held_ms`, `vx.task.queued_ms`, `vx.task.input_files`, `vx.cache.miss.change_count` and `vx.cache.miss.changes` (what a miss's key changed since the last saved entry), `vx.cache.artifact_bytes`, `vx.cache.save_ms`, `vx.cache.fetch_ms`; links to the tasks it waited on; `vx.task.retry`, `vx.task.timeout` and `vx.sandbox.violation` events |
-| a span per stage  | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_TIMING` stages), with `vx.stage.name` |
+| a span per stage  | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_DEBUG_TIMING` stages), with `vx.stage.name` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`, `vx.run.time_saved_ms` |
 | metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory`, `vx.task.time_saved`, `vx.task.admission_held`, `vx.task.queued`, `vx.task.artifact_size`, `vx.task.cache_save`, `vx.task.cache_fetch` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs; each point names its span as an exemplar |
 | a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |

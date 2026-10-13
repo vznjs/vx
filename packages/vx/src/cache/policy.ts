@@ -54,7 +54,7 @@ export function cachesNothing(p: CachePolicy): boolean {
  * off, `local:r` = local read-only with remote untouched.
  *
  * Throws a {@link UserError}, whose message the caller prefixes with the
- * spec's source (`--cache`, `VX_CACHE`, `cache.policy`), on an unknown layer, an unknown flag, a
+ * spec's source (`--cache-policy`, `VX_CACHE_POLICY`, `cache.policy`), on an unknown layer, an unknown flag, a
  * duplicated flag, a missing colon, or a repeated layer.
  */
 export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_POLICY): CachePolicy {

@@ -11,6 +11,7 @@ import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
 import type { RunSummaryJson } from './run-artifacts.js'
 import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
+import type { RunSettings } from '../config.js'
 
 export interface RunOptions {
   cwd: string
@@ -67,7 +68,7 @@ export interface RunOptions {
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative
-   * to `cwd`. Takes precedence over the workspace `cacheDir` field and the
+   * to `cwd`. Takes precedence over the workspace `cache.dir` field and the
    * `.vx/cache` default. A per-run knob — never folded into a cache key.
    */
   cacheDir?: string
@@ -96,7 +97,7 @@ export interface RunOptions {
   /**
    * The `cache.scope` a run takes when `vx.workspace` names none. The CLI
    * passes `'read-only'` off CI (`CI` unset, `0` or `false`) unless
-   * `--cache` or `VX_CACHE` names the remote; omitted → trusted. Dropped
+   * `--cache` or `VX_CACHE_POLICY` names the remote; omitted → trusted. Dropped
    * when the workspace's `cache.policy` names the remote.
    */
   defaultCacheScope?: string
@@ -141,19 +142,18 @@ export interface RunOptions {
    */
   flow?: 'focused' | 'broad'
   /**
-   * Run-level retry default (`--retry <n>`): max additional attempts
+   * `run.retries` from its flag (`--retries <n>`): max additional attempts
    * after a failed attempt, for tasks that don't declare their own
-   * `exec.retries` (explicit config wins, including `retries: 0`).
-   * Threaded as an option only — never folded into any cache key, so
-   * the same run with and without `--retry` derives identical keys.
+   * `exec.retries` (explicit config wins, including `retries: 0`); unset,
+   * `VX_RUN_RETRIES`, then the workspace's. Never folded into any cache
+   * key, so the same run with and without `--retries` derives identical keys.
    * A non-negative integer; run() refuses anything else (C-61).
    */
   retries?: number
   /**
-   * Run-level default task timeout (ms), for tasks that declare no
-   * `exec.timeout`. Highest of the run-level defaults: `--timeout` /
-   * this option → `VX_TASK_TIMEOUT` env → workspace `timeout`. Per-task
-   * `exec.timeout` always wins. Threaded as an option only — never
+   * `run.timeout` in ms from its flag (`--timeout 30m`), for tasks that
+   * declare no `exec.timeout`; unset, `VX_RUN_TIMEOUT`, then the
+   * workspace's. Per-task `exec.timeout` always wins. Never
    * folded into any cache key (a timed-out task fails and is never
    * cached), so a `--timeout` run cache-hits a plain run's entry.
    * A positive integer of ms up to `2 ** 31 - 1`; run() refuses anything
@@ -169,6 +169,14 @@ export interface RunOptions {
    * `--continue[=never|deps-ok|always]`; bare `--continue` = 'always'.
    */
   continueMode?: ContinueMode
+  /** `run.schedule` from its flag; unset, `VX_RUN_SCHEDULE`, then the workspace's. */
+  schedule?: NonNullable<RunSettings['schedule']>
+  /** `run.killGrace` in ms from its flag; unset, `VX_RUN_KILL_GRACE`, then the workspace's. */
+  killGrace?: number
+  /** `run.teardownTimeout` in ms from its flag; unset, `VX_RUN_TEARDOWN_TIMEOUT`, then the workspace's. */
+  teardownTimeout?: number
+  /** `run.readyNotice` in ms from its flag; unset, `VX_RUN_READY_NOTICE`, then the workspace's. */
+  readyNotice?: number
   /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names

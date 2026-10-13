@@ -3,7 +3,7 @@
 // task's key again (item B-91). It now reuses the up-front key unless an
 // upstream may write where that key reads (its whole project), or a
 // root-anchored output may land there with no edge. Counted through
-// VX_TIMING's `task hash` span; a reused key is checked against the one
+// VX_DEBUG_TIMING's `task hash` span; a reused key is checked against the one
 // execute-task derives when `--force` skips the up-front pass.
 
 import { rm, writeFile } from 'node:fs/promises'
@@ -18,7 +18,7 @@ async function vx(root: string, args: string[]): Promise<{ out: string; err: str
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, NO_COLOR: '1', VX_TIMING: '1' },
+    env: { ...process.env, NO_COLOR: '1', VX_DEBUG_TIMING: '1' },
   })
   const [out, err] = await Promise.all([
     new Response(proc.stdout).text(),

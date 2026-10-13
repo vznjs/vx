@@ -42,8 +42,6 @@ import {
   stageTimes,
   killGraceMs,
   MAX_TIMEOUT_MS,
-  parseDuration,
-  parseSize,
   printTimings,
   ulid,
   isLiteralPattern,
@@ -130,6 +128,8 @@ import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
 import { createMissExplainer } from './miss-reason.js'
 import type { HeldServer, RunOptions, RunSummary } from './options.js'
+import { withRunSettings } from './run-settings.js'
+import { resolveSetting } from '../settings.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
 // is one `preProbed.set` away from leaking a hit across cycles.
@@ -139,28 +139,6 @@ const emptyShortCircuit = (): ShortCircuit => ({
   uncachedKeys: new Map(),
   groupKeys: new Map(),
 })
-
-/**
- * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
- * timeout default. A missing/empty/non-positive-integer value yields
- * `undefined` (ignored), so a typo never silently disables a task's own
- * `exec.timeout`. A value past `MAX_TIMEOUT_MS` is clamped to it — see below.
- *
- * Exported for `tests/options-resolve.test.ts`, which pins every accepted
- * and ignored form of this rung; it has no other caller outside this file.
- */
-export function readTaskTimeoutEnv(): number | undefined {
-  const raw = process.env['VX_TASK_TIMEOUT']
-  if (raw === undefined || raw === '') return undefined
-  const n = Number(raw)
-  if (!Number.isInteger(n) || n <= 0) return undefined
-  // CLAMPED, not refused — unlike `exec.timeout` and `--timeout`, this rung's
-  // contract is already "unusable value → fall back", so it never throws. But
-  // falling back is wrong here: someone who typed a huge number wants a long
-  // timeout, and the largest expressible one IS long (~24.8 days). Handing it
-  // to `setTimeout` unbounded would mean 1 ms — killing every task instantly.
-  return Math.min(n, MAX_TIMEOUT_MS)
-}
 
 /**
  * Compact the 4-axis cache policy into the `invocations.cache_policy`
@@ -294,6 +272,12 @@ function refuseRunOptions(options: RunOptions): void {
   oneOf('outputLogs', options.outputLogs, ['full', 'errors-only', 'none', 'hash-only'])
   oneOf('download', options.download, ['all', 'toplevel', 'none'])
   oneOf('flow', options.flow, ['focused', 'broad'])
+  oneOf('schedule', options.schedule, [
+    'most-work',
+    'critical-path',
+    'direct-dependents',
+    'ready-order',
+  ])
   const exclude = options.excludeDependencies
   if (exclude !== undefined && exclude !== 'all' && !names(exclude))
     refuse('excludeDependencies', exclude, "'all' or an array of task names")
@@ -304,11 +288,15 @@ function refuseRunOptions(options: RunOptions): void {
     refuse('concurrency', concurrency, 'a positive integer')
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     refuse('retries', retries, 'a non-negative integer')
-  if (
-    timeout !== undefined &&
-    !(Number.isInteger(timeout) && timeout > 0 && timeout <= MAX_TIMEOUT_MS)
-  )
-    refuse('timeout', timeout, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
+  for (const [name, ms] of [
+    ['timeout', timeout],
+    ['killGrace', options.killGrace],
+    ['teardownTimeout', options.teardownTimeout],
+    ['readyNotice', options.readyNotice],
+  ] as const) {
+    if (ms !== undefined && !(Number.isInteger(ms) && ms > 0 && ms <= MAX_TIMEOUT_MS))
+      refuse(name, ms, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
+  }
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
@@ -398,6 +386,7 @@ async function runOnBus(
   }
 
   const prepared = await prepareRun(options, log)
+  options = withRunSettings(options, prepared.workspaceConfig)
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
   // factories ran in prepareRun, and teardown is what releases what those
@@ -506,7 +495,7 @@ async function runOnBus(
     hashCache,
     workspaceProjectCount,
   } = prepared
-  const concurrency = options.concurrency ?? workspaceConfig?.concurrency ?? machineParallelism()
+  const concurrency = options.concurrency ?? machineParallelism()
   // An earlier cycle's servers: the ones this graph starts again unchanged
   // stay up; the others go now, before anything binds their ports. A stop
   // that lands meanwhile ends the run here, having run nothing: an aborted
@@ -598,7 +587,7 @@ async function runOnBus(
           }
         }
 
-  // `--download` (default `all`) decides ONCE per task, here, whether a
+  // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
   const downloadPolicy = options.download ?? 'all'
   const localPlaced = locallyPlaced(placements, nodes.keys())
@@ -609,17 +598,13 @@ async function runOnBus(
     remoteOnly: placements.remoteOnly,
   })
 
-  // Run-level default task timeout (ms), applied to any task WITHOUT its own
-  // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
-  // → `VX_TASK_TIMEOUT` env → workspace `timeout`. A malformed env value is
-  // ignored (a bad timeout must not silently disable a task's own limit).
-  const taskTimeoutDefault =
-    options.timeout ?? readTaskTimeoutEnv() ?? workspaceConfig?.timeout ?? undefined
+  // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
+  const taskTimeoutDefault = options.timeout
   // Read once, before any task: a bad value is refused here, not mid-run.
   const inputStability = {
     run: inputStabilityEnv(),
-    ...(workspaceConfig?.inputStability !== undefined
-      ? { workspace: workspaceConfig.inputStability }
+    ...(workspaceConfig?.cache?.inputStability !== undefined
+      ? { workspace: workspaceConfig.cache.inputStability }
       : {}),
   }
 
@@ -1068,6 +1053,7 @@ async function runOnBus(
       }
       if (options.retries !== undefined) a.retries = options.retries
       if (taskTimeoutDefault !== undefined) a.timeout = taskTimeoutDefault
+      if (options.readyNotice !== undefined) a.readyNotice = options.readyNotice
       a.inputStability = inputStability
       if (download.modeOf.get(node.id) === 'deferred') a.download = 'deferred'
       if (placements.remoteOnlyNoop.has(node.id)) a.remoteOnlyNoop = true
@@ -1195,9 +1181,7 @@ async function runOnBus(
       // baseline as the tie-break. Empty map → baseline only.
       ...(priorities.size > 0 ? { priorities } : {}),
       // The baseline under them; `most-work` when the workspace names none.
-      ...(prepared.workspaceConfig?.schedule !== undefined
-        ? { strategy: prepared.workspaceConfig.schedule }
-        : {}),
+      ...(options.schedule !== undefined ? { strategy: options.schedule } : {}),
       // Local short-circuit: confirmed stable local hits the scheduler
       // runs ahead of their deps as low-priority worker-slot backfill.
       // Empty when the short-circuit didn't fire → byte-identical.
@@ -1665,18 +1649,16 @@ async function runOnBus(
 }
 
 /**
- * The workspace's `cacheRetention`, after every save and upload of this run
+ * `cache.retention`, after every save and upload of this run
  * has landed (so nothing this run wrote is mid-flight) and before the cache
  * closes. Housekeeping, not the run's work: silent, and a failure is never
  * a failed run. Declared nowhere → one property read.
  */
 async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
-  const retention = prepared.workspaceConfig?.cacheRetention
-  if (retention === undefined) return
-  // Validated at load (`validateRetention`), so both parse.
-  const maxAgeMs =
-    retention.olderThan === undefined ? undefined : parseDuration(retention.olderThan)!
-  const maxBytes = retention.maxSize === undefined ? undefined : parseSize(retention.maxSize)!
+  const ws = prepared.workspaceConfig
+  const maxAgeMs = resolveSetting('cache.retention.olderThan', ws).value as number | undefined
+  const maxBytes = resolveSetting('cache.retention.maxSize', ws).value as number | undefined
+  if (maxAgeMs === undefined && maxBytes === undefined) return
   try {
     await prepared.localCache.evictIfDue({
       ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
@@ -1721,6 +1703,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
+  options = withRunSettings(options, prepared.workspaceConfig)
   try {
     if (prepared.unresolvedTasks.length > 0) {
       return {

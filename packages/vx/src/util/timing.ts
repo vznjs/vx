@@ -1,4 +1,5 @@
-// Stage timing for the run path, printed to stderr when `VX_TIMING` is set.
+// Stage timing for the run path, printed to stderr when `VX_DEBUG_TIMING` is
+// true (`debug.timing`; util reads it itself, below src/settings.ts).
 //
 // The CPU profiler attributes a tight loop's cost unreliably and hides
 // where an `await` waited; a stage table answers "where did the warm run
@@ -8,7 +9,7 @@
 // prints (a push per stage, ~15 a run): a telemetry sink draws them as
 // spans (`stageTimes`). The per-call `span`s stay off unless enabled.
 
-const enabled = process.env.VX_TIMING !== undefined && process.env.VX_TIMING !== ''
+const enabled = process.env.VX_DEBUG_TIMING === 'true' || process.env.VX_DEBUG_TIMING === '1'
 let t0 = Bun.nanoseconds()
 // The wall clock at t0, read then: `performance.timeOrigin` plus the
 // monotonic clock drifted 34 ms from `Date.now()` on macOS CI, so stages

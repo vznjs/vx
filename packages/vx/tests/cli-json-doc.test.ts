@@ -48,6 +48,8 @@ function objects(root: Schema): Set<string> {
       for (const p of Object.values(props)) walk(resolve(root, p))
     }
     if (s['items'] !== undefined) walk(resolve(root, s['items'] as Schema))
+    const map = s['additionalProperties']
+    if (typeof map === 'object' && map !== null) walk(resolve(root, map as Schema))
   }
   walk(root)
   for (const def of Object.values((root['$defs'] ?? {}) as Record<string, Schema>)) walk(def)

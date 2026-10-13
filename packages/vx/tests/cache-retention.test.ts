@@ -1,4 +1,4 @@
-// Item 658: the workspace's `cacheRetention` evicts from the local cache at
+// Item 658: the workspace's `cache.retention` evicts from the local cache at
 // the end of a run, by the policy `vx cache prune` takes as flags. Three
 // claims are held here: `evictIfDue` evicts exactly what `prune` would and
 // nothing when nothing is due; an entry the run itself just used is not
@@ -368,11 +368,11 @@ describe('Cache.evictIfDue', () => {
   })
 })
 
-describe('the cacheRetention field', () => {
+describe('the cache.retention field', () => {
   const WS = '/ws/vx.workspace.ts'
-  function refusal(cacheRetention: unknown): string | null {
+  function refusal(retention: unknown): string | null {
     try {
-      validateWorkspace({ cacheRetention } as WorkspaceConfig, WS)
+      validateWorkspace({ cache: { retention } } as WorkspaceConfig, WS)
       return null
     } catch (err) {
       return (err as Error).message
@@ -394,9 +394,9 @@ describe('the cacheRetention field', () => {
       refusal({ maxSize: '0G' }),
       refusal({ maxSize: '10' }),
     ]).toEqual([
-      `${WS}: \`cacheRetention.olderThan\` of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention.maxSize\` of 0 evicts every entry after every run`,
-      `${WS}: \`cacheRetention.maxSize\` '10' reads as 10 bytes — give a unit (e.g. '10M', '10G')`,
+      `${WS}: \`cache.retention.olderThan\` of 0 evicts every entry after every run`,
+      `${WS}: \`cache.retention.maxSize\` of 0 evicts every entry after every run`,
+      `${WS}: \`cache.retention.maxSize\` '10' reads as 10 bytes — give a unit (e.g. '10MB', '10GB')`,
     ])
     expect(refusal({ maxSize: '10B' })).toBeNull()
   })
@@ -410,12 +410,12 @@ describe('the cacheRetention field', () => {
       refusal({ olderThan: 30 }),
       refusal({ maxSize: '1.5G' }),
     ]).toEqual([
-      `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
-      `${WS}: \`cacheRetention\` must be { olderThan?: '30d', maxSize?: '10G' }`,
-      `${WS}: \`cacheRetention\` names neither \`olderThan\` nor \`maxSize\``,
-      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got "30 days")`,
-      `${WS}: \`cacheRetention.olderThan\` must be a duration like '30d', '12h', '90m' or '45s' (got 30)`,
-      `${WS}: \`cacheRetention.maxSize\` must be a size like '10G', '500MB' or '64KB' (got "1.5G")`,
+      `${WS}: \`cache.retention\` must be an object (fields: maxSize, olderThan)`,
+      `${WS}: \`cache.retention\` must be an object (fields: maxSize, olderThan)`,
+      `${WS}: \`cache.retention\` names neither \`olderThan\` nor \`maxSize\``,
+      `${WS}: \`cache.retention.olderThan\` must be a duration like '45s', '12h' or '30d' (got "30 days")`,
+      `${WS}: \`cache.retention.olderThan\` takes a duration with its unit, like '30ms' or '1s' (got 30)`,
+      `${WS}: \`cache.retention.maxSize\` must be a size like '500MB' or '10GB' (got "1.5G")`,
     ])
     expect(refusal({ maxAge: '30d' })).toContain('unknown field')
   })
@@ -472,7 +472,7 @@ describe('a run applies the workspace retention at its end', () => {
   }
 
   it("evicts what is due, silently; a run that did not touch it can't keep it", async () => {
-    const cacheDir = await setup("cacheRetention: { olderThan: '1d' }")
+    const cacheDir = await setup("cache: { retention: { olderThan: '1d' } }")
     const log = logger()
     const summary = await run({
       cwd: root,
@@ -493,7 +493,7 @@ describe('a run applies the workspace retention at its end', () => {
   // evicted while the other run held the lock (item 858). An aborted
   // signal is the same stop, in-process.
   it('a stopped run evicts nothing', async () => {
-    const cacheDir = await setup("cacheRetention: { olderThan: '1d' }")
+    const cacheDir = await setup("cache: { retention: { olderThan: '1d' } }")
     const log = logger()
     const stop = new AbortController()
     stop.abort()
@@ -510,7 +510,7 @@ describe('a run applies the workspace retention at its end', () => {
   })
 
   it('reaps row-less artifacts a deleted index left past the age limit, silently', async () => {
-    const cacheDir = await setup("cacheRetention: { olderThan: '1h' }")
+    const cacheDir = await setup("cache: { retention: { olderThan: '1h' } }")
     // The index goes (deleted by hand, or dropped by a schema reset); its
     // artifacts stay behind, and their file times are past the limit.
     await rm(path.join(cacheDir, 'cache.db'))
@@ -533,17 +533,21 @@ describe('a run applies the workspace retention at its end', () => {
   })
 
   // nx#35329: a cache moved outside the workspace was never evicted.
-  it('evicts from a cache directory outside the workspace, set by cacheDir or --cache-dir', async () => {
+  it('evicts from a cache directory outside the workspace, set by cache.dir or --cache-dir', async () => {
     const evicted: Record<string, unknown> = {}
-    for (const via of ['cacheDir', '--cache-dir'] as const) {
+    // VX_CACHE_DIR, which the gate sets, beats cache.dir.
+    const env = process.env['VX_CACHE_DIR']
+    for (const via of ['cache.dir', '--cache-dir'] as const) {
+      if (via === 'cache.dir') delete process.env['VX_CACHE_DIR']
+      else if (env !== undefined) process.env['VX_CACHE_DIR'] = env
       root = await makeWorkspace({ prefix: 'vx-retention-outside-' })
       const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-retention-shared-'))
       try {
         const where =
-          via === 'cacheDir' ? `, cacheDir: ${JSON.stringify(path.relative(root, outside))}` : ''
+          via === 'cache.dir' ? `, dir: ${JSON.stringify(path.relative(root, outside))}` : ''
         await writeFile(
           path.join(root, 'vx.workspace.mjs'),
-          `export default { cacheRetention: { olderThan: '1d' }${where} }\n`,
+          `export default { cache: { retention: { olderThan: '1d' }${where} } }\n`,
         )
         await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })
         await addProject(root, 'b', { config: task('b'), files: { 'src/b.txt': 'b' } })
@@ -575,12 +579,13 @@ describe('a run applies the workspace retention at its end', () => {
           said: log.lines.filter((l) => l.includes('retention')).length,
         }
       } finally {
+        if (env !== undefined) process.env['VX_CACHE_DIR'] = env
         await rm(outside, { recursive: true, force: true })
         await rm(root, { recursive: true, force: true })
       }
     }
     expect(evicted).toEqual({
-      cacheDir: { left: ['b'], said: 0 },
+      'cache.dir': { left: ['b'], said: 0 },
       '--cache-dir': { left: ['b'], said: 0 },
     })
   })

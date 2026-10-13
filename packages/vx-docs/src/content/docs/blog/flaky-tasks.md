@@ -23,7 +23,7 @@ A task is **flaky** when one of two things is on record:
 
 - its exact cache key **failed after it had passed**, this run
   included (a cache hit counts as a pass; it replayed one), or
-- it needed a **retry** this run (`exec.retries` or `--retry`) and then
+- it needed a **retry** this run (`exec.retries` or `--retries`) and then
   passed.
 
 A failure on a key that never passed is a **break**. The inputs

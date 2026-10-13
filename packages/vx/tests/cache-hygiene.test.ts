@@ -14,8 +14,8 @@ import {
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
-// (`VX_KILL_GRACE_MS`, see util/settle.ts); children inherit it.
-process.env['VX_KILL_GRACE_MS'] = '200'
+// (`VX_RUN_KILL_GRACE`, see util/settle.ts); children inherit it.
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 30_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')

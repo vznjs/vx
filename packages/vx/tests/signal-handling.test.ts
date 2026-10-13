@@ -19,11 +19,11 @@ import { terminateChildren } from '../src/orchestrator/signals.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
-// (`VX_KILL_GRACE_MS`, see util/settle.ts). Each spawn passes it in `env`:
+// (`VX_RUN_KILL_GRACE`, see util/settle.ts). Each spawn passes it in `env`:
 // `Bun.spawn` without one hands the child the process's STARTUP
 // environment, not `process.env` as written since (Bun 1.4.2), so until
 // item 849 every vx here ran on the 2 s default.
-process.env['VX_KILL_GRACE_MS'] = '200'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const SIGNALS = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts')
@@ -200,7 +200,7 @@ describe('signal handling during vx run (e2e)', () => {
         env: {
           ...process.env,
           TMPDIR: tmp,
-          ...(signals === 2 ? { VX_KILL_GRACE_MS: '5000' } : {}),
+          ...(signals === 2 ? { VX_RUN_KILL_GRACE: '5000ms' } : {}),
         },
       })
       const up = path.join(fixture.root, 'packages', 'app', 'up.txt')
@@ -354,7 +354,7 @@ describe('signal handling during vx run (e2e)', () => {
         cwd: fixture.root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       })
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
@@ -400,7 +400,7 @@ describe('signal handling during vx run (e2e)', () => {
         cwd: fixture.root,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       })
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
@@ -482,7 +482,7 @@ describe('signal handling during vx run (e2e)', () => {
     // (PR #929). vx exits when the child does, so a long grace costs nothing.
     const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
       cwd: fixture.root,
-      env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -511,7 +511,7 @@ describe('signal handling during vx run (e2e)', () => {
       await Bun.write(path.join(dir, 'in.txt'), 'in')
       const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
         cwd: fixture.root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -544,7 +544,7 @@ describe('signal handling during vx run (e2e)', () => {
       )
       const proc = Bun.spawn([process.execPath, BIN, 'run', 't', '--all'], {
         cwd: fixture.root,
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -661,7 +661,7 @@ describe('signal handling during vx run (e2e)', () => {
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'app#big'], {
         cwd: fixture.root,
         // CI mode is where the empty write lost the tail.
-        env: { ...process.env, VX_KILL_GRACE_MS: '5000', CI: 'true' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms', CI: 'true' },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -1025,19 +1025,19 @@ describe('terminateChildren — what the sweep leaves behind', () => {
   )
 
   it(
-    'the grace is VX_KILL_GRACE_MS when it is set',
+    'the grace is VX_RUN_KILL_GRACE when it is set',
     async () => {
       // A cleanup of 2.2 s outlasts the 2 s default and fits a 5 s grace.
       const child = spawnIn(
         "trap 'sleep 2.2; echo done > done.txt; exit 0' TERM; echo up > child.up; while :; do sleep 0.05; done",
       )
       await marker('child.up')
-      process.env['VX_KILL_GRACE_MS'] = '5000'
+      process.env['VX_RUN_KILL_GRACE'] = '5000ms'
       try {
         await terminateChildren(() => [child])
         expect(readFileSync(path.join(dir, 'done.txt'), 'utf8')).toBe('done\n')
       } finally {
-        process.env['VX_KILL_GRACE_MS'] = '200'
+        process.env['VX_RUN_KILL_GRACE'] = '200ms'
         killGroup(child.pid)
       }
     },
@@ -1045,10 +1045,10 @@ describe('terminateChildren — what the sweep leaves behind', () => {
   )
 
   it(
-    'without VX_KILL_GRACE_MS the grace is two seconds',
+    'without VX_RUN_KILL_GRACE the grace is two seconds',
     async () => {
       const child = await stubborn('child')
-      delete process.env['VX_KILL_GRACE_MS']
+      delete process.env['VX_RUN_KILL_GRACE']
       try {
         const started = Date.now()
         await terminateChildren(() => [child])
@@ -1058,7 +1058,7 @@ describe('terminateChildren — what the sweep leaves behind', () => {
           under5s: true,
         })
       } finally {
-        process.env['VX_KILL_GRACE_MS'] = '200'
+        process.env['VX_RUN_KILL_GRACE'] = '200ms'
         killGroup(child.pid)
       }
     },

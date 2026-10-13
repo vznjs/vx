@@ -63,7 +63,7 @@ function workspace(prefix: string): string {
 }
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
-  delete process.env['VX_TEARDOWN_TIMEOUT_MS']
+  delete process.env['VX_RUN_TEARDOWN_TIMEOUT']
 })
 
 describe('telemetry flush is time-bounded', () => {
@@ -72,7 +72,7 @@ describe('telemetry flush is time-bounded', () => {
     // failing — which is exactly the production symptom: run() never returns,
     // Bun drains an empty loop, and `process.exit(await run(...))` exits 0 on
     // a run that failed.
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '250'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '250ms'
     const warnings: string[] = []
     const wedged: TelemetrySink = { flush: () => new Promise<void>(() => {}) }
     const source = createTelemetrySource({
@@ -92,7 +92,7 @@ describe('telemetry flush is time-bounded', () => {
   // and `vx run`, alive after the run returned (item 1055). The sink is
   // told when its time is up, so it can end its own I/O.
   it('the signal a flush receives aborts at the deadline', async () => {
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '100'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '100ms'
     let seen: AbortSignal | undefined
     const listening: TelemetrySink = {
       flush: (signal) => {
@@ -106,7 +106,7 @@ describe('telemetry flush is time-bounded', () => {
   }, 15_000)
 
   it('a healthy sink still completes its flush, and no timeout is reported', async () => {
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '2000'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '2000ms'
     const warnings: string[] = []
     let flushed = false
     const source = createTelemetrySource({
@@ -127,7 +127,7 @@ describe('telemetry flush is time-bounded', () => {
   })
 
   it('one wedged sink does not rob a healthy sibling of its budget', async () => {
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '500'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '500ms'
     let flushed = false
     const source = createTelemetrySource({
       sinks: [
@@ -146,7 +146,7 @@ describe('telemetry flush is time-bounded', () => {
   })
 
   it('a failing run with a wedged telemetry sink still exits non-zero', async () => {
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '250'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '250ms'
     const root = workspace('vx-tel-hang-')
     await Bun.write(
       path.join(root, 'package.json'),
@@ -204,7 +204,7 @@ describe('a hook that never settles', () => {
   }
 
   it('in telemetry(): the plugin is dropped with a warning and the run runs', async () => {
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '200'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '200ms'
     const root = await fixture(`{ telemetry() { return new Promise(() => {}) } }`)
     const lines: string[] = []
     const summary = await run({

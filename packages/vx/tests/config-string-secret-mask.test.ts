@@ -39,7 +39,7 @@ export default { tasks: {
   srv: { exec: { command: 'true', persistent: { readyWhen: \`up \${t}\` } } },
   wait: { exec: {
     command: 'exec sleep 30',
-    timeout: 1500,
+    timeout: '1500ms',
     env: { secret: ['GH_PAT'] },
     persistent: { readyWhen: \`up \${t} \${p}\` },
   } },
@@ -164,8 +164,8 @@ it("the picker's menu masks the description", async () => {
 })
 
 it('the readiness notice masks a secret in readyWhen, a listed one too', async () => {
-  const saved = process.env.VX_READY_NOTICE_MS
-  process.env.VX_READY_NOTICE_MS = '200'
+  const saved = process.env.VX_RUN_READY_NOTICE
+  process.env.VX_RUN_READY_NOTICE = '200ms'
   const lines: string[] = []
   const log: Logger = {
     status: (s) => void lines.push(s),
@@ -176,8 +176,8 @@ it('the readiness notice masks a secret in readyWhen, a listed one too', async (
   try {
     await run({ cwd: root, tasks: ['app#wait'], log, handleSignals: false })
   } finally {
-    if (saved === undefined) delete process.env.VX_READY_NOTICE_MS
-    else process.env.VX_READY_NOTICE_MS = saved
+    if (saved === undefined) delete process.env.VX_RUN_READY_NOTICE
+    else process.env.VX_RUN_READY_NOTICE = saved
   }
   expect(lines.filter((l) => l.includes('not ready after'))).toEqual([
     'vx: app#wait not ready after 200 ms: waiting for a line matching /up *** ***/ (readyWhen)',

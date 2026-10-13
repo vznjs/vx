@@ -22,6 +22,7 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
+`settings` (`{ [path]: { value, source } }`),
 `cacheRetention` (the workspace's, `maxSize` also as `maxBytes`; null when none),
 `orphans`, `runs24h`, `hits24h`, `restored24h` (of those hits, the ones that restored outputs), `flakyTasks`, `lockfile`, `sandbox`
 (`{ available, reason, declared, untraced }`: whether this host can run
@@ -49,7 +50,7 @@ tasks` that hides a typo is the fact a bug report needs.
 - **The machine as the process may use it.** `workers` and `memory` read
   `util/cgroup.ts`, so inside a container they say what the cgroup
   allows and name it as the source.
-- **`cacheDir` follows the run's rule**: an override resolves against
+- **`cache.dir` follows the run's rule**: an override resolves against
   `cwd` exactly as `vx run --cache-dir` does, else the workspace's.
 
 ## Tests

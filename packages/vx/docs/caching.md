@@ -713,7 +713,7 @@ task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
 `package.json`) sets `cache.inputStability: { strategy: 'mutable' }`, and a write
 during its command is then judged by its bytes, as an earlier write is;
-different bytes still withhold the entry. `VX_INPUT_STABILITY=mutable`
+different bytes still withhold the entry. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes that the default (owner, 2026-10-12); `'unchecked'` skips the
 check, and `severity: 'error'` fails the task instead of warning
 (`docs/schema.md`). A file ADDED under an
@@ -1107,7 +1107,7 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 An eviction can still land between a hit's probe and its restore: a
-`vx cache prune` in another shell, or the `cacheRetention` of another
+`vx cache prune` in another shell, or the `cache.retention` of another
 workspace that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
@@ -1140,7 +1140,7 @@ same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
-(EACCES: …)`, naming the workspace `cacheDir` field and `--cache-dir`;
+(EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
 the readers and `vx cache prune` find no cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
@@ -1204,7 +1204,7 @@ when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
-cache directory (`cacheDir` in vx.workspace.ts, `--cache-dir`, or
+cache directory (`cache.dir` in vx.workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
 
@@ -1404,7 +1404,7 @@ miss, and the save that follows replaces it. An inline artifact with no
 row is indexed the same way, from its bytes, in one transaction; a reset
 keeps the `artifacts` table, but deleting `store.db` or `cache.db` by
 hand takes the inline artifacts with it. A `.tmp-*` a crashed save
-left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cacheRetention`, at
+left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due). A
 row-less artifact may be in use: two vx versions share one store, and
@@ -1834,7 +1834,7 @@ The cache records the version it was written under
 misses once and re-saves, with nothing printed (owner, 2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
 until they age out under `vx cache prune --older-than` or
-`cacheRetention`; no key derives to them again.
+`cache.retention`; no key derives to them again.
 
 Required when:
 

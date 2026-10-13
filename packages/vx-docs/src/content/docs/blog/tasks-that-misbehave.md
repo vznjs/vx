@@ -67,10 +67,10 @@ Driving a different workspace from a task is fine.
 
 ```sh frame="terminal"
 $ vx run @demo/api#hang
-vx: packages/api/vx.config.ts:8:42: tasks.hang.exec.timeout must be a positive integer (milliseconds)
+vx: packages/api/vx.config.ts:8:42: tasks.hang.exec.timeout takes a duration with its unit, like '1000ms' or '1s' (got 1000)
   6 |       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
   7 |     },
-> 8 |     hang: { exec: { command: 'sleep 30', timeout: '1s' } },
+> 8 |     hang: { exec: { command: 'sleep 30', timeout: 1000 } },
     |                                          ^
 ```
 

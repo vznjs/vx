@@ -24,7 +24,7 @@ async function additive(opts: { prefix: string }): Promise<string> {
   const root = await makeWorkspace(opts)
   await writeFile(
     path.join(root, 'vx.workspace.mjs'),
-    'export default { rules: { exclusiveOutputs: false } }\n',
+    'export default { run: { rules: { exclusiveOutputs: false } } }\n',
   )
   return root
 }
@@ -124,7 +124,7 @@ describe('overlapping outputs under the default rules', () => {
           config: configFor(SHAPES.subdirectory),
         })
         await expect(run({ cwd: root, tasks: TASKS, log: silent })).rejects.toThrow(
-          /app#build and app#individual both declare the output .* rules: \{ exclusiveOutputs: false \}/,
+          /app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
         )
         expect(tree(app)).toEqual([])
       } finally {

@@ -148,9 +148,22 @@ describe('the feature data', () => {
     )
     // `VX_E_…` is an error code (cli.md), not a variable.
     expect(names.size).toBeGreaterThan(0)
+    // A setting's variable is derived from its path (src/settings.ts envName).
+    const settings = new Set(
+      [...src.matchAll(/^ {4}path: '([\w.]+)',$/gm)].map(
+        (m) =>
+          `VX_${m[1]!
+            .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+            .replace(/\./g, '_')
+            .toUpperCase()}`,
+      ),
+    )
+    expect(settings.has('VX_RUN_TIMEOUT')).toBe(true)
     // `process.env['VX_X']` or `process.env.VX_X`: a read, not a mention.
     expect(
-      [...names].filter((n) => !src.includes(`env['${n}']`) && !src.includes(`env.${n} `)),
+      [...names].filter(
+        (n) => !settings.has(n) && !src.includes(`env['${n}']`) && !src.includes(`env.${n} `),
+      ),
     ).toEqual([])
   })
 

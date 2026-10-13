@@ -61,7 +61,7 @@ it('runs the command and says where; stops it on exec.timeout', async () => {
     'a',
     `export default { tasks: {
       hello: { exec: { command: 'echo hi > out.txt' } },
-      slow: { exec: { command: 'exec sleep 30', timeout: 300 } },
+      slow: { exec: { command: 'exec sleep 30', timeout: '300ms' } },
     } }`,
   )
   await workspace('shellExecutor()')

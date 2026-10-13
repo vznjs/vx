@@ -794,7 +794,7 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
         fixture.root,
         'to',
         `export default { tasks: { t: {
-          exec: { command: 'echo x >> tries.txt; exec sleep 5', timeout: 1000, retries: 1 },
+          exec: { command: 'echo x >> tries.txt; exec sleep 5', timeout: '1s', retries: 1 },
         } } }`,
       )
       const r = await run({
@@ -960,7 +960,7 @@ describe('execute-task — what one attempt may hand the next', () => {
       const f = { root: '', out: [] as string[], err: [] as string[] }
       try {
         const log = capturingLogger(f)
-        const n = node(b, { exec: { command: 'true', timeout: 300 } }, 'proj#trap')
+        const n = node(b, { exec: { command: 'true', timeout: '300ms' } }, 'proj#trap')
         const trapped = {
           name: 'org/trapped',
           execute: async () => ({
@@ -994,7 +994,7 @@ describe('execute-task — what one attempt may hand the next', () => {
       const b = await bench()
       const f = { root: '', out: [] as string[], err: [] as string[] }
       try {
-        const n = node(b, { exec: { command: 'true', timeout: 50, sandbox: {} } }, 'proj#sb')
+        const n = node(b, { exec: { command: 'true', timeout: '50ms', sandbox: {} } }, 'proj#sb')
         const seen: (boolean | undefined)[] = []
         const recorder = {
           name: 'org/recorder',
@@ -2461,7 +2461,7 @@ describe('execute-task edges', () => {
 
   it("a step's own timeout and retries win over the run's", async () => {
     const slow = await executeTask({
-      ...baseArgs(b, node(b, { exec: { command: 'sleep 0.3', timeout: 10_000 } }), log),
+      ...baseArgs(b, node(b, { exec: { command: 'sleep 0.3', timeout: '10s' } }), log),
       timeout: 50,
     })
     expect([slow.status, slow.timedOut]).toEqual(['success', undefined])
@@ -2488,7 +2488,7 @@ describe('execute-task edges', () => {
       return { exitCode: 0, durationMs: 150, stdout: '', stderr: '', violations: [] }
     }
     const o = await executeTask({
-      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: 50 } }), log),
+      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: '50ms' } }), log),
       executor: local,
     })
     expect([o.status, o.exitCode, o.timedOut, aborted]).toEqual(['success', 0, undefined, false])
@@ -2529,7 +2529,7 @@ describe('execute-task edges', () => {
         }),
     } as TaskExecutor
     const o = await executeTask({
-      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: 50 } }), log),
+      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: '50ms' } }), log),
       executor: stubborn,
     })
     expect([o.status, o.timedOut]).toEqual(['failed', true])

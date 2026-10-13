@@ -49,6 +49,7 @@ import {
   loadCliProjects,
   loadCliWorkspace,
 } from './workspace-config.js'
+import { resolveSetting } from '../settings.js'
 
 /**
  * The projects whose tasks declare a `cache.inputs.workspaceFiles` glob
@@ -251,14 +252,17 @@ function refusalOf(err: unknown): Refusal {
 
 /**
  * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
- * projects and their dependents. An empty base is the workspace's
- * `affectedBase` (or a plugin's `config` stage, from nx.json's
+ * projects and their dependents. An empty base is `run.affectedBase`
+ * (its variable, then the workspace's, which a plugin's `config` stage may set from nx.json's
  * `defaultBase` or `TURBO_SCM_BASE`), then the guess.
  */
 export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   let base = affected
-  if (base === '') base = (await loadCliWorkspace(root)).workspaceConfig?.affectedBase ?? ''
+  if (base === '') {
+    const ws = (await loadCliWorkspace(root)).workspaceConfig
+    base = (resolveSetting('run.affectedBase', ws).value as string | undefined) ?? ''
+  }
   if (base === '') {
     try {
       base = await defaultAffectedBase(root)

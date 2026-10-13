@@ -58,14 +58,14 @@ describe('executors: the mapper', () => {
         return typeof t.options['command'] === 'string'
           ? {
               command: t.options['command'],
-              timeout: t.options['timeoutMs'] as number,
+              timeout: `${t.options['timeoutMs'] as number}ms`,
               env: { MODE: t.configuration ?? 'default' },
             }
           : undefined
       },
     })
     expect(exec['build']!['command']).toBe('tsc -b')
-    expect(exec['build']!['timeout']).toBe(60_000)
+    expect(exec['build']!['timeout']).toBe('60000ms')
     expect((exec['build']!['env'] as { define: Record<string, unknown> }).define['MODE']).toBe(
       'default',
     )
@@ -100,7 +100,10 @@ describe('executors: the mapper', () => {
   for (const [ret, message] of [
     ['x', 'must return { command } or undefined'],
     [{ command: '' }, 'command must be a non-empty string'],
-    [{ command: 'x', timeout: 1.5 }, 'timeout must be a positive integer (ms)'],
+    [
+      { command: 'x', timeout: 1500 },
+      "timeout must be a duration with its unit, like '30s' or '10m'",
+    ],
     [{ command: 'x', env: { A: 1 } }, 'env must map names to strings'],
     [{ command: 'x', cwd: '.' }, 'unknown field "cwd" (allowed: command, env, timeout)'],
   ] as const) {

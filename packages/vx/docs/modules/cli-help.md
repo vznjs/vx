@@ -71,9 +71,11 @@ gap before its description.
 - `Usage` — one line per verb.
 - `Selection (for run)` — default / `--all` / `--filter` / `--affected`
   / `pkg#task`.
-- `Execution (for run)` — concurrency, `--exclude-dependencies`,
-  `--no-cache` / `--force`, `--cache`, `--continue`, `--retry`,
-  `--timeout`, `--frozen`, `--output-logs`, `--verbosity`.
+- `Execution (for run)` — concurrency, `--schedule`,
+  `--exclude-dependencies`, `--no-cache` / `--force`, `--cache-policy`,
+  `--continue`, `--retries`, `--timeout`, `--kill-grace`,
+  `--teardown-timeout`, `--ready-notice`, `--frozen`, `--output-logs`,
+  `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
 - `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,
   `--report-file`, `--tag`.

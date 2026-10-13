@@ -187,7 +187,7 @@ workspace fingerprint files (lockfiles), `vx.workspace.*`, the root
 `cache.inputs.workspaceFiles`, one recursive root watcher replaces them
 all. Path filter drops the segments `node_modules`, `.git` and `.vx`,
 the suffixes `.tsbuildinfo` and a trailing `~`, the run's resolved
-cache dir (which `.vx` covers only until `cacheDir` relocates it), the
+cache dir (which `.vx` covers only until `cache.dir` relocates it), the
 watch probe file, and declared outputs plus the directories holding
 them (unless a task reads the path as an input). Git-ignored paths
 (one `git check-ignore` per judgement) start no cycle, except an edit

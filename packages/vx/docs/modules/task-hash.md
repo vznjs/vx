@@ -110,7 +110,7 @@ export interface UpfrontGroupKey {
   (less that widening for a whole-second stamp), whatever it holds now:
   an input changed and changed BACK while the command ran matches its
   digest again (item 1015). With `writesByBytes` (execute-task sets it
-  for `inputStability.strategy: 'mutable'` or `VX_INPUT_STABILITY=mutable`)
+  for `inputStability.strategy: 'mutable'` or `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`)
   such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream

@@ -469,7 +469,7 @@ export function dependsOnSiblingOutputs(
     if (inputs === undefined || outputs.length === 0) return true
     // An output the reader's own `!` inputs take back whole is not in its
     // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
-    // before and after it, which is what `rules.upfrontKeys` asks a config
+    // before and after it, which is what `run.rules.upfrontKeys` asks a config
     // to write (X-54).
     const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
     const reach = back.length === 0 ? outputs : outputs.filter((o) => !outputTakenBack(o, back))

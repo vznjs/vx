@@ -10,7 +10,7 @@
 //   - Values the user WRITES and reads back (`exec.timeout`, workspace
 //     `timeout`, `--timeout`) are REFUSED. Silently substituting ~24.8 days for
 //     the 317 years they asked for trades one surprise for a quieter one.
-//   - `VX_TASK_TIMEOUT` is CLAMPED. Omitting a task timeout already means "no
+//   - `VX_RUN_TIMEOUT` is CLAMPED. Omitting a task timeout already means "no
 //     limit", so the largest expressible one is indistinguishable from what the
 //     user wanted, and this rung never throws by design.
 //   - The teardown and config-worker deadlines FALL BACK to their defaults.
@@ -30,12 +30,12 @@ import type { ProjectConfig } from '../src/config.js'
 import { teardownTimeoutMs } from '../src/util/settle.js'
 import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
-import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
+import { settingEnv } from '../src/settings.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { restoreEnv } from './helpers/env.js'
 
-function taskWithTimeout(timeout: number): ProjectConfig {
-  return { tasks: { build: { exec: { command: 'true', timeout } } } } as ProjectConfig
+function taskWithTimeout(ms: number): ProjectConfig {
+  return { tasks: { build: { exec: { command: 'true', timeout: `${ms}ms` } } } } as ProjectConfig
 }
 
 describe('MAX_TIMEOUT_MS is the platform bound, not a number we picked', () => {
@@ -75,7 +75,7 @@ describe('declared timeouts are REFUSED past the bound', () => {
     // obvious next move is to try a slightly smaller huge number.
     expect(msg).toContain('exceeds the maximum timer delay')
     expect(msg).toContain(String(MAX_TIMEOUT_MS))
-    expect(msg).toContain('Omit `timeout` for no limit')
+    expect(msg).toContain('omit it for no limit')
   })
 
   it('exec.timeout at exactly the bound is accepted', () => {
@@ -105,10 +105,13 @@ describe('declared timeouts are REFUSED past the bound', () => {
       // own, so an unbounded value here kills the WHOLE run instantly rather
       // than one task — a strictly worse blast radius than `exec.timeout`.
       const write = async (v: number): Promise<void> =>
-        await writeFile(path.join(root, 'vx.workspace.mjs'), `export default { timeout: ${v} }`)
+        await writeFile(
+          path.join(root, 'vx.workspace.mjs'),
+          `export default { run: { timeout: '${v}ms' } }`,
+        )
 
       await write(MAX_TIMEOUT_MS)
-      expect((await loadWorkspaceConfig(root))?.timeout).toBe(MAX_TIMEOUT_MS)
+      expect((await loadWorkspaceConfig(root))?.run?.timeout).toBe(`${MAX_TIMEOUT_MS}ms`)
 
       await write(MAX_TIMEOUT_MS + 1)
       await expect(loadWorkspaceConfig(root)).rejects.toThrow(/exceeds the maximum timer delay/)
@@ -119,47 +122,35 @@ describe('declared timeouts are REFUSED past the bound', () => {
     // Same treatment as the config declaration: this is a value the user typed
     // and can read back, so substituting a different one silently would be the
     // quieter surprise rather than no surprise.
-    const at = parseRunArgs(['build', '--timeout', String(MAX_TIMEOUT_MS)])
+    const at = parseRunArgs(['build', '--timeout', `${MAX_TIMEOUT_MS}ms`])
     expect(at.error).toBeUndefined()
-    expect(at.timeout).toBe(MAX_TIMEOUT_MS)
+    expect(at.settings['run.timeout']).toBe(MAX_TIMEOUT_MS)
 
-    const over = parseRunArgs(['build', '--timeout', String(MAX_TIMEOUT_MS + 1)])
+    const over = parseRunArgs(['build', '--timeout', `${MAX_TIMEOUT_MS + 1}ms`])
     expect(over.error).toContain('exceeds the maximum timer delay')
-    expect(over.error).toContain('reduced to 1 ms')
+    expect(over.error).toContain('fires at once')
   })
 })
 
-describe('env knobs are CLAMPED, because their contract never throws', () => {
+describe('env knobs past the ceiling: a timeout is refused, a bound falls back', () => {
   const saved = { ...process.env }
   afterEach(() => {
     restoreEnv(saved)
   })
 
-  it('VX_TASK_TIMEOUT clamps instead of inverting', () => {
-    // Falling back to "no run-level default" would also be safe, but it
-    // discards a clear intent. The largest expressible timeout is ~24.8 days,
-    // which is what someone typing eleven digits actually wants.
-    process.env['VX_TASK_TIMEOUT'] = '9999999999999'
-    expect(readTaskTimeoutEnv()).toBe(MAX_TIMEOUT_MS)
-
-    process.env['VX_TASK_TIMEOUT'] = String(MAX_TIMEOUT_MS)
-    expect(readTaskTimeoutEnv()).toBe(MAX_TIMEOUT_MS)
-
-    process.env['VX_TASK_TIMEOUT'] = '120000'
-    expect(readTaskTimeoutEnv()).toBe(120_000)
+  it('VX_RUN_TIMEOUT past the ceiling is refused, as the flag and the file are', () => {
+    // Clamping it guessed at intent; the CLI checks every setting variable
+    // before a run (checkSettingsEnv), so a typo is said, not absorbed.
+    expect(settingEnv('run.timeout', { VX_RUN_TIMEOUT: `${MAX_TIMEOUT_MS}ms` })).toBe(
+      MAX_TIMEOUT_MS,
+    )
+    expect(() => settingEnv('run.timeout', { VX_RUN_TIMEOUT: '9999999999999ms' })).toThrow(
+      'exceeds the maximum timer delay',
+    )
+    expect(settingEnv('run.timeout', { VX_RUN_TIMEOUT: '120s' })).toBe(120_000)
   })
 
-  it('VX_TASK_TIMEOUT still IGNORES a malformed value', () => {
-    // The pre-existing contract, pinned so the clamp did not quietly replace
-    // it: a typo must not disable a task's own `exec.timeout`, so it yields
-    // undefined rather than a number.
-    for (const bad of ['abc', '0', '-5', '1.5', '']) {
-      process.env['VX_TASK_TIMEOUT'] = bad
-      expect({ bad, got: readTaskTimeoutEnv() }).toEqual({ bad, got: undefined })
-    }
-  })
-
-  it('VX_TEARDOWN_TIMEOUT_MS FALLS BACK rather than clamping — it is a bound', () => {
+  it('VX_RUN_TEARDOWN_TIMEOUT FALLS BACK rather than clamping — it is a bound', () => {
     // The exception to this block's title, and the distinction is load-bearing.
     //
     // Unbounded, this is the sharpest instance of the class: the deadline
@@ -177,21 +168,21 @@ describe('env knobs are CLAMPED, because their contract never throws', () => {
     // reading, because the deadline exists precisely so a plugin's flush cannot
     // hold the run's exit hostage. Out-of-range therefore falls back to the
     // default, which keeps the bound real at both ends.
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '9999999999999'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '9999999999999ms'
     expect(teardownTimeoutMs()).toBe(3000)
 
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = String(MAX_TIMEOUT_MS + 1)
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS + 1}ms`
     expect(teardownTimeoutMs()).toBe(3000)
 
     // At the ceiling it is honoured, so the fallback is a bound and not a cap
     // on anything a user can reasonably ask for.
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = String(MAX_TIMEOUT_MS)
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS}ms`
     expect(teardownTimeoutMs()).toBe(MAX_TIMEOUT_MS)
 
-    process.env['VX_TEARDOWN_TIMEOUT_MS'] = '250'
+    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '250ms'
     expect(teardownTimeoutMs()).toBe(250)
 
-    delete process.env['VX_TEARDOWN_TIMEOUT_MS']
+    delete process.env['VX_RUN_TEARDOWN_TIMEOUT']
     expect(teardownTimeoutMs()).toBe(3000)
   })
 })
@@ -218,7 +209,7 @@ describe('the refusal reaches a real run', () => {
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       'export default { tasks: { build: { exec: { command: "sleep 2 && echo BUILT > out.txt", ' +
-        'timeout: 9999999999999 }, cache: { inputs: { files: ["src/**"] }, ' +
+        'timeout: "9999999999999ms" }, cache: { inputs: { files: ["src/**"] }, ' +
         'outputs: { files: ["out.txt"] } } } } }',
     )
     Bun.spawnSync(['git', 'init', '-q'], { cwd: root })

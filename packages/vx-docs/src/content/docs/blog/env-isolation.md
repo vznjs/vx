@@ -99,7 +99,7 @@ cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files:
 Dropping variables keeps builds the same from machine to machine. It is
 not a wall: an unsandboxed task runs as you and reads any file you can.
 vx does hide its own environment from it: on Linux vx makes itself
-non-dumpable (`VX_DUMPABLE=1` turns that off for strace and debuggers),
+non-dumpable (`VX_DEBUG_DUMPABLE=1` turns that off for strace and debuggers),
 and on macOS it zeroes the values `ps eww` reads, every variable but the
 essentials every task gets. That guards the environment only, not your
 files. To keep a task away from what it was not given, sandbox it with

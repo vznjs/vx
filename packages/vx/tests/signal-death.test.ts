@@ -36,7 +36,7 @@ describe('a task killed by a signal', () => {
             // an inner sh dies; the outer shell reports 139 with no signal
             // (a subshell's $$ is still the outer shell's pid).
             segv: { exec: { command: "sh -c 'kill -SEGV $$'; exit $?" } },
-            slow: { exec: { command: 'sleep 5', timeout: 300 } },
+            slow: { exec: { command: 'sleep 5', timeout: '300ms' } },
           },
         }
       `,

@@ -20,9 +20,9 @@ export interface RunOptions {
   affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
-  concurrency?: number
+  concurrency?: number // run.concurrency: the flag, else VX_RUN_CONCURRENCY, else vx.workspace (withRunSettings)
   cacheDir?: string // --cache-dir, resolved against cwd
-  cache?: CachePolicy // --cache / VX_CACHE resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
+  cache?: CachePolicy // --cache-policy / VX_CACHE_POLICY resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and vx.workspace
@@ -31,9 +31,13 @@ export interface RunOptions {
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   flow?: 'focused' | 'broad'
-  retries?: number
-  timeout?: number
+  retries?: number // run.retries; a task's exec.retries beats it
+  timeout?: number // run.timeout in ms; a task's exec.timeout beats it
   continueMode?: ContinueMode
+  schedule?: NonNullable<RunSettings['schedule']> // run.schedule
+  killGrace?: number // run.killGrace in ms
+  teardownTimeout?: number // run.teardownTimeout in ms
+  readyNotice?: number // run.readyNotice in ms
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   summarize?: string

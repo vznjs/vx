@@ -145,7 +145,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           exec: {
             command: '(cat ../../secret.txt && echo LEAKED) 2>/dev/null || echo DENIED; echo Listening; sleep 30',
             persistent: { readyWhen: 'Listening' },
-            timeout: 15000,
+            timeout: '15s',
             ${sandbox ? "sandbox: { allow: { read: ['**/*'] } }," : ''}
           },
         },
@@ -238,7 +238,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             dev: { exec: {
               command: 'echo Listening > /dev/stdout && exec sleep 30',
               persistent: { readyWhen: 'Listening' },
-              timeout: 15000,
+              timeout: '15s',
               ${sb}
             } },
           } }`,
@@ -311,7 +311,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           exec: {
             command: 'mkdir -p .cache && echo x > .cache/x && echo Listening && sleep 30',
             persistent: { readyWhen: 'Listening' },
-            timeout: 5000,
+            timeout: '5s',
             sandbox: { allow: { read: ['.'], write: ['${grant}'] } },
           },
         },
@@ -5223,8 +5223,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     // SRT's AF_UNIX filter for it, as `prepareSandbox` does.
     await resetSandbox()
     await initSandbox({ allowAllUnixSockets: true })
-    const grace = process.env['VX_KILL_GRACE_MS']
-    process.env['VX_KILL_GRACE_MS'] = '200'
+    const grace = process.env['VX_RUN_KILL_GRACE']
+    process.env['VX_RUN_KILL_GRACE'] = '200ms'
     let during: string[] = []
     try {
       const r = await runSandboxed(
@@ -5243,8 +5243,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect([during.length, r.timedOut, socks()]).toEqual([1, true, []])
     } finally {
       rmSync(dead, { recursive: true, force: true })
-      if (grace === undefined) delete process.env['VX_KILL_GRACE_MS']
-      else process.env['VX_KILL_GRACE_MS'] = grace
+      if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
+      else process.env['VX_RUN_KILL_GRACE'] = grace
     }
   })
 

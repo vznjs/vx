@@ -454,7 +454,7 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
           // ahead of the schedule, and hits.
           await writeFile(
             path.join(root, 'vx.workspace.mjs'),
-            'export default { rules: { upfrontKeys: false } }\n',
+            'export default { run: { rules: { upfrontKeys: false } } }\n',
           )
           const app = await addProject(root, 'app', {
             config: `

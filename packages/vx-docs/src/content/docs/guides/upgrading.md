@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 every verb but vx init needs a vx.workspace.* file; without one it stops with VX_E_NO_WORKSPACE. A global vx hands off only to the workspace root's own node_modules/@vzn/vx.
 
+## config: one path per setting, env and flag derived from it
+
+vx.workspace settings move into groups (run, cache, watch: e.g. `concurrency` is `run.concurrency`, `cacheDir` is `cache.dir`, `cacheRetention` is `cache.retention`, `rules` is `run.rules`); env vars follow the path (`VX_RUN_TIMEOUT`, `VX_CACHE_DIR`, `VX_RUN_KILL_GRACE`); durations need a unit ('30s'); `--retry` is `--retries`. Old names are refused naming the new one.
+
 ## config: set cache policy in vx.workspace, scope under cache
 
 the top-level `cacheScope` workspace key is removed; use `cache: { scope }`.

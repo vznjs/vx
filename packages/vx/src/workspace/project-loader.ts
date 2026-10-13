@@ -186,7 +186,7 @@ async function loadDefaultExport(
           () =>
             reject(
               new UserError(
-                `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT_MS)`,
+                `${kind} config ${configPath} did not finish evaluating within ${budget}ms (VX_CONFIG_WORKER_TIMEOUT)`,
               ),
             ),
           budget,

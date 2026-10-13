@@ -62,6 +62,25 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     expect(strapi[1]!.todos[0]).toEndWith('Give it its own output path to cache it.')
   })
 
+  it('leaves a shared tsbuildinfo to the keeper and keeps the other task cached', () => {
+    // create-t3-turbo: build and typecheck both output .cache/tsbuildinfo.json
+    // (Growth funnel F8); tsc's incremental state is no product.
+    const tasks = resolveSharedOutputs([
+      task('build', ['.cache/tsbuildinfo.json', 'dist/**'], ['^build']),
+      task('typecheck', ['.cache/tsbuildinfo.json'], ['^build']),
+      task('emit', ['.cache/tsbuildinfo.json', 'lib/**']),
+    ])
+    const outputs = (t: GeneratedTask) =>
+      (t.task!['cache'] as { outputs: { files: string[] } } | undefined)?.outputs.files
+    expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
+      ['build', ['.cache/tsbuildinfo.json', 'dist/**'], 0],
+      ['typecheck', [], 0],
+      // A task that emits more stays uncached: tsc skips what the keeper's
+      // tsbuildinfo calls built, so its save could be a partial dist.
+      ['emit', undefined, 1],
+    ])
+  })
+
   it('keeps the first declared when no task has a ^ edge', () => {
     const tasks = resolveSharedOutputs([task('a', ['out/**']), task('b', ['out/**'])])
     expect(tasks[0]!.task!['cache']).toBeDefined()

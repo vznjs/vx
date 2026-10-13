@@ -100,11 +100,11 @@ describe('cli run()', () => {
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
       [
         1,
-        'vx watch: --concurrency must be a positive integer, or a share of the cores such as 50% (got abc) (see `vx watch --help`)\n',
+        "vx watch: --concurrency must be a positive integer, or a share of the cores like '50%' (got abc) (see `vx watch --help`)\n",
       ],
       [
         1,
-        'vx run: --output-logs must be full, errors-only, hash-only, or none (got loud) (see `vx run --help`)\n',
+        "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
       ],
       [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
       [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
@@ -1622,15 +1622,19 @@ describe('parseRunArgs', () => {
   })
 
   it('parses --concurrency (no short alias)', () => {
-    expect(parseRunArgs(['build', '--concurrency', '2']).concurrency).toBe(2)
+    expect(parseRunArgs(['build', '--concurrency', '2']).settings['run.concurrency']).toBe(2)
     // The percent form resolves against this machine, never below one
     // worker, and over 100% is allowed for I/O-bound work.
     const cores = navigator.hardwareConcurrency
-    expect(parseRunArgs(['build', '--concurrency', '50%']).concurrency).toBe(
+    expect(parseRunArgs(['build', '--concurrency', '50%']).settings['run.concurrency']).toBe(
       Math.max(1, Math.round(cores * 0.5)),
     )
-    expect(parseRunArgs(['build', '--concurrency=200%']).concurrency).toBe(cores * 2)
-    expect(parseRunArgs(['build', '--concurrency', '1%']).concurrency).toBeGreaterThanOrEqual(1)
+    expect(parseRunArgs(['build', '--concurrency=200%']).settings['run.concurrency']).toBe(
+      cores * 2,
+    )
+    expect(
+      parseRunArgs(['build', '--concurrency', '1%']).settings['run.concurrency'],
+    ).toBeGreaterThanOrEqual(1)
     expect(parseRunArgs(['build', '--concurrency', '%']).error).toBeDefined()
     // `-c` is no concurrency short form: it is Nx's --configuration, refused by name.
     expect(parseRunArgs(['build', '-c', '4']).error).toBe(
@@ -1723,6 +1727,8 @@ describe('parseRunArgs', () => {
       '--all',
       '--cache',
       '--cache-dir',
+      '--cache-download',
+      '--cache-policy',
       '--cache-scope',
       '--concurrency',
       '--continue',
@@ -1734,14 +1740,18 @@ describe('parseRunArgs', () => {
       '--format',
       '--frozen',
       '--graph',
+      '--kill-grace',
       '--no-cache',
       '--output-logs',
       '--profile',
+      '--ready-notice',
       '--report',
       '--report-file',
-      '--retry',
+      '--retries',
+      '--schedule',
       '--summarize',
       '--tag',
+      '--teardown-timeout',
       '--timeout',
       '--verbosity',
     ])
@@ -1881,7 +1891,7 @@ describe('parseRunArgs', () => {
   it('--output-logs validates its mode and threads through', () => {
     const ok = parseRunArgs(['build', '--output-logs', 'errors-only'])
     expect(ok.error).toBeUndefined()
-    expect(ok.outputLogs).toBe('errors-only')
+    expect(ok.settings['run.outputLogs']).toBe('errors-only')
     const bad = parseRunArgs(['build', '--output-logs', 'loud'])
     expect(bad.error).toContain('--output-logs must be')
   })
@@ -1993,29 +2003,29 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--report', '--report-file=r.md']).error).toBeUndefined()
   })
 
-  it('parses --retry <n> / --retry=<n> and validates it', () => {
-    expect(parseRunArgs(['build', '--retry', '3']).retries).toBe(3)
-    expect(parseRunArgs(['build', '--retry=0']).retries).toBe(0)
-    expect(parseRunArgs(['build']).retries).toBeUndefined()
+  it('parses --retries <n> / --retries=<n> and validates it', () => {
+    expect(parseRunArgs(['build', '--retries', '3']).settings['run.retries']).toBe(3)
+    expect(parseRunArgs(['build', '--retries=0']).settings['run.retries']).toBe(0)
+    expect(parseRunArgs(['build']).settings['run.retries']).toBeUndefined()
     // Negative / non-integer → non-negative-integer error.
-    expect(parseRunArgs(['build', '--retry', '-1']).error).toMatch(/non-negative/)
-    expect(parseRunArgs(['build', '--retry=1.5']).error).toMatch(/non-negative/)
+    expect(parseRunArgs(['build', '--retries', '-1']).error).toMatch(/non-negative/)
+    expect(parseRunArgs(['build', '--retries=1.5']).error).toMatch(/non-negative/)
     // Missing value.
-    expect(parseRunArgs(['build', '--retry']).error).toBe(
-      '--retry requires a value (a non-negative integer)',
+    expect(parseRunArgs(['build', '--retries']).error).toBe(
+      '--retries requires a value (a non-negative integer)',
     )
   })
 
   it('parses --timeout <ms> / --timeout=<ms> and validates it', () => {
-    expect(parseRunArgs(['build', '--timeout', '5000']).timeout).toBe(5000)
-    expect(parseRunArgs(['build', '--timeout=1000']).timeout).toBe(1000)
-    expect(parseRunArgs(['build']).timeout).toBeUndefined()
-    // 0 / negative → positive-integer error.
-    expect(parseRunArgs(['build', '--timeout', '0']).error).toMatch(/positive integer/)
-    expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/positive integer/)
+    expect(parseRunArgs(['build', '--timeout', '5000ms']).settings['run.timeout']).toBe(5000)
+    expect(parseRunArgs(['build', '--timeout=1000ms']).settings['run.timeout']).toBe(1000)
+    expect(parseRunArgs(['build']).settings['run.timeout']).toBeUndefined()
+    // 0 / negative → refused.
+    expect(parseRunArgs(['build', '--timeout', '0ms']).error).toMatch(/must be a duration/)
+    expect(parseRunArgs(['build', '--timeout=-5']).error).toMatch(/must be a duration/)
     // Missing value.
     expect(parseRunArgs(['build', '--timeout']).error).toBe(
-      '--timeout requires a value (a positive integer, in ms)',
+      "--timeout requires a value (a duration like '500ms', '30s' or '5m', at most 24 days)",
     )
   })
 
@@ -2066,7 +2076,7 @@ describe('parseRunArgs', () => {
         (f) => parseRunArgs(['build', f]).error,
       ),
     ).toEqual([
-      '--concurrency requires a value (a positive integer, or a share of the cores such as 50%)',
+      "--concurrency requires a value (a positive integer, or a share of the cores like '50%')",
       '--cache requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
       '--verbosity requires a value (a non-negative integer)',
       '--tag requires a value (k=v)',
@@ -2604,8 +2614,8 @@ describe('--download accepts exactly its three modes', () => {
     // outputs come home, so each is worth its own assertion rather than a
     // check that SOME value parses.
     for (const mode of ['all', 'toplevel', 'none'] as const) {
-      expect(parseRunArgs(['build', `--download=${mode}`]).download).toBe(mode)
-      expect(parseRunArgs(['build', '--download', mode]).download).toBe(mode)
+      expect(parseRunArgs(['build', `--download=${mode}`]).settings['cache.download']).toBe(mode)
+      expect(parseRunArgs(['build', '--download', mode]).settings['cache.download']).toBe(mode)
     }
     // The control: the guard still refuses what is not a mode.
     expect(parseRunArgs(['build', '--download=some']).error).toContain('--download must be')
@@ -2613,8 +2623,8 @@ describe('--download accepts exactly its three modes', () => {
 })
 
 describe('unknown-flag hints reach three edits', () => {
-  it('--retries hints --retry, which is three edits away', () => {
-    expect(parseRunArgs(['build', '--retries', '2']).error).toContain('(did you mean --retry?)')
+  it('--retr hints --retries, which is three edits away', () => {
+    expect(parseRunArgs(['build', '--retr', '2']).error).toContain('(did you mean --retries?)')
     // The third edit is only for flags sharing a stem: a plain three-edit
     // budget hinted `--all` for `--zzz`.
     expect(parseRunArgs(['build', '--zzz']).error).not.toContain('did you mean')

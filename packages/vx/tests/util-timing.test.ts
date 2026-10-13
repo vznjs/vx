@@ -1,4 +1,4 @@
-// `util/timing.ts` reads `VX_TIMING` once, at import, so each row runs a
+// `util/timing.ts` reads `VX_DEBUG_TIMING` once, at import, so each row runs a
 // child that imports it fresh under the variable it names and prints the
 // table to stderr. The dry-run file proves the stages appear; this one
 // holds the table's arithmetic, the span accumulation and the off switch.
@@ -14,8 +14,8 @@ async function child(
   prelude = `import { mark, span, printTimings } from ${JSON.stringify(TIMING)}`,
 ): Promise<string> {
   const env: Record<string, string | undefined> = { ...process.env }
-  if (timing === undefined) delete env.VX_TIMING
-  else env.VX_TIMING = timing
+  if (timing === undefined) delete env.VX_DEBUG_TIMING
+  else env.VX_DEBUG_TIMING = timing
   const proc = Bun.spawn([process.execPath, '-e', `${prelude}\n${body}`], {
     env,
     stdout: 'pipe',
@@ -49,7 +49,7 @@ printTimings()
 const markRow = /^ +(\S+) +([\d.]+)ms +([\d.]+)ms$/
 const spanRow = /^ +(\S+) +([\d.]+)ms +(\d+)$/
 
-describe('the VX_TIMING table', () => {
+describe('the VX_DEBUG_TIMING table', () => {
   it("each stage's own share is its mark less the one before", async () => {
     const lines = (await child(WORKLOAD, '1')).split('\n')
     expect(lines[0]).toMatch(/^\[vx timing\] {2}stage +own {3}cumulative$/)
@@ -106,7 +106,7 @@ describe('the VX_TIMING table', () => {
   it.each([
     ['unset', undefined],
     ['empty', ''],
-  ])('VX_TIMING %s is off: nothing prints, and a span is the shared no-op', async (_, v) => {
+  ])('VX_DEBUG_TIMING %s is off: nothing prints, and a span is the shared no-op', async (_, v) => {
     expect(
       await child(`${WORKLOAD}\nconsole.log(span('p') === span('q') ? 'shared' : 'fresh')`, v),
     ).toBe('shared\n')

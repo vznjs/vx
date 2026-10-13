@@ -324,7 +324,7 @@ export default defineProject({
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         persistent: { readyWhen: 'Local' },
-        timeout: 120000,
+        timeout: '2m',
         sandbox: {
           allow: {
             read: ['**/*'],
@@ -344,7 +344,7 @@ export default defineProject({
         command: 'bun --bun astro preview',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         persistent: { readyWhen: 'Local' },
-        timeout: 120000,
+        timeout: '2m',
         sandbox: {
           allow: {
             read: ['**/*'],

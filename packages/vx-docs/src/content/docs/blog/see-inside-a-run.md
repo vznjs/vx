@@ -18,7 +18,7 @@ flowchart LR
   Q1[why does it run?] --> A[--affected --dry]
   Q2[what did it save?] --> B[--summarize]
   Q3[what depends on what?] --> C[--graph]
-  Q4[where did vx spend time?] --> D[VX_TIMING=1]
+  Q4[where did vx spend time?] --> D[VX_DEBUG_TIMING=1]
   style A stroke:#c6f84e,stroke-width:2px
 ```
 
@@ -80,10 +80,10 @@ Pipe it into `dot -Tsvg`, or write it to a file with
 
 ## Where vx itself spends time
 
-`VX_TIMING=1` prints vx's own stage table, for performance work on vx:
+`VX_DEBUG_TIMING=1` prints vx's own stage table, for performance work on vx:
 
 ```sh frame="terminal"
-$ VX_TIMING=1 vx run build --all
+$ VX_DEBUG_TIMING=1 vx run build --all
 [vx timing]  stage                    own   cumulative
              startup                 65.7ms      65.7ms
              workspace config        14.6ms      80.3ms

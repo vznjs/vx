@@ -116,7 +116,7 @@ describe('vx run', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'ignore',
-        env: { ...process.env, VX_KILL_GRACE_MS: '200' },
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
       },
     )
     const stdout = new Response(proc.stdout).text()

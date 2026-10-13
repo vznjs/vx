@@ -105,7 +105,7 @@ describe('defineProject', () => {
         build: {
           description: 'd',
           dependsOn: ['^build'],
-          exec: { command: 'tsc', env: { passThrough: ['A'] }, ...(ci ? { timeout: 1000 } : {}) },
+          exec: { command: 'tsc', env: { passThrough: ['A'] }, ...(ci ? { timeout: '1s' } : {}) },
           cache: { inputs: { files: ['src/**'], env: ['X'] }, outputs: { files: ['dist/**'] } },
         },
         lint: { exec: { command: 'x' }, dependsOn: ['build'] },
@@ -246,16 +246,16 @@ describe('defineProject', () => {
 
 describe('defineWorkspace', () => {
   it('is an identity function (returns its input)', () => {
-    const cfg = { concurrency: 4 }
+    const cfg = { run: { concurrency: 4 } }
     expect(defineWorkspace(cfg)).toBe(cfg)
   })
 
   it('is constrained to the workspace schema and does not widen its return', () => {
-    const ws = defineWorkspace({ concurrency: 4 })
+    const ws = defineWorkspace({ run: { concurrency: 4 } })
     // Widening the return to `WorkspaceConfig` makes every field optional
     // again, so this stops compiling — the generic is what carries the
     // caller's own shape back out.
-    const concurrency: number = ws.concurrency
+    const concurrency: number = ws.run.concurrency
     expect(concurrency).toBe(4)
 
     // @ts-expect-error `notAWorkspaceKey` is not part of WorkspaceConfig.
@@ -267,20 +267,38 @@ describe('defineWorkspace', () => {
     // a known one the generic skipped the excess-property check, so a typo
     // type-checked. Each expect-error, unused without the fix, is an error.
     // @ts-expect-error `concurency` is a typo of `concurrency`.
-    defineWorkspace({ plugins: [], concurency: 4 })
+    defineWorkspace({ plugins: [], run: { concurency: 4 } })
     // @ts-expect-error Turbo's `pipeline` is not a WorkspaceConfig key.
-    defineWorkspace({ cacheDir: '.vx', pipeline: {} })
-    // @ts-expect-error `maxAge` is not a cacheRetention key.
-    defineWorkspace({ cacheRetention: { olderThan: '7d', maxAge: '1d' } })
+    defineWorkspace({ cache: { dir: '.vx' }, pipeline: {} })
+    // @ts-expect-error `maxAge` is not a cache.retention key.
+    defineWorkspace({ cache: { retention: { olderThan: '7d', maxAge: '1d' } } })
     // @ts-expect-error `upfrontKey` is a typo of `upfrontKeys` (D-155).
-    defineWorkspace({ rules: { exclusiveOutputs: false, upfrontKey: false } })
+    defineWorkspace({ run: { rules: { exclusiveOutputs: false, upfrontKey: false } } })
+    // @ts-expect-error a duration carries its unit.
+    defineWorkspace({ run: { timeout: 1000 } })
     // CONTROL: every declared key type-checks.
     defineWorkspace({
-      concurrency: 4,
-      cacheDir: '.vx',
-      timeout: 1,
-      cacheRetention: { olderThan: '7d', maxSize: '1g' },
-      rules: { exclusiveOutputs: false, upfrontKeys: false },
+      run: {
+        concurrency: '50%',
+        schedule: 'critical-path',
+        affectedBase: 'origin/main',
+        timeout: '10m',
+        retries: 1,
+        continue: 'deps-ok',
+        killGrace: '2s',
+        teardownTimeout: '3s',
+        readyNotice: '10s',
+        rules: { exclusiveOutputs: false, upfrontKeys: false },
+      },
+      cache: {
+        dir: '.vx',
+        retention: { olderThan: '7d', maxSize: '1g' },
+        policy: 'local:rw',
+        scope: 'trusted',
+        download: 'all',
+        inputStability: { strategy: 'mutable', severity: 'error' },
+      },
+      watch: { poll: true },
       plugins: [],
     })
   })

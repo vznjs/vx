@@ -76,7 +76,7 @@ const keyable = (name: string): boolean =>
  * one of `configs` (turbo.json texts, any string, a superset) or in Turbo's
  * framework table matches, and each core cannot key (a literal one is
  * dropped only when no variable has it). The kept mapping keyed on every
- * name, so any variable that came or went (a CI step's, `VX_TIMING`)
+ * name, so any variable that came or went (a CI step's, `VX_DEBUG_TIMING`)
  * remapped the workspace: ~330 ms a run on vercel/ai.
  */
 export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {
@@ -1257,18 +1257,22 @@ export async function mapTurboWorkspace(
       sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
     } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
   }
+  // One short line per framework: nitro's twelve names and a long package
+  // list ran past any terminal (Growth's first-run funnel F7, 2026-10-13).
+  const few = (list: readonly string[]): string =>
+    list.length <= 3
+      ? list.join(', ')
+      : `${list.slice(0, 3).join(', ')} and ${list.length - 3} more`
   for (const [fw, users] of sourcedOf)
     notes.push(
-      `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} ` +
-        'to its tasks; the configs list the names their files and their workspace ' +
-        'dependencies’ spell — add any only an installed dependency reads to cache.inputs.env ' +
-        'and exec.env.passThrough',
+      `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; the configs list ` +
+        'the names the package and its workspace dependencies spell, so add any an installed ' +
+        'dependency reads to cache.inputs.env and exec.env.passThrough',
     )
   for (const [fw, users] of usersOf)
     notes.push(
-      `Turbo infers ${fw.slug} in ${users.join(', ')} and hashes and passes ${fw.env.join(', ')} to ` +
-        'its tasks; vx env names are explicit — list the ones they read in cache.inputs.env ' +
-        'and exec.env.passThrough',
+      `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; list the ones ` +
+        'they read in cache.inputs.env and exec.env.passThrough',
     )
 
   // A task's own `*` env name, in a written config: expanded over the

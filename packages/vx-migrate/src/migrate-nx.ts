@@ -124,7 +124,8 @@ async function unlistedProjects(
 
 /** A `vx.workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
-  readonly field: 'concurrency' | 'affectedBase' | 'cacheRetention'
+  /** The setting's path: its group, then its field. */
+  readonly field: 'run.concurrency' | 'run.affectedBase' | 'cache.retention'
   /** The value as TypeScript source; undefined when vx cannot read it. */
   readonly source: string | undefined
   /** What to tell a user whose workspace file this run does not write. */
@@ -153,23 +154,23 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
   const parallel = nx?.parallel ?? nx?.tasksRunnerOptions?.default?.options?.parallel
   if (typeof parallel === 'number' && Number.isInteger(parallel) && parallel > 0)
     out.push({
-      field: 'concurrency',
+      field: 'run.concurrency',
       source: String(parallel),
-      note: `nx.json \`parallel: ${parallel}\`: add \`concurrency: ${parallel}\` to vx.workspace.ts`,
+      note: `nx.json \`parallel: ${parallel}\`: add \`run: { concurrency: ${parallel} }\` to vx.workspace.ts`,
     })
   const base = nx?.defaultBase ?? nx?.affected?.defaultBase
   if (typeof base === 'string' && base.trim() !== '')
     out.push({
-      field: 'affectedBase',
+      field: 'run.affectedBase',
       source: quoted(base.trim()),
-      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`affectedBase: ${JSON.stringify(base.trim())}\` to vx.workspace.ts`,
+      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`run: { affectedBase: ${JSON.stringify(base.trim())} }\` to vx.workspace.ts`,
     })
   const size = nxSizeText(nx?.maxCacheSize)
   if (size !== undefined)
     out.push({
-      field: 'cacheRetention',
+      field: 'cache.retention',
       source: /^\d+[KMG]?B$/.test(size) ? `{ maxSize: ${quoted(size)} }` : undefined,
-      note: `nx.json \`maxCacheSize\`: add \`cacheRetention: { maxSize: ${JSON.stringify(size)} }\` to vx.workspace.ts`,
+      note: `nx.json \`maxCacheSize\`: add \`cache: { retention: { maxSize: ${JSON.stringify(size)} } }\` to vx.workspace.ts`,
     })
   return out
 }

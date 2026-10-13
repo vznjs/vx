@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
-import type { ProjectMeta, VxPlugin } from '@vzn/vx'
+import type { ProjectMeta, VxPlugin, WorkspaceConfig } from '@vzn/vx'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
@@ -60,16 +60,23 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
     {
       async config(workspace, ctx) {
         const keys = await workspaceKeys(options.root ?? ctx.workspaceRoot)
-        if (workspace.concurrency === undefined && keys.concurrency !== undefined)
-          workspace.concurrency = keys.concurrency
-        if (workspace.cacheRetention === undefined && keys.cacheRetention !== undefined)
-          workspace.cacheRetention = keys.cacheRetention
+        if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
+          workspace.run = { ...workspace.run, concurrency: keys.concurrency }
+        if (workspace.cache?.retention === undefined && keys.cacheRetention !== undefined)
+          workspace.cache = {
+            ...workspace.cache,
+            // `olderThan` is built with its unit below.
+            retention: keys.cacheRetention as NonNullable<
+              NonNullable<WorkspaceConfig['cache']>['retention']
+            >,
+          }
         // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
         // on GitHub Actions with what the event names.
         const base =
           Bun.env['TURBO_SCM_BASE']?.trim() ||
           githubActionsBase(options.root ?? ctx.workspaceRoot, keys.remoteBaseFallback === true)
-        if (workspace.affectedBase === undefined && base) workspace.affectedBase = base
+        if (workspace.run?.affectedBase === undefined && base)
+          workspace.run = { ...workspace.run, affectedBase: base }
       },
       // `//#task` keys run on the root, as Turbo runs them: named here, the
       // root is a project with no vx.config written (a create-turbo repo's

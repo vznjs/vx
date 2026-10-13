@@ -18,6 +18,7 @@
 import path from 'node:path'
 import {
   buildPackageGraph,
+  type Duration,
   type GeneratedProject,
   type GeneratedTask,
   type ProjectMeta,
@@ -251,8 +252,8 @@ export interface NxExecutorTarget {
 /** What a translated target runs as. The command runs in the project dir. */
 export interface NxExecutorTranslation {
   readonly command: string
-  /** `exec.timeout`, in ms. */
-  readonly timeout?: number
+  /** `exec.timeout`, a duration with its unit (`'10m'`). */
+  readonly timeout?: Duration
   /** Defined in the task's environment, as a run-commands `env` is. */
   readonly env?: Readonly<Record<string, string>>
 }
@@ -1023,7 +1024,7 @@ interface MappedCommand {
   /** The `.env` files the command loads, relative to the project dir: key inputs. */
   readonly envInputs: readonly string[]
   /** A translated executor's `exec.timeout`. */
-  readonly timeout?: number
+  readonly timeout?: Duration
   /** The Nx targets a leading `nx <target> <project>` ran: dependency edges (nx-command.ts). */
   readonly nxCalls?: readonly { readonly project: string; readonly target: string }[]
 }
@@ -1169,7 +1170,7 @@ function mapCommand(
 function translation(
   t: unknown,
   at: string,
-): { command: string; env: Record<string, unknown>; timeout: number | undefined } {
+): { command: string; env: Record<string, unknown>; timeout: Duration | undefined } {
   if (!isRecord(t)) throw new UserError(`${at}: must return { command } or undefined`)
   for (const key of Object.keys(t))
     if (key !== 'command' && key !== 'timeout' && key !== 'env')
@@ -1179,13 +1180,13 @@ function translation(
   const timeout = t.timeout
   if (
     timeout !== undefined &&
-    !(typeof timeout === 'number' && Number.isInteger(timeout) && timeout > 0)
+    !(typeof timeout === 'string' && /^[1-9]\d*(ms|s|m|h|d)$/.test(timeout))
   )
-    throw new UserError(`${at}: timeout must be a positive integer (ms)`)
+    throw new UserError(`${at}: timeout must be a duration with its unit, like '30s' or '10m'`)
   const env = t.env ?? {}
   if (!isRecord(env) || Object.values(env).some((v) => typeof v !== 'string'))
     throw new UserError(`${at}: env must map names to strings`)
-  return { command: t.command, env, timeout }
+  return { command: t.command, env, timeout: timeout as Duration | undefined }
 }
 
 /**

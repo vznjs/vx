@@ -47,7 +47,7 @@ async function runWith(
 
 const RESULT = `{ exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }`
 
-for (const timeout of ['', ', timeout: 60000']) {
+for (const timeout of ['', ", timeout: '60s'"]) {
   const label = timeout === '' ? '' : ' (with a timeout signal)'
 
   it(`a synchronous throw from execute fails the task naming the plugin${label}`, async () => {

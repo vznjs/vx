@@ -2,49 +2,68 @@
 // wrote; it must not hold the run's exit hostage.
 
 import { MAX_TIMEOUT_MS } from './num.js'
+import { parseDuration } from './size.js'
 
 /** Default upper bound on one end-of-run flush/teardown await. */
 const DEFAULT_TIMEOUT_MS = 3000
 
+/** A bound the run resolved from its flag or `vx.workspace`. */
+export interface SettleBound {
+  readonly ms: number
+  readonly from: 'flag' | 'workspace'
+}
+
+let teardownSet: SettleBound | undefined
+let killGraceSet: SettleBound | undefined
+
 /**
- * The bound to apply, read per call so a test can drive the deadline
- * instead of waiting it out.
+ * The run's `run.teardownTimeout` and `run.killGrace` from its flag or
+ * workspace (the orchestrator resolves them; util sits below settings).
+ * The variable, read per call, sits between the two, so a test drives the
+ * deadline instead of waiting it out.
  */
-export function teardownTimeoutMs(): number {
-  const raw = process.env['VX_TEARDOWN_TIMEOUT_MS']
-  // Out-of-range falls back to the DEFAULT rather than clamping to
-  // MAX_TIMEOUT_MS, and the distinction matters. This value is a BOUND, not a
-  // duration: there is no "no limit" option here, because the whole reason the
-  // deadline exists is that a plugin's flush must not hold the run's exit
-  // hostage. Clamping would honour "wait ~24.8 days", which defeats it — the
-  // run would hang. Unbounded is worse still (the delay becomes 1 ms, so every
-  // flush times out and every buffered record is dropped). Falling back keeps
-  // the bound real in both directions.
-  if (raw !== undefined && /^[0-9]+$/.test(raw)) {
-    const n = Number(raw)
-    if (n <= MAX_TIMEOUT_MS) return n
-  }
-  return DEFAULT_TIMEOUT_MS
+export function setSettleBounds(b: { teardown?: SettleBound; killGrace?: SettleBound }): void {
+  teardownSet = b.teardown
+  killGraceSet = b.killGrace
 }
 
 /**
- * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM: the
- * one-shot timeout escalation (`exec/runner.ts`), the signal teardown
- * (`orchestrator/signals.ts`) and the end-of-run persistent shutdown
- * (`orchestrator/persistent.ts`) share it. Two seconds
+ * A flag's bound, else the variable's (a positive duration inside the
+ * timer's range: the CLI refuses any other before a run, and an embedder's
+ * falls back), else the workspace's.
+ */
+function bound(name: string, set: SettleBound | undefined, zero = false): number | undefined {
+  if (set?.from === 'flag') return set.ms
+  const raw = process.env[name]
+  if (raw !== undefined && raw !== '') {
+    const n = parseDuration(raw)
+    if (n !== null && (n > 0 || zero) && n <= MAX_TIMEOUT_MS) return n
+  }
+  return set?.ms
+}
+
+/**
+ * The bound on one end-of-run flush or teardown (`run.teardownTimeout`).
+ * There is no "no limit": the deadline exists so a plugin's flush cannot
+ * hold the run's exit hostage, so a timer past the platform's range (which
+ * would fire at once and drop every buffered record) is no value.
+ */
+export function teardownTimeoutMs(): number {
+  return bound('VX_RUN_TEARDOWN_TIMEOUT', teardownSet, true) ?? DEFAULT_TIMEOUT_MS
+}
+
+/**
+ * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM
+ * (`run.killGrace`): the one-shot timeout escalation (`exec/runner.ts`),
+ * the signal teardown (`orchestrator/signals.ts`) and the end-of-run
+ * persistent shutdown (`orchestrator/persistent.ts`) share it. Two seconds
  * is generous for a real server's cleanup and is what every run waits when
- * a child wedges. `VX_KILL_GRACE_MS` overrides it, read per call and bounded
- * like the teardown deadline (out of range falls back to the default): the
- * tests that prove the escalation used to wait the full two seconds each,
- * a third of the suite's wall time for a claim a 200 ms grace proves too.
+ * a child wedges; the tests that prove the escalation used to wait the
+ * full two seconds each, a third of the suite's wall time for a claim a
+ * 200 ms grace proves too.
  */
 export function killGraceMs(defaultMs: number): number {
-  const raw = process.env['VX_KILL_GRACE_MS']
-  if (raw !== undefined && /^[0-9]+$/.test(raw)) {
-    const n = Number(raw)
-    if (n > 0 && n <= MAX_TIMEOUT_MS) return n
-  }
-  return defaultMs
+  return bound('VX_RUN_KILL_GRACE', killGraceSet) ?? defaultMs
 }
 
 /**

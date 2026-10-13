@@ -827,11 +827,13 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    "honours vx.workspace.mjs's cacheDir override",
+    "honours vx.workspace.mjs's cache.dir, which VX_CACHE_DIR would beat",
     async () => {
+      const env = process.env['VX_CACHE_DIR']
+      delete process.env['VX_CACHE_DIR']
       await writeFile(
         path.join(fixture.root, 'vx.workspace.mjs'),
-        `export default { cacheDir: 'build/.vx-cache', plugins: [] }\n`,
+        `export default { cache: { dir: 'build/.vx-cache' }, plugins: [] }\n`,
       )
       await addProject(fixture.root, 'app-x', {
         files: { 'src/index.txt': 'hello' },
@@ -846,7 +848,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
           }
         `,
       })
-      await run({ cwd: fixture.root, tasks: ['stamp'], log: silentLogger(fixture) })
+      try {
+        await run({ cwd: fixture.root, tasks: ['stamp'], log: silentLogger(fixture) })
+      } finally {
+        if (env !== undefined) process.env['VX_CACHE_DIR'] = env
+      }
       expect(existsSync(path.join(fixture.root, 'build/.vx-cache/cache.db'))).toBe(true)
       expect(existsSync(path.join(fixture.root, '.vx/cache'))).toBe(false)
     },

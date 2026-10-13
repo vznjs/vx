@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
+import { SETTINGS } from '../src/settings.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
@@ -25,15 +26,23 @@ import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 
 /**
- * Flags the parser compares against. `parseRunArgs` matches every flag as a
- * string literal (`a === '--x' || a?.startsWith('--x=')`), which is what makes
- * reading them out of the source reliable rather than clever. If that ever
- * becomes a computed lookup this needs to read the table instead — the assert
- * failing loudly is the intended outcome, not a silent pass.
+ * Flags the run parser accepts: the ones it matches as string literals
+ * (`a === '--x' || a?.startsWith('--x=')`), which makes reading them out of
+ * the source reliable rather than clever, and each setting's flag and alias
+ * for the verb (`src/settings.ts`). `--poll` is watch's alone.
  */
 async function parserFlags(): Promise<Set<string>> {
   const src = await Bun.file(new URL('../src/cli/run.ts', import.meta.url)).text()
-  return new Set(Array.from(src.matchAll(/'(--[a-zA-Z][a-zA-Z-]*)=?'/g), (m) => m[1] as string))
+  const flags = new Set(
+    Array.from(src.matchAll(/'(--[a-zA-Z][a-zA-Z-]*)=?'/g), (m) => m[1] as string),
+  )
+  flags.delete('--poll')
+  for (const s of SETTINGS) {
+    if (s.flag?.verb !== 'run') continue
+    flags.add(s.flag.name)
+    if (s.flag.alias !== undefined) flags.add(s.flag.alias)
+  }
+  return flags
 }
 
 /** Flag names in the `### Flags` table of docs/cli.md, one per row. */
@@ -43,9 +52,11 @@ async function documentedFlags(): Promise<Set<string>> {
   expect(start).toBeGreaterThan(-1)
   const names = new Set<string>()
   for (const line of doc.slice(start).split('\n')) {
-    const m = /^\| `(--[a-zA-Z][a-zA-Z-]*)/.exec(line)
+    const m = /^\| `(--[a-zA-Z][a-zA-Z-]*)[^|]*?(?:\(`(--[a-zA-Z][a-zA-Z-]*)`\))?\s*\|/.exec(line)
     if (m !== null) {
       names.add(m[1] as string)
+      // A setting flag's alias, written after it: `--cache-policy <spec>` (`--cache`).
+      if (m[2] !== undefined) names.add(m[2])
       continue
     }
     // The first non-row line past the header/separator ends the table.
@@ -222,9 +233,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     ])
     expect(new Set(shapes.map(([name]) => name))).toEqual(
       new Set([
-        'cachePolicy',
         'cacheRetention',
-        'cacheScope',
         'configErrors',
         'flakyTasks',
         'gitStatusCache',

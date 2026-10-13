@@ -119,7 +119,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
         ...args,
       ]),
       // strace reads paths from the tracee's memory: vx stays dumpable.
-      env: { ...process.env, VX_DUMPABLE: '1' },
+      env: { ...process.env, VX_DEBUG_DUMPABLE: '1' },
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',

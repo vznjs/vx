@@ -36,11 +36,11 @@ export const MORE: readonly Feature[] = [
     hook: 'A hung task is killed and reported as a timeout, not left to stall the run.',
     body: [
       'A test that waits on a socket forever holds the whole pipeline hostage. Give a task a limit and vx kills it when the limit passes, then marks it failed with the reason.',
-      'Set it per task with `exec.timeout`, for the workspace with `timeout`, or for one run with `--timeout` or `VX_TASK_TIMEOUT`. The task’s own limit always wins.',
+      'Set it per task with `exec.timeout`, for the workspace with `run.timeout`, or for one run with `--timeout` or `VX_RUN_TIMEOUT`. The task’s own limit always wins.',
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    test: { exec: { command: 'vitest run', timeout: 120_000 } },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    test: { exec: { command: 'vitest run', timeout: '2m' } },\n  },\n})",
     },
     image: 'timeouts.png',
     imageAlt: 'A task killed after its timeout and reported as timed out.',
@@ -419,12 +419,12 @@ export const MORE: readonly Feature[] = [
     category: 'output',
     hook: 'A table of vx’s own stages, so a slow run points at its cause.',
     body: [
-      'When a run feels slow, the question is whether it is your tasks or the runner. `VX_TIMING=1` prints how long each of vx’s stages took.',
+      'When a run feels slow, the question is whether it is your tasks or the runner. `VX_DEBUG_TIMING=1` prints how long each of vx’s stages took.',
       'The same table is how vx’s own speed work is measured, so a report from you is one we can act on.',
     ],
     example: {
       lang: 'sh',
-      code: 'VX_TIMING=1 vx run build --all',
+      code: 'VX_DEBUG_TIMING=1 vx run build --all',
     },
     image: 'stage-timing.png',
     imageAlt: 'vx’s stage timing table.',
@@ -948,11 +948,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
     body: [
       'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
-      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
+      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache=local:rw,remote:r\nVX_CACHE=local:rw,remote:r vx run build --all',
+      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache=local:rw,remote:r\nVX_CACHE_POLICY=local:rw,remote:r vx run build --all',
     },
     image: 'cache-controls.png',
     imageAlt: 'Cache flags: force, no-cache, per-layer.',
@@ -972,7 +972,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Move the cache to a fast disk or a CI cache folder with one setting.',
     body: [
       'By default the cache lives under `~/.vx`, shared by every checkout of the repo. CI often wants it in a folder its own cache step saves and restores.',
-      'Set `cacheDir` in the workspace config, `VX_CACHE_DIR` in the environment, or `--cache-dir` for one run.',
+      'Set `cache.dir` in the workspace config, `VX_CACHE_DIR` in the environment, or `--cache-dir` for one run.',
     ],
     example: {
       lang: 'sh',
@@ -1020,7 +1020,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Evict by age or size, oldest use first, by hand or on a schedule.',
     body: [
       'Caches grow. `vx cache prune` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
-      'Set `cacheRetention` once and vx keeps to it; `--dry-run` shows what would go first.',
+      'Set `cache.retention` once and vx keeps to it; `--dry-run` shows what would go first.',
     ],
     example: {
       lang: 'sh',
@@ -1357,7 +1357,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Hex, exponents and fractions are refused, never quietly reinterpreted.',
     body: [
       '`--concurrency 0x10` or `--timeout 1e3` might parse as something you did not mean. vx refuses them and says what a valid value looks like.',
-      'A mistyped flag gets the nearest real one, so `--retries` points you to `--retry`.',
+      'A mistyped flag gets the nearest real one, so `--retr` points you to `--retries`.',
     ],
     example: {
       lang: 'text',
@@ -1529,7 +1529,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  rules: { exclusiveOutputs: false, upfrontKeys: true },\n})",
+      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },\n})",
     },
     image: 'workspace-rules.png',
     imageAlt: 'Workspace rules turned on and off.',
@@ -1549,11 +1549,11 @@ export const MORE: readonly Feature[] = [
     hook: 'A config whose evaluation runs away fails after a deadline, naming the file.',
     body: [
       'A config is code, and code can loop or wait on the network. A run that hangs at “loading” with no hint is the worst kind of bug.',
-      'vx bounds each config evaluation, 30 seconds by default, and fails naming the config. `VX_CONFIG_WORKER_TIMEOUT_MS` changes the limit.',
+      'vx bounds each config evaluation, 30 seconds by default, and fails naming the config. `VX_CONFIG_WORKER_TIMEOUT` changes the limit.',
     ],
     example: {
       lang: 'sh',
-      code: 'VX_CONFIG_WORKER_TIMEOUT_MS=5000 vx run build --all',
+      code: 'VX_CONFIG_WORKER_TIMEOUT=5000ms vx run build --all',
     },
     image: 'config-timeout.png',
     imageAlt: 'A stuck config failing with its name.',

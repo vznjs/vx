@@ -78,7 +78,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
       const exec = {
         command: cmd,
         ...(s.retries > 0 ? { retries: s.retries } : {}),
-        ...(s.kind === 'timeout' ? { timeout: 500 } : {}),
+        ...(s.kind === 'timeout' ? { timeout: '500ms' } : {}),
       }
       return `${t}: { dependsOn: ${JSON.stringify(deps.get(t))}, exec: ${JSON.stringify(exec)},
         cache: { inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] } } }`

@@ -546,18 +546,19 @@ function extglobRefusal(pattern: string, file: string, field: string): UserError
 }
 
 /**
- * The workspace's own cache directory (index, history, memos): the
- * workspace's `cacheDir`, else `VX_CACHE_DIR`, else `.vx/cache`, relative
- * to the workspace root.
+ * The workspace's own cache directory (index, history, memos):
+ * `VX_CACHE_DIR`, else the workspace's `cache.dir`, else `.vx/cache`,
+ * relative to the workspace root (`--cache-dir` is the caller's, above both).
  */
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string {
   const env = process.env['VX_CACHE_DIR']
-  // `cacheDir: '   '` is refused at load (X-22); the variable made the same
+  // `cache.dir: '   '` is refused at load (X-22); the variable made the same
   // directory named in spaces at the root (D-160).
-  if (config?.cacheDir === undefined && env !== undefined && env !== '' && env.trim() === '') {
+  if (env !== undefined && env !== '' && env.trim() === '') {
     throw new UserError('VX_CACHE_DIR is only whitespace — name a directory, or unset it')
   }
-  const rel = config?.cacheDir ?? (env || path.join('.vx', 'cache'))
+  const fromEnv = env !== undefined && env !== ''
+  const rel = (fromEnv ? env : config?.cache?.dir) ?? path.join('.vx', 'cache')
   const home = process.env['HOME'] || homedir()
   // No shell expands `~` in a config string or a quoted variable, and
   // `'~/.cache/vx'` made a directory named `~` in the workspace.
@@ -566,7 +567,7 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
   // The cache writes a `*` .gitignore beside its index: a bare `~` made a
   // directory named `~`, and expanded it would land in home itself (D-153).
   if (path.resolve(dir) === path.resolve(home)) {
-    const source = config?.cacheDir !== undefined ? 'cacheDir' : 'VX_CACHE_DIR'
+    const source = fromEnv ? 'VX_CACHE_DIR' : 'cache.dir'
     throw new UserError(
       `${source} ${JSON.stringify(rel)} is the home directory itself, where the cache's \`*\` .gitignore and index would land — name a directory under it, like '~/.cache/vx'`,
     )
@@ -578,7 +579,7 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
  * Where this repository's shared store lives: `~/.vx/<repo id>/cache`, as
  * Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06), so every checkout of
  * the repository hits what another saved and no other repository shares
- * it (`repoIdOf`). Null when the workspace names its cache (`cacheDir`,
+ * it (`repoIdOf`). Null when the workspace names its cache (`cache.dir`,
  * `VX_CACHE_DIR`): that directory then holds everything, as one
  * workspace's alone. Null with no repository identity or no home.
  */
@@ -586,7 +587,7 @@ export async function resolveStoreRoot(
   root: string,
   config: WorkspaceConfig | null,
 ): Promise<string | null> {
-  if (config?.cacheDir !== undefined || process.env['VX_CACHE_DIR']) return null
+  if (config?.cache?.dir !== undefined || process.env['VX_CACHE_DIR']) return null
   // HOME first: Bun's homedir() keeps the HOME the process started with (1.4.2).
   const home = process.env['HOME'] || homedir()
   if (!path.isAbsolute(home)) return null

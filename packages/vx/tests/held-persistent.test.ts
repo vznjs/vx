@@ -11,7 +11,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { createEventBus, run, type HeldPersistent, type Logger } from '../src/orchestrator/index.js'
 
-process.env['VX_KILL_GRACE_MS'] = '200'
+process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 let root: string
 beforeEach(async () => {
