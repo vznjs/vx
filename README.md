@@ -38,14 +38,23 @@ Windows: run vx inside WSL2.
 In a git repo with a `package.json` workspace:
 
 ```sh
-npm install -D @vzn/vx    # the scope matters: npm's `vx` is an unrelated package
-npx @vzn/vx init          # a vx.config.ts per package, from its scripts
+npm install -D @vzn/vx         # the scope matters: npm's `vx` is an unrelated package
+npx @vzn/vx init               # beside turbo.json or nx.json: migrates them; else a vx.config.ts per package
+npx @vzn/vx run build --all    # builds in dependency order and stores the results
+npx @vzn/vx run build --all    # nothing changed: every task up-to-date
 ```
 
 Bun workspaces: `bun add -d @vzn/vx` and `bunx @vzn/vx` (npm refuses to run in
 a repo whose `devEngines` names Bun).
 
-Give a task a cache block, what it reads and writes:
+Without Turbo or Nx, tasks run uncached until you declare what they read (below).
+
+`init` prints what it wrote and anything left to decide (a `TODO`). A miss you did not expect?
+`npx @vzn/vx why <task>` names the input that moved.
+
+### Without Turbo or Nx
+
+`init` writes one task per package script, uncached. Cache one by saying what it reads and writes:
 
 ```ts
 // packages/app/vx.config.ts
