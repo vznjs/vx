@@ -1,4 +1,4 @@
-# Turbo / Nx parity: behavioural contracts vx does not pin (2026-07)
+# vx parity with Turbo and Nx: behavioural contracts vx does not pin (2026-07)
 
 > **Status (2026-09-23):** audited in [`parity-audit-2026-09.md`](./parity-audit-2026-09.md)
 > (item 659). Most entries below are fixed, declined or obsolete; the

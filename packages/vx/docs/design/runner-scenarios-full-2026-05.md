@@ -1,4 +1,4 @@
-# Turbo vs Nx vs vx — full scenario matrix + test-coverage gaps
+# vx vs Turbo vs Nx — full scenario matrix + test-coverage gaps
 
 > **Status:** reference doc (2026-05). Replaces / extends
 > `runner-comparison-2026-05.md` with a complete per-scenario

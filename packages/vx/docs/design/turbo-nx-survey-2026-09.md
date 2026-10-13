@@ -1,4 +1,4 @@
-# Turbo / Nx test-suite survey (2026-09-10)
+# Survey of the Turbo and Nx test suites (2026-09-10)
 
 The owner's ask: "go through all tests of nx and turbo, see if we miss
 any test or any core functionality, e.g. prevention of circular task
