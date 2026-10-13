@@ -139,13 +139,18 @@ A task with `exec.sandbox` runs where only what it declares exists:
   outside the sandbox, and a link to another project's file would have
   carried that file into the cache (L-23). An output directory linked out
   of the project refuses the task by name (X-88).
+- vx's own environment, which holds the variables a task is not given
+  (a token, a key), is unreadable: the task cannot see vx's
+  `/proc/<pid>/environ` on Linux or read it through `ps eww` on macOS
+  (`tests/sandbox-parent-env.unsafe.test.ts`).
 
 An undeclared touch of the task's own files fails the task, and a failed
 task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/sandboxing/).
 
 ## What it does not stop
 
-- **A task with no `exec.sandbox`.** It runs with your permissions.
+- **A task with no `exec.sandbox`.** It runs with your permissions, so
+  it can read vx's environment, variables vx did not pass it included.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
   stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
