@@ -7,13 +7,15 @@ let settled = false
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
-  const local = await localVx(
-    process.cwd(),
-    process.execPath,
-    Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
-  )
-  if (local !== null) await handOff(local, argv)
   try {
+    // Inside the try: `process.cwd()` throws EMFILE when out of descriptors,
+    // and that is a one-line UserError below, not a stack.
+    const local = await localVx(
+      process.cwd(),
+      process.execPath,
+      Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
+    )
+    if (local !== null) await handOff(local, argv)
     // `vx --version` needs one leaf module; the dispatcher and the util
     // barrel it pulled in were 20 ms of its 28 (2026-10-01).
     if (argv.length === 1 && (argv[0] === '--version' || argv[0] === 'version')) {
