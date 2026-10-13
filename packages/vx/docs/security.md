@@ -158,8 +158,9 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
   every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
   macOS it zeroes the values `ps eww` reads, every variable but the
   essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
-  alone (`tests/hide-env.unsafe.test.ts`). That hides the environment
-  only, not files, and a short-lived `git` vx runs still carries it.
+  alone and each `git` with only what git reads
+  (`tests/hide-env.unsafe.test.ts`, `tests/git-env.test.ts`). That hides
+  the environment only, not files.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
   stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
