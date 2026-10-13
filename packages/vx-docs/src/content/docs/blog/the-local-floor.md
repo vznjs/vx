@@ -38,6 +38,9 @@ Update (2026-10-07): the floor's artifacts now live in a shared store,
 workspace keeps its own index in `.vx/cache`. A named `cacheDir` holds
 both. See [the shared store](../../caching/#storage-layout).
 
+Update (2026-10-13): a lookup now asks the local cache before any
+remote; it used to be the last layer asked.
+
 ## Declining is a first-class outcome
 
 Because the floor is always there, a plugin is allowed to say no. That
