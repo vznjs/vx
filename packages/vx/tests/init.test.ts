@@ -81,6 +81,30 @@ async function addPackage(
 
 // ─── Source detection ────────────────────────────────────────────────
 
+describe('vx init names what it wrote', () => {
+  it('lists ten files one per line, past that the root files and a count', async () => {
+    // TanStack form's init listed 97 lines and pushed `next:` off screen
+    // (Growth's first-run funnel F4, 2026-10-13).
+    const root = await makeRoot('vx-init-files-')
+    try {
+      for (let i = 0; i < 12; i++) await addPackage(root, `p${i}`, { build: 'tsc' })
+      const lines = (await vx(root, ['init', '--dry'])).out.split('\n')
+      const from = lines.indexOf('files (dry run, nothing written):')
+      expect(lines.slice(from + 1, from + 3)).toEqual([
+        '  vx.workspace.ts',
+        '  and 12 more in package directories',
+      ])
+      // CONTROL: ten or fewer are each named.
+      for (let i = 2; i < 12; i++)
+        await rm(path.join(root, 'packages', `p${i}`), { recursive: true })
+      const few = (await vx(root, ['init', '--dry'])).out
+      expect(few).toContain('  packages/p0/vx.config.ts\n  packages/p1/vx.config.ts\n')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init source detection', () => {
   it(
     'an empty workspace still writes the workspace file; scripts are the source',
@@ -1360,7 +1384,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await mkdir(path.dirname(bin), { recursive: true })
       await writeFile(bin, '')
       expect([before, migrateCommand(root, [])]).toEqual([
-        [process.execPath, 'x', `@vzn/vx-migrate@${pinned}`, '--dry'],
+        [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${pinned}`, '--dry'],
         [process.execPath, '--no-install', bin],
       ])
     } finally {

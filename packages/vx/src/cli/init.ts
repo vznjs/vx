@@ -239,7 +239,9 @@ export function migrateCommand(root: string, flags: readonly string[]): string[]
   if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
   // A source checkout is 0.0.0, which npm never had.
   const version = VERSION === '0.0.0' ? 'latest' : VERSION
-  return [process.execPath, 'x', `@vzn/vx-migrate@${version}`, ...flags]
+  // Bun's own install output ("Slow filesystem detected…") in a pnpm or npm
+  // repo reads as a stranger speaking (Growth's first-run funnel F2).
+  return [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${version}`, ...flags]
 }
 
 /**
