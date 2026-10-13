@@ -150,12 +150,12 @@ task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/s
 ## What it does not stop
 
 - **A task with no `exec.sandbox`.** It runs with your permissions:
-  it reads anything you can. On macOS it can also read vx's environment
-  (`ps eww`), variables vx did not pass it included. On Linux vx makes
-  itself non-dumpable on every command (about 0.8 ms) and starts its
-  helpers with `PATH` alone, so a task cannot read vx's environment
-  (`tests/hide-env.unsafe.test.ts`). That hides the environment only,
-  not files, and a short-lived `git` vx runs still carries it.
+  it reads anything you can. vx hides its own environment from it on
+  every command: on Linux vx makes itself non-dumpable (about 0.8 ms), on
+  macOS it zeroes the values `ps eww` reads, every variable but the
+  essentials every task gets (about 0.7 ms). It starts its helpers with `PATH`
+  alone (`tests/hide-env.unsafe.test.ts`). That hides the environment
+  only, not files, and a short-lived `git` vx runs still carries it.
 - **Reads outside the workspace root.** `~/.cache`, `/etc` and the like
   stay readable (tools need them) and fold into no key. The credential
   stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are
