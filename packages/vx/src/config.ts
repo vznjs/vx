@@ -33,20 +33,31 @@ export interface WorkspaceConfig {
    * HEAD, else `HEAD~1`. Never folded into a cache key.
    */
   affectedBase?: string
-  /**
-   * Where this run's remote cache writes land. `'trusted'` reads and
-   * writes the trusted keys, for the default branch's CI. `'read-only'`
-   * reads them and writes nothing; omitted, `vx run` off CI takes it, and
-   * on CI (or with `--cache` naming the remote) `'trusted'`. Any other
-   * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
-   * then the trusted ones, and writes go to the scope's only, so a PR never
-   * writes what the default branch reads. A client-side convention, not a
-   * security boundary: only a cache server that scopes writes by token
-   * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it, and
-   * `vx run --cache-scope` beats both. Never
-   * folded into a cache key.
-   */
-  cacheScope?: string
+  /** The run's cache policy and scope, read before any task. */
+  cache?: {
+    /**
+     * Which layers a run reads and writes: `--cache`'s spec
+     * (`'local:rw,remote:r'`; a layer it leaves out stays on). `VX_CACHE`
+     * beats it and `--cache` beats both; `--no-cache` and `--force` still
+     * apply on top. Omitted → every layer reads and writes. The local
+     * layer is always read first, then each remote in declared order.
+     * Never folded into a cache key.
+     */
+    policy?: string
+    /**
+     * Where this run's remote cache writes land. `'trusted'` reads and
+     * writes the trusted keys, for the default branch's CI. `'read-only'`
+     * reads them and writes nothing; omitted, `vx run` off CI takes it, and
+     * on CI (or with a policy naming the remote) `'trusted'`. Any other
+     * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
+     * then the trusted ones, and writes go to the scope's only, so a PR never
+     * writes what the default branch reads. A client-side convention, not a
+     * security boundary: only a cache server that scopes writes by token
+     * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it, and
+     * `vx run --cache-scope` beats both. Never folded into a cache key.
+     */
+    scope?: string
+  }
   /**
    * Which ready task starts first when there are more than workers, with no
    * timings: `most-work` (the default) the one the most work waits on at

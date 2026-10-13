@@ -39,7 +39,7 @@ holds a token that writes the trusted keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 
-`cacheScope` is the client half. `'pr-123'` reads its own keys,
+`cache.scope` is the client half. `'pr-123'` reads its own keys,
 then the trusted ones, and writes only its own, which `github()` sets on
 Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted)
 and `VX_CACHE_SCOPE` or `--cache-scope` sets on any CI.

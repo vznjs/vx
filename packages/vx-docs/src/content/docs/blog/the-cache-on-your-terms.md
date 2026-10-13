@@ -36,6 +36,18 @@ $ vx run build --all --cache=local:r             # read local, write nothing loc
 $ vx run build --all --cache=local:,remote:rw    # skip local, still upload
 ```
 
+`VX_CACHE` sets the same spec for every run in a shell or CI job, and
+`cache.policy` in `vx.workspace.ts` sets the default; the flag beats the
+variable, which beats the config. Whatever the spec, a lookup asks the
+local cache first, then each remote in the order the plugins declare them.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({ cache: { policy: 'local:rw,remote:r' } })
+```
+
 An empty spec is refused, never read as "everything on":
 
 ```sh frame="terminal"
@@ -64,7 +76,7 @@ store in 22ms. To put the cache somewhere else, use `--cache-dir`,
 ## Who may write the remote cache
 
 A remote cache is shared, so a write is a promise to everyone who reads
-it. `cacheScope` decides where a run's writes land:
+it. `cache.scope` decides where a run's writes land:
 
 ```mermaid
 flowchart LR
@@ -85,14 +97,14 @@ flowchart LR
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 
-export default defineWorkspace({ cacheScope: 'trusted' })
+export default defineWorkspace({ cache: { scope: 'trusted' } })
 ```
 
-`VX_CACHE_SCOPE` beats the config. On GitHub Actions, the
+`VX_CACHE_SCOPE` beats the config, and `--cache-scope` beats both for one run. On GitHub Actions, the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
 sets the scope for you: `pr-<n>` on a pull request, trusted on the
 default branch. The scope is a client-side rule, so a cache server that
 checks tokens is still the real boundary.
 
-Every flag is in the [CLI reference](../../cli/), and `cacheScope` is in
+Every flag is in the [CLI reference](../../cli/), and `cache` is in
 the [schema](../../schema/).

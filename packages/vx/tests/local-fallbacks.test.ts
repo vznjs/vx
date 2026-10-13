@@ -67,7 +67,7 @@ describe('local fallbacks', () => {
     expect(list.map((e) => e.name)).toEqual(['remote', 'local'])
   })
 
-  it('a declared cache layer chains AHEAD of the local handle, which still gets the save', async () => {
+  it('the local handle is asked AHEAD of a declared cache layer, and still gets the save', async () => {
     const local = stubLayer({ hasRemote: false })
     const layer = stubLayer({ hasRemote: true })
     const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {
@@ -76,10 +76,10 @@ describe('local fallbacks', () => {
       policy,
     })
     expect(got).toBeInstanceOf(ChainedCache)
-    expect((got as ChainedCache).layers).toEqual([layer, local])
+    expect((got as ChainedCache).layers).toEqual([local, layer])
   })
 
-  it('a layer that WRAPS the local handle subsumes the tail: no double write', async () => {
+  it('a layer that WRAPS the local handle subsumes it: no double write', async () => {
     const local = stubLayer({ hasRemote: false })
     const layer = stubLayer({ hasRemote: true, local })
     const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {

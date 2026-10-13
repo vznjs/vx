@@ -39,6 +39,7 @@ import {
   loadProjects,
   loadWorkspacePlugins,
 } from './projects.js'
+import { workspaceCachePolicy } from './prepare.js'
 
 const warnToStderr = (message: string): void => {
   process.stderr.write(`${message}\n`)
@@ -94,6 +95,18 @@ export interface InfoFacts {
   schemaVersion: string
   cacheEntries: number
   cacheBytes: number
+  /**
+   * The cache policy a `vx run` with no `--cache` takes: `VX_CACHE`, else
+   * the workspace's `cache.policy`, else every layer on.
+   */
+  cachePolicy: { spec: string; from: 'VX_CACHE' | 'workspace' | 'default' }
+  /**
+   * The cache scope a `vx run` with no `--cache-scope` takes: `VX_CACHE_SCOPE`,
+   * else the workspace's `cache.scope` (a plugin's `config` stage may set
+   * it), else null: read-only off CI, trusted on CI or when the policy
+   * names the remote.
+   */
+  cacheScope: { scope: string | null; from: 'VX_CACHE_SCOPE' | 'workspace' | 'default' }
   /** The workspace's `cacheRetention`, with `maxSize` in bytes; null when none is declared. */
   cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
@@ -253,6 +266,8 @@ async function collectWorkspaceInfo(
     schemaVersion: SCHEMA_VERSION,
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
+    cachePolicy: policyFact(workspaceConfig),
+    cacheScope: scopeFact(workspaceConfig),
     cacheRetention: retentionFact(workspaceConfig?.cacheRetention),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache prune` reclaims (after an upgrade's
@@ -410,6 +425,25 @@ async function countLoadableTasks(
   )
   errors.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   return { tasks, sandboxed, errors }
+}
+
+function policyFact(config: WorkspaceConfig | null): InfoFacts['cachePolicy'] {
+  const env = process.env['VX_CACHE'] || undefined
+  if (env !== undefined) return { spec: env, from: 'VX_CACHE' }
+  // Parsed for its refusal: a spec `vx run` would refuse is not reported as the policy.
+  if (workspaceCachePolicy(config) !== undefined) {
+    return { spec: config!.cache!.policy!, from: 'workspace' }
+  }
+  return { spec: 'local:rw,remote:rw', from: 'default' }
+}
+
+function scopeFact(config: WorkspaceConfig | null): InfoFacts['cacheScope'] {
+  const env = process.env['VX_CACHE_SCOPE'] || undefined
+  if (env !== undefined) return { scope: env, from: 'VX_CACHE_SCOPE' }
+  const declared = config?.cache?.scope
+  return declared !== undefined
+    ? { scope: declared, from: 'workspace' }
+    : { scope: null, from: 'default' }
 }
 
 function retentionFact(r: WorkspaceConfig['cacheRetention']): InfoFacts['cacheRetention'] {

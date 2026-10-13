@@ -242,13 +242,13 @@ export default defineWorkspace({
 
 | Field            | Sets                                                                  |
 | ---------------- | --------------------------------------------------------------------- |
-| `plugins`        | asked in order; this machine is always last ([Plugins](../plugins/)) |
+| `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../plugins/)) |
 | `concurrency`    | tasks at once; `--concurrency <n>` overrides it for one run           |
 | `cacheDir`       | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
 | `timeout`        | a default task timeout in ms; default none                            |
 | `cacheRetention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
-| `cacheScope` | where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
+| `cache` | `policy`: which layers read and write, as `--cache`'s spec (`'local:rw,remote:r'`; `VX_CACHE` and `--cache` beat it); `scope`: where remote writes land: `'trusted'` reads and writes (the default on CI), `'read-only'` writes nothing (the default off CI), a name like `'pr-123'` reads its own then trusted and writes only its own; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
 | `rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/schedule-strategy/)) |
 | `inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_INPUT_STABILITY` env vars win over both ([Schema](../../schema/#cache-optional)) |

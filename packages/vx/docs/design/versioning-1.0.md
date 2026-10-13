@@ -43,12 +43,13 @@ the values it takes and each refusal's exact words are recorded in
 
 `vx.workspace.ts`:
 
-| Level            | Fields                                                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| (top)            | `affectedBase`, `cacheDir`, `cacheRetention`, `cacheScope`, `concurrency`, `inputStability`, `plugins`, `rules`, `schedule`, `timeout` |
-| `cacheRetention` | `maxSize`, `olderThan`                                                                                                                 |
-| `inputStability` | `severity`, `strategy`                                                                                                                 |
-| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                                      |
+| Level            | Fields                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| (top)            | `affectedBase`, `cache`, `cacheDir`, `cacheRetention`, `concurrency`, `inputStability`, `plugins`, `rules`, `schedule`, `timeout` |
+| `cache`          | `policy`, `scope`                                                                                                                 |
+| `cacheRetention` | `maxSize`, `olderThan`                                                                                                            |
+| `inputStability` | `severity`, `strategy`                                                                                                            |
+| `rules`          | `exclusiveOutputs`, `upfrontKeys`                                                                                                 |
 
 `vx.config.ts`:
 

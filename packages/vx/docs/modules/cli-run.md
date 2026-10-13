@@ -25,7 +25,8 @@ export interface RunArgs {
   all: boolean
   excludeDependencies: 'all' | string[]
   concurrency: number | undefined // `<n>` or `<n>%` of the cores this process may use
-  cache: CachePolicy // resolved from --cache / --no-cache / --force (default all-on)
+  cache: CachePolicy // resolved from --cache / VX_CACHE / --no-cache / --force (default all-on)
+  cacheFlags?: CacheFlags // no spec named: --no-cache / --force, applied over the workspace's cache.policy
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheDir: string | undefined // --cache-dir
   cacheScope?: string // --cache-scope

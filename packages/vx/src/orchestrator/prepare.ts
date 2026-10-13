@@ -13,8 +13,10 @@ import { beginRun, mark, nearest, UserError } from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
+  applyCacheFlags,
   type CachePolicy,
   FULL_CACHE_POLICY,
+  parseCachePolicy,
   scopeCachePolicy,
   GitFilesCache,
   LayeredCache,
@@ -292,9 +294,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // a CI job that knows its trust level says so without editing config.
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
+  const workspacePolicy = workspaceCachePolicy(workspaceConfig)
   const policy: CachePolicy = scopeCachePolicy(
-    options.cache ?? FULL_CACHE_POLICY,
-    options.cacheScope ?? envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
+    options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags),
+    options.cacheScope ??
+      envScope ??
+      workspaceConfig?.cache?.scope ??
+      // A workspace policy naming the remote asks to write it, as `--cache` does.
+      (options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy)
+        ? undefined
+        : options.defaultCacheScope),
   )
   const localCache = new Cache(
     cacheDir,
@@ -813,5 +822,27 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   for (const [id, n] of nodes) {
     if (!keep.has(id)) nodes.delete(id)
     else if (!roots.has(id)) n.requested = false
+  }
+}
+
+const namesRemote = (spec: string | undefined): boolean =>
+  spec !== undefined && /remote:[rw]/.test(spec)
+
+/**
+ * The workspace's `cache.policy`, parsed: the schema checks only its shape,
+ * since the grammar lives in the cache module the workspace module may not
+ * import. Undefined when it names none.
+ */
+export function workspaceCachePolicy(
+  config: WorkspaceConfig | null | undefined,
+): CachePolicy | undefined {
+  const spec = config?.cache?.policy
+  if (spec === undefined) return undefined
+  try {
+    return parseCachePolicy(spec)
+  } catch (err) {
+    throw new UserError(
+      `vx.workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 }

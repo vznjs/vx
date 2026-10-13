@@ -1592,7 +1592,7 @@ export default defineWorkspace({
   timeout: 600_000,
   cacheRetention: { olderThan: '30d', maxSize: '10G' },
   affectedBase: 'origin/main',
-  cacheScope: 'trusted',
+  cache: { policy: 'local:rw,remote:r', scope: 'trusted' },
   rules: { exclusiveOutputs: true, upfrontKeys: true },
   schedule: 'most-work',
   inputStability: { strategy: 'immutable', severity: 'warn' },
@@ -1612,8 +1612,8 @@ interface WorkspaceConfig {
   cacheRetention?: { olderThan?: string; maxSize?: string }
   /** The git ref a bare `--affected` compares with. */
   affectedBase?: string
-  /** Where remote writes land: 'trusted' (default), 'read-only', or an untrusted scope name. */
-  cacheScope?: string
+  /** The run's cache policy (`--cache`'s spec) and scope (where remote writes land). */
+  cache?: { policy?: string; scope?: string }
   /** Graph rules checked before anything runs; each on unless set to false. */
   rules?: WorkspaceRules
   /** Which ready task starts first with no timings: 'most-work' (default), 'critical-path', 'direct-dependents', 'ready-order'. */
@@ -1681,22 +1681,33 @@ interface WorkspaceRules {
   `nx()` from `NX_BASE` or nx.json's `defaultBase`, `turbo()` from
   `TURBO_SCM_BASE`, else on GitHub Actions from `GITHUB_BASE_REF` or the
   push event's `before`, as Turbo does. Not folded into any cache key.
-- **`cacheScope`** — where this run's remote cache writes land.
+- **`cache.policy`** — which layers a run reads and writes, in
+  `--cache`'s spec (`'local:rw,remote:r'`; a layer the spec leaves out
+  stays on; the grammar is in `docs/cli.md` § Cache policy). Omitted,
+  every layer reads and writes. `VX_CACHE` beats it and `vx run --cache`
+  beats both; `--no-cache` and `--force` still apply on top. A spec
+  naming the remote (`remote:rw`) asks to write it, so `vx run` off CI
+  takes `'trusted'`, not `'read-only'`, when no scope is named. Parsed
+  before any task: a bad spec is refused naming `cache.policy`. Whatever
+  the policy, a lookup asks the local cache first, then each remote in
+  the order the plugins declare them. Not folded into any cache key.
+- **`cache.scope`** — where this run's remote cache writes land.
   `'trusted'` reads and writes the task keys: the default branch's CI.
   `'read-only'` reads them and writes nothing: a laptop. Omitted, `vx
 run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
-  `'trusted'` on CI or when `--cache` names the remote; `run()` takes
+  `'trusted'` on CI or when the policy names the remote; `run()` takes
   `RunOptions.defaultCacheScope`, else `'trusted'`.
   Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the scope's key, then
   the trusted one, and a write goes to the scope's only, so a pull request
   never writes what the default branch reads, and two scopes never see
   each other. A scope's key is derived from the task key, so every
-  remote wire stores it unchanged. A clamp on `--cache`, never a
+  remote wire stores it unchanged. A clamp on the policy, never a
   widening. `github()` sets it on Actions: `pr-<n>`, `ref-<name>` off
   the default branch. `VX_CACHE_SCOPE` beats both, and `vx run --cache-scope` beats all three. A client-side convention, not a security
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
   (`docs/security.md` § Cache poisoning). Not folded into any cache key.
+  The old top-level `cacheScope` is refused, naming `cache: { scope }`.
 - **`schedule`** — which ready task starts first when more are ready
   than workers, with no timings. `most-work` (the default): the one the
   most tasks wait on, at any depth. `critical-path`: the head of the
@@ -1744,8 +1755,9 @@ false } in vx.workspace.ts to let it wait for its producer.` Such a key
     the key waits for its producer, as before.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
-  cache are its floor — the tail of every executor list and cache chain
-  — so a workspace that declares none runs and caches here.
+  cache are its floor — the tail of every executor list, and the first
+  layer of every cache chain — so a workspace that declares none runs
+  and caches here.
   Declaration order is precedence: every `executor` is consulted in
   order per task (first to accept runs it; what all decline runs
   locally); every `cache` layer is chained (lookup walks, save reaches
@@ -2202,7 +2214,9 @@ Workspace-config errors:
 | `cacheRetention.maxSize of 0 evicts every entry after every run`                                                                                                               | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `cacheRetention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>M', '<n>G')`                                                                                          | A bare number is bytes; a cache capped at `10` bytes is a typo for `10G`. `10B` still loads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `affectedBase must be a git ref like 'origin/main'`                                                                                                                            | Not a string, empty, holding whitespace or a NUL, or opening with `-` (git would read an option).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `cacheScope must be 'trusted', 'read-only', or a scope name of <rule>`                                                                                                         | Not a string, or a scope name holding a character outside letters, digits and `. _ - / @`, or longer than 128.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `cache must be an object like { policy, scope }; a task caches through its own cache in its project's vx.config`                                                               | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `cache.policy must be a spec like 'local:rw,remote:r'`                                                                                                                         | Not a string, or only whitespace. A spec the grammar refuses (`local:x`) is refused when the run starts, as `vx.workspace: cache.policy: <reason>`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `cache.scope must be 'trusted', 'read-only', or a scope name of <rule>`                                                                                                        | Not a string, or a scope name holding a character outside letters, digits and `. _ - / @`, or longer than 128.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `rules must be { exclusiveOutputs?: boolean; upfrontKeys?: boolean }`                                                                                                          | Not an object.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `rules.<name> must be true or false`                                                                                                                                           | A rule set to something other than a boolean (`'off'`, `0`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `plugins must be an array of plugin objects`                                                                                                                                   | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |

@@ -14,6 +14,8 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode, TaskOutcome } from '../graph/index.js'
 import {
+  applyCacheFlags,
+  type CacheFlags,
   type CachePolicy,
   FULL_CACHE_POLICY,
   gitRefusal,
@@ -48,11 +50,16 @@ export interface RunArgs {
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
+  /**
+   * Neither `--cache` nor `VX_CACHE` named a spec: the run starts from the
+   * workspace's `cache.policy` and applies these on top.
+   */
+  cacheFlags?: CacheFlags
   /** `--cache` named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
   remoteRequested?: boolean
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
-  /** `--cache-scope <name>`: this run's `cacheScope`, above `VX_CACHE_SCOPE` and the workspace's. */
+  /** `--cache-scope <name>`: this run's `cache.scope`, above `VX_CACHE_SCOPE` and the workspace's. */
   cacheScope?: string
   frozen: boolean
   /**
@@ -431,15 +438,14 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     }
     if (/remote:[rw]/.test(envSpec)) out.remoteRequested = true
   }
-  // Precedence: --no-cache (all off) beats --force (reads off, writes
-  // kept), both layered on top of any --cache spec.
-  if (noCacheFlag) {
-    cachePolicy = { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
+  // --no-cache (all off) beats --force (reads off, writes kept), both
+  // layered on top of the spec; with none named, on the workspace's.
+  const flags: CacheFlags = {
+    ...(noCacheFlag ? { noCache: true } : {}),
+    ...(forceFlag ? { force: true } : {}),
   }
-  if (forceFlag) {
-    cachePolicy = { ...cachePolicy, localRead: false, remoteRead: false }
-  }
-  out.cache = cachePolicy
+  out.cache = applyCacheFlags(cachePolicy, flags)
+  if (!cacheFlag && envSpec === undefined) out.cacheFlags = flags
 
   if (out.dry !== undefined && out.graph !== undefined) {
     return { ...out, error: '--dry and --graph are mutually exclusive' }
@@ -633,7 +639,9 @@ export async function resolveRunOptions(
   const opts: RunOptions = {
     cwd,
     tasks: [...tasks],
-    cache: parsed.cache,
+    ...(parsed.cacheFlags !== undefined
+      ? { cacheFlags: parsed.cacheFlags }
+      : { cache: parsed.cache }),
     ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
     ...(parsed.cacheScope !== undefined ? { cacheScope: parsed.cacheScope } : {}),
     // A laptop reads the shared cache and never writes it (owner,

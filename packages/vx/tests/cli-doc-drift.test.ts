@@ -222,7 +222,9 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     ])
     expect(new Set(shapes.map(([name]) => name))).toEqual(
       new Set([
+        'cachePolicy',
         'cacheRetention',
+        'cacheScope',
         'configErrors',
         'flakyTasks',
         'gitStatusCache',

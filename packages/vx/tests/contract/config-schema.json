@@ -3,9 +3,9 @@
     "levels": {
       "": [
         "affectedBase",
+        "cache",
         "cacheDir",
         "cacheRetention",
-        "cacheScope",
         "concurrency",
         "inputStability",
         "plugins",
@@ -14,6 +14,7 @@
         "timeout"
       ],
       "cacheRetention": ["maxSize", "olderThan"],
+      "cache": ["policy", "scope"],
       "rules": ["exclusiveOutputs", "upfrontKeys"],
       "inputStability": ["severity", "strategy"]
     },
@@ -382,9 +383,83 @@
           "{\"x\":\"y\"}"
         ]
       },
-      "cacheScope": {
+      "cache": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `cache` must be an object like { policy, scope }; a task caches through its own `cache` in its project's vx.config": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: policy, scope)": ["{\"x\":\"y\"}"]
+      },
+      "cache.policy": {
+        "ok": [
+          "<absent>",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "\"local:rw,remote:r\""
+        ],
+        "$CONFIG: `cache.policy` must be a spec like 'local:rw,remote:r'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.scope": {
         "ok": ["<absent>", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"pr-1\""],
-        "$CONFIG: `cacheScope` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
+        "$CONFIG: `cache.scope` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
           "null",
           "true",
           "false",

@@ -62,11 +62,20 @@ below; `key` goes to the first layer, like the run index.
 ## The subsume rule
 
 A layer exposes `local` when it wraps the host's local handle
-(`LayeredCache.local`). `resolveCache` appends the host's local store to
-the tail of every chain, then drops it again when a declared layer already
-wraps it — so `[remote()]` resolves to the remote plugin's layered cache
-alone instead of writing the local store twice, with no edit to the remote
+(`LayeredCache.local`). `resolveCache` adds the host's local store to
+every chain, then drops it again when a declared layer already wraps it
+— so `[remote()]` resolves to the remote plugin's layered cache alone
+instead of writing the local store twice, with no edit to the remote
 plugin.
+
+## Local first
+
+A lookup asks the local store before any remote, then each remote in
+the order the plugins declare them (owner, 2026-10-13). A chain whose
+first layer neither is nor wraps the local store gets the store put in
+front of it. A wrapping layer later in that chain asks the local store
+again on a miss; a save to one handle is still made once.
+`tests/chained-cache.test.ts` ("the local store is asked first") holds it.
 
 ## Tests
 

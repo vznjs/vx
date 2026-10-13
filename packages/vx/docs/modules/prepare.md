@@ -18,7 +18,7 @@ export interface PreparedRun {
   cache: CacheLayer // caller owns close()
   localCache: Cache // the local handle `cache` may wrap; raw SQLite readers use it
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
-  cachePolicy: CachePolicy // `--cache` with the workspace's `cacheScope` applied
+  cachePolicy: CachePolicy // `--cache`, `VX_CACHE` or the workspace's `cache.policy`, with its `cache.scope` applied
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule
@@ -59,6 +59,10 @@ export interface PreparedRun {
 }
 
 export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+// The workspace's `cache.policy`, parsed (a bad spec throws naming it); undefined when it names none. `vx info` reports it.
+export function workspaceCachePolicy(
+  config: WorkspaceConfig | null | undefined,
+): CachePolicy | undefined
 ```
 
 ## Steps

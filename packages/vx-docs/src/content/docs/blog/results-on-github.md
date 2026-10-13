@@ -67,8 +67,8 @@ flowchart LR
 On Actions the plugin sets the cache scope from the ref. A push to the
 default branch reads and writes the trusted keys. A pull request becomes
 `pr-<n>`: it reads its own keys, then main's, and writes only its own. So
-a branch never writes what main reads. Set `cacheScope: false` to opt
-out, or set `cacheScope` in `vx.workspace.ts` yourself.
+a branch never writes what main reads. Set `github({ cacheScope: false })`
+to opt out, or set `cache.scope` in `vx.workspace.ts` yourself.
 
 ## It never breaks the build
 

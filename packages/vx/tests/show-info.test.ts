@@ -495,6 +495,43 @@ describe('vx info (e2e)', () => {
   )
 
   it(
+    'reports the cache policy and scope a run takes, and where each comes from',
+    async () => {
+      const ws = path.join(root, 'vx.workspace.mjs')
+      const saved = { policy: process.env['VX_CACHE'], scope: process.env['VX_CACHE_SCOPE'] }
+      const facts = async () => {
+        const f = await collectInfo(root, { warn: () => {} })
+        return { policy: f.cachePolicy, scope: f.cacheScope }
+      }
+      try {
+        delete process.env['VX_CACHE']
+        delete process.env['VX_CACHE_SCOPE']
+        await writeFile(ws, `export default { cache: { policy: 'remote:r', scope: 'pr-1' } }\n`)
+        expect(await facts()).toEqual({
+          policy: { spec: 'remote:r', from: 'workspace' },
+          scope: { scope: 'pr-1', from: 'workspace' },
+        })
+        process.env['VX_CACHE'] = 'remote:'
+        process.env['VX_CACHE_SCOPE'] = 'read-only'
+        expect(await facts()).toEqual({
+          policy: { spec: 'remote:', from: 'VX_CACHE' },
+          scope: { scope: 'read-only', from: 'VX_CACHE_SCOPE' },
+        })
+      } finally {
+        for (const [k, v] of [
+          ['VX_CACHE', saved.policy],
+          ['VX_CACHE_SCOPE', saved.scope],
+        ] as const) {
+          if (v === undefined) delete process.env[k]
+          else process.env[k] = v
+        }
+        await rm(ws, { force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'names the artifacts on disk the index does not know, and the verb that reaps them',
     async () => {
       // An aged row-less artifact: what a SCHEMA_VERSION reset leaves
@@ -779,6 +816,8 @@ describe('vx info — the rendered rows', () => {
     schemaVersion: 'v28',
     cacheEntries: 0,
     cacheBytes: 0,
+    cachePolicy: { spec: 'local:rw,remote:rw', from: 'default' },
+    cacheScope: { scope: null, from: 'default' },
     cacheRetention: null,
     orphans: { artifacts: 0, bytes: 0 },
     runs24h: 5,
@@ -805,6 +844,8 @@ describe('vx info — the rendered rows', () => {
         'cache store:      /home/u/.vx/3f2a9c1e7b4d5a60/cache',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    0 (0 B)',
+        'cache policy:     local:rw,remote:rw (the default)',
+        'cache scope:      read-only off CI, trusted on CI or when the policy names the remote',
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
         'flaky tasks:      none',
         'sandbox:          available (1 task declares exec.sandbox)',
@@ -860,6 +901,8 @@ describe('vx info — the rendered rows', () => {
         'cache store:      none: the cache dir holds the entries',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    3 (3.0 GB of 10 GB, 30%)',
+        'cache policy:     local:rw,remote:rw (the default)',
+        'cache scope:      read-only off CI, trusted on CI or when the policy names the remote',
         'cache retention:  each run evicts entries unused for 30d, and the oldest entries past 10G',
         'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',
         'task runs (24h):  0 (0 cache hits)',
@@ -885,6 +928,8 @@ describe('vx info — the rendered rows', () => {
       'cache store:      ~/.vx/id/cache',
       'cache versions:   keys vx-cache-v39 · index schema v28',
       'cache entries:    0 (0 B of 1.0 GB, 0%)',
+      'cache policy:     local:rw,remote:rw (the default)',
+      'cache scope:      read-only off CI, trusted on CI or when the policy names the remote',
       'cache retention:  each run evicts the oldest entries past 1G',
     ])
   })

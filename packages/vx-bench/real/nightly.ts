@@ -95,6 +95,19 @@ function repairManagedPnpm(dir: string): void {
   if (existsSync(path.join(pkg, 'install.js'))) must(['node', 'install.js'], pkg)
 }
 
+// `vx init` installs the latest vx, published within the day, and a repo's
+// pnpm `minimumReleaseAge` refuses it, in the install and again in every
+// task whose script runs pnpm against the lockfile (TanStack/query,
+// 2026-10-13). An env override reaches neither: vx gives a task only the
+// variables it declares. Exempt vx's own packages in the repo's config.
+function allowSameDayVx(dir: string): void {
+  const file = path.join(dir, 'pnpm-workspace.yaml')
+  if (!existsSync(file)) return
+  const yaml = readFileSync(file, 'utf8')
+  if (!/^minimumReleaseAge:/m.test(yaml) || /^minimumReleaseAgeExclude:/m.test(yaml)) return
+  writeFileSync(file, `${yaml.replace(/\n*$/, '\n')}minimumReleaseAgeExclude:\n  - '@vzn/*'\n`)
+}
+
 const vxBin = path.join(WORK, 'vx')
 must(
   [
@@ -135,6 +148,7 @@ for (const repo of REPOS) {
     must(['git', 'clean', '-fdxq', '-e', 'node_modules', '-e', '**/node_modules'], dir)
     must(['pnpm', 'install', '--frozen-lockfile'], dir)
     repairManagedPnpm(dir)
+    allowSameDayVx(dir)
     must([vxBin, 'init', '--native'], dir)
     const script = path.join(REPO_ROOT, 'packages/vx-bench/real', `${repo.tool}-repo.sh`)
     const toolArgs = repo.tool === 'nx' ? 'NX_ARGS' : 'TURBO_ARGS'
@@ -168,7 +182,9 @@ for (const repo of REPOS) {
       rows.push({ repo: repo.name, tool: repo.tool, arm, vx, rival })
     }
   } catch (err) {
-    failures.push(`${repo.name}: ${(err as Error).message.split('\n')[0]}`)
+    // The command line alone named no cause: keep the output's last line too.
+    const lines = (err as Error).message.split('\n').filter((l) => l.trim() !== '')
+    failures.push(`${repo.name}: ${lines[0]}${lines.length > 1 ? ` ${lines.at(-1)!.trim()}` : ''}`)
   }
 }
 

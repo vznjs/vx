@@ -22,10 +22,11 @@ export interface RunOptions {
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
   concurrency?: number
   cacheDir?: string // --cache-dir, resolved against cwd
-  cache?: CachePolicy // default FULL_CACHE_POLICY
+  cache?: CachePolicy // --cache / VX_CACHE resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
+  cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and vx.workspace
-  defaultCacheScope?: string // the cacheScope when vx.workspace names none; the CLI passes 'read-only' off CI
+  defaultCacheScope?: string // the cache.scope when vx.workspace names none; the CLI passes 'read-only' off CI
   frozen?: boolean // run the lock's graph
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

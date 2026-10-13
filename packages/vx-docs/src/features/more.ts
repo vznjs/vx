@@ -948,7 +948,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
     body: [
       'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
-      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE` sets the same spec for every run in a shell or CI job.',
+      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
     ],
     example: {
       lang: 'sh',
@@ -996,16 +996,16 @@ export const MORE: readonly Feature[] = [
     hook: 'Main writes the remote cache; a laptop or a fork only reads it.',
     body: [
       'A shared cache is only as trustworthy as the runs that write to it. A pull request from a fork should never be able to plant an artifact that main will replay.',
-      "`cacheScope: 'trusted'` lets a run write the remote cache; `'read-only'` only reads; a named scope keeps a branch’s writes to itself. Set it in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
+      "`cache: { scope: 'trusted' }` lets a run write the remote cache; `'read-only'` only reads; a named scope keeps a branch’s writes to itself. Set it in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({ cacheScope: process.env['CI'] ? 'trusted' : 'read-only' })",
+      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  cache: { scope: process.env['CI'] ? 'trusted' : 'read-only' },\n})",
     },
     image: 'cache-scope.png',
     imageAlt: 'Trusted CI writing the remote cache, a laptop only reading.',
     docs: {
-      label: 'cacheScope',
+      label: 'cache.scope',
       href: 'schema/',
     },
     deepDive: {
@@ -1692,7 +1692,7 @@ export const MORE: readonly Feature[] = [
     hook: 'On Actions, main writes trusted cache entries and a pull request writes only its own.',
     body: [
       'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the ref: the default branch is trusted, a pull request gets a scope of its own.',
-      'No config needed; set `cacheScope` yourself to override it.',
+      'No config needed; set `cache.scope` yourself to override it.',
     ],
     example: {
       lang: 'ts',

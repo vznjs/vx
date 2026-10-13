@@ -96,8 +96,24 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
   return out
 }
 
+/** `--no-cache` and `--force`, which still apply over whichever spec set the base. */
+export interface CacheFlags {
+  /** `--no-cache`: every axis off. Beats `force`. */
+  noCache?: boolean
+  /** `--force`: both reads off, writes kept. */
+  force?: boolean
+}
+
+export function applyCacheFlags(policy: CachePolicy, flags: CacheFlags | undefined): CachePolicy {
+  if (flags?.noCache === true) {
+    return { localRead: false, localWrite: false, remoteRead: false, remoteWrite: false }
+  }
+  if (flags?.force === true) return { ...policy, localRead: false, remoteRead: false }
+  return policy
+}
+
 /**
- * Apply a workspace's `cacheScope` to the run's policy. `'trusted'` (or
+ * Apply the run's cache scope (`cache.scope`) to the run's policy. `'trusted'` (or
  * none) changes nothing; `'read-only'` turns remote writes off; any other
  * name is an untrusted scope. A clamp, never a widening: `--cache` still
  * decides which axes are on. A client-side convention, not a boundary —
