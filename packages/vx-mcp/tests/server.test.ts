@@ -429,9 +429,13 @@ describe('the command context carries the workspace’s declared cacheDir', () =
         cacheHit: false,
       })
       cache.close()
+      // VX_CACHE_DIR beats the workspace's cache.dir; the run around this test may set it.
+      const env = { ...process.env }
+      delete env['VX_CACHE_DIR']
       const p = Bun.spawn({
         cmd: [process.execPath, CORE_BIN, 'mcp'],
         cwd: ws,
+        env,
         stdin: 'pipe',
         stdout: 'pipe',
         stderr: 'pipe',
