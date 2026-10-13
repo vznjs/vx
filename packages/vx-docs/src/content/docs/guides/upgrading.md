@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## config: set cache policy in vx.workspace, scope under cache
+
+the top-level `cacheScope` workspace key is removed; use `cache: { scope }`.
+
 ## cache: replace rewrittenInputs with cache.inputStability
 
 cache.rewrittenInputs and VX_REWRITTEN_INPUTS are gone. Use cache.inputStability: { strategy: 'immutable' | 'mutable' | 'unchecked', severity: 'warn' | 'error' } ('withhold' is 'immutable', 'compare' is 'mutable'), VX_INPUT_STABILITY and VX_INPUT_STABILITY_SEVERITY.
