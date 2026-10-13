@@ -93,8 +93,10 @@ of a small package (first run, again, again after `rm -rf dist`):
 Start with one package and leave the rest of your tooling as it is.
 
 1. Give one package a `vx.config.ts` with the command its `build` script runs.
-2. Run `vx run build` twice in it. The second run is a cache hit.
-3. Edit a file the build reads. `vx run build --dry` now predicts a miss.
+2. Run `vx run build` twice in it. The second run is a cache hit. If it
+   ran again, `vx why <package>#build` names what changed in its key.
+3. Edit a file the build reads. `vx run build --dry` now predicts a miss,
+   and after the run `vx why` names that file.
 4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
 
 ## Coming from Turbo, Nx or Vite Task
@@ -111,6 +113,7 @@ once the configs exist.
 
 - **`--affected has no base here`.** A repo with one commit has nothing to compare with. Commit again, or name a base: `--affected=<ref>`.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
+- **A task ran again with nothing changed.** `vx why <package>#<task>` names what moved in its key: a file, an env var, or an upstream task (often one that rewrites a file this task reads).
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`vx requires git`.** Run `git init` at the workspace root.
 - **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
