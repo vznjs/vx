@@ -190,11 +190,11 @@ rule vx guesses with:
 ```ts
 // vx.workspace.ts
 export default {
-  schedule: 'critical-path',
+  run: { schedule: 'critical-path' },
 }
 ```
 
-| `schedule` | Starts first |
+| `run.schedule` | Starts first |
 | --- | --- |
 | `most-work` (default) | The task the most work waits on, at any depth |
 | `critical-path` | The task at the head of the longest chain of tasks |

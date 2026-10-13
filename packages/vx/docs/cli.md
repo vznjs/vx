@@ -3230,7 +3230,7 @@ What a run has to say about one task rides that task's row; what it
 says about the run (a server that died, outputs left remote, a file
 `--summarize` / `--profile` wrote, a history, upload, plugin or sandbox
 warning) prints above the footer: it prints once the run's closing work
-is done, the `VX_TIMING=1` table included. Cache housekeeping
+is done, the `VX_DEBUG_TIMING=1` table included. Cache housekeeping
 (`cache.retention`) prints nothing. Only a kept server's own output
 follows it.
 

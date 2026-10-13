@@ -1357,7 +1357,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Hex, exponents and fractions are refused, never quietly reinterpreted.',
     body: [
       '`--concurrency 0x10` or `--timeout 1e3` might parse as something you did not mean. vx refuses them and says what a valid value looks like.',
-      'A mistyped flag gets the nearest real one, so `--retries` points you to `--retry`.',
+      'A mistyped flag gets the nearest real one, so `--retr` points you to `--retries`.',
     ],
     example: {
       lang: 'text',

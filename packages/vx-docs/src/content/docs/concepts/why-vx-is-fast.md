@@ -114,11 +114,11 @@ Speed by subtraction is still speed:
 
 ## See where the time goes
 
-`VX_TIMING=1` prints each stage of a run on stderr. A cached one-task
+`VX_DEBUG_TIMING=1` prints each stage of a run on stderr. A cached one-task
 run on a 4-core Linux container:
 
 ```text
-$ VX_TIMING=1 vx run @demo/app#build
+$ VX_DEBUG_TIMING=1 vx run @demo/app#build
 [vx timing]  stage                    own   cumulative
              startup                 58.9ms      58.9ms
              workspace config         4.7ms      63.6ms
