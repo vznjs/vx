@@ -254,6 +254,8 @@ export interface OutcomeView {
   timedOut?: true
   /** A persistent task that never became ready, and why (see `TaskOutcome`). */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /** The input that changed while the command ran (see `TaskOutcome`). */
+  inputMoved?: string
   /** A skipped task: the failed (or aborted) task at the root of the block
    *  (see `TaskOutcome`); absent for fail-fast's skip, which nothing blocked. */
   blockedBy?: string
@@ -301,11 +303,18 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 export function outcomeLabel(
   o: Pick<
     OutcomeView,
-    'status' | 'restored' | 'exitCode' | 'timedOut' | 'sandboxViolations' | 'notReady' | 'blockedBy'
+    | 'status'
+    | 'restored'
+    | 'exitCode'
+    | 'timedOut'
+    | 'sandboxViolations'
+    | 'notReady'
+    | 'inputMoved'
+    | 'blockedBy'
   >,
 ): string {
   if (o.status === 'failed')
-    return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
+    return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
   if (o.status === 'skipped') return skippedLabel(o.blockedBy)
   return outcomeWord(o)
 }
@@ -330,7 +339,9 @@ export function skippedLabel(blockedBy: string | undefined): string {
  * status line, the run report, the Actions annotation): the exit code, and
  * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)` —
  * or, for vx's own timeout, `failed (timed out, exit 143)`, or a persistent
- * task that never became ready, `failed (never ready: timed out, exit 1)`; a
+ * task that never became ready, `failed (never ready: timed out, exit 1)`,
+ * or an input changed under `inputStability.severity: 'error'`,
+ * `failed (src/a.ts changed during the run, exit 1)`; a
  * sandboxed task's violations are counted after: `failed (exit 1, 2 sandbox
  * violations)`.
  */
@@ -339,6 +350,7 @@ export function failedLabel(
   timedOut?: true,
   sandboxViolations?: number,
   notReady?: 'timeout' | 'exited' | 'spawn',
+  inputMoved?: string,
 ): string {
   // A sandboxed task that touched what it never declared fails on that
   // alone (its exit is forced to 1 when it was 0): the count is the reason.
@@ -353,6 +365,9 @@ export function failedLabel(
       notReady === 'timeout' ? 'timed out' : notReady === 'exited' ? 'exited' : 'spawn failed'
     return `failed (never ready: ${why}, exit ${exitCode}${violations})`
   }
+  // `inputStability.severity: 'error'` forced the 1: the input is the reason.
+  if (inputMoved !== undefined)
+    return `failed (${inputMoved === '' ? 'an input' : inputMoved} changed during the run, exit ${exitCode}${violations})`
   // A timeout's 143 is vx's own SIGTERM: the reason, not the signal, reads.
   if (timedOut === true) return `failed (timed out, exit ${exitCode}${violations})`
   const signal = exitSignal(exitCode)
@@ -398,6 +413,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.saveMs !== undefined) view.saveMs = outcome.saveMs
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
+  if (outcome.inputMoved !== undefined) view.inputMoved = outcome.inputMoved
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations

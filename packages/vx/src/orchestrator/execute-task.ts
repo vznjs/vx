@@ -1474,7 +1474,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
-  let movedFails = false
+  let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
@@ -1633,7 +1633,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         `[vx] ${node.id}: ${what} changed after its key was taken — the result is not saved, ` +
           `and inputStability.severity is 'error', so the task fails${hint}`,
       )
-      movedFails = true
+      movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {
       log.status(
         `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
@@ -1645,7 +1645,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     return false
   }
 
-  if (movedFails) effectiveExitCode = 1
+  if (movedFails !== undefined) effectiveExitCode = 1
 
   if (unkeyedUpstream !== undefined && willWrite && effectiveExitCode === 0) {
     log.status(
@@ -1674,6 +1674,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ? { failedOutput: failedOutputLog(output, willSave) }
       : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
+    ...(movedFails !== undefined ? { inputMoved: movedFails } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),

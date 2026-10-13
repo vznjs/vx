@@ -140,6 +140,7 @@ async function summarizeJson(): Promise<unknown> {
     sandboxViolations: 3,
     sandboxViolationLines: ['deny file-read /x'],
     sandboxFix: { read: ['x'] },
+    inputMoved: 'src/a.ts',
     failedOutput: 'boom\n',
     queuedMs: 2,
     inputFiles: 1,

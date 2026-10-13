@@ -733,7 +733,9 @@ means. `strategy` says which writes count:
 
 A write that counts withholds the entry, and `severity` says what else
 happens: `'warn'` (the default) keeps the result, says why on the status
-line, and the run goes on; `'error'` fails the task, so the run fails.
+line, and the run goes on; `'error'` fails the task, so the run fails,
+and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
+(`inputMoved` in `vx last --format json` and MCP `getFailures`).
 Either way, every task that ran over the task's outputs, down the graph,
 withholds its save too, and a task of any project that declares the
 moved file as an input withholds its own.
