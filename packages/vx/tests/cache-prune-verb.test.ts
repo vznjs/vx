@@ -90,7 +90,7 @@ describe('vx cache prune', () => {
       try {
         const r = await vx(bare, ['cache', 'prune', '--max-size', '1G'])
         expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
-        expect(r.err).toStartWith('vx cache prune: no vx.workspace.ts found')
+        expect(r.err).toStartWith('vx cache prune: no vx.workspace.ts in ')
       } finally {
         await rm(bare, { recursive: true, force: true })
       }

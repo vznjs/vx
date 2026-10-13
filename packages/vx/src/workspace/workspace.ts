@@ -100,7 +100,7 @@ export async function findWorkspaceRoot(
   const file = await workspaceFile(start)
   if (file === null) {
     throw new UserError(
-      `no vx.workspace.ts found in ${start} or any parent directory${(await gitTop(start)) === null ? '' : ' up to the git root'}: ` +
+      `no vx.workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'} — ` +
         'run `vx init` to create one',
       'VX_E_NO_WORKSPACE',
     )
