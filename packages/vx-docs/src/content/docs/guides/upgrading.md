@@ -11,7 +11,7 @@ first; its text is that footer: what changed and what to do.
 
 ## config: one path per setting, env and flag derived from it
 
-vx.workspace settings move into groups (run, cache, watch: e.g. `concurrency` is `run.concurrency`, `cacheDir` is `cache.dir`, `cacheRetention` is `cache.retention`, `rules` is `run.rules`); env vars follow the path (`VX_RUN_TIMEOUT`, `VX_CACHE_DIR`, `VX_RUN_KILL_GRACE`); durations need a unit ('30s'); `--retry` is `--retries`. Old names are refused naming the new one.
+vx.workspace keys, VX_* variables and some flags are renamed; old names are refused.
 
 ## config: set cache policy in vx.workspace, scope under cache
 
