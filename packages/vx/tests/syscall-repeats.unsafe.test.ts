@@ -71,6 +71,8 @@ async function trace(dir: string, script: string): Promise<Call[]> {
       process.execPath,
       file,
     ],
+    // strace reads paths from the tracee's memory: vx stays dumpable.
+    env: { ...process.env, VX_DUMPABLE: '1' },
     cwd: dir,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -288,6 +290,9 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       const vx = ['run', 'build', '--all']
       const prime = Bun.spawnSync({
         cmd: [process.execPath, path.join(SRC, 'bin.ts'), ...vx],
+        // The traced run's env: a spawn with none gets the startup env,
+        // without the preload's VX_CACHE_DIR, and so another cache.
+        env: { ...process.env, VX_DUMPABLE: '1' },
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',

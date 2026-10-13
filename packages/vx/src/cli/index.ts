@@ -6,6 +6,7 @@ import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js
 import { FOREIGN_VERBS } from './foreign-flags.js'
 import {
   errorDocument,
+  hideEnvFromTasks,
   isUserError,
   maskedLine,
   MOVED_VERBS,
@@ -24,6 +25,7 @@ const plugins = () => import('./plugin-commands.js')
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
+  await hideEnvFromTasks()
 
   // `vx <verb> --help` is the universal reflex, and every verb answered
   // `unknown flag: --help` and exited 1 (walkthrough, 2026-09-04). Only args
