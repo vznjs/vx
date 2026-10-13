@@ -52,6 +52,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
     { label: 'Try it', link: '/playground/' },
+    { label: 'Graph explorer', link: '/guides/graph-explorer/' },
   ],
   // Short groups in plain words; Plugins is each published plugin's README.
   // The caching deep dive and "What a run does" are reference only; the

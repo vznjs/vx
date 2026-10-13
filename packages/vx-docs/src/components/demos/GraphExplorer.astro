@@ -1,0 +1,42 @@
+---
+// The graph explorer. Without JavaScript it says the command to run and
+// what the page would show. `graph-explorer.ts` unhides the controls and
+// reads the `.controls`, `.plan`, `.status`, `.find`, `.picked`, `.why-to`
+// and `.out` hooks below, so they are its contract with this markup. The
+// pasted plan stays in the browser.
+import Demo from '../Demo.astro'
+---
+
+<Demo name="graph-explorer">
+  <p class="js-hint">
+    Run <code>vx run build --all --dry=json &gt; plan.json</code> in your repo. With JavaScript on,
+    paste it here to browse what each task waits on and why.
+  </p>
+  <div class="controls" hidden>
+    <label class="vx-label" for="vx-graph-plan">Plan (<code>--dry=json</code> output)</label>
+    <textarea id="vx-graph-plan" class="plan" rows="6" spellcheck="false"
+      placeholder="Drop plan.json here, or paste it"></textarea>
+    <div class="vx-row">
+      <button type="button" class="read primary">Read plan</button>
+      <input type="file" class="file" accept=".json,application/json" aria-label="Open a plan file" />
+    </div>
+    <div class="vx-row">
+      <label class="vx-label" for="vx-graph-find">Task</label>
+      <input id="vx-graph-find" class="find" type="text" list="vx-graph-ids" placeholder="app#build" />
+      <datalist id="vx-graph-ids"></datalist>
+      <label class="vx-label" for="vx-graph-why">waits on?</label>
+      <input id="vx-graph-why" class="why-to" type="text" list="vx-graph-ids" placeholder="utils#build" />
+    </div>
+  </div>
+  <p class="status vx-say" aria-live="polite" hidden></p>
+  <div class="out" hidden></div>
+</Demo>
+
+<style>
+  .controls .plan {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin-block: 0.25rem 0.5rem;
+  }
+</style>

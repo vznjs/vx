@@ -112,9 +112,13 @@ describe('the sidebars', () => {
   const docs = sidebarList(html('quickstart/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are the eight pages, then the playground', () => {
+  it('the Docs are the eight pages, then the playground and the graph explorer', () => {
     expect(groupLabels(docs)).toEqual([])
-    expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
+    expect(sidebarLinks(docs)).toEqual([
+      ...DOCS_PAGES,
+      ['Try it', 'playground/'],
+      ['Graph explorer', 'guides/graph-explorer/'],
+    ])
   })
 
   it('the Reference is its groups, and ends with the internals index, which links every internals page', () => {
