@@ -13,8 +13,9 @@ else loads.
 
 ```ts
 // the local vx to run instead, or null: handed off already, not a standalone
-// compiled binary (source; an npm install, whose launcher walked), or itself
-export function localVx(cwd: string, execPath: string, compiled: boolean): string | null
+// compiled binary (source; an npm install, whose launcher walked), itself,
+// or owned by another user than `uid`
+export async function localVx(cwd: string, execPath: string, compiled: boolean, uid?: number): Promise<string | null>
 // run it with this process's stdio and arguments, pass on a signal sent to
 // this vx alone, exit with its code (128 + signo for a signal)
 export async function handOff(bin: string, args: readonly string[]): Promise<never>
@@ -28,6 +29,9 @@ export function vxPath(): string // the compiled binary, else the source entry
   `handedOffFrom`) report it.
 - Never to itself: the launcher compares with `-ef` (a pnpm symlink is
   the same package); the binary compares realpaths.
+- Never to another user's: the launcher tests `-O`, the binary the
+  real file's uid. A `node_modules` planted above your checkout would
+  otherwise run as you.
 - The walk is a stat per level, no read, no import beyond `node:fs`:
   `tests/handoff.test.ts` holds the shapes (a local install, none, the
   global itself, a pnpm symlink) for both halves.

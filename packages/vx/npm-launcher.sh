@@ -38,7 +38,8 @@ if [ -z "${VX_HANDED_OFF-}" ]; then
   d=$PWD
   while [ -n "$d" ]; do
     if [ -d "$d/node_modules/$scope/$base" ]; then
-      if [ ! "$d/node_modules/$scope/$base" -ef "$here" ] && [ -x "$d/node_modules/.bin/$base" ]; then
+      # -O: a vx another user planted above your checkout would run as you.
+      if [ ! "$d/node_modules/$scope/$base" -ef "$here" ] && [ -x "$d/node_modules/.bin/$base" ] && [ -O "$d/node_modules/.bin/$base" ]; then
         VX_HANDED_OFF=$self
         export VX_HANDED_OFF
         exec "$d/node_modules/.bin/$base" "$@"

@@ -1868,7 +1868,8 @@ git root (the level holding `.git` is the last one checked, else the
 filesystem root), the first `node_modules/@vzn/vx` wins, run through its
 `node_modules/.bin/vx`. One hop: the receiving vx sees `VX_HANDED_OFF`
 and does not look again. A vx never hands off to itself (the same
-package, a pnpm symlink included). An npm install's launcher does the
+package, a pnpm symlink included), nor to a `.bin/vx` another user owns
+(one planted above your checkout would run as you). An npm install's launcher does the
 walk in the shell, a test per level and no fork, and `exec`s the local
 vx; the compiled binary checks one path per level before it loads
 anything, then runs the local vx with its stdio, passes on a signal sent

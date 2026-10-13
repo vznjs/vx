@@ -93,6 +93,16 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
     expect(run(bare)).toBe(`outer [${globalLauncher}] run a`)
   })
 
+  // A root-owned file stands in for another user's: only root can chown.
+  it.skipIf(process.getuid?.() === 0)('never to a vx another user owns', () => {
+    const planted = path.join(root, 'shared')
+    mkdirSync(path.join(planted, 'node_modules', '@vzn', 'vx'), { recursive: true })
+    mkdirSync(path.join(planted, 'node_modules', '.bin'))
+    symlinkSync(Bun.which('echo')!, path.join(planted, 'node_modules', '.bin', 'vx'))
+    mkdirSync(path.join(planted, 'mine'))
+    expect(run(path.join(planted, 'mine'))).toBe('global [] run a')
+  })
+
   it('never to itself: the global install is the local one', () => {
     expect(run(path.join(root, 'prefix', 'lib'))).toBe('global [] run a')
   })
@@ -151,6 +161,11 @@ describe('the compiled binary hands off', () => {
     mkdirSync(path.join(self, 'node_modules', '.bin'))
     symlinkSync(standalone, path.join(self, 'node_modules', '.bin', 'vx'))
     expect(await localVx(self, standalone, true)).toBeNull()
+  })
+
+  it('never to a vx another user owns', async () => {
+    const other = (process.getuid?.() ?? 0) + 1
+    expect(await localVx(path.join(repo, 'src'), standalone, true, other)).toBeNull()
   })
 
   it('runs the local vx with the arguments and exits with its code, naming itself', () => {

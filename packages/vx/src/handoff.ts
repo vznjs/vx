@@ -9,13 +9,14 @@
  * `node_modules/@vzn/vx` from `cwd` up to the git root (a `.git` stops the
  * walk after its own level), run through its `.bin/vx`. Null once handed
  * off (one hop), for a vx that is not a standalone compiled binary (source;
- * an npm install, whose launcher already walked), and when the local one is
- * this binary.
+ * an npm install, whose launcher already walked), when the local one is
+ * this binary, and when another user owns it.
  */
 export async function localVx(
   cwd: string,
   execPath: string,
   compiled: boolean,
+  uid = process.getuid?.(),
 ): Promise<string | null> {
   if (process.env['VX_HANDED_OFF'] !== undefined || !compiled) return null
   if (execPath.includes('/node_modules/')) return null
@@ -23,9 +24,12 @@ export async function localVx(
     // A file each: `exists()` is false for a directory.
     if (await Bun.file(`${d}/node_modules/@vzn/vx/package.json`).exists()) {
       const bin = `${d}/node_modules/.bin/vx`
-      const { realpathSync } = await import('node:fs')
+      const { realpathSync, statSync } = await import('node:fs')
       try {
-        return realpathSync(bin) === realpathSync(execPath) ? null : bin
+        const real = realpathSync(bin)
+        // One another user planted above your checkout would run as you.
+        if (statSync(real).uid !== uid) return null
+        return real === realpathSync(execPath) ? null : bin
       } catch {
         return null
       }
