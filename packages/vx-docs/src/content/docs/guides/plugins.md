@@ -552,4 +552,4 @@ export default defineWorkspace({ plugins: [mcp()] })
 
 Only `runTasks` runs anything, and it runs `vx run --format json`
 itself, so the CLI's selection, refusals and sandbox apply. The server speaks
-MCP in about 230 lines, with no dependencies.
+MCP in about 300 lines, with no dependencies.

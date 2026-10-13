@@ -1,15 +1,24 @@
 // MCP over stdio, natively: newline-delimited JSON-RPC 2.0 in, the same
-// out. The three methods an agent needs — `initialize`, `tools/list`,
+// out. The methods an agent needs — `initialize`, `tools/list`,
 // `tools/call` — plus `ping`; notifications are acknowledged by silence.
-// Everything else is the standard "method not found".
+// A request whose `_meta` names a stateless revision (2026-07-28) is
+// answered as that revision: no handshake, `server/discover`, a
+// `resultType` and the server's identity on every result. Everything else
+// is the standard "method not found".
 
 import { Console } from 'node:console'
 import { isUserError, maskedLine, VERSION } from '@vzn/vx'
 import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
-/** The newest protocol revision this server speaks; an older client's version is echoed back. */
-export const PROTOCOL_VERSION = '2025-06-18'
-const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
+/** The newest revision `initialize` answers; an older client's version is echoed back. */
+export const PROTOCOL_VERSION = '2025-11-25'
+const KNOWN_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25'])
+/** Revisions with no handshake: each request names its own in `_meta`. */
+const STATELESS_VERSIONS = new Set(['2026-07-28'])
+const SUPPORTED_VERSIONS = [...STATELESS_VERSIONS, ...[...KNOWN_VERSIONS].reverse()]
+const VERSION_KEY = 'io.modelcontextprotocol/protocolVersion'
+// 2026-07-28 moved the version error into the spec's range (-32020…-32099).
+const UNSUPPORTED_PROTOCOL_VERSION = -32022
 
 interface ServerOptions extends ToolContext {}
 
@@ -22,7 +31,11 @@ interface Request {
 
 type Response =
   | { jsonrpc: '2.0'; id: number | string | null; result: unknown }
-  | { jsonrpc: '2.0'; id: number | string | null; error: { code: number; message: string } }
+  | {
+      jsonrpc: '2.0'
+      id: number | string | null
+      error: { code: number; message: string; data?: unknown }
+    }
 
 const INVALID: Response = {
   jsonrpc: '2.0',
@@ -81,28 +94,72 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
     isNotification ? null : { jsonrpc: '2.0', id, result }
   // Errors too: JSON-RPC 2.0 never answers a notification, and a bad tool
   // name or a tool's crash was answered with `id: null` (item 925).
-  const fail = (code: number, message: string): Response | null =>
-    isNotification ? null : { jsonrpc: '2.0', id, error: { code, message } }
+  const fail = (code: number, message: string, data?: unknown): Response | null =>
+    isNotification
+      ? null
+      : { jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } }
+  const meta = msg.params?.['_meta']
+  const asked =
+    meta !== null && typeof meta === 'object'
+      ? (meta as Record<string, unknown>)[VERSION_KEY]
+      : undefined
+  // Named but not ours (or not a string): the spec's error, listing what is.
+  if (asked !== undefined && (typeof asked !== 'string' || !STATELESS_VERSIONS.has(asked))) {
+    return fail(UNSUPPORTED_PROTOCOL_VERSION, 'unsupported protocol version', {
+      supported: SUPPORTED_VERSIONS,
+      requested: asked,
+    })
+  }
+  const stateless = asked !== undefined
+  const instructions =
+    ctx.run === false
+      ? 'Read-only view of this workspace’s vx cache and run history. Nothing here runs a task.'
+      : 'This workspace’s vx tasks, cache and run history. runTasks runs tasks; every other tool only reads.'
+  const serverInfo = { name: 'vx', version: VERSION }
+  // A stateless revision's result says it is complete and who answered.
+  const answer = (result: Record<string, unknown>): Response | null =>
+    reply(
+      stateless
+        ? {
+            ...result,
+            resultType: 'complete',
+            _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
+          }
+        : result,
+    )
+  // The tools differ by workspace and by --read-only: never shared across contexts.
+  const cacheable = { ttlMs: 0, cacheScope: 'private' }
+  // The handshake and `ping` are gone from the stateless revisions.
+  if (stateless && (msg.method === 'initialize' || msg.method === 'ping')) {
+    return fail(-32601, `method not found: ${msg.method}`)
+  }
   try {
     switch (msg.method) {
+      // Any client may probe with it, before choosing a revision (stdio's backward-compatibility check).
+      case 'server/discover':
+        return reply({
+          supportedVersions: SUPPORTED_VERSIONS,
+          capabilities: { tools: {} },
+          instructions,
+          ...cacheable,
+          resultType: 'complete',
+          _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
+        })
       case 'initialize': {
-        const asked = msg.params?.['protocolVersion']
+        const version = msg.params?.['protocolVersion']
         const protocolVersion =
-          typeof asked === 'string' && KNOWN_VERSIONS.has(asked) ? asked : PROTOCOL_VERSION
+          typeof version === 'string' && KNOWN_VERSIONS.has(version) ? version : PROTOCOL_VERSION
         return reply({
           protocolVersion,
           capabilities: { tools: {} },
-          serverInfo: { name: 'vx', version: VERSION },
-          instructions:
-            ctx.run === false
-              ? 'Read-only view of this workspace’s vx cache and run history. Nothing here runs a task.'
-              : 'This workspace’s vx tasks, cache and run history. runTasks runs tasks; every other tool only reads.',
+          serverInfo,
+          instructions,
         })
       }
       case 'ping':
         return reply({})
       case 'tools/list':
-        return reply({ tools: listTools(ctx) })
+        return answer({ tools: listTools(ctx), ...(stateless ? cacheable : {}) })
       case 'tools/call': {
         const name = msg.params?.['name']
         if (typeof name !== 'string') return fail(-32602, 'tools/call: name must be a string')
@@ -122,7 +179,7 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
         }
         try {
           const result = await handleToolCall(name, args, ctx)
-          return reply({ content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
+          return answer({ content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
         } catch (err) {
           // A tool's own refusal is a RESULT the agent should read, not a
           // protocol error: it names what to fix ("taskId must be …"). By
@@ -132,7 +189,7 @@ async function handleOne(parsed: unknown, ctx: ToolContext): Promise<Response | 
           // refusal quotes the config's own strings, and the agent is
           // often a remote model (L-11).
           if (isUserError(err)) {
-            return reply({
+            return answer({
               content: [{ type: 'text', text: maskedLine(err.message) }],
               isError: true,
             })

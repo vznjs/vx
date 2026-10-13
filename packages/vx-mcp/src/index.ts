@@ -14,9 +14,10 @@
 // executor and no cache layer: a run goes through the CLI.
 //
 // No SDK: MCP over stdio is newline-delimited JSON-RPC and the methods
-// `initialize`, `tools/list`, `tools/call` and `ping`. It pulls in nothing
-// where the reference SDK pulls in an HTTP stack this transport never uses,
-// and server.ts is about 210 lines — a number a test holds to the file.
+// `initialize`, `tools/list`, `tools/call`, `ping` and `server/discover`.
+// It pulls in nothing where the reference SDK pulls in an HTTP stack this
+// transport never uses, and server.ts is about 300 lines — a number a test
+// holds to the file.
 
 import { definePlugin, UserError, type VxPlugin } from '@vzn/vx'
 

@@ -66,11 +66,11 @@ limits it to the tasks you name, and `run: false` turns it off. The transport is
 stdio, which is process-private, so there is no port, no auth and no
 attack surface beyond the process the agent already spawned.
 
-## Why it is about 230 lines
+## Why it is about 300 lines
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and the three methods
 an agent needs: `initialize`, `tools/list`, `tools/call`, plus `ping`.
-The plugin speaks it natively in about 230 lines with no dependencies; the reference SDK pulls
+The plugin speaks it natively in about 300 lines with no dependencies; the reference SDK pulls
 in an HTTP stack this transport never uses. A tool's own refusal ("a
 task id must be `project#task`") comes back as an `isError` result the
 agent can read and correct, not as a protocol error that ends the
