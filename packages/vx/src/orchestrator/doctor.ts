@@ -13,6 +13,7 @@ import {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,
   executablePath,
+  gitEnv,
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
@@ -354,6 +355,7 @@ function gitStatusCache(root: string): InfoFacts['gitStatusCache'] {
   try {
     const p = Bun.spawnSync({
       cmd: [executablePath('git'), 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
+      env: gitEnv(),
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -373,6 +375,7 @@ function gitVersion(): string | null {
   try {
     const p = Bun.spawnSync({
       cmd: [executablePath('git'), '--version'],
+      env: gitEnv(),
       stdout: 'pipe',
       stderr: 'pipe',
     })

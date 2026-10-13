@@ -17,6 +17,7 @@ import {
   statSync,
 } from 'node:fs'
 import path from 'node:path'
+import { gitEnv } from '../util/index.js'
 
 /**
  * 16 hex of sha256 of the repo key, sha256(`<identity>#<workspace path in
@@ -235,7 +236,7 @@ async function firstCommit(commonDir: string, root: string): Promise<string | nu
 
 async function git(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const p = Bun.spawn(['git', ...args], { cwd, stdout: 'pipe', stderr: 'ignore' })
+    const p = Bun.spawn(['git', ...args], { cwd, env: gitEnv(), stdout: 'pipe', stderr: 'ignore' })
     const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
     return code === 0 ? out : null
   } catch {
