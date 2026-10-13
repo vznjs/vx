@@ -15,7 +15,12 @@ else loads.
 // the local vx to run instead, or null: handed off already, not a standalone
 // compiled binary (source; an npm install, whose launcher walked), itself,
 // or owned by another user than `uid`
-export async function localVx(cwd: string, execPath: string, compiled: boolean, uid?: number): Promise<string | null>
+export async function localVx(
+  cwd: string,
+  execPath: string,
+  compiled: boolean,
+  uid?: number,
+): Promise<string | null>
 // run it with this process's stdio and arguments, pass on a signal sent to
 // this vx alone, exit with its code (128 + signo for a signal)
 export async function handOff(bin: string, args: readonly string[]): Promise<never>
