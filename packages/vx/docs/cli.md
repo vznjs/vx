@@ -8,7 +8,8 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 so existing Turbo users can swap in with minimal muscle-memory churn.
 
 ```sh
-# Standalone binary via npm (no Bun required on target):
+# Standalone binary via npm (no Bun required on target); inside a project
+# that installs @vzn/vx, it runs that one (§ Which vx runs):
 npm install -g @vzn/vx
 
 # From source (Bun ≥ 1.4):
@@ -1942,6 +1943,9 @@ manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
 `package-lock.json`), else `packageManager`, else npm; the field it is
 listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
 root adds `--workspace-root`. The lockfile is updated by that manager.
+Run inside a project that installs `@vzn/vx`, a global vx hands
+`vx upgrade` to the project's own (§ Which vx runs), so the project's
+dependency is what moves.
 vx prints what it runs (`vx upgrade: 0.0.1 → 0.0.2: running pnpm add
 @vzn/vx@0.0.2 --save-dev (in /repo)`), runs it there, and exits with an
 error if it fails. vx never installs Node or a package manager: one not
