@@ -172,6 +172,16 @@ describe('a module page quotes a constant or a regex the module has', () => {
     expect([...list![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
 
+  it("schema.md's credential stores are CREDENTIAL_STORES", () => {
+    const src = read('src/orchestrator/sandbox-request.ts')
+    const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
+    expect(arr).not.toBeNull()
+    const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
+    const list = /shares \(L-41\): ([\s\S]*?)\.\nWhat it grants/.exec(read('docs/schema.md'))
+    expect(list).not.toBeNull()
+    expect([...list![1]!.matchAll(/`~\/([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
+  })
+
   it("history.md's default window is DEFAULT_RECENT", () => {
     const recent = /const DEFAULT_RECENT = (\d+)/.exec(read('src/orchestrator/history.ts'))
     expect(recent).not.toBeNull()

@@ -647,6 +647,26 @@ export const CREDENTIAL_STORES = [
   '.terraform.d/credentials.tfrc.json',
   '.vault-token',
   '.pgpass',
+  // Deploy and service CLIs a JS build runs beside, each at its home on
+  // Linux and macOS, and the agent CLIs that may run vx itself.
+  '.config/configstore/firebase-tools.json',
+  '.local/share/com.vercel.cli/auth.json',
+  'Library/Application Support/com.vercel.cli/auth.json',
+  '.netlify/config.json',
+  '.config/netlify/config.json',
+  'Library/Preferences/netlify/config.json',
+  '.wrangler/config',
+  '.config/.wrangler/config',
+  'Library/Preferences/.wrangler/config',
+  '.fly/config.yml',
+  '.supabase/access-token',
+  '.config/doctl',
+  'Library/Application Support/doctl',
+  '.config/stripe/config.toml',
+  '.config/op',
+  '.expo/state.json',
+  '.claude/.credentials.json',
+  '.codex/auth.json',
 ]
 
 /** The stores present on this host, learned once per home. */
