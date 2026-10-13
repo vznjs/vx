@@ -28,10 +28,10 @@ executors: [ reapi, …, local ]
 cache:     [ local cache, turboCache, … ]
 ```
 
-You never write the local element and you cannot remove it. A workspace
-with no `vx.workspace.ts` is the empty list plus the floor, which is
-why `vx run build` works in a fresh repository with one `vx.config.ts`
-and nothing else.
+You never write the local element and you cannot remove it. A
+`vx.workspace.ts` that declares no plugins is the empty list plus the
+floor, which is why `vx run build` works in a fresh repository with
+`export default {}` in it and one `vx.config.ts`.
 
 Update (2026-10-07): the floor's artifacts now live in a shared store,
 `~/.vx/<id>/cache`, that every checkout of the repository hits; each

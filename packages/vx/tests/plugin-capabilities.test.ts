@@ -1500,18 +1500,20 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  it('NO PLUGINS: a workspace with no workspace file at all runs on the fallbacks', async () => {
+  // vx.workspace.* marks the root (owner, 2026-10-13): without one there is
+  // no workspace to run.
+  it('NO WORKSPACE FILE: the run is refused, naming `vx init`', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await gitInit(workspaceRoot)
-      const summary = await runHello(workspaceRoot)
-      expect(summary.ok).toBe(true)
+      const err = await runHello(workspaceRoot).catch((e: unknown) => e)
+      expect((err as { code?: string }).code).toBe('VX_E_NO_WORKSPACE')
     } finally {
       cleanup()
     }
   })
 
-  it('CONTROL: the same workspace with an empty declared plugin list runs too', async () => {
+  it('NO PLUGINS: an empty declared plugin list runs on the fallbacks', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await writeLocalWorkspace(workspaceRoot)

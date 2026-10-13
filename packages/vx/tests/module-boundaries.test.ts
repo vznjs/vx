@@ -33,7 +33,8 @@ const ALLOWED: Record<string, readonly string[]> = {
   handoff: [],
   // `version`: the config-evaluation cache keys on vx's version, since a
   // stored evaluation is served without re-validation.
-  workspace: ['util', 'config', 'version'],
+  // `handoff`: the git top-level, learned once for the hand-off and the root walk.
+  workspace: ['util', 'config', 'version', 'handoff'],
   graph: ['util', 'config', 'workspace'],
   cache: ['util', 'config'],
   exec: ['util', 'config'],

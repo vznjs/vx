@@ -26,17 +26,9 @@ import { readOnce, unreadable } from './load-reads.js'
 // reaches the loader for it (the tests do) keeps working.
 export { validateProjectConfig }
 
-/** The workspace config's filenames at the root, in lookup order. `vx watch` re-runs on an edit to whichever exists. */
-export const WORKSPACE_CONFIG_FILENAMES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
-  // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
-  // was ignored without a word (D-86).
-  'vx.workspace.cts',
-  'vx.workspace.cjs',
-]
+// The filenames live with the root lookup, which runs before anything loads.
+import { WORKSPACE_CONFIG_FILENAMES, workspaceFile } from '../handoff.js'
+export { WORKSPACE_CONFIG_FILENAMES }
 
 /** What a function default export is told; the playground says the same. */
 const EXPORTED_A_FUNCTION =
@@ -1127,8 +1119,27 @@ async function refuseStaleWorkspaceImports(configPath: string, since: number): P
  * a `UserError` on malformed input.
  */
 export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig | null> {
-  for (const configPath of WORKSPACE_CONFIG_FILENAMES.map((f) => path.join(root, f))) {
-    const bytes = await readOnce(undefined, configPath)
+  // The root lookup already probed for it (principle 9): read what it
+  // found. A file gone since (a `vx watch` cycle after a rename) is probed for.
+  const found = await workspaceFile(path.resolve(root))
+  const known =
+    found !== null && path.dirname(found) === path.resolve(root)
+      ? await Bun.file(found)
+          .bytes()
+          .then(
+            (bytes) => ({ configPath: found, bytes }),
+            () => null,
+          )
+      : null
+  const candidates =
+    known !== null
+      ? [known]
+      : found === null
+        ? []
+        : WORKSPACE_CONFIG_FILENAMES.map((f) => ({ configPath: path.join(root, f), bytes: null }))
+  for (const candidate of candidates) {
+    const { configPath } = candidate
+    const bytes = candidate.bytes ?? (await readOnce(undefined, configPath))
     if (bytes === null) continue
     const since = workspaceLoadedAt.get(configPath)
     if (since !== undefined) await refuseStaleWorkspaceImports(configPath, since)

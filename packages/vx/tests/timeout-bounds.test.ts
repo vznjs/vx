@@ -212,6 +212,7 @@ describe('the refusal reaches a real run', () => {
     const dir = path.join(root, 'packages/a')
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}')
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(dir, 'package.json'), '{"name":"a","version":"1.0.0"}')
     await writeFile(path.join(dir, 'src', 'a.ts'), 'x')
     await writeFile(

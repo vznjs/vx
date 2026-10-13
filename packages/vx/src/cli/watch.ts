@@ -166,7 +166,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // run has staged the configs. Plus the workspace root, for lockfile
   // changes.
   const reads: LoadReads = new Map()
-  const workspaceRoot = await findWorkspaceRoot(cwd, reads)
+  const workspaceRoot = await findWorkspaceRoot(cwd)
   const workspace = await loadWorkspace(workspaceRoot, reads)
   const allProjects = await discoverCliProjects(workspace)
   // `//#check` is the root project's task, named by its package.json name

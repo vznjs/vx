@@ -8,9 +8,7 @@
 // before this is asked, so a plugin cannot shadow `run`.
 
 import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
-import { existsSync } from 'node:fs'
-import path from 'node:path'
-import { findWorkspaceRoot, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { machineParallelism, maskedLine } from '../util/index.js'
 
 export interface ResolvedPluginCommand {
@@ -53,11 +51,6 @@ async function workspacePlugins(
   } catch {
     return null
   }
-  // Plugins are declared only in a workspace file. Without one, the load
-  // below is the orchestrator's import graph (~50 ms) for an empty list,
-  // paid by `vx help` and by the `vx completions` a shell sources at start.
-  if (!WORKSPACE_CONFIG_FILENAMES.some((f) => existsSync(path.join(workspaceRoot, f))))
-    return { workspaceRoot, cacheDir: '', concurrency: 0, plugins: [] }
   let ws
   try {
     const { loadCliWorkspace } = await import('./workspace-config.js')

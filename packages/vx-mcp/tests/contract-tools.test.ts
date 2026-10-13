@@ -59,10 +59,17 @@ const run = (): void => {
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-contract-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
   await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+  // A package with a script and no config: what planInit has to write.
+  await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
+  await writeFile(
+    path.join(root, 'packages', 'b', 'package.json'),
+    JSON.stringify({ name: 'b', scripts: { lint: 'true' } }),
+  )
   await writeFile(
     path.join(root, 'packages', 'a', 'vx.config.mjs'),
     "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }, fail: { exec: { command: 'echo src/x.js:1:2; exit 1' } } } }\n",

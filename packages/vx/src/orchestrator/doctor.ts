@@ -148,7 +148,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   const reads: LoadReads = new Map()
   // Both first: outside a workspace, or under a workspace config that does
   // not load, the doctor refuses at once, with no probe (~180 ms) ahead.
-  const root = await findWorkspaceRoot(cwd, reads)
+  const root = await findWorkspaceRoot(cwd)
   const workspace = await loadWorkspacePlugins(root, warn)
   // The sandbox probe asks nothing of the workspace, so it runs under the
   // loads below instead of after them. Awaited on every path: it resets

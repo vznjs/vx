@@ -223,8 +223,9 @@ block. A sandboxed server on Linux lists its port in
 
 ## Workspace config
 
-`vx.workspace.ts`, beside the root `package.json`, is optional. Without
-it, vx runs and caches on this machine.
+`vx.workspace.ts` is required: the nearest one up from where you run,
+within your git checkout, marks the workspace root (`vx init` writes
+it). With no plugins in it, vx runs and caches on this machine.
 
 ```ts
 // vx.workspace.ts

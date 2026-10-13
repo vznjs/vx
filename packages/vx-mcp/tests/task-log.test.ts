@@ -21,6 +21,7 @@ beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-log-'))
   const pkg = path.join(root, 'packages', 'a')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await mkdir(pkg, { recursive: true })
   await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))

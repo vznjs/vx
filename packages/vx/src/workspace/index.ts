@@ -52,6 +52,7 @@ export {
   type ConfigEvalStore,
 } from './config-cache.js'
 export {
+  findManifestRoot,
   findWorkspaceRoot,
   discoverProjects,
   listProjects,

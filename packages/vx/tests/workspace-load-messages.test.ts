@@ -19,6 +19,7 @@ const run = async (files: Record<string, string | Uint8Array>) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-load-msg-')))
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
   await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["p"]}')
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'p'))
   for (const [rel, body] of Object.entries({ 'p/package.json': '{"name":"p"}', ...files })) {
     await writeFile(path.join(root, rel), body)

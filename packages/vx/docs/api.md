@@ -654,11 +654,12 @@ convention, not proof — a command may exit 137 on its own.
 export function exitSignal(code: number): string | undefined
 ```
 
-## `findWorkspaceRoot`
+## `findManifestRoot`
 
 function · `src/workspace/workspace.ts`
 
-Walk up from `start` to find the workspace root. A directory is a root
+Where `vx init` (and `@vzn/vx-migrate`) puts `vx.workspace.ts` when
+there is none yet: the package manager's workspace root. A directory is a root
 CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
 
 The nearest candidate that CLAIMS `start` wins — one of the directories
@@ -678,18 +679,46 @@ the project). Throws a `UserError` when there is no candidate before `/`.
 A load that goes on to `loadWorkspace` passes its `reads`, so the
 root's manifest is read once for both.
 
-The walk stops above `start` at a manifest another user owns (root
-aside): its workspace config would run as you. A `package.json` planted
-in a shared directory above your checkout (`/tmp/package.json` listing
-`*`) claimed it, and `vx info` ran the planter's `vx.workspace.ts`
-(git's `safe.directory` case). The directory you run in is yours to
+Inside git the walk never goes above the git top-level ({@link gitTop}),
+so a manifest above the checkout is never even read: a `package.json`
+planted in a shared directory above it claimed it, and its workspace
+config ran as you (owner, 2026-10-13: "find the root based on git").
+
+Outside git the walk stops above `start` at a manifest another user
+owns (root aside), the same case without a top-level to stop at
+(git's `safe.directory`). The directory you run in is yours to
 judge, and costs no stat. Run as root, vx trusts every owner, as a
 container over a mounted checkout needs. `uid` is for tests.
 
 ```ts
-export async function findWorkspaceRoot(
+export async function findManifestRoot(
   start: string,
   reads: LoadReads = new Map(),
+  uid: number = process.getuid?.() ?? 0,
+): Promise<string>
+```
+
+## `findWorkspaceRoot`
+
+function · `src/workspace/workspace.ts`
+
+The workspace root for `start`: the directory holding the first
+`vx.workspace.*` from `start` up to the git top-level, or up to `/`
+outside git ({@link workspaceFile}, shared with the hand-off). Nothing
+else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
+not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
+`VX_E_NO_WORKSPACE` when there is none.
+
+Outside git, a file another user owns is refused (root aside): a
+`vx.workspace.ts` planted in a shared directory above you (`/tmp`) is
+code that would run as you. Inside git the walk never leaves your
+checkout. The directory you run in is yours to judge, and costs no
+stat. Run as root, vx trusts every owner, as a container over a mounted
+checkout needs. `uid` is for tests.
+
+```ts
+export async function findWorkspaceRoot(
+  start: string,
   uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
 ```

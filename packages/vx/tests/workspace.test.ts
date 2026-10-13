@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from 'bun:test'
 import {
-  findWorkspaceRoot,
+  findManifestRoot,
   listProjects,
   loadWorkspace,
   memberBaseDirs,
@@ -17,7 +17,7 @@ import { buildPackageGraph } from '../src/workspace/package-graph.js'
 import { run } from '../src/orchestrator/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-describe('findWorkspaceRoot', () => {
+describe('findManifestRoot', () => {
   let dir: string
 
   beforeEach(async () => {
@@ -32,11 +32,11 @@ describe('findWorkspaceRoot', () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages: []\n')
     const sub = path.join(dir, 'a', 'b', 'c')
     await mkdir(sub, { recursive: true })
-    expect(await findWorkspaceRoot(sub)).toBe(dir)
+    expect(await findManifestRoot(sub)).toBe(dir)
   })
 
   it('throws clearly when no workspace root signal exists in any parent', async () => {
-    const said = await findWorkspaceRoot(dir).then(
+    const said = await findManifestRoot(dir).then(
       () => '',
       (err: Error) => err.message,
     )
@@ -51,7 +51,7 @@ describe('findWorkspaceRoot', () => {
     await writeFile(path.join(dir, 'package.json'), '{"name":"r","private":true}')
     const sub = path.join(dir, 'a', 'b', 'c')
     await mkdir(sub, { recursive: true })
-    expect(await findWorkspaceRoot(sub)).toBe(dir)
+    expect(await findManifestRoot(sub)).toBe(dir)
   })
 
   it('accepts package.json with workspaces field (npm/yarn/bun)', async () => {
@@ -61,7 +61,7 @@ describe('findWorkspaceRoot', () => {
     )
     const sub = path.join(dir, 'packages')
     await mkdir(sub, { recursive: true })
-    expect(await findWorkspaceRoot(sub)).toBe(dir)
+    expect(await findManifestRoot(sub)).toBe(dir)
   })
 
   // Every member has its own package.json, so stopping at the first one
@@ -82,7 +82,7 @@ describe('findWorkspaceRoot', () => {
         JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
         'packages/a',
       )
-      expect(await findWorkspaceRoot(abs)).toBe(dir)
+      expect(await findManifestRoot(abs)).toBe(dir)
     })
 
     it("resolves a member's subdirectory to the root", async () => {
@@ -92,7 +92,7 @@ describe('findWorkspaceRoot', () => {
       )
       const deep = path.join(abs, 'src', 'nested')
       await mkdir(deep, { recursive: true })
-      expect(await findWorkspaceRoot(deep)).toBe(dir)
+      expect(await findManifestRoot(deep)).toBe(dir)
     })
 
     it('resolves a member of a pnpm-workspace.yaml root', async () => {
@@ -101,7 +101,7 @@ describe('findWorkspaceRoot', () => {
       const abs = path.join(dir, 'packages', 'a')
       await mkdir(abs, { recursive: true })
       await writeFile(path.join(abs, 'package.json'), '{"name":"m"}')
-      expect(await findWorkspaceRoot(abs)).toBe(dir)
+      expect(await findManifestRoot(abs)).toBe(dir)
     })
 
     it('a package under a matched directory with no manifest is not claimed (item 989)', async () => {
@@ -116,12 +116,12 @@ describe('findWorkspaceRoot', () => {
       const standalone = path.join(dir, 'packages', 'tools', 'standalone')
       await mkdir(standalone, { recursive: true })
       await writeFile(path.join(standalone, 'package.json'), '{"name":"standalone"}')
-      expect(await findWorkspaceRoot(standalone)).toBe(standalone)
+      expect(await findManifestRoot(standalone)).toBe(standalone)
       // Control: a member's own subdirectory, manifest-less, still resolves up.
       const deep = path.join(dir, 'packages', 'a', 'src')
       await mkdir(deep, { recursive: true })
       await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
-      expect(await findWorkspaceRoot(deep)).toBe(dir)
+      expect(await findManifestRoot(deep)).toBe(dir)
     })
 
     it('a package discovery skips (dot-dir, node_modules) is not claimed', async () => {
@@ -142,7 +142,7 @@ describe('findWorkspaceRoot', () => {
       expect(listed.sort()).toEqual([...members].sort())
       const roots: string[] = []
       for (const rel of [...skipped, ...members]) {
-        roots.push(relPosix(dir, await findWorkspaceRoot(path.join(dir, rel))))
+        roots.push(relPosix(dir, await findManifestRoot(path.join(dir, rel))))
       }
       expect(roots).toEqual([...skipped, '', '', ''])
     })
@@ -159,12 +159,12 @@ describe('findWorkspaceRoot', () => {
       await writeFile(path.join(inner, 'pnpm-workspace.yaml'), 'packages:\n  - "pkgs/*"\n')
       await writeFile(path.join(inner, 'package.json'), '{"name":"inner"}')
       await writeFile(path.join(x, 'package.json'), '{"name":"x"}')
-      expect([await findWorkspaceRoot(inner), await findWorkspaceRoot(x)]).toEqual([inner, inner])
+      expect([await findManifestRoot(inner), await findManifestRoot(x)]).toEqual([inner, inner])
       // Control: an outer member without a workspace file of its own.
       const web = path.join(dir, 'apps', 'web')
       await mkdir(web, { recursive: true })
       await writeFile(path.join(web, 'package.json'), '{"name":"web"}')
-      expect(await findWorkspaceRoot(web)).toBe(dir)
+      expect(await findManifestRoot(web)).toBe(dir)
     })
 
     it('resolves an explicitly listed nested member past its parent package', async () => {
@@ -179,7 +179,7 @@ describe('findWorkspaceRoot', () => {
       await mkdir(ui, { recursive: true })
       await writeFile(path.join(cloud, 'package.json'), '{"name":"cloud"}')
       await writeFile(path.join(ui, 'package.json'), '{"name":"ui"}')
-      expect(await findWorkspaceRoot(ui)).toBe(dir)
+      expect(await findManifestRoot(ui)).toBe(dir)
     })
 
     it('prefers the NEAREST declaring ancestor (nested workspace)', async () => {
@@ -195,7 +195,7 @@ describe('findWorkspaceRoot', () => {
         JSON.stringify({ name: 'inner', workspaces: ['pkgs/*'] }),
       )
       await writeFile(path.join(pkg, 'package.json'), '{"name":"x"}')
-      expect(await findWorkspaceRoot(pkg)).toBe(inner)
+      expect(await findManifestRoot(pkg)).toBe(inner)
     })
 
     it('an UNPARSEABLE root manifest is still the root', async () => {
@@ -207,7 +207,7 @@ describe('findWorkspaceRoot', () => {
       await writeFile(path.join(dir, 'package.json'), '{ this is not json')
       const sub = path.join(dir, 'packages', 'a')
       await mkdir(sub, { recursive: true })
-      expect(await findWorkspaceRoot(sub)).toBe(dir)
+      expect(await findManifestRoot(sub)).toBe(dir)
       await expect(loadWorkspace(dir)).rejects.toThrow(/package\.json/)
     })
 
@@ -226,14 +226,14 @@ describe('findWorkspaceRoot', () => {
       // A plain manifest: a root SIGNAL (single-project mode) that claims
       // nothing below it, so only the outer root's globs can decide.
       await writeFile(path.join(fx, 'package.json'), JSON.stringify({ name: 'fx' }))
-      expect(await findWorkspaceRoot(path.join(fx, 'inner'))).toBe(fx)
+      expect(await findManifestRoot(path.join(fx, 'inner'))).toBe(fx)
       // CONTROL: the same layout WITHOUT the negation resolves to the root,
       // because `packages/*` claims it.
       await writeFile(
         path.join(dir, 'package.json'),
         JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
       )
-      expect(await findWorkspaceRoot(path.join(fx, 'inner'))).toBe(dir)
+      expect(await findManifestRoot(path.join(fx, 'inner'))).toBe(dir)
     })
 
     it('leaves a package no glob claims in single-project mode', async () => {
@@ -241,7 +241,7 @@ describe('findWorkspaceRoot', () => {
         JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
         'examples/demo',
       )
-      expect(await findWorkspaceRoot(abs)).toBe(abs)
+      expect(await findManifestRoot(abs)).toBe(abs)
     })
   })
 })

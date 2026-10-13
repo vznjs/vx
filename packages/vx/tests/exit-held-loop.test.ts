@@ -21,6 +21,7 @@ beforeEach(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
   )
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
   await writeFile(path.join(root, 'packages', 'a', 'package.json'), '{"name":"a"}')
 })

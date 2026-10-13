@@ -134,7 +134,7 @@ async function workspaceFingerprintClaims(
 
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
   const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(cwd, reads)
+  const root = await findWorkspaceRoot(cwd)
   return await discoverCliProjects(await loadWorkspace(root, reads))
 }
 
@@ -151,7 +151,7 @@ export async function findCwdSelection(
   cwd: string,
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
   const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(cwd, reads)
+  const root = await findWorkspaceRoot(cwd)
   const projects = await discoverCliProjects(await loadWorkspace(root, reads))
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): string | null => {

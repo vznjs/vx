@@ -159,7 +159,8 @@ describe('examples/turbo', () => {
     expect(kept.status).toEqual(all('cache-hit'))
     said.push(kept.cache)
 
-    rmSync(path.join(root, 'vx.workspace.ts'))
+    // The file stays: it marks the root.
+    writeFileSync(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
     commit(root)
     const alone = run(root, 'test')
     expect(alone.exit).toBe(0)

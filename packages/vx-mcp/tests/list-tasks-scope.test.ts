@@ -26,6 +26,7 @@ const names = (r: Record<string, unknown>) =>
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-mcp-list-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   for (const name of ['a', 'b']) {
     const pkg = path.join(root, 'packages', name)

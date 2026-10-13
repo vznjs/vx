@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import { findManifestRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 
 let root: string
 
@@ -36,9 +36,9 @@ for (const globs of [['packages/*'], ['packages/**'], ['packages/{a,.tpl}']]) {
   it(`a root listing ${JSON.stringify(globs)} claims only the members it lists`, async () => {
     await manifest('.', { name: 'outer', workspaces: globs })
     expect(await listed()).toEqual(['packages/a'])
-    expect(rel(await findWorkspaceRoot(path.join(root, 'packages/a')))).toBe('.')
-    expect(rel(await findWorkspaceRoot(path.join(root, 'packages/.tpl')))).toBe('packages/.tpl')
-    expect(rel(await findWorkspaceRoot(path.join(root, 'packages/a/node_modules/dep')))).toBe(
+    expect(rel(await findManifestRoot(path.join(root, 'packages/a')))).toBe('.')
+    expect(rel(await findManifestRoot(path.join(root, 'packages/.tpl')))).toBe('packages/.tpl')
+    expect(rel(await findManifestRoot(path.join(root, 'packages/a/node_modules/dep')))).toBe(
       'packages/a/node_modules/dep',
     )
   })
@@ -47,5 +47,5 @@ for (const globs of [['packages/*'], ['packages/**'], ['packages/{a,.tpl}']]) {
 it('a pattern that names the dot directory claims it, as discovery lists it', async () => {
   await manifest('.', { name: 'outer', workspaces: ['packages/.tpl', 'packages/a'] })
   expect(await listed()).toEqual(['packages/.tpl', 'packages/a'])
-  expect(rel(await findWorkspaceRoot(path.join(root, 'packages/.tpl')))).toBe('.')
+  expect(rel(await findManifestRoot(path.join(root, 'packages/.tpl')))).toBe('.')
 })

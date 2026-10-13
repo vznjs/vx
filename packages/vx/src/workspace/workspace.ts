@@ -14,6 +14,7 @@ import {
   normalizeBunGlob,
   realpathOf,
 } from '../util/index.js'
+import { gitTop, workspaceFile } from '../handoff.js'
 import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 import { repoIdOf } from './repo-id.js'
 
@@ -77,7 +78,53 @@ export const PROJECT_CONFIG_FILENAMES = [
 const decoder = new TextDecoder()
 
 /**
- * Walk up from `start` to find the workspace root. A directory is a root
+ * The workspace root for `start`: the directory holding the first
+ * `vx.workspace.*` from `start` up to the git top-level, or up to `/`
+ * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
+ * else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
+ * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
+ * `VX_E_NO_WORKSPACE` when there is none.
+ *
+ * Outside git, a file another user owns is refused (root aside): a
+ * `vx.workspace.ts` planted in a shared directory above you (`/tmp`) is
+ * code that would run as you. Inside git the walk never leaves your
+ * checkout. The directory you run in is yours to judge, and costs no
+ * stat. Run as root, vx trusts every owner, as a container over a mounted
+ * checkout needs. `uid` is for tests.
+ */
+export async function findWorkspaceRoot(
+  start: string,
+  uid: number = process.getuid?.() ?? 0,
+): Promise<string> {
+  start = path.resolve(start)
+  const file = await workspaceFile(start)
+  if (file === null) {
+    throw new UserError(
+      `no vx.workspace.ts found in ${start} or any parent directory${(await gitTop(start)) === null ? '' : ' up to the git root'}: ` +
+        'run `vx init` to create one',
+      'VX_E_NO_WORKSPACE',
+    )
+  }
+  const root = path.dirname(file)
+  if (uid !== 0 && root !== start && (await gitTop(start)) === null) {
+    const owner = await stat(file).then(
+      (st) => st.uid,
+      () => uid,
+    )
+    if (owner !== uid && owner !== 0) {
+      throw new UserError(
+        `${file} belongs to another user, so vx does not take its directory as your workspace: ` +
+          'its config would run as you. Run vx in a checkout you own, or run `vx init` in yours',
+        'VX_E_NO_WORKSPACE',
+      )
+    }
+  }
+  return root
+}
+
+/**
+ * Where `vx init` (and `@vzn/vx-migrate`) puts `vx.workspace.ts` when
+ * there is none yet: the package manager's workspace root. A directory is a root
  * CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
  *
  * The nearest candidate that CLAIMS `start` wins — one of the directories
@@ -97,20 +144,24 @@ const decoder = new TextDecoder()
  * A load that goes on to `loadWorkspace` passes its `reads`, so the
  * root's manifest is read once for both.
  *
- * The walk stops above `start` at a manifest another user owns (root
- * aside): its workspace config would run as you. A `package.json` planted
- * in a shared directory above your checkout (`/tmp/package.json` listing
- * `*`) claimed it, and `vx info` ran the planter's `vx.workspace.ts`
- * (git's `safe.directory` case). The directory you run in is yours to
+ * Inside git the walk never goes above the git top-level ({@link gitTop}),
+ * so a manifest above the checkout is never even read: a `package.json`
+ * planted in a shared directory above it claimed it, and its workspace
+ * config ran as you (owner, 2026-10-13: "find the root based on git").
+ *
+ * Outside git the walk stops above `start` at a manifest another user
+ * owns (root aside), the same case without a top-level to stop at
+ * (git's `safe.directory`). The directory you run in is yours to
  * judge, and costs no stat. Run as root, vx trusts every owner, as a
  * container over a mounted checkout needs. `uid` is for tests.
  */
-export async function findWorkspaceRoot(
+export async function findManifestRoot(
   start: string,
   reads: LoadReads = new Map(),
   uid: number = process.getuid?.() ?? 0,
 ): Promise<string> {
   start = path.resolve(start)
+  const top = await gitTop(start)
   let dir = start
   const below: string[] = []
   let nearest: string | null = null
@@ -132,7 +183,7 @@ export async function findWorkspaceRoot(
       // `loadWorkspace` surfaces the parse error if this dir is chosen.
       globs = []
     }
-    if (globs !== null && uid !== 0 && dir !== start) {
+    if (globs !== null && top === null && uid !== 0 && dir !== start) {
       const owner = await foreignOwner(dir, uid, reads)
       if (owner !== null) {
         foreign = owner
@@ -164,7 +215,7 @@ export async function findWorkspaceRoot(
       }
     }
     const parent = path.dirname(dir)
-    if (parent === dir) break
+    if (parent === dir || dir === top) break
     // Only a directory holding a manifest can be a member: a glob that
     // matched `packages/tools`, which has none, claimed the standalone
     // package below it, and `packages/tools/standalone` ran as a stranger

@@ -31,6 +31,7 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-load-reads-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
   await project('packages', 'a')
   gitInit(root)
@@ -106,7 +107,10 @@ describe('a run reads each root file once', () => {
         '.yarnrc.yml': ['exists'],
         '.npmrc': ['exists'],
         'bunfig.toml': ['exists'],
-        // The workspace config by precedence: three absent names, then the file.
+        // The root lookup's git bound: the fixture is the top-level.
+        '.git/HEAD': ['exists'],
+        // The root lookup probes by precedence (three absent names, then the
+        // file), and the loader reads the file it found.
         'vx.workspace.ts': ['exists'],
         'vx.workspace.mts': ['exists'],
         'vx.workspace.js': ['exists'],

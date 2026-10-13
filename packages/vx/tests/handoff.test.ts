@@ -75,15 +75,17 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
   it('to the first local install from cwd up, one hop, naming the global', () => {
     const repo = path.join(root, 'repo')
     mkdirSync(path.join(repo, '.git'), { recursive: true })
+    writeFileSync(path.join(repo, 'vx.workspace.ts'), '')
     install(path.join(repo, 'node_modules'), 'local')
     mkdirSync(path.join(repo, 'apps', 'web'), { recursive: true })
     expect(run(path.join(repo, 'apps', 'web'))).toBe(`local [${globalLauncher}] run a`)
   })
 
-  it('runs itself with no local install, and stops at the git root', () => {
-    // An install above the git root belongs to another project.
+  it('runs itself with no workspace, and stops at the git root', () => {
+    // A workspace above the git root belongs to another project.
     const outer = path.join(root, 'outer')
     install(path.join(outer, 'node_modules'), 'outer')
+    writeFileSync(path.join(outer, 'vx.workspace.mjs'), '')
     const inner = path.join(outer, 'inner')
     mkdirSync(path.join(inner, '.git'), { recursive: true })
     expect(run(inner)).toBe('global [] run a')
@@ -93,23 +95,41 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
     expect(run(bare)).toBe(`outer [${globalLauncher}] run a`)
   })
 
+  it("from a submodule to the superproject's install; a worktree's .git file stops the walk", () => {
+    const sup = path.join(root, 'super')
+    mkdirSync(path.join(sup, '.git'), { recursive: true })
+    writeFileSync(path.join(sup, 'vx.workspace.ts'), '')
+    install(path.join(sup, 'node_modules'), 'super')
+    const sub = path.join(sup, 'mods', 'sub')
+    mkdirSync(sub, { recursive: true })
+    writeFileSync(path.join(sub, '.git'), 'gitdir: ../../.git/modules/mods/sub\n')
+    expect(run(sub)).toBe(`super [${globalLauncher}] run a`)
+    const wt = path.join(sup, 'wt')
+    mkdirSync(wt)
+    writeFileSync(path.join(wt, '.git'), `gitdir: ${sup}/.git/worktrees/wt\n`)
+    expect(run(wt)).toBe('global [] run a')
+  })
+
   // A root-owned file stands in for another user's: only root can chown.
   it.skipIf(process.getuid?.() === 0)('never to a vx another user owns', () => {
     const planted = path.join(root, 'shared')
     mkdirSync(path.join(planted, 'node_modules', '@vzn', 'vx'), { recursive: true })
     mkdirSync(path.join(planted, 'node_modules', '.bin'))
     symlinkSync(Bun.which('echo')!, path.join(planted, 'node_modules', '.bin', 'vx'))
+    writeFileSync(path.join(planted, 'vx.workspace.ts'), '')
     mkdirSync(path.join(planted, 'mine'))
     expect(run(path.join(planted, 'mine'))).toBe('global [] run a')
   })
 
   it('never to itself: the global install is the local one', () => {
+    writeFileSync(path.join(root, 'prefix', 'lib', 'vx.workspace.ts'), '')
     expect(run(path.join(root, 'prefix', 'lib'))).toBe('global [] run a')
   })
 
   it('a pnpm symlinked node_modules: the global hands off, the local runs itself', () => {
     const repo = path.join(root, 'pnpm-repo')
     mkdirSync(path.join(repo, '.git'), { recursive: true })
+    writeFileSync(path.join(repo, 'vx.workspace.ts'), '')
     const nm = path.join(repo, 'node_modules')
     const real = path.join(nm, '.pnpm', '@vzn+vx@1.0.0', 'node_modules', '@vzn', 'vx')
     install(nm, 'local', real)
@@ -136,12 +156,14 @@ describe('the compiled binary hands off', () => {
   exe(standalone, 'echo standalone')
   const repo = path.join(tree, 'repo')
   mkdirSync(path.join(repo, '.git'), { recursive: true })
+  writeFileSync(path.join(repo, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+  writeFileSync(path.join(repo, 'vx.workspace.ts'), '')
   mkdirSync(path.join(repo, 'node_modules', '@vzn', 'vx'), { recursive: true })
   writeFileSync(path.join(repo, 'node_modules', '@vzn', 'vx', 'package.json'), '{}')
   exe(path.join(repo, 'node_modules', '.bin', 'vx'), 'echo "local [$VX_HANDED_OFF] $*"; exit 7')
   mkdirSync(path.join(repo, 'src'))
 
-  it('finds the local install from a subdirectory; none past the git root', async () => {
+  it("finds the workspace root's install from a subdirectory; none past the git root", async () => {
     expect(await localVx(path.join(repo, 'src'), standalone, true)).toBe(
       path.join(repo, 'node_modules', '.bin', 'vx'),
     )
@@ -149,6 +171,13 @@ describe('the compiled binary hands off', () => {
     mkdirSync(path.join(nested, '.git'), { recursive: true })
     writeFileSync(path.join(nested, '.git', 'HEAD'), 'ref: refs/heads/main\n')
     expect(await localVx(nested, standalone, true)).toBeNull()
+  })
+
+  it("from a submodule to the superproject's install", async () => {
+    const sub = path.join(repo, 'mods', 'sub')
+    mkdirSync(sub, { recursive: true })
+    writeFileSync(path.join(sub, '.git'), 'gitdir: ../../.git/modules/mods/sub\n')
+    expect(await localVx(sub, standalone, true)).toBe(path.join(repo, 'node_modules', '.bin', 'vx'))
   })
 
   it('never from source, from an npm install (its launcher walked), or to itself', async () => {
@@ -159,6 +188,7 @@ describe('the compiled binary hands off', () => {
     mkdirSync(path.join(self, 'node_modules', '@vzn', 'vx'), { recursive: true })
     writeFileSync(path.join(self, 'node_modules', '@vzn', 'vx', 'package.json'), '{}')
     mkdirSync(path.join(self, 'node_modules', '.bin'))
+    writeFileSync(path.join(self, 'vx.workspace.ts'), '')
     symlinkSync(standalone, path.join(self, 'node_modules', '.bin', 'vx'))
     expect(await localVx(self, standalone, true)).toBeNull()
   })

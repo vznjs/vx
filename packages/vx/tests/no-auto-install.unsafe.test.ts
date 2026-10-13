@@ -21,6 +21,7 @@ describe('a config never installs a package', () => {
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-noinstall-'))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(
       path.join(root, 'vx.config.mjs'),
       `import { x } from './helper.mjs'

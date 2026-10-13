@@ -10,16 +10,17 @@ vulnerability), never in a public issue.
 
 - **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
-  validates what it returns, not what it does. Looking for the
-  workspace root above where you run, vx stops at a manifest another
-  user owns (root aside), so a `package.json` planted in a shared
-  directory such as `/tmp` cannot claim your checkout and run its
-  config as you (`tests/workspace-foreign-owner.test.ts`). What a config imports
+  validates what it returns, not what it does. The workspace root is
+  the nearest `vx.workspace.*`, and vx never looks for it above the git
+  top-level, so a file planted in a shared directory such as `/tmp`
+  cannot claim your checkout and run as you. Outside git, one another
+  user owns is refused, root aside (`tests/workspace-root-file.test.ts`).
+  What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
 - **Your project's own vx.** A global vx hands every call to the
-  project's `node_modules/.bin/vx` (cli.md § Which vx runs), so even
+  workspace root's `node_modules/.bin/vx` (cli.md § Which vx runs), so even
   `vx --version` in a repo you do not trust runs that repo's code. One
   another user owns is never run.
 - **Your plugins.** A plugin is code you imported. It runs in vx's

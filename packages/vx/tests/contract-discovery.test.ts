@@ -3,7 +3,7 @@
 // which root a run from inside a member resolves to, and which config file
 // names load, in which precedence. A repo that works today must be found
 // the same way tomorrow. Each case below builds a fixture, asks the real
-// discovery (`findWorkspaceRoot`, `loadWorkspace`, `listProjects`,
+// discovery (`findManifestRoot`, `loadWorkspace`, `listProjects`,
 // `loadWorkspaceConfig`), and `tests/contract/discovery.json` records the
 // answer. A change is a reviewed diff of that file, and a changed answer is
 // a break the break law sees.
@@ -16,7 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import {
-  findWorkspaceRoot,
+  findManifestRoot,
   listProjects,
   loadProjectConfig,
   loadWorkspace,
@@ -92,7 +92,7 @@ it('each discovery case answers as tests/contract/discovery.json records', async
     const root = fixture(files)
     live[`projects: ${name}`] = await projects(root)
     const found = async (from: string): Promise<string> =>
-      path.relative(root, await findWorkspaceRoot(path.join(root, from))) || '.'
+      path.relative(root, await findManifestRoot(path.join(root, from))) || '.'
     live[`root from packages/a/src: ${name}`] = await found('packages/a/src')
     live[`root from apps/c: ${name}`] = await found('apps/c')
   }

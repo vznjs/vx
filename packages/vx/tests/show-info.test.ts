@@ -78,6 +78,7 @@ async function makePluginWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(root, 'vx.workspace.mjs'), PLUGIN_WORKSPACE)
   for (const name of ['one', 'two']) {
     const dir = path.join(root, 'packages', name)
@@ -94,6 +95,7 @@ async function makeWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
+  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(appDir, { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -525,7 +527,7 @@ describe('vx info (e2e)', () => {
           if (v === undefined) delete process.env[k]
           else process.env[k] = v
         }
-        await rm(ws, { force: true })
+        await writeFile(ws, 'export default {}\n')
       }
     },
     TIMEOUT,
@@ -1044,6 +1046,7 @@ describe('vx show <project> loads that project only (e2e)', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-scope-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     const app = path.join(root, 'packages', 'app')
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -1091,6 +1094,7 @@ describe('collectInfo — the facts behind the rows', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-doctor-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     const a = path.join(root, 'packages', 'a')
     await mkdir(a, { recursive: true })
     await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))

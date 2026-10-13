@@ -89,6 +89,7 @@ function unknownAware(run: RunRecord, cacheHit: boolean | undefined): RunRecord 
 function makeWorkspace(tag: string): string {
   const root = mkdtempSync(path.join(tmpdir(), `vx-mcp-rpc-${tag}-`))
   writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'root' }))
+  writeFileSync(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   return root
 }
 
@@ -1587,6 +1588,7 @@ describe('listTasks masks a declared secret in a command', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
       )
+      writeFileSync(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       const dir = path.join(root, 'packages', 'a')
       await Bun.write(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
       await Bun.write(

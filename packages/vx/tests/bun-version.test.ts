@@ -59,6 +59,7 @@ describe('the doctor reports the runtime verdict, and nothing else does', () => 
     // before it reports anything (the gate caught exactly that).
     const root = mkdtempSync(path.join(tmpdir(), 'vx-bunver-'))
     await Bun.write(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     const facts = await collectInfo(root, { cacheDir: path.join(root, 'cache') }).finally(() =>
       rmSync(root, { recursive: true, force: true }),
     )

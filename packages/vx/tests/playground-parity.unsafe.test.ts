@@ -268,11 +268,17 @@ const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-pg-')))
 const ws = path.join(scratch, 'ws')
 const cacheDir = path.join(scratch, 'cache')
 
+/** The CLI's root marker; the playground is handed its root. */
+function markRoot(dir: string): void {
+  writeFileSync(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
+}
+
 function write(files: Record<string, string>): void {
   for (const [rel, body] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true })
     writeFileSync(path.join(ws, rel), body)
   }
+  markRoot(ws)
 }
 
 function git(...args: string[]): void {
@@ -802,6 +808,7 @@ describe("the playground page's workspace plans what the CLI plans (item 700)", 
       mkdirSync(path.dirname(path.join(pageWs, rel)), { recursive: true })
       writeFileSync(path.join(pageWs, rel), body)
     }
+    markRoot(pageWs)
   }
 
   function pageGit(...args: string[]): void {
@@ -937,6 +944,7 @@ describe('the page names what moved a key as `vx why` does (item 703)', () => {
       mkdirSync(path.dirname(path.join(whyWs, rel)), { recursive: true })
       writeFileSync(path.join(whyWs, rel), body)
     }
+    markRoot(whyWs)
   }
 
   function whyGit(...args: string[]): void {
@@ -1084,6 +1092,7 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
       mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
       writeFileSync(path.join(dir, rel), body)
     }
+    markRoot(dir)
   }
 
   function labSpawn(

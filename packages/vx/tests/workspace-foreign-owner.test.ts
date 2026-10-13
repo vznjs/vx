@@ -2,12 +2,13 @@
 // (`/tmp/package.json` listing `*`) claimed it, and `vx info` in the
 // checkout ran the planter's `vx.workspace.ts` as the user (Security,
 // 2026-10-13; git's `safe.directory` case). The root walk now stops at a
-// manifest another user owns, root aside.
+// manifest another user owns, root aside; inside git it never goes above
+// the top-level at all (workspace-git-root.test.ts).
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findWorkspaceRoot } from '../src/workspace/workspace.js'
+import { findManifestRoot } from '../src/workspace/workspace.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 let shared: string
@@ -28,7 +29,7 @@ afterEach(async () => {
 })
 
 const found = (dir: string, uid?: number): Promise<string> =>
-  findWorkspaceRoot(path.join(shared, dir), new Map(), uid).then(
+  findManifestRoot(path.join(shared, dir), new Map(), uid).then(
     (r) => path.relative(shared, r) || '.',
     (err: Error) => `refused: ${err.message.slice(0, err.message.indexOf(' belongs'))}`,
   )
