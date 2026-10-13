@@ -619,7 +619,8 @@ Combine with `--force` for "re-execute and refresh only the remote":
 `--cache=local: --force` (local off, reads off, remote write-only).
 
 Invalid layers/flags are a parse error
-(`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
+(`--cache: invalid layer 'disk'`, `--cache: invalid flag 'x'`, …);
+`VX_CACHE` and `cache.policy` say their own name instead.
 
 ### Output
 
@@ -2356,8 +2357,8 @@ prose on stderr do not change. Branch on the code; the message may change.
 
 #### `VX_E_USAGE`
 
-A flag, argument or selection the verb does not take. The message names
-it, and a close spelling the verb does take when there is one;
+A flag, argument, selection or `VX_*` environment value the verb does
+not take. The message names it, and a close spelling the verb does take when there is one;
 `vx <verb> --help` lists every flag.
 
 #### `VX_E_UNKNOWN_COMMAND`

@@ -53,7 +53,8 @@ export function cachesNothing(p: CachePolicy): boolean {
  * So `local:rw,remote:r` = remote read-only, `remote:` = remote fully
  * off, `local:r` = local read-only with remote untouched.
  *
- * Throws a {@link UserError} on an unknown layer, an unknown flag, a
+ * Throws a {@link UserError}, whose message the caller prefixes with the
+ * spec's source (`--cache`, `VX_CACHE`, `cache.policy`), on an unknown layer, an unknown flag, a
  * duplicated flag, a missing colon, or a repeated layer.
  */
 export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_POLICY): CachePolicy {
@@ -64,24 +65,24 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
     if (seg.length === 0) continue
     const colon = seg.indexOf(':')
     if (colon < 0) {
-      throw new UserError(`invalid --cache segment '${seg}': expected '<layer>:<flags>'`)
+      throw new UserError(`invalid segment '${seg}': expected '<layer>:<flags>'`)
     }
     const layer = seg.slice(0, colon)
     const flags = seg.slice(colon + 1)
     if (layer !== 'local' && layer !== 'remote') {
-      throw new UserError(`invalid --cache layer '${layer}': expected 'local' or 'remote'`)
+      throw new UserError(`invalid layer '${layer}': expected 'local' or 'remote'`)
     }
     if (seen.has(layer)) {
-      throw new UserError(`--cache layer '${layer}' specified twice`)
+      throw new UserError(`layer '${layer}' specified twice`)
     }
     seen.add(layer)
     const flagSet = new Set<string>()
     for (const ch of flags) {
       if (ch !== 'r' && ch !== 'w') {
-        throw new UserError(`invalid --cache flag '${ch}' for '${layer}': expected 'r' and/or 'w'`)
+        throw new UserError(`invalid flag '${ch}' for '${layer}': expected 'r' and/or 'w'`)
       }
       if (flagSet.has(ch)) {
-        throw new UserError(`--cache flag '${ch}' repeated for '${layer}'`)
+        throw new UserError(`flag '${ch}' repeated for '${layer}'`)
       }
       flagSet.add(ch)
     }

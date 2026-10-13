@@ -3,7 +3,7 @@
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
 import { readdirSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -15,6 +15,7 @@ const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string
 let broken: string
 let bare: string
+let badPolicy: string
 beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-error-codes-' })
   await addProject(
@@ -52,16 +53,32 @@ beforeAll(async () => {
     'bad',
     `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
   )
+  badPolicy = await makeWorkspace({ prefix: 'vx-error-codes-policy-', workspaceFile: false })
+  await writeFile(
+    path.join(badPolicy, 'vx.workspace.mjs'),
+    `export default { cache: { policy: 'local:x' } }\n`,
+  )
+  await addProject(
+    badPolicy,
+    'a',
+    `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+  )
   bare = await mkdtemp(path.join(os.tmpdir(), 'vx-error-codes-bare-'))
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
   await rm(broken, { recursive: true, force: true })
   await rm(bare, { recursive: true, force: true })
+  await rm(badPolicy, { recursive: true, force: true })
 })
 
-async function vx(args: string[], cwd = root) {
-  const p = Bun.spawn([process.execPath, BIN, ...args], { cwd, stdout: 'pipe', stderr: 'pipe' })
+async function vx(args: string[], cwd = root, env: Record<string, string> = {}) {
+  const p = Bun.spawn([process.execPath, BIN, ...args], {
+    cwd,
+    env: { ...process.env, ...env },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
   const [code, stdout, stderr] = await Promise.all([
     p.exited,
     new Response(p.stdout).text(),
@@ -71,8 +88,12 @@ async function vx(args: string[], cwd = root) {
 }
 
 /** The code of the one JSON line on stdout; stderr still says it in prose. */
-async function refusal(args: string[], cwd?: string): Promise<string> {
-  const r = await vx(args, cwd)
+async function refusal(
+  args: string[],
+  cwd?: string,
+  env?: Record<string, string>,
+): Promise<string> {
+  const r = await vx(args, cwd, env)
   expect(r.code).toBe(1)
   const doc = JSON.parse(r.stdout) as {
     ok: boolean
@@ -97,6 +118,14 @@ describe('a refusal under --format json', () => {
       dependsOn: await refusal(['run', 'd', '--filter', 'dangling', '--dry=json']),
       outputOverlap: await refusal(['run', 'p', 'q', '--filter', 'twin', '--dry=json']),
       inputIsOutput: await refusal(['run', 's', '--filter', 'twin', '--dry=json']),
+      cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
+      cacheFlag: await refusal(['run', 'build', '--all', '--cache=disk:r', '--dry=json']),
+      cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
+        VX_CACHE: 'disk:r',
+      }),
+      stabilityEnv: await refusal(['run', 'build', '--all', '--format', 'json'], root, {
+        VX_INPUT_STABILITY: 'bogus',
+      }),
     }).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
@@ -107,6 +136,10 @@ describe('a refusal under --format json', () => {
       dependsOn: 'VX_E_DEPENDS_ON',
       outputOverlap: 'VX_E_OUTPUT_OVERLAP',
       inputIsOutput: 'VX_E_INPUT_IS_OUTPUT',
+      cachePolicy: 'VX_E_CONFIG',
+      cacheFlag: 'VX_E_USAGE',
+      cacheEnv: 'VX_E_USAGE',
+      stabilityEnv: 'VX_E_USAGE',
     })
   })
 

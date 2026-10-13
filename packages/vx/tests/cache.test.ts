@@ -135,15 +135,15 @@ describe('parseCachePolicy', () => {
 
   it('throws on an unknown layer', () => {
     expect(() => parseCachePolicy('disk:r')).toThrow(UserError)
-    expect(() => parseCachePolicy('disk:r')).toThrow(/invalid --cache layer/)
+    expect(() => parseCachePolicy('disk:r')).toThrow(/invalid layer/)
   })
 
   it('throws on an unknown flag', () => {
-    expect(() => parseCachePolicy('local:x')).toThrow(/invalid --cache flag/)
+    expect(() => parseCachePolicy('local:x')).toThrow(/invalid flag/)
   })
 
   it('throws on a missing colon', () => {
-    expect(() => parseCachePolicy('local')).toThrow(/invalid --cache segment/)
+    expect(() => parseCachePolicy('local')).toThrow(/invalid segment/)
   })
 
   it('throws on a repeated flag', () => {
