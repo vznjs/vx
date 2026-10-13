@@ -159,6 +159,8 @@ export function wildcardTodo(glob: string): string {
   )
 }
 
+const TSBUILDINFO = /(?:^|\/)[^/]*tsbuildinfo[^/]*$/i
+
 interface Cached {
   index: number
   name: string
@@ -215,8 +217,28 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         kept.push(c)
         continue
       }
-      dropped.add(c.index)
       const t = tasks[c.index]!
+      // tsc's incremental state is no product: create-t3-turbo's build and
+      // typecheck both output `.cache/tsbuildinfo.json`, and typecheck ran
+      // uncached on every first run (Growth funnel F8). Left to the keeper,
+      // it costs a task that emits nothing else nothing to cache. A task
+      // that emits more stays uncached: `tsc --incremental` skips a file
+      // the keeper's tsbuildinfo calls built, missing or not, so its save
+      // could be a partial dist.
+      const sharedFiles = c.files.filter((gb) =>
+        kept.some((k) => k.files.some((ga) => outputsOverlap(ga, gb))),
+      )
+      if (
+        sharedFiles.length === c.files.length &&
+        sharedFiles.every((g) => isLiteralPattern(g) && TSBUILDINFO.test(g))
+      ) {
+        c.files = c.files.filter((g) => !sharedFiles.includes(g))
+        const outputs = (t.task!['cache'] as { outputs: { files: string[] } }).outputs
+        outputs.files = outputs.files.filter((g) => !sharedFiles.includes(g))
+        kept.push(c)
+        continue
+      }
+      dropped.add(c.index)
       const shared = c.files.find((gb) => clash.files.some((ga) => outputsOverlap(ga, gb)))!
       delete t.task!['cache']
       t.todos.push(
