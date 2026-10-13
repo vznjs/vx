@@ -2875,7 +2875,9 @@ passed, so a replayed failure that is already fixed says so. A
 sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
-`withheld` lists the credential paths it denied and left out. They live in `<cacheDir>/failures/<runId>.json`, the
+`withheld` lists the credential paths it denied and left out. A task
+failed by `inputStability.severity: 'error'` adds `inputMoved`, the
+input that changed during the run. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
 failed row reads `output: ''` and `locations: []`. `--log <task>`
 prints one task's output instead of the summary: in the latest run that

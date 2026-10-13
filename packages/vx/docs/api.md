@@ -1297,6 +1297,7 @@ export interface OutcomeView {
   peakRssBytes?: number
   timedOut?: true
   notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
   blockedBy?: string
   admissionHeldMs?: number
   queuedMs?: number
@@ -2297,6 +2298,7 @@ export interface TaskFailure {
   taskId: string
   exitCode: number
   timedOut?: true
+  inputMoved?: string
   output: string
   locations: OutputLocation[]
   sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
@@ -2456,6 +2458,7 @@ export interface TaskOutcome {
   timedOut?: true
   failedOutput?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
+  inputMoved?: string
   where?: string
   outputs?: 'deferred'
   wallclockStartNs?: bigint

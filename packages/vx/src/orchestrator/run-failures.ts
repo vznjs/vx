@@ -21,6 +21,8 @@ export interface TaskFailure {
   taskId: string
   exitCode: number
   timedOut?: true
+  /** The input that changed while the command ran (see `TaskOutcome`). */
+  inputMoved?: string
   /** Plain text, bounded, secrets masked; '' when the run kept none. */
   output: string
   locations: OutputLocation[]
@@ -47,18 +49,25 @@ function failuresOf(outcomes: readonly TaskOutcome[]): StoredFailure[] {
   const isFile = fileMemo()
   const out: StoredFailure[] = []
   for (const o of outcomes) {
-    if (o.failedOutput === undefined || isGroupTask(o.node)) continue
-    const output = Bun.stripANSI(
-      decodeOutputLog(o.failedOutput)
-        .map((c) => c.text)
-        .join(''),
-    )
+    // A task failed by a moved input may have printed nothing: the input
+    // is still why, and an agent reads it here.
+    if ((o.failedOutput === undefined && o.inputMoved === undefined) || isGroupTask(o.node))
+      continue
+    const output =
+      o.failedOutput === undefined
+        ? ''
+        : Bun.stripANSI(
+            decodeOutputLog(o.failedOutput)
+              .map((c) => c.text)
+              .join(''),
+          )
     out.push({
       taskId: o.node.id,
       project: o.node.projectName,
       task: o.node.taskName,
       exitCode: o.exitCode,
       ...(o.timedOut === true ? { timedOut: true as const } : {}),
+      ...(o.inputMoved !== undefined ? { inputMoved: o.inputMoved } : {}),
       output,
       locations: fileLocations(output, o.node.projectDir, isFile),
       ...(o.sandboxFix !== undefined ? { sandboxFix: o.sandboxFix } : {}),
@@ -138,6 +147,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         taskId,
         exitCode: r.exitCode,
         ...(r.timedOut === 1 ? { timedOut: true as const } : {}),
+        ...(k?.inputMoved !== undefined ? { inputMoved: k.inputMoved } : {}),
         output: k?.output ?? '',
         locations: k?.locations ?? [],
         ...(k?.sandboxFix !== undefined ? { sandboxFix: k.sandboxFix } : {}),

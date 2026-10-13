@@ -21,6 +21,7 @@ import {
 } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
+import { failedLabel } from '../src/orchestrator/events.js'
 import { run } from '../src/orchestrator/index.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -263,6 +264,13 @@ describe('cache.inputStability: what a write during the command means', () => {
       expect(status.filter((l) => MOVED.test(l))).toEqual([
         "[vx] app#format: `packages/app/a.ts` changed after its key was taken — the result is not saved, and inputStability.severity is 'error', so the task fails; if the task writes it, declare it in cache.outputs",
       ])
+      // The outcome names it too, so the label and `vx last` say why the
+      // exit is 1 when the command itself passed.
+      const o = r.outcomes.find((x) => x.node.id === 'app#format')!
+      expect([o.exitCode, o.inputMoved]).toEqual([1, 'packages/app/a.ts'])
+      expect(
+        failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved),
+      ).toBe('failed (packages/app/a.ts changed during the run, exit 1)')
     },
     TIMEOUT,
   )
