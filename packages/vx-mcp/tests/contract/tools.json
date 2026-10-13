@@ -415,6 +415,33 @@
         "force": {
           "type": "boolean",
           "description": "--force: run past the cache"
+        },
+        "continue": {
+          "type": "string",
+          "enum": [
+            "never",
+            "deps-ok",
+            "always"
+          ],
+          "description": "--continue: what a failed task takes down (default deps-ok)"
+        },
+        "cachePolicy": {
+          "type": "string",
+          "description": "--cache-policy: per-layer read/write, e.g. local:r or local:rw,remote:"
+        },
+        "excludeDependencies": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "--exclude-dependencies: true skips every dependsOn edge, a list only those tasks"
         }
       },
       "required": [
@@ -491,6 +518,24 @@
             }
           ],
           "description": "--affected: true for the default ref, or a git ref"
+        },
+        "cachePolicy": {
+          "type": "string",
+          "description": "--cache-policy: per-layer read/write, e.g. local:r or local:rw,remote:"
+        },
+        "excludeDependencies": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "--exclude-dependencies: true skips every dependsOn edge, a list only those tasks"
         }
       },
       "required": [

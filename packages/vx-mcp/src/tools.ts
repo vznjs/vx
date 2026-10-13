@@ -42,6 +42,19 @@ export interface ToolContext {
   readonly run?: boolean | readonly string[]
 }
 
+// What runTasks and planTasks both pass on: the plan predicts what the run
+// would do under the same policy and edges.
+const RUN_SHAPE_PROPS = {
+  cachePolicy: {
+    type: 'string',
+    description: '--cache-policy: per-layer read/write, e.g. local:r or local:rw,remote:',
+  },
+  excludeDependencies: {
+    oneOf: [{ type: 'boolean' }, { type: 'array', items: { type: 'string' } }],
+    description: '--exclude-dependencies: true skips every dependsOn edge, a list only those tasks',
+  },
+}
+
 const TOOLS: readonly ToolDef[] = [
   {
     name: 'listTasks',
@@ -228,8 +241,8 @@ const TOOLS: readonly ToolDef[] = [
     description:
       'Run tasks as `vx run <tasks> --format json` does and return its exit code and the run summary ' +
       '(ok, per-task status, cache hits, durations; the `--summarize` document). The tasks run here, ' +
-      'with this workspace’s cache and sandbox. `all`, `filter`, `affected` and `force` are the CLI ' +
-      'flags. A refusal before the run (an unknown task, a bad filter) returns no summary, the CLI’s ' +
+      'with this workspace’s cache and sandbox. `all`, `filter`, `affected`, `force`, `continue`, ' +
+      '`cachePolicy` and `excludeDependencies` are the CLI flags. A refusal before the run (an unknown task, a bad filter) returns no summary, the CLI’s ' +
       'message as `error`, its stable `code` (VX_E_UNKNOWN_TASK, VX_E_USAGE, …) and `docs`, the ' +
       'link that says what to do; a failed task’s ' +
       'output is getFailures.',
@@ -248,6 +261,12 @@ const TOOLS: readonly ToolDef[] = [
           description: '--affected: true for the default ref, or a git ref',
         },
         force: { type: 'boolean', description: '--force: run past the cache' },
+        continue: {
+          type: 'string',
+          enum: ['never', 'deps-ok', 'always'],
+          description: '--continue: what a failed task takes down (default deps-ok)',
+        },
+        ...RUN_SHAPE_PROPS,
       },
       required: ['tasks'],
     },
@@ -258,7 +277,8 @@ const TOOLS: readonly ToolDef[] = [
       'What runTasks would do, without running anything: `vx run <tasks> --dry=json`. Each task with ' +
       'its predicted cache status (hit-local, hit-remote, miss, no-cache), hash, deps and p50, under ' +
       '`affected` the changed file or the dependency chain that kept it, and `predicted` (wallMs, ' +
-      'workMs, criticalPath) from history. `all`, `filter` and `affected` are the CLI flags. A refusal ' +
+      'workMs, criticalPath) from history. `all`, `filter`, `affected`, `cachePolicy` and ' +
+      '`excludeDependencies` are the CLI flags. A refusal ' +
       'returns no plan and the CLI’s message as `error`.',
     inputSchema: {
       type: 'object',
@@ -274,6 +294,7 @@ const TOOLS: readonly ToolDef[] = [
           oneOf: [{ type: 'boolean' }, { type: 'string' }],
           description: '--affected: true for the default ref, or a git ref',
         },
+        ...RUN_SHAPE_PROPS,
       },
       required: ['tasks'],
     },
@@ -829,9 +850,40 @@ function runArgv(args: Record<string, unknown>, tool: 'runTasks' | 'planTasks'):
     if (typeof v !== 'boolean') throw new UserError(`${tool}: ${flag} must be a boolean`)
     if (v) argv.push(`--${flag}`)
   }
-  argv.push(...selectionArgv(args, tool))
+  argv.push(...selectionArgv(args, tool), ...shapeArgv(args, tool))
   if (tool === 'planTasks') argv.push('--dry=json')
   else argv.push('--format', 'json')
+  return argv
+}
+
+/** `continue`, `cachePolicy` and `excludeDependencies` off the wire, as one `--flag=value` each. */
+function shapeArgv(args: Record<string, unknown>, tool: string): string[] {
+  const argv: string[] = []
+  const mode = args['continue']
+  if (mode !== undefined) {
+    if (mode !== 'never' && mode !== 'deps-ok' && mode !== 'always') {
+      throw new UserError(`${tool}: continue must be 'never', 'deps-ok' or 'always'`)
+    }
+    argv.push(`--continue=${mode}`)
+  }
+  const cache = args['cachePolicy']
+  if (cache !== undefined) {
+    if (typeof cache !== 'string' || cache.trim().length === 0) {
+      throw new UserError(`${tool}: cachePolicy must be a spec like local:r or local:rw,remote:`)
+    }
+    argv.push(`--cache-policy=${cache}`)
+  }
+  const exclude = args['excludeDependencies']
+  if (exclude === true) argv.push('--exclude-dependencies')
+  else if (
+    Array.isArray(exclude) &&
+    exclude.length > 0 &&
+    exclude.every((n) => typeof n === 'string' && /^[^,\s]+$/.test(n))
+  )
+    argv.push(`--exclude-dependencies=${(exclude as string[]).join(',')}`)
+  else if (exclude !== undefined && exclude !== false) {
+    throw new UserError(`${tool}: excludeDependencies must be a boolean or a list of task names`)
+  }
   return argv
 }
 

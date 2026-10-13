@@ -109,6 +109,35 @@ describe('runTasks', () => {
     expect(await refusal({ tasks: ['build'], all: 'yes' })).toBe('runTasks: all must be a boolean')
     expect(await refusal({ tasks: ['build'], filter: 'a' })).toContain('filter must be an array')
     expect(await refusal({ tasks: ['build'], affected: 5 })).toContain('affected must be')
+    expect(await refusal({ tasks: ['build'], continue: 'yes' })).toContain('continue must be')
+    expect(await refusal({ tasks: ['build'], cachePolicy: '' })).toContain(
+      'cachePolicy must be a spec',
+    )
+    expect(await refusal({ tasks: ['build'], excludeDependencies: ['a,b'] })).toContain(
+      'excludeDependencies must be',
+    )
+  })
+
+  it('continue, cachePolicy and excludeDependencies reach the CLI', async () => {
+    // `--continue=always` runs b#build past a's failure; deps-ok would too
+    // (no edge), so the CONTROL is the CLI's own refusal of a bad spec.
+    const r = (await handleToolCall(
+      'runTasks',
+      {
+        tasks: ['a#fail', 'b#build'],
+        continue: 'always',
+        cachePolicy: 'local:r',
+        excludeDependencies: true,
+      },
+      ctx,
+    )) as { exitCode: number; summary: Summary }
+    expect([r.exitCode, ids(r.summary)]).toEqual([1, ['a#fail:failed', 'b#build:success']])
+    const bad = await handleToolCall(
+      'runTasks',
+      { tasks: ['build'], all: true, cachePolicy: 'disk:r' },
+      ctx,
+    )
+    expect([bad['code'], bad['error']]).toEqual(['VX_E_USAGE', expect.stringContaining("'disk'")])
   })
 
   it('runs through `vx mcp`, which hands the tool the argv of its own vx', async () => {
