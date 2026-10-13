@@ -100,10 +100,11 @@ class GraphExplorer extends HTMLElement {
           ? `<p>${esc(id)} never waits on ${esc(toId)}.</p>`
           : `<p>${esc(id)} waits on ${esc(toId)} through: <code>${chain.map(esc).join(' → ')}</code></p>`
     const onPath = graph.criticalPath.includes(id) ? ' It is on the predicted critical path.' : ''
+    const n = upstream(graph, id).size
     out.hidden = false
     out.innerHTML =
       `<p><strong>${esc(id)}</strong>: ${esc(statusWords(t.cacheStatus))}.${onPath} ` +
-      `It waits on ${upstream(graph, id).size} tasks in all.</p>` +
+      `It waits on ${n} task${n === 1 ? '' : 's'} in all.</p>` +
       why +
       `<p>Waits on</p><ul>${list(t.deps)}</ul>` +
       `<p>Waited on by</p><ul>${list(graph.dependents.get(id) ?? [])}</ul>`
