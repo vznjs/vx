@@ -46,6 +46,8 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
       `export default { tasks: {
   boxed: { exec: { command: ${JSON.stringify(PROBE)}, sandbox: { allow: { read: ['.'] } } } },
   open: { exec: { command: ${JSON.stringify(PROBE)} } },
+  'true-boxed': { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } },
+  'true-open': { exec: { command: 'true' } },
 } }
 `,
     )
@@ -75,5 +77,29 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
       boxed: ['DONE'],
       open: linux ? (asRoot ? ['LEAK-proc', 'DONE'] : ['DONE']) : ['LEAK-ps', 'DONE'],
     })
-  })
+    // What the sandbox costs one task, printed for the record (owner,
+    // 2026-10-13): a `true` sandboxed against one not, min of 20,
+    // interleaved. The whole `vx run` is timed, so the difference is the
+    // sandbox's.
+    const ms = (task: string): number => {
+      const t = performance.now()
+      const r = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', `a#${task}`],
+        cwd: ws,
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      expect(r.exitCode).toBe(0)
+      return performance.now() - t
+    }
+    const times = { boxed: Infinity, open: Infinity }
+    for (let i = 0; i < 20; i++) {
+      times.boxed = Math.min(times.boxed, ms('true-boxed'))
+      times.open = Math.min(times.open, ms('true-open'))
+    }
+    console.log(
+      `sandbox cost (${process.platform}, min of 20): sandboxed true ${times.boxed.toFixed(0)} ms, ` +
+        `unsandboxed ${times.open.toFixed(0)} ms, +${(times.boxed - times.open).toFixed(0)} ms`,
+    )
+  }, 180_000)
 })
