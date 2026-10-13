@@ -948,11 +948,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
     body: [
       'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
-      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only.',
+      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE` sets the same spec for every run in a shell or CI job.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache=local:rw,remote:r',
+      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache=local:rw,remote:r\nVX_CACHE=local:rw,remote:r vx run build --all',
     },
     image: 'cache-controls.png',
     imageAlt: 'Cache flags: force, no-cache, per-layer.',
@@ -996,7 +996,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Main writes the remote cache; a laptop or a fork only reads it.',
     body: [
       'A shared cache is only as trustworthy as the runs that write to it. A pull request from a fork should never be able to plant an artifact that main will replay.',
-      "`cacheScope: 'trusted'` lets a run write the remote cache; `'read-only'` only reads; a named scope keeps a branch’s writes to itself. Set it in config or with `VX_CACHE_SCOPE`.",
+      "`cacheScope: 'trusted'` lets a run write the remote cache; `'read-only'` only reads; a named scope keeps a branch’s writes to itself. Set it in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
     ],
     example: {
       lang: 'ts',

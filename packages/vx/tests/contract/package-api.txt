@@ -1301,6 +1301,7 @@ export interface RunOptions {
   cacheDir?: string
   cache?: CachePolicy
   remoteRequested?: boolean
+  cacheScope?: string
   defaultCacheScope?: string
   frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'

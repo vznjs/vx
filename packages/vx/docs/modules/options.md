@@ -24,6 +24,7 @@ export interface RunOptions {
   cacheDir?: string // --cache-dir, resolved against cwd
   cache?: CachePolicy // default FULL_CACHE_POLICY
   remoteRequested?: boolean // a --cache spec named a remote axis
+  cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and vx.workspace
   defaultCacheScope?: string // the cacheScope when vx.workspace names none; the CLI passes 'read-only' off CI
   frozen?: boolean // run the lock's graph
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'

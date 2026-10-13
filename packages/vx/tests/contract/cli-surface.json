@@ -52,6 +52,7 @@
       "--all",
       "--cache",
       "--cache-dir",
+      "--cache-scope",
       "--concurrency",
       "--continue",
       "--download",
@@ -91,6 +92,7 @@
       "--all",
       "--cache",
       "--cache-dir",
+      "--cache-scope",
       "--concurrency",
       "--continue",
       "--download",
@@ -187,6 +189,9 @@
       "remote:w"
     ],
     "run --cache-dir": [
+      "*"
+    ],
+    "run --cache-scope": [
       "*"
     ],
     "run --concurrency": [
@@ -288,6 +293,9 @@
     "watch --cache-dir": [
       "*"
     ],
+    "watch --cache-scope": [
+      "*"
+    ],
     "watch --concurrency": [
       "1",
       "10",
@@ -346,6 +354,7 @@
     ]
   },
   "env": [
+    "VX_CACHE",
     "VX_CACHE_DIR",
     "VX_CACHE_SCOPE",
     "VX_CONFIG_WORKER_TIMEOUT_MS",

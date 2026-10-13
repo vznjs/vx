@@ -42,7 +42,8 @@ export interface WorkspaceConfig {
    * then the trusted ones, and writes go to the scope's only, so a PR never
    * writes what the default branch reads. A client-side convention, not a
    * security boundary: only a cache server that scopes writes by token
-   * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it. Never
+   * can refuse a run that ignores it. `VX_CACHE_SCOPE` beats it, and
+   * `vx run --cache-scope` beats both. Never
    * folded into a cache key.
    */
   cacheScope?: string
