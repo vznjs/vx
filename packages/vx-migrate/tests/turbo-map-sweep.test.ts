@@ -361,6 +361,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       ['web', { dependencies: { next: '15' } }, { build: 'next build' }],
       ['site', { devDependencies: { vite: '6' } }, { build: 'vite build' }],
       ['idle', { dependencies: { next: '15' } }, {}],
+      ['api', { dependencies: { nitropack: '2' } }, { build: 'nitro build' }],
     ] as const) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
@@ -368,8 +369,10 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const m = await mapTurboWorkspace(root, metas, opts)
     expect(m.notes).toEqual([
-      'Turbo infers nextjs in web and hashes and passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
-      'Turbo infers vite in site and hashes and passes VITE_* to its tasks; vx env names are explicit — list the ones they read in cache.inputs.env and exec.env.passThrough',
+      'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; list the ones they read in cache.inputs.env and exec.env.passThrough',
+      'vite in site: Turbo passes VITE_* implicitly; list the ones they read in cache.inputs.env and exec.env.passThrough',
+      // Twelve names: three and a count keep the note one line.
+      expect.stringMatching(/^nitro in api: Turbo passes \S+, \S+, \S+ and \d+ more implicitly;/),
     ])
   })
 
