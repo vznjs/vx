@@ -17,8 +17,8 @@ import {
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
-import type { ProjectConfig, WorkspaceConfig, WorkspaceRules } from '../config.js'
-import { checkGraph, type TaskNode } from '../graph/index.js'
+import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { checkGraph, type GraphRules, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
   DiscoverContext,
@@ -205,7 +205,7 @@ export async function applyGraphHooks(
   ctx: GraphHookContext,
   /** Runs after EACH plugin's edit, so a refused task config names the plugin that wrote it. */
   afterEach?: (plugin: VxPlugin) => void,
-  rules?: WorkspaceRules,
+  rules?: GraphRules,
 ): Promise<void> {
   let last: VxPlugin | undefined
   for (const plugin of plugins) {

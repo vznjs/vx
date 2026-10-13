@@ -24,6 +24,7 @@ export {
   declaredTask,
   excludeDependencies,
   expandRequested,
+  type GraphRules,
   isGroupTask,
   markSurfacedDeps,
   outputsOverlap,

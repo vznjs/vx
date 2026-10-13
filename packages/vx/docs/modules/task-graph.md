@@ -36,8 +36,11 @@ export interface BuildGraphOptions {
   // `projects` declares is handed here instead of refused (see below).
   undeclaredDeps?: (taskId: string, name: string) => void
   workspaceRoot?: string // lets root-anchored outputs be checked against `files` outputs (item 1088)
-  rules?: WorkspaceRules | undefined // the workspace's `rules`; each on unless false (X-53)
+  rules?: GraphRules | undefined // the workspace's `rules`; each on unless false (X-53)
 }
+
+// `locked`: a frozen run, whose configs `vx lock` checked the rules on.
+export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 export function taskId(project: string, task: string): string
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
@@ -61,8 +64,8 @@ export function declaredTask(
 export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
-  rules?: WorkspaceRules, // `exclusiveOutputs`: edge-ordered overlap; `upfrontKeys`: inputs over outputs
-): void // id keys, deps, cycle, output collisions, inputs reading outputs
+  rules?: GraphRules, // `exclusiveOutputs`: edge-ordered overlap; `upfrontKeys`: inputs over outputs
+): void // id keys, deps, cycle, output collisions, inputs reading outputs; `locked` skips the rules
 // Does `negatives` (an input list's `!` entries, `!` stripped) take back
 // every path `output` can select? (X-54)
 export function outputTakenBack(output: string, negatives: readonly string[]): boolean

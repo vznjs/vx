@@ -2153,6 +2153,7 @@ export interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
+  frozen?: boolean
   rules?: WorkspaceRules
 }
 ```

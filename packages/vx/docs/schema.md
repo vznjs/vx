@@ -1610,6 +1610,7 @@ export default defineWorkspace({
     killGrace: '2s',
     teardownTimeout: '3s',
     readyNotice: '10s',
+    frozen: false,
     rules: { exclusiveOutputs: true, upfrontKeys: true },
   },
   cache: {
@@ -1658,6 +1659,7 @@ default and where it came from.
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`                 | `--kill-grace`                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | 2s                                         | How long a task that ignores SIGTERM gets before SIGKILL. Was `VX_KILL_GRACE_MS`.                                                                                             |
 | `run.teardownTimeout`                          | `VX_RUN_TEARDOWN_TIMEOUT`           | `--teardown-timeout`              | a duration like '500ms', '30s' or '5m', at most 24 days                 | 3s                                         | The bound on each plugin's end-of-run flush and teardown. Was `VX_TEARDOWN_TIMEOUT_MS`.                                                                                       |
 | `run.readyNotice`                              | `VX_RUN_READY_NOTICE`               | `--ready-notice`                  | a duration like '500ms', '30s' or '5m', at most 24 days                 | 10s                                        | How long a persistent task may take to match `readyWhen` before vx says it waits. Was `VX_READY_NOTICE_MS`.                                                                   |
+| `run.frozen`                                   | `VX_RUN_FROZEN`                     | `--frozen`                        | true or false                                                           | on when CI is set                          | Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                                                         |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                                 | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                         |
 | `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                                 | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                                                  |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`                     | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                       |
@@ -1694,7 +1696,9 @@ interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  /** Graph rules checked before anything runs; each on unless set to false. */
+  /** Load configs from vx-lock.json; on when CI is set. */
+  frozen?: boolean
+  /** Graph rules `vx lock` and every unfrozen run check; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean }
 }
 
@@ -1727,6 +1731,12 @@ interface CacheSettings {
   end-of-run flush and teardown (3 s; there is no "no limit"), and how
   long a persistent task may wait for `readyWhen` before vx says what it
   waits for (10 s).
+- **`run.frozen`** — load configs from `vx-lock.json` instead of
+  evaluating them; on when `CI` is set. A frozen run checks no graph
+  rules: `vx lock` checked them when it wrote the lock, and with no lock
+  the run writes one first (`docs/cli.md` § `--frozen`).
+- **`run.rules`** — checked by `vx lock`, `vx lock --check` and every
+  run that is not frozen.
 - **`cache.dir`** — unset, the workspace keeps its index and history in
   `.vx/cache` and its entries and artifacts in its repository's shared
   store (`~/.vx/<id>/cache`), where every other checkout of the

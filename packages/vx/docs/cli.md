@@ -490,7 +490,7 @@ than run with the args unheard.
 | `--kill-grace <duration>`                | duration       | `run.killGrace`, else `2s`                        | How long a task that ignores SIGTERM gets before SIGKILL: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--teardown-timeout <duration>`          | duration       | `run.teardownTimeout`, else `3s`                  | The bound on each plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--ready-notice <duration>`              | duration       | `run.readyNotice`, else `10s`                     | How long a persistent task may take to match `readyWhen` before vx says once what it waits for.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--frozen`                               | boolean        | off                                               | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--frozen` (`--no-frozen`)               | boolean        | `run.frozen`, else on when `CI` is set            | Load configs from `vx-lock.json` instead of evaluating them, or evaluate them — the run's, and the ones `--affected` owners and the picker select from. No lock: one is written first. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--output-logs <mode>`                   | value          | `VX_RUN_OUTPUT_LOGS`, else flow-derived           | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--cache-download <mode>` (`--download`) | value          | `cache.download`, else `all`                      | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--cache-download`. `--cache-download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--verbosity <n>`                        | int (0+)       | `0`                                               | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1691,14 +1691,21 @@ pruned there.
 
 ## `--frozen` (run flag)
 
-`vx run ... --frozen` loads configs from the committed `vx-lock.json`
-instead of evaluating them — CI reproducibility mode. Plain `vx run`
-always evaluates live (a byte hash can't see a config's import
-closure, so silently consuming the lock locally would risk stale
-freezes). `--frozen` errors only when no lock exists or a project
-is missing from it — it performs NO staleness checks of its own:
-run `vx lock --check` first in the pipeline; that audit re-evaluates
-everything, making any per-run re-check redundant.
+`run.frozen` (`--frozen` / `--no-frozen`, `VX_RUN_FROZEN`, or
+`run.frozen` in `vx.workspace`) loads configs from the committed
+`vx-lock.json` instead of evaluating them. It is on when `CI` is set and
+off otherwise (owner, 2026-10-13): locally a byte hash can't see a
+config's import closure, so silently consuming the lock would risk stale
+freezes. A frozen run trusts the lock: it performs NO staleness checks
+and does not check the graph rules (`run.rules`), which `vx lock`
+checked when it wrote the lock. With no lock, a frozen run writes one
+first (`vx lock`, rules included) and runs from it; a project missing
+from a lock that exists is still a hard error. Run `vx lock --check`
+first in a pipeline that commits its lock: that audit re-evaluates
+everything and checks the rules, making any per-run re-check redundant.
+A run that is not frozen checks the rules itself, since its configs are
+not the locked ones. An embedder's `run({ frozen: true })` with no lock
+is refused, as before.
 
 ## `vx lock`
 
@@ -1706,7 +1713,11 @@ Freeze every project's **resolved** config into `vx-lock.json` at the
 workspace root. Configs are programs; `vx lock` evaluates them in the
 current environment and stores the post-evaluation objects plus a
 content hash of each config file. "Every project" is the set a run
-sees, a plugin's `discover` stage included (X-143).
+sees, a plugin's `discover` stage included (X-143). Before writing, it
+builds the graph of every task the workspace declares, `graph` stage
+included, and checks the graph rules (`run.rules`) a frozen run no
+longer checks: a broken one prints `vx lock: vx-lock.json not written:
+<the rule's refusal>` and writes nothing.
 
 ```
 vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
@@ -1714,8 +1725,8 @@ vx lock --check      # Audit: hash checks + full re-evaluation vs the lock. Exit
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
 
-Plain runs ALWAYS evaluate live — the lock's existence changes
-nothing. Only `vx run --frozen` consumes it: configs come from the
+A run that is not frozen evaluates live — the lock's existence changes
+nothing. Only a frozen run consumes it: configs come from the
 lock with no evaluation and no staleness checks of its own (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 project absent from the lock, a locked project whose config file is
@@ -1725,7 +1736,9 @@ gone (X-144) or a missing lock is a hard error).
 stored hashes AND re-evaluates every config in the current
 environment, `Bun.deepEquals`-comparing against the frozen objects —
 catching eval-time env and import-closure drift that byte hashes
-cannot see. The CI recipe is `vx lock --check && vx run … --frozen`.
+cannot see. It also checks the graph rules over the configs as they
+evaluate now. The CI recipe is `vx lock --check && vx run …`, frozen
+under CI by default.
 `--format json` prints the audit as one document
 (`schemas/lock.json`, exit code unchanged; a missing lock is one of
 its `problems`); it answers `--check` only.
@@ -3144,6 +3157,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_KILL_GRACE`                 | [`run.killGrace`](schema.md#settings)                 | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                                   |
 | `VX_RUN_TEARDOWN_TIMEOUT`           | [`run.teardownTimeout`](schema.md#settings)           | The bound on each plugin's end-of-run flush and teardown.                                                                                                   |
 | `VX_RUN_READY_NOTICE`               | [`run.readyNotice`](schema.md#settings)               | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                           |
+| `VX_RUN_FROZEN`                     | [`run.frozen`](schema.md#settings)                    | Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                                       |
 | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                       |
 | `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                                                                |
 | `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                     |

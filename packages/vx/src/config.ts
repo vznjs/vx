@@ -68,9 +68,17 @@ export interface RunSettings {
   /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
   readyNotice?: Duration
   /**
-   * Graph rules a run checks before it schedules anything. Each is on unless
-   * set to `false`; turning one off allows a shape vx handles correctly but
-   * more slowly.
+   * Load configs from `vx-lock.json` instead of evaluating them. A frozen
+   * run trusts the lock: `vx lock` checked the graph rules when it wrote it,
+   * so the run does not check them again. With no lock, the run writes one
+   * first. Omitted → on when `CI` is set.
+   */
+  frozen?: boolean
+  /**
+   * Graph rules checked before anything is scheduled: by `vx lock` and
+   * `vx lock --check`, and by every run that is not frozen. Each is on
+   * unless set to `false`; turning one off allows a shape vx handles
+   * correctly but more slowly.
    */
   rules?: WorkspaceRules
 }

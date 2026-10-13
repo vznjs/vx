@@ -99,12 +99,15 @@ describe('--frozen selection reads the lock', () => {
   )
 
   it(
-    'a frozen run with no lock is refused by selection with the run’s own message',
+    'a frozen run with no lock writes one first, then selects from it',
     async () => {
       await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
       const r = await vx(root, ['run', 'build', '--frozen', '--affected=HEAD~1'])
-      expect(r.code).not.toBe(0)
-      expect(r.err).toContain('--frozen requires vx-lock.json')
+      expect({ code: r.code, locked: r.out.includes('vx lock: locked') }).toEqual({
+        code: 0,
+        locked: true,
+      })
+      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(true)
     },
     TIMEOUT,
   )
