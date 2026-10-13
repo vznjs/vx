@@ -5,6 +5,8 @@
   "additionalProperties": false,
   "required": [
     "vx",
+    "vxPath",
+    "handedOffFrom",
     "bun",
     "bunSupported",
     "git",
@@ -35,6 +37,8 @@
   ],
   "properties": {
     "vx": { "type": "string" },
+    "vxPath": { "type": "string" },
+    "handedOffFrom": { "type": ["string", "null"] },
     "bun": { "type": "string" },
     "bunSupported": { "type": "boolean" },
     "git": { "type": ["string", "null"] },

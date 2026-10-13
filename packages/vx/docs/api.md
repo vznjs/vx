@@ -849,6 +849,8 @@ The doctor's facts, typed: what `--format json` prints and the pretty rows rende
 ```ts
 export interface InfoFacts {
   vx: string
+  vxPath: string
+  handedOffFrom: string | null
   bun: string
   bunSupported: boolean
   git: string | null

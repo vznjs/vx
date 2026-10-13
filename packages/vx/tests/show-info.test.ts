@@ -799,6 +799,8 @@ describe('vx info — the rendered rows', () => {
   const GB = 1024 ** 3
   const healthy: InfoFacts = {
     vx: '0.1.0',
+    vxPath: '/usr/local/bin/vx',
+    handedOffFrom: null,
     bun: '1.4.2',
     bunSupported: true,
     git: '2.43.0',
@@ -831,7 +833,7 @@ describe('vx info — the rendered rows', () => {
   it('a healthy workspace: one aligned column, no optional rows', () => {
     expect(renderInfo(healthy)).toBe(
       [
-        'vx:               0.1.0',
+        'vx:               0.1.0 (/usr/local/bin/vx)',
         'bun:              1.4.2',
         'git:              2.43.0',
         'git status cache: fsmonitor + untrackedCache on',
@@ -887,7 +889,7 @@ describe('vx info — the rendered rows', () => {
     }
     expect(renderInfo(degraded)).toBe(
       [
-        'vx:               0.1.0',
+        'vx:               0.1.0 (/usr/local/bin/vx)',
         'bun:              1.3.11 — unsupported, vx needs >= 1.4.0; answers may be wrong',
         'git:              (not found)',
         'git status cache: (unknown)',
@@ -932,6 +934,19 @@ describe('vx info — the rendered rows', () => {
       'cache scope:      read-only off CI, trusted on CI or when the policy names the remote',
       'cache retention:  each run evicts the oldest entries past 1G',
     ])
+  })
+
+  it('names the vx that ran, and the global one that handed it the call', () => {
+    const vx = renderInfo({
+      ...healthy,
+      vxPath: '/repo/node_modules/@vzn/vx-linux-x64/vx',
+      handedOffFrom: '/usr/local/bin/vx',
+    })
+      .split('\n')
+      .find((l) => l.startsWith('vx:'))
+    expect(vx).toBe(
+      'vx:               0.1.0 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)',
+    )
   })
 
   it('names the one git status setting that is off, and warns only of a sandbox a task declares', () => {

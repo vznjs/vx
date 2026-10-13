@@ -12,7 +12,8 @@ stableSandboxReason(reason: string): string // the probe's reason with the pid-n
 ```
 
 `InfoFacts` is the typed object `vx info --format json` prints: `vx`,
-`bun`, `bunSupported` (false below `MIN_BUN` — `bun` itself stays the
+`vxPath` and `handedOffFrom` (which vx ran, and the global one that
+handed it the call, `handoff.md`), `bun`, `bunSupported` (false below `MIN_BUN` — `bun` itself stays the
 bare version because this is a machine surface, and the prose goes in
 the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `projects`, `tasks`,
