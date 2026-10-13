@@ -1,16 +1,27 @@
+import { ESSENTIAL_ENV } from './essential-env.js'
+
 const PR_SET_DUMPABLE = 4
 
 /**
- * On Linux, make vx non-dumpable: an unsandboxed task, which runs as the
- * same user, then cannot read vx's `/proc/<pid>/environ` (or ptrace it).
- * A task gets only declared variables, but vx itself holds the rest. Not
- * a boundary (`exec.sandbox` is): it hides the environment, not files. A
- * child is dumpable again after `exec`, so tasks are unaffected. On every
- * verb (owner, 2026-10-13); loading `bun:ffi` costs ~0.8 ms. `VX_DUMPABLE`
- * keeps vx observable: strace cannot read a non-dumpable tracee's memory,
- * nor a debugger `/proc/<pid>/fd`.
+ * Hide vx's environment from a same-user task. A task gets only declared
+ * variables, but vx itself holds the rest. Not a boundary (`exec.sandbox`
+ * is): it hides the environment, not files. On every verb (owner,
+ * 2026-10-13).
+ *
+ * Linux: make vx non-dumpable, so its `/proc/<pid>/environ` (and ptrace)
+ * close to the task. A child is dumpable again after `exec`, so tasks are
+ * unaffected. Loading `bun:ffi` costs ~0.8 ms. `VX_DUMPABLE` keeps vx
+ * observable: strace cannot read a non-dumpable tracee's memory, nor a
+ * debugger `/proc/<pid>/fd`.
+ *
+ * macOS: `ps eww` reads the env strings the kernel copied above the
+ * stack, and no flag closes that to the same user, so vx zeroes the
+ * values there (owner, 2026-10-13: "Do the override then on macOS").
+ * Bun copied the env at startup, so `process.env`, and every task built
+ * from it, keeps them.
  */
 export async function hideEnvFromTasks(): Promise<boolean> {
+  if (process.platform === 'darwin') return wipeStartupEnv()
   if (process.platform !== 'linux' || process.env['VX_DUMPABLE']) return false
   try {
     const { dlopen, FFIType } = await import('bun:ffi')
@@ -26,6 +37,39 @@ export async function hideEnvFromTasks(): Promise<boolean> {
   } catch {
     // No glibc (musl names it otherwise): the env stays as readable as
     // any process's, as it was.
+    return false
+  }
+}
+
+/**
+ * Zero the value of every startup variable a task does not see by
+ * default (`ESSENTIAL_ENV` stays: every task gets it anyway). The
+ * original `envp` array follows `argv`'s NULL on the stack and is never
+ * moved, unlike `environ`, which `setenv` may reallocate. libc's
+ * `getenv` reads that block, so it answers `''` for a wiped name; vx
+ * reads `process.env`.
+ */
+async function wipeStartupEnv(): Promise<boolean> {
+  try {
+    const { dlopen, FFIType, read, toArrayBuffer, CString } = await import('bun:ffi')
+    const sys = dlopen('/usr/lib/libSystem.B.dylib', {
+      _NSGetArgv: { args: [], returns: FFIType.ptr },
+      _NSGetArgc: { args: [], returns: FFIType.ptr },
+    })
+    const argv = read.ptr(sys.symbols._NSGetArgv()!, 0)
+    const argc = read.i32(sys.symbols._NSGetArgc()!, 0)
+    sys.close()
+    const keep = new Set(ESSENTIAL_ENV)
+    for (let i = argc + 1; ; i++) {
+      const p = read.ptr(argv, i * 8)
+      if (!p) break
+      const entry = new CString(p as never).toString()
+      const eq = entry.indexOf('=')
+      if (eq < 0 || keep.has(entry.slice(0, eq))) continue
+      new Uint8Array(toArrayBuffer(p as never, 0, Buffer.byteLength(entry))).fill(0, eq + 1)
+    }
+    return true
+  } catch {
     return false
   }
 }

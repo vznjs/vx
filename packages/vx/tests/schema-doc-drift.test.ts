@@ -16,7 +16,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import {
   loadProjectConfig,
   loadWorkspaceConfig,

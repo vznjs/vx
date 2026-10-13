@@ -579,9 +579,9 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   with different `FOO=bar` set would produce different outputs and
   the user would never know why.
 
-This is hygiene, not a boundary: an unsandboxed task runs as you, and on
-macOS it can still read vx's own environment (`ps eww`; on Linux vx is
-non-dumpable, `modules/util-hide-env.md`). Only `exec.sandbox` keeps it out (`security.md` § What the sandbox stops).
+This is hygiene, not a boundary: an unsandboxed task runs as you, so it
+can read your files. vx hides its own environment from a task
+(`modules/util-hide-env.md`), not your files. Only `exec.sandbox` keeps them out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,
 `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (vx's own environment or a

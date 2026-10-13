@@ -162,7 +162,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("env.md's allowlist paragraph is ESSENTIAL_ENV", () => {
-    const src = read('src/exec/env.ts')
+    const src = read('src/util/essential-env.ts')
     const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)

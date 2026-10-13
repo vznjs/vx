@@ -183,7 +183,7 @@ here, itself or in a brace group.
 | [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                                                             |
 | [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                                                             |
 | [`util-secret-mask.md`](./util-secret-mask.md)     | `src/util/secret-mask.ts` — masks secret-named variables' values in what vx shows.                                                  |
-| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: on Linux, vx is non-dumpable, so tasks cannot read its env.                            |
+| [`util-hide-env.md`](./util-hide-env.md)           | `src/util/hide-env.ts` — `hideEnvFromTasks`: non-dumpable on Linux, startup values zeroed on macOS, so tasks cannot read vx's env.  |
 | [`util-which.md`](./util-which.md)                 | `src/util/which.ts` — `executablePath`: a tool's absolute path on vx's own PATH, found once.                                        |
 | [`util-procfs.md`](./util-procfs.md)               | `src/util/procfs.ts` — `procfsIsOwn`: is `/proc` this pid namespace's view, asked once.                                             |
 | [`util-hangup.md`](./util-hangup.md)               | `src/util/hangup.ts` — `hangupIgnored`: did vx start with SIGHUP ignored (nohup), asked once.                                       |

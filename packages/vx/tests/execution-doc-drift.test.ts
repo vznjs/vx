@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const doc = readFileSync(path.join(pkg, 'docs', 'execution.md'), 'utf8')

@@ -15,7 +15,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 const DOCS = path.resolve(import.meta.dir, '..', '..', 'vx-docs', 'src', 'content', 'docs')

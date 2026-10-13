@@ -2,8 +2,8 @@
 // still holds them (a token, a cache signing key). Can a task read them
 // back from vx? Linux: `/proc/<pid>/environ` of any same-user process.
 // macOS: `ps eww`, which reads another process's env through sysctl
-// KERN_PROCARGS2. A sandboxed task must find nothing. An unsandboxed one
-// finds it on macOS, the probe's control; on Linux vx hides it.
+// KERN_PROCARGS2. A sandboxed task must find nothing, and vx hides it
+// from an unsandboxed one too.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
@@ -67,15 +67,14 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) => /^(OWN-ENV|LEAK-proc|LEAK-ps|DONE)$/.test(l))
     }
-    // macOS: an unsandboxed task reads it (`ps eww`), the probe's control.
-    // Linux: vx is non-dumpable (util/hide-env.ts), so neither reads it;
-    // hide-env.unsafe.test.ts holds the probe's control there. Root reads a
-    // non-dumpable process's environ all the same.
-    const linux = process.platform === 'linux'
-    const asRoot = linux && skipAsRoot('sandbox parent env')
+    // vx hides its env (util/hide-env.ts: non-dumpable on Linux, values
+    // zeroed on macOS), so neither reads it; hide-env.unsafe.test.ts holds
+    // the probe's control. Root reads a non-dumpable process's environ all
+    // the same.
+    const asRoot = process.platform === 'linux' && skipAsRoot('sandbox parent env')
     expect({ boxed: out('boxed'), open: out('open') }).toEqual({
       boxed: ['DONE'],
-      open: linux ? (asRoot ? ['LEAK-proc', 'DONE'] : ['DONE']) : ['LEAK-ps', 'DONE'],
+      open: asRoot ? ['LEAK-proc', 'DONE'] : ['DONE'],
     })
     // What the sandbox costs one task, printed for the record (owner,
     // 2026-10-13): a `true` sandboxed against one not, min of 20,
