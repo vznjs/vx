@@ -11,7 +11,7 @@
 // takes even that.
 
 import { closeSync, readdirSync, readFileSync, writeSync } from 'node:fs'
-import { procfsIsOwn, taskShell } from '../util/index.js'
+import { helperEnv, procfsIsOwn, taskShell } from '../util/index.js'
 
 export type Child = ReturnType<typeof Bun.spawn>
 
@@ -104,6 +104,7 @@ function startGuard(): void {
   try {
     const guard = Bun.spawn([taskShell(), '-c', GUARD_SCRIPT], {
       argv0: 'vx-group-guard',
+      env: helperEnv(),
       stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
       // Out of vx's group, so a Ctrl-C at the terminal leaves it to the
       // pipe; vx's own teardown owns that path.

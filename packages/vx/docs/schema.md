@@ -580,7 +580,8 @@ matches Turbo's `passThroughEnv` semantics and exists for two reasons:
   the user would never know why.
 
 This is hygiene, not a boundary: an unsandboxed task runs as you and can
-still read vx's own environment (`/proc/<pid>/environ`, `ps eww`). Only
+still read vx's own environment (`ps eww` on macOS; on Linux only while it
+holds no secret, `modules/util-hide-env.md`). Only
 `exec.sandbox` keeps it out (`security.md` § What the sandbox stops).
 
 **Masking.** The value of a variable whose name holds `TOKEN`, `SECRET`,

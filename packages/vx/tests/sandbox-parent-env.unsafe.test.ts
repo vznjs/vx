@@ -10,6 +10,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { skipAsRoot } from './helpers/nonroot-gate.js'
+import { secretMask } from '../src/util/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const available = await sandboxAvailable('sandbox parent env test')
@@ -49,11 +51,16 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
 `,
     )
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: ws }).exitCode).toBe(0)
-    const out = (task: string): string[] => {
+    // vx hides its env on Linux when it holds a secret (util/hide-env.ts),
+    // so the host's own secrets are left out and the canary's name decides.
+    const host = Object.fromEntries(
+      Object.entries(process.env).filter(([k, v]) => secretMask([{ [k]: v }]) === null),
+    )
+    const out = (task: string, name = 'VX_PROBE_CANARY'): string[] => {
       const r = Bun.spawnSync({
         cmd: [process.execPath, BIN, 'run', `a#${task}`, '--output-logs', 'full'],
         cwd: ws,
-        env: { ...process.env, VX_PROBE_CANARY: canary },
+        env: { ...host, [name]: canary },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -64,9 +71,17 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
         .map((l) => l.replace(/^.*?│\s?/, '').trim())
         .filter((l) => /^(OWN-ENV|LEAK-proc|LEAK-ps|DONE)$/.test(l))
     }
-    expect({ boxed: out('boxed'), open: out('open') }).toEqual({
+    // On Linux a secret in vx's env hides it from an unsandboxed task too;
+    // root reads a non-dumpable process's environ all the same.
+    const hides = process.platform === 'linux' && !skipAsRoot('sandbox parent env')
+    expect({
+      boxed: out('boxed'),
+      open: out('open'),
+      ...(hides && { secret: out('open', 'VX_PROBE_SECRET') }),
+    }).toEqual({
       boxed: ['DONE'],
       open: [process.platform === 'linux' ? 'LEAK-proc' : 'LEAK-ps', 'DONE'],
+      ...(hides && { secret: ['DONE'] }),
     })
   })
 })
