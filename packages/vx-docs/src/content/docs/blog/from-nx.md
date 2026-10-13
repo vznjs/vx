@@ -23,7 +23,7 @@ below is a simplification.
 to keep Nx's config: vx is fast on native config. It fills vx's `project` stage from the resolved
 project graph, so every project's targets are vx tasks with their
 inputs, outputs and `dependsOn`, and `vx run build --all` runs what
-`nx run-many -t build` ran, under vx's cache. `npx vx init` writes the
+`nx run-many -t build` ran, under vx's cache. `npx @vzn/vx init` writes the
 one file beside `nx.json`, and its `next:` line installs
 `@vzn/vx-migrate` and runs the build:
 

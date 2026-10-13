@@ -53,8 +53,8 @@ This is how every cold run works from vx 0.0.634. Try it in your repo:
 
 ```sh
 npm install -D @vzn/vx
-npx vx init
-npx vx run build --all
+npx @vzn/vx init
+npx @vzn/vx run build --all
 ```
 
 More on vx at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

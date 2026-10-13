@@ -25,8 +25,8 @@ beside `turbo.json`:
 
 ```bash
 npm install -D @vzn/vx       # or pnpm / yarn / bun
-npx vx init                  # writes vx.workspace.ts, below, and prints next:
-npm install -D @vzn/vx-migrate && npx vx run build --all   # the next: line
+npx @vzn/vx init                  # writes vx.workspace.ts, below, and prints next:
+npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all   # the next: line
 ```
 
 ```ts
