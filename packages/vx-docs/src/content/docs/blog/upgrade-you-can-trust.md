@@ -67,16 +67,17 @@ vx never installs Node or a package manager for you.
 
 ## Who built the bytes
 
-npm's signature proves the bytes are the ones npm published. Every
-release binary also carries a Sigstore-signed build-provenance
-attestation, which ties it to the CI run that built it:
+npm's signature proves these are the bytes npm's registry received.
+It does not say who built them. For that, every release binary
+carries a Sigstore-signed build-provenance attestation naming the
+repository, commit and CI workflow that built it:
 
 ```sh frame="terminal"
 $ gh attestation verify vx-linux-x64 --repo vznjs/vx
 ```
 
 npm packages are published from CI through trusted publishing, with
-provenance attached, and no long-lived token exists to steal.
+provenance attached, so no long-lived npm token exists to steal.
 
 ## A CLI that does not guess
 
