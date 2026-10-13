@@ -114,43 +114,6 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   override delete(key: string): boolean
   override clear(): void
 }
-== class LayeredCache (src/cache/layered-cache.ts)
-export class LayeredCache implements CacheLayer {
-  readonly hasRemote
-  constructor(
-    readonly local: Cache,
-    private readonly remote: RemoteCacheLayer,
-    private readonly options: LayeredCacheOptions = {},
-  )
-  key(input: CacheKeyInput): Promise<string>
-  async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null>
-  markRemoteAbsent(hashes: Iterable<string>): void
-  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  async has(hash: string): Promise<'local' | 'remote' | null>
-  outputsPath(hash: string): string
-  artifactSize(hash: string): number | undefined
-  hashFile(filePath: string): Promise<string>
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
-  async save(args: SaveArgs): Promise<void>
-  async drainUploads(): Promise<void>
-  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
-  recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  stats(opts?: CacheStatsOptions): CacheStats
-  prune(options: PruneOptions): Promise<PruneResult>
-  close(): void
-}
 == class LocalHistoryProvider (src/orchestrator/history.ts)
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(
@@ -413,8 +376,7 @@ export interface CacheConfig {
 }
 == type CacheContext (src/orchestrator/plugin.ts)
 export interface CacheContext extends BaseContext {
-  readonly localCache: Cache
-  readonly policy: CachePolicy
+  readonly scope: string | undefined
 }
 == type CacheEntry (src/cache/layer.ts)
 export interface CacheEntry {
@@ -929,11 +891,6 @@ type KnownExecs<T extends ProjectConfig> = {
     }
   }
 }
-== type LayeredCacheOptions (src/cache/layered-cache.ts)
-export interface LayeredCacheOptions {
-  onRemoteError?: (err: Error) => void
-  policy?: CachePolicy
-}
 == type LoadProjectConfigOptions (src/workspace/project-loader.ts)
 export interface LoadProjectConfigOptions {
   fresh?: boolean
@@ -1232,6 +1189,7 @@ export interface ReachGraph {
 == type RemoteCacheLayer (src/cache/layered-cache.ts)
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   has(hash: string): Promise<boolean>
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
@@ -1878,7 +1836,7 @@ export interface VxPlugin {
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
   admit?(task: TaskNode, ctx: AdmitContext): boolean
   readonly commands?: Readonly<Record<string, PluginCommand>>
-  cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+  cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>
   executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
   telemetry?(
     ctx: TelemetryContext,

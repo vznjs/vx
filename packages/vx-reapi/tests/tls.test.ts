@@ -9,7 +9,6 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
-import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiClient } from '../src/wire.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
@@ -116,7 +115,7 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
     const p = reapi({ endpoint: 'localhost:1', ...opts })
     try {
-      await p.cache!({ warn, localCache: {}, policy: {} } as never)
+      await p.cache!({ warn, workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', scope: undefined })
       return 'ok'
     } catch (err) {
       return (err as Error).message
@@ -147,25 +146,22 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
 // dropping any PEM from what it hands the client went unheard.
 it('reapi() options reach the connection: CA and client pair through the plugin', async () => {
   const dir2 = mkdtempSync(path.join(tmpdir(), 'vx-tls-plugin-'))
-  const local = new Cache(path.join(dir2, 'cache'))
   try {
     const layerFor = async (opts: Parameters<typeof reapi>[0]) => {
-      const warns: string[] = []
       const p = reapi({
         endpoint: `localhost:${mutual.endpoint.split(':').at(-1)}`,
         callTimeoutMs: 3000,
         ...opts,
       })
       const layer = (await p.cache!({
-        localCache: local,
-        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
-        warn: (m: string) => warns.push(m),
+        warn: () => {},
         workspaceRoot: dir2,
         cacheDir: path.join(dir2, 'cache'),
-      } as never))!
+        scope: undefined,
+      }))!
       try {
-        const hit = await layer.get('e'.repeat(64), { taskId: 'a#b', command: 'true' })
-        return [hit, warns.length]
+        // A refused handshake is a throw; core makes it a miss and a warning.
+        return await layer.get('e'.repeat(64)).catch(() => 'refused')
       } finally {
         await p.teardown?.()
       }
@@ -176,7 +172,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
         tlsClientCertificate: file('client.pem'),
         tlsClientKey: file('client.key'),
       }),
-    ).toEqual([null, 0])
+    ).toBeNull()
     // A CA alone means TLS, with no scheme on the endpoint.
     const plainPort = plain.endpoint.split(':').at(-1)
     const caOnly = reapi({
@@ -186,25 +182,19 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
     })
     const warns: string[] = []
     const caLayer = (await caOnly.cache!({
-      localCache: local,
-      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
       warn: (m: string) => warns.push(m),
       workspaceRoot: dir2,
       cacheDir: path.join(dir2, 'cache'),
-    } as never))!
+      scope: undefined,
+    }))!
     try {
-      expect([
-        await caLayer.get('f'.repeat(64), { taskId: 'a#b', command: 'true' }),
-        warns,
-      ]).toEqual([null, []])
+      expect([await caLayer.get('f'.repeat(64)), warns]).toEqual([null, []])
     } finally {
       await caOnly.teardown?.()
     }
-    // CONTROL: without the pair the mutual server refuses, and the miss warns.
-    const refused = await layerFor({ tlsCertificate: file('ca.pem') })
-    expect([refused[0], (refused[1] as number) > 0]).toEqual([null, true])
+    // CONTROL: without the pair the mutual server refuses.
+    expect(await layerFor({ tlsCertificate: file('ca.pem') })).toBe('refused')
   } finally {
-    local.close()
     rmSync(dir2, { recursive: true, force: true })
   }
 })

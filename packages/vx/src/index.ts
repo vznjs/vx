@@ -101,7 +101,7 @@ export { outputsOverlap, splitTaskId } from './graph/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).
-export { Cache, LayeredCache } from './cache/index.js'
+export { Cache } from './cache/index.js'
 export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
 // Workspace discovery + the project/config catalog surface — an

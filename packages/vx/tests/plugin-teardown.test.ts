@@ -17,7 +17,8 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
@@ -577,22 +578,20 @@ describe('the lifecycle is reached on a run that never started', () => {
 
   it('a stage that throws inside prepareRun tears every plugin down (item 1029)', async () => {
     // The factories ran and the cache was open; the throw left both.
-    await withPlugins(
-      `graph() { throw new Error('graph boom') },
-       cache(ctx) {
-         return new Proxy(ctx.localCache, {
-           get(target, prop) {
-             if (prop === 'close') return () => { globalThis.__vxAbort.push('close'); target.close() }
-             const value = Reflect.get(target, prop, target)
-             return typeof value === 'function' ? value.bind(target) : value
-           },
-         })
-       },`,
-    )
-    expect(await settle(runT())).toContain('graph boom')
-    expect(
-      await settle(planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
-    ).toContain('graph boom')
+    await withPlugins(`graph() { throw new Error('graph boom') },`)
+    const close = Cache.prototype.close
+    const closes = spyOn(Cache.prototype, 'close').mockImplementation(function (this: Cache) {
+      ;(globalThis as unknown as { __vxAbort: string[] }).__vxAbort.push('close')
+      close.call(this)
+    })
+    try {
+      expect(await settle(runT())).toContain('graph boom')
+      expect(
+        await settle(planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
+      ).toContain('graph boom')
+    } finally {
+      closes.mockRestore()
+    }
     expect(seen()).toEqual([
       'a-teardown',
       'b-teardown',

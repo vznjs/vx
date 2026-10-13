@@ -9,16 +9,16 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { CORE_INDEX, localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { planRun, run } from '../src/index.js'
 import {
-  CACHE_LAYER_METHODS,
+  REMOTE_CACHE_METHODS,
   resolveCache,
   resolveExecutors,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
-import { Cache, ChainedCache } from '../src/cache/index.js'
+import { Cache, ChainedCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 import { machineParallelism } from '../src/util/index.js'
 import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
@@ -72,15 +72,17 @@ function makeSilentLogger(status?: (line: string) => void) {
 }
 
 /**
- * The methods `CacheLayer` REQUIRES, read from its own source rather than
- * from `CACHE_LAYER_METHODS`. A table generated from the constant is a
- * tautology: it shrinks with the list it is meant to hold, which is the
- * defect this block exists to close — so the members come from the
- * interface, and the constant is then checked AGAINST them.
+ * The methods `RemoteCacheLayer` REQUIRES, read from its own source rather
+ * than from `REMOTE_CACHE_METHODS`: a table generated from the constant
+ * shrinks with the list it is meant to hold, so the members come from the
+ * interface and the constant is checked AGAINST them.
  */
-function requiredCacheLayerMethods(): string[] {
-  const src = readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', 'layer.ts'), 'utf8')
-  const body = src.slice(src.indexOf('export interface CacheLayer {'))
+function requiredRemoteMethods(): string[] {
+  const src = readFileSync(
+    path.join(import.meta.dir, '..', 'src', 'cache', 'layered-cache.ts'),
+    'utf8',
+  )
+  const body = src.slice(src.indexOf('export interface RemoteCacheLayer {'))
   const members: string[] = []
   for (const line of body.slice(0, body.indexOf('\n}')).split('\n')) {
     const m = /^ {2}([a-zA-Z_][\w]*)(\??)\(/.exec(line)
@@ -89,56 +91,42 @@ function requiredCacheLayerMethods(): string[] {
   return members
 }
 
-describe('the cache-layer gate names EVERY method, not a count of them', () => {
-  // The gate refuses a `cache()` layer missing any method `CacheLayer`
-  // requires. Its one fixture is `{ nope: true }` — missing all fifteen —
-  // and that row builds its expected message by mapping over
-  // `CACHE_LAYER_METHODS` itself, so it agrees with whatever the list says
-  // and cannot notice a change to it. The only thing that did notice was a
-  // DOC-DRIFT row asserting the guide's stated method COUNT equals
-  // `CACHE_LAYER_METHODS.length`.
-  //
-  // A count is not the contract. Keep it and the requirement can be
-  // anything: duplicate an entry in place of `prune` and a layer with no
-  // `prune()` is accepted, then dies inside prune — exactly the defect the
-  // comment above the list records as the reason it was widened from five
-  // names ("a layer with those five passed and died at its first hit
-  // inside restoreOutputs"). The list grew because of that bug, and
-  // nothing was added that would see it happen again.
-  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
-  const POLICY = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
-  const required = requiredCacheLayerMethods()
+describe('the cache gate names EVERY remote method, not a count of them', () => {
+  // A count is not the contract: duplicate an entry in place of `put` and a
+  // remote with no `put()` is accepted, then dies at its first upload.
+  const baseCtx = {
+    workspaceRoot: '/ws',
+    cacheDir: '/ws/.vx/cache',
+    warn: () => undefined,
+    scope: undefined,
+  }
+  const POLICY = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+  const required = requiredRemoteMethods()
 
   it('the constant is exactly what the interface requires — no member dropped, none invented', () => {
-    // The row that makes the table below trustworthy. Every generated row
-    // reads `required`, so a member could still be lost by dropping it
-    // from the INTERFACE; this compares the two sides and fails when they
-    // disagree in either direction, including a duplicate that keeps the
-    // count.
     expect(required.length).toBeGreaterThan(0)
-    expect([...CACHE_LAYER_METHODS].sort()).toEqual([...required].sort())
-    expect(new Set(CACHE_LAYER_METHODS).size).toBe(CACHE_LAYER_METHODS.length)
+    expect([...REMOTE_CACHE_METHODS].sort()).toEqual([...required].sort())
+    expect(new Set(REMOTE_CACHE_METHODS).size).toBe(REMOTE_CACHE_METHODS.length)
   })
 
-  for (const withheld of requiredCacheLayerMethods()) {
-    it(`refuses a layer whose only missing method is ${withheld}()`, async () => {
-      const layer = Object.fromEntries(
+  for (const withheld of requiredRemoteMethods()) {
+    it(`refuses a remote whose only missing method is ${withheld}()`, async () => {
+      const remote = Object.fromEntries(
         required.filter((m) => m !== withheld).map((m) => [m, () => undefined]),
       )
       const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-'))
       const local = new Cache(dir, { read: true, write: true })
       try {
-        // The whole message, not a prefix: `toThrow` matches a substring,
-        // so "missing key(), key()" would satisfy a "missing key()" probe.
+        // The whole message, not a prefix: `toThrow` matches a substring.
         const err = await resolveCache(
-          [testPlugin('org/partial', { cache: () => layer as never })],
+          [testPlugin('org/partial', { cache: () => remote as never })],
           { ...baseCtx, localCache: local, policy: POLICY },
         ).then(
           () => undefined,
           (e: unknown) => e as Error,
         )
         expect(err?.message).toBe(
-          `plugin 'org/partial' returned from cache something that is not a cache layer: ` +
+          `plugin 'org/partial' returned from cache something that is not a remote cache layer: ` +
             `missing ${withheld}()`,
         )
       } finally {
@@ -149,12 +137,8 @@ describe('the cache-layer gate names EVERY method, not a count of them', () => {
   }
 
   it('null from cache() is refused by name, not by an internal TypeError', async () => {
-    // `resolveCache` skips only `undefined`, so `null` reaches the gate and
-    // the non-object branch is what turns it into a named refusal. Without
-    // that branch the filter indexes `null` and throws a TypeError naming
-    // neither the plugin nor the hook — the precise failure the gate exists
-    // to replace, arriving from the one input that looks most like "no
-    // layer" without being it.
+    // `resolveCache` skips only `undefined`, so `null` reaches the gate:
+    // the one input that looks most like "no remote" without being it.
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-gate-nil-'))
     const local = new Cache(dir, { read: true, write: true })
     try {
@@ -164,7 +148,9 @@ describe('the cache-layer gate names EVERY method, not a count of them', () => {
           localCache: local,
           policy: POLICY,
         }),
-      ).rejects.toThrow("plugin 'org/nil' returned from cache something that is not a cache layer")
+      ).rejects.toThrow(
+        "plugin 'org/nil' returned from cache something that is not a remote cache layer",
+      )
     } finally {
       local.close()
       rmSync(dir, { recursive: true, force: true })
@@ -175,30 +161,45 @@ describe('the cache-layer gate names EVERY method, not a count of them', () => {
 // --- plugin-host unit-level consultation -------------------------------
 
 describe('plugin-host — capability consultation + fallbacks', () => {
-  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const baseCtx = {
+    workspaceRoot: '/ws',
+    cacheDir: '/ws/.vx/cache',
+    warn: () => undefined,
+    scope: undefined,
+  }
 
-  it('resolveCache: every contributing plugin is kept, the local store first', async () => {
+  it('resolveCache: every contributing remote is kept in order, each behind the local store', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
-    const otherDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-'))
-    const other = new Cache(otherDir, { read: true, write: true })
+    const remote = (): RemoteCacheLayer => ({
+      has: async () => false,
+      get: async () => null,
+      put: async () => undefined,
+    })
+    const [first, second] = [remote(), remote()]
     const plugins: VxPlugin[] = [
       testPlugin('org/none', { cache: () => undefined }),
-      testPlugin('org/cache', { cache: () => other }),
-      testPlugin('org/late', { cache: () => local }),
+      testPlugin('org/first', { cache: () => first }),
+      testPlugin('org/second', { cache: () => second }),
     ]
     try {
       const resolved = await resolveCache(plugins, {
         ...baseCtx,
         localCache: local,
-        policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
+        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
       })
       expect(resolved).toBeInstanceOf(ChainedCache)
-      expect((resolved as ChainedCache).layers).toEqual([local, other])
+      // `remote` is private; the cast reads it without widening the class.
+      const layers = (resolved as ChainedCache).layers as unknown as {
+        local: Cache
+        remote: RemoteCacheLayer
+      }[]
+      expect(layers.map((l) => [l.local, l.remote])).toEqual([
+        [local, first],
+        [local, second],
+      ])
     } finally {
       local.close()
-      other.close()
-      rmSync(otherDir, { recursive: true, force: true })
       rmSync(cacheDir, { recursive: true, force: true })
     }
   })
@@ -246,7 +247,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
         }),
       ).rejects.toThrow(
-        `plugin 'org/junk' returned from cache something that is not a cache layer: missing ${CACHE_LAYER_METHODS.map((m) => `${m}()`).join(', ')}`,
+        `plugin 'org/junk' returned from cache something that is not a remote cache layer: missing ${REMOTE_CACHE_METHODS.map((m) => `${m}()`).join(', ')}`,
       )
     } finally {
       local.close()
@@ -342,17 +343,16 @@ describe('plugin capabilities — end-to-end', () => {
   it('a cache plugin is consulted during a real run()', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
-      // The plugin returns ctx.localCache as its CacheLayer (a no-op
-      // wrapper conceptually) and records that it was consulted.
+      // The plugin records that it was consulted, then declines.
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
               'org/cache',
-              `{ cache(ctx) {
+              `{ cache() {
                globalThis.__vxCachePluginConsulted = true
-               return ctx.localCache
+               return undefined
              },
            }`,
             ),
@@ -671,9 +671,10 @@ describe('executor capability — end-to-end via run()', () => {
 
   // `prepareRun` resolves the cache before `run()` resolves executors, so
   // the cache message is the one a bare workspace sees; both carry the hint.
-  it('two declared cache plugins: a run saves into BOTH stores', async () => {
+  it('two declared remotes: a run saves into the local store and both remotes', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
-    const second = mkdtempSync(path.join(tmpdir(), 'vx-second-cache-'))
+    const g = globalThis as { __vxPuts?: string[] }
+    g.__vxPuts = []
     try {
       await Bun.write(
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
@@ -682,38 +683,44 @@ describe('executor capability — end-to-end via run()', () => {
            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
          } } }`,
       )
+      const remote = (name: string) =>
+        pluginSource(
+          `org/${name}`,
+          `{ cache: () => ({
+             has: async () => false,
+             get: async () => null,
+             put: async (hash) => { globalThis.__vxPuts.push('${name} ' + hash) },
+           }) }`,
+        )
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        localWorkspaceSource(
-          [
-            pluginSource(
-              'org/second',
-              `{ cache: () => new Cache(${JSON.stringify(second)}, { read: true, write: true }) }`,
-            ),
-          ],
-          `import { Cache } from ${JSON.stringify(CORE_INDEX)}`,
-        ),
+        localWorkspaceSource([remote('first'), remote('second')]),
       )
       await gitInit(workspaceRoot)
-      const summary = await runHello(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        cache: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
       expect(summary.ok).toBe(true)
       const hash = summary.outcomes[0]?.hash
       expect(typeof hash).toBe('string')
-      const secondCache = new Cache(second, { read: true, write: true })
+      expect(g.__vxPuts.sort()).toEqual([`first ${hash}`, `second ${hash}`])
       const localCache = new Cache(path.join(workspaceRoot, '.vx/cache'), {
         read: true,
         write: true,
       })
       try {
-        expect((await secondCache.get(hash!))?.hash).toBe(hash)
         expect((await localCache.get(hash!))?.hash).toBe(hash)
       } finally {
-        secondCache.close()
         localCache.close()
       }
     } finally {
+      delete g.__vxPuts
       cleanup()
-      rmSync(second, { recursive: true, force: true })
     }
   })
 

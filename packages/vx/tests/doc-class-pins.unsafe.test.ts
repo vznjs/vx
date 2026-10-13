@@ -41,9 +41,12 @@ const CLASS_PAGES = {
     'layered-cache.md',
     'options.md',
     'patterns.md',
+    'plugin-host.md',
+    'plugin.md',
     // The remote-caching guide merged into ci.md (the short site), which
     // links plugins.md for the seam rather than naming it.
     'plugins.md',
+    'upgrading.md',
   ],
   retryLine: ['execute-task.md', 'schema.md'],
   outputFingerprint: [

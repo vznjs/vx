@@ -8,7 +8,13 @@
 // See docs/design/pipeline-2026-09.md.
 
 import path from 'node:path'
-import { ChainedCache, type CacheLayer } from '../cache/index.js'
+import {
+  type Cache,
+  ChainedCache,
+  type CacheLayer,
+  type CachePolicy,
+  LayeredCache,
+} from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { ProjectConfig, WorkspaceConfig, WorkspaceRules } from '../config.js'
@@ -46,24 +52,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return proto === Object.prototype || proto === null
 }
 
-/** Every method `CacheLayer` requires (the optional ones are probed with `?.`). */
-export const CACHE_LAYER_METHODS: readonly string[] = [
-  'key',
-  'get',
-  'has',
-  'prefetch',
-  'loadOutputFilesBatch',
-  'isOutputsCurrent',
-  'restoreOutputs',
-  'save',
-  'ingest',
-  'recordRunBundle',
-  'stats',
-  'hashFile',
-  'outputsPath',
-  'prune',
-  'close',
-]
+/** Every method a `cache` hook's `RemoteCacheLayer` requires (`hasMany` is optional). */
+export const REMOTE_CACHE_METHODS: readonly string[] = ['has', 'get', 'put']
 
 /** What a capability hook handed back must be what the seam runs. */
 function assertShape(
@@ -466,64 +456,72 @@ export function buildAdmission(
   }
 }
 
+/** What `resolveCache` needs beyond a hook's context: the store and policy core owns. */
+export interface CacheHost extends CacheContext {
+  readonly localCache: Cache
+  readonly policy: CachePolicy
+}
+
 /**
- * Collect every plugin's `cache` layer in declaration order, with the local
- * store asked first, and chain them (lookup walks them, save reaches all;
- * see ChainedCache). The local store is dropped when a declared layer wraps
- * it (`layer.local === ctx.localCache`), so a remote plugin that layers over
- * the local handle does not also write it directly. Only a single layer
- * left is used as is: the local store when no plugin declares one, or the
- * one layer that wraps it.
+ * Collect every plugin's remote (`cache` hook) in declaration order and
+ * layer each over the local store: a lookup asks the local store first,
+ * then each remote in order (owner, 2026-10-13), and a save reaches every
+ * remote. The run's policy, narrowed by a remote's `access`, and its scope
+ * gate each remote; a remote's throw is a miss and a warning naming its
+ * plugin. No remote → the local store alone.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
-  ctx: CacheContext,
+  host: CacheHost,
 ): Promise<CacheLayer> {
+  const { localCache, policy, ...ctx } = host
   const layers: CacheLayer[] = []
-  const owners = new Map<CacheLayer, string>()
+  const owners: string[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
-    const layer = await safe(plugin, 'cache', () => plugin.cache!(ctx))
-    if (layer === undefined) continue
-    // The seam's WHOLE contract, checked once here: a layer missing a
-    // method otherwise failed at the first task that reached it — an
-    // internal TypeError deep in the chain, naming neither the plugin nor
-    // the hook. Five names were checked before, so a layer with those five
-    // passed and died at its first hit inside restoreOutputs.
-    assertShape(plugin, 'cache', layer, CACHE_LAYER_METHODS, 'a cache layer')
-    layers.push(layer)
-    if (!owners.has(layer)) owners.set(layer, `plugin '${plugin.name}'`)
+    const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
+    if (remote === undefined) continue
+    // The hook returned a whole layer until 0.0.637: name the fix, not the
+    // three methods such a layer happens to have.
+    if (isRecordLike(remote) && typeof remote['restoreOutputs'] === 'function') {
+      throw new UserError(
+        `plugin '${plugin.name}' returned a cache layer from cache: since vx 0.0.637 the hook ` +
+          'returns the remote alone (a RemoteCacheLayer: has, get, put) and core layers it over ' +
+          'the local cache — return the remote you passed to LayeredCache',
+      )
+    }
+    assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
+    const access = remote.access
+    const own: CachePolicy = {
+      ...policy,
+      remoteRead: policy.remoteRead && access?.read !== false,
+      remoteWrite: policy.remoteWrite && access?.write !== false,
+    }
+    layers.push(
+      new LayeredCache(localCache, remote, {
+        policy: own,
+        onRemoteError: (err) => ctx.warn(`[vx] plugin '${plugin.name}': ${err.message}`),
+      }),
+    )
+    owners.push(`the cache layer of plugin '${plugin.name}'`)
   }
-  // Core's own store is in every chain — the floor under every lookup,
-  // not a plugin a workspace has to declare. A layer that WRAPS
-  // the local handle subsumes it below, so a remote plugin does not write
-  // the local store twice.
-  if (!layers.includes(ctx.localCache)) layers.push(ctx.localCache)
-  const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
-  let distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
-  // The local store is asked first, then each remote in declared order
-  // (owner, 2026-10-13): a first layer that neither is nor wraps it would be
-  // a network lookup ahead of a disk one. A wrapping layer after it asks
-  // the local store again on a miss; saves to one handle are made once.
-  const head = distinct[0]!
-  if (head !== ctx.localCache && head.local !== ctx.localCache) {
-    distinct = [ctx.localCache, ...distinct.filter((l) => l !== ctx.localCache)]
-  }
-  if (distinct.length === 1) return distinct[0]!
+  if (layers.length === 0) return localCache
+  if (layers.length === 1) return layers[0]!
   // One line per layer and method: a layer that throws on every lookup
   // would otherwise print once per task.
   const told = new Set<string>()
-  return new ChainedCache(distinct, (i, method, err) => {
-    const layer = distinct[i]!
-    const who =
-      layer === ctx.localCache ? 'the local cache' : (owners.get(layer) ?? 'a cache layer')
+  return new ChainedCache(layers, (i, method, err) => {
     if (told.has(`${i}\0${method}`)) return
     told.add(`${i}\0${method}`)
     const m = err instanceof Error ? err.message : String(err)
     const then =
       method === 'save' ? 'the other layers still save' : 'a miss there; the next layer answers'
-    ctx.warn(`[vx] ${who} failed in cache ${method}: ${m}; ${then}`)
+    ctx.warn(`[vx] ${owners[i]} failed in cache ${method}: ${m}; ${then}`)
   })
+}
+
+function isRecordLike(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
 }
 
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */

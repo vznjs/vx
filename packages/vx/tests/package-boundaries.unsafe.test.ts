@@ -118,7 +118,7 @@ describe('package boundaries', () => {
     const expected = [
       'Cache',
       'LOG_WIRE_VERSION',
-      'LayeredCache',
+      // LayeredCache left (0.0.637): core builds every layer; a plugin returns the remote.
       'LocalHistoryProvider',
       'PERSISTENT_TODO',
       'PLUGIN_HOOKS',

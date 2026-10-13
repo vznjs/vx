@@ -110,8 +110,9 @@ export {
   claimedAffected,
   fingerprintClaims,
   hasHook,
-  CACHE_LAYER_METHODS,
+  REMOTE_CACHE_METHODS,
   resolveCache,
+  type CacheHost,
   resolveExecutors,
 } from './plugin-host.js'
 export {

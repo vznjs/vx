@@ -4,7 +4,6 @@
 // declared in a workspace that has no REAPI server at all.
 
 import { describe, expect, it } from 'bun:test'
-import type { CacheLayer } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
@@ -26,8 +25,8 @@ function withoutReapiEnv<T>(fn: () => T): T {
 const ctx = (warns: string[]) =>
   ({
     warn: (m: string) => warns.push(m),
-    localCache: {} as never,
-    policy: {} as never,
+    workspaceRoot: '/ws',
+    cacheDir: '/ws/.vx/cache',
   }) as never
 
 describe('reapi(): the decline path costs nothing', () => {
@@ -76,9 +75,8 @@ describe('reapi(): the decline path costs nothing', () => {
 
 describe('reapi(): lifecycle and failure messages', () => {
   it.skipIf(!CHUNKING_SUPPORTED)('teardown closes the cache client it created', async () => {
-    // `RemoteCacheLayer` has no close hook and `LayeredCache.close()` closes
-    // only the local handle, so if the plugin does not release this, nothing
-    // does. Spied on the prototype because the client is created internally.
+    // `RemoteCacheLayer` has no close hook and core closes only its local
+    // store, so if the plugin does not release this, nothing does. Spied on the prototype because the client is created internally.
     await withoutReapiEnv(async () => {
       Bun.env['VX_REAPI_ENDPOINT'] = 'grpc://127.0.0.1:1'
       const original = ReapiRemoteCache.prototype.close
@@ -127,32 +125,26 @@ describe('reapi(): lifecycle and failure messages', () => {
   )
 
   it.skipIf(!CHUNKING_SUPPORTED)(
-    'a cache that cannot reach its server names the probe, the artifact and the endpoint, once',
+    'a remote that cannot reach its server throws the status and names its endpoint',
     async () => {
-      // A gRPC status names no server and no key, and writes the elapsed time
-      // into its message, so two deadlines never read alike (item 749). Core
-      // names the request from the layer's `endpoint` and keys the class on
-      // the status code: the second probe is a count, not a second line.
+      // A gRPC status names no server and no key: core names the request
+      // from the remote's `endpoint` and keys the class on the status code,
+      // so the throw must carry the code and the remote its endpoint.
       await withoutReapiEnv(async () => {
-        const warns: string[] = []
-        const local = { has: async () => null, close: () => {} }
         const p = reapi({ endpoint: 'grpc://127.0.0.1:1', callTimeoutMs: 300 })
-        const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
-        const layer = (await p.cache?.({
-          warn: (m: string) => warns.push(m),
-          localCache: local,
-          policy,
-        } as never)) as CacheLayer
-        expect(await layer.has('h1')).toBeNull()
-        expect(await layer.has('h2')).toBeNull()
-        layer.close()
+        const remote = (await p.cache?.(ctx([])))!
+        const err = await remote.has('h1').then(
+          () => undefined,
+          (e: unknown) => e as Error,
+        )
         await p.teardown?.()
-        const cause = warns[0]?.split(' failed: ')[1] ?? ''
-        expect(cause).toMatch(/^\d+ [A-Z_]+: /)
-        expect(warns).toEqual([
-          `vx/reapi: probe h1 at grpc://127.0.0.1:1 failed: ${cause}`,
-          `vx/reapi: 1 more request failed the same way: ${cause}`,
-        ])
+        expect({
+          endpoint: remote.endpoint,
+          status: /^\d+ [A-Z_]+: /.test(err?.message ?? ''),
+        }).toEqual({
+          endpoint: 'grpc://127.0.0.1:1',
+          status: true,
+        })
       })
     },
     30_000,

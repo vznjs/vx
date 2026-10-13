@@ -194,10 +194,11 @@ export interface CacheConfig {
 
 type · `src/orchestrator/plugin.ts`
 
+A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns.
+
 ```ts
 export interface CacheContext extends BaseContext {
-  readonly localCache: Cache
-  readonly policy: CachePolicy
+  readonly scope: string | undefined
 }
 ```
 
@@ -1089,49 +1090,6 @@ tool demanded a run id an agent had to fetch first (2026-09-16).
 export function latestRunId(db: Database, taskId: string): string | null
 ```
 
-## `LayeredCache`
-
-class · `src/cache/layered-cache.ts`
-
-```ts
-export class LayeredCache implements CacheLayer {
-  readonly hasRemote
-  constructor(
-    readonly local: Cache,
-    private readonly remote: RemoteCacheLayer,
-    private readonly options: LayeredCacheOptions = {},
-  )
-  key(input: CacheKeyInput): Promise<string>
-  async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
-  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null>
-  markRemoteAbsent(hashes: Iterable<string>): void
-  async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  async has(hash: string): Promise<'local' | 'remote' | null>
-  outputsPath(hash: string): string
-  artifactSize(hash: string): number | undefined
-  hashFile(filePath: string): Promise<string>
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
-  async save(args: SaveArgs): Promise<void>
-  async drainUploads(): Promise<void>
-  async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
-  recordOutputDirs(
-    hash: string,
-    projectDir: string,
-    prefixes: readonly string[],
-    holds?: (files: readonly string[]) => boolean,
-  ): Promise<void>
-  recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
-  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  stats(opts?: CacheStatsOptions): CacheStats
-  prune(options: PruneOptions): Promise<PruneResult>
-  close(): void
-}
-```
-
 ## `listProjectMetas`
 
 function · `src/workspace/workspace.ts`
@@ -1892,8 +1850,8 @@ export function refuseUnknownOptions<T>(
 type · `src/cache/layered-cache.ts`
 
 What a remote cache layer must provide — THE plugin seam for remote
-caching. Core ships no wire client; a plugin's `cache` capability (or an
-embedder via `RunOptions.remoteCache`) supplies an implementation speaking
+caching. Core ships no wire client; a plugin's `cache` hook returns one
+(or an embedder passes one as `RunOptions.remoteCache`), speaking
 whatever protocol it wants, and `LayeredCache` owns everything else:
 policy gating, in-flight dedup, remote provenance, and the never-fail
 contract (implementations THROW on failure; LayeredCache degrades every
@@ -1910,6 +1868,7 @@ plugin guide's example shows it).
 ```ts
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   has(hash: string): Promise<boolean>
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
@@ -2851,7 +2810,7 @@ export interface VxPlugin {
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
   admit?(task: TaskNode, ctx: AdmitContext): boolean
   readonly commands?: Readonly<Record<string, PluginCommand>>
-  cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+  cache?(ctx: CacheContext): RemoteCacheLayer | undefined | Promise<RemoteCacheLayer | undefined>
   executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
   telemetry?(
     ctx: TelemetryContext,
