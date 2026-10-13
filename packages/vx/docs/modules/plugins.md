@@ -27,8 +27,8 @@ scheduler, moved to `@vzn/vx-schedule-history` on 2026-09-10; it had been
 core's opt-in `predictive` mode until 2026-09-02 and a subpath export of
 core until the move. What core keeps is what a plugin needs from the
 façade: `LocalHistoryProvider` and the `HistoryTable` types for a
-`schedule` plugin, `LayeredCache` and `RemoteCacheLayer` for a cache
-plugin, the `TaskExecutor` contract for an executor.
+`schedule` plugin, `RemoteCacheLayer` for a cache plugin (core layers
+it), the `TaskExecutor` contract for an executor.
 
 ## Isolation contract
 

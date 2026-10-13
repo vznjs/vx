@@ -12,8 +12,7 @@
 import { readFileSync } from 'node:fs'
 import {
   definePlugin,
-  LayeredCache,
-  type CacheLayer,
+  type RemoteCacheLayer,
   type TaskExecutor,
   type VxPlugin,
   UserError,
@@ -257,7 +256,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       executorClient?.close()
       executorClient = undefined
       // The cache layer holds a client too, and `RemoteCacheLayer` has no
-      // close hook for core to call — `LayeredCache.close()` closes only the
+      // close hook for core to call — core closes only its
       // LOCAL handle. Closing it here is lifecycle hygiene rather than a
       // measured fix: @grpc/grpc-js pools subchannels per target, so 20
       // unclosed clients were MEASURED to share one connection. It matters
@@ -266,19 +265,13 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       remoteCache?.close()
       remoteCache = undefined
     },
-    cache(ctx): CacheLayer | undefined {
+    cache(ctx): RemoteCacheLayer | undefined {
       const conn = connection(options)
       if (conn === undefined) return undefined
-      const remote = new ReapiRemoteCache({ ...conn, onWarn: (m) => ctx.warn(m) })
-      remoteCache = remote
-      // Compose over the local handle the host opened: reads try local, then
-      // remote (hydrating local on a remote hit); writes go local immediately
-      // and the remote upload drains in the background. All of that is core's
-      // LayeredCache — this plugin supplies only the wire.
-      return new LayeredCache(ctx.localCache, remote, {
-        policy: ctx.policy,
-        onRemoteError: (err) => ctx.warn(`vx/reapi: ${err.message}`),
-      })
+      // Only the wire: core layers it over the local store (reads try local,
+      // then remote, hydrating local on a hit; uploads drain in the background).
+      remoteCache = new ReapiRemoteCache({ ...conn, onWarn: (m) => ctx.warn(m) })
+      return remoteCache
     },
   })
 }

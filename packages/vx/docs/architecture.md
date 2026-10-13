@@ -30,7 +30,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (53 runtime symbols, a deliberate
+through two seams: the public API (52 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -265,9 +265,9 @@ The cache is not a single file. It is composed:
   runtime-command resolution, output cleaning.
 
 `prepareRun` constructs the local cache, then resolves the layer: an
-explicitly injected `RunOptions.remoteCache` wins outright (composed
-into a `LayeredCache`); else a plugin's `cache` capability; else the
-bare local cache. `executeTask` consumes the `CacheLayer` surface and
+explicitly injected `RunOptions.remoteCache` wins outright; else each
+plugin's `cache` remote, in declared order; else the bare local cache.
+Core layers every remote over the local cache in a `LayeredCache`. `executeTask` consumes the `CacheLayer` surface and
 never branches on layering.
 
 ### Graph + scheduler
@@ -367,8 +367,8 @@ never branches on layering.
       projects + their transitive dep closure evaluate; `--frozen`
       loads from `vx-lock.json` instead of evaluating, with no
       staleness check of its own — `vx lock --check` is the audit) →
-      cache layer resolved (an injected `RunOptions.remoteCache`
-      composed into a `LayeredCache`, else a plugin cache, else the
+      cache layer resolved (an injected `RunOptions.remoteCache`, else
+      each plugin's remote, layered over the local cache, else the
       bare local cache) → bulk `git ls-files` populate (started at the
       top for an unscoped run) + per-run hash memo → task-graph build
       → the `graph`, `key` and `schedule` stages.
@@ -577,10 +577,11 @@ functions; those are the seam. Internal helpers can change.
 
 The remote cache is **plugin-driven** — core keeps the seams only:
 
-1. A plugin's `cache` capability returns a `LayeredCache` composing the
-   local cache with a `RemoteCacheLayer` wire client; OR an embedder
-   injects a client via `RunOptions.remoteCache` (which wins over the
-   plugin consult).
+1. A plugin's `cache` capability returns a `RemoteCacheLayer` wire
+   client, and core composes it with the local cache in a
+   `LayeredCache`; OR an embedder injects a client via
+   `RunOptions.remoteCache` (which wins over the plugin consult).
+   A plugin never sees the local cache or the policy.
 2. `LayeredCache` owns everything wire-independent: policy gating, the
    in-flight de-dup, remote provenance, and the never-fail contract
    (implementations THROW; every throw degrades to a cache miss via

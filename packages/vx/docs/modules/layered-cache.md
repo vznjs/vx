@@ -7,8 +7,9 @@ for remote caching — and
 exposes the same `CacheLayer` interface. The orchestrator doesn't know
 which layer it's talking to, and core ships **no wire client**: the
 remote layer comes from a plugin's `cache` capability (e.g. the
-`@vzn/vx-reapi` CAS client) or from an embedder
-via `RunOptions.remoteCache`.
+`@vzn/vx-reapi` CAS client), which `resolveCache` wraps here, or from an
+embedder via `RunOptions.remoteCache`. Core builds every
+`LayeredCache`; it is not on the public façade.
 
 - **Read-through**: try local; on miss, fetch from remote, stream the
   body into local, return with `source: 'remote'`.
@@ -17,7 +18,7 @@ via `RunOptions.remoteCache`.
   `run()` awaits `drainUploads()` before `cache.close()`, and before the
   telemetry summary, which reports them). Each upload is tallied on the
   local `Cache` it wraps (`uploads`: count, bytes, summed ms, failed),
-  so a plugin's own `LayeredCache` reports without a seam method. Remote
+  so every plugin's remote reports without a seam method. Remote
   errors are logged, not thrown — the task already succeeded; failed
   uploads shouldn't fail the user's run. A remote hit this run pulled
   carries `fetchMs`, its download and ingest.
@@ -39,6 +40,8 @@ via `RunOptions.remoteCache`.
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
+  /** What the credential allows when less than both (a read-only token); omitted → both. */
+  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */

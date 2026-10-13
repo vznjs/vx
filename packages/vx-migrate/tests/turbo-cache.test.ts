@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { run } from '@vzn/vx'
+import { run, type RemoteCacheLayer } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
   artifactTag,
@@ -622,8 +622,6 @@ describe('vx run with turboCache() layered over the local cache', () => {
     try {
       process.env['TURBO_TOKEN'] = 't'
       const ctx = {
-        localCache: {} as never,
-        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
         warn: () => {},
         workspaceRoot: ws,
         cacheDir: ws,
@@ -666,32 +664,27 @@ describe('vx run with turboCache() layered over the local cache', () => {
     try {
       process.env['TURBO_TOKEN'] = 't'
       process.env['TURBO_API'] = 'https://c.example'
-      const layer = (env: Record<string, string>, remoteWrite = true) => {
+      // What the remote tells core its credential allows; core ANDs it with
+      // the run's policy (chained-cache.test.ts).
+      const remote = (env: Record<string, string>) => {
         delete process.env['TURBO_CACHE']
         delete process.env['TURBO_REMOTE_CACHE_READ_ONLY']
         Object.assign(process.env, env)
-        const ctx = {
-          localCache: {} as never,
-          policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite },
-          warn: () => {},
-          workspaceRoot: root,
-          cacheDir: root,
-        }
-        const l = turboCache({}).cache?.(ctx as never) as { policy?: unknown } | undefined
-        return l === undefined ? 'declined' : l.policy
+        const ctx = { warn: () => {}, workspaceRoot: root, cacheDir: root, scope: undefined }
+        const r = turboCache({}).cache?.(ctx) as RemoteCacheLayer | undefined
+        return r === undefined ? 'declined' : r.access
       }
-      const p = (remoteRead: boolean, remoteWrite: boolean) => ({
-        localRead: true,
-        localWrite: true,
-        remoteRead,
-        remoteWrite,
-      })
       expect([
-        layer({}),
-        layer({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
-        layer({ TURBO_CACHE: 'local:rw' }),
-        layer({ TURBO_CACHE: 'remote:rw' }, false),
-      ]).toEqual([p(true, true), p(true, false), 'declined', p(true, false)])
+        remote({}),
+        remote({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
+        remote({ TURBO_CACHE: 'local:rw' }),
+        remote({ TURBO_CACHE: 'remote:w' }),
+      ]).toEqual([
+        { read: true, write: true },
+        { read: true, write: false },
+        'declined',
+        { read: false, write: true },
+      ])
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
       Object.assign(process.env, saved)
@@ -704,8 +697,6 @@ describe('vx run with turboCache() layered over the local cache', () => {
     try {
       delete process.env['TURBO_TOKEN']
       const ctx = {
-        localCache: {} as never,
-        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
         warn: () => {},
         workspaceRoot: ws,
         cacheDir: ws,
@@ -727,8 +718,6 @@ describe('vx run with turboCache() layered over the local cache', () => {
   it('the plugin declines without a url and a token', () => {
     const plugin = turboCache({})
     const ctx = {
-      localCache: {} as never,
-      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
       warn: () => {},
       workspaceRoot: root,
       cacheDir: root,

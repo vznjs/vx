@@ -78,8 +78,8 @@ terminal and a task succeeding or failing. Read it alongside
  │    9. expandRequested (see Task selection below).
  │   10. Cache layer: an injected RunOptions.remoteCache is composed
  │       with the local cache into a LayeredCache (it wins); else
- │       resolveCache lets a plugin's `cache` capability wrap or
- │       replace it; else bare local.
+ │       resolveCache layers each plugin's remote over the local
+ │       cache, in declared order; else bare local.
  │   11. buildTaskGraph (see below).
  │   12. Bulk git populate — the enumeration step 1 started is
  │       awaited, or a scoped run starts it here over the projects

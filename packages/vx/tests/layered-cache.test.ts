@@ -327,8 +327,10 @@ describe('LayeredCache', () => {
 
   // A socket that drops mid-body leaves Bun.write's partial file behind it;
   // the second shape (a body that ends early but cleanly) is validation's
-  // to refuse. Either way nothing may outlive the miss in the cache dir.
-  for (const cut of ['errors', 'ends early'] as const) {
+  // to refuse. The third is a plugin checking bytes as they pass (a digest,
+  // a signature) that refuses after the last one. Nothing may outlive the
+  // miss in the cache dir.
+  for (const cut of ['errors', 'ends early', 'fails its check at the end'] as const) {
     it(`get() degrades a Response body that ${cut} mid-artifact to a miss, leaving no temp`, async () => {
       await saveSample(makeLayered(), 'h-cut')
       const whole = remote.store.get('h-cut')!
@@ -340,6 +342,11 @@ describe('LayeredCache', () => {
           body: new Response(
             new ReadableStream<Uint8Array>({
               start(c) {
+                if (cut === 'fails its check at the end') {
+                  c.enqueue(whole)
+                  c.error(new Error('signature does not match'))
+                  return
+                }
                 c.enqueue(whole.slice(0, whole.byteLength >> 1))
                 if (cut === 'errors') c.error(new Error('socket dropped'))
                 else c.close()

@@ -22,6 +22,7 @@ import {
 } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from '../src/orchestrator/index.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BUILD_CONFIG = `
   export default {
@@ -403,6 +404,40 @@ describe('cache.scope', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+})
+
+describe("a cache plugin sees the run's scope", () => {
+  it(
+    'trusted is undefined; a named scope and read-only reach the hook as given',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-hook-')
+      const seen = path.join(fixture.root, 'seen.txt')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const hook = `{ cache(ctx) { require('node:fs').appendFileSync(${JSON.stringify(seen)}, String(ctx.scope) + '\\n') } }`
+        await writeFile(
+          path.join(fixture.root, 'vx.workspace.mjs'),
+          `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/scope-probe', hook)}] }\n`,
+        )
+        for (const cacheScope of ['trusted', 'pr-9', 'read-only']) {
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            cacheScope,
+          })
+          expect(r.ok).toBe(true)
+        }
+        expect(await Bun.file(seen).text()).toBe('undefined\npr-9\nread-only\n')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('cache.policy', () => {

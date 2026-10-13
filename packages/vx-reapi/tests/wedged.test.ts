@@ -11,7 +11,6 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
-import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
 import { META_TIMEOUT_CAP_MS, ReapiClient } from '../src/wire.js'
@@ -58,29 +57,27 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     }
   }, 10_000)
 
-  it('degrades to a MISS through the plugin, warning instead of hanging the run', async () => {
-    // The invariant end-to-end at the plugin boundary: reapi()'s cache layer
-    // over a wedged remote answers `null` (miss) — the run proceeds and
-    // re-executes — rather than propagating or hanging.
+  it('fails fast through the plugin instead of hanging the run', async () => {
+    // reapi()'s remote over a wedged server throws at its deadline; core
+    // turns that throw into a miss and a warning (layered-cache.test.ts).
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-wedged-'))
-    const local = new Cache(path.join(dir, 'cache'))
-    const warns: string[] = []
     try {
       const plugin = reapi({ endpoint: `grpc://127.0.0.1:${port}`, callTimeoutMs: 1000 })
-      const layer = (await plugin.cache!({
-        localCache: local,
-        policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
-        warn: (m: string) => warns.push(m),
+      const remote = (await plugin.cache!({
+        warn: () => {},
         workspaceRoot: dir,
         cacheDir: path.join(dir, 'cache'),
-      } as never))!
+        scope: undefined,
+      }))!
       const t0 = Date.now()
-      const hit = await layer.get('e'.repeat(64), { taskId: 'a#b', command: 'true' })
-      expect(hit).toBeNull()
+      const threw = await remote.get('e'.repeat(64)).then(
+        () => false,
+        () => true,
+      )
+      expect(threw).toBe(true)
       expect(Date.now() - t0).toBeLessThan(5000)
-      expect(warns.some((w) => w.includes('vx/reapi'))).toBe(true)
+      await plugin.teardown?.()
     } finally {
-      local.close()
       rmSync(dir, { recursive: true, force: true })
     }
   }, 15_000)

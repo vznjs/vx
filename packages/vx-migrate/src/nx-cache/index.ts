@@ -13,8 +13,6 @@
 // Imports core only through the public `@vzn/vx` specifier.
 import {
   definePlugin,
-  LayeredCache,
-  type CacheLayer,
   type RemoteCacheLayer,
   type VxPlugin,
   refuseUnknownOptions,
@@ -95,7 +93,7 @@ export function resolveNxCacheConfig(
  * `get` of the same hash, which no caller makes. Bodies stream: `get` returns the `fetch` Response and `put`
  * sends the Blob core hands it. `put` treats `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
- * outcome wanted. An auth failure (401/403) throws ONCE — LayeredCache
+ * outcome wanted. An auth failure (401/403) throws ONCE — core
  * reports it — and then turns the layer off for the rest of the process
  * (a write's 403 turns off writes alone: the read-only token);
  * the requests already in flight when it lands degrade in silence rather
@@ -231,13 +229,9 @@ const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
   return definePlugin(import.meta, {
-    cache(ctx): CacheLayer | undefined {
+    cache(): RemoteCacheLayer | undefined {
       const config = resolveNxCacheConfig(options)
-      if (config === undefined) return undefined
-      return new LayeredCache(ctx.localCache, new NxRemoteCache(config), {
-        policy: ctx.policy,
-        onRemoteError: (err) => ctx.warn(`vx/nx-cache: ${err.message}`),
-      })
+      return config === undefined ? undefined : new NxRemoteCache(config)
     },
   })
 }

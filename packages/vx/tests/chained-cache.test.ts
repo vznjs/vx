@@ -54,7 +54,7 @@ function tmpCache(tag: string): { cache: Cache; dir: string } {
   return { cache: new Cache(dir, { read: true, write: true }), dir }
 }
 
-async function saveEntry(cache: Cache | ChainedCache, hash: string, projectDir: string) {
+async function saveEntry(cache: CacheLayer, hash: string, projectDir: string) {
   await Bun.write(path.join(projectDir, 'out.txt'), `out-${hash}\n`)
   await cache.save({
     hash,
@@ -222,38 +222,134 @@ describe('ChainedCache — a layer that throws', () => {
   )
 })
 
-describe('resolveCache — chaining', () => {
-  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
-  const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
+describe('resolveCache — a plugin returns the remote, core layers it', () => {
+  const baseCtx = {
+    workspaceRoot: '/ws',
+    cacheDir: '/ws/.vx/cache',
+    warn: () => undefined,
+    scope: undefined,
+  }
+  const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+  /** A remote that records each lookup and upload under `name`. */
+  const recording = (name: string, log: string[], hits: Map<string, Uint8Array> = new Map()) =>
+    ({
+      has: async (h: string) => hits.has(h),
+      get: async (h: string) => {
+        log.push(`get ${name}`)
+        const body = hits.get(h)
+        return body === undefined ? null : { body: new Blob([body]), durationMs: 1 }
+      },
+      put: async (h: string) => {
+        log.push(`put ${name} ${h}`)
+      },
+    }) satisfies RemoteCacheLayer
 
   it(
-    'one contributing plugin → that layer, unwrapped',
+    'no remote → the local store alone',
     withTwo(async (a) => {
-      const plugins: VxPlugin[] = [testPlugin('org/one', { cache: () => a })]
+      const plugins: VxPlugin[] = [testPlugin('org/none', { cache: () => undefined })]
       expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(a)
     }),
   )
 
   it(
-    'two contributing plugins → a ChainedCache, the local store first',
-    withTwo(async (a, b) => {
-      const plugins: VxPlugin[] = [
-        testPlugin('org/first', { cache: () => b }),
-        testPlugin('org/second', { cache: () => a }),
-      ]
+    'one remote → a LayeredCache over the local store',
+    withTwo(async (a) => {
+      const plugins: VxPlugin[] = [testPlugin('org/one', { cache: () => noRemote })]
       const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a, policy })
-      expect(resolved).toBeInstanceOf(ChainedCache)
-      expect((resolved as ChainedCache).layers).toEqual([a, b])
+      expect(resolved).toBeInstanceOf(LayeredCache)
+      expect((resolved as LayeredCache).local).toBe(a)
     }),
   )
 
   it(
-    'a plugin layer that throws is named once per method, and the local floor still answers (item 1020)',
+    'the local store is asked first, then each remote in declared order',
+    withTwo(async (a, _b, proj) => {
+      const log: string[] = []
+      const resolved = await resolveCache(
+        [
+          testPlugin('org/first', { cache: () => recording('first', log) }),
+          testPlugin('org/second', { cache: () => recording('second', log) }),
+        ],
+        { ...baseCtx, localCache: a, policy },
+      )
+      expect(resolved).toBeInstanceOf(ChainedCache)
+      expect(await resolved.get('absent')).toBeNull()
+      expect(log).toEqual(['get first', 'get second'])
+      log.length = 0
+      await saveEntry(a, 'h-local', proj)
+      expect((await resolved.get('h-local'))?.source).toBe('local')
+      expect(log).toEqual([])
+    }),
+  )
+
+  it(
+    'the first remote that has the artifact answers; a save reaches every remote',
     withTwo(async (a, b, proj) => {
+      await saveEntry(b, 'h1', proj)
+      const log: string[] = []
+      const resolved = await resolveCache(
+        [
+          testPlugin('org/first', { cache: () => recording('first', log) }),
+          testPlugin('org/second', {
+            cache: () => recording('second', log, new Map([['h1', storedArtifact(b, 'h1')!]])),
+          }),
+          testPlugin('org/third', { cache: () => recording('third', log) }),
+        ],
+        { ...baseCtx, localCache: a, policy },
+      )
+      expect((await resolved.get('h1'))?.source).toBe('remote')
+      expect(log).toEqual(['get first', 'get second'])
+      log.length = 0
+      await saveEntry(resolved as ChainedCache, 'h2', proj)
+      await resolved.drainUploads?.()
+      expect(log.sort()).toEqual(['put first h2', 'put second h2', 'put third h2'])
+    }),
+  )
+
+  it(
+    "a remote's access narrows the run's policy: a read-only token never uploads",
+    withTwo(async (a, _b, proj) => {
+      const log: string[] = []
+      const remote = { ...recording('ro', log), access: { read: true, write: false } }
+      const resolved = await resolveCache([testPlugin('org/ro', { cache: () => remote })], {
+        ...baseCtx,
+        localCache: a,
+        policy,
+      })
+      await resolved.get('absent')
+      await saveEntry(resolved as LayeredCache, 'h', proj)
+      await resolved.drainUploads?.()
+      expect(log).toEqual(['get ro'])
+    }),
+  )
+
+  it(
+    "the run's policy gates every remote: remote reads off asks none",
+    withTwo(async (a) => {
+      const log: string[] = []
+      const resolved = await resolveCache(
+        [testPlugin('org/one', { cache: () => recording('one', log) })],
+        { ...baseCtx, localCache: a, policy: { ...policy, remoteRead: false } },
+      )
+      expect(await resolved.get('absent')).toBeNull()
+      expect(log).toEqual([])
+    }),
+  )
+
+  it(
+    'a remote that throws is a miss and a warning naming its plugin; the local store still answers',
+    withTwo(async (a, _b, proj) => {
       await saveEntry(a, 'h1', proj)
       const warned: string[] = []
-      const plugins: VxPlugin[] = [testPlugin('org/broken', { cache: () => failing(b, ['get']) })]
-      const resolved = await resolveCache(plugins, {
+      const broken: RemoteCacheLayer = {
+        has: async () => false,
+        get: async () => {
+          throw new Error('get boom')
+        },
+        put: async () => undefined,
+      }
+      const resolved = await resolveCache([testPlugin('org/broken', { cache: () => broken })], {
         ...baseCtx,
         warn: (m) => warned.push(m),
         localCache: a,
@@ -262,125 +358,28 @@ describe('resolveCache — chaining', () => {
       expect({
         first: (await resolved.get('h1'))?.hash,
         second: await resolved.get('absent'),
-        warned,
-      }).toEqual({
-        first: 'h1',
-        second: null,
-        warned: [
-          "[vx] plugin 'org/broken' failed in cache get: get boom; a miss there; the next layer answers",
-        ],
-      })
+        named: warned.length > 0 && warned.every((w) => w.startsWith("[vx] plugin 'org/broken': ")),
+      }).toEqual({ first: 'h1', second: null, named: true })
     }),
   )
 
   it(
-    'one layer failing in two methods is told once per method, not once per layer',
-    withTwo(async (a, b) => {
-      const warned: string[] = []
-      const plugins: VxPlugin[] = [
-        testPlugin('org/broken', { cache: () => failing(b, ['get', 'has']) }),
-      ]
-      const resolved = await resolveCache(plugins, {
-        ...baseCtx,
-        warn: (m) => warned.push(m),
-        localCache: a,
-        policy,
-      })
-      await resolved.get('x')
-      await resolved.has('x')
-      await resolved.get('y')
-      expect(warned).toEqual([
-        "[vx] plugin 'org/broken' failed in cache get: get boom; a miss there; the next layer answers",
-        "[vx] plugin 'org/broken' failed in cache has: has boom; a miss there; the next layer answers",
-      ])
-    }),
-  )
-
-  it(
-    'the local floor failing is named as the local cache',
-    withTwo(async (a, b) => {
-      const warned: string[] = []
-      const resolved = await resolveCache([testPlugin('org/other', { cache: () => b })], {
-        ...baseCtx,
-        warn: (m) => warned.push(m),
-        localCache: failing(a, ['get']) as Cache,
-        policy,
-      })
-      expect({ got: await resolved.get('x'), warned }).toEqual({
-        got: null,
-        warned: [
-          '[vx] the local cache failed in cache get: get boom; a miss there; the next layer answers',
-        ],
-      })
-    }),
-  )
-
-  it(
-    'a layer two plugins return is named for the first that declared it',
-    withTwo(async (a, b) => {
-      const warned: string[] = []
-      const broken = failing(b, ['get'])
-      const resolved = await resolveCache(
-        [
-          testPlugin('org/first', { cache: () => broken }),
-          testPlugin('org/second', { cache: () => broken }),
-        ],
-        { ...baseCtx, warn: (m) => warned.push(m), localCache: a, policy },
-      )
-      await resolved.get('x')
-      expect(warned).toEqual([
-        "[vx] plugin 'org/first' failed in cache get: get boom; a miss there; the next layer answers",
-      ])
-    }),
-  )
-
-  it(
-    'a layer that WRAPS the local handle subsumes a bare local layer beside it',
+    'a whole cache layer, the shape before 0.0.637, is refused with the fix named',
     withTwo(async (a) => {
-      const layered = new LayeredCache(a, noRemote)
-      const plugins: VxPlugin[] = [
-        testPlugin('org/cloud-like', { cache: () => layered }),
-        testPlugin('vx/local-cache', { cache: (ctx) => ctx.localCache }),
-      ]
-      expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(layered)
+      const old = new LayeredCache(a, noRemote)
+      await expect(
+        resolveCache([testPlugin('org/old', { cache: () => old as never })], {
+          ...baseCtx,
+          localCache: a,
+          policy,
+        }),
+      ).rejects.toThrow(
+        "plugin 'org/old' returned a cache layer from cache: since vx 0.0.637 the hook returns " +
+          'the remote alone (a RemoteCacheLayer: has, get, put) and core layers it over the ' +
+          'local cache — return the remote you passed to LayeredCache',
+      )
     }),
   )
-})
-
-describe('resolveCache — the local store is asked first', () => {
-  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
-  const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
-
-  it('the local store is asked first, then each remote in declared order', async () => {
-    const asked: string[] = []
-    const recording = (name: string): CacheLayer => {
-      const f = fake(name)
-      // The methods a get never reaches, so the seam's shape check passes.
-      const unused = Object.fromEntries(
-        ['key', 'isOutputsCurrent', 'ingest', 'recordRunBundle', 'stats', 'hashFile', 'prune'].map(
-          (m) => [m, () => undefined],
-        ),
-      )
-      return {
-        ...f.layer,
-        ...unused,
-        get: async (h: string) => {
-          asked.push(name)
-          return f.layer.get(h)
-        },
-      } as CacheLayer
-    }
-    const local = recording('local') as Cache
-    const resolved = await resolveCache(
-      [
-        testPlugin('org/first', { cache: () => recording('first') }),
-        testPlugin('org/second', { cache: () => recording('second') }),
-      ],
-      { ...baseCtx, localCache: local, policy },
-    )
-    expect(await resolved.get('h')).toBeNull()
-    expect(asked).toEqual(['local', 'first', 'second'])
-  })
 })
 
 describe('ChainedCache — layers sharing one local handle', () => {
@@ -398,7 +397,7 @@ describe('ChainedCache — layers sharing one local handle', () => {
 
   it('save packs the shared local artifact ONCE, not once per layer', async () => {
     // `reapi({endpoint:A}), reapi({endpoint:B})` is a legitimate composition
-    // (two CAS endpoints); both wrap ctx.localCache, so resolveCache chains
+    // (two CAS endpoints); core layers each over the local store, so resolveCache chains
     // two LayeredCaches over the SAME Cache. Without dedup, save() walks
     // both and Cache.save packs the tar twice per miss — pure waste, and
     // pack is the dominant save cost.

@@ -16,7 +16,7 @@ import {
 import { formatFailureLine } from '../src/orchestrator/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
-import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
+import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
@@ -136,11 +136,11 @@ describe('the plugins guide states the CacheLayer method count', () => {
     'nineteen',
     'twenty',
   ]
-  it('"the N `CacheLayer` methods" is CACHE_LAYER_METHODS.length', () => {
+  it('"the N `RemoteCacheLayer` methods" is REMOTE_CACHE_METHODS.length', () => {
     const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
-    const m = /the ([a-z]+) `CacheLayer` methods/.exec(page)
+    const m = /the ([a-z]+) `RemoteCacheLayer` methods/.exec(page)
     expect(m).not.toBeNull()
-    expect(m![1]).toBe(WORDS[CACHE_LAYER_METHODS.length])
+    expect(m![1]).toBe(WORDS[REMOTE_CACHE_METHODS.length])
   })
 })
 

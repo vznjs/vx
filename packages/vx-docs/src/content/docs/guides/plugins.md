@@ -73,7 +73,7 @@ interface VxPlugin {
   schedule?(nodes, ctx): Map<string, number>
   admit?(task, ctx): boolean
   executor?(ctx): TaskExecutor | undefined
-  cache?(ctx): CacheLayer | undefined
+  cache?(ctx): RemoteCacheLayer | undefined
   telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined
   commands?: { [verb]: { description: string; run(argv, ctx): number | Promise<number> } }
   setup?(ctx): void | Promise<void>
@@ -299,17 +299,23 @@ export function nice(): VxPlugin {
 
 ## Your own cache
 
-Implement core's `RemoteCacheLayer`: `has`, `get` and `put`, plus an
-optional `hasMany`. Wrap it in `LayeredCache`, and a remote error is a
-miss and one warning per kind of failure, naming the request, the
-artifact and the layer's `endpoint` (`download <hash> from <endpoint>
-failed: HTTP 500`). Core awaits every call and bounds none: a `get` that
+Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
+`put`, plus an optional `hasMany`. Core owns the rest: the local cache is
+asked first, then each plugin's remote in the order `plugins` lists them;
+`--cache`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
+`--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope
+(`undefined` when trusted, `'read-only'`, or a name like `'pr-123'`), so a
+remote can pick a credential per scope or check a token's branch. A remote error is a miss and one
+warning per kind of failure, naming the plugin, the request, the artifact
+and the remote's `endpoint` (`download <hash> from <endpoint> failed: HTTP
+500`). A read-only credential sets `access: { write: false }` and core
+never uploads to it. Core awaits every call and bounds none: a `get` that
 never settles holds its task, and a `put` holds the end of the run. So
 give every request a deadline; a timeout is an error, and an error is a
 miss:
 
 ```ts
-import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 const deadline = () => AbortSignal.timeout(30_000) // core bounds no call
 
@@ -333,13 +339,10 @@ class AcmeRemote implements RemoteCacheLayer {
 
 function acmeCache(): VxPlugin {
   return definePlugin(import.meta, {
-    cache(ctx) {
+    cache() {
       const url = process.env.ACME_CACHE_URL
       if (!url) return undefined // decline: the local cache alone
-      return new LayeredCache(ctx.localCache, new AcmeRemote(`${url}/artifacts`), {
-        policy: ctx.policy,
-        onRemoteError: (err) => ctx.warn(`acme-cache: ${err.message}`),
-      })
+      return new AcmeRemote(`${url}/artifacts`)
     },
   })
 }
@@ -358,7 +361,7 @@ key; readers list the public one:
 ```ts
 // signed-cache.ts
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
-import { definePlugin, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 /** `remote`, but a download no trusted key signed is a miss, and uploads are signed. */
 function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: string): RemoteCacheLayer {
@@ -399,11 +402,7 @@ function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: strin
 
 export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlugin {
   return definePlugin(import.meta, {
-    cache: (ctx) =>
-      new LayeredCache(ctx.localCache, signed(remote, trustedPem, process.env.CACHE_SIGNING_KEY), {
-        policy: ctx.policy,
-        onRemoteError: (err) => ctx.warn(`signed-cache: ${err.message}`),
-      }),
+    cache: () => signed(remote, trustedPem, process.env.CACHE_SIGNING_KEY),
   })
 }
 ```
@@ -418,7 +417,7 @@ that the real run turns into a miss.
 
 ## What core refuses
 
-- A `cache` or `executor` hook whose return breaks the contract: the fifteen `CacheLayer` methods, or `execute` and a `name`.
+- A `cache` or `executor` hook whose return breaks the contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`. A whole cache layer, what the hook returned before 0.0.637, is refused with the fix named.
 - A `name` on the hooks object: the name is the package's.
 - A `ctx.on` hook name core does not know: `ctx.on: unknown hook '<h>' (one of …)`.
 - A `config` or `project` edit the loader would refuse from a user, checked after each plugin: `vx.workspace (after plugin '<p>'): …`; a `project` edit names the project's config file, or `<name> (no config file)`, instead.

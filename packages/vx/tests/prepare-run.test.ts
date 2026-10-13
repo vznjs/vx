@@ -568,58 +568,36 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
   )
 
   it(
-    'a pass-through decorator with NO remote answers false',
+    "is true when a plugin's cache hook returns a remote",
     async () => {
-      // The HIGH defect, and the discriminating case. `hasRemoteLayer` used to be
-      // `cache !== localCache`, which answers a DIFFERENT question — "did the
-      // plugin hand back something other than the handle I passed in?" — and an
-      // ordinary decorator (a metrics wrapper, a cache-dir redirect) says yes
-      // while having no remote at all. That unclamped the remote axes, so a task
-      // believing it would be saved cleaned its outputs and, under `--verify`,
-      // restored an artifact nothing had written.
-      //
-      // Driven through the real plugin seam rather than by constructing the field:
-      // what matters is that a layer which never DECLARES a remote is not credited
-      // with one, however it came to exist.
       await pkg('app', cfg(task('build')))
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          pluginSource('passthrough', `{ cache: (ctx) => new Proxy(ctx.localCache, {}) }`),
+          pluginSource(
+            'org/remote',
+            `{ cache: () => ({ has: async () => false, get: async () => null, put: async () => {} }) }`,
+          ),
         ]),
       )
       const p = await prepare()
-      // The plugin DID return a different handle…
-      expect(p.cache).not.toBe(p.localCache)
-      // …and that is precisely not evidence of a remote.
-      expect(p.hasRemoteLayer).toBe(false)
+      expect(p.hasRemoteLayer).toBe(true)
       p.cache.close()
     },
     TIMEOUT,
   )
 
   it(
-    'a third-party layer that truthfully declares a remote is believed',
+    'is false when every cache plugin declines',
     async () => {
-      // The other direction: the marker is an opt-in a real remote layer sets, so
-      // a non-LayeredCache implementation is not excluded by construction.
       await pkg('app', cfg(task('build')))
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        localWorkspaceSource([
-          pluginSource(
-            'declares',
-            `{ cache: (ctx) => {
-         const l = Object.create(Object.getPrototypeOf(ctx.localCache))
-         Object.assign(l, ctx.localCache)
-         l.hasRemote = true
-         return l
-       } }`,
-          ),
-        ]),
+        localWorkspaceSource([pluginSource('org/declines', `{ cache: () => undefined }`)]),
       )
       const p = await prepare()
-      expect(p.hasRemoteLayer).toBe(true)
+      expect(p.cache).toBe(p.localCache)
+      expect(p.hasRemoteLayer).toBe(false)
       p.cache.close()
     },
     TIMEOUT,
@@ -638,7 +616,7 @@ describe('a refused cache plugin leaks nothing', () => {
       const closes = spyOn(Cache.prototype, 'close')
       try {
         await expect(prepare()).rejects.toThrow(
-          "plugin 'org/junk' returned from cache something that is not a cache layer",
+          "plugin 'org/junk' returned from cache something that is not a remote cache layer",
         )
         // The one handle prepare opened, closed once on the way out — the
         // config cache's `open` happens before the plugin is consulted.

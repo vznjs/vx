@@ -92,7 +92,7 @@ async function countingCloses<T>(fn: () => Promise<T>): Promise<{ value: T; clos
 }
 
 const ctx = (warns: string[]) =>
-  ({ warn: (m: string) => warns.push(m), localCache: {} as never, policy: {} as never }) as never
+  ({ warn: (m: string) => warns.push(m), workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache' }) as never
 
 describe('reapi(): the connection it resolves', () => {
   it('an empty endpoint declines, as none does', async () => {

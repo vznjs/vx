@@ -58,11 +58,17 @@ nothing runs and caches here.
   (C-63), the plugin's error as its `cause`: printed plainly, as every
   stage's throw is, never as vx's internal error, and the plugin's own
   error is never renamed (C-85). The floor's is untouched.
-- `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
-  more chained in order — `ChainedCache`; a layer wrapping the local
-  handle subsumes the bare local layer; none declared leaves the local
-  store unwrapped). `CACHE_LAYER_METHODS` is what a returned layer must
-  carry.
+- `resolveCache(plugins, host)` → `CacheLayer`. `host` is a
+  `CacheHost`: the hook's `CacheContext` (with the run's `scope`) plus
+  the `localCache` and `policy` core keeps from plugins. Each plugin's `cache`
+  hook returns a remote (`RemoteCacheLayer`); core layers it over
+  `host.localCache` in a `LayeredCache` under `host.policy`, narrowed by
+  the remote's `access`, and names the plugin in its warnings. One
+  remote is that layer; two or more are chained in declared order
+  (`ChainedCache`); none leaves the local store unwrapped.
+  `REMOTE_CACHE_METHODS` is what a returned remote must carry; a whole
+  cache layer (the hook's return before 0.0.637) is refused with the
+  fix named.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares
   `admit` (the scheduler then tracks nothing). Every declaring plugin is

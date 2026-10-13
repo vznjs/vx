@@ -7,23 +7,18 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache, ChainedCache } from '../src/cache/index.js'
-import { CACHE_LAYER_METHODS, resolveCache, resolveExecutors } from '../src/orchestrator/index.js'
+import { Cache, LayeredCache } from '../src/cache/index.js'
+import { resolveCache, resolveExecutors } from '../src/orchestrator/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { testPlugin } from './helpers/plugin.js'
 
-const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
-const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
-
-/**
- * The shape the seam checks for — a layer missing its methods is refused by
- * name (plugin-capabilities.test.ts) — with nothing behind the methods:
- * these pins are about chaining order, not storage.
- */
-function stubLayer(extra: Record<string, unknown>): never {
-  const noop = (): undefined => undefined
-  return { ...Object.fromEntries(CACHE_LAYER_METHODS.map((m) => [m, noop])), ...extra } as never
+const baseCtx = {
+  workspaceRoot: '/ws',
+  cacheDir: '/ws/.vx/cache',
+  warn: () => undefined,
+  scope: undefined,
 }
+const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
 
 describe('local fallbacks', () => {
   it('no plugins at all resolves to the local executor and the local cache handle', async () => {
@@ -67,26 +62,21 @@ describe('local fallbacks', () => {
     expect(list.map((e) => e.name)).toEqual(['remote', 'local'])
   })
 
-  it('the local handle is asked AHEAD of a declared cache layer, and still gets the save', async () => {
-    const local = stubLayer({ hasRemote: false })
-    const layer = stubLayer({ hasRemote: true })
-    const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {
-      ...baseCtx,
-      localCache: local,
-      policy,
-    })
-    expect(got).toBeInstanceOf(ChainedCache)
-    expect((got as ChainedCache).layers).toEqual([local, layer])
-  })
-
-  it('a layer that WRAPS the local handle subsumes it: no double write', async () => {
-    const local = stubLayer({ hasRemote: false })
-    const layer = stubLayer({ hasRemote: true, local })
-    const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {
-      ...baseCtx,
-      localCache: local,
-      policy,
-    })
-    expect(got).toBe(layer)
+  it('a declared remote goes BEHIND the local store, which is asked first and still saves', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-local-fallbacks-'))
+    const local = new Cache(dir, { read: true, write: true })
+    try {
+      const remote = { has: async () => false, get: async () => null, put: async () => {} }
+      const got = await resolveCache([testPlugin('org/remote', { cache: () => remote })], {
+        ...baseCtx,
+        localCache: local,
+        policy,
+      })
+      expect(got).toBeInstanceOf(LayeredCache)
+      expect((got as LayeredCache).local).toBe(local)
+    } finally {
+      local.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
