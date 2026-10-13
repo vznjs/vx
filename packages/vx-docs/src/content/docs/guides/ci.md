@@ -132,6 +132,26 @@ from them as usual. A frozen run trusts the lock and checks nothing:
 determinism, not speed: on the 1,000-project bench a plain run's median
 of 177 ms against frozen's 165 is a tie.
 
+### Skip a deploy nothing changed
+
+`vx show --affected --format json` lists the packages a change reaches:
+the ones it touched and every package that depends on one. Deploy an
+app only when it is in that list:
+
+```yaml
+      - id: web
+        run: |
+          vx show --affected --format json \
+            | jq -e 'any(.[]; .name == "@acme/web")' > /dev/null \
+            && echo changed=true >> "$GITHUB_OUTPUT" || echo changed=false >> "$GITHUB_OUTPUT"
+      - if: steps.web.outputs.changed == 'true'
+        run: vx run @acme/web#deploy
+```
+
+`jq -e` exits 1 when the app is not listed, and nothing affected lists
+`[]`. Give it the same `--affected=<ref>` as the run
+([above](#github-actions)), and it lists the packages that run reaches.
+
 ### Common problems
 
 - **`--affected has no base here … a shallow clone?`** Set `fetch-depth: 0`.
