@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
@@ -52,6 +52,8 @@ export interface RunArgs {
   remoteRequested?: boolean
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
+  /** `--cache-scope <name>`: this run's `cacheScope`, above `VX_CACHE_SCOPE` and the workspace's. */
+  cacheScope?: string
   frozen: boolean
   /**
    * `--retry <n>` / `--retry=<n>`: run-level retry default for tasks
@@ -158,6 +160,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   // beats `--force`, and `--cache` is the base both may override.
   let cachePolicy: CachePolicy = { ...FULL_CACHE_POLICY }
   let cacheSpecError: string | undefined
+  let cacheFlag = false
   let noCacheFlag = false
   let forceFlag = false
 
@@ -282,7 +285,13 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         }
       }
       out.cacheDir = v
+    } else if (a === '--cache-scope' || a?.startsWith('--cache-scope=')) {
+      const v = a === '--cache-scope' ? before[++i] : a.slice('--cache-scope='.length)
+      if (v === undefined || !isCacheScope(v))
+        return { ...out, error: cacheScopeError('--cache-scope') }
+      out.cacheScope = v
     } else if (a === '--cache' || a?.startsWith('--cache=')) {
+      cacheFlag = true
       const v = a === '--cache' ? before[++i] : a.slice('--cache='.length)
       if (v === undefined)
         return {
@@ -406,6 +415,21 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
 
   if (cacheSpecError !== undefined) {
     return { ...out, error: cacheSpecError }
+  }
+  // `VX_CACHE` is the spec a run takes when no `--cache` names one.
+  const envSpec = process.env['VX_CACHE'] || undefined
+  if (!cacheFlag && envSpec !== undefined) {
+    if (!envSpec.split(',').some((seg) => seg.trim().length > 0))
+      return {
+        ...out,
+        error: `VX_CACHE needs a spec like local:r, local:rw, remote:, or local:,remote:rw`,
+      }
+    try {
+      cachePolicy = parseCachePolicy(envSpec, cachePolicy)
+    } catch (err) {
+      return { ...out, error: `VX_CACHE: ${err instanceof Error ? err.message : String(err)}` }
+    }
+    if (/remote:[rw]/.test(envSpec)) out.remoteRequested = true
   }
   // Precedence: --no-cache (all off) beats --force (reads off, writes
   // kept), both layered on top of any --cache spec.
@@ -611,6 +635,7 @@ export async function resolveRunOptions(
     tasks: [...tasks],
     cache: parsed.cache,
     ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
+    ...(parsed.cacheScope !== undefined ? { cacheScope: parsed.cacheScope } : {}),
     // A laptop reads the shared cache and never writes it (owner,
     // 2026-10-03); naming the remote in `--cache` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])

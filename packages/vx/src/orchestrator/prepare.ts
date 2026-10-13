@@ -288,13 +288,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // The local cache opens BEFORE the configs load: it is also where their
   // cached evaluations live.
-  // `VX_CACHE_SCOPE` wins over the workspace (and `github()`'s guess):
+  // `--cache-scope`, then `VX_CACHE_SCOPE`, win over the workspace (and `github()`'s guess):
   // a CI job that knows its trust level says so without editing config.
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
   const policy: CachePolicy = scopeCachePolicy(
     options.cache ?? FULL_CACHE_POLICY,
-    envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
+    options.cacheScope ?? envScope ?? workspaceConfig?.cacheScope ?? options.defaultCacheScope,
   )
   const localCache = new Cache(
     cacheDir,

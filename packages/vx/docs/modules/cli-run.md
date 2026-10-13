@@ -28,6 +28,7 @@ export interface RunArgs {
   cache: CachePolicy // resolved from --cache / --no-cache / --force (default all-on)
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheDir: string | undefined // --cache-dir
+  cacheScope?: string // --cache-scope
   frozen: boolean // --frozen: run the lock's graph
   retries: number | undefined // --retry <n> run-level default
   timeout: number | undefined // --timeout <ms> run-level default

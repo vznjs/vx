@@ -86,6 +86,8 @@ export interface RunOptions {
    * saying it is not.
    */
   remoteRequested?: boolean
+  /** This run's `cacheScope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `vx.workspace`. */
+  cacheScope?: string
   /**
    * The `cacheScope` a run takes when `vx.workspace` names none. The CLI
    * passes `'read-only'` off CI (`CI` unset, `0` or `false`) unless

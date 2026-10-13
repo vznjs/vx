@@ -61,6 +61,7 @@ async function runScoped(
   scope: string | undefined,
   input: string,
   defaultCacheScope?: string,
+  cacheScope?: string,
 ): Promise<{ status: string; hash: string }> {
   await writeFile(
     path.join(fixture.root, 'vx.workspace.mjs'),
@@ -75,6 +76,7 @@ async function runScoped(
     log: silentLogger(fixture),
     remoteCache: remote,
     ...(defaultCacheScope === undefined ? {} : { defaultCacheScope }),
+    ...(cacheScope === undefined ? {} : { cacheScope }),
   })
   expect(result.ok).toBe(true)
   const outcome = result.outcomes[0]!
@@ -231,6 +233,67 @@ describe('cacheScope', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    '--cache-scope wins over VX_CACHE_SCOPE and the workspace, and a bad one is refused',
+    async () => {
+      expect(parseRunArgs(['build', '--cache-scope', 'pr-7']).cacheScope).toBe('pr-7')
+      expect(parseRunArgs(['build', '--cache-scope=pr 7']).error).toBe(
+        "--cache-scope must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'",
+      )
+      expect(parseRunArgs(['build', '--cache-scope']).error).toContain('--cache-scope must be')
+      const fixture = await makeWorkspace('vx-cache-scope-flag-')
+      const { layer, store } = memoryRemote()
+      const saved = process.env['VX_CACHE_SCOPE']
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        process.env['VX_CACHE_SCOPE'] = 'trusted'
+        const opts = await resolveRunOptions(
+          parseRunArgs(['build', '--all', '--cache-scope=pr-7']),
+          fixture.root,
+          ['build'],
+        )
+        const scope = (opts as { cacheScope?: string }).cacheScope
+        expect(scope).toBe('pr-7')
+        const pr = await runScoped(fixture, layer, 'trusted', 'v1', undefined, scope)
+        expect(store.size).toBe(1)
+        expect(store.has(pr.hash)).toBe(false)
+      } finally {
+        if (saved === undefined) delete process.env['VX_CACHE_SCOPE']
+        else process.env['VX_CACHE_SCOPE'] = saved
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it('VX_CACHE is the spec a run takes when no --cache names one', () => {
+    const saved = process.env['VX_CACHE']
+    try {
+      process.env['VX_CACHE'] = 'local:r,remote:'
+      const off = { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }
+      expect(parseRunArgs(['build']).cache).toEqual(off)
+      expect(parseRunArgs(['build', '--cache=local:rw']).cache).toEqual({
+        localRead: true,
+        localWrite: true,
+        remoteRead: true,
+        remoteWrite: true,
+      })
+      expect(parseRunArgs(['build', '--force']).cache).toEqual({ ...off, localRead: false })
+      process.env['VX_CACHE'] = 'remote:rw'
+      expect(parseRunArgs(['build']).remoteRequested).toBe(true)
+      process.env['VX_CACHE'] = 'disk:r'
+      expect(parseRunArgs(['build']).error).toContain("VX_CACHE: invalid --cache layer 'disk'")
+      process.env['VX_CACHE'] = ','
+      expect(parseRunArgs(['build']).error).toContain('VX_CACHE needs a spec')
+    } finally {
+      if (saved === undefined) delete process.env['VX_CACHE']
+      else process.env['VX_CACHE'] = saved
+    }
+  })
 
   it('a batch probe that found only the trusted key skips the scope GET', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-unit-'))

@@ -44,9 +44,14 @@ export function isCacheScope(v: unknown): v is string {
   return typeof v === 'string' && /^[\w.@/-]{1,128}$/.test(v)
 }
 
-/** Why `VX_CACHE_SCOPE` is refused, in `cacheScope`'s words. */
+/** Why a `VX_CACHE_SCOPE` or `--cache-scope` value is refused, in `cacheScope`'s words. */
+export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
+  return `${source} ${CACHE_SCOPE_RULE}`
+}
+
+/** Why `VX_CACHE_SCOPE` is refused, as the run's error. */
 export function cacheScopeEnvError(): UserError {
-  return new UserError(`VX_CACHE_SCOPE ${CACHE_SCOPE_RULE}`)
+  return new UserError(cacheScopeError())
 }
 
 const STRATEGIES = ['immutable', 'mutable', 'unchecked'] as const

@@ -40,6 +40,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--force': [],
   '--cache': ['local:rw'],
   '--cache-dir': ['d'],
+  '--cache-scope': ['pr-1'],
   '--retry': ['1'],
   '--timeout': ['10'],
   '--continue': [],

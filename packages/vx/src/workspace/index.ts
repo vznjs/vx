@@ -37,6 +37,7 @@ export {
 } from './project-loader.js'
 export {
   cacheScopeEnvError,
+  cacheScopeError,
   inputStabilityEnv,
   isCacheScope,
   validateProjectConfig,
